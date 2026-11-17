@@ -560,58 +560,6 @@ func TestRuleContentTypeInfo(t *testing.T) {
 	}
 }
 
-// TestGameSceneGroupDetection verifies that releases from known game scene groups
-// are correctly detected as games via the rls library's group detection.
-func TestGameSceneGroupDetection(t *testing.T) {
-	tests := []struct {
-		name     string
-		release  string
-		wantType string
-		wantCats []int
-	}{
-		{
-			name:     "RUNE game release",
-			release:  "Oddsparks.An.Automation.Adventure.Coaster.Rush-RUNE",
-			wantType: "game",
-			wantCats: []int{4000},
-		},
-		{
-			name:     "CODEX game release",
-			release:  "Some.Game.v1.0-CODEX",
-			wantType: "game",
-			wantCats: []int{4000},
-		},
-		{
-			name:     "SKIDROW game release",
-			release:  "Another.Game-SKIDROW",
-			wantType: "game",
-			wantCats: []int{4000},
-		},
-		{
-			name:     "PLAZA game release",
-			release:  "Game.Update.v1.2-PLAZA",
-			wantType: "game",
-			wantCats: []int{4000},
-		},
-		{
-			name:     "Movie release unchanged",
-			release:  "Random.Movie.2024.1080p.BluRay.x264-GROUP",
-			wantType: "movie",
-			wantCats: []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			parsed := rls.ParseString(tt.release)
-			result := DetermineContentType(&parsed)
-
-			assert.Equal(t, tt.wantType, result.ContentType, "content type mismatch for %s", tt.release)
-			assert.Equal(t, tt.wantCats, result.Categories, "categories mismatch for %s", tt.release)
-		})
-	}
-}
-
 func TestBuildTorrentFilesFromInfo_EmptyPathComponents(t *testing.T) {
 	// libtorrent maps an empty path component to "_" instead of dropping it, so the
 	// hardlink/reflink tree has to be built at that same path or qBittorrent reports

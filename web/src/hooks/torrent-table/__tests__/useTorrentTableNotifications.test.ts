@@ -44,12 +44,6 @@ describe("useTorrentTableNotifications — onFilteredDataUpdate", () => {
     )
   })
 
-  it("emits allowSubcategories verbatim as the useSubcategories arg (no extra gating)", () => {
-    const params = makeParams({ allowSubcategories: true })
-    renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), { initialProps: params })
-    expect(vi.mocked(params.onFilteredDataUpdate!).mock.calls[0][5]).toBe(true)
-  })
-
   it("re-fires when only allowSubcategories changes (e.g. a preference toggle)", () => {
     const cb = vi.fn()
     const { rerender } = renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), {

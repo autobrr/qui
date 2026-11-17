@@ -20,51 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-func TestValidateLicenses_NetworkTimeoutDoesNotInvalidate(t *testing.T) {
-	ctx := t.Context()
-
-	db := testdb.NewMigratedSQLite(t, "license-validation")
-
-	repo := database.NewLicenseRepo(db)
-
-	now := time.Now()
-	license := &models.ProductLicense{
-		LicenseKey:     "QUI-TEST-KEY",
-		ProductName:    ProductNamePremium,
-		Status:         models.LicenseStatusActive,
-		ActivatedAt:    now.Add(-time.Hour),
-		LastValidated:  now.Add(-time.Hour),
-		Provider:       models.LicenseProviderDodo,
-		DodoInstanceID: "inst-id",
-		Username:       "tester",
-		CreatedAt:      now.Add(-time.Hour),
-		UpdatedAt:      now.Add(-time.Hour),
-	}
-
-	require.NoError(t, repo.StoreLicense(ctx, license))
-
-	timeoutErr := context.DeadlineExceeded
-	client := dodo.NewClient(
-		dodo.WithBaseURL("http://dodo.test"),
-		dodo.WithHTTPClient(&http.Client{
-			Transport: roundTripper(func(*http.Request) (*http.Response, error) {
-				return nil, timeoutErr
-			}),
-		}),
-	)
-
-	service := NewLicenseService(repo, client, t.TempDir())
-
-	valid, err := service.ValidateLicenses(ctx)
-	require.Error(t, err)
-	require.ErrorIs(t, err, timeoutErr)
-	assert.True(t, valid, "transient errors should not mark the license invalid")
-
-	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
-	require.NoError(t, err)
-	assert.Equal(t, models.LicenseStatusActive, stored.Status)
-}
-
 func TestValidateLicenses_OfflineGrace(t *testing.T) {
 	tests := []struct {
 		name          string

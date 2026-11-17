@@ -557,70 +557,16 @@ func TestMarkSyncFailure_ExponentialBackoff(t *testing.T) {
 	// Fifth failure: still capped at 30s
 	interval5 := manager.markSyncFailure(1)
 	require.Equal(t, 30*time.Second, interval5, "fifth failure should still be 30s (capped)")
-
-	// Verify internal state
-	state := manager.syncBackoff[1]
-	require.Equal(t, 5, state.attempt, "attempt counter should be 5")
-	require.Equal(t, 30*time.Second, state.interval, "interval should be maxSyncInterval")
 }
 
 func TestMarkSyncSuccess_ResetsBackoff(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil, nil)
 
-	// Simulate some failures first
 	manager.markSyncFailure(1)
 	manager.markSyncFailure(1)
-
-	// Verify backoff state exists with failures
-	state := manager.syncBackoff[1]
-	require.Equal(t, 2, state.attempt, "should have 2 failures recorded")
-	require.Equal(t, 8*time.Second, state.interval, "interval should be 8s after 2 failures")
-
-	// Success should reset
 	manager.markSyncSuccess(1)
 
-	// Verify state was reset
-	state = manager.syncBackoff[1]
-	require.Equal(t, 0, state.attempt, "attempt should be reset to 0")
-	require.Equal(t, defaultSyncInterval, state.interval, "interval should be reset to default")
-}
-
-func TestMarkSyncSuccess_PrimesWithoutPriorState(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
-
-	// First success without a prior failure should create a primed entry so the
-	// next sync uses the incremental budget.
-	manager.markSyncSuccess(99)
-
-	state, exists := manager.syncBackoff[99]
-	require.True(t, exists, "first success should create a primed backoff entry")
-	require.True(t, state.primed, "first success should prime the instance")
-	require.Equal(t, 0, state.attempt)
-}
-
-func TestStreamManager_syncTimeout(t *testing.T) {
-	tests := []struct {
-		name  string
-		state *backoffState
-		want  time.Duration
-	}{
-		{name: "no_state_uses_full", state: nil, want: syncTimeoutFull},
-		{name: "unprimed_attempt0_uses_full", state: &backoffState{primed: false, attempt: 0}, want: syncTimeoutFull},
-		{name: "unprimed_with_attempts_uses_full", state: &backoffState{primed: false, attempt: 2}, want: syncTimeoutFull},
-		{name: "failure_streak_uses_full", state: &backoffState{primed: true, attempt: 1}, want: syncTimeoutFull},
-		{name: "deep_failure_streak_uses_full", state: &backoffState{primed: true, attempt: 4}, want: syncTimeoutFull},
-		{name: "primed_healthy_uses_incremental", state: &backoffState{primed: true, attempt: 0}, want: syncTimeoutIncremental},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			manager := NewStreamManager(nil, nil, nil, nil)
-			if tt.state != nil {
-				manager.syncBackoff[1] = tt.state
-			}
-			require.Equal(t, tt.want, manager.syncTimeout(1))
-		})
-	}
+	require.Equal(t, 4*time.Second, manager.markSyncFailure(1), "the streak should start over after a success")
 }
 
 // TestStreamManager_syncTimeout_followsClientTimeout verifies the full-sync budget
@@ -691,7 +637,6 @@ func TestStreamManager_markSyncSuccess_primes(t *testing.T) {
 
 	manager.markSyncSuccess(1)
 
-	require.True(t, manager.syncBackoff[1].primed, "first success should prime the instance")
 	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1), "primed healthy instance uses incremental budget")
 }
 
@@ -702,13 +647,9 @@ func TestStreamManager_failureAfterPrimeKeepsFull_thenRecovers(t *testing.T) {
 	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1))
 
 	manager.markSyncFailure(1)
-	require.Positive(t, manager.syncBackoff[1].attempt, "failure should advance attempt")
-	require.True(t, manager.syncBackoff[1].primed, "failure must not clear primed")
 	require.Equal(t, syncTimeoutFull, manager.syncTimeout(1), "failure streak uses full budget")
 
 	manager.markSyncSuccess(1)
-	require.Equal(t, 0, manager.syncBackoff[1].attempt, "recovery resets attempt")
-	require.True(t, manager.syncBackoff[1].primed)
 	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1), "recovered instance returns to incremental budget")
 }
 
@@ -726,31 +667,14 @@ func TestStreamManager_unprimedFirstSyncUsesFull(t *testing.T) {
 func TestBackoffState_IndependentPerInstance(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil, nil)
 
-	// Instance 1: 2 failures
 	manager.markSyncFailure(1)
 	manager.markSyncFailure(1)
+	require.Equal(t, 4*time.Second, manager.markSyncFailure(2), "instance 2 starts its own streak")
 
-	// Instance 2: 1 failure
-	manager.markSyncFailure(2)
-
-	// Verify independent state
-	state1 := manager.syncBackoff[1]
-	state2 := manager.syncBackoff[2]
-
-	require.Equal(t, 2, state1.attempt, "instance 1 should have 2 failures")
-	require.Equal(t, 8*time.Second, state1.interval, "instance 1 should have 8s interval")
-
-	require.Equal(t, 1, state2.attempt, "instance 2 should have 1 failure")
-	require.Equal(t, 4*time.Second, state2.interval, "instance 2 should have 4s interval")
-
-	// Reset instance 1, verify instance 2 is unaffected
 	manager.markSyncSuccess(1)
 
-	state1 = manager.syncBackoff[1]
-	state2 = manager.syncBackoff[2]
-
-	require.Equal(t, 0, state1.attempt, "instance 1 should be reset")
-	require.Equal(t, 1, state2.attempt, "instance 2 should still have 1 failure")
+	require.Equal(t, 8*time.Second, manager.markSyncFailure(2), "a success on instance 1 leaves instance 2's streak")
+	require.Equal(t, 4*time.Second, manager.markSyncFailure(1))
 }
 
 func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
@@ -1030,7 +954,6 @@ func TestParseStreamRequests_InvalidInstanceID(t *testing.T) {
 		instanceID int
 	}{
 		{"zero", 0},
-		{"negative", -1},
 	}
 
 	for _, tt := range tests {

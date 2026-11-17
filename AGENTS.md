@@ -32,6 +32,7 @@ Repo rules for AI agents working on qui.
 - To read a `bin.getqui.com` link in a pull request, a Paste (`/p/`) or an Evidence (`/e/`), run `brrbin fetch <link>`. `docs/agents/issue-tracker.md` describes the sign-in and the files that the command writes.
 - Issue tracker: bug reports and feature requests are GitHub Discussions; a confirmed bug becomes a linked issue. See `docs/agents/issue-tracker.md`.
 - Triage: labels equal the six role names in `docs/agents/triage-labels.md`. Both the workflow and a local `/triage` session obey `docs/agents/triage.md`; its outcomes override the skill's own outcomes. Domain docs: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+- Before you triage a Problem report from brrbin, read `docs/agents/reports.md`.
 
 ## Code Review Rules
 

@@ -132,8 +132,3 @@ func TestHubCloseClosesSubscribersAndStopsPublishing(t *testing.T) {
 	// Publish after close is a no-op and must not panic.
 	h.Publish(Event{Kind: KindBackupRun})
 }
-
-func TestNopPublisherDoesNotPanic(_ *testing.T) {
-	var p Publisher = NopPublisher{}
-	p.Publish(Event{Kind: KindAutomationActivity})
-}

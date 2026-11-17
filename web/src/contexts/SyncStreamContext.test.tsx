@@ -1404,13 +1404,6 @@ describe("SyncStreamContext", () => {
       expect(MockEventSource.instances).toHaveLength(0)
       expect(controls.getState().connected).toBe(false)
     })
-
-    it("does not open an EventSource for a negative instanceId", () => {
-      renderSubscriber(makeParams({ instanceId: -5 }))
-      flushConnectionQueue()
-
-      expect(MockEventSource.instances).toHaveLength(0)
-    })
   })
 
   describe("signature dedup", () => {

@@ -656,7 +656,7 @@ export function Header({
                 )}
                 {/* Info tooltip */}
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger asChild openOnTap>
                     <button
                       type="button"
                       className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"

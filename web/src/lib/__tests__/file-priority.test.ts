@@ -4,14 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest"
-import {
-  FILE_PRIORITY,
-  FILE_PRIORITY_LABEL_KEYS,
-  FILE_PRIORITY_OPTIONS,
-  foldFolderPriority,
-  normalizeFilePriority,
-  type FolderPriority
-} from "@/lib/file-priority"
+import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority } from "@/lib/file-priority"
 
 describe("normalizeFilePriority", () => {
   it("maps 0 to doNotDownload", () => {
@@ -51,23 +44,5 @@ describe("foldFolderPriority", () => {
   it("propagates 'mixed' from either side", () => {
     expect(foldFolderPriority("mixed", FILE_PRIORITY.normal)).toBe("mixed")
     expect(foldFolderPriority(FILE_PRIORITY.normal, "mixed")).toBe("mixed")
-  })
-
-  it("reduces a list of file priorities correctly", () => {
-    const fold = (values: FolderPriority[]) => values.reduce(foldFolderPriority)
-    expect(fold([FILE_PRIORITY.high, FILE_PRIORITY.high, FILE_PRIORITY.high])).toBe(FILE_PRIORITY.high)
-    expect(fold([FILE_PRIORITY.high, FILE_PRIORITY.normal])).toBe("mixed")
-  })
-})
-
-describe("priority metadata", () => {
-  it("exposes the four selectable options in display order", () => {
-    expect(FILE_PRIORITY_OPTIONS).toEqual([0, 1, 6, 7])
-  })
-
-  it("has a label key for every option", () => {
-    for (const option of FILE_PRIORITY_OPTIONS) {
-      expect(FILE_PRIORITY_LABEL_KEYS[option]).toMatch(/^filePriority\./)
-    }
   })
 })

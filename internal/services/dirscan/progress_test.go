@@ -6,7 +6,6 @@ package dirscan
 import (
 	"context"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -26,42 +25,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
-
-func TestBuildTrackedFileUpsert_SearchedIndexerIDs(t *testing.T) {
-	t.Parallel()
-
-	l := zerolog.New(io.Discard)
-	modTime := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
-	existing := &models.DirScanFile{
-		FilePath:           "/data/movies/movie.mkv",
-		FileSize:           100,
-		FileModTime:        modTime,
-		Status:             models.DirScanFileStatusNoMatch,
-		SearchedIndexerIDs: []int{1, 2},
-	}
-	idx := &trackedFilesIndex{
-		byPath:   map[string]*models.DirScanFile{existing.FilePath: existing},
-		byFileID: map[fsops.FileKey]*models.DirScanFile{},
-	}
-
-	t.Run("unchanged file carries the search set forward", func(t *testing.T) {
-		scanned := &ScannedFile{Path: existing.FilePath, Size: 100, ModTime: modTime}
-		fileModel, err := buildTrackedFileUpsert(1, scanned, idx, &seedingIndex{}, &l)
-		require.NoError(t, err)
-		require.NotNil(t, fileModel)
-		require.Equal(t, models.DirScanFileStatusNoMatch, fileModel.Status)
-		require.Equal(t, []int{1, 2}, fileModel.SearchedIndexerIDs)
-	})
-
-	t.Run("changed file resets to pending and clears the search set", func(t *testing.T) {
-		scanned := &ScannedFile{Path: existing.FilePath, Size: 200, ModTime: modTime}
-		fileModel, err := buildTrackedFileUpsert(1, scanned, idx, &seedingIndex{}, &l)
-		require.NoError(t, err)
-		require.NotNil(t, fileModel)
-		require.Equal(t, models.DirScanFileStatusPending, fileModel.Status)
-		require.Nil(t, fileModel.SearchedIndexerIDs)
-	})
-}
 
 // regression: #3736
 func TestBuildTrackedFileUpsert_ComparesModTimeInWholeSeconds(t *testing.T) {

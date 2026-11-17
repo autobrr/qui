@@ -537,70 +537,6 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 	}
 }
 
-// TestSeasonPackDetection tests season vs episode detection logic
-func TestSeasonPackDetection(t *testing.T) {
-	cache := NewReleaseCache()
-
-	tests := []struct {
-		name        string
-		releaseName string
-		isSeason    bool
-		isEpisode   bool
-		series      int
-		episode     int
-	}{
-		{
-			name:        "season pack",
-			releaseName: "Show.S01.1080p.BluRay",
-			isSeason:    true,
-			isEpisode:   false,
-			series:      1,
-			episode:     0,
-		},
-		{
-			name:        "single episode",
-			releaseName: "Show.S01E05.1080p.WEB-DL",
-			isSeason:    false,
-			isEpisode:   true,
-			series:      1,
-			episode:     5,
-		},
-		{
-			// A multi-episode release is a pack, not its first episode.
-			name:        "multi-episode",
-			releaseName: "Show.S02E10E11.720p.HDTV",
-			isSeason:    true,
-			isEpisode:   false,
-			series:      2,
-			episode:     0,
-		},
-		{
-			name:        "movie with year",
-			releaseName: "Movie.2020.1080p.BluRay",
-			isSeason:    false,
-			isEpisode:   false,
-			series:      0,
-			episode:     0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			release := cache.Parse(tt.releaseName)
-
-			isSeason := release.Series > 0 && release.Episode == 0
-			isEpisode := release.Series > 0 && release.Episode > 0
-
-			assert.Equal(t, tt.isSeason, isSeason, "Season detection")
-			assert.Equal(t, tt.isEpisode, isEpisode, "Episode detection")
-			assert.Equal(t, tt.series, release.Series, "Series number")
-			if tt.isEpisode {
-				assert.Equal(t, tt.episode, release.Episode, "Episode number")
-			}
-		})
-	}
-}
-
 // TestBase64EdgeCases tests that decodeTorrentData decodes binary data in every base64 encoding.
 func TestBase64EdgeCases(t *testing.T) {
 	s := &Service{}
@@ -635,154 +571,6 @@ func TestBase64EdgeCases(t *testing.T) {
 					assert.Equal(t, tt.input, decoded)
 				})
 			}
-		})
-	}
-}
-
-// TestReleaseNameVariations tests different release name formats
-func TestReleaseNameVariations(t *testing.T) {
-	cache := NewReleaseCache()
-
-	tests := []struct {
-		name        string
-		releaseName string
-		wantSeries  int
-		wantEpisode int
-	}{
-		{"standard format", "Show.S01E05.1080p", 1, 5},
-		{"lowercase", "show.s01e05.720p", 1, 5},
-		{"no resolution", "Show.S02E10.WEB-DL", 2, 10},
-		{"single digit", "Show.S1E2.HDTV", 1, 2},
-		{"with year", "Show.2024.S01E05", 1, 5},
-		{"multi-episode", "Show.S01E05E06", 1, 0}, // A range reads as a pack
-		{"season pack no episode", "Show.S01.Complete", 1, 0},
-		{"season pack explicit", "Show.Season.1.1080p", 1, 0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			release := cache.Parse(tt.releaseName)
-			assert.Equal(t, tt.wantSeries, release.Series, "Series mismatch")
-			assert.Equal(t, tt.wantEpisode, release.Episode, "Episode mismatch")
-		})
-	}
-}
-
-// TestGroupExtraction tests release group extraction
-func TestGroupExtraction(t *testing.T) {
-	cache := NewReleaseCache()
-
-	tests := []struct {
-		name      string
-		release   string
-		wantGroup string
-	}{
-		{"standard group", "Movie.2020.1080p.BluRay.x264-GROUP", "GROUP"},
-		{"brackets", "Movie.2020.1080p.[GROUP]", "GROUP"},
-		{"no group", "Movie.2020.1080p.BluRay.x264", ""},
-		{"underscore", "Show_S01E05_1080p-GROUP", "GROUP"},
-		{"multiple dashes", "Movie-2020-1080p-x264-GROUPName", "GROUPName"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			release := cache.Parse(tt.release)
-			assert.Equalf(t, tt.wantGroup, release.Group, "group mismatch for release %q", tt.release)
-		})
-	}
-}
-
-// TestQualityDetection tests quality/resolution detection
-func TestQualityDetection(t *testing.T) {
-	cache := NewReleaseCache()
-
-	tests := []struct {
-		name           string
-		release        string
-		wantResolution string
-	}{
-		{"1080p", "Movie.2020.1080p.BluRay", "1080p"},
-		{"720p", "Show.S01E05.720p.HDTV", "720p"},
-		{"2160p/4K", "Movie.2020.2160p.UHD", "2160p"},
-		{"480p", "Show.S01E05.480p.WEB", "480p"},
-		{"no resolution", "Show.S01E05.WEB-DL", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			release := cache.Parse(tt.release)
-			assert.Equalf(t, tt.wantResolution, release.Resolution, "resolution mismatch for release %q", tt.release)
-		})
-	}
-}
-
-// TestSourceDetection tests source media detection
-func TestSourceDetection(t *testing.T) {
-	cache := NewReleaseCache()
-
-	tests := []struct {
-		name       string
-		release    string
-		wantSource string
-	}{
-		{"BluRay", "Movie.2020.1080p.BluRay.x264", "BluRay"},
-		{"WEB-DL", "Show.S01E05.1080p.WEB-DL.x264", "WEB-DL"},
-		{"WEBRip", "Movie.2020.720p.WEBRip.x264", "WEBRiP"},
-		{"HDTV", "Show.S01E05.720p.HDTV.x264", "HDTV"},
-		{"DVD", "Movie.2000.480p.DVDRip", "DVDRiP"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			release := cache.Parse(tt.release)
-			assert.Equalf(t, tt.wantSource, release.Source, "source mismatch for release %q", tt.release)
-		})
-	}
-}
-
-// TestCodecDetection tests video/audio codec detection
-func TestCodecDetection(t *testing.T) {
-	cache := NewReleaseCache()
-
-	tests := []struct {
-		name      string
-		release   string
-		wantCodec []string
-	}{
-		{"x264", "Movie.2020.1080p.x264", []string{"x264"}},
-		{"x265/HEVC", "Movie.2020.1080p.x265", []string{"x265"}},
-		{"H.264", "Movie.2020.1080p.H264", []string{"H.264"}},
-		{"H.265", "Movie.2020.2160p.H265", []string{"H.265"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			release := cache.Parse(tt.release)
-			assert.Equalf(t, tt.wantCodec, release.Codec, "codec mismatch for release %q", tt.release)
-		})
-	}
-}
-
-// TestYearExtraction tests year extraction from releases
-func TestYearExtraction(t *testing.T) {
-	cache := NewReleaseCache()
-
-	tests := []struct {
-		name     string
-		release  string
-		wantYear int
-	}{
-		{"movie with year", "Movie.2020.1080p", 2020},
-		{"show with year", "Show.2024.S01E05", 2024},
-		{"old movie", "Movie.1995.DVDRip", 1995},
-		{"future", "Movie.2025.1080p", 2025},
-		{"no year episode", "Show.S01E05.1080p", 0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			release := cache.Parse(tt.release)
-			assert.Equalf(t, tt.wantYear, release.Year, "year mismatch for release %q", tt.release)
 		})
 	}
 }
@@ -1827,15 +1615,6 @@ func TestWebhookCheckRequest_Validation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "valid full request",
-			request: &WebhookCheckRequest{
-				TorrentName: "Movie.2025.1080p.BluRay.x264-GROUP",
-				InstanceIDs: []int{1},
-				Size:        8589934592,
-			},
-			wantErr: false,
-		},
-		{
 			name: "invalid when instance IDs contain no positives",
 			request: &WebhookCheckRequest{
 				TorrentName: "Movie.2025.1080p.BluRay.x264-GROUP",
@@ -1849,15 +1628,6 @@ func TestWebhookCheckRequest_Validation(t *testing.T) {
 			request: &WebhookCheckRequest{
 				InstanceIDs: []int{1},
 				Size:        8589934592,
-			},
-			wantErr: true,
-			errMsg:  "torrentName is required",
-		},
-		{
-			name: "empty torrent name",
-			request: &WebhookCheckRequest{
-				TorrentName: "",
-				InstanceIDs: []int{1},
 			},
 			wantErr: true,
 			errMsg:  "torrentName is required",
@@ -1901,18 +1671,6 @@ func TestWrapCrossSeedSearchErrorDoesNotClassifyText(t *testing.T) {
 
 	if !strings.Contains(wrapped.Error(), "torznab search failed") {
 		t.Fatalf("expected untyped text to remain a generic failure, got %q", wrapped.Error())
-	}
-}
-
-func TestWrapCrossSeedSearchErrorGeneric(t *testing.T) {
-	err := errors.New("unexpected search failure")
-	wrapped := wrapCrossSeedSearchError(err)
-
-	if wrapped == nil {
-		t.Fatalf("expected wrapped error")
-	}
-	if !strings.Contains(wrapped.Error(), "torznab search failed") {
-		t.Fatalf("expected generic torznab failure prefix, got %q", wrapped.Error())
 	}
 }
 

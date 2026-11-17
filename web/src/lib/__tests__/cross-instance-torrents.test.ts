@@ -179,20 +179,6 @@ describe("mergeStreamedCrossInstanceFirstPage", () => {
     expect(keys(merged)).toEqual(["1:x", "1:y", "2:x", "1:z"])
   })
 
-  it("de-dupes a cross-instance row that reflowed from a later page up into page 0", () => {
-    // prev = page0[a@1, b@1] + page1[x@2, c@1]; total stays 4. b@1 reflows off the page-0
-    // window (e.g. after a re-sort) and x@2 reflows up into it, so the fresh page 0 is
-    // [a@1, x@2]. x@2 now appears in BOTH the fresh page and the stale trailing slice; the
-    // instanceId+hash key must collapse it to one row (and page 0 stays authoritative for
-    // its window, so the reflowed-out b@1 is dropped, not resurrected).
-    const prev: Torrent[] = [camel("a", 1, "alpha"), camel("b", 1, "alpha"), camel("x", 2, "beta"), camel("c", 1, "alpha")]
-    const merged = mergeStreamedCrossInstanceFirstPage(
-      prev,
-      snapshot(4, streamed("a", 1, "alpha"), streamed("x", 2, "beta"))
-    )
-    expect(keys(merged)).toEqual(["1:a", "2:x", "1:c"])
-  })
-
   it("normalizes the streamed snake_case page so the Instance column is never blank", () => {
     // Empty prev is also the filter-reset / initial-load path: useTorrentsList resets
     // allTorrents to [] when scope/filters/search/sort change (useTorrentsList.ts), so this

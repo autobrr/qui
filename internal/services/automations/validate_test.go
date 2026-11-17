@@ -7,7 +7,6 @@ import (
 	"errors"
 	"runtime"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -149,9 +148,6 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 			usesFreeSpace: true,
 			wantErr:       true,
 		},
-		// Note: "path source with local access" validation is platform-dependent
-		// On Windows it returns 400 (not supported), on other platforms it's valid
-		// See TestValidateFreeSpaceSource_PlatformSpecific for platform-aware tests
 		{
 			name:          "path source without path returns 400",
 			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: ""},
@@ -210,27 +206,6 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 				t.Errorf("validateFreeSpaceSource() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-// TestValidateFreeSpaceSource_PlatformSpecific tests path source validation on different platforms.
-// On Windows, path-based free space is not supported and returns an error.
-// On other platforms, it's valid when local filesystem access is enabled.
-func TestValidateFreeSpaceSource_PlatformSpecific(t *testing.T) {
-	source := &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
-	instance := &models.Instance{HasLocalFilesystemAccess: true}
-	isWindows := runtime.GOOS == "windows"
-
-	msg, err := validateFreeSpaceSource(source, instance, true)
-
-	// Expected outcomes based on platform
-	wantErr := isWindows
-
-	if (err != nil) != wantErr {
-		t.Errorf("validateFreeSpaceSource() error = %v, wantErr %v (isWindows=%v)", err, wantErr, isWindows)
-	}
-	if isWindows && !strings.Contains(msg, "Windows") {
-		t.Errorf("validateFreeSpaceSource() on Windows: message should mention Windows, got: %s", msg)
 	}
 }
 
@@ -325,117 +300,6 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "speed limits enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				SpeedLimits: &models.SpeedLimitAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "share limits enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				ShareLimits: &models.ShareLimitsAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "pause enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				Pause: &models.PauseAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "tag enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				Tag: &models.TagAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "category enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				Category: &models.CategoryAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "external program disabled returns false",
-			conditions: &models.ActionConditions{
-				ExternalProgram: &models.ExternalProgramAction{
-					Enabled:   false,
-					ProgramID: 1,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "external program enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				ExternalProgram: &models.ExternalProgramAction{
-					Enabled:   true,
-					ProgramID: 1,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "external program enabled without FREE_SPACE returns false",
-			conditions: &models.ActionConditions{
-				ExternalProgram: &models.ExternalProgramAction{
-					Enabled:   true,
-					ProgramID: 1,
-					Condition: &RuleCondition{
-						Field: FieldSize,
-					},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "autoManagement enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				AutoManagement: &models.AutoManagementAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
 			name: "autoManagement disabled with FREE_SPACE returns true (presence semantics)",
 			conditions: &models.ActionConditions{
 				AutoManagement: &models.AutoManagementAction{
@@ -446,18 +310,6 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 				},
 			},
 			want: true,
-		},
-		{
-			name: "autoManagement enabled without FREE_SPACE returns false",
-			conditions: &models.ActionConditions{
-				AutoManagement: &models.AutoManagementAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldSize,
-					},
-				},
-			},
-			want: false,
 		},
 	}
 

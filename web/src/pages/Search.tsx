@@ -114,7 +114,7 @@ type SearchTableRowProps = {
   onViewDetails: (result: TorznabSearchResult) => void
 }
 
-const SearchTableRow = memo(function SearchTableRow({
+export const SearchTableRow = memo(function SearchTableRow({
   result,
   isSelected,
   isEven,
@@ -223,18 +223,22 @@ const SearchTableRow = memo(function SearchTableRow({
           <TooltipContent>{t("table.downloadTorrent")}</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => onViewDetails(result)}
-              disabled={!result.infoUrl}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              <span className="sr-only">{t("card.viewDetails")}</span>
-            </Button>
+          {/* A disabled button lets taps and hover through to the wrapper, which says there is no info URL.
+              The row around it is a button, so a tap opens the tooltip only by opting in. */}
+          <TooltipTrigger asChild openOnTap={!result.infoUrl}>
+            <span className="inline-flex">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => onViewDetails(result)}
+                disabled={!result.infoUrl}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span className="sr-only">{t("card.viewDetails")}</span>
+              </Button>
+            </span>
           </TooltipTrigger>
           <TooltipContent>{result.infoUrl ? t("table.viewDetails") : t("table.noInfoUrl")}</TooltipContent>
         </Tooltip>

@@ -694,7 +694,6 @@ type moveExpansion struct {
 	// failedGroups holds the groups that failed a check for the group, so they cannot move
 	// for any trigger.
 	failedGroups map[ruleGroupKey]struct{}
-	groupChecks  int
 }
 
 func newMoveExpansion(in runPlanInput, ruleByHash map[string]ruleRef) *moveExpansion {
@@ -780,7 +779,6 @@ func (s *Service) planMoveGroup(ctx context.Context, m *moveExpansion, state *to
 			members = found
 		}
 	}
-	m.groupChecks++
 	expand, verifyOverlap, minPercent := s.moveGroupChecks(in, rule, state.moveGroupID, idx, hash, members)
 	if !expand {
 		// A trigger without a group key is a group of its own.

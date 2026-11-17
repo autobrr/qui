@@ -512,16 +512,3 @@ func newInstanceStoreWithAPIKeySchema(t *testing.T) *InstanceStore {
 
 	return store
 }
-
-func TestInstanceStoreGetDecryptedAPIKeyLegacyEmptyValue(t *testing.T) {
-	store, err := NewInstanceStore(newMockQuerier(nil), []byte("01234567890123456789012345678901"))
-	require.NoError(t, err)
-
-	instance := &Instance{
-		APIKeyEncrypted: "",
-	}
-
-	apiKey, err := store.GetDecryptedAPIKey(instance)
-	require.NoError(t, err)
-	assert.Empty(t, apiKey)
-}

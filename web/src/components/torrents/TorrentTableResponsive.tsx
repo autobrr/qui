@@ -19,6 +19,8 @@ interface TorrentTableResponsiveProps {
   filters: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
+  revealTorrent?: Torrent | null
+  onRevealDone?: () => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (

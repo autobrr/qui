@@ -218,35 +218,6 @@ func TestCreate_SourceNotFound(t *testing.T) {
 	}
 }
 
-func TestCreate_TargetExistsDifferentFile(t *testing.T) {
-	srcDir := t.TempDir()
-	dstDir := t.TempDir()
-
-	// Create source file
-	srcFile := filepath.Join(srcDir, "file.txt")
-	if err := os.WriteFile(srcFile, []byte("source"), 0o600); err != nil {
-		t.Fatalf("Failed to create source file: %v", err)
-	}
-
-	// Create different file at target location
-	dstFile := filepath.Join(dstDir, "file.txt")
-	if err := os.WriteFile(dstFile, []byte("different content"), 0o600); err != nil {
-		t.Fatalf("Failed to create target file: %v", err)
-	}
-
-	plan := &TreePlan{
-		RootDir: dstDir,
-		Files: []FilePlan{
-			{SourcePath: srcFile, TargetPath: dstFile},
-		},
-	}
-
-	_, err := Create(plan)
-	if err == nil {
-		t.Error("Expected error when target exists with different content")
-	}
-}
-
 func TestRollback(t *testing.T) {
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()

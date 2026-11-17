@@ -455,12 +455,6 @@ func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.In
 
 // validateFreeSpacePathSource validates path-based free space source configuration.
 func validateFreeSpacePathSource(source *models.FreeSpaceSource, instance *models.Instance) (msg string, err error) {
-	// Also enforced in ValidateRule, but kept here since
-	// validateFreeSpaceSource is unit-tested directly.
-	if windowsLocalPathSource(instance) {
-		return errMsgWindowsPathSourceNotSupported, errors.New("path source not supported on Windows with local access")
-	}
-
 	if instance == nil || !models.FilesystemCapabilitiesOf(instance).Read {
 		return errMsgPathSourceAccessRequired, errors.New("filesystem access required for path source")
 	}
