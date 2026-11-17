@@ -501,18 +501,13 @@ func (j *job) after(ctx context.Context) error {
 }
 
 // finishRemoval goes on with the removal from the source after a stop. It
-// keeps the files when the recorded step says why.
+// keeps the files when the recorded step says why, and else checks again
+// why to keep them, because an instance or a torrent may use them now.
 func (j *job) finishRemoval(ctx context.Context) error {
 	if !j.svc.commit(j.rec.ID) {
 		return errCancelled
 	}
-	var keep string
-	for _, step := range j.rec.Steps {
-		if step.Name == stepRemoveFromSource {
-			keep = step.Detail
-		}
-	}
-	if err := j.stepWith(ctx, StateFinishing, stepRemoveFromSource, keep); err != nil {
+	if err := j.checkInstances(ctx); err != nil {
 		return err
 	}
 	if models.FilesystemAccessMode(j.source) != models.FilesystemModeNone {
@@ -523,6 +518,18 @@ func (j *job) finishRemoval(ctx context.Context) error {
 	}
 	if !j.readGroup(ctx) {
 		return permanent("qui cannot read the names of the files of %s, so it cannot finish the removal from %s.", j.torrents("the"), j.source.Name)
+	}
+	var keep string
+	for _, step := range j.rec.Steps {
+		if step.Name == stepRemoveFromSource {
+			keep = step.Detail
+		}
+	}
+	if keep == "" && j.rec.Options.After == AfterRemoveWithFiles {
+		keep = j.keepReason(ctx)
+	}
+	if err := j.stepWith(ctx, StateFinishing, stepRemoveFromSource, keep); err != nil {
+		return err
 	}
 	return j.removeFromSource(ctx, keep)
 }

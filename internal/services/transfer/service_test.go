@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"maps"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -941,6 +942,33 @@ func TestTransferKeepsSourceFiles(t *testing.T) {
 
 		record := r.run(r.request(s))
 
+		require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+		require.False(t, r.src.Has(s.hash))
+		require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+		require.Contains(t, logOf(record), "kept its files, because second client uses the same SSH server: 70 B stay in use.")
+	})
+	// regression: #4231
+	t.Run("another instance on the same SSH server, added while the removal waits for its retry", func(t *testing.T) {
+		r := newRig(t)
+		s := newShow(t, showName)
+		r.seed(s)
+		refused := false
+		r.src.OnWrite = func(endpoint string) {
+			r.src.Reject = 0
+			if endpoint == "torrents/delete" && !refused {
+				refused = true
+				r.src.Reject = http.StatusInternalServerError
+			}
+		}
+		record := r.run(r.request(s))
+		require.Equal(t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
+		r.sshInstance("second client", qbtstub.New(t, r.srcPath()).URL)
+
+		r.setClock(clock.Add(2 * time.Hour))
+		r.svc.Wake()
+		r.svc.Wait()
+
+		record = r.get(record.ID)
 		require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 		require.False(t, r.src.Has(s.hash))
 		require.Equal(t, contents(s, showName), tree(t, r.srcDir))
