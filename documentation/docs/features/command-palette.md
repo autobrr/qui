@@ -24,7 +24,7 @@ Type some letters of a name, then press Enter. The palette searches these groups
 | Group | Entries |
 |-------|---------|
 | Instances | Each active instance, with its connection state. If you have two or more active instances, the **Unified** list of all instances comes first. |
-| Pages | The pages of the sidebar, and the sections of **Settings**, **Cross-Seed**, and **RSS**. A section shows its page below its name, for example **Settings › Connections**. |
+| Pages | The pages of the sidebar, and the sections of **Settings**, **Cross-Seed**, **Automations**, and **RSS**. A section shows its page below its name, for example **Settings › Connections**. |
 | Actions | **Add torrent**, the incognito mode switch, and **Theme**. See [Change the theme](#change-the-theme). |
 | Torrents | The torrents that match the text. See [Find a torrent](#find-a-torrent). |
 
@@ -53,7 +53,7 @@ The filters of that list apply to the search. These are the sidebar filters and,
 
 The palette shows the six torrents that you added last. Each row shows the state, the size, and the tracker of the torrent. In the **Unified** list, the row also shows the instance. The copies of a release share one row, and a number such as **+2** shows how many other copies the row holds.
 
-- Press Enter on a torrent to open its details panel in the torrent list.
+- Press Enter on a torrent to open it in the torrent list. The list then shows the torrents that match the text, as with **Search torrents for "text"**. The table scrolls to the torrent, highlights it, and opens its details panel.
 - Press Cmd + Enter on macOS, or Ctrl + Enter on Windows and Linux, to filter the list with the text. Ctrl + Enter also works on macOS. The highlight can be on any row.
 - The row **Search torrents for "text"** does the same when you press Enter on it. This row also shows the number of torrents that match. If you have two or more active instances, it shows the name of the list.
 

@@ -116,6 +116,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     setSelectedTorrent(null)
   }
   const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
+  // The torrent that a link selected, until the table scrolls to its row.
+  const [revealTorrent, setRevealTorrent] = useState<Torrent | null>(null)
+  const handleRevealDone = useCallback(() => setRevealTorrent(null), [])
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
   const navigate = useNavigate()
@@ -167,7 +170,10 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       selectedTorrent?.hash === search.torrent &&
       (!search.instance || getTorrentInstanceId(selectedTorrent) === search.instance)
     ) {
-      if (!isMobile) clearDeepLinkParams()
+      if (!isMobile) {
+        setRevealTorrent(selectedTorrent)
+        clearDeepLinkParams()
+      }
       return
     }
     let cancelled = false
@@ -213,6 +219,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       }
       if (torrent) {
         setSelectedTorrent(torrent)
+        setRevealTorrent(torrent)
         if (tab) {
           setInitialDetailsTab(tab)
         }
@@ -346,6 +353,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
 
     return left.hash === right.hash && getTorrentInstanceId(left) === getTorrentInstanceId(right)
   }, [getTorrentInstanceId])
+  // A pick of another torrent, or a close of the details, before the row loads drops the scroll.
+  if (revealTorrent && !isSameTorrent(revealTorrent, selectedTorrent)) setRevealTorrent(null)
 
   const handleTorrentSelect = useCallback((torrent: Torrent | null) => {
     // Toggle selection: a click on the selected torrent deselects it
@@ -574,6 +583,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                     filters={filters}
                     selectedTorrent={selectedTorrent}
                     onTorrentSelect={handleTorrentSelect}
+                    revealTorrent={revealTorrent}
+                    onRevealDone={handleRevealDone}
                     addTorrentModalOpen={isAddTorrentModalOpen}
                     onAddTorrentModalChange={handleAddTorrentModalChange}
                     onFilteredDataUpdate={handleFilteredDataUpdate}

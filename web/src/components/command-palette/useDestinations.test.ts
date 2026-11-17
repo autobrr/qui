@@ -51,4 +51,10 @@ describe("useDestinations", () => {
 
     expect(fixture.navigate).toHaveBeenCalledWith({ to: "/instances/$instanceId", params: { instanceId: "2" }, search: { modal: "add-torrent" } })
   })
+
+  it("opens a section of Automations", () => {
+    runEntry("automations.orphan-scan")
+
+    expect(fixture.navigate).toHaveBeenCalledWith({ to: "/automations", search: { tab: "orphan-scan" } })
+  })
 })
