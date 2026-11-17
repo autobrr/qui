@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
@@ -64,6 +65,9 @@ type crossSeeds struct {
 	requests []crossseed.CrossSeedRequest
 	// refuse is the status of a refused add.
 	refuse string
+	// strand is the status of an add that leaves the torrent on the
+	// Cross-seed instance, and reports no success.
+	strand string
 }
 
 // withCrossSeedInstance gives the target a Cross-seed instance.
@@ -120,6 +124,11 @@ func (c *crossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequ
 	hash := c.stub.Seed(data, c.dir)
 	if err := c.r.sync.BulkAction(ctx, c.inst.ID, []string{hash}, "pause"); err != nil {
 		return nil, err
+	}
+	if c.strand != "" {
+		return &crossseed.CrossSeedResponse{Results: []crossseed.InstanceCrossSeedResult{
+			{InstanceID: matchedOn, Status: c.strand, CrossSeedInstanceID: c.inst.ID},
+		}}, nil
 	}
 	return &crossseed.CrossSeedResponse{Success: true, Results: []crossseed.InstanceCrossSeedResult{
 		{InstanceID: matchedOn, Success: true, Status: "added", CrossSeedInstanceID: c.inst.ID},
@@ -214,26 +223,56 @@ func TestTransferWaitsForTheCheckOfARoutedCrossSeed(t *testing.T) {
 	}
 }
 
-// A refused cross-seed add fails the Transfer. The source keeps both
-// torrents and their files.
+// A failed cross-seed add fails the Transfer for a retry, and the source
+// keeps both torrents and their files. The retry adds a member that the add
+// refused again, and checks a member that the add left on the Cross-seed
+// instance.
+// regression: #4231
 func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
-	r := newRig(t)
-	cs := r.withCrossSeedInstance()
-	cs.refuse = "no_match"
-	s := newShow(t, showName)
-	r.seed(s)
-	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcPath())
-	r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
-	r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
+	for _, tc := range []struct {
+		name     string
+		status   string
+		stranded bool
+		requests int
+	}{
+		{name: "a refused add", status: "no_match", requests: 2},
+		{name: "an add that leaves the member", status: "alignment_failed", stranded: true, requests: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			cs := r.withCrossSeedInstance()
+			if tc.stranded {
+				cs.strand = tc.status
+			} else {
+				cs.refuse = tc.status
+			}
+			s := newShow(t, showName)
+			r.seed(s)
+			crossSeed, crossSeedHash := crossSeedOf(t, s)
+			r.src.Seed(crossSeed, r.srcPath())
+			r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
+			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
 
-	record := r.run(r.request(s))
+			record := r.run(r.request(s))
 
-	require.Equal(t, transfer.StateFailed, record.State)
-	require.Equal(t, "homelab cross-seed did not take "+showName+": no_match", record.FailureReason)
-	require.True(t, r.seeding(r.source.ID, s.hash))
-	require.True(t, r.seeding(r.source.ID, crossSeedHash))
-	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Equal(t, transfer.FailureTemporary, record.FailureClass)
+			require.Equal(t, "homelab cross-seed did not take "+showName+": "+tc.status, record.FailureReason)
+			require.True(t, r.seeding(r.source.ID, s.hash))
+			require.True(t, r.seeding(r.source.ID, crossSeedHash))
+			require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+
+			cs.refuse, cs.strand = "", ""
+			r.setClock(clock.Add(time.Hour))
+			r.svc.Wake()
+			r.svc.Wait()
+
+			record = r.get(record.ID)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.True(t, r.seeding(cs.inst.ID, s.hash))
+			require.Len(t, cs.requests, tc.requests)
+		})
+	}
 }
 
 // A group whose torrents hold other files goes whole to the target, also
