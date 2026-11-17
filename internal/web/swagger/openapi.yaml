@@ -8812,6 +8812,8 @@ components:
             - local
             - none
             - bittorrent
+            - ""
+          description: Empty for an Export run, which copies nothing
         state:
           type: string
           enum:

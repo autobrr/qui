@@ -29,7 +29,8 @@ export interface TransferProgress {
 export interface TransferRow {
   id: number
   kind: TransferKind
-  way: TransferWay
+  /** Empty for an Export run, which copies nothing. */
+  way: TransferWay | ""
   state: TransferState
   startedBy: "user" | "rule"
   ruleId: number | null
