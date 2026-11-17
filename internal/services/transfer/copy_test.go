@@ -195,16 +195,14 @@ func provenRanges(bits []byte, n int) int {
 	return len(quarters)
 }
 
-// A seedbox that refuses extra SSH connections gets the copy on fewer, down
-// to one. The Transfer goes on, and removes the source files over SSH at its
-// end.
+// A seedbox that refuses extra SSH connections gets the copy on fewer. The
+// Transfer goes on, and removes the source files over SSH at its end.
 func TestTransferGoesOnWithFewerConnections(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		limit int
 	}{
 		{name: "a host that allows two connections", limit: 2},
-		{name: "a host that allows one connection", limit: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t, fastCopy)

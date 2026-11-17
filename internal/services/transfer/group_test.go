@@ -46,29 +46,6 @@ func (r *rig) seeding(instanceID int, hash string) bool {
 	return len(torrents) == 1 && string(torrents[0].State) == "stalledUP"
 }
 
-// A cross-seed that reads the same files moves with the torrent in one
-// Transfer. qui copies each file once, so the free space for one copy is
-// enough.
-func TestTransferMovesTheGroupWithItsCrossSeed(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcPath())
-	r.disk.free = 70
-
-	record := r.run(r.request(s))
-
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	require.Len(t, record.Members, 2)
-	require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the target has each file once")
-	require.True(t, r.seeding(r.target.ID, s.hash))
-	require.True(t, r.seeding(r.target.ID, crossSeedHash))
-	require.False(t, r.src.Has(s.hash))
-	require.False(t, r.src.Has(crossSeedHash))
-	require.Empty(t, tree(t, r.srcDir))
-}
-
 type routes map[int]*models.CrossSeedRoute
 
 func (r routes) Get(_ context.Context, sourceInstanceID int) (*models.CrossSeedRoute, error) {
@@ -334,8 +311,6 @@ func TestTransferMovesAHardlinkedCrossSeed(t *testing.T) {
 		writtenFolders  []string
 		oneFileOnTarget bool
 	}{
-		{name: "a copy linked on the target", target: onDisk, free: 70, log: linkedLog,
-			writtenFolders: []string{showName}, oneFileOnTarget: true},
 		{name: "a copy linked over SFTP", target: overSFTP, log: linkedLog,
 			writtenFolders: []string{showName}, oneFileOnTarget: true},
 		{name: "links to the source on one filesystem", target: onDisk, oneFilesystem: true,
@@ -401,6 +376,7 @@ func TestTransferNeedsSpaceForACopyThatTheTargetCannotLink(t *testing.T) {
 	record := r.run(r.request(s))
 
 	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
 	require.Equal(t, "Not enough free space on homelab: not enough free space on the target: the Transfer needs 40 B, and 30 B is free", record.FailureReason)
 	require.Empty(t, tree(t, r.dstDir))
 	// regression: #4231

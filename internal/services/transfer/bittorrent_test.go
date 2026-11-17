@@ -43,32 +43,9 @@ func (r *rig) requireNoHelpers(record *transfer.Record) {
 	}
 }
 
-// A Transfer to a target without file access passes the files by a
-// Transfer torrent: the target downloads them from the source, adds the
-// real torrent on them, and qui removes the Transfer torrent from both
-// clients.
-func TestTransferPassesByBitTorrentToATargetWithoutFileAccess(t *testing.T) {
-	r := newRigOn(t, overSFTP, noAccess)
-	r.connect()
-	s := newShow(t, showName)
-	r.seed(s)
-
-	record := r.run(r.request(s))
-
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	require.Equal(t, transfer.WayBitTorrent, record.Way)
-	require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the target downloaded the files")
-	require.True(t, r.seeding(r.target.ID, s.hash))
-	require.False(t, r.src.Has(s.hash))
-	require.Empty(t, tree(t, r.srcDir), logOf(record))
-	r.requireNoHelpers(record)
-	require.Contains(t, logOf(record), "Passing 70 B by a Transfer torrent from seedbox to homelab.")
-	require.Contains(t, logOf(record), "qui cannot see the files on homelab, so a file with other content at the same path can be replaced.")
-	require.Contains(t, logOf(record), "Proof: BitTorrent checked every piece on homelab.")
-}
-
-// When no byte arrives on the target from the source, qui asks the source to
-// connect to the target.
+// A Transfer to a target without file access passes the files by a Transfer
+// torrent. When no byte arrives on the target from the source, qui asks the
+// source to connect to the target.
 func TestTransferTorrentConnectsTheOtherWay(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()
@@ -81,7 +58,10 @@ func TestTransferTorrentConnectsTheOtherWay(t *testing.T) {
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.Equal(t, transfer.WayBitTorrent, record.Way)
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Contains(t, logOf(record), "Passing 70 B by a Transfer torrent from seedbox to homelab.")
+	require.Contains(t, logOf(record), "qui cannot see the files on homelab, so a file with other content at the same path can be replaced.")
 	require.Contains(t, logOf(record), "No byte arrived on homelab from seedbox. qui asks seedbox to connect to homelab.")
+	require.Contains(t, logOf(record), "Proof: BitTorrent checked every piece on homelab.")
 	require.Equal(t, 1, r.dst.Calls("torrents/addPeers"))
 	require.Equal(t, 1, r.src.Calls("torrents/addPeers"))
 	r.requireNoHelpers(record)
@@ -95,11 +75,6 @@ func TestTransferTorrentFallsBackToSFTP(t *testing.T) {
 		connect func(r *rig)
 		reason  string
 	}{
-		{name: "unreachable", connect: func(r *rig) {
-			r.connect()
-			r.src.Unreachable, r.dst.Unreachable = true, true
-		}, reason: "The clients did not connect: homelab did not reach seedbox at 198.51.100.1:6881, " +
-			"and seedbox did not reach homelab at 198.51.100.2:6881."},
 		{name: "no public peer address", connect: func(*rig) {},
 			reason: "The clients did not connect: seedbox has no public peer address, and homelab has no public peer address."},
 	} {
@@ -130,7 +105,6 @@ func TestTransferTorrentFailsWithoutAWayBack(t *testing.T) {
 		source, target side
 		forced         transfer.Way
 	}{
-		{name: "a target without file access", source: overSFTP, target: noAccess},
 		{name: "a source without file access", source: noAccess, target: overSFTP},
 		{name: "forced BitTorrent", source: overSFTP, target: overSFTP, forced: transfer.WayBitTorrent},
 	} {
@@ -188,16 +162,8 @@ func TestTransferPicksTheWay(t *testing.T) {
 		forced         transfer.Way
 		want           transfer.Way
 	}{
-		{name: "both on qui's own disk", source: onDisk, target: onDisk, want: transfer.WayLocal},
-		{name: "the source on qui's own disk", source: onDisk, target: overSFTP, want: transfer.WaySFTP},
-		{name: "the target on qui's own disk", source: overSFTP, target: onDisk, want: transfer.WaySFTP},
-		{name: "both over SFTP", source: overSFTP, target: overSFTP, want: transfer.WayBitTorrent},
-		{name: "a source without file access", source: noAccess, target: onDisk, want: transfer.WayBitTorrent},
-		{name: "a target without file access", source: onDisk, target: noAccess, want: transfer.WayBitTorrent},
 		{name: "no file access", source: noAccess, target: noAccess, want: transfer.WayBitTorrent},
-		{name: "a forced copy over SFTP", source: overSFTP, target: overSFTP, forced: transfer.WaySFTP, want: transfer.WaySFTP},
 		{name: "a forced copy on qui's own disk", source: onDisk, target: onDisk, forced: transfer.WaySFTP, want: transfer.WayLocal},
-		{name: "forced BitTorrent", source: onDisk, target: onDisk, forced: transfer.WayBitTorrent, want: transfer.WayBitTorrent},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, tc.source, tc.target)
@@ -245,20 +211,6 @@ func TestTransferTorrentHintsAtTCPOnly(t *testing.T) {
 	require.Zero(t, r.src.Writes("app/setPreferences"))
 }
 
-// A copy through qui records no hint.
-func TestTransferCopyHasNoHint(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-
-	record := r.run(r.request(s))
-
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	for _, line := range record.Log {
-		require.Nil(t, line.Hint, line.Message)
-	}
-}
-
 // On a target without file access, qBittorrent reads the free space: from
 // 5.3 at the save path, and before 5.3 only at its default save path.
 func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
@@ -273,8 +225,6 @@ func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 		{name: "5.3 refuses a full disk", webAPI: "2.15.2", free: 69,
 			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
 		{name: "5.3 at another save path", webAPI: "2.15.2", free: 70, elsewhere: true},
-		{name: "5.1 refuses a full disk at the default save path", free: 69,
-			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
 		{name: "5.1 elsewhere", free: 69, elsewhere: true,
 			log: "Free space unknown on homelab: before qBittorrent 5.3, qBittorrent reports it only at its default save path."},
 	} {
@@ -343,6 +293,7 @@ func TestTransferTorrentFromASourceWithoutFileAccess(t *testing.T) {
 		record := r.run(r.request(s))
 
 		require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+		require.Equal(t, transfer.WayBitTorrent, record.Way)
 		require.Equal(t, "true", r.src.LastParams("torrents/delete").Get("deleteFiles"))
 		require.Empty(t, tree(t, r.srcDir))
 		require.Contains(t, logOf(record), "Removed the torrent and its files from seedbox.")

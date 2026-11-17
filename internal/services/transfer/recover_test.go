@@ -248,22 +248,27 @@ func TestTransferRetriesATemporaryFailureAfterAnHour(t *testing.T) {
 }
 
 // A permanent failure removes what qui wrote, waits for the user, and never
-// runs again.
+// runs again. Here the check on the target names the piece that failed, and
+// with qBittorrent's setting "Append .!qB extension to incomplete files", the
+// cleanup removes the temporary files under their .!qB names.
 func TestTransferNeverRetriesAPermanentFailure(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
 	r.seed(s)
 	r.disk.unconfirmed = true
+	r.dst.IncompleteFilesExt = true
 	r.disk.damage = map[string]int64{showName + "/Show.S01E02.mkv": 20}
 
 	record := r.run(r.request(s))
 
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass, record.FailureReason)
+	require.Equal(t, "The check on homelab failed 1 of 5 pieces: 3.", record.FailureReason, "pieces 0, 1, 2 and 4 passed")
 	require.True(t, record.RetryAt.IsZero())
 	require.False(t, record.FinishedAt.IsZero())
 	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
 	require.Empty(t, tree(t, r.dstDir))
+	r.requireNoHelpers(record)
 
 	before := r.requests()
 	r.setClock(clock.Add(48 * time.Hour))

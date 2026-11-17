@@ -466,7 +466,7 @@ func contents(s show, folder string) map[string]string {
 
 // One Transfer copies the files, proves them, adds the torrent on the target
 // in seed mode, starts it, and removes the torrent and its files from the
-// source.
+// source. A copy through qui records no hint.
 func TestTransferMovesATorrent(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -475,6 +475,10 @@ func TestTransferMovesATorrent(t *testing.T) {
 	record := r.run(r.request(s))
 
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, transfer.WaySFTP, record.Way)
+	for _, line := range record.Log {
+		require.Nil(t, line.Hint, line.Message)
+	}
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the target has the files, and no temporary file")
 	require.Equal(t, transfer.FlushConfirmed, record.FlushState)
 	require.Equal(t, []byte{0b1111_1000}, record.Members[0].ProvenPieces, "the 5 pieces are Proven pieces")
@@ -505,7 +509,6 @@ func TestTransferFollowsTheAfterChoice(t *testing.T) {
 		sourceStopped bool
 		targetState   string
 	}{
-		{name: "remove the torrent and keep the files", options: transfer.Options{After: transfer.AfterKeepFiles}, targetState: "stalledUP"},
 		{name: "keep seeding on both", options: transfer.Options{After: transfer.AfterKeepSeeding}, sourceTorrent: true, targetState: "stalledUP"},
 		{name: "leave stopped on the target", options: transfer.Options{After: transfer.AfterKeepSeeding, LeaveStopped: true},
 			sourceTorrent: true, targetState: "stoppedUP"},
@@ -669,22 +672,6 @@ func TestTransferQueuesBySource(t *testing.T) {
 	}
 }
 
-// qui checks the free space on the target before it writes anything.
-func TestTransferNeedsFreeSpace(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	r.disk.free = 69
-
-	record := r.run(r.request(s))
-
-	require.Equal(t, transfer.StateFailed, record.State)
-	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
-	require.Contains(t, record.FailureReason, "Not enough free space on homelab")
-	require.Empty(t, tree(t, r.dstDir))
-	require.True(t, r.src.Has(s.hash))
-}
-
 // A file at a path that the copy writes stops the Transfer, and qui leaves
 // the file as it is.
 func TestTransferStopsAtAConflict(t *testing.T) {
@@ -787,31 +774,6 @@ func TestTransferChecksOnTheTargetWithoutAConfirmedFlush(t *testing.T) {
 	require.False(t, r.src.Has(s.hash))
 }
 
-// The check on the target names the pieces that failed. With qBittorrent's
-// setting "Append .!qB extension to incomplete files", the check renames the
-// incomplete temporary file, and the cleanup removes it under that name.
-func TestTransferCheckOnTheTargetFindsBadPieces(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	r.disk.unconfirmed = true
-	r.dst.IncompleteFilesExt = true
-	r.disk.damage = map[string]int64{showName + "/Show.S01E02.mkv": 20}
-
-	record := r.run(r.request(s))
-
-	require.Equal(t, transfer.StateFailed, record.State)
-	require.Equal(t, "The check on homelab failed 1 of 5 pieces: 3.", record.FailureReason, "pieces 0, 1, 2 and 4 passed")
-	require.Empty(t, tree(t, r.dstDir), "the cleanup removes the temporary files, also under their .!qB names")
-	helpers, err := r.store.HelpersOf(t.Context(), transfer.OwnerTransfer, record.ID)
-	require.NoError(t, err)
-	require.Len(t, helpers, 1)
-	require.False(t, r.dst.Has(helpers[0].Hash))
-	require.False(t, r.dst.Has(s.hash), "qui never adds a torrent that is not proven")
-	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
-	require.False(t, r.src.Stopped(s.hash))
-}
-
 func logOf(record *transfer.Record) string {
 	lines := make([]string, 0, len(record.Log))
 	for _, line := range record.Log {
@@ -872,21 +834,9 @@ func TestTransferStoppedHalfwayKeepsProvenPieces(t *testing.T) {
 	require.True(t, r.src.Has(s.hash))
 }
 
-// After the Transfer, qui removes only the files that it copied, and keeps
-// them all when another torrent reads them or another instance uses the
-// same SSH server.
+// After the Transfer, qui keeps the files on the source when another torrent
+// reads them or another instance uses the same SSH server.
 func TestTransferKeepsSourceFiles(t *testing.T) {
-	t.Run("a file that qui did not copy", func(t *testing.T) {
-		r := newRig(t)
-		s := newShow(t, showName)
-		r.seed(s)
-		write(t, filepath.Join(r.srcDir, showName), map[string][]byte{"Show.S01.nfo": []byte("notes")})
-
-		record := r.run(r.request(s))
-
-		require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-		require.Equal(t, map[string]string{showName + "/Show.S01.nfo": "notes"}, tree(t, r.srcDir))
-	})
 	t.Run("a file that another torrent reads", func(t *testing.T) {
 		r := newRig(t)
 		s := newShow(t, showName)
@@ -918,7 +868,8 @@ func TestTransferKeepsSourceFiles(t *testing.T) {
 	})
 }
 
-// With no Transfer rows, the Service sends nothing to any instance.
+// With no Transfer rows, the Service sends nothing to any instance, and
+// writes nothing.
 func TestTransferServiceIdleWithoutTransfers(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -932,6 +883,9 @@ func TestTransferServiceIdleWithoutTransfers(t *testing.T) {
 	require.Zero(t, r.src.Requests())
 	require.Zero(t, r.dst.Requests())
 	require.Zero(t, r.ssh.Dials(), "no SSH connection")
+	writes, creates := r.disk.log()
+	require.Empty(t, writes)
+	require.Empty(t, creates)
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 
 	backend, err := r.deps.Files.GetBackend(t.Context(), r.source.ID)

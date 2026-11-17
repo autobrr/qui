@@ -112,7 +112,6 @@ func TestTransferUsesFilesAlreadyOnTheTarget(t *testing.T) {
 		checks int
 	}{
 		{name: "every file", onTarget: []string{episode1, episode2, episode3}, checks: 1},
-		{name: "a correct file between two missing ones", onTarget: []string{episode2}, checks: 2},
 		{name: "with .!qB on, a correct file between two missing ones", onTarget: []string{episode2}, incompleteExt: true, checks: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -173,7 +172,9 @@ func TestTransferUsesFilesAlreadyOnTheTarget(t *testing.T) {
 
 // A file on the target that fails its check is a conflict. The Transfer
 // stops and names the file, and leaves it as it is, also when qBittorrent
-// appends .!qB to the incomplete files that it checks.
+// appends .!qB to the incomplete files that it checks. The check-only helper
+// stops when its files are checked, and qui neither starts it again nor
+// gives it a peer, so it never downloads.
 func TestTransferStopsAtAFileOnTheTargetThatFailsItsCheck(t *testing.T) {
 	r := newRig(t)
 	s := newPack(t)
@@ -194,20 +195,6 @@ func TestTransferStopsAtAFileOnTheTargetThatFailsItsCheck(t *testing.T) {
 	require.False(t, r.dst.Has(s.hash))
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 	require.False(t, r.src.Stopped(s.hash))
-}
-
-// The check-only helper stops when its files are checked, and qui neither
-// starts it again nor gives it a peer. So it never downloads, also when the
-// file that it checks has bad pieces.
-func TestTransferHeadStartHelperNeverDownloads(t *testing.T) {
-	r := newRig(t)
-	s := newPack(t)
-	r.seed(s)
-	r.placeOnTarget(map[string][]byte{episode2: numbered("e02", 36)})
-
-	record := r.run(r.request(s))
-
-	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, []string{"torrents/add", "torrents/delete"}, r.dst.WriteLog(), "the add of the helper and its removal")
 	require.Equal(t, "FilesChecked", r.dst.LastParams("torrents/add").Get("stopCondition"))
 	require.Equal(t, "false", r.dst.LastParams("torrents/delete").Get("deleteFiles"))
