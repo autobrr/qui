@@ -27,10 +27,10 @@ function SettingsRoute() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
 
-  const handleSearchChange = (newSearch: SettingsSearch) => {
+  const handleSearchChange = (newSearch: SettingsSearch, options?: { replace: boolean }) => {
     navigate({
       search: newSearch,
-      replace: true,
+      replace: options?.replace ?? true,
     })
   }
 

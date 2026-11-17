@@ -6,9 +6,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { FieldHelp } from "@/components/ui/field-help"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { SwitchRow } from "@/components/kit/SwitchRow"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 import {
   removeMobileThemeSlot,
@@ -52,24 +50,24 @@ export function ThemeLayoutSettings() {
     await queryClient.invalidateQueries({ queryKey: ["theme-settings"] })
   }
 
+  const splitNotes = [localOnly && t("themes.layout.splitNeedsSync"), split && t("themes.layout.mobileSplitOffWarning")].filter(Boolean).join(" ")
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
-          <Label htmlFor="theme-mobile-split" className="cursor-pointer">{t("themes.layout.mobileSplit")}</Label>
-          <FieldHelp>{t("themes.layout.mobileSplitHelp")}</FieldHelp>
-        </div>
-        <Switch id="theme-mobile-split" checked={split} disabled={!data || !canWriteSlots} onCheckedChange={(on) => void setSplit(on)} />
-      </div>
-      {localOnly && <p className="text-xs text-muted-foreground">{t("themes.layout.splitNeedsSync")}</p>}
-      {split && <p className="text-xs text-muted-foreground">{t("themes.layout.mobileSplitOffWarning")}</p>}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
-          <Label htmlFor="theme-local-only" className="cursor-pointer">{t("themes.layout.localOnly")}</Label>
-          <FieldHelp>{t("themes.layout.localOnlyHelp")}</FieldHelp>
-        </div>
-        <Switch id="theme-local-only" checked={localOnly} onCheckedChange={setThemeLocalOnly} />
-      </div>
+    <div className="space-y-4">
+      <SwitchRow
+        label={t("themes.layout.mobileSplit")}
+        help={t("themes.layout.mobileSplitHelp")}
+        description={splitNotes}
+        checked={split}
+        disabled={!data || !canWriteSlots}
+        onCheckedChange={(on) => void setSplit(on)}
+      />
+      <SwitchRow
+        label={t("themes.layout.localOnly")}
+        help={t("themes.layout.localOnlyHelp")}
+        checked={localOnly}
+        onCheckedChange={setThemeLocalOnly}
+      />
     </div>
   )
 }

@@ -12,12 +12,12 @@ Add and configure the qBittorrent instances that qui connects to. Each instance 
 ## Add an instance
 
 1. Open **Settings → Instances**.
-2. Click **Add Instance**.
-3. Enter the connection details and click **Add Instance**.
+2. Click **Add instance**.
+3. Enter the connection details and click **Add instance**.
 
 ## Edit an instance
 
-To open the instance settings dialog, go to **Settings → Instances**, open the three-dot menu on the instance card, and select **Edit**.
+To open the instance settings dialog, go to **Settings → Instances** and click the instance.
 
 ### Connection settings
 
@@ -25,7 +25,7 @@ To open the instance settings dialog, go to **Settings → Instances**, open the
 |-------|-------------|
 | **Instance Name** | Display name in qui's sidebar and instance selector. |
 | **URL** | Full URL to the qBittorrent WebUI (for example, `http://localhost:8080`). |
-| **Skip TLS Verification** (**Skip TLS Certificate Verification** in the Add Instance form) | Accept self-signed or otherwise untrusted certificates. |
+| **Skip TLS Verification** (**Skip TLS certificate check** in the Add instance form) | Accept self-signed or otherwise untrusted certificates. |
 | **Local Filesystem Access** | Enable for features that read files directly. See [Local Filesystem Access](#local-filesystem-access). |
 
 ### Authentication
@@ -68,13 +68,13 @@ If qui runs in Docker, mount the same data volumes in the qui container. See [Do
 
 If qBittorrent runs on another machine and qui cannot mount its files, set up SSH access on the **SSH** tab of the instance settings dialog. qui then reaches the files of the instance over SSH. Some features still need Local Filesystem Access.
 
-The Add Instance form has no SSH tab. Add the instance first, then edit it.
+The Add instance form has no SSH tab. Add the instance first, then edit it.
 
 See [SSH Access](./ssh-access.md) for the setup and for the list of features that work over SSH.
 
 ## Incognito mode
 
-In **Settings → Instances**, click the eye icon next to an instance URL to toggle [incognito mode](./incognito.md).
+When [incognito mode](./incognito.md) is on, **Settings → Instances** blurs the host of each instance.
 
 ## Instance actions
 

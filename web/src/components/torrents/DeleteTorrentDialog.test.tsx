@@ -19,9 +19,16 @@ vi.mock("@/lib/incognito", async importOriginal => ({
   useIncognitoMode: () => [incognito, vi.fn()],
 }))
 
+let mobile = false
+vi.mock("@/hooks/useMediaQuery", async importOriginal => ({
+  ...await importOriginal<typeof import("@/hooks/useMediaQuery")>(),
+  useIsMobile: () => mobile,
+}))
+
 afterEach(() => {
   cleanup()
   incognito = false
+  mobile = false
 })
 
 const torrents = ["Alpha", "Bravo", "Charlie", "Delta"].map(name => makeTorrent({ hash: `hash-${name}`, name }))
@@ -132,6 +139,22 @@ describe("DeleteTorrentDialog", () => {
       expect(screen.getByText("Could not check Basement: qui cannot reach it.")).not.toBeNull()
       expect(screen.getByText("Did not check Spare: it is turned off in qui.")).not.toBeNull()
       cleanup()
+    }
+  })
+
+  // regression: #4234
+  it("moves focus to Cancel when it opens, on a desktop and on a phone", () => {
+    for (const isMobile of [false, true]) {
+      mobile = isMobile
+      const trigger = document.createElement("button")
+      document.body.append(trigger)
+      trigger.focus()
+
+      renderDialog({})
+
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }))
+      cleanup()
+      trigger.remove()
     }
   })
 

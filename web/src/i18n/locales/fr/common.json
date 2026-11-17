@@ -358,5 +358,12 @@
   },
   "labels": {
     "path": "Chemin"
+  },
+  "kit": {
+    "loadFailed": "Cette section n'a pas pu être chargée.",
+    "retry": "Réessayer",
+    "edit": "Modifier",
+    "moreActions": "Plus d'actions",
+    "enabled": "Activé"
   }
 }

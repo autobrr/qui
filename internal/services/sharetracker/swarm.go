@@ -102,12 +102,26 @@ func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req 
 	return a, nil
 }
 
-// Unlock lets the next downloader of the Share take the lock. A swarm that
-// starts later takes the holder of the table, so clear it there first.
+// Unlock lets the next downloader of the Share take the lock, also when the
+// table still names a holder.
 func (t *Tracker) Unlock(shareID int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if s := t.swarms[shareID]; s != nil {
-		s.holder = netip.Addr{}
+	s := t.swarms[shareID]
+	if s == nil {
+		s = &swarm{recipients: make(map[netip.AddrPort]time.Time)}
+		t.swarms[shareID] = s
 	}
+	s.holder = netip.Addr{}
+}
+
+// Holder returns the address that holds the lock of the Share, or the zero
+// address.
+func (t *Tracker) Holder(shareID int64) netip.Addr {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if s := t.swarms[shareID]; s != nil {
+		return s.holder
+	}
+	return netip.Addr{}
 }

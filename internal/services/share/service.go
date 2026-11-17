@@ -85,6 +85,8 @@ type Service struct {
 	// opMu runs one change of the Shares at a time, so that the limits hold
 	// and one Share ends once.
 	opMu sync.Mutex
+	// holderMu orders each save of the holder of a lock with Unlock.
+	holderMu sync.Mutex
 
 	table atomic.Pointer[sharetracker.Table]
 
@@ -291,9 +293,7 @@ func resolve(ctx context.Context, hostPort string) (netip.AddrPort, error) {
 // that completed wakes Run.
 func (s *Service) Announced(ctx context.Context, r sharetracker.Report) {
 	if r.Locked {
-		if err := s.deps.Store.SetHolder(context.WithoutCancel(ctx), r.ShareID, r.Peer.Addr()); err != nil {
-			log.Error().Err(err).Int64("share", r.ShareID).Msg("share: cannot store who holds the lock; after a restart, the next downloader takes it")
-		}
+		s.saveHolder(context.WithoutCancel(ctx), r.ShareID, r.Peer.Addr())
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -320,6 +320,19 @@ func (s *Service) Announced(ctx context.Context, r sharetracker.Report) {
 		case s.wake <- struct{}{}:
 		default:
 		}
+	}
+}
+
+// saveHolder stores the address that took the lock of a Share, unless an
+// Unlock gave the lock to another downloader since the announce took it.
+func (s *Service) saveHolder(ctx context.Context, shareID int64, holder netip.Addr) {
+	s.holderMu.Lock()
+	defer s.holderMu.Unlock()
+	if s.tracker.Holder(shareID) != holder {
+		return
+	}
+	if err := s.deps.Store.SetHolder(ctx, shareID, holder); err != nil {
+		log.Error().Err(err).Int64("share", shareID).Msg("share: cannot store who holds the lock; after a restart, the next downloader takes it")
 	}
 }
 

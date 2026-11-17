@@ -3,185 +3,90 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Badge } from "@/components/ui/badge"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { useQuery } from "@tanstack/react-query"
+import { Clock, Pause, Zap } from "lucide-react"
+import { useTranslation } from "react-i18next"
+
+import { ResourceList, type ResourceRow } from "@/components/kit/ResourceList"
+import { Section } from "@/components/kit/Section"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { IndexerCooldownStatus, SchedulerTaskStatus } from "@/types"
-import { useQuery } from "@tanstack/react-query"
-import { Activity, ChevronDown, Clock, Loader2, Pause, Zap } from "lucide-react"
-import { useState } from "react"
-import { useTranslation } from "react-i18next"
 
+// The queue can hold hundreds of tasks. The list shows the first ones and a count of the rest.
+const QUEUE_SHOWN = 10
+
+type ActivityItem =
+  | { kind: "running" | "queued"; task: SchedulerTaskStatus }
+  | { kind: "cooldown"; cooldown: IndexerCooldownStatus }
+
+/** What the search scheduler does now: the running and queued searches, and the indexers in a rate limit. */
 export function IndexerActivityPanel() {
   const { t } = useTranslation("settings")
-  const [isOpen, setIsOpen] = useState(true)
-
-  // Events ("indexer.activity") invalidate ["indexer-activity"]; no polling needed.
-  useActivityStream(isOpen)
-  const { data: activity, isLoading: loading } = useQuery({
+  // The "indexer.activity" events of the stream refresh the query, so it needs no polling.
+  useActivityStream(true)
+  const query = useQuery({
     queryKey: ["indexer-activity"],
     queryFn: () => api.getIndexerActivityStatus(),
-    enabled: isOpen,
     refetchInterval: false,
   })
 
-  const hasActivity = activity && (
-    (activity.scheduler?.queueLength ?? 0) > 0 ||
-    (activity.scheduler?.workersInUse ?? 0) > 0 ||
-    activity.cooldownIndexers.length > 0
-  )
+  const scheduler = query.data?.scheduler
+  const queued = scheduler?.queuedTasks ?? []
+  const items: ActivityItem[] = [
+    ...(scheduler?.inFlightTasks ?? []).map((task) => ({ kind: "running" as const, task })),
+    ...(query.data?.cooldownIndexers ?? []).map((cooldown) => ({ kind: "cooldown" as const, cooldown })),
+    // Last, so the count of the hidden queue sits right under the queue.
+    ...queued.slice(0, QUEUE_SHOWN).map((task) => ({ kind: "queued" as const, task })),
+  ]
 
-  const queueLength = activity?.scheduler?.queueLength ?? 0
-  const workersInUse = activity?.scheduler?.workersInUse ?? 0
-  const workerCount = activity?.scheduler?.workerCount ?? 0
-  const cooldownCount = activity?.cooldownIndexers.length ?? 0
+  const priorityLabel = (priority: string) => t([`indexers.priorityLabels.${priority}`, "common:status.unknown"])
 
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
-        <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{t("indexers.activity.title")}</span>
-            {loading ? (
-              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-            ) : hasActivity ? (
-              <Badge variant="secondary" className="text-xs">
-                {workersInUse > 0 && t("indexers.activity.runningCount", { count: workersInUse })}
-                {workersInUse > 0 && queueLength > 0 && ", "}
-                {queueLength > 0 && t("indexers.activity.queuedCount", { count: queueLength })}
-                {(workersInUse > 0 || queueLength > 0) && cooldownCount > 0 && ", "}
-                {cooldownCount > 0 && t("indexers.activity.cooldownCount", { count: cooldownCount })}
-              </Badge>
-            ) : (
-              <span className="text-xs text-muted-foreground">{t("indexers.activity.workersStatus", { used: workersInUse, total: workerCount })}</span>
-            )}
-          </div>
-          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
-        </CollapsibleTrigger>
-
-        <CollapsibleContent>
-          <div className="px-4 pb-3 space-y-3">
-            {/* In-flight tasks */}
-            {activity?.scheduler && activity.scheduler.inFlightTasks.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Zap className="h-4 w-4 text-yellow-500" />
-                  {t("indexers.activity.running")} ({activity.scheduler.inFlightTasks.length})
-                </div>
-                <div className="space-y-1">
-                  {activity.scheduler.inFlightTasks.map((task) => (
-                    <TaskRow key={task.taskId} task={task} status="running" />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Queued tasks */}
-            {activity?.scheduler && activity.scheduler.queuedTasks.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Clock className="h-4 w-4 text-blue-500" />
-                  {t("indexers.activity.queued")} ({activity.scheduler.queuedTasks.length})
-                </div>
-                <div className="space-y-1">
-                  {activity.scheduler.queuedTasks.slice(0, 10).map((task) => (
-                    <TaskRow key={task.taskId} task={task} status="queued" />
-                  ))}
-                  {activity.scheduler.queuedTasks.length > 10 && (
-                    <div className="text-xs text-muted-foreground pl-2">
-                      {t("indexers.activity.andMore", { count: activity.scheduler.queuedTasks.length - 10 })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Cooldown indexers */}
-            {activity?.cooldownIndexers && activity.cooldownIndexers.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Pause className="h-4 w-4 text-orange-500" />
-                  {t("indexers.activity.rateLimited")} ({activity.cooldownIndexers.length})
-                </div>
-                <div className="space-y-1">
-                  {activity.cooldownIndexers.map((cooldown) => (
-                    <CooldownRow key={cooldown.indexerId} cooldown={cooldown} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Empty state */}
-            {!hasActivity && !loading && (
-              <div className="text-center py-2 text-xs text-muted-foreground">
-                {t("indexers.activity.noActiveTasks")}
-              </div>
-            )}
-          </div>
-        </CollapsibleContent>
-      </div>
-    </Collapsible>
-  )
-}
-
-function TaskRow({ task, status }: { task: SchedulerTaskStatus; status: "running" | "queued" }) {
-  const { t } = useTranslation("settings")
-  const priorityColors: Record<string, string> = {
-    interactive: "text-green-500",
-    rss: "text-blue-500",
-    completion: "text-purple-500",
-    background: "text-gray-500",
+  const row = (item: ActivityItem): ResourceRow => {
+    if (item.kind === "cooldown") {
+      const end = new Date(item.cooldown.cooldownEnd)
+      const ready = end.getTime() <= Date.now()
+      return {
+        title: item.cooldown.indexerName,
+        icon: Pause,
+        status: { tone: "warn", label: t("indexers.activity.rateLimited") },
+        meta: [ready ? t("indexers.activity.ready") : t("indexers.activity.left", { time: formatRelativeTime(end, false) })],
+      }
+    }
+    const { task } = item
+    return {
+      title: task.indexerName,
+      icon: item.kind === "running" ? Zap : Clock,
+      status: item.kind === "running"
+        ? { tone: "ok", label: t("indexers.activity.running") }
+        : { tone: "off", label: t("indexers.activity.queued") },
+      meta: [
+        priorityLabel(task.priority),
+        // An RSS task usually has the RSS priority too. The label then shows once.
+        ...(task.isRss && task.priority !== "rss" ? [t("indexers.priorityLabels.rss")] : []),
+        formatRelativeTime(new Date(task.createdAt)),
+      ],
+    }
   }
 
   return (
-    <div className="flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm">
-      <div className="flex items-center gap-2 min-w-0">
-        {status === "running" ? (
-          <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />
-        ) : (
-          <Clock className="h-3 w-3 text-blue-500 shrink-0" />
-        )}
-        <span className="truncate font-medium">{task.indexerName}</span>
-        {task.isRss && (
-          <Badge variant="outline" className="text-xs shrink-0">RSS</Badge>
-        )}
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <span className={`text-xs ${priorityColors[task.priority] ?? "text-gray-500"}`}>
-          {task.priority ? t(`indexers.priorityLabels.${task.priority}`, task.priority) : task.priority}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {formatRelativeTime(new Date(task.createdAt))}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function CooldownRow({ cooldown }: { cooldown: IndexerCooldownStatus }) {
-  const { t } = useTranslation("settings")
-  const cooldownEnd = new Date(cooldown.cooldownEnd)
-  const remaining = cooldownEnd.getTime() - Date.now()
-  const isExpired = remaining <= 0
-
-  return (
-    <div className="flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm">
-      <div className="flex items-center gap-2 min-w-0">
-        <Pause className="h-3 w-3 text-orange-500 shrink-0" />
-        <span className="truncate font-medium">{cooldown.indexerName}</span>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {isExpired ? (
-          <span className="text-xs text-green-500">{t("indexers.activity.ready")}</span>
-        ) : (
-          <span className="text-xs text-orange-500">
-            {t("indexers.activity.left", { time: formatRelativeTime(cooldownEnd, false) })}
-          </span>
-        )}
-      </div>
-    </div>
+    <Section
+      title={t("indexers.activity.title")}
+      description={t("indexers.activity.description")}
+      footer={scheduler && t("indexers.activity.workersStatus", { used: scheduler.workersInUse, total: scheduler.workerCount })}
+      queries={[query]}
+    >
+      <ResourceList
+        label={t("indexers.activity.title")}
+        items={items}
+        itemKey={(item) => item.kind === "cooldown" ? `cooldown-${item.cooldown.indexerId}` : `${item.kind}-${item.task.taskId}`}
+        row={row}
+        empty={{ title: t("indexers.activity.noActiveTasks") }}
+      />
+      {queued.length > QUEUE_SHOWN && (
+        <p className="-mt-4 text-xs text-muted-foreground">{t("indexers.activity.andMore", { count: queued.length - QUEUE_SHOWN })}</p>
+      )}
+    </Section>
   )
 }

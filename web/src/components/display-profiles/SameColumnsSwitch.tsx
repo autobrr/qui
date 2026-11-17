@@ -3,11 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useId } from "react"
 import { useTranslation } from "react-i18next"
 
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { SwitchRow } from "@/components/kit/SwitchRow"
 import { useDisplayProfiles, useLastColumnSetupInstance } from "@/lib/client-settings"
 import { isAllInstancesScope } from "@/lib/instances"
 
@@ -23,7 +21,6 @@ export function SameColumnsSwitch({ profileId, instances }: SameColumnsSwitchPro
   const { t, i18n } = useTranslation("torrents")
   const { profiles, settled, setSameColumns } = useDisplayProfiles()
   const lastInstanceId = useLastColumnSetupInstance()
-  const switchId = useId()
   const profile = profiles.find((candidate) => candidate.id === profileId)
   if (!profile) return null
 
@@ -37,20 +34,12 @@ export function SameColumnsSwitch({ profileId, instances }: SameColumnsSwitchPro
   const helpOff = lastInstance === undefined? t("displayProfiles.sameColumns.helpOffNoInstance"): t("displayProfiles.sameColumns.helpOff", { instance: lastInstance })
 
   return (
-    <div className="flex items-start gap-3">
-      <div className="min-w-0 flex-1">
-        <Label htmlFor={switchId} className="w-fit cursor-pointer leading-5">{t("displayProfiles.sameColumns.label")}</Label>
-        <p data-testid="same-columns-help" className="mt-0.5 text-xs leading-4 text-muted-foreground [overflow-wrap:anywhere]">
-          <StableText reserve={[helpOn, helpOff]}>{profile.usesSameColumns ? helpOn : helpOff}</StableText>
-        </p>
-      </div>
-      <Switch
-        id={switchId}
-        checked={profile.usesSameColumns}
-        disabled={!settled}
-        onCheckedChange={(on) => setSameColumns(profile.id, on)}
-        className="mt-0.5"
-      />
-    </div>
+    <SwitchRow
+      label={t("displayProfiles.sameColumns.label")}
+      description={<StableText reserve={[helpOn, helpOff]}>{profile.usesSameColumns ? helpOn : helpOff}</StableText>}
+      checked={profile.usesSameColumns}
+      disabled={!settled}
+      onCheckedChange={(on) => setSameColumns(profile.id, on)}
+    />
   )
 }

@@ -7,24 +7,12 @@
       "disconnected": "Disconnesso"
     },
     "tooltips": {
-      "disableInstance": "Disabilita istanza",
-      "enableInstance": "Abilita istanza",
       "moveUp": "Sposta su",
       "moveDown": "Sposta giù"
     },
     "actions": {
-      "edit": "Modifica",
       "testConnection": "Prova connessione",
       "delete": "Elimina"
-    },
-    "labels": {
-      "username": "Nome utente:",
-      "basicAuth": "Basic Auth:",
-      "tlsVerification": "Verifica TLS:",
-      "tlsSkipped": "Ignorata",
-      "tlsStrict": "Rigorosa",
-      "testingConnection": "Prova della connessione in corso...",
-      "fileAccess": "Accesso ai file:"
     },
     "deleteDialog": {
       "title": "Elimina istanza",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "Istanza disabilitata",
-      "testDisabledDescription": "Abilita l'istanza prima di provare la connessione.",
       "testSuccessTitle": "Prova di connessione riuscita",
       "testSuccessDescription": "Connessione all'istanza qBittorrent riuscita",
       "testFailedTitle": "Prova di connessione non riuscita",
@@ -55,7 +42,13 @@
     "passwordRequired": "Password obbligatoria",
     "decryptionDescription": "Impossibile decifrare la password salvata. Di solito accade quando il segreto della sessione è cambiato.",
     "reenterPassword": "Inserisci di nuovo la password",
-    "recentErrors": "Errori recenti ({{count}})"
+    "recentErrors": "Errori recenti ({{count}})",
+    "errorTypes": {
+      "connection": "Connessione",
+      "authentication": "Autenticazione",
+      "ban": "Ban",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "Il nome dell'istanza è obbligatorio",
-      "basicAuthPasswordRequired": "La password basic auth è obbligatoria quando la basic auth è abilitata"
+      "basicAuthPasswordRequired": "La password basic auth è obbligatoria quando la basic auth è abilitata",
+      "usernameRequired": "Il nome utente è obbligatorio",
+      "passwordRequired": "La password è obbligatoria",
+      "apiKeyRequired": "La chiave API è obbligatoria"
     },
     "buttons": {
-      "saving": "Salvataggio...",
       "updateInstance": "Aggiorna istanza",
-      "addInstance": "Aggiungi istanza",
-      "cancel": "Annulla"
+      "addInstance": "Aggiungi istanza"
     },
     "toast": {
-      "missingCredentialsTitle": "Credenziali mancanti",
       "instanceUpdatedTitle": "Istanza aggiornata",
       "instanceUpdatedDescription": "Istanza aggiornata correttamente. Prova della connessione in background...",
-      "updateFailedTitle": "Aggiornamento non riuscito",
       "updateFailedDescription": "Impossibile aggiornare l'istanza",
       "instanceCreatedTitle": "Istanza creata",
       "instanceCreatedDescription": "Istanza creata correttamente. Prova della connessione in background...",
-      "createFailedTitle": "Creazione non riuscita",
       "createFailedDescription": "Impossibile creare l'istanza"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "Nome utente e password",
       "apiKey": "Chiave API"
     },
-    "sshAfterSave": "L'accesso SSH ai file dell'istanza si configura nelle impostazioni dell'istanza dopo il salvataggio."
+    "sshAfterSave": "L'accesso SSH ai file dell'istanza si configura nelle impostazioni dell'istanza dopo il salvataggio.",
+    "addTitle": "Aggiungi istanza",
+    "addDescription": "Configura una nuova istanza qBittorrent",
+    "editTitle": "Modifica istanza"
   },
   "settingsButton": {
     "tooltip": "Impostazioni istanza"
@@ -2099,10 +2093,9 @@
     }
   },
   "access": {
-    "local": "Locale",
-    "remote": "Via SSH",
-    "none": "Nessuno",
-    "localFull": "qui legge e scrive i file di questa istanza su questa macchina.",
+    "local": "File locali",
+    "remote": "File via SSH",
+    "none": "Nessun accesso ai file",
     "limits": {
       "noIdentity": "Nessuna identità dei file: qui non riconosce quando due percorsi sono lo stesso file. La scansione orfani non può eliminare qui e una destinazione hardlink esistente blocca un'aggiunta con hardlink.",
       "noReflinks": "Nessun reflink su un'istanza remota.",
@@ -2113,6 +2106,13 @@
     "label": "Elimina anche la cronologia dei trasferimenti",
     "description": "Senza questa opzione, qui mantiene la cronologia con il nome dell'istanza.",
     "failed": "L'istanza è stata eliminata, ma qui non è riuscito a eliminare tutta la sua cronologia. Controlla in Impostazioni > Statistiche ed elimina il resto da lì."
+  },
+  "list": {
+    "label": "Istanze",
+    "emptyTitle": "Nessuna istanza ancora configurata",
+    "emptyDescription": "Aggiungi un client qBittorrent perché qui ne gestisca i torrent.",
+    "tlsSkipped": "Verifica TLS disattivata",
+    "reorderFailed": "Impossibile riordinare le istanze"
   },
   "publicPeerAddress": {
     "label": "Indirizzo peer pubblico",

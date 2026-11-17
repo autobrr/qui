@@ -173,7 +173,7 @@ qui detects **Remux** from the release tags, not from the source field. A BluRay
 
 If you do not already have an API key for autobrr:
 
-- Go to **Settings > API Keys**
+- Go to **Settings > API keys**
 - Click **Create API Key**
 - Under **Permissions**, pick **Cross-seed: run** for check and apply. To read the run list with this key, also pick **Cross-seed: read**.
 - Pick no instance under **Instance limit**, because the cross-seed routes refuse a key with an Instance limit. See [API key permissions](../../api/permissions.md).

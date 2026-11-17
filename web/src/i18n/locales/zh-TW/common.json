@@ -350,5 +350,12 @@
   },
   "labels": {
     "path": "路徑"
+  },
+  "kit": {
+    "loadFailed": "此區塊載入失敗。",
+    "retry": "重試",
+    "edit": "編輯",
+    "moreActions": "更多操作",
+    "enabled": "已啟用"
   }
 }

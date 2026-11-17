@@ -22,7 +22,7 @@ export const CROSS_SEED_TABS = CROSS_SEED_NAV_GROUPS.flatMap(group => group.tabs
 
 export const DEFAULT_CROSS_SEED_TAB: CrossSeedTab = "rss"
 
-/** An unknown or retired tab value drops to undefined, and the route then shows the default tab. */
+/** An unknown or retired tab value drops to undefined, as with no tab: a wide screen shows the default tab, and a phone shows the menu. */
 export const crossSeedSearchSchema = z.object({
   tab: z.enum(CROSS_SEED_TABS).optional().catch(undefined),
 })

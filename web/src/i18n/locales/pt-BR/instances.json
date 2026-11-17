@@ -7,24 +7,12 @@
       "disconnected": "Desconectado"
     },
     "tooltips": {
-      "disableInstance": "Desativar instância",
-      "enableInstance": "Ativar instância",
       "moveUp": "Mover para cima",
       "moveDown": "Mover para baixo"
     },
     "actions": {
-      "edit": "Editar",
       "testConnection": "Testar Conexão",
       "delete": "Excluir"
-    },
-    "labels": {
-      "username": "Usuário:",
-      "basicAuth": "Basic Auth:",
-      "tlsVerification": "Verificação TLS:",
-      "tlsSkipped": "Ignorada",
-      "tlsStrict": "Rigorosa",
-      "testingConnection": "Testando conexão...",
-      "fileAccess": "Acesso aos arquivos:"
     },
     "deleteDialog": {
       "title": "Excluir Instância",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "Instância Desativada",
-      "testDisabledDescription": "Ative a instância antes de testar a conexão.",
       "testSuccessTitle": "Conexão Bem-Sucedida",
       "testSuccessDescription": "Conectado com sucesso à instância do qBittorrent",
       "testFailedTitle": "Falha na Conexão",
@@ -55,7 +42,13 @@
     "passwordRequired": "Senha Obrigatória",
     "decryptionDescription": "Não foi possível descriptografar a senha salva. Isso geralmente acontece quando o segredo da sessão é alterado.",
     "reenterPassword": "Digite a Senha Novamente",
-    "recentErrors": "Erros Recentes ({{count}})"
+    "recentErrors": "Erros Recentes ({{count}})",
+    "errorTypes": {
+      "connection": "Conexão",
+      "authentication": "Autenticação",
+      "ban": "Banimento",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "O nome da instância é obrigatório",
-      "basicAuthPasswordRequired": "A senha da Basic Auth é obrigatória quando ativada"
+      "basicAuthPasswordRequired": "A senha da Basic Auth é obrigatória quando ativada",
+      "usernameRequired": "O nome de usuário é obrigatório",
+      "passwordRequired": "A senha é obrigatória",
+      "apiKeyRequired": "A chave de API é obrigatória"
     },
     "buttons": {
-      "saving": "Salvando...",
       "updateInstance": "Atualizar Instância",
-      "addInstance": "Adicionar Instância",
-      "cancel": "Cancelar"
+      "addInstance": "Adicionar Instância"
     },
     "toast": {
-      "missingCredentialsTitle": "Credenciais Ausentes",
       "instanceUpdatedTitle": "Instância Atualizada",
       "instanceUpdatedDescription": "Instância atualizada com sucesso. Testando conexão em segundo plano...",
-      "updateFailedTitle": "Falha ao Atualizar",
       "updateFailedDescription": "Falha ao atualizar a instância",
       "instanceCreatedTitle": "Instância Criada",
       "instanceCreatedDescription": "Instância criada com sucesso. Testando conexão em segundo plano...",
-      "createFailedTitle": "Falha ao Criar",
       "createFailedDescription": "Falha ao criar a instância"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "Usuário e Senha",
       "apiKey": "Chave de API"
     },
-    "sshAfterSave": "O acesso SSH aos arquivos da instância é configurado nas configurações da instância depois de salvar."
+    "sshAfterSave": "O acesso SSH aos arquivos da instância é configurado nas configurações da instância depois de salvar.",
+    "addTitle": "Adicionar Instância",
+    "addDescription": "Configurar uma nova instância do qBittorrent",
+    "editTitle": "Editar instância"
   },
   "settingsButton": {
     "tooltip": "Configurações da Instância"
@@ -2099,10 +2093,9 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Via SSH",
-    "none": "Nenhum",
-    "localFull": "O qui lê e grava os arquivos desta instância nesta máquina.",
+    "local": "Arquivos locais",
+    "remote": "Arquivos via SSH",
+    "none": "Sem acesso aos arquivos",
     "limits": {
       "noIdentity": "Sem identidade dos arquivos: o qui não consegue saber quando dois caminhos são o mesmo arquivo. A varredura de órfãos não pode excluir aqui, e um destino de hardlink existente interrompe uma adição por hardlink.",
       "noReflinks": "Sem reflinks em uma instância remota.",
@@ -2113,6 +2106,13 @@
     "label": "Excluir também o histórico de transferências",
     "description": "Sem isso, o qui mantém o histórico com o nome da instância.",
     "failed": "A instância foi excluída, mas o qui não conseguiu excluir todo o histórico. Veja em Configurações > Estatísticas e exclua o restante por lá."
+  },
+  "list": {
+    "label": "Instâncias",
+    "emptyTitle": "Nenhuma instância configurada ainda",
+    "emptyDescription": "Adicione um cliente qBittorrent para que o qui gerencie os torrents dele.",
+    "tlsSkipped": "Verificação TLS desativada",
+    "reorderFailed": "Falha ao reordenar as instâncias"
   },
   "publicPeerAddress": {
     "label": "Endereço público de peer",

@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -75,7 +76,22 @@ type rig struct {
 	clock           *clock
 	port            int
 	hash            string
+	peers           *slowPeers
 	svc             *share.Service
+}
+
+// slowPeers answers the next lookup of the public peer address of an
+// instance once hold returns.
+type slowPeers struct {
+	share.PeerAddresses
+	hold atomic.Pointer[func()]
+}
+
+func (p *slowPeers) PublicPeerAddress(ctx context.Context, instanceID int) (string, error) {
+	if hold := p.hold.Swap(nil); hold != nil {
+		(*hold)()
+	}
+	return p.PeerAddresses.PublicPeerAddress(ctx, instanceID)
 }
 
 func newRig(t *testing.T) *rig {
@@ -105,6 +121,7 @@ func newRig(t *testing.T) *rig {
 	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
 		Port: r.port, PublicAddress: "http://127.0.0.1:" + strconv.Itoa(r.port),
 	}))
+	r.peers = &slowPeers{PeerAddresses: peeraddress.New(r.instances, r.sync)}
 	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
 	return r
 }
@@ -138,7 +155,7 @@ func (r *rig) newService(switches rollout.Switches) *share.Service {
 		Helpers:         r.helpers,
 		Instances:       r.instances,
 		Sync:            r.sync,
-		Peers:           peeraddress.New(r.instances, r.sync),
+		Peers:           r.peers,
 		Switches:        switches,
 		TrackerHost:     "127.0.0.1",
 		Now:             r.clock.Now,
@@ -208,6 +225,28 @@ func (r *rig) announce(announceURL, infoHash string, port, left int, event strin
 // tracker that trusts 127.0.0.1 as a proxy.
 func (r *rig) sendAnnounce(from, announceURL, infoHash string, port, left int, event string) ([]netip.AddrPort, string) {
 	r.t.Helper()
+	resp, err := http.DefaultClient.Do(r.announceRequest(from, announceURL, infoHash, port, left, event))
+	require.NoError(r.t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(r.t, err)
+	require.Equal(r.t, http.StatusOK, resp.StatusCode, string(body))
+	var answer struct {
+		Failure string `bencode:"failure reason"`
+		Peers   []byte `bencode:"peers"`
+	}
+	require.NoError(r.t, bencode.Unmarshal(body, &answer))
+	var peers []netip.AddrPort
+	for i := 0; i+6 <= len(answer.Peers); i += 6 {
+		addr := netip.AddrFrom4([4]byte(answer.Peers[i : i+4]))
+		peers = append(peers, netip.AddrPortFrom(addr, uint16(answer.Peers[i+4])<<8|uint16(answer.Peers[i+5])))
+	}
+	return peers, answer.Failure
+}
+
+// announceRequest is the request of one announce.
+func (r *rig) announceRequest(from, announceURL, infoHash string, port, left int, event string) *http.Request {
+	r.t.Helper()
 	hash, err := metainfo.NewHashFromHex(infoHash)
 	require.NoError(r.t, err)
 	q := url.Values{}
@@ -225,23 +264,7 @@ func (r *rig) sendAnnounce(from, announceURL, infoHash string, port, left int, e
 	if from != "" {
 		req.Header.Set("X-Forwarded-For", from)
 	}
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(r.t, err)
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(r.t, err)
-	require.Equal(r.t, http.StatusOK, resp.StatusCode, string(body))
-	var answer struct {
-		Failure string `bencode:"failure reason"`
-		Peers   []byte `bencode:"peers"`
-	}
-	require.NoError(r.t, bencode.Unmarshal(body, &answer))
-	var peers []netip.AddrPort
-	for i := 0; i+6 <= len(answer.Peers); i += 6 {
-		addr := netip.AddrFrom4([4]byte(answer.Peers[i : i+4]))
-		peers = append(peers, netip.AddrPortFrom(addr, uint16(answer.Peers[i+4])<<8|uint16(answer.Peers[i+5])))
-	}
-	return peers, answer.Failure
+	return req
 }
 
 // torrentOf decodes a .torrent and returns its announce URL and infohash.
@@ -870,11 +893,61 @@ func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
 	r.svc.Close()
 	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
 	require.NoError(t, r.svc.Resume(t.Context()))
+	// qui cannot read the Share settings from now on.
+	_, err := r.db.ExecContext(t.Context(), `ALTER TABLE share_settings RENAME TO share_settings_gone`)
+	require.NoError(t, err)
 	require.NoError(t, r.svc.Unlock(t.Context(), sh.ID))
 
 	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "")
 	peers, _ = r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "")
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "Unlock after a restart lets the next downloader in")
+}
+
+// An announce that took the lock before Unlock, and reports after the next
+// downloader took it, leaves the lock with the next downloader, also after a
+// restart of qui.
+// regression: #4231
+func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing.T) {
+	r := newRig(t)
+	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
+		Port: r.port, PublicAddress: "http://127.0.0.1:" + strconv.Itoa(r.port), TrustedProxies: []string{"127.0.0.1"},
+	}))
+	sh := r.start(share.Request{FirstDownloaderOnly: new(true)})
+	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	const first, next = "198.51.100.7", "198.51.100.8"
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
+
+	// The announce of the first downloader takes the lock, and waits in the
+	// lookup of the public peer address until the next downloader holds it.
+	looking, release := make(chan struct{}), make(chan struct{})
+	hold := func() {
+		close(looking)
+		<-release
+	}
+	r.peers.hold.Store(&hold)
+	firstAnnounce := r.announceRequest(first, recipientURL, sh.HelperHash, 6881, 70, "started")
+	answered := make(chan struct{})
+	go func() {
+		defer close(answered)
+		if resp, err := http.DefaultClient.Do(firstAnnounce); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	<-looking
+	require.NoError(t, r.svc.Unlock(t.Context(), sh.ID))
+	peers, _ := r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, peers)
+	close(release)
+	<-answered
+
+	r.svc.Close()
+	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	require.NoError(t, r.svc.Resume(t.Context()))
+
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
+	peers, _ = r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "the next downloader holds the Share after a restart")
 }
 
 func TestUnlockIsRefused(t *testing.T) {

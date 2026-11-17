@@ -350,5 +350,12 @@
   },
   "labels": {
     "path": "경로"
+  },
+  "kit": {
+    "loadFailed": "이 섹션을 불러오지 못했습니다.",
+    "retry": "다시 시도",
+    "edit": "편집",
+    "moreActions": "추가 작업",
+    "enabled": "사용"
   }
 }

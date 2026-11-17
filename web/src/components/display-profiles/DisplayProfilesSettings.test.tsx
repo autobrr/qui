@@ -49,6 +49,11 @@ function list(): HTMLElement {
   return screen.getByRole("list", { name: "Display profiles" })
 }
 
+/** The Close button in the footer of an editor. The X in the corner has the same name. */
+function footerClose(dialog: HTMLElement): HTMLElement {
+  return within(dialog).getAllByRole("button", { name: "Close" }).find((button) => button.dataset.slot !== "dialog-close")!
+}
+
 function row(name: string): HTMLElement {
   return within(list()).getByRole("button", { name: new RegExp(`^${name}`) })
 }
@@ -333,7 +338,7 @@ describe("DisplayProfilesSettings below 768 px", () => {
     expect(within(sheet).getByRole("switch", { name: "Own sort and filters" }).getAttribute("aria-checked")).toBe("true")
     expect(getDisplayProfiles().active.name).toBe("Laptop")
 
-    await user.click(within(sheet).getByRole("button", { name: "Close" }))
+    await user.click(footerClose(sheet))
     expect(screen.queryByRole("dialog")).toBeNull()
 
     await user.click(within(list()).getByRole("button", { name: "Edit Default" }))
@@ -345,7 +350,7 @@ describe("DisplayProfilesSettings below 768 px", () => {
     renderWithThreeProfiles()
 
     await user.click(within(list()).getByRole("button", { name: "Edit Phone" }))
-    await user.click(within(screen.getByRole("dialog", { name: "Edit profile" })).getByRole("button", { name: "Close" }))
+    await user.click(footerClose(screen.getByRole("dialog", { name: "Edit profile" })))
 
     await waitFor(() => expect(document.activeElement).toBe(within(list()).getByRole("button", { name: "Edit Phone" })))
   })
