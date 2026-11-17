@@ -8475,6 +8475,21 @@ components:
         endReason:
           type: string
           description: Why the Share ended, for the user
+        endReasonCode:
+          type: string
+          enum:
+            - ""
+            - downloaded
+            - expired
+            - stopped
+            - torrent_deleted
+            - torrent_moved
+            - files_renamed
+            - share_torrent_gone
+            - other
+          description: >-
+            A stable code for endReason, for the UI to translate. It is empty while the Share has no end reason, and
+            other for a reason with no code. Then endReason has the text.
         createdAt:
           type: string
           format: date-time
