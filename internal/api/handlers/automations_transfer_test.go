@@ -18,16 +18,14 @@ import (
 
 	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// The automations API saves a rule with a Transfer to Instance action only
-// while the switch for Transfers and Shares is on, and then keeps each field
-// of the action.
-func TestAutomationRuleWithATransferSavesOnlyWithTheSwitch(t *testing.T) {
+// The automations API saves a rule with a Transfer to Instance action and
+// keeps each field of the action.
+func TestAutomationRuleWithATransferSaves(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "automation-transfer")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
@@ -45,8 +43,8 @@ func TestAutomationRuleWithATransferSavesOnlyWithTheSwitch(t *testing.T) {
 			`"tags":["moved"],"after":%q,"leaveStopped":true,"way":%q,`+
 			`"condition":{"field":"SEEDING_TIME","operator":"GREATER_THAN","value":"7776000"}}`, targetID, after, way)
 	}
-	create := func(switches rollout.Switches, body string) *httptest.ResponseRecorder {
-		handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{}, switches)
+	create := func(body string) *httptest.ResponseRecorder {
+		handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{})
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(body))
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("instanceID", strconv.Itoa(source.ID))
@@ -54,13 +52,7 @@ func TestAutomationRuleWithATransferSavesOnlyWithTheSwitch(t *testing.T) {
 		handler.Create(rec, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
 		return rec
 	}
-	on := rollout.Switches{TransfersAndShares: true}
-
-	rec := create(rollout.Production(), rule(action(target.ID, "keepFiles", "bittorrent")))
-	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "Transfer to instance is not available")
-
-	rec = create(on, rule(action(target.ID, "keepFiles", "bittorrent")))
+	rec := create(rule(action(target.ID, "keepFiles", "bittorrent")))
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var created models.Automation
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &created))
@@ -89,7 +81,7 @@ func TestAutomationRuleWithATransferSavesOnlyWithTheSwitch(t *testing.T) {
 		{"missing target", action(target.ID+100, "", ""), "Target instance not found"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := create(on, rule(tc.action))
+			rec := create(rule(tc.action))
 			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			var body ErrorResponse
 			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
@@ -115,7 +107,7 @@ func TestATransferRuleNeedsTheCrossSeedInstanceOfItsTargetInTheKeyLimit(t *testi
 	routes := models.NewCrossSeedRouteStore(db)
 	require.NoError(t, routes.Upsert(t.Context(), &models.CrossSeedRoute{SourceInstanceID: target, CrossSeedInstanceID: crossSeed}))
 	store := models.NewAutomationStore(db)
-	handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{}, rollout.Switches{TransfersAndShares: true})
+	handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{})
 	handler.SetCrossSeedRoutes(crossseedroute.NewService(routes, instances, nil, nil))
 	serve := func(serve http.HandlerFunc, ruleID string, key *models.APIKey, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(body))

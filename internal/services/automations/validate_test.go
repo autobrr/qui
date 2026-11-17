@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 )
 
 func TestValidateRlsYearConditions(t *testing.T) {
@@ -253,7 +252,7 @@ func TestValidateRule_WindowsRejectsPathAlways(t *testing.T) {
 	}
 
 	// On Windows, should reject path source even when FREE_SPACE not used
-	ruleErr, ok := errors.AsType[*RuleError](ValidateRule(rule, &models.Instance{HasLocalFilesystemAccess: true}, rollout.Production()))
+	ruleErr, ok := errors.AsType[*RuleError](ValidateRule(rule, &models.Instance{HasLocalFilesystemAccess: true}))
 	if !ok {
 		t.Fatalf("ValidateRule() on Windows: expected a RuleError")
 	}
@@ -1033,7 +1032,7 @@ func TestValidateRule(t *testing.T) {
 			rule := &models.Automation{InstanceID: 1, Name: "Rule", TrackerPattern: "*", Enabled: true, Conditions: pause()}
 			tt.edit(rule)
 
-			err := ValidateRule(rule, tt.instance, rollout.Production())
+			err := ValidateRule(rule, tt.instance)
 
 			if tt.wantMsg == "" {
 				require.NoError(t, err)
@@ -1093,7 +1092,7 @@ func TestValidateRule_MovePath(t *testing.T) {
 				Pause: &models.PauseAction{Enabled: true},
 			}}
 
-			err := ValidateRule(rule, nil, rollout.Production())
+			err := ValidateRule(rule, nil)
 
 			if tt.wantMsg == "" {
 				require.NoError(t, err)
@@ -1112,38 +1111,31 @@ func TestValidateRule_MovePathSkippedWhenRuleDisabled(t *testing.T) {
 		Move: &models.MoveAction{Enabled: true, Path: "archive/done"},
 	}}
 
-	require.NoError(t, ValidateRule(rule, nil, rollout.Production()))
+	require.NoError(t, ValidateRule(rule, nil))
 }
 
-// No rule with a Transfer to Instance action passes while the switch for
-// Transfers and Shares is off, also not one with the action turned off.
 func TestValidateRuleTransferToInstance(t *testing.T) {
-	on := rollout.Switches{TransfersAndShares: true}
 	seeded := &models.RuleCondition{Field: models.FieldSeedingTime, Operator: models.OperatorGreaterThan, Value: "7776000"}
 	transfer := func(enabled bool, target int) *models.TransferToInstanceAction {
 		return &models.TransferToInstanceAction{Enabled: enabled, TargetInstanceID: target, SavePath: "/data", Condition: seeded}
 	}
 	tests := []struct {
 		name       string
-		switches   rollout.Switches
 		conditions *models.ActionConditions
 		wantMsg    string
 	}{
-		{name: "switch off, action off", switches: rollout.Production(), conditions: &models.ActionConditions{
-			TransferToInstance: transfer(false, 2), Pause: &models.PauseAction{Enabled: true, Condition: seeded},
-		}, wantMsg: "Transfer to instance is not available"},
-		{name: "switch on, action off", switches: on, conditions: &models.ActionConditions{
+		{name: "action off", conditions: &models.ActionConditions{
 			TransferToInstance: transfer(false, 0), Pause: &models.PauseAction{Enabled: true, Condition: seeded},
 		}},
-		{name: "no target", switches: on, conditions: &models.ActionConditions{TransferToInstance: transfer(true, 0)}, wantMsg: "Transfer to instance requires a target instance"},
-		{name: "target is the source", switches: on, conditions: &models.ActionConditions{TransferToInstance: transfer(true, 1)}, wantMsg: "Transfer target cannot be the same as the source instance"},
+		{name: "no target", conditions: &models.ActionConditions{TransferToInstance: transfer(true, 0)}, wantMsg: "Transfer to instance requires a target instance"},
+		{name: "target is the source", conditions: &models.ActionConditions{TransferToInstance: transfer(true, 1)}, wantMsg: "Transfer target cannot be the same as the source instance"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rule := &models.Automation{InstanceID: 1, Name: "Move old seeds", TrackerPattern: "*", Enabled: true, Conditions: tt.conditions}
 
-			err := ValidateRule(rule, nil, tt.switches)
+			err := ValidateRule(rule, nil)
 
 			if tt.wantMsg == "" {
 				require.NoError(t, err)

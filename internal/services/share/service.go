@@ -6,7 +6,6 @@ package share
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"maps"
 	"net"
@@ -22,14 +21,9 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/internal/services/transfer"
 )
-
-// ErrOff is the answer of each call while the switch for Transfers and Shares
-// is off.
-var ErrOff = errors.New("shares are not available")
 
 // keepEnded is how long the row of an ended Share stays.
 const keepEnded = 30 * 24 * time.Hour
@@ -63,9 +57,6 @@ type Deps struct {
 	Instances *models.InstanceStore
 	Sync      *qbittorrent.SyncManager
 	Peers     PeerAddresses
-	// Switches keeps the Share service closed while TransfersAndShares is
-	// off: no Share starts, and qui's own tracker never listens.
-	Switches rollout.Switches
 	// TrackerHost is the address that qui's own tracker listens on; empty
 	// listens on every address.
 	TrackerHost string
@@ -137,16 +128,9 @@ func NewService(deps Deps) *Service {
 	return s
 }
 
-func (s *Service) on() bool {
-	return s.deps.Switches.TransfersAndShares
-}
-
 // Run resumes the Shares after a start of qui, and then checks their end
-// conditions until ctx ends. It returns at once while the switch is off.
+// conditions until ctx ends.
 func (s *Service) Run(ctx context.Context) {
-	if !s.on() {
-		return
-	}
 	if err := s.Resume(ctx); err != nil {
 		log.Error().Err(err).Msg("share: cannot resume the Shares")
 	}
@@ -167,9 +151,6 @@ func (s *Service) Run(ctx context.Context) {
 // Resume reads the unfinished Shares and starts qui's own tracker again for
 // the active Shares on it.
 func (s *Service) Resume(ctx context.Context) error {
-	if !s.on() {
-		return nil
-	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	return s.refresh(ctx)

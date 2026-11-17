@@ -19,7 +19,6 @@ import (
 
 	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
@@ -30,18 +29,16 @@ type AutomationHandler struct {
 	instanceStore        *models.InstanceStore
 	externalProgramStore *models.ExternalProgramStore
 	service              *automations.Service
-	switches             rollout.Switches
 	routes               *models.CrossSeedRouteStore
 }
 
-func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service, switches rollout.Switches) *AutomationHandler {
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service) *AutomationHandler {
 	return &AutomationHandler{
 		store:                store,
 		activityStore:        activityStore,
 		instanceStore:        instanceStore,
 		externalProgramStore: externalProgramStore,
 		service:              service,
-		switches:             switches,
 	}
 }
 
@@ -457,7 +454,7 @@ func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID in
 		}
 	}
 
-	payload, err := decodeAutomationPayload(r.Body, instanceID, instance, stored, saves, h.switches)
+	payload, err := decodeAutomationPayload(r.Body, instanceID, instance, stored, saves)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: invalid rule payload")
 		return nil, http.StatusBadRequest, err.Error()

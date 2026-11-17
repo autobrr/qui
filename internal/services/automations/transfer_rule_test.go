@@ -19,7 +19,6 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
@@ -90,15 +89,13 @@ func (f *transfers) untouched(t *testing.T) {
 	require.Empty(t, f.previews, "no Transfer is previewed")
 }
 
-var transfersOn = rollout.Switches{TransfersAndShares: true}
-
-// transferRig is a source instance with torrents, a target instance, and the
-// Transfer module behind the switch.
-func transferRig(t *testing.T, torrents string, switches rollout.Switches) (*Service, *database.DB, *transfers, []int) {
+// transferRig is a source instance with torrents, a target instance, and a
+// fake Transfer module.
+func transferRig(t *testing.T, torrents string) (*Service, *database.DB, *transfers, []int) {
 	t.Helper()
 	svc, db, instanceIDs := newStubService(t, nil, newStubQbt(t, torrents), newStubQbt(t, `{}`))
 	runner := &transfers{}
-	svc.SetTransferRunner(runner, switches)
+	svc.SetTransferRunner(runner)
 	return svc, db, runner, instanceIDs
 }
 
@@ -135,7 +132,7 @@ func storedTransferActivities(t *testing.T, db *database.DB, instanceID int) []m
 // matches, with the fields of the action and the save path rendered for the
 // torrent, and records each start.
 func TestTransferToInstanceStartsATransfer(t *testing.T) {
-	svc, db, runner, instanceIDs := transferRig(t, snapshotTorrent, transfersOn)
+	svc, db, runner, instanceIDs := transferRig(t, snapshotTorrent)
 	rule := transferRule(1, instanceIDs[1], models.TransferToInstanceAction{
 		SavePath: "/archive/{{ .Category }}", Category: "archive", Tags: []string{"moved"},
 		After: "keepFiles", LeaveStopped: true, Way: "bittorrent",
@@ -158,28 +155,15 @@ func TestTransferToInstanceStartsATransfer(t *testing.T) {
 	}}, storedTransferActivities(t, db, instanceIDs[0]))
 }
 
-// While the switch for Transfers and Shares is off, a stored rule with
-// Transfer to Instance reaches no Transfer: no start, no preview, and no
-// activity, in a live run and in a dry run. With the switch on, a run without
-// a rule with the action never asks the Transfer module.
-func TestTransferToInstanceStaysOffWithoutTheSwitch(t *testing.T) {
-	svc, db, runner, instanceIDs := transferRig(t, everyActionTorrents(), rollout.Production())
-	run := func(rules []*models.Automation) []*models.AutomationActivity {
-		t.Helper()
-		_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, false)
+// A run without a rule with Transfer to Instance never asks the Transfer
+// module, in a live run and in a dry run.
+func TestTransferToInstanceIdleWithoutTheAction(t *testing.T) {
+	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents())
+	rules := slices.DeleteFunc(everyActionRules(), func(rule *models.Automation) bool { return rule.Conditions.TransferToInstance != nil })
+	for _, dryRun := range []bool{false, true} {
+		_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, dryRun)
 		require.NoError(t, err)
-		activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, true)
-		require.NoError(t, err)
-		return activities
 	}
-
-	activities := run([]*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})})
-	runner.untouched(t)
-	require.Empty(t, storedTransferActivities(t, db, instanceIDs[0]))
-	require.Empty(t, transferActivities(t, svc, instanceIDs[0], activities))
-
-	svc.SetTransferRunner(runner, transfersOn)
-	run(everyActionRules())
 	runner.untouched(t)
 }
 
@@ -206,7 +190,7 @@ func precedenceTorrents() string {
 // run lists the same Transfers.
 func TestTransferToInstanceLosesToDeleteAndWaitsForAMove(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
-		svc, _, runner, instanceIDs := transferRig(t, precedenceTorrents(), transfersOn)
+		svc, _, runner, instanceIDs := transferRig(t, precedenceTorrents())
 		rules := []*models.Automation{
 			transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"}),
 			{ID: 2, Name: "move", TrackerPattern: "*", Enabled: true, SortOrder: 2, Conditions: &models.ActionConditions{
@@ -236,7 +220,7 @@ func TestTransferToInstanceLosesToDeleteAndWaitsForAMove(t *testing.T) {
 // each with its size. A torrent that the Transfer of another torrent takes
 // along, as a cross-seed, shows once.
 func TestTransferToInstanceDryRunListsWayAndSize(t *testing.T) {
-	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents(), transfersOn)
+	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	runner.preview = map[string]*transfer.Preview{
 		runningHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: runningHash}, {Hash: stoppedHash}}},
 		stoppedHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: stoppedHash}, {Hash: runningHash}}},
@@ -275,7 +259,7 @@ func TestTransferToInstanceDryRunListsWayAndSize(t *testing.T) {
 // holds, or whose last Transfer failed for good and waits for the user, gets
 // no new Transfer and no activity.
 func TestTransferToInstanceAsksAgainAnHourAfterARefusal(t *testing.T) {
-	svc, db, runner, instanceIDs := transferRig(t, everyActionTorrents(), transfersOn)
+	svc, db, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	at := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
 	svc.clock = func() time.Time { return at }
 	runner.startErr = map[string]error{
@@ -313,7 +297,7 @@ func TestTransferToInstanceAsksAgainAnHourAfterARefusal(t *testing.T) {
 // Transfer with ErrMoving. The rule records nothing and sets no hold, so the
 // next run asks again. A dry run lists nothing for it.
 func TestTransferToInstanceAsksAgainInTheNextRunWhileATorrentMoves(t *testing.T) {
-	svc, db, runner, instanceIDs := transferRig(t, snapshotTorrent, transfersOn)
+	svc, db, runner, instanceIDs := transferRig(t, snapshotTorrent)
 	runner.startErr = map[string]error{runningHash: fmt.Errorf("Show.S01E01.mkv shares the files of this torrent: %w", transfer.ErrMoving)}
 	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
 	run := func(dryRun bool) []*models.AutomationActivity {
@@ -334,7 +318,7 @@ func TestTransferToInstanceAsksAgainInTheNextRunWhileATorrentMoves(t *testing.T)
 // When the run ends during a Start, the Transfers that did not start get no
 // hold, and the next run starts them.
 func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T) {
-	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents(), transfersOn)
+	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
 	ctx, cancel := context.WithCancel(t.Context())
 	runner.onStart = cancel

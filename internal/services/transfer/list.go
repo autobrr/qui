@@ -279,12 +279,8 @@ const keepFinished = 30 * 24 * time.Hour
 // purgeInterval is how often qui looks for rows older than keepFinished.
 const purgeInterval = time.Hour
 
-// purge removes the rows that finished more than keepFinished ago. It does
-// nothing while the switches of Transfers and Exports are off.
+// purge removes the rows that finished more than keepFinished ago.
 func (s *Service) purge() {
-	if !s.deps.Switches.TransfersAndShares && !s.deps.Switches.ExportOnTransfer {
-		return
-	}
 	s.purged = s.deps.Now()
 	n, err := s.deps.Store.RemoveFinishedBefore(s.ctx, s.purged.Add(-keepFinished))
 	switch {

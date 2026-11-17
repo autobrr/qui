@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
@@ -51,7 +50,6 @@ func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	running := r.waiting("bbbb")
 
 	r.setClock(time.Now().Add(29 * 24 * time.Hour))
-	r.deps.Switches = rollout.Switches{TransfersAndShares: true}
 	r.restart()
 	require.True(t, r.exists(old), "a row of 29 days stays")
 
@@ -60,18 +58,6 @@ func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	require.False(t, r.exists(old))
 	require.False(t, r.store.IsHelper(r.target.ID, "helperaaaa"), "the registry row of its helper torrent goes with it")
 	require.True(t, r.exists(running.ID), "a Transfer that runs stays")
-}
-
-// While the switch is off, qui removes no row.
-func TestTransfersKeepEveryRowWhileTheSwitchIsOff(t *testing.T) {
-	r := newRig(t)
-	old := r.ended("aaaa", transfer.StateDone)
-
-	r.setClock(time.Now().Add(31 * 24 * time.Hour))
-	r.restart()
-
-	require.True(t, r.exists(old))
-	require.True(t, r.store.IsHelper(r.target.ID, "helperaaaa"))
 }
 
 // The user removes a finished row earlier, with the registry rows of its

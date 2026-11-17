@@ -5,10 +5,7 @@ package notifications
 
 import (
 	"fmt"
-	"slices"
 	"strings"
-
-	"github.com/autobrr/qui/internal/rollout"
 )
 
 type EventType string
@@ -81,32 +78,26 @@ var eventTypeIndex = func() map[string]int {
 	return idx
 }()
 
-// registered reports whether qui offers the event type: the Transfer events
-// only while the switch for Transfers and Shares is on.
-func registered(eventType EventType, switches rollout.Switches) bool {
-	return switches.TransfersAndShares || (eventType != EventTransferFailed && eventType != EventTransferFinished)
+func EventDefinitions() []EventDefinition {
+	out := make([]EventDefinition, len(eventDefinitions))
+	copy(out, eventDefinitions)
+	return out
 }
 
-func EventDefinitions(switches rollout.Switches) []EventDefinition {
-	return slices.DeleteFunc(slices.Clone(eventDefinitions), func(def EventDefinition) bool {
-		return !registered(def.Type, switches)
-	})
-}
-
-func AllEventTypeStrings(switches rollout.Switches) []string {
+func AllEventTypeStrings() []string {
 	out := make([]string, 0, len(eventDefinitions))
-	for _, def := range EventDefinitions(switches) {
+	for _, def := range eventDefinitions {
 		out = append(out, string(def.Type))
 	}
 	return out
 }
 
-func IsValidEventType(value string, switches rollout.Switches) bool {
+func IsValidEventType(value string) bool {
 	_, ok := eventTypeIndex[value]
-	return ok && registered(EventType(value), switches)
+	return ok
 }
 
-func NormalizeEventTypes(input []string, switches rollout.Switches) ([]string, error) {
+func NormalizeEventTypes(input []string) ([]string, error) {
 	if len(input) == 0 {
 		return nil, nil
 	}
@@ -117,7 +108,7 @@ func NormalizeEventTypes(input []string, switches rollout.Switches) ([]string, e
 		if value == "" {
 			continue
 		}
-		if !IsValidEventType(value, switches) {
+		if !IsValidEventType(value) {
 			return nil, fmt.Errorf("unknown event type: %s", value)
 		}
 		seen[value] = struct{}{}

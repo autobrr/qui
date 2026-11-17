@@ -23,7 +23,6 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -34,38 +33,33 @@ import (
 // checks, then reports the torrent complete; nothing starts or resumes it.
 // regression: #3015
 func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
-	forEachExportPath(t, func(t *testing.T, switches rollout.Switches) {
-		result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsPayload, switches: switches})
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsPayload})
 
-		require.Len(t, result.activities, 1)
-		require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
-		require.Equal(t, int32(1), result.rechecks.Load())
-		require.Zero(t, result.ignoredRechecks.Load())
-		require.Zero(t, result.starts.Load())
-		require.Empty(t, result.deleteFiles)
-		require.GreaterOrEqual(t, len(result.statesAfterRecheck), 3)
-		require.Equal(t, []string{"stoppedDL", "checkingDL", "stoppedUP"}, result.statesAfterRecheck[:3])
-	})
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
+	require.Equal(t, int32(1), result.rechecks.Load())
+	require.Zero(t, result.ignoredRechecks.Load())
+	require.Zero(t, result.starts.Load())
+	require.Empty(t, result.deleteFiles)
+	require.GreaterOrEqual(t, len(result.statesAfterRecheck), 3)
+	require.Equal(t, []string{"stoppedDL", "checkingDL", "stoppedUP"}, result.statesAfterRecheck[:3])
 }
 
 // A failed recheck request fails the export and removes the torrent from the
 // target, keeping its files, so it does not block the next export.
 // regression: #3015
 func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
-	forEachExportPath(t, func(t *testing.T, switches rollout.Switches) {
-		result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusInternalServerError, afterRecheck: recheckFindsPayload,
-			switches: switches})
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusInternalServerError, afterRecheck: recheckFindsPayload})
 
-		require.Len(t, result.activities, 1)
-		require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
-		require.True(t, strings.HasPrefix(result.activities[0].Reason, "Recheck on target failed:"), result.activities[0].Reason)
-		require.Equal(t, []string{"false"}, result.deleteFiles)
-		require.Equal(t, []recordedDelete{{
-			hashes: []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-			actor:  qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: "export paused recheck"},
-		}}, result.deletes)
-		require.Zero(t, result.starts.Load())
-	})
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
+	require.True(t, strings.HasPrefix(result.activities[0].Reason, "Recheck on target failed:"), result.activities[0].Reason)
+	require.Equal(t, []string{"false"}, result.deleteFiles)
+	require.Equal(t, []recordedDelete{{
+		hashes: []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		actor:  qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: "export paused recheck"},
+	}}, result.deletes)
+	require.Zero(t, result.starts.Load())
 }
 
 // When the target has no data for the torrent, the recheck leaves it stopped at
@@ -73,89 +67,66 @@ func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
 // torrent is removed from the target with its files kept.
 // regression: #3015
 func TestExecuteExportToInstance_PausedRecheckPayloadMissing(t *testing.T) {
-	forEachExportPath(t, func(t *testing.T, switches rollout.Switches) {
-		result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsNoPayload, switches: switches})
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsNoPayload})
 
-		require.Len(t, result.activities, 1)
-		require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
-		require.Equal(t, int32(1), result.rechecks.Load())
-		require.Zero(t, result.ignoredRechecks.Load())
-		require.Zero(t, result.starts.Load())
-		require.Equal(t, []string{"false"}, result.deleteFiles)
-	})
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
+	require.Equal(t, int32(1), result.rechecks.Load())
+	require.Zero(t, result.ignoredRechecks.Load())
+	require.Zero(t, result.starts.Load())
+	require.Equal(t, []string{"false"}, result.deleteFiles)
 }
 
 // A large torrent can still be checking when verification ends. That counts as
 // success: the torrent stays on the target and nothing deletes it.
 // regression: #3015
 func TestExecuteExportToInstance_PausedRecheckStillChecking(t *testing.T) {
-	forEachExportPath(t, func(t *testing.T, switches rollout.Switches) {
-		result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckKeepsChecking, switches: switches})
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckKeepsChecking})
 
-		require.Len(t, result.activities, 1)
-		require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
-		require.Equal(t, int32(1), result.rechecks.Load())
-		require.Zero(t, result.ignoredRechecks.Load())
-		require.Zero(t, result.starts.Load())
-		require.Empty(t, result.deleteFiles)
-	})
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
+	require.Equal(t, int32(1), result.rechecks.Load())
+	require.Zero(t, result.ignoredRechecks.Load())
+	require.Zero(t, result.starts.Load())
+	require.Empty(t, result.deleteFiles)
 }
 
 // Only a paused add with skip checking off needs the recheck; every other
 // combination exports without asking the target to recheck.
 func TestExecuteExportToInstance_RecheckOnlyWhenPausedAndChecking(t *testing.T) {
-	forEachExportPath(t, func(t *testing.T, switches rollout.Switches) {
-		for _, tc := range []struct {
-			name         string
-			paused       bool
-			skipChecking bool
-			wantRechecks int32
-		}{
-			{"paused, checking", true, false, 1},
-			{"paused, skip checking", true, true, 0},
-			{"started, skip checking", false, true, 0},
-			{"started, checking", false, false, 0},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				result := runExport(t, exportCase{paused: tc.paused, skipChecking: tc.skipChecking, recheckStatus: http.StatusOK,
-					afterRecheck: recheckFindsPayload, switches: switches})
+	for _, tc := range []struct {
+		name         string
+		paused       bool
+		skipChecking bool
+		wantRechecks int32
+	}{
+		{"paused, checking", true, false, 1},
+		{"paused, skip checking", true, true, 0},
+		{"started, skip checking", false, true, 0},
+		{"started, checking", false, false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := runExport(t, exportCase{paused: tc.paused, skipChecking: tc.skipChecking, recheckStatus: http.StatusOK,
+				afterRecheck: recheckFindsPayload})
 
-				require.Len(t, result.activities, 1)
-				require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
-				require.Equal(t, tc.wantRechecks, result.rechecks.Load())
-				require.Empty(t, result.deleteFiles)
-			})
-		}
-	})
-}
-
-// exportPaths are the old Export path and the Export runs of the Transfer
-// module (#4166). The gate, #4170, deletes the old path.
-var exportPaths = []struct {
-	name     string
-	switches rollout.Switches
-}{
-	{"old path", rollout.Production()},
-	{"on Transfers", rollout.Switches{ExportOnTransfer: true}},
-}
-
-func forEachExportPath(t *testing.T, test func(t *testing.T, switches rollout.Switches)) {
-	t.Helper()
-	for _, path := range exportPaths {
-		t.Run(path.name, func(t *testing.T) { test(t, path.switches) })
+			require.Len(t, result.activities, 1)
+			require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
+			require.Equal(t, tc.wantRechecks, result.rechecks.Load())
+			require.Empty(t, result.deleteFiles)
+		})
 	}
 }
 
-// exportOnTransfers wires the Transfer module into svc, as start-up does,
-// with the switches.
-func exportOnTransfers(t *testing.T, svc *Service, db dbinterface.Querier, switches rollout.Switches) {
+// exportOnTransfers wires the Transfer module into svc, as start-up does. The
+// Export runs poll the target 6 times, 30 ms apart.
+func exportOnTransfers(t *testing.T, svc *Service, db dbinterface.Querier) {
 	t.Helper()
 	store, err := transfer.NewStore(t.Context(), db)
 	require.NoError(t, err)
 	transfers := transfer.NewService(t.Context(), transfer.Deps{Store: store, Instances: svc.instanceStore, Sync: svc.syncManager,
-		Config: transfer.Config{ExportPolls: exportVerifyMaxAttempts, ExportPollInterval: exportVerifyPollInterval}})
+		Config: transfer.Config{ExportPolls: 6, ExportPollInterval: 30 * time.Millisecond}})
 	t.Cleanup(func() { require.NoError(t, transfers.Close(context.Background())) })
-	svc.SetExportRunner(transfers, switches)
+	svc.SetExportRunner(transfers)
 }
 
 // deleteNotes records each delete that the sync manager sends.
@@ -194,7 +165,6 @@ type exportCase struct {
 	skipChecking  bool
 	recheckStatus int
 	afterRecheck  recheckOutcome
-	switches      rollout.Switches
 }
 
 type exportResult struct {
@@ -205,8 +175,6 @@ type exportResult struct {
 	deleteFiles        []string
 	deletes            []recordedDelete
 	statesAfterRecheck []string
-	// exportRuns counts the Export runs of the Transfer module.
-	exportRuns int
 }
 
 // runExport exports one torrent with the given settings to a stub target.
@@ -215,19 +183,9 @@ type exportResult struct {
 // reports the torrent complete once listed, except for a paused add with skip
 // checking off, which stays stopped at progress 0 until a recheck is accepted
 // and then follows tc.afterRecheck. Start, resume and force start requests are
-// counted. The Transfer module runs the export when tc.switches turns on
-// Export on Transfers.
+// counted. The Transfer module runs the export.
 func runExport(t *testing.T, tc exportCase) *exportResult {
 	t.Helper()
-	prevAttempts := exportVerifyMaxAttempts
-	prevInterval := exportVerifyPollInterval
-	exportVerifyMaxAttempts = 6
-	exportVerifyPollInterval = 30 * time.Millisecond
-	t.Cleanup(func() {
-		exportVerifyMaxAttempts = prevAttempts
-		exportVerifyPollInterval = prevInterval
-	})
-
 	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	var mu sync.Mutex
 	var added, listed, rechecked bool
@@ -347,7 +305,7 @@ func runExport(t *testing.T, tc exportCase) *exportResult {
 	deletes := &deleteNotes{}
 	syncManager.SetDeleteNoter(deletes)
 	svc := NewService(Config{}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, nil, fsops.NewPool(instanceStore, localbackend.NewBackend()))
-	exportOnTransfers(t, svc, db, tc.switches)
+	exportOnTransfers(t, svc, db)
 	ch := svc.executeExportToInstance(t.Context(), sourceInstance.ID, []pendingExportToInstance{{
 		hash: hash,
 		torrent: qbt.Torrent{
@@ -369,11 +327,5 @@ func runExport(t *testing.T, tc exportCase) *exportResult {
 	}
 	target.Close() // waits for in-flight handlers, so the counters are final
 	result.deletes = deletes.recorded()
-	require.NoError(t, db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM torrent_transfers WHERE kind = 'export'`).Scan(&result.exportRuns))
-	want := 0
-	if tc.switches.ExportOnTransfer {
-		want = 1
-	}
-	require.Equal(t, want, result.exportRuns, "the export runs on the path of the switch")
 	return result
 }

@@ -13,7 +13,6 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 )
 
@@ -259,15 +258,11 @@ func TestApplyRulesDryRun_RulesSeeStartOfRunTorrent(t *testing.T) {
 
 // An export in the same run as a category change resolves its save path with the old category.
 func TestApplyRules_ExportSeesStartOfRunTorrent(t *testing.T) {
-	forEachExportPath(t, testExportSeesStartOfRunTorrent)
-}
-
-func testExportSeesStartOfRunTorrent(t *testing.T, switches rollout.Switches) {
 	source := newStubQbt(t, snapshotTorrent)
 	target := newStubQbt(t, `{}`)
 	target.torrentsAfterAdd = `{"` + runningHash + `":{"name":"running","state":"stalledUP","progress":1,"size":10,"save_path":"/target/old"}}`
 	svc, db, instanceIDs := newStubService(t, nil, source, target)
-	exportOnTransfers(t, svc, db, switches)
+	exportOnTransfers(t, svc, db)
 	rules := []*models.Automation{{
 		ID: 1, Name: "recategorise and export", TrackerPattern: "*", Enabled: true,
 		Conditions: &models.ActionConditions{

@@ -40,17 +40,6 @@ func TestTransferStartRoute(t *testing.T) {
 	})
 }
 
-// transferRoutes are the routes of the Transfers page and the Transfer
-// dialog.
-var transferRoutes = []routeKey{
-	{http.MethodGet, "/api/transfers"},
-	{http.MethodPost, "/api/transfers/summary"},
-	{http.MethodGet, "/api/transfers/1"},
-	{http.MethodPost, "/api/transfers/1/retry"},
-	{http.MethodPost, "/api/transfers/1/cancel"},
-	{http.MethodDelete, "/api/transfers/1"},
-}
-
 // addInstances adds the instances 1 and 2 that the Transfers of a test name.
 func addInstances(t *testing.T, rig *permissionRig) {
 	t.Helper()

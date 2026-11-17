@@ -81,9 +81,6 @@ func (s *Service) removeTorrent(ctx context.Context, sh *Share) error {
 // the Shares that ended more than 30 days ago, with the registry rows of
 // their Share torrents. Run calls it at each tick.
 func (s *Service) Check(ctx context.Context) error {
-	if !s.on() {
-		return nil
-	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 
@@ -272,8 +269,7 @@ var changeReasons = map[qbittorrent.TorrentChange]string{
 // BeforeTorrentChange ends the active Shares of the torrents before qui
 // deletes, moves, or renames them, so that the Share torrent leaves the
 // client first. It looks up the Shares before it takes opMu: the delete of a
-// Share torrent comes back here with a hash that no Share has. While the
-// switch is off, no Share is active in memory.
+// Share torrent comes back here with a hash that no Share has.
 func (s *Service) BeforeTorrentChange(ctx context.Context, instanceID int, hashes []string, change qbittorrent.TorrentChange) {
 	ids := make([]int64, 0, len(hashes))
 	s.mu.Lock()

@@ -15,7 +15,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
@@ -29,13 +28,11 @@ type transferRunner interface {
 // that the Transfer module refused.
 const transferHold = time.Hour
 
-// SetTransferRunner lets Transfer to Instance start Transfers while the switch
-// for Transfers and Shares is on. Call it once at start-up.
-func (s *Service) SetTransferRunner(runner transferRunner, switches rollout.Switches) {
-	if switches.TransfersAndShares {
-		s.transferRunner = runner
-		s.transferHolds = make(map[string]time.Time)
-	}
+// SetTransferRunner lets Transfer to Instance start Transfers. Call it once
+// at start-up.
+func (s *Service) SetTransferRunner(runner transferRunner) {
+	s.transferRunner = runner
+	s.transferHolds = make(map[string]time.Time)
 }
 
 // pendingTransfer is one Transfer to Instance in the Run plan. failureReason
