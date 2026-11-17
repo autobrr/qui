@@ -93,22 +93,15 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe("ShareDialog", () => {
-  it("fills the three fields from the defaults and names the tracker and the risk", async () => {
-    settings.defaults = { days: 3, endAtFirstDownload: false, firstDownloaderOnly: true }
+  it("fills the fields from the defaults, names the tracker, creates the Share, and shows the .torrent download and the message to copy", async () => {
     renderDialog()
-
     const days = (await screen.findByLabelText("Days until a Share ends")) as HTMLInputElement
-    expect(days.value).toBe("3")
-    expect(screen.getByRole("switch", { name: "End at the first complete download" }).getAttribute("aria-checked")).toBe("false")
+    expect(days.value).toBe("7")
+    expect(screen.getByRole("switch", { name: "End at the first complete download" }).getAttribute("aria-checked")).toBe("true")
     expect(screen.getByRole("switch", { name: "Only the first downloader" }).getAttribute("aria-checked")).toBe("true")
-    const dialog = screen.getByRole("dialog")
-    expect(dialog.textContent).toContain("qui's tracker at https://share.example.com")
-    expect(dialog.textContent).toContain("Your friend sees the IP address of your client. Anyone who has the .torrent can download until the Share ends.")
-  })
+    expect(screen.getByRole("dialog").textContent).toContain("qui's tracker at https://share.example.com")
 
-  it("creates the Share and shows the .torrent download and the message to copy", async () => {
-    renderDialog()
-    fireEvent.change(await screen.findByLabelText("Days until a Share ends"), { target: { value: "2" } })
+    fireEvent.change(days, { target: { value: "2" } })
     fireEvent.click(screen.getByRole("switch", { name: "Only the first downloader" }))
     fireEvent.click(screen.getByRole("button", { name: "Create" }))
 

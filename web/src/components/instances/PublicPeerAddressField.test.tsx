@@ -17,19 +17,6 @@ function input(): HTMLInputElement {
 }
 
 describe("PublicPeerAddressField", () => {
-  it("shows the address that qui works out as a placeholder, never as the value", () => {
-    render(<TooltipProvider><PublicPeerAddressField value="" resolvedValue="203.0.113.10:51413" onChange={vi.fn()} /></TooltipProvider>)
-
-    expect(input().value).toBe("")
-    expect(input().placeholder).toBe("203.0.113.10:51413")
-  })
-
-  it("shows the address that the user set", () => {
-    render(<TooltipProvider><PublicPeerAddressField value="seedbox.example:6881" resolvedValue="203.0.113.10:51413" onChange={vi.fn()} /></TooltipProvider>)
-
-    expect(input().value).toBe("seedbox.example:6881")
-  })
-
   it("says that qui cannot work out an address when it has none", () => {
     render(<TooltipProvider><PublicPeerAddressField value="" onChange={vi.fn()} /></TooltipProvider>)
 
@@ -37,9 +24,17 @@ describe("PublicPeerAddressField", () => {
     expect(input().placeholder).toBe("qui cannot work out an address yet")
   })
 
-  it("reports what the user types, and an empty value when the user clears it", () => {
+  it("shows the address that qui works out only as a placeholder, the address that the user set, and reports what the user types", () => {
     const onChange = vi.fn()
-    render(<TooltipProvider><PublicPeerAddressField value="seedbox.example:6881" resolvedValue="203.0.113.10:51413" onChange={onChange} /></TooltipProvider>)
+    const field = (value: string) => (
+      <TooltipProvider><PublicPeerAddressField value={value} resolvedValue="203.0.113.10:51413" onChange={onChange} /></TooltipProvider>
+    )
+    const { rerender } = render(field(""))
+    expect(input().value).toBe("")
+    expect(input().placeholder).toBe("203.0.113.10:51413")
+
+    rerender(field("seedbox.example:6881"))
+    expect(input().value).toBe("seedbox.example:6881")
 
     fireEvent.change(input(), { target: { value: "198.51.100.4:6881" } })
     fireEvent.change(input(), { target: { value: "" } })

@@ -80,17 +80,6 @@ afterEach(() => {
 })
 
 describe("ShareSettingsForm", () => {
-  it("says that a Share needs a tracker while none is set, and shows the defaults", async () => {
-    renderForm()
-
-    expect(await screen.findByText("No tracker is set, so no Share can start.")).not.toBeNull()
-    expect(field("Active Shares").value).toBe("10")
-    expect(field("Peers for each Share").value).toBe("20")
-    expect(field("Days until a Share ends").value).toBe("7")
-    expect(screen.getByRole("switch", { name: "End at the first complete download" }).getAttribute("aria-checked")).toBe("true")
-    expect(screen.getByRole("switch", { name: "Only the first downloader" }).getAttribute("aria-checked")).toBe("true")
-  })
-
   it("turns on qui's own tracker with a port, a public address, and trusted proxies", async () => {
     renderForm()
     await screen.findByLabelText("Port")
@@ -123,9 +112,15 @@ describe("ShareSettingsForm", () => {
     expect(await screen.findByText("New Shares use the outside tracker.")).not.toBeNull()
   })
 
-  it("saves the limits and the defaults for a new Share", async () => {
+  it("says that a Share needs a tracker while none is set, and saves the limits and the defaults for a new Share", async () => {
     renderForm()
-    await screen.findByLabelText("Active Shares")
+
+    expect(await screen.findByText("No tracker is set, so no Share can start.")).not.toBeNull()
+    expect(field("Active Shares").value).toBe("10")
+    expect(field("Peers for each Share").value).toBe("20")
+    expect(field("Days until a Share ends").value).toBe("7")
+    expect(screen.getByRole("switch", { name: "End at the first complete download" }).getAttribute("aria-checked")).toBe("true")
+    expect(screen.getByRole("switch", { name: "Only the first downloader" }).getAttribute("aria-checked")).toBe("true")
 
     type("Active Shares", "3")
     type("Peers for each Share", "5")

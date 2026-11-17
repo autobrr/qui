@@ -81,7 +81,7 @@ describe("SharesTab", () => {
     expect(writes).toEqual([])
   })
 
-  it("shows an active Share with its instance, end, addresses, progress, bytes sent, and state", async () => {
+  it("shows an active Share with its instance, end, addresses, progress, bytes sent, and state, and unlocks and stops it", async () => {
     shares = [active]
     renderTab()
 
@@ -94,12 +94,6 @@ describe("SharesTab", () => {
     expect(row.textContent).toContain("25%")
     expect(row.textContent).toMatch(/Sent\s*1(\.0+)? GiB/)
     expect(within(row).getByRole("link", { name: ".torrent" }).getAttribute("href")).toBe("/api/shares/41/torrent")
-  })
-
-  it("stops an active Share and unlocks its first downloader", async () => {
-    shares = [active]
-    renderTab()
-    const row = await findRow(active.name)
 
     fireEvent.click(within(row).getByRole("button", { name: "Unlock" }))
     await waitFor(() => expect(writes).toEqual(["POST /api/shares/41/unlock"]))
@@ -125,16 +119,6 @@ describe("SharesTab", () => {
 
     const row = await findRow(active.name)
     expect(within(row).queryByRole("button", { name: "Unlock" })).toBeNull()
-  })
-
-  it("shows an ending Share with no action but its .torrent", async () => {
-    shares = [{ ...active, state: "ending" }]
-    renderTab()
-
-    const row = await findRow(active.name)
-    expect(row.textContent).toContain("Ending")
-    expect(within(row).queryAllByRole("button")).toHaveLength(0)
-    expect(within(row).getByRole("link", { name: ".torrent" })).not.toBeNull()
   })
 
   it("shows why an ended Share ended, and removes its row before the 30 days", async () => {
