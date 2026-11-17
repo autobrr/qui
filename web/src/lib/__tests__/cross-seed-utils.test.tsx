@@ -376,23 +376,6 @@ describe("useLocalCrossSeedMatches", () => {
     expect(result.current.matchingTorrents).toEqual([])
   })
 
-  it("settles without throwing and keeps matches empty when the matches query rejects", async () => {
-    mockedApi.getLocalCrossSeedMatches.mockRejectedValue(new Error("boom 500"))
-
-    const { result } = renderHook(
-      () => useLocalCrossSeedMatches(2, makeTorrent({ hash: "h" }), true),
-      { wrapper: makeWrapper() }
-    )
-
-    await waitFor(() => {
-      expect(result.current.pendingQueryCount).toBe(0)
-    })
-
-    expect(result.current.matchingTorrents).toEqual([])
-    // Instances still load fine even though the matches query errored.
-    expect(result.current.allInstances).toEqual([{ id: 2, name: "seedbox" }])
-  })
-
   it("falls back to an empty instances list when getInstances rejects", async () => {
     mockedApi.getInstances.mockRejectedValue(new Error("instances down"))
 

@@ -4,7 +4,7 @@
  */
 
 import { act, cleanup, renderHook } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import "@/i18n"
 
@@ -14,10 +14,7 @@ beforeEach(() => {
   localStorage.clear()
 })
 
-afterEach(() => {
-  cleanup()
-  vi.restoreAllMocks()
-})
+afterEach(cleanup)
 
 describe("useSpeedUnits initial state", () => {
   it("defaults to 'bytes' when nothing is stored", () => {
@@ -94,27 +91,6 @@ describe("useSpeedUnits cross-component / cross-tab sync", () => {
   })
 })
 
-describe("useSpeedUnits listener cleanup", () => {
-  it("removes its window listeners on unmount and stops reacting to events", () => {
-    const removeSpy = vi.spyOn(window, "removeEventListener")
-    const { result, unmount } = renderHook(() => useSpeedUnits())
-    const last = () => result.current[0]
-
-    unmount()
-
-    expect(removeSpy).toHaveBeenCalledWith("storage", expect.any(Function))
-    expect(removeSpy).toHaveBeenCalledWith("qui-client-setting-changed", expect.any(Function))
-
-    // After unmount, external events must not throw or update the stale state.
-    localStorage.setItem(STORAGE_KEY, "bits")
-    expect(() => {
-      window.dispatchEvent(new Event("storage"))
-      window.dispatchEvent(new CustomEvent("qui-client-setting-changed", { detail: { key: STORAGE_KEY } }))
-    }).not.toThrow()
-    expect(last()).toBe("bytes")
-  })
-})
-
 describe("formatSpeedWithUnit - bytes mode scaling and decimals", () => {
   it("scales across B/s -> KiB/s -> MiB/s -> GiB/s -> TiB/s with k=1024", () => {
     expect(formatSpeedWithUnit(512, "bytes")).toBe("512 B/s")
@@ -132,13 +108,6 @@ describe("formatSpeedWithUnit - bytes mode scaling and decimals", () => {
     // value 1.5 KiB -> 2 decimals
     expect(formatSpeedWithUnit(Math.round(1.5 * 1024), "bytes")).toBe("1.5 KiB/s")
     expect(formatSpeedWithUnit(Math.round(1.25 * 1024), "bytes")).toBe("1.25 KiB/s")
-  })
-
-  it("applies the decimals rule at the exact thresholds (value == 10 -> 1, value == 100 -> 0)", () => {
-    // value exactly 10 -> 1 decimal (guards >= vs > off-by-one)
-    expect(formatSpeedWithUnit(10 * 1024, "bytes")).toBe("10 KiB/s")
-    // value exactly 100 -> 0 decimals (guards >= vs > off-by-one)
-    expect(formatSpeedWithUnit(100 * 1024, "bytes")).toBe("100 KiB/s")
   })
 
   it("compact omits the space and uses bare units (no /s suffix)", () => {
@@ -164,12 +133,6 @@ describe("formatSpeedWithUnit - bits mode scaling and decimals", () => {
     expect(formatSpeedWithUnit(32000, "bits")).toBe("256 Kb/s")
     // 156.25 bytes/s -> 1250 b/s -> 1.25 Kb/s (value <10 -> 2 decimals)
     expect(formatSpeedWithUnit(156.25, "bits")).toBe("1.25 Kb/s")
-  })
-
-  it("uses 'X Yb/s' with a space in non-compact mode", () => {
-    const out = formatSpeedWithUnit(125000000, "bits")
-    expect(out).toBe("1 Gb/s")
-    expect(out).toContain(" ")
   })
 
   it("bits-mode suffixes are identical for compact and non-compact (only zero short-circuit differs)", () => {

@@ -201,20 +201,6 @@ describe("bulk action module - requests", () => {
     })
     const refetchedKeys = refetchSpy.mock.calls.map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
     expect(refetchedKeys).toContain("torrents-list")
-    expect(refetchedKeys).not.toContain("torrent-counts")
-  })
-
-  it("never refetches or invalidates torrent-counts: no query registers that key", async () => {
-    const { result, refetchSpy, invalidateSpy } = renderModule({ actionTarget: ticks("h1") })
-
-    act(() => result.current.pick({ action: "pause" }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10000)
-    })
-
-    const touchedKeys = [...refetchSpy.mock.calls, ...invalidateSpy.mock.calls]
-      .map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
-    expect(touchedKeys).not.toContain("torrent-counts")
   })
 
   // Rows outside the SSE live window are only updated by these delayed

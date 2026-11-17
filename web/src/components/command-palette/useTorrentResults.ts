@@ -172,12 +172,13 @@ export function useTorrentResults(query: string, close: () => void): TorrentResu
       trail: severalInstances && (list === ALL_INSTANCES_ID || !instanceIds) ? torrent.instanceName : undefined,
       note: [getStateLabel(torrent.state, tTorrents), formatBytes(torrent.size), tracker].filter(Boolean).join(" · "),
       copies: describeRow(torrent).copies,
-      // The torrent list opens the details of the torrent that the link names.
+      // The list searches for the typed text, so it shows the rows of the palette, and selects the torrent and scrolls to it.
       run: go(() => navigateWithSearch({
         navigate,
         to: staysOnList ? undefined : listPath,
         search: {
           ...(staysOnList ? routeSearch : {}),
+          q: query,
           torrent: torrent.hash,
           tab: "general",
           ...(onUnifiedList ? { instance: torrent.instanceId } : {}),

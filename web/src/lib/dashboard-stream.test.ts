@@ -6,9 +6,6 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  DASHBOARD_STATS_FALLBACK_ORDER,
-  DASHBOARD_STATS_FALLBACK_SORT,
-  createDashboardStatsFallbackQueryKey,
   hasDashboardStatsPayload,
   mergeDashboardInstanceMeta,
   mergeDashboardStatsSnapshot,
@@ -94,15 +91,6 @@ describe("resolveDashboardTorrentCounts", () => {
 
 describe("shouldUseDashboardStatsFallback", () => {
   it("keeps fallback active when the stream is connected but has no fresh stream stats yet", () => {
-    expect(shouldUseDashboardStatsFallback(true, false)).toBe(true)
-  })
-
-  it("keeps fallback active after reconnect even when cached stats exist", () => {
-    const cachedData = {
-      stats: { totalDownloadSpeed: 1 },
-    }
-
-    expect(hasDashboardStatsPayload(cachedData)).toBe(true)
     expect(shouldUseDashboardStatsFallback(true, false)).toBe(true)
   })
 
@@ -206,17 +194,6 @@ describe("mergeDashboardInstanceMeta", () => {
       hasDecryptionError: true,
       connectionStatus: "disabled",
     })).toBe(instance)
-  })
-})
-
-describe("createDashboardStatsFallbackQueryKey", () => {
-  it("uses the same lightweight scope for stream snapshots and fallback probes", () => {
-    expect(createDashboardStatsFallbackQueryKey(7)).toEqual([
-      "dashboard-stats-fallback",
-      7,
-      DASHBOARD_STATS_FALLBACK_SORT,
-      DASHBOARD_STATS_FALLBACK_ORDER,
-    ])
   })
 })
 

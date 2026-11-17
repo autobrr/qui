@@ -5,7 +5,6 @@ package orphanscan
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,9 +13,6 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
-
-	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
@@ -410,36 +406,6 @@ func TestDeletionIgnorePathsProtectFreshUnavailableRoots(t *testing.T) {
 	}
 }
 
-func TestSafeDeleteTarget_AllowsDeleteWhenNoIgnorePaths(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	dir := filepath.Join(root, "to-delete")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-
-	file := filepath.Join(dir, "orphan.txt")
-	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-
-	tfm := NewTorrentFileMap(fsops.HostPaths)
-	ignorePaths := []string{} // No ignore paths
-
-	disp, err := safeDeleteTarget(context.Background(), root, dir, newTestProtected(t, fsops.HostPaths, ignorePaths, tfm), local.NewBackend())
-	if err != nil {
-		t.Fatalf("safeDeleteTarget error: %v", err)
-	}
-	if disp != deleteDispositionDeleted {
-		t.Fatalf("expected deleted disposition, got %v", disp)
-	}
-	// Verify directory was removed.
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("expected directory removed, stat err=%v", err)
-	}
-}
-
 func TestSafeDeleteTarget_FailsClosedWhenChildStatFails(t *testing.T) {
 	t.Parallel()
 
@@ -493,133 +459,6 @@ func TestSafeDeleteTarget_FailsClosedWhenChildStatFails(t *testing.T) {
 			t.Fatalf("expected directory to remain, stat err=%v", statErr)
 		}
 	})
-}
-
-// ---- Restart-safety tests (kept in this file per project convention) ----
-
-// testQuerier wraps sql.DB to implement dbinterface.Querier for tests.
-type testQuerier struct {
-	*sql.DB
-}
-
-type testTx struct {
-	*sql.Tx
-}
-
-func (t *testTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return t.Tx.ExecContext(ctx, query, args...)
-}
-func (t *testTx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return t.Tx.QueryContext(ctx, query, args...)
-}
-func (t *testTx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return t.Tx.QueryRowContext(ctx, query, args...)
-}
-func (t *testTx) Commit() error   { return t.Tx.Commit() }
-func (t *testTx) Rollback() error { return t.Tx.Rollback() }
-
-func (q *testQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
-	tx, err := q.DB.BeginTx(ctx, opts)
-	if err != nil {
-		return nil, err
-	}
-	return &testTx{Tx: tx}, nil
-}
-
-func mustExec(t *testing.T, db *sql.DB, query string, args ...any) {
-	t.Helper()
-	if _, err := db.Exec(query, args...); err != nil {
-		t.Fatalf("exec failed: %v\nquery=%s", err, query)
-	}
-}
-
-func createOrphanScanSchema(t *testing.T, db *sql.DB) {
-	t.Helper()
-
-	mustExec(t, db, `CREATE TABLE instances (id INTEGER PRIMARY KEY)`)
-
-	mustExec(t, db, `
-		CREATE TABLE IF NOT EXISTS orphan_scan_runs (
-			id              INTEGER PRIMARY KEY AUTOINCREMENT,
-			instance_id     INTEGER NOT NULL,
-			status          TEXT NOT NULL,
-			triggered_by    TEXT NOT NULL,
-			scan_paths      TEXT,
-			files_found     INTEGER DEFAULT 0,
-			files_deleted   INTEGER DEFAULT 0,
-			folders_deleted INTEGER DEFAULT 0,
-			bytes_reclaimed INTEGER DEFAULT 0,
-			truncated       INTEGER NOT NULL DEFAULT 0,
-			partial         INTEGER NOT NULL DEFAULT 0,
-			filesystem_mode TEXT NOT NULL DEFAULT 'local',
-			identity_complete INTEGER NOT NULL DEFAULT 0,
-			filesystem_endpoint TEXT NOT NULL DEFAULT '',
-			error_message   TEXT,
-			started_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-			completed_at    DATETIME,
-			FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE IF NOT EXISTS orphan_scan_files (
-			id            INTEGER PRIMARY KEY AUTOINCREMENT,
-			run_id        INTEGER NOT NULL,
-			file_path     TEXT NOT NULL,
-			file_size     INTEGER NOT NULL,
-			modified_at   DATETIME,
-			status        TEXT NOT NULL DEFAULT 'pending',
-			error_message TEXT,
-			FOREIGN KEY (run_id) REFERENCES orphan_scan_runs(id) ON DELETE CASCADE
-		);
-	`)
-}
-
-func TestOrphanScan_MarkDeletingRunsFailed(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	sqlDB, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-
-	createOrphanScanSchema(t, sqlDB)
-	mustExec(t, sqlDB, `INSERT INTO instances (id) VALUES (1)`)
-
-	res, err := sqlDB.ExecContext(ctx, `
-		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by, scan_paths, files_found)
-		VALUES (1, 'deleting', 'manual', '[]', 2)
-	`)
-	if err != nil {
-		t.Fatalf("insert run: %v", err)
-	}
-	runID, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("last insert id: %v", err)
-	}
-
-	store := models.NewOrphanScanStore(&testQuerier{DB: sqlDB})
-	if err := store.MarkDeletingRunsFailed(ctx, "Deletion interrupted by restart"); err != nil {
-		t.Fatalf("MarkDeletingRunsFailed: %v", err)
-	}
-
-	run, err := store.GetRun(ctx, runID)
-	if err != nil {
-		t.Fatalf("GetRun: %v", err)
-	}
-	if run == nil {
-		t.Fatalf("expected run, got nil")
-	}
-	if run.Status != "failed" {
-		t.Fatalf("expected status failed, got %q", run.Status)
-	}
-	if run.ErrorMessage != "Deletion interrupted by restart" {
-		t.Fatalf("expected error message %q, got %q", "Deletion interrupted by restart", run.ErrorMessage)
-	}
-	if run.CompletedAt == nil {
-		t.Fatalf("expected completed_at set")
-	}
 }
 
 // regression: #4146

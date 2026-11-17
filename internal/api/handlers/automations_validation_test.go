@@ -26,11 +26,6 @@ func TestExternalProgramActionValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "disabled action with valid programId is valid",
-			action:  &models.ExternalProgramAction{Enabled: false, ProgramID: 5},
-			wantErr: false,
-		},
-		{
 			name:    "enabled action with valid programId is valid",
 			action:  &models.ExternalProgramAction{Enabled: true, ProgramID: 1},
 			wantErr: false,

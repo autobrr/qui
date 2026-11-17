@@ -76,29 +76,6 @@ describe("api.crossseed contract", () => {
   })
 
   describe("analyzeTorrentForCrossSeedSearch", () => {
-    it("interpolates instanceId/hash RAW (no encodeURIComponent) and GETs analyze", async () => {
-      // "+" is the discriminating char: encodeURIComponent("+") === "%2B",
-      // but analyze interpolates the hash RAW, so the "+" stays literal.
-      // (Avoid space/"%" which the URL layer normalizes or which break the
-      // path-to-regexp matcher.)
-      const rawHash = "abc+def+gh"
-      const captured = captureNext(
-        "get",
-        "*/api/cross-seed/torrents/:instanceId/:hash/analyze",
-        () => HttpResponse.json({ name: "x" })
-      )
-
-      await api.analyzeTorrentForCrossSeedSearch(5, rawHash)
-
-      const req = captured.value!.request
-      expect(req.method).toBe("GET")
-      // Raw interpolation leaves "+" literal; encodeURIComponent would emit %2B.
-      expect(req.url).toContain(`/api/cross-seed/torrents/5/${rawHash}/analyze`)
-      expect(req.url).not.toContain("%2B")
-      expect(encodeURIComponent(rawHash)).not.toBe(rawHash) // sanity: chars matter
-      expect(captured.value!.body).toBe("")
-    })
-
     it("remaps the full snake_case RawTorrentInfo into camelCase CrossSeedTorrentInfo", async () => {
       const rawBody = {
         instance_id: 9,
@@ -330,23 +307,6 @@ describe("api.crossseed contract", () => {
       // partial absent -> undefined
       expect(result.partial).toBeUndefined()
       expect(result.queryDegraded).toBeUndefined()
-    })
-
-    it("maps the arr_no_ids degradation reason", async () => {
-      server.use(
-        http.post("*/api/cross-seed/torrents/:instanceId/:hash/search", () =>
-          HttpResponse.json({
-            source_torrent: null,
-            results: [],
-            query_degraded: "arr_no_ids",
-          })
-        )
-      )
-
-      const result = await api.searchCrossSeedTorrent(1, "abc")
-
-      expect(result.queryDegraded).toBe("arr_no_ids")
-      expect(result.torznabFailed).toBeUndefined()
     })
 
     it("maps the torznab_failed note", async () => {

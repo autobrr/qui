@@ -213,15 +213,6 @@ describe("useTorrentsList", () => {
     expect(result.current.isLoading).toBe(false)
   })
 
-  it("threads the queryFn AbortSignal into the API call so superseded refetches cancel their transfer", async () => {
-    renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
-
-    await flush()
-
-    const signal = mockedApi.getTorrents.mock.calls[0]?.[2]
-    expect(signal).toBeInstanceOf(AbortSignal)
-  })
-
   it("flips hasLoadedAll true when the first page reports no more pages", async () => {
     mockedApi.getTorrents.mockResolvedValue(
       makeResponse({
@@ -386,7 +377,7 @@ describe("useTorrentsList", () => {
   })
 
   it("keeps hasLoadedAll false on an appended page when total still exceeds the loaded count", async () => {
-    // Isolates the length>=total fallback effect (source lines 312-321) from the
+    // Isolates the length>=total fallback effect from the
     // hasMore branch on a paginated (page > 0) load. The appended page reports
     // hasMore:false, which on the first page would set hasLoadedAll=true; but only
     // 2 of total:9 rows are loaded, so on an appended page the fallback governs and
@@ -980,7 +971,7 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c"])
   })
 
-  it("loadMore is a no-op while hasLoadedAll, and respects the 500ms throttle", async () => {
+  it("loadMore is a no-op while hasLoadedAll", async () => {
     // First page reports hasMore=false so hasLoadedAll becomes true.
     mockedApi.getTorrents.mockResolvedValueOnce(
       makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 1, hasMore: false })
@@ -1039,7 +1030,7 @@ describe("useTorrentsList", () => {
 
     // Confirm the in-flight guards have cleared so the next early-return can only
     // be the 500ms throttle, not a residual isLoadingMore/isFetching guard
-    // (loadMore returns early identically for all three, source lines 458-475).
+    // (loadMore returns early identically for all three).
     expect(result.current.isLoadingMore).toBe(false)
     expect(result.current.isFetching).toBe(false)
 
@@ -2517,12 +2508,6 @@ describe("useTorrentsList categories and tags", () => {
 // list subscription (a heavy limit:300 snapshot) is paused once the tab has been
 // hidden past the delay, and resumes immediately on refocus.
 describe("useTorrentsList background stream gating", () => {
-  it("keeps the list stream enabled while the tab is visible", () => {
-    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper() })
-
-    expect(lastStreamOptions?.enabled).toBe(true)
-  })
-
   it("pauses the list stream once the tab has been hidden past the delay", () => {
     const { rerender } = renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper() })
 

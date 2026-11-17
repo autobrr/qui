@@ -184,8 +184,8 @@ func TestSwitchableWriter_ConcurrentWrite(t *testing.T) {
 	wg.Wait()
 
 	// Verify all lines were captured
-	if hub.Count() != 1000 {
-		t.Errorf("expected 1000 lines, got %d", hub.Count())
+	if got := len(hub.History(0)); got != 1000 {
+		t.Errorf("expected 1000 lines, got %d", got)
 	}
 }
 

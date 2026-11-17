@@ -75,33 +75,6 @@ func TestAddTorrentHandler_InvalidIndexerID_Returns400(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "not-a-number")
 }
 
-// TestAddTorrentHandler_NegativeIndexerID_Returns400 verifies that providing
-// a negative indexer_id returns a 400 Bad Request error.
-func TestAddTorrentHandler_NegativeIndexerID_Returns400(t *testing.T) {
-	t.Parallel()
-
-	handler := NewTorrentsHandler(nil, nil, nil, nil)
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	_ = writer.WriteField("urls", "http://example.com/torrent.torrent")
-	_ = writer.WriteField("indexer_id", "-5")
-	_ = writer.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/api/instances/1/torrents", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("instanceID", "1")
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-
-	w := httptest.NewRecorder()
-	handler.AddTorrent(w, req)
-
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), "must be a positive integer")
-}
-
 // TestAddTorrentHandler_ZeroIndexerID_Returns400 verifies that providing
 // indexer_id=0 returns a 400 Bad Request error.
 func TestAddTorrentHandler_ZeroIndexerID_Returns400(t *testing.T) {

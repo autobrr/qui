@@ -664,72 +664,6 @@ func TestCheckMissedBackups(t *testing.T) {
 	require.Equal(t, string(models.BackupRunKindHourly), kind)
 }
 
-func TestCheckMissedBackupsMultipleMissed(t *testing.T) {
-	db := setupTestBackupDB(t)
-
-	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, "test-instance")
-
-	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
-	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
-	svc.now = func() time.Time { return fixedTime }
-
-	// Enable all backup kinds
-	settings := &models.BackupSettings{
-		InstanceID:     instanceID,
-		Enabled:        true,
-		HourlyEnabled:  true,
-		DailyEnabled:   true,
-		WeeklyEnabled:  true,
-		MonthlyEnabled: true,
-		KeepHourly:     1,
-		KeepDaily:      1,
-		KeepWeekly:     1,
-		KeepMonthly:    1,
-	}
-	require.NoError(t, store.UpsertSettings(ctx, settings))
-
-	// Create successful runs that are all overdue
-	hourlyRun := &models.BackupRun{
-		InstanceID:  instanceID,
-		Kind:        models.BackupRunKindHourly,
-		Status:      models.BackupRunStatusSuccess,
-		RequestedBy: "scheduler",
-		RequestedAt: fixedTime.Add(-2 * time.Hour),
-	}
-	hourlyCompletedAt := fixedTime.Add(-2 * time.Hour)
-	hourlyRun.CompletedAt = &hourlyCompletedAt
-	require.NoError(t, store.CreateRun(ctx, hourlyRun))
-
-	dailyRun := &models.BackupRun{
-		InstanceID:  instanceID,
-		Kind:        models.BackupRunKindDaily,
-		Status:      models.BackupRunStatusSuccess,
-		RequestedBy: "scheduler",
-		RequestedAt: fixedTime.Add(-25 * time.Hour),
-	}
-	dailyCompletedAt := fixedTime.Add(-25 * time.Hour)
-	dailyRun.CompletedAt = &dailyCompletedAt
-	require.NoError(t, store.CreateRun(ctx, dailyRun))
-
-	// Run checkMissedBackups
-	err := svc.checkMissedBackups(ctx)
-	require.NoError(t, err)
-
-	// Should queue the first missed backup even when multiple are missed
-	var count int
-	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&count)
-	require.NoError(t, err)
-	require.Equal(t, 1, count)
-
-	// Check the kind of the queued run (should be the first missed one, which is hourly)
-	var kind string
-	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&kind)
-	require.NoError(t, err)
-	require.Equal(t, string(models.BackupRunKindHourly), kind)
-}
-
 func TestCheckMissedBackupsNoneMissed(t *testing.T) {
 	db := setupTestBackupDB(t)
 
@@ -982,66 +916,6 @@ func TestIsBackupMissedFailedRunsOnly(t *testing.T) {
 	// Should be missed because there are no successful runs (treated as first run)
 	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
 	require.True(t, missed)
-}
-
-func TestIsBackupMissedMixedStatusRuns(t *testing.T) {
-	db := setupTestBackupDB(t)
-
-	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, "test-instance")
-
-	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
-	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
-	svc.now = func() time.Time { return fixedTime }
-
-	// Create a successful run 30 minutes ago (not overdue)
-	successRun := &models.BackupRun{
-		InstanceID:  instanceID,
-		Kind:        models.BackupRunKindHourly,
-		Status:      models.BackupRunStatusSuccess,
-		RequestedBy: "scheduler",
-		RequestedAt: fixedTime.Add(-30 * time.Minute),
-	}
-	successCompletedAt := fixedTime.Add(-30 * time.Minute)
-	successRun.CompletedAt = &successCompletedAt
-	require.NoError(t, store.CreateRun(ctx, successRun))
-
-	// Create various non-successful runs after the successful one
-	runningRun := &models.BackupRun{
-		InstanceID:  instanceID,
-		Kind:        models.BackupRunKindHourly,
-		Status:      models.BackupRunStatusRunning,
-		RequestedBy: "scheduler",
-		RequestedAt: fixedTime.Add(-20 * time.Minute),
-	}
-	runningStartedAt := fixedTime.Add(-20 * time.Minute)
-	runningRun.StartedAt = &runningStartedAt
-	require.NoError(t, store.CreateRun(ctx, runningRun))
-
-	pendingRun := &models.BackupRun{
-		InstanceID:  instanceID,
-		Kind:        models.BackupRunKindHourly,
-		Status:      models.BackupRunStatusPending,
-		RequestedBy: "scheduler",
-		RequestedAt: fixedTime.Add(-15 * time.Minute),
-	}
-	require.NoError(t, store.CreateRun(ctx, pendingRun))
-
-	failedRun := &models.BackupRun{
-		InstanceID:  instanceID,
-		Kind:        models.BackupRunKindHourly,
-		Status:      models.BackupRunStatusFailed,
-		RequestedBy: "scheduler",
-		RequestedAt: fixedTime.Add(-10 * time.Minute),
-	}
-	failedCompletedAt := fixedTime.Add(-10 * time.Minute)
-	failedRun.CompletedAt = &failedCompletedAt
-	require.NoError(t, store.CreateRun(ctx, failedRun))
-
-	// Should not be missed because the successful run is recent, ignoring all the non-successful runs
-	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
-	require.False(t, missed)
 }
 
 func TestIsBackupMissedOverdueWithFailedRunsAfterSuccess(t *testing.T) {

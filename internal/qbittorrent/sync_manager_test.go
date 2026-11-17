@@ -44,24 +44,6 @@ func TestNormalizeConnectionStatus(t *testing.T) {
 	require.Empty(t, NormalizeConnectionStatus(" \t"))
 }
 
-func TestTrackerHealthSupportSurvivesSkippedHydration(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{version: semver.MustParse("2.11.4")}
-
-	trackerHealthSupported := trackerHealthSupportedByClient(client)
-	require.True(t, trackerHealthSupported)
-}
-
-func TestTrackerHealthUnsupportedClientDoesNotHydrate(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{}
-
-	trackerHealthSupported := trackerHealthSupportedByClient(client)
-	require.False(t, trackerHealthSupported)
-}
-
 func TestAddTorrentURLsErrorSummaryDoesNotExposeRawURLs(t *testing.T) {
 	t.Parallel()
 
@@ -2725,13 +2707,6 @@ func TestListTorrentsSummaryOmitsRows(t *testing.T) {
 	require.Equal(t, 7, resp.Stats.TotalDownloadSpeed)
 	require.NotNil(t, resp.Counts)
 	require.Equal(t, 2, resp.Counts.Status["all"])
-}
-
-// A stalled instance must still be visible now that the per-pass start line is
-// gone.
-func TestTrackerHealthRefreshLevel(t *testing.T) {
-	require.Equal(t, zerolog.DebugLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow-time.Millisecond))
-	require.Equal(t, zerolog.WarnLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow))
 }
 
 // Counts accumulate per domain, so one domain must not bleed into the next.

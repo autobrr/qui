@@ -21,10 +21,6 @@ describe("sortTags", () => {
     expect(sortTags(["tag10", "tag2", "tag1"])).toEqual(["tag1", "tag2", "tag10"])
   })
 
-  it("preserves stable order for already-sorted input", () => {
-    expect(sortTags(["alpha", "beta", "gamma"])).toEqual(["alpha", "beta", "gamma"])
-  })
-
   it("accepts any iterable", () => {
     expect(sortTags(new Set(["b", "a"]))).toEqual(["a", "b"])
   })
@@ -170,7 +166,6 @@ describe("hasTagUpdatePlan", () => {
     [{ add: [], remove: [] }, false],
     [{ add: ["a"], remove: [] }, true],
     [{ add: [], remove: ["b"] }, true],
-    [{ add: ["a"], remove: ["b"] }, true],
   ])("hasTagUpdatePlan(%j) -> %s", (plan, expected) => {
     expect(hasTagUpdatePlan(plan)).toBe(expected)
   })

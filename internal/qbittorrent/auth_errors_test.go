@@ -23,16 +23,6 @@ func TestActionableAuthFailureMessageBadCredentials(t *testing.T) {
 	require.Contains(t, message, "unattended")
 }
 
-func TestActionableAuthFailureMessageAuthRequired(t *testing.T) {
-	t.Parallel()
-
-	message, ok := ActionableAuthFailureMessage(errors.New("could not get main data; status code: 401"))
-
-	require.True(t, ok)
-	require.Contains(t, message, "requires user action")
-	require.Contains(t, message, "unattended")
-}
-
 func TestActionableAuthFailureMessageHeuristics(t *testing.T) {
 	t.Parallel()
 

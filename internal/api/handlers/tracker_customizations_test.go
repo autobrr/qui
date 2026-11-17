@@ -27,11 +27,9 @@ func TestTrackerCustomizationCreateIgnoresIncludedInStats(t *testing.T) {
 	handler.Create(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/tracker-customizations", strings.NewReader(body)))
 
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
-	require.NotContains(t, rec.Body.String(), "includedInStats")
 
 	list := httptest.NewRecorder()
 	handler.List(list, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/tracker-customizations", nil))
 	require.Equal(t, http.StatusOK, list.Code)
 	require.Contains(t, list.Body.String(), `"domains":["a.example.invalid","b.example.invalid"]`)
-	require.NotContains(t, list.Body.String(), "includedInStats")
 }

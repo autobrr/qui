@@ -25,10 +25,12 @@ import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useSwipeToClose } from "@/hooks/useSwipeToClose"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
+import { useTorrentListEscape } from "@/hooks/useTorrentListEscape"
 import { api } from "@/lib/api"
 import { isAllInstancesScope, normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
-import { selectionScope } from "@/lib/torrent-selection"
+import { navigateWithSearch } from "@/lib/router-search"
+import { hasSelection, selectionScope } from "@/lib/torrent-selection"
 import { cn } from "@/lib/utils"
 import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts } from "@/types"
 import { useNavigate, useSearch } from "@tanstack/react-router"
@@ -57,7 +59,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const { viewMode } = usePersistedCompactViewState("desktop")
-  const { dispatch: dispatchSelection } = useTorrentSelectionContext()
+  const { selection, dispatch: dispatchSelection } = useTorrentSelectionContext()
   const routeSearch = useSearch({ strict: false }) as { q?: string }
 
   const { instances } = useInstances()
@@ -116,6 +118,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     setSelectedTorrent(null)
   }
   const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
+  // The torrent that a link selected, until the table scrolls to its row.
+  const [revealTorrent, setRevealTorrent] = useState<Torrent | null>(null)
+  const handleRevealDone = useCallback(() => setRevealTorrent(null), [])
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
   const navigate = useNavigate()
@@ -167,7 +172,10 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       selectedTorrent?.hash === search.torrent &&
       (!search.instance || getTorrentInstanceId(selectedTorrent) === search.instance)
     ) {
-      if (!isMobile) clearDeepLinkParams()
+      if (!isMobile) {
+        setRevealTorrent(selectedTorrent)
+        clearDeepLinkParams()
+      }
       return
     }
     let cancelled = false
@@ -213,6 +221,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       }
       if (torrent) {
         setSelectedTorrent(torrent)
+        setRevealTorrent(torrent)
         if (tab) {
           setInitialDetailsTab(tab)
         }
@@ -346,6 +355,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
 
     return left.hash === right.hash && getTorrentInstanceId(left) === getTorrentInstanceId(right)
   }, [getTorrentInstanceId])
+  // A pick of another torrent, or a close of the details, before the row loads drops the scroll.
+  if (revealTorrent && !isSameTorrent(revealTorrent, selectedTorrent)) setRevealTorrent(null)
 
   const handleTorrentSelect = useCallback((torrent: Torrent | null) => {
     // Toggle selection: a click on the selected torrent deselects it
@@ -445,25 +456,19 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }
   }, [detailsPanelReady, detailsPanelRef, selectedTorrent, isMobile])
 
-  // Unified Escape handler: close panel and clear selection atomically
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return
-      if (e.defaultPrevented) return
-
-      // Skip if a dialog is open (dialogs handle their own Escape)
-      if (document.querySelector("[role=\"dialog\"]")) return
-
-      e.preventDefault()
-
-      // Close panel and clear selection in one action
-      setSelectedTorrent(null)
-      dispatchSelection({ type: "clear" })
-    }
-
-    window.addEventListener("keydown", handleEscape)
-    return () => window.removeEventListener("keydown", handleEscape)
+  const clearListSelection = useCallback(() => {
+    setSelectedTorrent(null)
+    dispatchSelection({ type: "clear" })
   }, [dispatchSelection])
+  const clearListSearch = useCallback(() => {
+    navigateWithSearch({ navigate, search: { ...routeSearch, q: undefined }, replace: true })
+  }, [navigate, routeSearch])
+  useTorrentListEscape({
+    hasSelection: selectedTorrent !== null || hasSelection(selection),
+    hasSearch: Boolean(routeSearch?.q),
+    clearSelection: clearListSelection,
+    clearSearch: clearListSearch,
+  })
 
   // Close the mobile filters sheet when viewport switches to desktop layout
   useEffect(() => {
@@ -574,6 +579,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                     filters={filters}
                     selectedTorrent={selectedTorrent}
                     onTorrentSelect={handleTorrentSelect}
+                    revealTorrent={revealTorrent}
+                    onRevealDone={handleRevealDone}
                     addTorrentModalOpen={isAddTorrentModalOpen}
                     onAddTorrentModalChange={handleAddTorrentModalChange}
                     onFilteredDataUpdate={handleFilteredDataUpdate}

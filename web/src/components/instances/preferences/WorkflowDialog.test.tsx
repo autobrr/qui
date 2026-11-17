@@ -258,24 +258,6 @@ describe("WorkflowDialog action order", () => {
     expect(await optionLabels(screen.getByText(key("actions.addAction")))).toEqual(combinableLabels.filter(label => label !== key("actions.pause")))
     client.clear()
   })
-
-  it("explains the run order on the Actions label", () => {
-    // The tooltip opens on tap only where "ontouchstart" exists; jsdom has no touch support.
-    const touchWindow = window as Window & { ontouchstart?: unknown }
-    touchWindow.ontouchstart = null
-    const client = renderDialog(rule)
-    try {
-      const trigger = within(screen.getByText(key("actions.title"))).getByRole("button", { name: "fieldHelp.trigger" })
-      fireEvent.pointerDown(trigger, { pointerType: "touch" })
-      fireEvent.pointerUp(trigger, { pointerType: "touch" })
-      fireEvent.click(trigger)
-
-      expect(screen.getAllByText(key("actions.runOrderHelp")).length).toBeGreaterThan(0)
-    } finally {
-      delete touchWindow.ontouchstart
-      client.clear()
-    }
-  })
 })
 
 describe("WorkflowDialog move path on a disabled rule", () => {

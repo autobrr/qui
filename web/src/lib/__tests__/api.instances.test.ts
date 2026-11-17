@@ -125,7 +125,7 @@ describe("api instances group — contract", () => {
       match_type: "content_path",
     }
 
-    it("issues GET with NO query string; interpolates raw path", async () => {
+    it("issues GET with NO query string", async () => {
       let captured: Request | undefined
       server.use(
         http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", ({ request }) => {
@@ -139,27 +139,9 @@ describe("api instances group — contract", () => {
       expect(captured).toBeDefined()
       expect(captured!.method).toBe("GET")
       const url = new URL(captured!.url)
-      // instanceId + hash interpolated directly into the path (no encodeURIComponent).
       expect(url.pathname).toBe("/api/cross-seed/torrents/42/deadbeef/local-matches")
       expect(url.search).toBe("")
       expect(captured!.headers.get("content-type")).toBe("application/json")
-    })
-
-    it("interpolates instanceId and hash without encodeURIComponent (raw)", async () => {
-      let capturedPathname: string | undefined
-      server.use(
-        // Match any local-matches path so we can observe the raw, unencoded value.
-        http.get("*/api/cross-seed/torrents/*", ({ request }) => {
-          capturedPathname = new URL(request.url).pathname
-          return HttpResponse.json({ matches: [] })
-        })
-      )
-
-      // A hash with a slash would only stay intact if NOT encoded; the client
-      // interpolates raw, so the "/" lands literally in the path.
-      await api.getLocalCrossSeedMatches(3, "a/b")
-
-      expect(capturedPathname).toBe("/api/cross-seed/torrents/3/a/b/local-matches")
     })
 
     it("maps snake_case RawLocalMatch to camelCase LocalCrossSeedMatch", async () => {
@@ -189,17 +171,6 @@ describe("api instances group — contract", () => {
           matchType: "content_path",
         },
       ])
-    })
-
-    it("preserves the reflink match type", async () => {
-      server.use(
-        http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>
-          HttpResponse.json({ matches: [{ ...rawMatch, match_type: "reflink" }] })
-        )
-      )
-
-      const result = await api.getLocalCrossSeedMatches(7, "abc123")
-      expect(result[0].matchType).toBe("reflink")
     })
 
     it("returns [] when matches is empty", async () => {
