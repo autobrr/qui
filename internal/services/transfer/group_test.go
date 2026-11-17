@@ -695,15 +695,18 @@ func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	// The first Transfer stops at its first write. The third Transfer waits
 	// behind the second on the same source, so its first write tells that the
 	// second has ended.
-	copying, release := make(chan struct{}), make(chan struct{})
+	copying, held := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	// Runs before the rig closes the Service, also when the test fails first.
+	t.Cleanup(release)
 	var writes atomic.Int32
 	r.disk.onWrite = func(string) {
 		switch writes.Add(1) {
 		case 1:
 			close(copying)
-			<-release
+			<-held
 		case 2:
-			close(release)
+			release()
 		}
 	}
 	firstID, err := r.svc.Start(t.Context(), r.request(first))
@@ -753,14 +756,17 @@ func TestTransferCountsTheFilesOfATransferThatEndedAfterTheRead(t *testing.T) {
 	// that read answers once the first has ended: the third Transfer waits
 	// behind the first on the same source, so its read tells that.
 	reading, ended := make(chan struct{}), make(chan struct{})
+	read, end := sync.OnceFunc(func() { close(reading) }), sync.OnceFunc(func() { close(ended) })
+	// Runs before the rig closes the Service, also when the test fails first.
+	t.Cleanup(func() { read(); end() })
 	var reads atomic.Int32
 	r.disk.onStatfs = func() {
 		switch reads.Add(1) {
 		case 2:
-			close(reading)
+			read()
 			<-ended
 		case 3:
-			close(ended)
+			end()
 		}
 	}
 	copying := make(chan struct{})

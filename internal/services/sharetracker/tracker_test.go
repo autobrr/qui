@@ -417,6 +417,9 @@ func TestAnAnnounceWithAnOlderTableKeepsTheLockOfANewShare(t *testing.T) {
 	second := client{secret: locked.RecipientSecret, from: "198.51.100.2", port: 6882}
 
 	h := &hold{read: make(chan struct{}), release: make(chan struct{})}
+	release := sync.OnceFunc(func() { close(h.release) })
+	// Runs before the rig stops the tracker, also when the test fails first.
+	t.Cleanup(release)
 	r.shares.hold.Store(h)
 	older := make(chan struct{})
 	go func() {
@@ -428,7 +431,7 @@ func TestAnAnnounceWithAnOlderTableKeepsTheLockOfANewShare(t *testing.T) {
 	r.shares.set(share(), locked)
 	r.announce(lockedOwner, announce{event: "started"})
 	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(first, announce{left: 1000, event: "started"}).peers(t))
-	close(h.release)
+	release()
 	<-older
 
 	r.announce(lockedOwner, announce{})

@@ -801,12 +801,15 @@ func TestTransferQueuesBySource(t *testing.T) {
 	r.seed(first)
 	write(t, filepath.Join(r.srcDir, "Other.Show.S02.720p-GRP"), second.files)
 	r.src.Seed(second.data, r.srcPath())
-	copying, release := make(chan struct{}), make(chan struct{})
+	copying, held := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	// Runs before the rig closes the Service, also when the test fails first.
+	t.Cleanup(release)
 	var once sync.Once
 	r.disk.onWrite = func(string) {
 		once.Do(func() {
 			close(copying)
-			<-release
+			<-held
 		})
 	}
 
@@ -820,7 +823,7 @@ func TestTransferQueuesBySource(t *testing.T) {
 	require.Equal(t, transfer.StateWaiting, waiting.State)
 	_, err = r.svc.Start(t.Context(), r.request(second))
 	require.ErrorIs(t, err, transfer.ErrClaimed, "a waiting Transfer holds its torrent")
-	close(release)
+	release()
 	r.svc.Wait()
 
 	for _, id := range []int64{firstID, secondID} {
