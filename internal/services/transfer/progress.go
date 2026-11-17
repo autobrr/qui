@@ -30,6 +30,9 @@ type meter struct {
 	// samples are the counts of done at most once a second, over the last
 	// speedWindow.
 	samples []sample
+	// moved is the count of done when it last changed, and when. A write
+	// within a second of the last sample leaves its count out of samples.
+	moved sample
 }
 
 type sample struct {
@@ -45,7 +48,7 @@ func (m *meter) set(done, total int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.done, m.total = done, total
-	m.samples = nil
+	m.samples, m.moved = nil, sample{}
 	m.sample()
 }
 
@@ -73,6 +76,9 @@ func (m *meter) add(n int64) {
 
 func (m *meter) sample() {
 	now := m.now()
+	if m.moved.at.IsZero() || m.done != m.moved.done {
+		m.moved = sample{at: now, done: m.done}
+	}
 	if last := len(m.samples) - 1; last < 0 || now.Sub(m.samples[last].at) >= time.Second {
 		m.samples = append(m.samples, sample{at: now, done: m.done})
 	}
@@ -80,8 +86,14 @@ func (m *meter) sample() {
 }
 
 // age drops the samples that the speed at now no longer needs: it keeps the
-// last sample from before the speedWindow and each one after.
+// last sample from before the speedWindow and each one after. When nothing
+// moved over the whole speedWindow, the last count is the only sample, so
+// the speed is 0.
 func (m *meter) age(now time.Time) {
+	if now.Sub(m.moved.at) >= speedWindow {
+		m.samples = append(m.samples[:0], m.moved)
+		return
+	}
 	for len(m.samples) > 1 && now.Sub(m.samples[1].at) >= speedWindow {
 		m.samples = m.samples[1:]
 	}
