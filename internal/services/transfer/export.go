@@ -204,14 +204,18 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		return e.end(ctx, "qui cannot record the Export run: "+err.Error(), false), true
 	}
 	added := e.svc.adder.Add(ctx, e.addRequest(data))
+	if added.Failure != torrentadd.AddRefused {
+		// The target answered the add, so a cancel or a restart during the
+		// wait for the torrent still knows that qui added it.
+		e.rec.Steps = append(e.rec.Steps, Step{Name: stepAdded, At: e.svc.deps.Now()})
+		e.save(context.WithoutCancel(ctx))
+	}
 	switch {
 	case ctx.Err() != nil:
 		return ExportResult{}, false
 	case added.Failure == torrentadd.AddRefused:
 		return e.end(ctx, "Add to target failed: "+added.Err.Error(), false), true
 	}
-	e.rec.Steps = append(e.rec.Steps, Step{Name: stepAdded, At: e.svc.deps.Now()})
-	e.save(ctx)
 	if added.Failure == torrentadd.AfterAddFailed {
 		return e.end(ctx, "Recheck on target failed: "+added.Err.Error(), true), true
 	}

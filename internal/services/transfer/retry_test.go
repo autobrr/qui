@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -153,18 +154,25 @@ func (s stopWrites) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterfa
 }
 
 // regression: #4242
-// Cancel ends an Export run after its add: the torrent comes off the target,
-// and its files stay there. The rule gets the cancel as the result. When qui
-// stops right after the removal, the run ends as cancelled after the restart
-// and adds nothing.
+// Cancel ends an Export run while it waits for the target to list the torrent
+// that it added: the torrent comes off the target, and its files stay there.
+// The rule gets the cancel as the result. When qui stops right after the
+// removal, the run ends as cancelled after the restart and adds nothing.
 func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
-	r := newRig(t, exportPolls)
-	hold := newHoldAt(r.db, "added")
+	r := newRig(t, func(c *transfer.Config) { c.ExportPolls, c.ExportPollInterval = 2, time.Hour })
 	var stopped atomic.Bool
-	r.restartOn(stopWrites{Querier: hold, stopped: &stopped})
+	r.restartOn(stopWrites{Querier: r.db, stopped: &stopped})
 	s := newShow(t, showName)
 	r.seed(s)
 	write(t, filepath.Join(r.dstDir, showName), s.files)
+	r.dst.ListAfterSyncs = 1
+	polled := make(chan struct{})
+	r.dst.OnAdd = func(string) {
+		go func() {
+			<-r.dst.Synced(r.dst.Syncs() + 1)
+			close(polled)
+		}()
+	}
 	r.dst.OnWrite = func(endpoint string) {
 		if endpoint == "torrents/delete" {
 			stopped.Store(true)
@@ -173,7 +181,7 @@ func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
 
 	id, done, err := r.svc.Export(t.Context(), r.exportRequest(s))
 	require.NoError(t, err)
-	<-hold.held
+	<-polled
 	require.True(t, r.dst.Has(s.hash))
 	require.NoError(t, r.svc.Cancel(t.Context(), id))
 	res, ok := <-done
