@@ -7,7 +7,7 @@ A report is triaged by the rules of Discussions triage in `docs/agents/triage.md
 ## Read a report
 
 1. Run `brrbin reports list --status received --json` for the reports to triage. It needs a maintainer sign-in, as "Log links" in `docs/agents/issue-tracker.md` describes.
-2. Run `brrbin reports fetch <id>`. It writes the report JSON, a Markdown summary, the log lines, and the image to the cache folder, and prints the paths. Read every file.
+2. Run `brrbin reports fetch <id>`. It writes the report files to `~/.cache/brrbin/<id>/` and prints the paths. Read every file.
 
 A report holds the facts that triage otherwise asks for: the qui version, the OS, the database, the Log level, each instance's qBittorrent and libtorrent versions and state, the open System notices, the page and browser, the requests that failed, and the log lines of the scope that the reporter picked. A report from "Report this search" also holds the Search breakdown, the Match policy, and the Search scope.
 
@@ -22,16 +22,18 @@ Note what the facts leave out. A log scope of "Warnings and errors", or a Log le
 
 ## Maintainer's OK
 
-These actions run at once:
+These actions need no OK:
 
-- `brrbin reports link <id> <url>` links the report to an issue or a discussion. qui shows "Became issue #N".
-- `brrbin reports close <id> --reason <text>` closes the report. qui shows the reason.
-- `brrbin reports delete <id>` deletes the report and its image.
+- Link the report to an issue or a discussion. qui shows "Became issue #N".
+- Close the report with a reason. qui shows the reason.
+- Delete the report.
+
+brrbin has no command for them yet. Until it has, end the session with a list for the maintainer: each report id, its action, and the issue URL or the close reason. The maintainer applies them.
 
 These actions wait for the maintainer's OK in the session:
 
 - A new issue. Show the maintainer the title, the labels, and the full body. Create the issue only after the OK, then link the report to it.
-- `brrbin reports spam <id>` and `brrbin reports ban <id> --reason <text>`.
+- Mark a report as spam, or ban its Sender.
 
 The decisions in `docs/agents/triage.md` that belong to a human stay with the maintainer: a rejection that is not a mechanical wontfix, an enhancement, and a design question. Give the maintainer the agent brief with its **Why a human:** line, and leave the report Received. After the maintainer decides, apply the action of that decision.
 
@@ -51,7 +53,7 @@ The decisions in `docs/agents/triage.md` that belong to a human stay with the ma
 | An `enhancement`, a deliberate behavior, an intent conflict, or a design question | Leave it to the maintainer, as "Maintainer's OK" describes. |
 | The report holds a secret that the key removal missed | Close with the reason. Draft a `bug` issue for the miss: describe the format of the secret, never its value. Do not delete the report: a delete removes the Report status before qui can show the reason. |
 | An empty or test report | Delete it. |
-| Spam or abuse | Ask the maintainer to approve `spam`, or `ban` for a repeat Sender. |
+| Spam or abuse | Ask the maintainer to mark it as spam, or to ban a repeat Sender. |
 
 ## Close reasons
 
