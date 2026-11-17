@@ -117,12 +117,6 @@ describe("usePathAutocomplete file entries", () => {
     expect(result.current.suggestions).toEqual(["/data/alpha", "/data/alps", "/data/album.flac"])
   })
 
-  it("lists files after the directories when includeFiles is set", () => {
-    const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1, { includeFiles: true }))
-    act(() => result.current.handleInputChange("/data/al"))
-    expect(result.current.suggestions).toEqual(["/data/alpha", "/data/alps", "/data/album.flac"])
-  })
-
   it("selecting a directory appends a separator and keeps the list open", () => {
     const onSelect = vi.fn()
     const { result } = renderHook(() => usePathAutocomplete(onSelect, 1, { includeFiles: true }))

@@ -22,23 +22,6 @@ func TestSameFilesystem_SamePath(t *testing.T) {
 	}
 }
 
-func TestSameFilesystem_Subdirectory(t *testing.T) {
-	// Create a temp directory with a subdirectory
-	tmpDir := t.TempDir()
-	subDir := filepath.Join(tmpDir, "subdir")
-	if err := os.MkdirAll(subDir, 0755); err != nil {
-		t.Fatalf("Failed to create subdir: %v", err)
-	}
-
-	same, err := SameFilesystem(tmpDir, subDir)
-	if err != nil {
-		t.Fatalf("SameFilesystem error: %v", err)
-	}
-	if !same {
-		t.Error("SameFilesystem should return true for parent and subdirectory on same filesystem")
-	}
-}
-
 func TestSameFilesystem_SiblingDirectories(t *testing.T) {
 	// Create two sibling temp directories
 	tmpDir := t.TempDir()

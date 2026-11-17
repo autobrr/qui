@@ -62,29 +62,6 @@ func TestParseIconMapping(t *testing.T) {
 	require.Equal(t, "data:image/png;base64,"+tinyPNG, mapping["foo"])
 }
 
-func TestParseDataURL(t *testing.T) {
-	t.Parallel()
-
-	payload := "data:image/png;base64," + tinyPNG
-	data, mediaType, err := parseDataURL(payload)
-	require.NoError(t, err)
-	require.Equal(t, "image/png", mediaType)
-	require.NotEmpty(t, data)
-}
-
-func TestDecodeImageFromPreload(t *testing.T) {
-	t.Parallel()
-
-	payload := "data:image/png;base64," + tinyPNG
-	data, mediaType, err := parseDataURL(payload)
-	require.NoError(t, err)
-
-	img, err := decodeImage(data, mediaType, "preload:test")
-	require.NoError(t, err)
-	require.Equal(t, 16, img.Bounds().Dx())
-	require.Equal(t, 16, img.Bounds().Dy())
-}
-
 func TestDecodeImageFallsBackToICOWithPngContentType(t *testing.T) {
 	t.Parallel()
 

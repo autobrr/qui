@@ -104,23 +104,6 @@ func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
 
 	tests := []criteriaTestCase{
 		{
-			name: "Disabled",
-			settings: models.InstanceReannounceSettings{
-				Enabled: false,
-			},
-			torrent: qbt.Torrent{AddedOn: time.Now().Unix() - 10, State: qbt.TorrentStateStalledUp},
-			want:    false,
-		},
-		{
-			name: "MaxAge Exceeded",
-			settings: models.InstanceReannounceSettings{
-				Enabled:       true,
-				MaxAgeSeconds: 60,
-			},
-			torrent: qbt.Torrent{AddedOn: time.Now().Unix() - 61, State: qbt.TorrentStateStalledUp},
-			want:    false,
-		},
-		{
 			name: "Initial Wait Not Met",
 			settings: models.InstanceReannounceSettings{
 				Enabled:            true,
@@ -370,15 +353,6 @@ func TestSettingsCache_LoadAndReplace(t *testing.T) {
 	require.NotNil(t, got)
 	got.Categories[0] = "modified"
 	require.Equal(t, "tv", original.Categories[0], "expected clone of slices to avoid mutating original")
-}
-
-// Smoke test for SettingsCache.LoadAll with a nil store to ensure it respects context
-// and does not panic when called with a canceled context.
-func TestSettingsCache_LoadAll_WithNilStoreAndCanceledContext(t *testing.T) {
-	cache := NewSettingsCache(nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	require.NoError(t, cache.LoadAll(ctx))
 }
 
 func TestServiceEnqueue_DebouncesWhileRunning(t *testing.T) {

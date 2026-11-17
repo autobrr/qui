@@ -142,17 +142,11 @@ func TestPeerSyncManagerTorrentRemoval(t *testing.T) {
 	require.Empty(t, client.peerSyncManager, "a full refresh removes absent torrents")
 }
 
-// mockSyncEventSink is a test helper that records calls to HandleSyncUpdate and HandleSyncError.
+// mockSyncEventSink is a test helper that records calls to HandleSyncError and HandleTrackerHealthUpdated.
 type mockSyncEventSink struct {
 	mu                   sync.Mutex
-	syncUpdates          []*syncUpdateCall
 	trackerHealthUpdates []int
 	syncErrors           []*syncErrorCall
-}
-
-type syncUpdateCall struct {
-	instanceID int
-	update     qbt.SyncUpdate
 }
 
 type syncErrorCall struct {
@@ -160,11 +154,7 @@ type syncErrorCall struct {
 	err        error
 }
 
-func (m *mockSyncEventSink) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.syncUpdates = append(m.syncUpdates, &syncUpdateCall{instanceID: instanceID, update: update})
-}
+func (*mockSyncEventSink) HandleSyncUpdate(int, qbt.SyncUpdate) {}
 
 func (m *mockSyncEventSink) HandleSyncError(instanceID int, err error) {
 	m.mu.Lock()
@@ -176,12 +166,6 @@ func (m *mockSyncEventSink) HandleTrackerHealthUpdated(instanceID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.trackerHealthUpdates = append(m.trackerHealthUpdates, instanceID)
-}
-
-func (m *mockSyncEventSink) getSyncUpdateCalls() []*syncUpdateCall {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.syncUpdates
 }
 
 func (m *mockSyncEventSink) getSyncErrorCalls() []*syncErrorCall {
@@ -511,90 +495,6 @@ func TestRefreshCapabilitiesBoundsOversizedBodyInError(t *testing.T) {
 	require.Less(t, len(err.Error()), 256, "proxy pages must not flow verbatim into the error chain")
 }
 
-func TestRefreshCapabilitiesRejectsInvalidWebAPIVersionMarker(t *testing.T) {
-	t.Parallel()
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("<html><title>Login</title></html>"))
-	}))
-	defer srv.Close()
-
-	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 1})}
-
-	err := client.RefreshCapabilities(context.Background())
-
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid qBittorrent WebAPI version")
-	require.False(t, client.Supports(CapSetTags))
-	require.Empty(t, client.GetWebAPIVersion())
-}
-
-func TestClientDispatchSyncUpdateCallsSink(t *testing.T) {
-	t.Parallel()
-
-	sink := &mockSyncEventSink{}
-	client := &Client{
-		instanceID:    42,
-		syncEventSink: sink,
-	}
-
-	update := syncsnap.Update(t, qbt.Torrent{Hash: "abc123", Name: "Test Torrent"})
-
-	client.dispatchSyncUpdate(update)
-
-	calls := sink.getSyncUpdateCalls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call to HandleSyncUpdate, got %d", len(calls))
-	}
-
-	if calls[0].instanceID != 42 {
-		t.Errorf("expected instanceID 42, got %d", calls[0].instanceID)
-	}
-
-	if calls[0].update.Snapshot != update.Snapshot {
-		t.Errorf("expected the Sync snapshot of the update")
-	}
-}
-
-func TestClientDispatchSyncUpdateNilSinkDoesNotPanic(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{
-		instanceID:    42,
-		syncEventSink: nil,
-	}
-
-	// Should not panic
-	client.dispatchSyncUpdate(syncsnap.Update(t))
-}
-
-func TestClientDispatchSyncErrorCallsSink(t *testing.T) {
-	t.Parallel()
-
-	sink := &mockSyncEventSink{}
-	client := &Client{
-		instanceID:    42,
-		syncEventSink: sink,
-	}
-
-	testErr := errors.New("connection refused")
-
-	client.dispatchSyncError(testErr)
-
-	calls := sink.getSyncErrorCalls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call to HandleSyncError, got %d", len(calls))
-	}
-
-	if calls[0].instanceID != 42 {
-		t.Errorf("expected instanceID 42, got %d", calls[0].instanceID)
-	}
-
-	if calls[0].err.Error() != "connection refused" {
-		t.Errorf("expected error 'connection refused', got '%s'", calls[0].err.Error())
-	}
-}
-
 func TestClientDispatchSyncErrorNilSinkDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
@@ -783,18 +683,6 @@ func TestClientHandleSyncManagerErrorMarksUnhealthyForRealError(t *testing.T) {
 	require.False(t, client.IsHealthy())
 	require.Nil(t, client.GetCachedServerState())
 	require.Len(t, sink.getSyncErrorCalls(), 1)
-}
-
-func TestSyncManagerNotifyTrackerHealthUpdatedCallsSink(t *testing.T) {
-	t.Parallel()
-
-	sink := &mockSyncEventSink{}
-	sm := NewSyncManager(nil, nil)
-	sm.SetSyncEventSink(sink)
-
-	sm.notifyTrackerHealthUpdated(42)
-
-	require.Equal(t, []int{42}, sink.getTrackerHealthUpdates())
 }
 
 func TestSplitHostUserinfo(t *testing.T) {

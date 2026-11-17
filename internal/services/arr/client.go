@@ -32,7 +32,6 @@ type Client struct {
 	basicUser    string
 	basicPass    string
 	httpClient   *http.Client
-	timeout      time.Duration
 }
 
 // NewClient creates a new ARR API client
@@ -51,7 +50,6 @@ func NewClient(baseURL, apiKey string, basicUsername, basicPassword *string, ins
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		timeout: timeout,
 	}
 }
 

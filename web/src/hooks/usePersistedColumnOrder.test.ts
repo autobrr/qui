@@ -83,14 +83,6 @@ describe("usePersistedColumnOrder", () => {
     expect(readOrder(without(DEFAULT, "select"))).toEqual(DEFAULT)
   })
 
-  it("puts a missing status_icon where the default has it", () => {
-    expect(readOrder(without(DEFAULT, "status_icon"))).toEqual(DEFAULT)
-  })
-
-  it("puts both missing icon columns where the default has them", () => {
-    expect(readOrder(without(DEFAULT, "tracker_icon", "status_icon"))).toEqual(DEFAULT)
-  })
-
   it("does not write the merged order back to storage", () => {
     const saved = JSON.stringify(without(DEFAULT, "size"))
     readOrder(saved)

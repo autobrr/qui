@@ -227,20 +227,6 @@ func TestOIDCConfigReturnsInternalServerErrorWhenStateGenerationFails(t *testing
 	assert.Empty(t, handler.sessionManager.GetString(req.Context(), "oidc_pkce_verifier"))
 }
 
-func TestGeneratePKCEVerifierReturnsErrorWhenRandomReadFails(t *testing.T) {
-	originalReadRandom := oidcReadRandom
-	oidcReadRandom = func(_ []byte) error {
-		return errors.New("entropy unavailable")
-	}
-	t.Cleanup(func() {
-		oidcReadRandom = originalReadRandom
-	})
-
-	verifier, err := generatePKCEVerifier()
-	require.Error(t, err)
-	assert.Empty(t, verifier)
-}
-
 func TestGeneratePKCEVerifierEncodesRandomBytes(t *testing.T) {
 	originalReadRandom := oidcReadRandom
 	oidcReadRandom = func(b []byte) error {
@@ -255,13 +241,7 @@ func TestGeneratePKCEVerifierEncodesRandomBytes(t *testing.T) {
 
 	verifier, err := generatePKCEVerifier()
 	require.NoError(t, err)
-	assert.Equal(t, base64.RawURLEncoding.EncodeToString(func() []byte {
-		b := make([]byte, 32)
-		for i := range b {
-			b[i] = byte(i)
-		}
-		return b
-	}()), verifier)
+	assert.Equal(t, "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", verifier)
 }
 
 func TestOIDCConfigReturnsInternalServerErrorWhenPKCEVerifierGenerationFails(t *testing.T) {

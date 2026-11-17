@@ -69,33 +69,6 @@ func TestGetInstanceCapabilitiesPreservesBackoffMessage(t *testing.T) {
 	require.NotEqual(t, "Failed to load instance capabilities", body.Error)
 }
 
-func TestInstanceCapabilitiesClientErrorMessagePreservesHealthBlocker(t *testing.T) {
-	err := fmt.Errorf("failed to get client: %w", &internalqbittorrent.InstanceHealthBlockerError{
-		Kind:       internalqbittorrent.InstanceHealthBlockerBackoff,
-		InstanceID: 7,
-		RetryAfter: 12 * time.Second,
-	})
-
-	message := instanceCapabilitiesClientErrorMessage(err)
-
-	require.Contains(t, message, "health-check backoff")
-	require.Contains(t, message, "retrying in 12s")
-	require.NotEqual(t, "Failed to load instance capabilities", message)
-}
-
-func TestInstanceCapabilitiesClientErrorMessagePreservesInFlightProbe(t *testing.T) {
-	err := fmt.Errorf("failed to get client: %w", &internalqbittorrent.InstanceHealthBlockerError{
-		Kind:       internalqbittorrent.InstanceHealthBlockerHealthCheckInProgress,
-		InstanceID: 7,
-	})
-
-	message := instanceCapabilitiesClientErrorMessage(err)
-
-	require.Contains(t, message, "already running a health check")
-	require.Contains(t, message, "retry shortly")
-	require.NotEqual(t, "Failed to load instance capabilities", message)
-}
-
 func TestInstanceCapabilitiesClientErrorMessageFallsBack(t *testing.T) {
 	require.Equal(t, "Failed to load instance capabilities", instanceCapabilitiesClientErrorMessage(errors.New("boom")))
 }

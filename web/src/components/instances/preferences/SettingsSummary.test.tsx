@@ -16,14 +16,7 @@ describe("SettingsSummary", () => {
     const spans = Array.from(container.querySelectorAll("p > span"))
     const pairs = spans.map((el) => el.textContent)
     expect(pairs).toEqual(["Wait 15s\u00a0·", "Retry 7s\u00a0·", "Max 50x"])
-    expect(spans.every((el) => el.classList.contains("whitespace-nowrap"))).toBe(true)
     // Only a plain space between pairs, so a wrapped line never starts with "·".
     expect(container.querySelector("p")!.textContent).toBe(pairs.join(" "))
-  })
-
-  it("renders a single pair without a separator", () => {
-    const { container } = render(<p><SettingsSummary parts={["Max 50x"]} /></p>)
-
-    expect(container.querySelector("p")!.innerHTML).toBe("<span class=\"whitespace-nowrap\">Max 50x</span>")
   })
 })

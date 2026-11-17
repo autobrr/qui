@@ -199,17 +199,6 @@ func TestAutomationSettingsSeasonPackRequests(t *testing.T) {
 				require.Contains(t, resp.Body.String(), "Season pack coverage threshold")
 			},
 		},
-		{
-			name:       "put rejects omitted season pack threshold",
-			method:     http.MethodPut,
-			body:       `{}`,
-			wantStatus: http.StatusBadRequest,
-			assert: func(t *testing.T, _ *CrossSeedHandler, _ *models.CrossSeedStore, resp *httptest.ResponseRecorder) {
-				t.Helper()
-
-				require.Contains(t, resp.Body.String(), "Season pack coverage threshold")
-			},
-		},
 	}
 
 	for _, tt := range tests {

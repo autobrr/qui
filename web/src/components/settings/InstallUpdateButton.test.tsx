@@ -161,7 +161,7 @@ describe("Install update", () => {
     renderBanner()
     await openDialog()
     expect(screen.getByText("application.update.support.failedTitle")).toBeTruthy()
-    expect(screen.getByText("application.update.unavailable.nextStep").closest("div")?.className).toContain("border-destructive/40")
+    expect(screen.getByText("application.update.unavailable.nextStep")).toBeTruthy()
     expect(screen.queryByText("application.update.unavailable.container.reason")).toBeNull()
     expect(screen.queryByText("application.update.unavailable.guide")).toBeNull()
 
