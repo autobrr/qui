@@ -95,7 +95,7 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
     return <ShareResult response={mutation.data} torrents={torrents} onClose={onClose} />
   }
 
-  const refusedResponse = mutation.error instanceof APIError ? (mutation.error.data as StartSharesResponse | undefined) : undefined
+  const refused = mutation.error instanceof APIError ? (mutation.error.data as Partial<StartSharesResponse> | undefined)?.refused : undefined
 
   return (
     <>
@@ -122,7 +122,7 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
           <Alert variant="destructive">
             <AlertDescription>
               {mutation.error.message}
-              {refusedResponse && refusedResponse.refused.length > 1 && <RefusedList refused={refusedResponse.refused} torrents={torrents} />}
+              {Array.isArray(refused) && refused.length > 1 && <RefusedList refused={refused} torrents={torrents} />}
             </AlertDescription>
           </Alert>
         )}

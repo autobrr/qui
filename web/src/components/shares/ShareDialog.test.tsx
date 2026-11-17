@@ -168,6 +168,17 @@ describe("ShareDialog", () => {
     expect(screen.getByRole("button", { name: "Create" })).not.toBeNull()
   })
 
+  // regression: #4242
+  it("shows the error of a request that qui cannot read, and stays on the form", async () => {
+    server.use(http.post("*/api/shares", () => HttpResponse.json({ error: "Invalid request body" }, { status: 400 })))
+    renderDialog()
+    fireEvent.change(await screen.findByLabelText("Days until a Share ends"), { target: { value: "1.5" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Invalid request body")
+    expect(screen.getByRole("button", { name: "Create" })).not.toBeNull()
+  })
+
   it("makes one Share for each torrent and names the torrents that qui refused", async () => {
     const other = { hash: "bbbb2222", name: "Example.Show.S01.1080p.WEB-DL-GRP" }
     server.use(
