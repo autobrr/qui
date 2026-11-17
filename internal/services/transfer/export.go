@@ -291,7 +291,7 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 	event := log.Info()
 	if reason == "" {
 		e.logf("Done.")
-		e.finish(ctx, StateDone)
+		_ = e.finish(ctx, StateDone)
 	} else {
 		event = log.Warn().Str("reason", reason)
 		e.rec.FailureReason = reason
@@ -307,7 +307,7 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 		} else {
 			e.logf("Failed: %s", reason)
 		}
-		e.finish(ctx, StateFailed)
+		_ = e.finish(ctx, StateFailed)
 	}
 	event.Int64("transfer", e.rec.ID).Int("rule", *e.rec.RuleID).Int("source", e.rec.SourceInstanceID).
 		Int("target", m.TargetInstanceID).Str("hash", m.Hash).Msg("transfer: the Export run ended")
@@ -329,7 +329,7 @@ func (e *exportJob) cancel(ctx context.Context) ExportResult {
 	if e.reached(stepAdded) {
 		e.removeFromTarget(ctx)
 	}
-	e.finish(ctx, StateCancelled)
+	_ = e.finish(ctx, StateCancelled)
 	log.Info().Int64("transfer", e.rec.ID).Int("rule", *e.rec.RuleID).Msg("transfer: the Export run was cancelled")
 	return ExportResult{Failure: "Cancelled."}
 }
