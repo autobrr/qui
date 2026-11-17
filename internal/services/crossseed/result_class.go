@@ -54,9 +54,9 @@ var resultClasses = map[string]ResultClass{
 	crossSeedCannotSeeStatus:           ClassFailed,
 }
 
-// classOf reads the Result class of a status from the table. A status with no
+// ClassOf reads the Result class of a status from the table. A status with no
 // entry is failed, so a forgotten entry shows the user a failure and not silence.
-func classOf(status string) ResultClass {
+func ClassOf(status string) ResultClass {
 	if class, ok := resultClasses[status]; ok {
 		return class
 	}
@@ -64,7 +64,7 @@ func classOf(status string) ResultClass {
 }
 
 func (r InstanceCrossSeedResult) class() ResultClass {
-	return classOf(r.Status)
+	return ClassOf(r.Status)
 }
 
 // Class is the Result class of a Pre-add check refusal or of an add. An add
@@ -72,7 +72,7 @@ func (r InstanceCrossSeedResult) class() ResultClass {
 func (r AddResult) Class() ResultClass {
 	switch r.Outcome {
 	case AddRefused:
-		return classOf(r.Status)
+		return ClassOf(r.Status)
 	case AddLeftPaused:
 		return ClassStranded
 	default:

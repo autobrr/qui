@@ -68,9 +68,9 @@ type crossSeeds struct {
 	// strand is the status of an add that leaves the torrent on the
 	// Cross-seed instance, and reports no success.
 	strand string
-	// taken: another client adds the torrent to the Cross-seed instance
-	// just before the add, which then reports exists.
-	taken bool
+	// taken is the status of an add that another client beats: it adds the
+	// torrent to the Cross-seed instance just before the add.
+	taken string
 }
 
 // withCrossSeedInstance gives the target a Cross-seed instance.
@@ -100,10 +100,10 @@ func (c *crossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequ
 	if err != nil {
 		return nil, err
 	}
-	if c.taken {
+	if c.taken != "" {
 		c.stub.Seed(data, c.dir)
 		return &crossseed.CrossSeedResponse{Results: []crossseed.InstanceCrossSeedResult{
-			{InstanceID: matchedOn, Status: crossseed.StatusExists, Message: "Torrent already exists in this instance"},
+			{InstanceID: matchedOn, Status: c.taken, CrossSeedInstanceID: c.inst.ID},
 		}}, nil
 	}
 	matched, err := c.r.sync.GetTorrentRefsFresh(ctx, matchedOn, qbittorrent.TorrentRefFilter{Hashes: []string{req.ManualTargetHash}})
@@ -286,28 +286,33 @@ func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
 
 // A member that another client adds to the Cross-seed instance just before
 // the cross-seed add stays someone else's: the Transfer stops, and qui keeps
-// that torrent.
+// that torrent. The add reports exists when the other client came before its
+// own check, and a failed add when it came after.
 // regression: #4231
 func TestTransferKeepsACrossSeedThatSomeoneElseAdded(t *testing.T) {
-	r := newRig(t)
-	cs := r.withCrossSeedInstance()
-	cs.taken = true
-	s := newShow(t, showName)
-	r.seed(s)
-	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcPath())
-	r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
-	r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
+	for _, status := range []string{crossseed.StatusExists, "hardlink_error"} {
+		t.Run(status, func(t *testing.T) {
+			r := newRig(t)
+			cs := r.withCrossSeedInstance()
+			cs.taken = status
+			s := newShow(t, showName)
+			r.seed(s)
+			crossSeed, crossSeedHash := crossSeedOf(t, s)
+			r.src.Seed(crossSeed, r.srcPath())
+			r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
+			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
 
-	record := r.run(r.request(s))
+			record := r.run(r.request(s))
 
-	require.Equal(t, transfer.StateFailed, record.State)
-	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
-	require.Contains(t, record.FailureReason, "Ownership unknown: homelab cross-seed has "+showName)
-	require.True(t, cs.stub.Has(s.hash), "qui keeps the torrent that it did not add")
-	require.Zero(t, cs.stub.Writes("torrents/delete"))
-	require.True(t, r.seeding(r.source.ID, s.hash))
-	require.True(t, r.seeding(r.source.ID, crossSeedHash))
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Equal(t, transfer.FailurePermanent, record.FailureClass, record.FailureReason)
+			require.Contains(t, record.FailureReason, "Ownership unknown: homelab cross-seed has "+showName)
+			require.True(t, cs.stub.Has(s.hash), "qui keeps the torrent that it did not add")
+			require.Zero(t, cs.stub.Writes("torrents/delete"))
+			require.True(t, r.seeding(r.source.ID, s.hash))
+			require.True(t, r.seeding(r.source.ID, crossSeedHash))
+		})
+	}
 }
 
 // A group whose torrents hold other files goes whole to the target, also
