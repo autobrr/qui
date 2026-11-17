@@ -491,11 +491,14 @@ func (r *rig) moveCrossSeed(cs *crossSeeds, s show) *qbtstub.Server {
 
 // restartWithNewClients starts qui again with a new pool of clients. The API
 // drops the client of an instance that it updates, and a new pool does the
-// same here.
-func (r *rig) restartWithNewClients() {
+// same here. edit changes the dependencies before the start.
+func (r *rig) restartWithNewClients(edit ...func(*transfer.Deps)) {
 	r.t.Helper()
 	deps, _, sync := wire(r.t, r.db, r.disk, r.now)
 	deps.Routes, deps.CrossSeeds, deps.Config = r.deps.Routes, r.deps.CrossSeeds, r.deps.Config
+	for _, e := range edit {
+		e(&deps)
+	}
 	r.deps, r.sync = deps, sync
 	r.restart()
 }

@@ -134,7 +134,14 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		return e.end(ctx, e.rec.FailureReason, true), true
 	}
 	m := e.member()
-	if target, err := e.svc.deps.Instances.Get(ctx, m.TargetInstanceID); err == nil && e.targetMoved(target) {
+	target, err := e.svc.deps.Instances.Get(ctx, m.TargetInstanceID)
+	switch {
+	case ctx.Err() != nil:
+		return ExportResult{}, false
+	case err != nil:
+		return e.end(ctx, fmt.Sprintf("qui cannot read instance %d, so it adds nothing there and removes nothing from it: %v",
+			m.TargetInstanceID, err), false), true
+	case e.targetMoved(target):
 		return e.end(ctx, target.Name+" changed its address, so qui adds nothing there and removes nothing from it.", false), true
 	}
 	if e.reached(stepAdd) {
