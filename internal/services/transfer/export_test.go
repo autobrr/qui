@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -244,18 +245,30 @@ func TestExportRunsFiveAtATimeOutsideTheTransferQueue(t *testing.T) {
 
 // qui ends at each step of an Export run that it records, and at the add.
 // After the restart, the run adds the torrent once and checks it on the
-// target, or finishes its cleanup. A second restart sends nothing.
+// target, or finishes its cleanup. A failed torrent whose add did not
+// answer stays on the target, because qui cannot tell who added it. A
+// second restart sends nothing.
 func TestExportResumesAfterACrash(t *testing.T) {
 	for _, tc := range []struct {
 		at        string
 		killAtAdd bool
 		// missing leaves the files off the target.
 		missing bool
-		want    transfer.State
+		// recheckFails makes the add paused, with a check, and makes the
+		// recheck after the restart fail.
+		recheckFails bool
+		want         transfer.State
+		// kept, when set, is a part of the failure reason of a run that
+		// keeps the failed torrent on the target.
+		kept string
 	}{
 		{at: "after:add", want: transfer.StateDone},
 		{killAtAdd: true, want: transfer.StateDone},
-		{killAtAdd: true, missing: true, want: transfer.StateFailed},
+		// regression: #4231
+		{killAtAdd: true, missing: true, want: transfer.StateFailed, kept: "Files missing on target instance"},
+		// regression: #4231
+		{killAtAdd: true, recheckFails: true, want: transfer.StateFailed, kept: "Recheck on target failed"},
+		{at: "after:added", missing: true, want: transfer.StateFailed},
 		{at: "after:clean up", missing: true, want: transfer.StateFailed},
 		{at: "after:done", want: transfer.StateDone},
 	} {
@@ -266,6 +279,9 @@ func TestExportResumesAfterACrash(t *testing.T) {
 		if tc.missing {
 			name += ", files missing"
 		}
+		if tc.recheckFails {
+			name += ", the recheck fails"
+		}
 		t.Run(name, func(t *testing.T) {
 			r := newRig(t, exportPolls)
 			s := newShow(t, showName)
@@ -274,6 +290,9 @@ func TestExportResumesAfterACrash(t *testing.T) {
 				write(t, filepath.Join(r.dstDir, showName), s.files)
 			}
 			req := r.exportRequest(s)
+			if tc.recheckFails {
+				req.Paused, req.SkipChecking = true, false
+			}
 			child := make(chan *os.Process, 1)
 			r.dst.OnAdd = func(string) {
 				if tc.killAtAdd {
@@ -281,6 +300,14 @@ func TestExportResumesAfterACrash(t *testing.T) {
 				}
 			}
 			runCrashChild(t, crash{DB: r.dbPath, Export: &req, At: tc.at}, child, tc.killAtAdd)
+			if tc.recheckFails {
+				r.dst.OnWrite = func(endpoint string) {
+					r.dst.Reject = 0
+					if endpoint == "torrents/recheck" {
+						r.dst.Reject = http.StatusInternalServerError
+					}
+				}
+			}
 
 			r.restart()
 			r.svc.Wait()
@@ -291,9 +318,16 @@ func TestExportResumesAfterACrash(t *testing.T) {
 			require.False(t, record.FinishedAt.IsZero(), "the Export run ended after the restart")
 			require.Equal(t, tc.want, record.State, record.FailureReason)
 			require.Equal(t, 1, r.dst.Writes("torrents/add"), "qui adds the torrent once")
-			if tc.want == transfer.StateDone {
+			switch {
+			case tc.want == transfer.StateDone:
 				require.True(t, r.seeding(r.target.ID, s.hash))
-			} else {
+			case tc.kept != "":
+				require.Contains(t, record.FailureReason, "Ownership unknown")
+				require.Contains(t, record.FailureReason, tc.kept)
+				require.True(t, r.dst.Has(s.hash), "qui keeps the torrent that it may not have added")
+				require.Zero(t, r.dst.Writes("torrents/delete"))
+				require.Zero(t, countSteps(record, "clean up"))
+			default:
 				require.Equal(t, "Files missing on target instance (savePath: "+r.dstDir+")", record.FailureReason)
 				require.False(t, r.dst.Has(s.hash), "qui takes the failed torrent off the target")
 				require.Equal(t, 1, r.dst.Writes("torrents/delete"))

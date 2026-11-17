@@ -151,14 +151,14 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 				case ctx.Err() != nil:
 					return ExportResult{}, false
 				case err != nil:
-					return e.end(ctx, "Recheck on target failed: "+err.Error(), true), true
+					return e.endResumed(ctx, "Recheck on target failed: "+err.Error()), true
 				}
 			}
 			added := e.svc.adder.Confirm(ctx, req)
 			if ctx.Err() != nil {
 				return ExportResult{}, false
 			}
-			return e.end(ctx, e.verify(ctx, added), true), true
+			return e.endResumed(ctx, e.verify(ctx, added)), true
 		}
 		e.logf("Resumed: the add did not reach the target, so qui adds the torrent again.")
 	}
@@ -191,10 +191,24 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		return ExportResult{}, false
 	case added.Failure == torrentadd.AddRefused:
 		return e.end(ctx, "Add to target failed: "+added.Err.Error(), false), true
-	case added.Failure == torrentadd.AfterAddFailed:
+	}
+	e.rec.Steps = append(e.rec.Steps, Step{Name: stepAdded, At: e.svc.deps.Now()})
+	e.save(ctx)
+	if added.Failure == torrentadd.AfterAddFailed {
 		return e.end(ctx, "Recheck on target failed: "+added.Err.Error(), true), true
 	}
 	return e.end(ctx, e.verify(ctx, added), true), true
+}
+
+// endResumed ends a resumed run that found the torrent on the target. When
+// the add did not answer, the torrent may be the user's, and qui keeps it
+// after a failed check.
+func (e *exportJob) endResumed(ctx context.Context, reason string) ExportResult {
+	if reason == "" || e.reached(stepAdded) {
+		return e.end(ctx, reason, true)
+	}
+	return e.end(ctx, "Ownership unknown: the target has the torrent, but its add did not answer, so qui cannot tell "+
+		"who added it, and keeps it there. "+reason, false)
 }
 
 func (e *exportJob) addRequest(data []byte) torrentadd.Request {
