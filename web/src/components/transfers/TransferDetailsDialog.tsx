@@ -32,12 +32,10 @@ interface TransferDetailsDialogProps {
   onClose: () => void
 }
 
-/** The Details dialog: the facts, the torrents, the steps, and the log of one Transfer or Export run. */
 export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDialogProps) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
   const display = useIncognitoDisplay()
-  // A phone, and a phone turned sideways, show the tabs above the content, as Settings shows its menu first.
   const mobile = useIsMobile()
   const sideways = useMediaQuery(SIDEWAYS_PHONE_QUERY)
   const phone = mobile || sideways
@@ -69,7 +67,7 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
         A fixed height, so that the dialog keeps its size while it loads and from tab to tab. The top stays in place, as
         in the Add torrent dialog.
       */}
-      <DialogContent className="flex h-[min(38rem,90dvh)] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:h-[min(38rem,85dvh)] sm:max-w-2xl lg:max-w-4xl">
+      <DialogContent className="flex h-[min(38rem,90dvh)] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:h-[min(32rem,85dvh)] sm:max-w-2xl lg:max-w-4xl">
         <DialogHeader className="space-y-0 border-b px-6 pt-5 pb-4 pr-12 text-left max-md:px-4 max-md:pr-12">
           <DialogTitle>{t(data?.kind === "export" ? "details.exportTitle" : "details.title")}</DialogTitle>
           <DialogDescription className="line-clamp-2 break-all" title={data ? display.name(data) : undefined}>
@@ -84,7 +82,6 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
           )}
         </DialogHeader>
 
-        {/* The last details stay when a refresh fails, so the dialog says that they can be old. */}
         {data && detail.isRefetchError && (
           <p role="status" className="flex shrink-0 items-start gap-1.5 border-b bg-amber-500/10 px-6 py-2 text-xs text-amber-700 max-md:px-4 dark:text-amber-400">
             <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden="true" />
@@ -100,14 +97,12 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
             className={cn("min-h-0 flex-1", phone ? "flex-col" : "flex-row")}
           >
             {phone ? (
-              // A narrow phone scrolls the tabs sideways when their labels do not fit.
               <div className="shrink-0 overflow-x-auto border-b px-4 py-3">
                 <TabsList aria-label={t("details.sections")} className="w-max min-w-full">
                   {tabs.map(tab => <TabsTrigger key={tab} value={tab} className="px-2.5">{label(tab)}</TabsTrigger>)}
                 </TabsList>
               </div>
             ) : (
-              // The side menu of Settings, in the dialog.
               <TabsPrimitive.List aria-label={t("details.sections")} className="flex w-44 shrink-0 flex-col gap-1 border-r p-3">
                 {tabs.map(tab => (
                   <TabsTrigger
@@ -228,7 +223,6 @@ function TorrentRow({ member, crossSeed }: { member: TransferMember; crossSeed: 
   )
 }
 
-/** The dot of the last step: the color of the end state, or a pulse while the run moves. */
 const lastDots: Partial<Record<TransferState, string>> = {
   waiting: "bg-muted-foreground",
   done: "bg-emerald-500",
@@ -236,7 +230,6 @@ const lastDots: Partial<Record<TransferState, string>> = {
   cancelled: "bg-muted-foreground",
 }
 
-/** The steps that name a torrent of the Transfer in their data. */
 const torrentSteps = new Set(["add", "added"])
 
 function Steps({ data }: { data: TransferDetail }) {
@@ -260,7 +253,6 @@ function Steps({ data }: { data: TransferDetail }) {
         return (
           <li key={index} className="relative pb-4 pl-6 last:pb-0">
             <span aria-hidden="true" className={cn("absolute top-1.5 left-0 size-2.5 rounded-full", last ? lastDot : "bg-muted-foreground/40")} />
-            {/* The line runs from this dot to the next one. */}
             {!last && <span aria-hidden="true" className="absolute top-[18px] -bottom-1 left-[4.5px] w-px bg-border" />}
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-sm">{t(stepKey(step.name) ?? "stepFallback")}</span>
@@ -305,7 +297,6 @@ function dayBreaks(times: readonly string[]): (string | null)[] {
   return days.map((day, index) => (index === 0 || day !== days[index - 1] ? day : null))
 }
 
-/** The time of day with seconds, after the date where a new day starts. The title gives the date as well. */
 function Clock({ at, day, className }: { at: string; day?: string | null; className?: string }) {
   return (
     <time dateTime={at} title={formatISOTimestamp(at)} className={cn("shrink-0 tabular-nums text-muted-foreground", className)}>

@@ -380,7 +380,7 @@ describe("the Transfers tab", () => {
     expect(within(ask).getByText(/^2 rows are selected\. qui cancels each one that has not ended/)).toBeTruthy()
     fireEvent.click(within(ask).getByRole("button", { name: "Cancel the rows" }))
     await waitFor(() => expect(requests).toContain("POST /api/transfers/bulk {\"action\":\"cancel\",\"ids\":[1]}"))
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("qui cancels 1 row.", undefined))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("qui cancels 1 row.", { description: "1 row stays as it was: the action does not apply to it." }))
     await waitFor(() => expect(selectionBar()).toBeNull())
 
     // The export run ended, so it can only go.
@@ -407,7 +407,7 @@ describe("the Transfers tab", () => {
     fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Retry" }))
     await waitFor(() => expect(requests).toContain("POST /api/transfers/bulk {\"action\":\"retry\",\"ids\":[2,4]}"))
     expect(screen.queryByRole("alertdialog")).toBeNull()
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("2 rows run again.", undefined))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("2 rows run again.", { description: "1 row stays as it was: the action does not apply to it." }))
 
     await tick("Film.2019.2160p-ABC")
     fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Clear" }))
@@ -559,18 +559,20 @@ describe("the Transfers tab", () => {
   })
 
   // regression: #4242
-  it("names the torrent of a step that adds one, and shows no other step data", async () => {
+  it("names the torrent of a step that adds one, shows an add that ended once, and shows no other step data", async () => {
     server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({
       ...detail,
       steps: [
         ...detail.steps.slice(0, 3),
         { name: "place", at: "2026-11-17T10:00:06Z", detail: "[]" },
+        { name: "add", at: "2026-11-17T10:00:06Z", detail: "bbbb" },
         { name: "added", at: "2026-11-17T10:00:07Z", detail: "bbbb" },
       ],
     })))
     renderTab()
     const dialog = await openDetails("Film.2019.2160p-ABC")
     openTab(dialog, /^Steps/)
+    expect(stepLabels(dialog)).toEqual(["Started", "Passing by a Transfer torrent", "Placed the files", "Added to the target"])
     const steps = within(dialog).getByRole("tabpanel")
     const added = within(steps).getAllByRole("listitem").at(-1)!
     expect(added.textContent).toContain("Added to the target")

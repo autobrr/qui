@@ -11,8 +11,10 @@ import { useTranslation } from "react-i18next"
 
 const icons: Record<TransferBulkAction, LucideIcon> = { retry: RotateCcw, cancel: X, remove: Trash2 }
 
+// A phone fits two buttons on a line. A third one takes the next line, so no button leaves the screen.
+const phoneButton = "max-sm:h-11 max-sm:min-w-[calc(50%-0.1875rem)] max-sm:flex-1"
+
 interface TransferSelectionBarProps {
-  /** The number of picked rows. */
   count: number
   /** The selection holds every row behind the chip, also the rows of the other pages. */
   wholeChip: boolean
@@ -26,11 +28,7 @@ interface TransferSelectionBarProps {
   onAction: (action: TransferBulkAction) => void
 }
 
-/**
- * The steps for the picked rows. The bar floats at the bottom of the list, so the rows do not move when it shows, and
- * it stays in reach while the list scrolls. A phone keeps it above the footer navigation, and puts the buttons on a
- * line of their own, at the size of a finger.
- */
+/** The steps for the picked rows. The bar floats over the list, so the rows do not move when it shows. */
 export function TransferSelectionBar({ count, wholeChip, more, actions, running, onPickAll, onClear, onAction }: TransferSelectionBarProps) {
   const { t } = useTranslation("transfers")
 
@@ -51,7 +49,7 @@ export function TransferSelectionBar({ count, wholeChip, more, actions, running,
             </Button>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-1.5 max-sm:w-full">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5 max-sm:w-full">
           {actions.map(action => {
             const Icon = icons[action]
             return (
@@ -59,7 +57,7 @@ export function TransferSelectionBar({ count, wholeChip, more, actions, running,
                 key={action}
                 variant="outline"
                 size="sm"
-                className={cn("max-sm:h-11 max-sm:flex-1", action === "remove" && "text-destructive hover:text-destructive")}
+                className={cn(phoneButton, action === "remove" && "text-destructive hover:text-destructive")}
                 disabled={running !== null}
                 onClick={() => onAction(action)}
               >
@@ -69,7 +67,7 @@ export function TransferSelectionBar({ count, wholeChip, more, actions, running,
             )
           })}
           {/* The X of the bar would read as the X of Cancel, so the selection clears with its own mark. */}
-          <Button variant="ghost" size="sm" className="text-muted-foreground max-sm:h-11 max-sm:flex-1" onClick={onClear}>
+          <Button variant="ghost" size="sm" className={cn("text-muted-foreground", phoneButton)} onClick={onClear}>
             <ListX aria-hidden="true" />
             {t("bulk.clear")}
           </Button>

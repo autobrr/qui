@@ -185,6 +185,72 @@ describe("the Transfer dialog", () => {
   })
 
   // regression: #4242
+  it("names the target of the summary that shows while the summary of the next target loads", async () => {
+    summary = { ...summary, noFileAccess: true }
+    renderDialog()
+    await pickTarget("homelab")
+    await waitFor(() => expect(memberRow("Show.S01.1080p-GRP.cs")).toBe("Show.S01.1080p-GRP.csOn crossbox"))
+    let answer: () => void = () => {}
+    server.use(http.post("*/api/transfers/summary", async ({ request }) => {
+      summaries.push(await request.json() as TransferRequest)
+      await new Promise<void>(resolve => { answer = resolve })
+      return HttpResponse.json(summary)
+    }))
+
+    await pickTarget("crossbox")
+    await waitFor(() => expect(summaries.at(-1)?.targetInstanceId).toBe(3))
+    expect(memberRow("Show.S01.1080p-GRP")).toBe("Show.S01.1080p-GRP")
+    expect(memberRow("Show.S01.1080p-GRP.cs")).toBe("Show.S01.1080p-GRP.csOn crossbox")
+    expect(screen.getByText(/qui cannot see the files on homelab/)).toBeTruthy()
+    act(() => answer())
+    await waitFor(() => expect(screen.getByText(/qui cannot see the files on crossbox/)).toBeTruthy())
+  })
+
+  // regression: #4242
+  it("shows the figures next to Start on a narrow screen, and lists the torrents on a tap", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(max-width: 1023px)", media: query, addEventListener: () => {}, removeEventListener: () => {},
+    }))
+    try {
+      let answer: () => void = () => {}
+      server.use(http.post("*/api/transfers/summary", async ({ request }) => {
+        summaries.push(await request.json() as TransferRequest)
+        await new Promise<void>(resolve => { answer = resolve })
+        return HttpResponse.json(summary)
+      }))
+      renderDialog()
+      const target = await screen.findByRole("combobox", { name: "Target instance" })
+      expect(document.querySelector("section[aria-labelledby='transfer-summary-title']")).toBeNull()
+      const hint = screen.getByText("Select a target instance to see the summary.")
+      expect(target.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(hint.compareDocumentPosition(startButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+      await pickTarget("homelab")
+      await waitFor(() => expect(summaries).toHaveLength(1))
+      const line = screen.getByRole("region", { name: "Summary" })
+      const labels = () => Array.from(line.querySelectorAll("dt"), label => label.textContent)
+      const value = (label: string) =>
+        Array.from(line.querySelectorAll("dt")).find(term => term.textContent === label)?.nextElementSibling?.textContent
+      expect(labels()).toEqual(["Torrents", "Size", "Way", "Free on the target"])
+      expect(line.getAttribute("aria-busy")).toBe("true")
+      act(() => answer())
+      await waitFor(() => expect(value("Size")).toBe("4 GiB"))
+      expect(labels()).toEqual(["Torrents", "Size", "Way", "Free on the target"])
+      expect(value("Torrents")).toBe("2")
+      expect(line.compareDocumentPosition(startButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+      expect(screen.queryByText("Show.S01.1080p-GRP.cs")).toBeNull()
+      const torrents = screen.getByRole("button", { name: /^Torrents/ })
+      expect(torrents.getAttribute("aria-expanded")).toBe("false")
+      fireEvent.click(torrents)
+      expect(torrents.getAttribute("aria-expanded")).toBe("true")
+      expect(screen.getByText("Show.S01.1080p-GRP.cs").parentElement?.textContent).toBe("Show.S01.1080p-GRP.csOn crossbox")
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  // regression: #4242
   it("keeps the same figures in place before, while, and after a summary loads", async () => {
     let answer: () => void = () => {}
     server.use(http.post("*/api/transfers/summary", async ({ request }) => {

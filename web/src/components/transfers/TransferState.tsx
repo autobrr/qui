@@ -59,7 +59,6 @@ export function StateDetail({ row }: { row: TransferRow }) {
   return null
 }
 
-/** Who started a run: the user, or a rule. */
 export function StartedBy({ row }: { row: TransferRow }) {
   const { t } = useTranslation("transfers")
   if (row.startedBy === "user") return t("row.byUser")

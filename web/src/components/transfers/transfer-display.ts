@@ -62,9 +62,10 @@ const stepKeys: Record<string, string> = {
 /** Steps that qui records only for its own resume, such as the file names of the first run. */
 const internalSteps = new Set(["names"])
 
-/** The steps that the Details panel lists. */
+/** The steps that the Details panel lists. An add that ended shows once, as the step that added the torrent. */
 export function shownSteps(steps: TransferStep[]): TransferStep[] {
-  return steps.filter(step => !internalSteps.has(step.name))
+  const added = new Set(steps.filter(step => step.name === "added").map(step => step.detail))
+  return steps.filter(step => !internalSteps.has(step.name) && !(step.name === "add" && added.has(step.detail)))
 }
 
 /** The last step of a Transfer names the state that it ended in. */

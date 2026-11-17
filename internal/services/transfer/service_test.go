@@ -941,12 +941,12 @@ func TestCancelOfAWaitingTransferRunsNoCleanup(t *testing.T) {
 	secondID, err := r.svc.Start(t.Context(), r.request(second))
 	require.NoError(t, err)
 	require.NoError(t, r.svc.Cancel(t.Context(), secondID))
+	require.False(t, r.get(secondID).FinishedAt.IsZero(), "the Transfer ended before Cancel answered")
 	release()
 	r.svc.Wait()
 
 	cancelled := r.get(secondID)
 	require.Equal(t, transfer.StateCancelled, cancelled.State)
-	require.False(t, cancelled.FinishedAt.IsZero())
 	steps := make([]string, 0, len(cancelled.Steps))
 	for _, step := range cancelled.Steps {
 		steps = append(steps, step.Name)
@@ -957,6 +957,7 @@ func TestCancelOfAWaitingTransferRunsNoCleanup(t *testing.T) {
 	require.Equal(t, transfer.StateDone, r.get(firstID).State)
 }
 
+// regression: #4242
 // A cancel that saved its state, but that a stop of qui cut before the end,
 // ends the Transfer when its turn comes. The Transfer does not run.
 func TestASavedCancelEndsTheTransferAtItsTurn(t *testing.T) {
@@ -998,6 +999,53 @@ func TestASavedCancelEndsTheTransferAtItsTurn(t *testing.T) {
 	}
 	require.Equal(t, []string{"start", "cancelled"}, steps, "the Transfer did not run")
 	require.False(t, r.store.IsClaimed(r.source.ID, second.hash), "the end frees the torrent")
+}
+
+// regression: #4242
+// Cancel saves the cancel before it answers, also while the cleanup of
+// another cancel runs: a stop of qui then cannot lose it, and the next start
+// runs the cleanup at once.
+func TestACancelIsSavedBeforeCancelAnswers(t *testing.T) {
+	r := newRig(t)
+	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")
+	r.seed(first)
+	write(t, filepath.Join(r.srcDir, "Other.Show.S02.720p-GRP"), second.files)
+	r.src.Seed(second.data, r.srcPath())
+	// Each one fails for a time after its copy, and keeps its files on the target.
+	r.dst.Reject = http.StatusInternalServerError
+	firstID, secondID := r.run(r.request(first)).ID, r.run(r.request(second)).ID
+	r.dst.Reject = 0
+	require.Equal(t, transfer.StateFailed, r.get(secondID).State)
+	require.False(t, r.get(secondID).RetryAt.IsZero())
+
+	removing, held := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	t.Cleanup(release)
+	var once sync.Once
+	r.disk.failRemove = func(string) bool {
+		once.Do(func() {
+			close(removing)
+			<-held
+		})
+		return false
+	}
+	require.NoError(t, r.svc.Cancel(t.Context(), firstID))
+	<-removing
+	require.NoError(t, r.svc.Cancel(t.Context(), secondID))
+
+	saved := r.get(secondID)
+	require.Equal(t, transfer.StateCancelled, saved.State)
+	require.True(t, saved.RetryAt.IsZero(), "the next start does not wait for the retry time")
+	require.Equal(t, "clean up", saved.Steps[len(saved.Steps)-1].Name)
+
+	release()
+	r.svc.Wait()
+	for _, id := range []int64{firstID, secondID} {
+		record := r.get(id)
+		require.Equal(t, transfer.StateCancelled, record.State, record.FailureReason)
+		require.False(t, record.FinishedAt.IsZero())
+	}
+	require.Empty(t, tree(t, r.dstDir))
 }
 
 // A file at a path that the copy writes stops the Transfer, and qui leaves

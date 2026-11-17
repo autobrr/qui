@@ -47,7 +47,6 @@ export function TransfersTab() {
   const { t, i18n } = useTranslation("transfers")
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<TransferFilter>("all")
-  // Page 0 is the first page.
   const [page, setPage] = useState(0)
   const top = useRef<HTMLDivElement>(null)
   const [detailsId, setDetailsId] = useState<number | null>(null)
@@ -61,7 +60,6 @@ export function TransfersTab() {
 
   const list = useQuery({
     ...transferListQuery(filter, page),
-    // The rows and the counts stay while the rows of another filter or page load.
     placeholderData: keepPreviousData,
     // Progress and speed move while a Transfer runs.
     refetchInterval: 3000,
@@ -90,9 +88,9 @@ export function TransfersTab() {
   })
   const bulk = useMutation({
     mutationKey: bulkKey,
-    mutationFn: transfersApi.bulk,
-    onSuccess: (result: TransferBulkResult, request: TransferBulkRequest) => {
-      reportBulk(request.action, result)
+    mutationFn: ({ request }: { request: TransferBulkRequest; unfit: number }) => transfersApi.bulk(request),
+    onSuccess: (result: TransferBulkResult, { request, unfit }) => {
+      reportBulk(request.action, { ...result, skipped: result.skipped + unfit })
       clearSelection()
       void refresh()
     },
@@ -149,9 +147,13 @@ export function TransfersTab() {
     if (pageTick === true) clearSelection()
     else setSelection({ kind: "rows", ids: new Set(rows.map(row => row.id)) })
   }
-  // A whole chip offers no Retry, so a retry always names its rows.
-  const runBulk = (action: TransferBulkAction) =>
-    bulk.mutateAsync(selection.kind === "filter" && action !== "retry" ? { action, filter } : { action, ids: fittingIds(action, picked) })
+  // A whole chip offers no Retry, so a retry always names its rows. The picked rows that the step does not fit stay
+  // out of the request, and the message counts them as skipped.
+  const runBulk = (action: TransferBulkAction) => {
+    if (selection.kind === "filter" && action !== "retry") return bulk.mutateAsync({ request: { action, filter }, unfit: 0 })
+    const ids = fittingIds(action, picked)
+    return bulk.mutateAsync({ request: { action, ids }, unfit: picked.length - ids.length })
+  }
   const pickAction = (action: TransferBulkAction) => {
     if (action === "retry") runBulk(action).catch(() => {})
     else setAsking({ action, open: true })
@@ -223,7 +225,7 @@ export function TransfersTab() {
               wholeChip={selection.kind === "filter"}
               more={selection.kind === "rows" && pageTick === true && total > rows.length ? total : null}
               actions={offeredActions(selection, filter, picked)}
-              running={bulk.isPending ? bulk.variables.action : null}
+              running={bulk.isPending ? bulk.variables.request.action : null}
               onPickAll={() => setSelection({ kind: "filter" })}
               onClear={clearSelection}
               onAction={pickAction}
@@ -239,7 +241,6 @@ export function TransfersTab() {
                   total: formatCount.format(total),
                 })}
               </p>
-              {/* A phone shows the arrows only, at the size of a finger. */}
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" className="max-sm:size-11" disabled={page === 0} onClick={() => turnTo(page - 1)}>
                   <ChevronLeft aria-hidden="true" />
@@ -286,7 +287,6 @@ export function TransfersTab() {
 
 interface TransferTableRowProps {
   row: TransferRow
-  /** The row is in the selection of the selection bar. */
   picked: boolean
   /** The row belongs to the last chip or page, and the new rows load: it takes no tick and no step. */
   stale: boolean

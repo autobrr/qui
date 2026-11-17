@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
+import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { transfersApi, type TransferRequest, type TransferSummary } from "@/lib/transfers-api"
 import { cn, formatBytes } from "@/lib/utils"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, Info, Loader2, ShieldCheck } from "lucide-react"
-import { useMemo, useState, type ReactNode } from "react"
+import { AlertTriangle, ChevronDown, Info, Loader2, ShieldCheck } from "lucide-react"
+import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { TransferForm } from "./TransferForm"
@@ -29,6 +30,9 @@ interface TransferDialogProps {
   name: string
 }
 
+/** Below Tailwind's lg width, the summary sits below the form, out of view, so its figures sit next to Start. */
+const STACKED_QUERY = "(max-width: 1023px)"
+
 /** The Transfer dialog: the fields of the Transfer, and the summary of what Start does. */
 export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, name }: TransferDialogProps) {
   const { t } = useTranslation("transfers")
@@ -36,19 +40,19 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
   const instanceName = useInstanceName()
   const shownName = display.name({ hash, name })
   const queryClient = useQueryClient()
+  const stacked = useMediaQuery(STACKED_QUERY)
   const { instances } = useInstances()
   const targets = useMemo(() => instances?.filter(instance => instance.id !== sourceInstanceId), [instances, sourceInstanceId])
   const [value, setValue] = useState<TransferFormValue>(emptyTransferForm)
   const request = useMemo(() => transferRequestOf(value, sourceInstanceId, hash), [value, sourceInstanceId, hash])
-  // The summary follows the form after the user stops typing in the save path.
   const debounced = useDebounce(request, 400)
 
   const summary = useQuery({
     queryKey: ["transfers", "summary", debounced],
-    queryFn: () => transfersApi.summary(debounced!),
+    // The request stays with its summary: the summary of the last form shows while the next one loads.
+    queryFn: async () => ({ request: debounced!, summary: await transfersApi.summary(debounced!) }),
     enabled: open && debounced !== null,
     retry: false,
-    // The last summary stays in place while the next one loads, so the panel keeps its layout.
     placeholderData: keepPreviousData,
   })
 
@@ -63,8 +67,8 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
     onError: (error: Error) => toast.error(t("actions.failed", { message: display.text(error.message) })),
   })
 
-  // Start sends the request that the summary shows, once that summary is in. The summary of an older form stays in
-  // place while the next one loads, also while the browser is offline and the query waits.
+  // Start sends the request that the summary shows, once that summary is in, also while the browser is offline and
+  // the next summary waits.
   const settled = request !== null && JSON.stringify(request) === JSON.stringify(debounced)
   const current = settled && summary.isSuccess && !summary.isFetching && !summary.isPlaceholderData
   const canStart = current && !start.isPending
@@ -72,10 +76,9 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
   let state: SummaryState
   if (request === null) state = { kind: "pickTarget" }
   else if (summary.isError) state = { kind: "refused", message: display.text(summary.error.message) }
-  else if (summary.data) state = { kind: "summary", summary: summary.data, current, targetInstanceId: request.targetInstanceId }
+  else if (summary.data) state = { kind: "summary", summary: summary.data.summary, current, targetInstanceId: summary.data.request.targetInstanceId }
   else state = { kind: "loading" }
 
-  // A warning that the Transfer can lose data, or cannot fit, sits next to Start, so the user reads it before the start.
   const warnings: string[] = []
   if (state.kind === "summary") {
     const { free, freeKnown, bytes, noFileAccess } = state.summary
@@ -95,21 +98,27 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
             <TransferForm value={value} onChange={setValue} targets={targets} />
-            {/* On a wide screen the panel fills the height of the form, so neither moves the other. */}
-            <div className="relative lg:min-h-80">
-              <SummaryPanel state={state} hash={hash} className="min-h-80 lg:absolute lg:inset-0 lg:min-h-0" />
-            </div>
+            {stacked ? (
+              <SummaryTorrents state={state} hash={hash} />
+            ) : (
+              <div className="relative min-h-[28rem]">
+                <SummaryPanel state={state} hash={hash} className="absolute inset-0" />
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex flex-shrink-0 flex-col gap-3 border-t bg-background px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:px-6">
-          <div className={cn("min-w-0 flex-1 space-y-1 transition-opacity", state.kind === "summary" && !state.current && "opacity-50")}>
-            {warnings.length > 0 ? warnings.map(warning => <Note key={warning} tone="warning">{warning}</Note>) : (
-              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <ShieldCheck className="mt-px size-3.5 shrink-0" aria-hidden />
-                <span>{t("dialog.verified")}</span>
-              </p>
-            )}
+          <div className="min-w-0 flex-1 space-y-1.5">
+            {stacked && <SummaryLine state={state} />}
+            <div className={cn("space-y-1 transition-opacity", state.kind === "summary" && !state.current && "opacity-50")}>
+              {warnings.length > 0 ? warnings.map(warning => <Note key={warning} tone="warning">{warning}</Note>) : (
+                <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <ShieldCheck className="mt-px size-3.5 shrink-0" aria-hidden />
+                  <span>{t("dialog.verified")}</span>
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex gap-2 sm:justify-end">
             <Button variant="outline" className="h-11 px-5 sm:h-10" onClick={() => onOpenChange(false)}>{t("dialog.cancel")}</Button>
@@ -131,25 +140,43 @@ type SummaryState =
   /** `current` is false while the summary of an older form shows and the next one loads. */
   | { kind: "summary"; summary: TransferSummary; current: boolean; targetInstanceId: number }
 
-/**
- * What Start would start: the torrents, the size, the way, the free space, and the notes. Every state keeps the same
- * figures in the same place, so the panel keeps its height while a summary loads. The warnings sit next to Start.
- */
+interface FigureItem {
+  label: string
+  /** Undefined before a summary exists. */
+  text?: string
+  tone?: "warning"
+}
+
+/** The figures of the summary. Every state has the same four labels, so the figures keep their place. */
+function useFigures(state: SummaryState): FigureItem[] {
+  const { t } = useTranslation("transfers")
+  const shown = state.kind === "summary" ? state.summary : null
+  const notEnoughSpace = shown !== null && shown.freeKnown && shown.free < shown.bytes
+  return [
+    { label: t("summary.torrents"), text: shown ? String(shown.members.length) : undefined },
+    { label: t("summary.size"), text: shown ? formatBytes(shown.bytes) : undefined },
+    { label: t("summary.way"), text: shown ? t([`ways.${shown.way}`, "ways.fallback"]) : undefined },
+    {
+      label: t("summary.free"),
+      text: shown ? (shown.freeKnown ? formatBytes(shown.free) : t("summary.unknown")) : undefined,
+      tone: notEnoughSpace ? "warning" : undefined,
+    },
+  ]
+}
+
+const loadingOf = (state: SummaryState) => state.kind === "loading" || (state.kind === "summary" && !state.current)
+const dimOf = (state: SummaryState) => state.kind === "summary" && !state.current && "opacity-50"
+const warningTone = "text-amber-600 dark:text-amber-400"
+
+/** What Start would start, beside the form. A fade shows when more torrents sit below. */
 function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: string; className?: string }) {
   const { t } = useTranslation("transfers")
-  const instanceName = useInstanceName()
-  const display = useIncognitoDisplay()
+  const figures = useFigures(state)
   const shown = state.kind === "summary" ? state.summary : null
-  const loading = state.kind === "loading" || (state.kind === "summary" && !state.current)
-  const dim = state.kind === "summary" && !state.current && "opacity-50"
-  const notEnoughSpace = shown !== null && shown.freeKnown && shown.free < shown.bytes
-  // A cross-seed of another target goes to its Cross-seed instance.
-  const targetInstanceId = state.kind === "summary" ? state.targetInstanceId : null
-
-  const figure = (text: string | undefined) => {
-    if (state.kind === "loading") return <span className="block h-5 w-16 animate-pulse rounded bg-muted" />
-    return text ?? <span className="text-muted-foreground">—</span>
-  }
+  const loading = loadingOf(state)
+  const dim = dimOf(state)
+  const list = useRef<HTMLDivElement>(null)
+  const more = useMoreBelow(list, shown)
 
   return (
     <section
@@ -159,32 +186,30 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
     >
       <div className="flex items-center justify-between gap-2 px-4 pt-3">
         <h3 id="transfer-summary-title" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("summary.title")}</h3>
-        {loading && (
-          <span role="status" className="flex items-center text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" aria-hidden />
-            <span className="sr-only">{t("summary.loading")}</span>
-          </span>
-        )}
+        {loading && <Planning />}
       </div>
 
       <dl className={cn("grid grid-cols-2 gap-x-4 gap-y-3 px-4 pt-3 pb-4 transition-opacity", dim)}>
-        <Figure label={t("summary.torrents")}>{figure(shown ? String(shown.members.length) : undefined)}</Figure>
-        <Figure label={t("summary.size")}>{figure(shown ? formatBytes(shown.bytes) : undefined)}</Figure>
-        <Figure label={t("summary.way")}>{figure(shown ? t([`ways.${shown.way}`, "ways.fallback"]) : undefined)}</Figure>
-        <Figure label={t("summary.free")} tone={notEnoughSpace ? "warning" : undefined}>
-          {figure(shown ? (shown.freeKnown ? formatBytes(shown.free) : t("summary.unknown")) : undefined)}
-        </Figure>
+        {figures.map(({ label, text, tone }) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className={cn("mt-0.5 truncate text-sm font-medium leading-5 tabular-nums", tone === "warning" && warningTone)}>
+              <FigureValue state={state} text={text} skeleton="block h-5 w-16" />
+            </dd>
+          </div>
+        ))}
       </dl>
 
-      {/* The notes stay in view above the torrents, which scroll on a wide screen. */}
-      {shown && (!shown.freeKnown || shown.hints.length > 0) && (
-        <div className={cn("space-y-1.5 border-t px-4 py-3 transition-opacity", dim)}>
-          {!shown.freeKnown && <Note>{t("summary.freeUnknown")}</Note>}
-          <TransferHints hints={shown.hints} />
-        </div>
-      )}
+      <SummaryNotes state={state} className="border-t px-4 py-3" />
 
-      <div className={cn("min-h-0 flex-1 overflow-y-auto border-t px-4 py-3 text-sm transition-opacity", dim)}>
+      <div
+        ref={list}
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto border-t px-4 py-3 text-sm transition-opacity",
+          dim,
+          more && "[mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]"
+        )}
+      >
         {state.kind === "pickTarget" && <p className="text-muted-foreground">{t("summary.pickTarget")}</p>}
         {state.kind === "loading" && (
           <div className="space-y-2" aria-hidden>
@@ -193,38 +218,146 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
           </div>
         )}
         {state.kind === "refused" && <p role="alert" className="text-destructive">{t("summary.refused", { message: state.message })}</p>}
-        {shown && (
-          <ul className="space-y-1.5">
-            {shown.members.map(member => (
-              <li key={member.hash} className="flex items-start gap-2">
-                <span className="min-w-0 flex-1 break-all text-xs leading-5">{display.name(member)}</span>
-                {member.targetInstanceId !== targetInstanceId ? (
-                  <Badge variant="outline" className="shrink-0 font-normal">{t("summary.crossSeedInstance", { instance: instanceName(member.targetInstanceId) })}</Badge>
-                ) : member.hash !== hash && (
-                  <Badge variant="secondary" className="shrink-0 font-normal">{t("summary.crossSeed")}</Badge>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        {shown && state.kind === "summary" && <MemberList summary={shown} hash={hash} targetInstanceId={state.targetInstanceId} />}
       </div>
     </section>
   )
 }
 
-function Figure({ label, tone, children }: { label: string; tone?: "warning"; children: ReactNode }) {
+/** The figures next to Start. The line keeps room for two rows, so the footer keeps its height while they load. */
+function SummaryLine({ state }: { state: SummaryState }) {
+  const { t } = useTranslation("transfers")
+  const figures = useFigures(state)
+  const loading = loadingOf(state)
+
+  if (state.kind === "pickTarget") return <p className="min-h-8 text-xs text-muted-foreground">{t("summary.pickTarget")}</p>
+  if (state.kind === "refused") {
+    return <p role="alert" className="line-clamp-2 min-h-8 text-xs text-destructive">{t("summary.refused", { message: state.message })}</p>
+  }
   return (
-    <div className="min-w-0">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-0.5 truncate text-sm font-medium leading-5 tabular-nums", tone === "warning" && "text-amber-600 dark:text-amber-400")}>{children}</dd>
+    <section aria-label={t("summary.title")} aria-busy={loading} className="flex min-h-8 items-start gap-2">
+      <dl className={cn("flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-0.5 text-xs leading-4 transition-opacity", dimOf(state))}>
+        {figures.map(({ label, text, tone }) => (
+          <div key={label} className="flex min-w-0 items-baseline gap-1">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className={cn("font-medium tabular-nums", tone === "warning" && warningTone)}>
+              <FigureValue state={state} text={text} skeleton="inline-block h-3 w-10 align-middle" />
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {loading && <Planning />}
+    </section>
+  )
+}
+
+/**
+ * The notes and the torrents of the summary below the form, on a narrow screen. The torrents open on a tap, so the
+ * dialog keeps its height while the summary loads.
+ */
+function SummaryTorrents({ state, hash }: { state: SummaryState; hash: string }) {
+  const { t } = useTranslation("transfers")
+  const [open, setOpen] = useState(false)
+  const listId = useId()
+  const shown = state.kind === "summary" ? state.summary : null
+  const count = shown?.members.length
+
+  return (
+    <div className={cn("overflow-hidden rounded-lg border bg-muted/20 transition-opacity", dimOf(state))}>
+      <SummaryNotes state={state} className="border-b px-4 py-3" />
+      <button
+        type="button"
+        aria-expanded={open && shown !== null}
+        aria-controls={listId}
+        disabled={shown === null}
+        onClick={() => setOpen(!open)}
+        className="flex h-11 w-full items-center justify-between gap-3 px-4 text-left text-sm disabled:cursor-default"
+      >
+        <span className="font-medium">{t("summary.torrents")}</span>
+        <span className="flex items-center gap-2 tabular-nums text-muted-foreground">
+          {state.kind === "loading" ? <span className="block h-4 w-6 animate-pulse rounded bg-muted" /> : count ?? "—"}
+          <ChevronDown aria-hidden className={cn("size-4 transition-transform", open && shown && "rotate-180")} />
+        </span>
+      </button>
+      {open && shown && state.kind === "summary" && (
+        <div id={listId} className="border-t px-4 py-3">
+          <MemberList summary={shown} hash={hash} targetInstanceId={state.targetInstanceId} />
+        </div>
+      )}
     </div>
   )
+}
+
+function SummaryNotes({ state, className }: { state: SummaryState; className?: string }) {
+  const { t } = useTranslation("transfers")
+  const shown = state.kind === "summary" ? state.summary : null
+  if (!shown || (shown.freeKnown && shown.hints.length === 0)) return null
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      {!shown.freeKnown && <Note>{t("summary.freeUnknown")}</Note>}
+      <TransferHints hints={shown.hints} />
+    </div>
+  )
+}
+
+/** The torrents of the summary. A cross-seed of another target goes to its Cross-seed instance. */
+function MemberList({ summary, hash, targetInstanceId }: { summary: TransferSummary; hash: string; targetInstanceId: number }) {
+  const { t } = useTranslation("transfers")
+  const instanceName = useInstanceName()
+  const display = useIncognitoDisplay()
+  return (
+    <ul className="space-y-1.5 text-sm">
+      {summary.members.map(member => (
+        <li key={member.hash} className="flex items-start gap-2">
+          <span className="min-w-0 flex-1 break-all text-xs leading-5">{display.name(member)}</span>
+          {member.targetInstanceId !== targetInstanceId ? (
+            <Badge variant="outline" className="shrink-0 font-normal">{t("summary.crossSeedInstance", { instance: instanceName(member.targetInstanceId) })}</Badge>
+          ) : member.hash !== hash && (
+            <Badge variant="secondary" className="shrink-0 font-normal">{t("summary.crossSeed")}</Badge>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function FigureValue({ state, text, skeleton }: { state: SummaryState; text?: string; skeleton: string }) {
+  if (state.kind === "loading") return <span className={cn("animate-pulse rounded bg-muted", skeleton)} />
+  return text ?? <span className="text-muted-foreground">—</span>
+}
+
+function Planning() {
+  const { t } = useTranslation("transfers")
+  return (
+    <span role="status" className="flex shrink-0 items-center text-muted-foreground">
+      <Loader2 className="size-3.5 animate-spin" aria-hidden />
+      <span className="sr-only">{t("summary.loading")}</span>
+    </span>
+  )
+}
+
+function useMoreBelow(ref: RefObject<HTMLElement | null>, content: unknown): boolean {
+  const [more, setMore] = useState(false)
+  useEffect(() => {
+    const element = ref.current
+    if (!element) return
+    const measure = () => setMore(element.scrollTop + element.clientHeight < element.scrollHeight - 4)
+    measure()
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure)
+    observer?.observe(element)
+    element.addEventListener("scroll", measure, { passive: true })
+    return () => {
+      observer?.disconnect()
+      element.removeEventListener("scroll", measure)
+    }
+  }, [ref, content])
+  return more
 }
 
 function Note({ tone, children }: { tone?: "warning"; children: string }) {
   if (tone === "warning") {
     return (
-      <p role="alert" className="flex gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+      <p role="alert" className={cn("flex gap-1.5 text-xs", warningTone)}>
         <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
         <span>{children}</span>
       </p>
