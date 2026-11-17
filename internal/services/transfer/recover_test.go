@@ -448,6 +448,75 @@ func TestTransferStopsWhenAnEndpointChanges(t *testing.T) {
 	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
 }
 
+// moveTheCrossSeedInstance runs a Transfer whose add on the Cross-seed
+// instance leaves the member there but fails, so that a retry waits. Then the
+// Cross-seed instance gets the address of another client that has a torrent
+// with the hash of the member, and qui starts again.
+func (r *rig) moveTheCrossSeedInstance() (show, int64, *qbtstub.Server) {
+	r.t.Helper()
+	cs := r.withCrossSeedInstance()
+	cs.strand = "alignment_failed"
+	s := newShow(r.t, showName)
+	r.seed(s)
+	crossSeed, crossSeedHash := crossSeedOf(r.t, s)
+	r.src.Seed(crossSeed, r.srcPath())
+	r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
+	r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
+	record := r.run(r.request(s))
+	require.Equal(r.t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
+	require.True(r.t, cs.stub.Has(s.hash), "the add left the member on the Cross-seed instance")
+
+	other := r.t.TempDir()
+	moved := qbtstub.New(r.t, other)
+	moved.Seed(s.data, other)
+	_, err := r.instances.Update(r.t.Context(), cs.inst.ID, cs.inst.Name, moved.URL, "", "", nil, nil, nil)
+	require.NoError(r.t, err)
+	// The API drops the client of an instance that it updates. A new pool
+	// does the same here.
+	deps, _, sync := wire(r.t, r.db, r.disk, r.now)
+	deps.Routes, deps.CrossSeeds, deps.Config = r.deps.Routes, r.deps.CrossSeeds, r.deps.Config
+	r.deps, r.sync = deps, sync
+	r.restart()
+	return s, record.ID, moved
+}
+
+// A new address of the Cross-seed instance stops the Transfer, as a new
+// address of the target does. qui sends nothing to the new address.
+// regression: #4231
+func TestTransferStopsWhenTheCrossSeedInstanceGetsANewAddress(t *testing.T) {
+	r := newRig(t)
+	s, id, moved := r.moveTheCrossSeedInstance()
+
+	r.setClock(clock.Add(time.Hour))
+	r.svc.Wake()
+	r.svc.Wait()
+
+	record := r.get(id)
+	const reason = "The Cross-seed instance homelab cross-seed changed its address, its SSH server, or its file access " +
+		"since the Transfer started, so the Transfer stopped. qui cleans up nothing on homelab cross-seed."
+	require.Equal(t, transfer.StateFailed, record.State, record.FailureReason)
+	require.Equal(t, transfer.FailurePermanent, record.FailureClass, record.FailureReason)
+	require.Equal(t, reason, record.FailureReason)
+	require.Contains(t, logOf(record), "Failed: "+reason)
+	require.Zero(t, sent(moved), "qui sends nothing to the new address")
+	require.True(t, moved.Has(s.hash))
+}
+
+// A cancel after the Cross-seed instance got a new address removes nothing
+// there: the torrent at the new address is not the one that qui added.
+// regression: #4231
+func TestTransferCancelRemovesNothingFromACrossSeedInstanceWithANewAddress(t *testing.T) {
+	r := newRig(t)
+	s, id, moved := r.moveTheCrossSeedInstance()
+
+	require.NoError(t, r.svc.Cancel(t.Context(), id))
+	r.svc.Wait()
+
+	require.Equal(t, transfer.StateCancelled, r.get(id).State)
+	require.Zero(t, sent(moved), "qui sends nothing to the new address")
+	require.True(t, moved.Has(s.hash))
+}
+
 // A failure after qui stopped the source starts again only the torrents
 // that ran before. A member that was stopped before the Transfer stays
 // stopped, also when the cleanup runs after a restart, and when qui stopped
