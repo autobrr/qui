@@ -104,7 +104,9 @@ describe("TooltipTrigger on a touch device", () => {
   it("still opens on a mouse click of a button, as on a trackpad", () => {
     renderTooltip(<TooltipTrigger asChild><button type="button">Pause</button></TooltipTrigger>)
 
-    fireEvent(screen.getByRole("button", { name: "Pause" }), new PointerEvent("click", { bubbles: true, pointerType: "mouse" }))
+    const button = screen.getByRole("button", { name: "Pause" })
+    fireEvent.pointerDown(button, { pointerType: "mouse" })
+    fireEvent.click(button)
 
     expect(tooltipShown()).toBe(true)
   })

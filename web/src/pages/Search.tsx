@@ -223,8 +223,9 @@ const SearchTableRow = memo(function SearchTableRow({
           <TooltipContent>{t("table.downloadTorrent")}</TooltipContent>
         </Tooltip>
         <Tooltip>
-          {/* A disabled button lets taps and hover through to the wrapper, which says there is no info URL. */}
-          <TooltipTrigger asChild>
+          {/* A disabled button lets taps and hover through to the wrapper, which says there is no info URL.
+              The row around it is a button, so a tap opens the tooltip only by opting in. */}
+          <TooltipTrigger asChild openOnTap={!result.infoUrl}>
             <span className="inline-flex">
               <Button
                 type="button"

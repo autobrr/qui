@@ -94,9 +94,8 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
 
 type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger> & {
   /**
-   * Whether a tap on a touch device opens the tooltip. By default a tap opens it unless the tap also acts: it lands on
-   * an enabled link, button, form field, label of an enabled field, option, or menu item, at the trigger or around it.
-   * A bare trigger (no asChild) always opens. Set it on a button that only explains, or on a trigger whose tooltip must
+   * Whether a tap on a touch device opens the tooltip. By default a tap opens it unless the tap also acts: it reaches
+   * an enabled control (CONTROL_SELECTOR) at the trigger or around it. A bare trigger (no asChild) always opens. Set it on a button that only explains, or on a trigger whose tooltip must
    * open even when the tap also reaches a control around it.
    */
   openOnTap?: boolean
@@ -119,8 +118,11 @@ const TooltipTrigger = React.forwardRef<
   const context = React.useContext(TooltipContext)
 
   const registerPointerType = context.registerPointerType
+  // Pointer down reports the pointer type in every browser; a click event does not.
+  const pressPointerTypeRef = React.useRef<string | null>(null)
 
   const handlePointerDown = React.useCallback((event: TriggerPointerEvent) => {
+    pressPointerTypeRef.current = event.pointerType
     registerPointerType?.(event.pointerType)
     onPointerDown?.(event)
   }, [registerPointerType, onPointerDown])
@@ -131,6 +133,7 @@ const TooltipTrigger = React.forwardRef<
   }, [registerPointerType, onPointerEnter])
 
   const handleKeyDown = React.useCallback((event: TriggerKeyEvent) => {
+    pressPointerTypeRef.current = "keyboard"
     registerPointerType?.("keyboard")
     onKeyDown?.(event)
   }, [registerPointerType, onKeyDown])
@@ -148,9 +151,9 @@ const TooltipTrigger = React.forwardRef<
         onPointerEnter={handlePointerEnter}
         onKeyDown={handleKeyDown}
         onClick={(e) => {
-          // A mouse click, for example from an iPad trackpad, toggles as before. Only a tap follows openOnTap.
+          // A mouse click, for example from an iPad trackpad, always toggles. Only a tap follows openOnTap.
           // A bare trigger renders its own button, which does nothing but show the tooltip.
-          const mouse = (e.nativeEvent as PointerEvent).pointerType === "mouse"
+          const mouse = pressPointerTypeRef.current === "mouse"
           if (mouse || (openOnTap ?? (!props.asChild || !tapActs(e.target)))) {
             context.setOpen?.(!context.isOpen)
           }
