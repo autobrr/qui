@@ -32,7 +32,7 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
   const { t } = useTranslation("transfers")
   const queryClient = useQueryClient()
   const { instances } = useInstances()
-  const targets = useMemo(() => (instances ?? []).filter(instance => instance.id !== sourceInstanceId), [instances, sourceInstanceId])
+  const targets = useMemo(() => instances?.filter(instance => instance.id !== sourceInstanceId), [instances, sourceInstanceId])
   const [value, setValue] = useState<TransferFormValue>(emptyTransferForm)
   const request = transferRequestOf(value, sourceInstanceId, hash)
   // The summary follows the form after the user stops typing in the save path.

@@ -22,8 +22,8 @@ const noCategory = "__none__"
 interface TransferFormProps {
   value: TransferFormValue
   onChange: (value: TransferFormValue) => void
-  /** The instances that can be the target: every instance but the source. */
-  targets: InstanceResponse[]
+  /** The instances that can be the target: every instance but the source. Undefined while they load. */
+  targets: InstanceResponse[] | undefined
 }
 
 /** The fields of a Transfer. The Transfer dialog shows it; the Transfer action of a rule will show it too. */
@@ -43,7 +43,7 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
     <div className="space-y-4">
       <div className="space-y-1.5">
         <Label htmlFor={`${id}-target`}>{t("form.target")}</Label>
-        {targets.length === 0 ? (
+        {targets?.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("form.noTargets")}</p>
         ) : (
           <Select
@@ -54,7 +54,7 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
               <SelectValue placeholder={t("form.targetPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              {targets.map(instance => (
+              {targets?.map(instance => (
                 <SelectItem key={instance.id} value={instance.id.toString()}>{instance.name}</SelectItem>
               ))}
             </SelectContent>

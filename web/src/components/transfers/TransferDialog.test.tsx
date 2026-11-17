@@ -96,6 +96,22 @@ describe("the Transfer dialog", () => {
     expect(summaries).toEqual([])
   })
 
+  it("keeps the target picker while the instances load, and asks for another instance only when none exists", async () => {
+    let answer: () => void = () => {}
+    const loaded = new Promise<void>(resolve => { answer = resolve })
+    server.use(http.get("*/api/instances", async () => {
+      await loaded
+      return HttpResponse.json([{ id: 1, name: "seedbox" }])
+    }))
+    renderDialog()
+    expect(screen.getByRole("combobox", { name: "Target instance" })).toBeTruthy()
+    expect(screen.queryByText("Add another instance to transfer torrents to it.")).toBeNull()
+
+    answer()
+    await screen.findByText("Add another instance to transfer torrents to it.")
+    expect(screen.queryByRole("combobox", { name: "Target instance" })).toBeNull()
+  })
+
   it("shows the summary of the Transfer before it starts, and starts what the summary showed", async () => {
     const onOpenChange = renderDialog()
     await pickTarget("homelab")
