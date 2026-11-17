@@ -70,6 +70,38 @@ func TestProgressCountsTheCopiedBytes(t *testing.T) {
 	require.False(t, ok, "a finished Transfer has no progress")
 }
 
+// regression: #4242
+// A copy that passed no byte over the last ten seconds shows no speed.
+func TestProgressOfAStalledCopyShowsNoSpeed(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	var id int64
+	ready := make(chan struct{})
+	var before, stalled transfer.Progress
+	at, writes := clock, 0
+	r.disk.onWrite = func(string) {
+		<-ready
+		at, writes = at.Add(time.Second), writes+1
+		r.setClock(at)
+		if writes == 3 {
+			before, _ = r.svc.Progress(id)
+			at = at.Add(11 * time.Second)
+			r.setClock(at)
+			stalled, _ = r.svc.Progress(id)
+		}
+	}
+
+	id, err := r.svc.Start(t.Context(), r.request(s))
+	require.NoError(t, err)
+	close(ready)
+	r.svc.Wait()
+
+	require.Positive(t, before.Speed)
+	require.Equal(t, before.Done, stalled.Done)
+	require.Zero(t, stalled.Speed)
+}
+
 // A resumed copy counts the pieces that it proved before as passed.
 func TestProgressOfAResumedCopyStartsAtTheProvenPieces(t *testing.T) {
 	r := newRig(t)
