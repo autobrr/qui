@@ -55,10 +55,14 @@ func (s Settings) trustedProxies() ([]netip.Prefix, error) {
 		} else {
 			var addr netip.Addr
 			addr, err = netip.ParseAddr(entry)
-			prefix = netip.PrefixFrom(addr.Unmap(), addr.Unmap().BitLen())
+			prefix = netip.PrefixFrom(addr, addr.BitLen())
 		}
 		if err != nil {
 			return nil, fmt.Errorf("%w: trusted proxy %q is not an address or a CIDR prefix", ErrInvalidSettings, entry)
+		}
+		// chi compares an IPv4-mapped client address in its IPv4 form.
+		if prefix.Addr().Is4In6() && prefix.Bits() >= 96 {
+			prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
 		}
 		prefixes = append(prefixes, prefix.Masked())
 	}

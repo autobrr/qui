@@ -551,6 +551,22 @@ func TestTheTrackerTrustsAForwardedAddressOnlyFromATrustedProxy(t *testing.T) {
 	require.Equal(t, addr("127.0.0.1:6881"), forwarded("198.51.100.7"))
 }
 
+// regression: #4231
+func TestTheTrackerTrustsAProxyWrittenAsAnIPv4MappedAddress(t *testing.T) {
+	t.Parallel()
+	for _, proxy := range []string{"::ffff:127.0.0.1", "::ffff:127.0.0.1/128", "::ffff:127.0.0.0/104"} {
+		t.Run(proxy, func(t *testing.T) {
+			t.Parallel()
+			r := newRig(t)
+			require.NoError(t, r.tracker.Start(t.Context(), sharetracker.Settings{Port: r.port, TrustedProxies: []string{proxy}}))
+
+			r.announce(recipient, announce{left: 1000})
+
+			require.Equal(t, addr("198.51.100.7:6881"), r.reports.all()[0].Peer)
+		})
+	}
+}
+
 func TestTheTrackerGivesIPv4AndIPv6Peers(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
