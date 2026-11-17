@@ -145,5 +145,6 @@ func (s *Server) freeSpaceAt(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	s.freeSpacePath = r.URL.Query().Get("path")
 	_, _ = w.Write([]byte(strconv.FormatInt(s.FreeSpace, 10)))
 }

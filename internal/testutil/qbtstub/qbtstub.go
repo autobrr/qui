@@ -185,6 +185,8 @@ type Server struct {
 	syncs        int
 	synced       map[int]chan struct{}
 	versionReads int
+	// freeSpacePath is the path of the last app/getFreeSpaceAtPath request.
+	freeSpacePath string
 }
 
 // New starts a stub whose default save path is savePath.
@@ -338,6 +340,13 @@ func (s *Server) Synced(n int) <-chan struct{} {
 		}
 	}
 	return ch
+}
+
+// FreeSpacePath is the path of the last app/getFreeSpaceAtPath request.
+func (s *Server) FreeSpacePath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.freeSpacePath
 }
 
 // VersionReads counts the app/webapiVersion requests qBittorrent received.

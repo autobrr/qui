@@ -5,8 +5,10 @@ package transfer_test
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -217,21 +219,41 @@ func TestTransferTorrentHintsAtTCPOnly(t *testing.T) {
 }
 
 // On a target without file access, qBittorrent reads the free space: from
-// 5.3 at the save path, and before 5.3 only at its default save path.
+// 5.3 at the save path, and before 5.3 only at its default save path. The
+// form of the save path gives its path rules, whatever the host of qui.
 func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
+	const (
+		full = "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"
+		// The stub writes at the save path of an add, so it refuses an add
+		// at a save path on another host. qui reads the free space before.
+		noAdd = "homelab did not take the Transfer torrent: could not add torrent | conflicts detected: torrent(s) failed to be added"
+	)
 	for _, tc := range []struct {
 		name      string
 		webAPI    string
 		free      int64
 		elsewhere bool
-		reason    string
-		log       string
+		// savePath is a save path on another host, which qui never reaches.
+		// defaultSavePath is the default save path of the target there.
+		savePath, defaultSavePath string
+		// placed is the save path of the record.
+		placed string
+		reason string
+		log    string
 	}{
-		{name: "5.3 refuses a full disk", webAPI: "2.15.2", free: 69,
-			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
+		{name: "5.3 refuses a full disk", webAPI: "2.15.2", free: 69, reason: full},
 		{name: "5.3 at another save path", webAPI: "2.15.2", free: 70, elsewhere: true},
 		{name: "5.1 elsewhere", free: 69, elsewhere: true,
 			log: "Free space unknown on homelab: before qBittorrent 5.3, qBittorrent reports it only at its default save path."},
+		// regression: #4231
+		{name: "5.3 at a Windows save path", webAPI: "2.15.2", free: 69, savePath: "C:/Downloads", placed: `C:\Downloads`, reason: noAdd},
+		// regression: #4231
+		{name: "5.3 at a UNC save path", webAPI: "2.15.2", free: 69, savePath: `\\nas\media\Downloads`,
+			placed: `\\nas\media\Downloads`, reason: noAdd},
+		// regression: #4231
+		{name: "5.1 at a Windows default save path", free: 69, defaultSavePath: "C:/Downloads", placed: `C:\Downloads`, reason: noAdd},
+		// regression: #4231
+		{name: "5.3 at a slash save path", webAPI: "2.15.2", free: 69, savePath: "/srv/downloads", placed: "/srv/downloads", reason: noAdd},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, overSFTP, noAccess)
@@ -246,9 +268,29 @@ func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 				saveDir = filepath.Join(r.dstDir, "elsewhere")
 				req.Placement.SavePath = saveDir
 			}
+			req.Placement.SavePath = cmp.Or(tc.savePath, req.Placement.SavePath)
+			if tc.defaultSavePath != "" {
+				r.dst.SetDefaultSavePath(tc.defaultSavePath)
+			}
+			if tc.placed != "" {
+				// The stub writes at the save path of an add, which is
+				// not on this host.
+				r.dst.OnWrite = func(endpoint string) {
+					if endpoint == "torrents/add" {
+						r.dst.Reject = http.StatusConflict
+					}
+				}
+			}
 
 			record := r.run(req)
 
+			if tc.placed != "" {
+				require.Equal(t, tc.placed, record.Members[0].Placement.SavePath)
+				require.NotContains(t, logOf(record), "Free space unknown")
+			}
+			if tc.placed != "" && tc.webAPI != "" {
+				require.Equal(t, tc.placed, r.dst.FreeSpacePath())
+			}
 			if tc.reason != "" {
 				require.Equal(t, transfer.StateFailed, record.State)
 				require.Equal(t, tc.reason, record.FailureReason)
@@ -495,10 +537,15 @@ func TestTransferTorrentCountsEachPathOfAHardlinkedCrossSeed(t *testing.T) {
 		name   string
 		free   int64
 		reason string
+		// windows puts the group below a Windows save path, which qui never
+		// reaches.
+		windows bool
 	}{
 		{name: "room for each path", free: 140},
 		{name: "room for one copy", free: 139,
 			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
+		// regression: #4231
+		{name: "below a Windows save path", free: 139, windows: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, onDisk, noAccess)
@@ -508,9 +555,30 @@ func TestTransferTorrentCountsEachPathOfAHardlinkedCrossSeed(t *testing.T) {
 			r.seed(s)
 			_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
 			sourceFiles := tree(t, r.srcDir)
+			req := r.request(s)
+			if tc.windows {
+				req.Placement.SavePath = "C:/Downloads"
+				r.dst.WebAPIVersion = "2.15.2"
+				// The stub writes at the save path of an add, which is not on
+				// this host.
+				r.dst.OnWrite = func(endpoint string) {
+					if endpoint == "torrents/add" {
+						r.dst.Reject = http.StatusConflict
+					}
+				}
+			}
 
-			record := r.run(r.request(s))
+			record := r.run(req)
 
+			if tc.windows {
+				require.Equal(t, []string{`C:\Downloads`, `C:\Downloads\links`},
+					[]string{record.Members[0].Placement.SavePath, record.Members[1].Placement.SavePath})
+				require.Equal(t, `C:\Downloads`, r.dst.FreeSpacePath())
+				require.Equal(t, transfer.StateFailed, record.State)
+				require.Equal(t, "homelab did not take the Transfer torrent: could not add torrent | conflicts detected: torrent(s) failed to be added",
+					record.FailureReason, "the stub cannot write at a save path on another host")
+				return
+			}
 			if tc.reason != "" {
 				require.Equal(t, transfer.StateFailed, record.State)
 				require.Equal(t, tc.reason, record.FailureReason)

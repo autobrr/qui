@@ -194,7 +194,7 @@ func (j *job) prepare(ctx context.Context) error {
 		return temporary("qui cannot write the files of the Transfer target: %v", err)
 	}
 
-	if err := j.readParts(ctx, j.dstFiles.Paths()); err != nil {
+	if err := j.readParts(ctx, pathsOf(j.target, j.dstFiles, j.rec.Members[0].Placement.SavePath)); err != nil {
 		return err
 	}
 	if !j.blind {
@@ -280,7 +280,7 @@ func (j *job) freeSpace(ctx context.Context) (free int64, known bool, err error)
 	if err != nil {
 		return 0, false, temporary("qui cannot read the default save path of %s: %v", j.target.Name, err)
 	}
-	if d := j.dstFiles.Paths(); d.Clean(prefs.SavePath) != j.rootDir {
+	if j.rootPaths.Clean(prefs.SavePath) != j.rootDir {
 		return 0, false, nil
 	}
 	if free, err = j.svc.deps.Sync.GetFreeSpace(ctx, j.target.ID); err != nil {

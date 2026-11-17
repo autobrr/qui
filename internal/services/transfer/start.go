@@ -122,7 +122,7 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
 	}
-	td := targetFiles.Paths()
+	td := pathsOf(target, targetFiles, placement.SavePath)
 	if !td.IsAbs(placement.SavePath) {
 		return nil, refuse("The save path %q on %s is not an absolute path.", placement.SavePath, target.Name)
 	}
@@ -212,6 +212,17 @@ func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 	case WayLocal, WayNone:
 	}
 	return "", refuse("Unknown way: %q.", forced)
+}
+
+// pathsOf is the path dialect of the save paths of inst: the dialect of its
+// files, or for an instance whose files qui cannot reach, the one that the
+// form of savePath shows. A Windows qBittorrent behind a Linux qui still
+// reports Windows paths.
+func pathsOf(inst *models.Instance, files fsops.Backend, savePath string) fsops.PathDialect {
+	if models.FilesystemAccessMode(inst) == models.FilesystemModeNone {
+		return fsops.ClientPaths(savePath)
+	}
+	return files.Paths()
 }
 
 // seesSameFiles reports whether each file of the group, at its place on the

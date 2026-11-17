@@ -83,7 +83,7 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 	if err != nil {
 		return nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
 	}
-	d, td := backend.Paths(), targetFiles.Paths()
+	d, td := pathsOf(from, backend, group[0].torrent.SavePath), pathsOf(target, targetFiles, placement.SavePath)
 	saves := make([]string, len(group))
 	for i, src := range group {
 		saves[i] = src.torrent.SavePath

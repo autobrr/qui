@@ -421,7 +421,7 @@ func (j *job) readGroup(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	d := targetFiles.Paths()
+	d := pathsOf(j.target, targetFiles, j.rec.Members[0].Placement.SavePath)
 	saves := make([]string, len(j.rec.Members))
 	for i := range j.rec.Members {
 		saves[i] = j.rec.Members[i].Placement.SavePath
