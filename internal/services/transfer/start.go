@@ -6,6 +6,7 @@ package transfer
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -32,13 +33,25 @@ type Request struct {
 	RuleID    *int
 }
 
-// RefusalError is why qui does not start a Transfer, for the user.
-type RefusalError struct{ Reason string }
+// RefusalError is why qui does not start a Transfer, for the user. It wraps a
+// sentinel such as ErrMoving when a caller must tell the case apart.
+type RefusalError struct {
+	Reason string
+	err    error
+}
 
 func (r *RefusalError) Error() string { return r.Reason }
 
+func (r *RefusalError) Unwrap() error { return r.err }
+
+// ErrMoving is the refusal of a torrent that qBittorrent is moving, alone or
+// as a member of the group. The Transfer can start once the move ends.
+var ErrMoving = errors.New("qBittorrent is moving this torrent")
+
+// refuse builds a refusal. A %w verb keeps its error for errors.Is.
 func refuse(format string, args ...any) error {
-	return &RefusalError{Reason: fmt.Sprintf(format, args...)}
+	err := fmt.Errorf(format, args...)
+	return &RefusalError{Reason: err.Error(), err: errors.Unwrap(err)}
 }
 
 const (
@@ -120,7 +133,7 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 	if err != nil {
 		return nil, nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
 	}
-	td := targetFiles.Paths()
+	td := pathsOf(target, targetFiles, placement.SavePath)
 	if !td.IsAbs(placement.SavePath) {
 		return nil, nil, refuse("The save path %q on %s is not an absolute path.", placement.SavePath, target.Name)
 	}
@@ -230,6 +243,17 @@ func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 	return "", refuse("Unknown way: %q.", forced)
 }
 
+// pathsOf is the path dialect of the save paths of inst: the dialect of its
+// files, or for an instance whose files qui cannot reach, the one that the
+// form of savePath shows. A Windows qBittorrent behind a Linux qui still
+// reports Windows paths.
+func pathsOf(inst *models.Instance, files fsops.Backend, savePath string) fsops.PathDialect {
+	if models.FilesystemAccessMode(inst) == models.FilesystemModeNone {
+		return fsops.ClientPaths(savePath)
+	}
+	return files.Paths()
+}
+
 // seesSameFiles reports whether each file of the group, at its place on the
 // target, is the file of the source, as the endpoint module tells it.
 func (s *Service) seesSameFiles(ctx context.Context, source, target *models.Instance, targetFiles fsops.Backend, group []*source, members []Member) bool {
@@ -292,6 +316,10 @@ func (s *Service) readSource(ctx context.Context, instanceID int, hash string) (
 
 // movable refuses a torrent that a Transfer cannot move.
 func (src *source) movable() error {
+	if src.torrent.State == qbt.TorrentStateMoving {
+		return &RefusalError{Reason: fmt.Sprintf("qBittorrent is moving %s. A Transfer can start once the move ends.", src.torrent.Name),
+			err: ErrMoving}
+	}
 	if src.torrent.InfohashV2 != "" || src.info.HasV2() {
 		return refuse(reasonV2)
 	}
@@ -301,8 +329,13 @@ func (src *source) movable() error {
 	if src.torrent.Progress < 1 || slices.ContainsFunc(src.files, func(f qbt.TorrentFile) bool { return f.Progress < 1 }) {
 		return refuse("Only complete torrents can move, and %s is not complete.", src.torrent.Name)
 	}
-	if _, err := planFiles(src.info, src.files); err != nil {
+	plan, err := planFiles(src.info, src.files)
+	if err != nil {
 		return refuse("The files of %s do not match its .torrent: %v", src.torrent.Name, err)
+	}
+	if name := takenName(src.info, plan); name != "" {
+		return refuse("%s has the original name of another file of %s. Rename the files on the source so that no file "+
+			"takes the original name of another.", name, src.torrent.Name)
 	}
 	return nil
 }

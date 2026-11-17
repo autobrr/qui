@@ -134,6 +134,7 @@ func (s *Server) pass(seeder *Server, from, to *Torrent) {
 		}
 		to.add.downloaded += int64(len(data[i]))
 		from.Uploaded += int64(len(data[i]))
+		s.FreeSpace = max(s.FreeSpace-int64(len(data[i])), 0)
 	}
 	to.add.progress, to.add.pieceStates = 1, nil
 }
@@ -144,5 +145,6 @@ func (s *Server) freeSpaceAt(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	s.freeSpacePath = r.URL.Query().Get("path")
 	_, _ = w.Write([]byte(strconv.FormatInt(s.FreeSpace, 10)))
 }

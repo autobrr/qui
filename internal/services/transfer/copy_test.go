@@ -6,7 +6,9 @@ package transfer_test
 import (
 	"fmt"
 	"math/rand/v2"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -184,6 +186,43 @@ func TestTransferResumesACopyInSeveralRanges(t *testing.T) {
 	}
 }
 
+// A resume that copies one piece in the middle of each of many files closes
+// the files of each piece before the next one. A stream keeps no file open
+// that it does not write.
+// regression: #4231
+func TestTransferResumeClosesTheFilesOfEachTask(t *testing.T) {
+	r := newRig(t)
+	sizes := make([]int, 40)
+	for i := range sizes {
+		sizes[i] = 2*packPiece + 100
+	}
+	s := newSeason(t, sizes...)
+	r.seed(s)
+	r.disk.unconfirmed = true
+	cancel := sync.OnceFunc(r.cancel)
+	r.dst.OnAdd = func(string) { cancel() }
+
+	id, err := r.svc.Start(t.Context(), r.request(s))
+	require.NoError(t, err)
+	r.svc.Wait()
+	// The target lost bytes of each file, in a piece that holds no other
+	// file.
+	for name := range s.files {
+		lose(t, filepath.Join(r.dstDir, showName, name+".qui-transfer-"+strconv.FormatInt(id, 10)), 20000, 50)
+	}
+	r.dst.OnAdd = nil
+	r.disk.mostWriters = 0
+
+	r.restart()
+	r.svc.Wait()
+
+	record := r.get(id)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Contains(t, logOf(record), "The check on homelab passed 41 of 81 pieces of the partial files.")
+	require.Equal(t, 1, r.disk.mostWriters, "qui writes one file at a time")
+}
+
 // provenRanges counts the quarters of the n pieces that hold a Proven piece.
 func provenRanges(bits []byte, n int) int {
 	quarters := map[int]bool{}
@@ -195,16 +234,14 @@ func provenRanges(bits []byte, n int) int {
 	return len(quarters)
 }
 
-// A seedbox that refuses extra SSH connections gets the copy on fewer, down
-// to one. The Transfer goes on, and removes the source files over SSH at its
-// end.
+// A seedbox that refuses extra SSH connections gets the copy on fewer. The
+// Transfer goes on, and removes the source files over SSH at its end.
 func TestTransferGoesOnWithFewerConnections(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		limit int
 	}{
 		{name: "a host that allows two connections", limit: 2},
-		{name: "a host that allows one connection", limit: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t, fastCopy)

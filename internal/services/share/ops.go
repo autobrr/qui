@@ -6,6 +6,10 @@ package share
 import (
 	"context"
 	"errors"
+	"net/netip"
+	"slices"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/pkg/torrentname"
@@ -62,11 +66,13 @@ func (s *Service) Stop(ctx context.Context, id int64) error {
 }
 
 // Unlock lets the next downloader of an active Share with "Only the first
-// downloader" in.
+// downloader" in, also after a restart of qui.
 func (s *Service) Unlock(ctx context.Context, id int64) error {
 	if !s.on() {
 		return ErrOff
 	}
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	sh, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		return err
@@ -78,6 +84,12 @@ func (s *Service) Unlock(ctx context.Context, id int64) error {
 		return refuse("Unlock needs qui's own tracker. With an outside tracker, every downloader gets the address.")
 	case !sh.FirstDownloaderOnly:
 		return refuse("The Share lets every downloader in already.")
+	}
+	if err := s.deps.Store.SetHolder(ctx, id, netip.Addr{}); err != nil {
+		return err
+	}
+	if err := s.refresh(ctx); err != nil {
+		log.Error().Err(err).Msg("share: cannot update the Share tracker")
 	}
 	s.tracker.Unlock(id)
 	return nil
@@ -128,9 +140,10 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 
 // SaveSettings saves the settings and applies them to the running tracker.
 // It returns an error that wraps ErrInvalidSettings or
-// sharetracker.ErrInvalidSettings for a value that qui does not take, and
-// sharetracker.ErrPortBusy when another program listens on the port of the
-// tracker. Then it saves nothing.
+// sharetracker.ErrInvalidSettings for a value that qui does not take, a
+// *RefusalError for a new port or public address of qui's tracker while a
+// Share on it is active, and sharetracker.ErrPortBusy when another program
+// listens on the port of the tracker. Then it saves nothing.
 func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
 	if !s.on() {
 		return ErrOff
@@ -143,6 +156,9 @@ func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
 	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
+	if err := s.keepTrackerOfActiveShares(ctx, settings.Tracker); err != nil {
+		return err
+	}
 	if err := s.tracker.CheckPort(ctx, settings.Tracker.Port); err != nil {
 		return err
 	}
@@ -153,6 +169,26 @@ func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
 		return err
 	}
 	return s.refresh(ctx)
+}
+
+// keepTrackerOfActiveShares refuses a new port or public address of qui's
+// tracker, also port 0 for the outside tracker, while a Share on it is active.
+func (s *Service) keepTrackerOfActiveShares(ctx context.Context, next sharetracker.Settings) error {
+	saved, err := s.deps.TrackerSettings.Settings(ctx)
+	if err != nil {
+		return err
+	}
+	if next.Port == saved.Port && next.PublicAddress == saved.PublicAddress {
+		return nil
+	}
+	unfinished, err := s.deps.Store.Unfinished(ctx)
+	if err != nil {
+		return err
+	}
+	if slices.ContainsFunc(unfinished, func(sh Share) bool { return sh.State == StateActive && sh.Tracker == TrackerOwn }) {
+		return refuse("End the active Shares on qui's tracker first: their .torrent files carry the old address.")
+	}
+	return nil
 }
 
 // IsRefusal reports whether err is a refusal for the user.

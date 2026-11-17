@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -197,7 +198,12 @@ func (j *job) place(ctx context.Context) error {
 	if err := j.putInPlace(ctx, again); err != nil {
 		return err
 	}
+	return j.addMembers(ctx)
+}
 
+// addMembers adds each member that the target or its Cross-seed instance
+// does not have yet, and waits for the check of each routed member.
+func (j *job) addMembers(ctx context.Context) error {
 	var representative *part
 	for _, p := range j.parts {
 		if p.TargetInstanceID != j.target.ID {
@@ -216,10 +222,16 @@ func (j *job) place(ctx context.Context) error {
 		}
 	}
 	for _, p := range j.parts {
-		if p.TargetInstanceID != j.target.ID && !j.added(p) {
+		if p.TargetInstanceID == j.target.ID {
+			continue
+		}
+		if !j.added(p) {
 			if err := j.addCrossSeed(ctx, p, representative); err != nil {
 				return err
 			}
+		}
+		if err := j.crossSeedChecked(ctx, p); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -290,10 +302,6 @@ func (j *job) add(ctx context.Context, p *part) error {
 	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash); err != nil {
 		return err
 	}
-	layout := qbt.ContentLayoutOriginal
-	if p.src.info.IsDir() && commonRoot(names(p.plan)) == "" {
-		layout = qbt.ContentLayoutSubfolderNone
-	}
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.Add(ctx, torrentadd.Request{
 		InstanceID: j.target.ID,
@@ -303,7 +311,7 @@ func (j *job) add(ctx context.Context, p *part) error {
 			SavePath:        p.Placement.SavePath,
 			Category:        p.Placement.Category,
 			Tags:            p.Placement.Tags,
-			ContentLayout:   layout,
+			ContentLayout:   addLayout(p.src.info, p.plan),
 			Stopped:         new(true),
 			AutoTMM:         new(false),
 			UseDownloadPath: new(false),
@@ -328,8 +336,9 @@ func (j *job) add(ctx context.Context, p *part) error {
 }
 
 // addCrossSeed adds the member on the Cross-seed instance of the target, on
-// links to the files of the representative. The cross-seed add checks it
-// and leaves it stopped. qui records the add as add does.
+// links to the files of the representative. The cross-seed add starts a
+// check of the member and leaves it stopped. qui records the add as add
+// does.
 func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 	if representative == nil {
 		return permanent("%s has no torrent on %s to link %s to.", j.crossSeed.Name, j.target.Name, p.Name)
@@ -366,6 +375,25 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 		}
 	}
 	return temporary("%s did not take %s: %s", j.crossSeed.Name, p.Name, why)
+}
+
+// crossSeedChecked waits until the check that the cross-seed add started
+// finds every piece of the member, also when a stop came during the wait.
+func (j *job) crossSeedChecked(ctx context.Context, p *part) error {
+	cfg := j.svc.deps.Config
+	res := j.svc.adder.Confirm(ctx, torrentadd.Request{
+		InstanceID:   j.crossSeed.ID,
+		Hash:         p.Hash,
+		Polls:        cfg.CheckPolls,
+		PollInterval: cfg.PollInterval,
+	})
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if res.Outcome != torrentadd.Verified {
+		return temporary("The check of %s on %s did not pass: %s", p.Name, j.crossSeed.Name, describe(res))
+	}
+	return nil
 }
 
 // ownershipUnknown stops the Transfer when an instance has a member after
@@ -435,10 +463,21 @@ func (j *job) rename(ctx context.Context, p *part) error {
 // torrents on the source as the user chose. A cancel rolls back until the
 // removal from the source starts.
 func (j *job) after(ctx context.Context) error {
-	if err := j.step(ctx, StateFinishing, stepAfter); err != nil {
+	if err := j.checkInstances(ctx); err != nil {
 		return err
 	}
 	after := j.rec.Options.After
+	var detail []byte
+	if after != AfterKeepSeeding {
+		running, err := j.running(ctx)
+		if err != nil {
+			return err
+		}
+		detail, _ = json.Marshal(running)
+	}
+	if err := j.stepWith(ctx, StateFinishing, stepAfter, string(detail)); err != nil {
+		return err
+	}
 	if after != AfterKeepSeeding {
 		if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, j.hashes(), "pause"); err != nil {
 			return temporary("qui cannot stop %s on %s: %v", j.torrents("the"), j.source.Name, err)
@@ -469,19 +508,29 @@ func (j *job) after(ctx context.Context) error {
 	return j.removeFromSource(ctx, keep)
 }
 
+// running returns the members that run on the source.
+func (j *job) running(ctx context.Context) ([]string, error) {
+	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+	if err != nil {
+		return nil, temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
+	}
+	running := []string{}
+	for _, t := range torrents {
+		if !slices.Contains([]qbt.TorrentState{qbt.TorrentStateStoppedUp, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedDl}, t.State) {
+			running = append(running, t.Hash)
+		}
+	}
+	return running, nil
+}
+
 // finishRemoval goes on with the removal from the source after a stop. It
-// keeps the files when the recorded step says why.
+// keeps the files when the recorded step says why, and else checks again
+// why to keep them, because an instance or a torrent may use them now.
 func (j *job) finishRemoval(ctx context.Context) error {
 	if !j.svc.commit(j.rec.ID) {
 		return errCancelled
 	}
-	var keep string
-	for _, step := range j.rec.Steps {
-		if step.Name == stepRemoveFromSource {
-			keep = step.Detail
-		}
-	}
-	if err := j.stepWith(ctx, StateFinishing, stepRemoveFromSource, keep); err != nil {
+	if err := j.checkInstances(ctx); err != nil {
 		return err
 	}
 	if models.FilesystemAccessMode(j.source) != models.FilesystemModeNone {
@@ -492,6 +541,18 @@ func (j *job) finishRemoval(ctx context.Context) error {
 	}
 	if !j.readGroup(ctx) {
 		return permanent("qui cannot read the names of the files of %s, so it cannot finish the removal from %s.", j.torrents("the"), j.source.Name)
+	}
+	var keep string
+	for _, step := range j.rec.Steps {
+		if step.Name == stepRemoveFromSource {
+			keep = step.Detail
+		}
+	}
+	if keep == "" && j.rec.Options.After == AfterRemoveWithFiles {
+		keep = j.keepReason(ctx)
+	}
+	if err := j.stepWith(ctx, StateFinishing, stepRemoveFromSource, keep); err != nil {
+		return err
 	}
 	return j.removeFromSource(ctx, keep)
 }
@@ -567,9 +628,21 @@ func (j *job) keepReason(ctx context.Context) string {
 	if j.rec.Way == WayNone {
 		return j.target.Name + " reads the same files"
 	}
-	if j.blind && j.downloaded() == 0 {
-		// The target may see the files of the source.
-		return j.target.Name + " had the files before the Transfer"
+	if j.blind {
+		// Only a download of every byte proves that the target had no file
+		// of its own, which may be a file of the source. A resumed download
+		// counts only the bytes of its last run.
+		var size int64
+		for _, f := range j.files {
+			size += f.size
+		}
+		switch got := j.downloaded(); {
+		case got == 0:
+			return j.target.Name + " had the files before the Transfer"
+		case got < size:
+			return fmt.Sprintf("qui saw only %s of %s arrive on %s by BitTorrent, and %s may read the rest on %s",
+				formatBytes(got), formatBytes(size), j.target.Name, j.target.Name, j.source.Name)
+		}
 	}
 	if j.srcFiles == nil && slices.ContainsFunc(j.files, func(f *groupFile) bool { return f.onTarget }) {
 		return "qui cannot reach the files on " + j.source.Name + " to remove only the files that it copied"

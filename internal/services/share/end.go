@@ -61,15 +61,12 @@ func (s *Service) removeTorrent(ctx context.Context, sh *Share) error {
 		log.Warn().Err(err).Int64("share", sh.ID).Msg("share: the Share torrent is not gone yet; qui retries")
 		return nil
 	}
+	if err := s.saveActivity(ctx, sh.ID); err != nil {
+		return err
+	}
 	s.mu.Lock()
-	l := s.live[sh.ID]
 	delete(s.live, sh.ID)
 	s.mu.Unlock()
-	if l != nil {
-		if err := s.deps.Store.SaveActivity(ctx, sh.ID, l.activity()); err != nil {
-			return err
-		}
-	}
 	sh.State, sh.EndedAt = StateEnded, s.deps.Now().UTC()
 	if err := s.deps.Store.SetState(ctx, sh.ID, StateEnded, sh.EndReason, sh.EndedAt); err != nil {
 		return err
@@ -79,9 +76,10 @@ func (s *Service) removeTorrent(ctx context.Context, sh *Share) error {
 }
 
 // Check ends each active Share whose end condition holds, retries the
-// removal of each ending Share, and removes the rows of the Shares that
-// ended more than 30 days ago, with the registry rows of their Share
-// torrents. Run calls it at each tick.
+// removal of each ending Share, starts or stops qui's own tracker for the
+// active Shares, which retries a start that failed, and removes the rows of
+// the Shares that ended more than 30 days ago, with the registry rows of
+// their Share torrents. Run calls it at each tick.
 func (s *Service) Check(ctx context.Context) error {
 	if !s.on() {
 		return nil
@@ -112,7 +110,7 @@ func (s *Service) Check(ctx context.Context) error {
 		}
 		errs = append(errs, s.saveActivity(ctx, sh.ID))
 	}
-	errs = append(errs, s.removeOld(ctx))
+	errs = append(errs, s.refresh(ctx), s.removeOld(ctx))
 	return errors.Join(errs...)
 }
 
@@ -213,7 +211,13 @@ func (s *Service) saveActivity(ctx context.Context, id int64) error {
 	l.dirty = false
 	activity := l.activity()
 	s.mu.Unlock()
-	return s.deps.Store.SaveActivity(ctx, id, activity)
+	if err := s.deps.Store.SaveActivity(ctx, id, activity); err != nil {
+		s.mu.Lock()
+		l.dirty = true
+		s.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 // removeOld removes the Shares that ended more than 30 days ago.
@@ -283,13 +287,21 @@ func (s *Service) BeforeTorrentChange(ctx context.Context, instanceID int, hashe
 
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
+	failed := 0
+	var lastErr error
 	for _, id := range ids {
 		sh, err := s.deps.Store.Get(ctx, id)
 		if err == nil && sh.State == StateActive {
 			err = s.end(ctx, sh, changeReasons[change], "a change of the torrent in qui")
 		}
 		if err != nil {
-			log.Error().Err(err).Int64("share", id).Msg("share: cannot end the Share before the change of its torrent")
+			log.Debug().Err(err).Int64("share", id).Msg("share: cannot end the Share before the change of its torrent")
+			failed++
+			lastErr = err
 		}
+	}
+	if failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", instanceID).Int("failed", failed).
+			Msg("share: cannot end Shares before the change of their torrents")
 	}
 }

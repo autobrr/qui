@@ -76,12 +76,15 @@ func TestTheSettingsRefuseValuesThatTheTrackerCannotUse(t *testing.T) {
 	for name, invalid := range map[string]sharetracker.Settings{
 		"negative port":                 {Port: -1},
 		"port above 65535":              {Port: 65536},
-		"public address without http":   {Port: 6969, PublicAddress: "share.example.com:6969"},
 		"public address with ftp":       {Port: 6969, PublicAddress: "ftp://share.example.com"},
 		"public address with a login":   {Port: 6969, PublicAddress: "https://user:password@share.example.com"},
 		"public address with a query":   {Port: 6969, PublicAddress: "https://share.example.com/?passkey=x"},
 		"trusted proxy that is a name":  {Port: 6969, TrustedProxies: []string{"proxy.example.com"}},
 		"trusted proxy with a bad mask": {Port: 6969, TrustedProxies: []string{"10.0.0.0/33"}},
+		// regression: #4231
+		"public address that ends in ?": {Port: 6969, PublicAddress: "https://share.example.com/?"},
+		// regression: #4231
+		"public address that ends in #": {Port: 6969, PublicAddress: "https://share.example.com/#"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.ErrorIs(t, store.SaveSettings(t.Context(), invalid), sharetracker.ErrInvalidSettings)

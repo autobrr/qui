@@ -7,6 +7,8 @@ import (
 	"context"
 	"math/rand/v2"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -207,6 +209,49 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 	}
 }
 
+// A target that did not confirm one flush gets no Proven pieces, also from a
+// later run in which it confirms its flushes. A resume after that run checks
+// the pieces of that run, and copies a piece that the target lost again.
+// regression: #4231
+func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
+	r := newRig(t, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
+	s := newBigShow(t)
+	r.seed(s)
+	r.disk.unconfirmed = true
+	count := 0
+	r.disk.onWrite = func(string) {
+		if count++; count == 10 || count == 30 {
+			r.cancel()
+		}
+	}
+
+	id, err := r.svc.Start(t.Context(), r.request(s))
+	require.NoError(t, err)
+	r.svc.Wait()
+	first, _ := r.disk.log()
+	r.disk.unconfirmed = false
+	r.restart()
+	r.svc.Wait()
+	require.Equal(t, transfer.FlushUnconfirmed, r.get(id).FlushState)
+	// The target lost bytes of the first piece that the second run wrote
+	// and flushed.
+	writes, _ := r.disk.log()
+	require.Greater(t, len(writes), len(first)+10, "the second run flushed pieces")
+	at := spans(t, s, id, writes)[len(first)].start + 50
+	name, size := "Show.S01E01.mkv", int64(len(s.files["Show.S01E01.mkv"]))
+	if at >= size {
+		name, at = "Show.S01E02.mkv", at-size
+	}
+	lose(t, filepath.Join(r.dstDir, showName, name+".qui-transfer-"+strconv.FormatInt(id, 10)), at, 100)
+
+	r.restart()
+	r.svc.Wait()
+
+	record := r.get(id)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+}
+
 // requests counts the requests that both stubs answered.
 func (r *rig) requests() int { return r.src.Requests() + r.dst.Requests() }
 
@@ -248,22 +293,27 @@ func TestTransferRetriesATemporaryFailureAfterAnHour(t *testing.T) {
 }
 
 // A permanent failure removes what qui wrote, waits for the user, and never
-// runs again.
+// runs again. Here the check on the target names the piece that failed, and
+// with qBittorrent's setting "Append .!qB extension to incomplete files", the
+// cleanup removes the temporary files under their .!qB names.
 func TestTransferNeverRetriesAPermanentFailure(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
 	r.seed(s)
 	r.disk.unconfirmed = true
+	r.dst.IncompleteFilesExt = true
 	r.disk.damage = map[string]int64{showName + "/Show.S01E02.mkv": 20}
 
 	record := r.run(r.request(s))
 
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass, record.FailureReason)
+	require.Equal(t, "The check on homelab failed 1 of 5 pieces: 3.", record.FailureReason, "pieces 0, 1, 2 and 4 passed")
 	require.True(t, record.RetryAt.IsZero())
 	require.False(t, record.FinishedAt.IsZero())
 	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
 	require.Empty(t, tree(t, r.dstDir))
+	r.requireNoHelpers(record)
 
 	before := r.requests()
 	r.setClock(clock.Add(48 * time.Hour))
@@ -393,6 +443,77 @@ func TestTransferStopsWhenAnEndpointChanges(t *testing.T) {
 	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
 }
 
+// A failure after qui stopped the source starts again only the torrents
+// that ran before. A member that was stopped before the Transfer stays
+// stopped, also when the cleanup runs after a restart, and when qui stopped
+// at the stop of the source and the resumed run finds every member stopped.
+// regression: #4231
+func TestTransferRollbackStartsOnlyWhatQuiStopped(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// reject makes the target refuse the start of the torrent, a failure
+		// for a retry. Without it the target misses a file, a failure for
+		// good.
+		reject bool
+		// restart runs the Transfer in a qui that ends after it records the
+		// cleanup, and killAtStop in one that the parent kills at the stop of
+		// the source.
+		restart, killAtStop bool
+		class               transfer.FailureClass
+	}{
+		{name: "a permanent failure", class: transfer.FailurePermanent},
+		{name: "a temporary failure", reject: true, class: transfer.FailureTemporary},
+		{name: "a cleanup after a restart", restart: true, class: transfer.FailurePermanent},
+		{name: "a failure after a restart at the stop", killAtStop: true, class: transfer.FailurePermanent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			s := newShow(t, showName)
+			r.seed(s)
+			episode := r.seedEpisode(s)
+			require.NoError(t, r.sync.BulkAction(t.Context(), r.source.ID, []string{episode}, "pause"))
+			r.dst.OnWrite = func(endpoint string) {
+				r.dst.Reject = 0
+				switch {
+				case endpoint != "torrents/start":
+				case tc.reject:
+					r.dst.Reject = http.StatusInternalServerError
+				default:
+					_ = os.Remove(filepath.Join(r.dstDir, showName, episode2))
+				}
+			}
+
+			var id int64
+			if tc.restart || tc.killAtStop {
+				plan := crash{DB: r.dbPath, Request: r.request(s), At: "after:clean up"}
+				child := make(chan *os.Process, 1)
+				if tc.killAtStop {
+					plan.At = ""
+					r.src.OnWrite = func(endpoint string) {
+						if endpoint == "torrents/stop" {
+							require.NoError(t, (<-child).Kill())
+						}
+					}
+				}
+				runCrashChild(t, plan, child, tc.killAtStop)
+				r.src.OnWrite = nil
+				r.restart()
+				r.svc.Wait()
+				require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+			} else {
+				id = r.run(r.request(s)).ID
+			}
+
+			record := r.get(id)
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Equal(t, tc.class, record.FailureClass, record.FailureReason)
+			require.Len(t, record.Members, 2)
+			require.False(t, r.src.Stopped(s.hash), "qui starts the torrent that it stopped")
+			require.True(t, r.src.Stopped(episode), "the torrent that was stopped before the Transfer stays stopped")
+		})
+	}
+}
+
 // Cancel stops a Transfer, removes the files that qui wrote and the torrents
 // that qui added, and starts the source again. Once the removal from the
 // source started, cancel no longer rolls back.
@@ -481,6 +602,38 @@ func TestTransferCancel(t *testing.T) {
 		require.ErrorIs(t, cancelErr, transfer.ErrCancelTooLate)
 		require.Equal(t, transfer.StateDone, r.get(id).State)
 		require.False(t, r.src.Has(s.hash))
+	})
+	// regression: #4231
+	t.Run("while the run records a temporary failure", func(t *testing.T) {
+		r := newRig(t)
+		s := newShow(t, showName)
+		r.seed(s)
+		r.dst.OnWrite = func(endpoint string) {
+			r.dst.Reject = 0
+			if endpoint == "torrents/start" {
+				r.dst.Reject = http.StatusInternalServerError
+			}
+		}
+		ids := make(chan int64, 1)
+		cancel := sync.OnceFunc(func() { require.NoError(t, r.svc.Cancel(t.Context(), <-ids)) })
+		r.src.OnWrite = func(endpoint string) {
+			if endpoint == "torrents/start" {
+				cancel()
+			}
+		}
+		id, err := r.svc.Start(t.Context(), r.request(s))
+		require.NoError(t, err)
+		ids <- id
+		r.svc.Wait()
+
+		record := r.get(id)
+		require.Equal(t, transfer.StateCancelled, record.State, record.FailureReason)
+		require.False(t, record.FinishedAt.IsZero())
+		require.False(t, r.dst.Has(s.hash), "qui removes the torrent that it added")
+		require.Empty(t, tree(t, r.dstDir))
+		require.True(t, r.src.Has(s.hash))
+		require.False(t, r.src.Stopped(s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
 	})
 	t.Run("a Transfer that waits for its retry", func(t *testing.T) {
 		r := newRig(t)

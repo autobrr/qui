@@ -113,9 +113,9 @@ func describe(res torrentadd.Result) string {
 	return "qBittorrent does not list the torrent"
 }
 
-// fail ends a Share that did not start.
+// fail ends a Share that did not start, also after the caller left.
 func (s *Service) fail(ctx context.Context, sh *Share, reason string) {
-	if err := s.end(ctx, sh, reason, "a failed start"); err != nil {
+	if err := s.end(context.WithoutCancel(ctx), sh, reason, "a failed start"); err != nil {
 		log.Error().Err(err).Int64("share", sh.ID).Msg("share: cannot end the Share that did not start")
 	}
 }

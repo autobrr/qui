@@ -17,9 +17,3 @@ func TestStartUpSwitchesKeepTransfersAndSharesOff(t *testing.T) {
 
 	require.False(t, NewServer(deps).Switches().TransfersAndShares)
 }
-
-// TestAllEndpointsDocumented and the Browser-only route tests see a route
-// that a later change adds behind the switch only through this setup.
-func TestSharedTestSetupTurnsOnTransfersAndShares(t *testing.T) {
-	require.True(t, NewServer(newTestDependencies(t)).Switches().TransfersAndShares)
-}

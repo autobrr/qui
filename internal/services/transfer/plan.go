@@ -139,6 +139,42 @@ func groupFiles(parts []*part) (files []*groupFile, byRel map[string]*groupFile,
 	return files, byRel, nil
 }
 
+// addLayout is the content layout of the add on the target: the target
+// makes the folder of the .torrent, unless the files on the source share no
+// folder.
+func addLayout(info *metainfo.Info, plan []file) qbt.ContentLayout {
+	if info.IsDir() && commonRoot(names(plan)) == "" {
+		return qbt.ContentLayoutSubfolderNone
+	}
+	return qbt.ContentLayoutOriginal
+}
+
+// takenName returns the source name of a file that the .torrent gives
+// another file on the target, or "". The rename after the add would move
+// the bytes of this file to the other file.
+func takenName(info *metainfo.Info, plan []file) string {
+	if !info.IsDir() {
+		return ""
+	}
+	folder := info.BestName() + "/"
+	if addLayout(info, plan) == qbt.ContentLayoutSubfolderNone {
+		folder = ""
+	}
+	files := info.UpvertedFiles()
+	original := make(map[string]int, len(files))
+	for i, f := range files {
+		if !plan[i].pad {
+			original[folder+strings.Join(f.BestPath(), "/")] = i
+		}
+	}
+	for i, f := range plan {
+		if other, ok := original[f.name]; ok && other != i {
+			return f.name
+		}
+	}
+	return ""
+}
+
 // names are the names of the files that are on disk.
 func names(plan []file) []string {
 	var out []string

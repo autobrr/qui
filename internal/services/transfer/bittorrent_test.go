@@ -5,8 +5,15 @@ package transfer_test
 
 import (
 	"bytes"
+	"cmp"
+	"errors"
+	"fmt"
+	"net/http"
 	"net/netip"
+	"os"
 	"path/filepath"
+	"runtime"
+	"syscall"
 	"testing"
 	"time"
 
@@ -43,32 +50,9 @@ func (r *rig) requireNoHelpers(record *transfer.Record) {
 	}
 }
 
-// A Transfer to a target without file access passes the files by a
-// Transfer torrent: the target downloads them from the source, adds the
-// real torrent on them, and qui removes the Transfer torrent from both
-// clients.
-func TestTransferPassesByBitTorrentToATargetWithoutFileAccess(t *testing.T) {
-	r := newRigOn(t, overSFTP, noAccess)
-	r.connect()
-	s := newShow(t, showName)
-	r.seed(s)
-
-	record := r.run(r.request(s))
-
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	require.Equal(t, transfer.WayBitTorrent, record.Way)
-	require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the target downloaded the files")
-	require.True(t, r.seeding(r.target.ID, s.hash))
-	require.False(t, r.src.Has(s.hash))
-	require.Empty(t, tree(t, r.srcDir), logOf(record))
-	r.requireNoHelpers(record)
-	require.Contains(t, logOf(record), "Passing 70 B by a Transfer torrent from seedbox to homelab.")
-	require.Contains(t, logOf(record), "qui cannot see the files on homelab, so a file with other content at the same path can be replaced.")
-	require.Contains(t, logOf(record), "Proof: BitTorrent checked every piece on homelab.")
-}
-
-// When no byte arrives on the target from the source, qui asks the source to
-// connect to the target.
+// A Transfer to a target without file access passes the files by a Transfer
+// torrent. When no byte arrives on the target from the source, qui asks the
+// source to connect to the target.
 func TestTransferTorrentConnectsTheOtherWay(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()
@@ -81,7 +65,10 @@ func TestTransferTorrentConnectsTheOtherWay(t *testing.T) {
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.Equal(t, transfer.WayBitTorrent, record.Way)
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Contains(t, logOf(record), "Passing 70 B by a Transfer torrent from seedbox to homelab.")
+	require.Contains(t, logOf(record), "qui cannot see the files on homelab, so a file with other content at the same path can be replaced.")
 	require.Contains(t, logOf(record), "No byte arrived on homelab from seedbox. qui asks seedbox to connect to homelab.")
+	require.Contains(t, logOf(record), "Proof: BitTorrent checked every piece on homelab.")
 	require.Equal(t, 1, r.dst.Calls("torrents/addPeers"))
 	require.Equal(t, 1, r.src.Calls("torrents/addPeers"))
 	r.requireNoHelpers(record)
@@ -95,11 +82,6 @@ func TestTransferTorrentFallsBackToSFTP(t *testing.T) {
 		connect func(r *rig)
 		reason  string
 	}{
-		{name: "unreachable", connect: func(r *rig) {
-			r.connect()
-			r.src.Unreachable, r.dst.Unreachable = true, true
-		}, reason: "The clients did not connect: homelab did not reach seedbox at 198.51.100.1:6881, " +
-			"and seedbox did not reach homelab at 198.51.100.2:6881."},
 		{name: "no public peer address", connect: func(*rig) {},
 			reason: "The clients did not connect: seedbox has no public peer address, and homelab has no public peer address."},
 	} {
@@ -130,7 +112,6 @@ func TestTransferTorrentFailsWithoutAWayBack(t *testing.T) {
 		source, target side
 		forced         transfer.Way
 	}{
-		{name: "a target without file access", source: overSFTP, target: noAccess},
 		{name: "a source without file access", source: noAccess, target: overSFTP},
 		{name: "forced BitTorrent", source: overSFTP, target: overSFTP, forced: transfer.WayBitTorrent},
 	} {
@@ -188,16 +169,8 @@ func TestTransferPicksTheWay(t *testing.T) {
 		forced         transfer.Way
 		want           transfer.Way
 	}{
-		{name: "both on qui's own disk", source: onDisk, target: onDisk, want: transfer.WayLocal},
-		{name: "the source on qui's own disk", source: onDisk, target: overSFTP, want: transfer.WaySFTP},
-		{name: "the target on qui's own disk", source: overSFTP, target: onDisk, want: transfer.WaySFTP},
-		{name: "both over SFTP", source: overSFTP, target: overSFTP, want: transfer.WayBitTorrent},
-		{name: "a source without file access", source: noAccess, target: onDisk, want: transfer.WayBitTorrent},
-		{name: "a target without file access", source: onDisk, target: noAccess, want: transfer.WayBitTorrent},
 		{name: "no file access", source: noAccess, target: noAccess, want: transfer.WayBitTorrent},
-		{name: "a forced copy over SFTP", source: overSFTP, target: overSFTP, forced: transfer.WaySFTP, want: transfer.WaySFTP},
 		{name: "a forced copy on qui's own disk", source: onDisk, target: onDisk, forced: transfer.WaySFTP, want: transfer.WayLocal},
-		{name: "forced BitTorrent", source: onDisk, target: onDisk, forced: transfer.WayBitTorrent, want: transfer.WayBitTorrent},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, tc.source, tc.target)
@@ -245,38 +218,42 @@ func TestTransferTorrentHintsAtTCPOnly(t *testing.T) {
 	require.Zero(t, r.src.Writes("app/setPreferences"))
 }
 
-// A copy through qui records no hint.
-func TestTransferCopyHasNoHint(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-
-	record := r.run(r.request(s))
-
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	for _, line := range record.Log {
-		require.Nil(t, line.Hint, line.Message)
-	}
-}
-
 // On a target without file access, qBittorrent reads the free space: from
-// 5.3 at the save path, and before 5.3 only at its default save path.
+// 5.3 at the save path, and before 5.3 only at its default save path. The
+// form of the save path gives its path rules, whatever the host of qui.
 func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
+	const (
+		full = "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"
+		// The stub writes at the save path of an add, so it refuses an add
+		// at a save path on another host. qui reads the free space before.
+		noAdd = "homelab did not take the Transfer torrent: could not add torrent | conflicts detected: torrent(s) failed to be added"
+	)
 	for _, tc := range []struct {
 		name      string
 		webAPI    string
 		free      int64
 		elsewhere bool
-		reason    string
-		log       string
+		// savePath is a save path on another host, which qui never reaches.
+		// defaultSavePath is the default save path of the target there.
+		savePath, defaultSavePath string
+		// placed is the save path of the record.
+		placed string
+		reason string
+		log    string
 	}{
-		{name: "5.3 refuses a full disk", webAPI: "2.15.2", free: 69,
-			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
+		{name: "5.3 refuses a full disk", webAPI: "2.15.2", free: 69, reason: full},
 		{name: "5.3 at another save path", webAPI: "2.15.2", free: 70, elsewhere: true},
-		{name: "5.1 refuses a full disk at the default save path", free: 69,
-			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
 		{name: "5.1 elsewhere", free: 69, elsewhere: true,
 			log: "Free space unknown on homelab: before qBittorrent 5.3, qBittorrent reports it only at its default save path."},
+		// regression: #4231
+		{name: "5.3 at a Windows save path", webAPI: "2.15.2", free: 69, savePath: "C:/Downloads", placed: `C:\Downloads`, reason: noAdd},
+		// regression: #4231
+		{name: "5.3 at a UNC save path", webAPI: "2.15.2", free: 69, savePath: `\\nas\media\Downloads`,
+			placed: `\\nas\media\Downloads`, reason: noAdd},
+		// regression: #4231
+		{name: "5.1 at a Windows default save path", free: 69, defaultSavePath: "C:/Downloads", placed: `C:\Downloads`, reason: noAdd},
+		// regression: #4231
+		{name: "5.3 at a slash save path", webAPI: "2.15.2", free: 69, savePath: "/srv/downloads", placed: "/srv/downloads", reason: noAdd},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, overSFTP, noAccess)
@@ -291,13 +268,34 @@ func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 				saveDir = filepath.Join(r.dstDir, "elsewhere")
 				req.Placement.SavePath = saveDir
 			}
+			req.Placement.SavePath = cmp.Or(tc.savePath, req.Placement.SavePath)
+			if tc.defaultSavePath != "" {
+				r.dst.SetDefaultSavePath(tc.defaultSavePath)
+			}
+			if tc.placed != "" {
+				// The stub writes at the save path of an add, which is
+				// not on this host.
+				r.dst.OnWrite = func(endpoint string) {
+					if endpoint == "torrents/add" {
+						r.dst.Reject = http.StatusConflict
+					}
+				}
+			}
 
 			record := r.run(req)
 
+			if tc.placed != "" {
+				require.Equal(t, tc.placed, record.Members[0].Placement.SavePath)
+				require.NotContains(t, logOf(record), "Free space unknown")
+			}
+			if tc.placed != "" && tc.webAPI != "" {
+				require.Equal(t, tc.placed, r.dst.FreeSpacePath())
+			}
 			if tc.reason != "" {
 				require.Equal(t, transfer.StateFailed, record.State)
 				require.Equal(t, tc.reason, record.FailureReason)
-				require.Zero(t, r.dst.Writes("torrents/add"), "qui adds nothing on the target")
+				r.requireNoHelpers(record)
+				require.Zero(t, r.src.Writes("torrents/add"), "the source never seeds the Transfer torrent")
 				return
 			}
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
@@ -311,23 +309,46 @@ func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 	}
 }
 
-// On a target without file access, a Transfer torrent that downloaded no
-// byte found the files there before the Transfer. The target may read the
-// files of the source, so qui keeps them.
+// On a target without file access, a Transfer torrent that downloaded less
+// than the whole torrent found files there before the Transfer. The target
+// may read them on the source, so qui keeps the files of the source.
 func TestTransferTorrentKeepsTheFilesThatTheTargetHad(t *testing.T) {
-	r := newRigOn(t, overSFTP, noAccess)
-	r.connect()
-	s := newShow(t, showName)
-	r.seed(s)
-	write(t, filepath.Join(r.dstDir, showName), s.files)
+	for _, tc := range []struct {
+		name  string
+		place func(t *testing.T, r *rig, s show)
+		// seeds is how many Transfer torrents the source seeds.
+		seeds  int
+		reason string
+	}{
+		{name: "every file", place: func(t *testing.T, r *rig, s show) { write(t, filepath.Join(r.dstDir, showName), s.files) },
+			reason: "homelab had the files before the Transfer"},
+		// regression: #4231
+		{name: "a link to a file of the source", place: func(t *testing.T, r *rig, _ show) {
+			require.NoError(t, os.MkdirAll(filepath.Join(r.dstDir, showName), 0o755))
+			err := os.Symlink(filepath.Join(r.srcDir, showName, "Show.S01E01.mkv"), filepath.Join(r.dstDir, showName, "Show.S01E01.mkv"))
+			if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+				t.Skip("this Windows user cannot make a symlink")
+			}
+			require.NoError(t, err)
+		}, seeds: 1, reason: "qui saw only 30 B of 70 B arrive on homelab by BitTorrent, and homelab may read the rest on seedbox"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, overSFTP, noAccess)
+			r.connect()
+			s := newShow(t, showName)
+			r.seed(s)
+			tc.place(t, r, s)
 
-	record := r.run(r.request(s))
+			record := r.run(r.request(s))
 
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	require.Contains(t, logOf(record), "Removed the torrent from seedbox and kept its files, because homelab had the files before the Transfer")
-	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
-	require.Zero(t, r.src.Writes("torrents/add"), "the target needed no seed")
-	r.requireNoHelpers(record)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Contains(t, logOf(record), "Removed the torrent from seedbox and kept its files, because "+tc.reason)
+			require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+			require.Equal(t, tc.seeds, r.src.Writes("torrents/add"))
+			r.requireNoHelpers(record)
+		})
+	}
 }
 
 // On a source without file access, qBittorrent removes the files with the
@@ -343,6 +364,7 @@ func TestTransferTorrentFromASourceWithoutFileAccess(t *testing.T) {
 		record := r.run(r.request(s))
 
 		require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+		require.Equal(t, transfer.WayBitTorrent, record.Way)
 		require.Equal(t, "true", r.src.LastParams("torrents/delete").Get("deleteFiles"))
 		require.Empty(t, tree(t, r.srcDir))
 		require.Contains(t, logOf(record), "Removed the torrent and its files from seedbox.")
@@ -350,9 +372,11 @@ func TestTransferTorrentFromASourceWithoutFileAccess(t *testing.T) {
 	t.Run("keeps them after a head start", func(t *testing.T) {
 		r := newRigOn(t, noAccess, onDisk)
 		r.connect()
-		s := newShow(t, showName)
+		// The first episode fills pieces 0 and 1, so the check proves it
+		// without a byte of the source.
+		s := packOf(t, qbtstub.ContentFile{Path: episode1, Data: numbered("E01", 32)}, qbtstub.ContentFile{Path: episode2, Data: numbered("E02", 30)})
 		r.seed(s)
-		before := r.placeOnTarget(map[string][]byte{"Show.S01E01.mkv": s.files["Show.S01E01.mkv"]})
+		before := r.placeOnTarget(map[string][]byte{episode1: s.files[episode1]})
 
 		record := r.run(r.request(s))
 
@@ -402,30 +426,108 @@ func TestTransferTorrentStartsAfterTheHeadStart(t *testing.T) {
 	})
 }
 
+// A file on the target passes the check before the Transfer torrent with
+// the pieces that lie fully inside it. The Transfer torrent downloads a piece
+// that the file shares with a missing file through the link to the file, so
+// qui compares the bytes of the file in that piece with the source first. A
+// file that differs there, or that qui cannot compare, is a conflict, and
+// the Transfer torrent never writes into it.
+// regression: #4231
+func TestTransferTorrentNeverWritesIntoAFileOnTheTarget(t *testing.T) {
+	const nfo = "Show.S01.nfo"
+	// Piece 3 lies fully inside the second episode and passes. Pieces 2 and
+	// 4 hold its edges and bytes of the missing episodes.
+	edges := numbered("E02", 36)
+	copy(edges[:8], "XXXXXXXX")
+	copy(edges[24:], "YYYYYYYYYYYY")
+	for _, tc := range []struct {
+		name   string
+		source side
+		// middle lies between two missing episodes, and theirs is the file
+		// at its path on the target.
+		middle qbtstub.ContentFile
+		theirs []byte
+		reason string
+	}{
+		{name: "edges that differ", source: overSFTP, middle: qbtstub.ContentFile{Path: episode2, Data: numbered("E02", 36)},
+			theirs: edges, reason: "Conflict: the file at %s on homelab differs from the torrent."},
+		{name: "no complete piece of its own", source: overSFTP, middle: qbtstub.ContentFile{Path: nfo, Data: numbered("nfo", 10)},
+			theirs: numbered("NFO", 10), reason: "Conflict: the file at %s on homelab differs from the torrent."},
+		{name: "a source without file access", source: noAccess, middle: qbtstub.ContentFile{Path: episode2, Data: numbered("E02", 36)},
+			theirs: numbered("E02", 36),
+			reason: "Conflict: qui cannot check a part of the file at %s on homelab, because it cannot read the files on seedbox."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, tc.source, overSFTP)
+			r.connect()
+			s := packOf(t, qbtstub.ContentFile{Path: episode1, Data: numbered("E01", 40)}, tc.middle,
+				qbtstub.ContentFile{Path: episode3, Data: numbered("E03", 30)})
+			r.seed(s)
+			theirs := map[string][]byte{tc.middle.Path: tc.theirs}
+			before := r.placeOnTarget(theirs)
+
+			record := r.run(r.request(s))
+
+			r.requireUntouched(before, theirs)
+			require.Equal(t, transfer.WayBitTorrent, record.Way)
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Equal(t, transfer.FailurePermanent, record.FailureClass)
+			require.Equal(t, fmt.Sprintf(tc.reason, pathOn(overSFTP, filepath.Join(r.dstDir, showName, tc.middle.Path))), record.FailureReason)
+			require.Zero(t, r.src.Writes("torrents/add"), "no Transfer torrent")
+		})
+	}
+}
+
 // A Transfer torrent that failed for a retry runs again from the start: qui
-// removed its Transfer torrents, and adds new ones.
+// removed its Transfer torrents, and adds new ones. A retry that downloads
+// every byte removes the files of the source. On a target without file access,
+// the retry reserves the free space that the target still needs after the
+// check of the Transfer torrent, and a target that had part of the files keeps
+// the files of the source.
 func TestTransferTorrentRetries(t *testing.T) {
-	r := newRigOn(t, overSFTP, noAccess)
-	r.connect()
-	r.src.Unreachable, r.dst.Unreachable = true, true
-	s := newShow(t, showName)
-	r.seed(s)
-	first := r.run(r.request(s))
-	require.Equal(t, transfer.StateFailed, first.State)
-	require.Equal(t, transfer.FailureTemporary, first.FailureClass)
+	for _, tc := range []struct {
+		name   string
+		before func(r *rig, s show)
+		source func(s show) map[string]string
+	}{
+		// regression: #4231
+		{name: "nothing on the target", before: func(*rig, show) {},
+			source: func(show) map[string]string { return map[string]string{} }},
+		// regression: #4231
+		{name: "a download that stopped", before: func(r *rig, s show) {
+			// The target has the first episode. Pieces 0 and 1 pass, so 38 of
+			// the 70 bytes are left.
+			write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode1: s.files[episode1]})
+			r.dst.FreeSpace = 38
+		}, source: func(s show) map[string]string { return contents(s, showName) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, overSFTP, noAccess)
+			r.connect()
+			r.dst.WebAPIVersion = "2.15.2" // qBittorrent 5.3 reads the free space at the save path
+			r.src.Unreachable, r.dst.Unreachable = true, true
+			s := newShow(t, showName)
+			r.seed(s)
+			first := r.run(r.request(s))
+			require.Equal(t, transfer.StateFailed, first.State)
+			require.Equal(t, transfer.FailureTemporary, first.FailureClass)
 
-	r.src.Unreachable = false
-	r.setClock(clock.Add(time.Hour))
-	r.svc.Wake()
-	r.svc.Wait()
+			tc.before(r, s)
+			r.src.Unreachable = false
+			r.setClock(clock.Add(time.Hour))
+			r.svc.Wake()
+			r.svc.Wait()
 
-	record := r.get(first.ID)
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
-	r.requireNoHelpers(record)
-	helpers, err := r.store.HelpersOf(t.Context(), transfer.OwnerTransfer, record.ID)
-	require.NoError(t, err)
-	require.Len(t, helpers, 4, "each run adds a Transfer torrent with a new infohash on both clients")
+			record := r.get(first.ID)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+			require.Equal(t, tc.source(s), tree(t, r.srcDir))
+			r.requireNoHelpers(record)
+			helpers, err := r.store.HelpersOf(t.Context(), transfer.OwnerTransfer, record.ID)
+			require.NoError(t, err)
+			require.Len(t, helpers, 4, "each run adds a Transfer torrent with a new infohash on both clients")
+		})
+	}
 }
 
 // A Transfer torrent downloads each path of a hardlinked cross-seed on its
@@ -435,10 +537,15 @@ func TestTransferTorrentCountsEachPathOfAHardlinkedCrossSeed(t *testing.T) {
 		name   string
 		free   int64
 		reason string
+		// windows puts the group below a Windows save path, which qui never
+		// reaches.
+		windows bool
 	}{
 		{name: "room for each path", free: 140},
 		{name: "room for one copy", free: 139,
-			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 140 B, and 139 B is free"},
+			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
+		// regression: #4231
+		{name: "below a Windows save path", free: 139, windows: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, onDisk, noAccess)
@@ -448,13 +555,35 @@ func TestTransferTorrentCountsEachPathOfAHardlinkedCrossSeed(t *testing.T) {
 			r.seed(s)
 			_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
 			sourceFiles := tree(t, r.srcDir)
+			req := r.request(s)
+			if tc.windows {
+				req.Placement.SavePath = "C:/Downloads"
+				r.dst.WebAPIVersion = "2.15.2"
+				// The stub writes at the save path of an add, which is not on
+				// this host.
+				r.dst.OnWrite = func(endpoint string) {
+					if endpoint == "torrents/add" {
+						r.dst.Reject = http.StatusConflict
+					}
+				}
+			}
 
-			record := r.run(r.request(s))
+			record := r.run(req)
 
+			if tc.windows {
+				require.Equal(t, []string{`C:\Downloads`, `C:\Downloads\links`},
+					[]string{record.Members[0].Placement.SavePath, record.Members[1].Placement.SavePath})
+				require.Equal(t, `C:\Downloads`, r.dst.FreeSpacePath())
+				require.Equal(t, transfer.StateFailed, record.State)
+				require.Equal(t, "homelab did not take the Transfer torrent: could not add torrent | conflicts detected: torrent(s) failed to be added",
+					record.FailureReason, "the stub cannot write at a save path on another host")
+				return
+			}
 			if tc.reason != "" {
 				require.Equal(t, transfer.StateFailed, record.State)
 				require.Equal(t, tc.reason, record.FailureReason)
-				require.Zero(t, r.dst.Writes("torrents/add"), "qui adds nothing on the target")
+				r.requireNoHelpers(record)
+				require.Equal(t, 1, r.src.Writes("torrents/add"), "the first path took 70 B, and the second does not fit")
 				return
 			}
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)

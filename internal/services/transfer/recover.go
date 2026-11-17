@@ -25,6 +25,9 @@ import (
 const (
 	stepPrepare = "prepare"
 	stepCheck   = "check on the target"
+	// stepOwnCopy holds the path below the root of a hardlink that the
+	// target could not link. qui copies its bytes into its temporary file.
+	stepOwnCopy = "copy a hardlink"
 	// stepPlace holds the paths below the root of the files that were on
 	// the target before the Transfer, as JSON.
 	stepPlace = "place"
@@ -33,11 +36,17 @@ const (
 	// the hash of the member.
 	stepAdd   = "add"
 	stepAdded = "added"
+	// stepAfter holds the hashes of the members that ran on the source
+	// before qui stopped them, as JSON, and nothing when the source keeps
+	// seeding.
 	stepAfter = "after"
 	// stepRemoveFromSource holds why qui keeps the files on the source,
 	// empty when it removes them.
 	stepRemoveFromSource = "remove from source"
 	stepCleanUp          = "clean up"
+	// stepRemovePlaced holds the paths below the root of the files that qui
+	// moved into place, as JSON. The cleanup removes them.
+	stepRemovePlaced = "remove the placed files"
 )
 
 // instanceOffError makes a Transfer wait until its instance is on again.
@@ -129,6 +138,25 @@ func (j *job) findOnTargetAgain(ctx context.Context) error {
 	j.markOnTarget()
 	j.keepProven()
 	return nil
+}
+
+// stoppedByQui returns the members that qui stopped on the source, from
+// each step after: a run that resumes after a stop finds them stopped by
+// the run before it.
+func (j *job) stoppedByQui() []string {
+	var hashes []string
+	for _, step := range j.rec.Steps {
+		var running []string
+		if step.Name != stepAfter || json.Unmarshal([]byte(step.Detail), &running) != nil {
+			continue
+		}
+		for _, hash := range running {
+			if !slices.Contains(hashes, hash) {
+				hashes = append(hashes, hash)
+			}
+		}
+	}
+	return hashes
 }
 
 // headStartFiles returns the files that were on the target before the
@@ -265,7 +293,7 @@ func (j *job) cleanup(ctx context.Context) {
 	if j.reaches(j.target) {
 		j.cleanTarget(ctx)
 	}
-	if j.reaches(j.source) && (j.stoppedSource || j.reached(stepAfter) && j.rec.Options.After != AfterKeepSeeding) {
+	if j.reaches(j.source) {
 		j.startSource(ctx)
 	}
 }
@@ -296,15 +324,17 @@ func (j *job) cleanTarget(ctx context.Context) {
 	if !j.cleanupRoot(ctx) {
 		return
 	}
+	placed := j.placedFiles(ctx)
 	folders := map[string]struct{}{}
 	for _, f := range j.files {
-		temp := j.remove(ctx, j.tempName(f.rel), j.tempName(f.rel)+incompleteExt)
-		removed := j.remove(ctx, j.linkName(f.rel), j.linkName(f.rel)+incompleteExt) || temp
-		// A file whose temporary file was still there never moved into place.
-		if j.reached(stepPlace) && !f.onTarget && !keepPlaced && !temp {
-			removed = j.remove(ctx, f.rel) || removed
+		j.remove(ctx, j.tempName(f.rel), j.tempName(f.rel)+incompleteExt)
+		j.remove(ctx, j.linkName(f.rel), j.linkName(f.rel)+incompleteExt)
+		if !keepPlaced && slices.Contains(placed, f.rel) {
+			j.remove(ctx, f.rel)
 		}
-		for dir := path.Dir(f.rel); removed && dir != "."; dir = path.Dir(dir) {
+		// A link or a create that failed leaves the folders that it made,
+		// with no file in them.
+		for dir := path.Dir(f.rel); dir != "."; dir = path.Dir(dir) {
 			folders[dir] = struct{}{}
 		}
 	}
@@ -313,6 +343,49 @@ func (j *job) cleanTarget(ctx context.Context) {
 	for _, dir := range slices.SortedFunc(maps.Keys(folders), func(a, b string) int { return strings.Count(b, "/") - strings.Count(a, "/") }) {
 		_ = j.root.Remove(ctx, dir)
 	}
+}
+
+// placedFiles returns the files that qui moved into place, and records them
+// before the cleanup removes a temporary file. A file whose temporary file
+// is there, or may be, never moved into place. A cleanup that runs again
+// after a stop reads the record: the temporary files are gone by then.
+func (j *job) placedFiles(ctx context.Context) []string {
+	if !j.reached(stepPlace) {
+		return nil
+	}
+	if i := slices.IndexFunc(j.rec.Steps, func(s Step) bool { return s.Name == stepRemovePlaced }); i >= 0 {
+		var placed []string
+		if err := json.Unmarshal([]byte(j.rec.Steps[i].Detail), &placed); err != nil {
+			return nil
+		}
+		return placed
+	}
+	// The record names the head start. A resume that failed before it read
+	// the target again did not mark it on the files.
+	headStart, _ := j.headStartFiles()
+	placed := []string{}
+	for _, f := range j.files {
+		if !slices.Contains(headStart, f.rel) && j.absent(ctx, j.tempName(f.rel), j.tempName(f.rel)+incompleteExt) {
+			placed = append(placed, f.rel)
+		}
+	}
+	detail, _ := json.Marshal(placed)
+	j.rec.Steps = append(j.rec.Steps, Step{Name: stepRemovePlaced, At: j.svc.deps.Now(), Detail: string(detail)})
+	if err := j.svc.deps.Store.Save(ctx, j.rec); err != nil {
+		j.logf("qui cannot record the files that it placed on %s, so it keeps them: %v", j.target.Name, err)
+		return nil
+	}
+	return placed
+}
+
+// absent reports whether none of the names is on the target.
+func (j *job) absent(ctx context.Context, names ...string) bool {
+	for _, name := range names {
+		if _, err := j.root.Lstat(ctx, name); !errors.Is(err, fs.ErrNotExist) {
+			return false
+		}
+	}
+	return true
 }
 
 // removeMember removes a member that qui added from the instance where it
@@ -348,12 +421,12 @@ func (j *job) readGroup(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	d := targetFiles.Paths()
+	d := pathsOf(j.target, targetFiles, j.rec.Members[0].Placement.SavePath)
 	saves := make([]string, len(j.rec.Members))
 	for i := range j.rec.Members {
 		saves[i] = j.rec.Members[i].Placement.SavePath
 	}
-	j.rootDir = topFolder(d, saves)
+	j.rootDir, j.rootPaths = topFolder(d, saves), d
 	for _, inst := range []*models.Instance{j.source, j.target} {
 		if !j.reaches(inst) {
 			continue

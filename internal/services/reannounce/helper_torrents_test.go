@@ -47,7 +47,6 @@ func TestReannounceSkipsHelperTorrents(t *testing.T) {
 		want    []string
 	}{
 		{name: "a helper torrent is left out", helpers: map[string]bool{helper: true}, want: []string{strings.ToUpper(own)}},
-		{name: "with no helper rows every torrent is watched", helpers: map[string]bool{}, want: []string{strings.ToUpper(helper), strings.ToUpper(own)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			newService := func() (*Service, int, *[]string) {

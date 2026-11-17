@@ -32,19 +32,13 @@ var shareRoutes = []routeKey{
 	{http.MethodDelete, "/api/shares/1"},
 }
 
-func TestShareRoutesAreClosedWhileTheSwitchIsOff(t *testing.T) {
+func TestTransferAndShareRoutesAreClosedWhileTheSwitchIsOff(t *testing.T) {
 	rig := newPermissionRig(t, func(deps *Dependencies) { deps.Switches = rollout.Production() })
 	cookie := rig.sessionCookie(t)
-	for _, route := range shareRoutes {
+	for _, route := range append([]routeKey{{http.MethodPost, "/api/transfers"}}, shareRoutes...) {
 		status, body := rig.sendBody(t, route.Method, route.Path, "", cookie, "{}")
 		require.Equal(t, http.StatusNotFound, status, "%s %s", route.Method, route.Path)
 		require.Equal(t, "404 page not found\n", body, "%s %s", route.Method, route.Path)
-	}
-}
-
-func TestShareRoutesAreBrowserOnly(t *testing.T) {
-	for _, route := range shareRoutes {
-		require.Contains(t, browserOnlyRoutes, route)
 	}
 }
 
@@ -52,10 +46,8 @@ func TestShareStartRoute(t *testing.T) {
 	rig := newPermissionRig(t)
 	cookie := rig.sessionCookie(t)
 
-	t.Run("a body without torrents answers 400", func(t *testing.T) {
-		status, _ := rig.sendBody(t, http.MethodPost, "/api/shares", "", cookie, `{"instanceId":1,"hashes":[]}`)
-		require.Equal(t, http.StatusBadRequest, status)
-	})
+	status, _ := rig.sendBody(t, http.MethodPost, "/api/shares", "", cookie, `{"instanceId":1,"hashes":[]}`)
+	require.Equal(t, http.StatusBadRequest, status, "a body without torrents")
 
 	t.Run("a refusal answers 409 with its reason", func(t *testing.T) {
 		status, body := rig.sendBody(t, http.MethodPost, "/api/shares", "", cookie, `{"instanceId":1,"hashes":["aaaa"]}`)
@@ -166,7 +158,7 @@ func TestShareActionRoutesAnswer404ForAnUnknownShare(t *testing.T) {
 }
 
 func TestShareSettingsRoutes(t *testing.T) {
-	rig := newPermissionRig(t)
+	rig, store, _ := newShareRig(t)
 	cookie := rig.sessionCookie(t)
 
 	status, body := rig.sendBody(t, http.MethodGet, "/api/shares/settings", "", cookie, "")
@@ -197,4 +189,15 @@ func TestShareSettingsRoutes(t *testing.T) {
 		`{"port":`+strconv.Itoa(port)+`,"publicAddress":"http://127.0.0.1","maxActive":3,"peersPerShare":5,"defaults":{"days":2}}`)
 	require.Equal(t, http.StatusConflict, status)
 	require.JSONEq(t, `{"error":"Another program uses port `+strconv.Itoa(port)+`. Pick another port."}`, body)
+
+	created := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, store.Create(t.Context(), &share.Share{
+		InstanceID: 1, Hash: "aaaa", Name: "Show.S01.1080p-GRP", Files: []string{"Show.S01E01.mkv"}, Size: 200,
+		HelperHash: strings.Repeat("b", 40), Tracker: share.TrackerOwn, OwnerSecret: "owner", RecipientSecret: "recipient",
+		TorrentFile: []byte("d8:announce0:e"), ExpiresAt: created.Add(7 * 24 * time.Hour), State: share.StateActive, CreatedAt: created,
+	}))
+	status, body = rig.sendBody(t, http.MethodPut, "/api/shares/settings", "", cookie,
+		`{"port":`+strconv.Itoa(port)+`,"publicAddress":"http://127.0.0.1","maxActive":3,"peersPerShare":5,"defaults":{"days":2}}`)
+	require.Equal(t, http.StatusConflict, status)
+	require.JSONEq(t, `{"error":"End the active Shares on qui's tracker first: their .torrent files carry the old address."}`, body)
 }

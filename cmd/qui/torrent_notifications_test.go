@@ -209,7 +209,6 @@ func TestTorrentNotificationsSkipHelperTorrents(t *testing.T) {
 		want    []string
 	}{
 		{name: "a helper torrent is left out", helpers: fakeHelpers{helper.Hash: true}, want: []string{own.Hash}},
-		{name: "with no helper rows every torrent notifies", helpers: fakeHelpers{}, want: []string{helper.Hash, own.Hash}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

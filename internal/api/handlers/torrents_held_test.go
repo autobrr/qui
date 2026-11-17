@@ -62,23 +62,26 @@ func TestBulkAction_RefusesDeleteAndMoveOfHeldTorrents(t *testing.T) {
 	held := map[string]string{
 		claimedHash: "a Transfer holds this torrent",
 		helperHash:  "qui added this torrent for a Transfer or a Share",
+		// qBittorrent reads "|" in a hash as a list separator.
+		// regression: #4231
+		"cccc|" + claimedHash: "a Transfer holds this torrent",
 	}
 	for name, payload := range actions {
-		for hash, reason := range held {
-			t.Run(name+"/"+hash, func(t *testing.T) {
-				t.Parallel()
-				handler, deleter := newHeldHandler(t)
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			handler, deleter := newHeldHandler(t)
+			for hash, reason := range held {
 				body := map[string]any{"hashes": []string{ownHash, hash}}
 				maps.Copy(body, payload)
 
 				rec := httptest.NewRecorder()
 				handler.BulkAction(rec, newTorrentFieldRequest(t, 1, body))
 
-				require.Equal(t, http.StatusConflict, rec.Code)
+				require.Equal(t, http.StatusConflict, rec.Code, hash)
 				require.Contains(t, rec.Body.String(), reason)
-				require.Empty(t, deleter.deleteFiles, "a refused action changes no torrent of the selection")
-			})
-		}
+			}
+			require.Empty(t, deleter.deleteFiles, "a refused action changes no torrent of the selection")
+		})
 	}
 }
 
@@ -94,17 +97,16 @@ func TestRenameRefusesHeldTorrents(t *testing.T) {
 		"folder":  {func(h *TorrentsHandler) http.HandlerFunc { return h.RenameTorrentFolder }, map[string]any{"oldPath": "a", "newPath": "b"}},
 	}
 	for name, rename := range renames {
-		for _, hash := range []string{claimedHash, helperHash} {
-			t.Run(name+"/"+hash, func(t *testing.T) {
-				t.Parallel()
-				handler, _ := newHeldHandler(t)
-
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			handler, _ := newHeldHandler(t)
+			for _, hash := range []string{claimedHash, helperHash} {
 				rec := httptest.NewRecorder()
 				rename.call(handler)(rec, newTorrentHashRequest(t, 1, hash, rename.payload))
 
 				require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
-			})
-		}
+			}
+		})
 	}
 }
 

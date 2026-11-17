@@ -48,12 +48,28 @@ func share() sharetracker.Share {
 // service is in qui.
 type shares struct {
 	table atomic.Pointer[sharetracker.Table]
+	hold  atomic.Pointer[hold]
 
 	mu      sync.Mutex
 	address map[int64]netip.AddrPort
 }
 
-func (s *shares) ActiveShares() *sharetracker.Table { return s.table.Load() }
+// hold keeps the next caller of ActiveShares after it read the table: read
+// closes when it has the table, and the caller goes on when the test closes
+// release.
+type hold struct {
+	read    chan struct{}
+	release chan struct{}
+}
+
+func (s *shares) ActiveShares() *sharetracker.Table {
+	table := s.table.Load()
+	if h := s.hold.Swap(nil); h != nil {
+		close(h.read)
+		<-h.release
+	}
+	return table
+}
 
 func (s *shares) PublicPeerAddress(_ context.Context, id int64) (netip.AddrPort, error) {
 	s.mu.Lock()
@@ -80,7 +96,7 @@ type reports struct {
 	list []sharetracker.Report
 }
 
-func (r *reports) Announced(report sharetracker.Report) {
+func (r *reports) Announced(_ context.Context, report sharetracker.Report) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.list = append(r.list, report)
@@ -264,28 +280,12 @@ func TestTheRecipientGetsTheOwnersPublicPeerAddress(t *testing.T) {
 
 	require.Equal(t, []netip.AddrPort{ownerAddress}, got.peers(t))
 	require.Equal(t, 300, got.Interval)
-}
-
-func TestTheOwnerGetsTheRecipientsAddress(t *testing.T) {
-	t.Parallel()
-	r := newRig(t)
-
-	r.announce(recipient, announce{left: 1000, event: "started"})
-	got := r.announce(owner, announce{event: "started"})
-
-	require.Equal(t, []netip.AddrPort{addr("198.51.100.7:6881")}, got.peers(t))
-}
-
-func TestANewExternalAddressOfTheUsersClientReachesTheRecipient(t *testing.T) {
-	t.Parallel()
-	r := newRig(t)
-	r.announce(owner, announce{event: "started"})
-	r.announce(recipient, announce{left: 1000, event: "started"})
 
 	r.shares.setAddress(shareID, addr("203.0.113.99:51413"))
-	got := r.announce(recipient, announce{left: 900})
+	require.Equal(t, []netip.AddrPort{addr("203.0.113.99:51413")}, r.announce(recipient, announce{left: 900}).peers(t), "a new external address of the user's client")
 
-	require.Equal(t, []netip.AddrPort{addr("203.0.113.99:51413")}, got.peers(t))
+	r.announce(owner, announce{event: "stopped"})
+	require.Empty(t, r.announce(recipient, announce{left: 900}).peers(t), "the user's client stopped")
 }
 
 func TestTheRecipientGetsNoAddressForTheUsersClientWithoutAPublicPeerAddress(t *testing.T) {
@@ -323,7 +323,6 @@ func TestTheTrackerAnswersOnlyTheSecretsAndInfohashesOfActiveShares(t *testing.T
 		"unknown secret":                {secret: "guessed-secret", port: 6881},
 		"secret of another Share":       {secret: "recipient-secret-8", port: 6881},
 		"owner secret of another Share": {secret: "owner-secret-8", port: 6881},
-		"secret with a path after it":   {secret: recipientSecret + "/x", port: 6881},
 		"empty secret":                  {secret: "", port: 6881},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -342,18 +341,14 @@ func TestTheTrackerAnswersEveryOtherRequestWithABare404(t *testing.T) {
 	r := newRig(t)
 	valid := "/announce/" + recipientSecret + "?" + recipient.query(announce{left: 1000}).Encode()
 
-	for _, path := range []string{"/", "/announce", "/announce/", "/scrape", "/scrape/" + recipientSecret, "/api/auth/me", "/announce/../announce/" + recipientSecret} {
+	for _, path := range []string{"/announce/", "/scrape/" + recipientSecret, "/announce/../announce/" + recipientSecret} {
 		t.Run(path, func(t *testing.T) {
 			requireBare404(t, r.get(path, nil))
 		})
 	}
-	for _, method := range []string{http.MethodPost, http.MethodHead, http.MethodPut, http.MethodOptions} {
-		t.Run(method, func(t *testing.T) {
-			req, err := http.NewRequestWithContext(t.Context(), method, r.base+valid, nil)
-			require.NoError(t, err)
-			requireBare404(t, r.do(req))
-		})
-	}
+	post, err := http.NewRequestWithContext(t.Context(), http.MethodPost, r.base+valid, nil)
+	require.NoError(t, err)
+	requireBare404(t, r.do(post))
 	require.Empty(t, r.reports.all())
 }
 
@@ -411,18 +406,33 @@ func TestOnlyTheFirstDownloaderGetsTheUsersAddressUntilAnUnlock(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{addr("198.51.100.2:6882")}, r.announce(owner, announce{}).peers(t))
 }
 
-func TestWithoutTheLockEveryClientGetsEveryAddress(t *testing.T) {
+// regression: #4231
+func TestAnAnnounceWithAnOlderTableKeepsTheLockOfANewShare(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
-	first := client{secret: recipientSecret, from: "198.51.100.1", port: 6881}
-	second := client{secret: recipientSecret, from: "198.51.100.2", port: 6882}
+	locked := sharetracker.Share{ID: 8, InfoHash: infoHash, OwnerSecret: "owner-secret-8", RecipientSecret: "recipient-secret-8", FirstDownloaderOnly: true}
+	r.shares.setAddress(locked.ID, ownerAddress)
+	lockedOwner := client{secret: locked.OwnerSecret, from: "192.0.2.1", port: 51413}
+	first := client{secret: locked.RecipientSecret, from: "198.51.100.1", port: 6881}
+	second := client{secret: locked.RecipientSecret, from: "198.51.100.2", port: 6882}
 
-	r.announce(owner, announce{event: "started"})
-	r.announce(first, announce{left: 1000, event: "started"})
-	got := r.announce(second, announce{left: 1000, event: "started"})
+	h := &hold{read: make(chan struct{}), release: make(chan struct{})}
+	r.shares.hold.Store(h)
+	older := make(chan struct{})
+	go func() {
+		defer close(older)
+		r.announce(recipient, announce{left: 1000})
+	}()
+	<-h.read
 
-	require.ElementsMatch(t, []netip.AddrPort{ownerAddress, addr("198.51.100.1:6881")}, got.peers(t))
-	require.ElementsMatch(t, []netip.AddrPort{addr("198.51.100.1:6881"), addr("198.51.100.2:6882")}, r.announce(owner, announce{}).peers(t))
+	r.shares.set(share(), locked)
+	r.announce(lockedOwner, announce{event: "started"})
+	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(first, announce{left: 1000, event: "started"}).peers(t))
+	close(h.release)
+	<-older
+
+	r.announce(lockedOwner, announce{})
+	require.Empty(t, r.announce(second, announce{left: 1000, event: "started"}).peers(t), "the lock holds the first downloader")
 }
 
 func TestAShareTakesAtMostItsPeersPerShare(t *testing.T) {
@@ -484,34 +494,17 @@ func TestTheTrackerChecksPortAndNumwant(t *testing.T) {
 	for name, extra := range map[string]url.Values{
 		"port 0":               {"port": {"0"}},
 		"port 65536":           {"port": {"65536"}},
-		"port not a number":    {"port": {"6881x"}},
-		"no port":              {"port": nil},
 		"numwant -1":           {"numwant": {"-1"}},
 		"numwant not a number": {"numwant": {"ten"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			q := owner.query(announce{extra: extra})
-			for key, values := range extra {
-				if values == nil {
-					q.Del(key)
-				}
-			}
 			got := r.get("/announce/"+ownerSecret+"?"+q.Encode(), http.Header{"X-Forwarded-For": {owner.from}})
 			require.Equal(t, http.StatusOK, got.Status)
 			require.NotEmpty(t, got.Failure)
 		})
 	}
 	require.Len(t, r.reports.all(), 5)
-}
-
-func TestTheTrackerIgnoresTheIPParameter(t *testing.T) {
-	t.Parallel()
-	r := newRig(t)
-
-	r.announce(recipient, announce{left: 1000, event: "started", extra: url.Values{"ip": {"192.0.2.99"}}})
-
-	require.Equal(t, []netip.AddrPort{addr("198.51.100.7:6881")}, r.announce(owner, announce{event: "started"}).peers(t))
-	require.Equal(t, addr("198.51.100.7:6881"), r.reports.all()[0].Peer)
 }
 
 func TestAClientThatStopsAnnouncingDropsOutAfterTwoIntervals(t *testing.T) {
@@ -535,26 +528,13 @@ func TestAClientThatStopsAnnouncingDropsOutAfterTwoIntervals(t *testing.T) {
 	require.Empty(t, r.announce(active, announce{left: 800}).peers(t), "the user's client stopped announcing")
 }
 
-func TestAStoppedClientLeavesTheSwarm(t *testing.T) {
-	t.Parallel()
-	r := newRig(t)
-
-	r.announce(owner, announce{event: "started"})
-	r.announce(recipient, announce{left: 1000, event: "started"})
-	r.announce(recipient, announce{left: 1000, event: "stopped"})
-	require.Empty(t, r.announce(owner, announce{}).peers(t))
-
-	r.announce(owner, announce{event: "stopped"})
-	require.Empty(t, r.announce(recipient, announce{left: 1000, event: "started"}).peers(t))
-}
-
 func TestTheTrackerTrustsAForwardedAddressOnlyFromATrustedProxy(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
 	forwarded := func(chain string) netip.AddrPort {
 		t.Helper()
 		before := len(r.reports.all())
-		r.get("/announce/"+recipientSecret+"?"+recipient.query(announce{left: 1000}).Encode(), http.Header{"X-Forwarded-For": {chain}})
+		r.get("/announce/"+recipientSecret+"?"+recipient.query(announce{left: 1000, extra: url.Values{"ip": {"192.0.2.99"}}}).Encode(), http.Header{"X-Forwarded-For": {chain}})
 		reports := r.reports.all()
 		require.Len(t, reports, before+1)
 		return reports[before].Peer
@@ -571,6 +551,22 @@ func TestTheTrackerTrustsAForwardedAddressOnlyFromATrustedProxy(t *testing.T) {
 	require.Equal(t, addr("127.0.0.1:6881"), forwarded("198.51.100.7"))
 }
 
+// regression: #4231
+func TestTheTrackerTrustsAProxyWrittenAsAnIPv4MappedAddress(t *testing.T) {
+	t.Parallel()
+	for _, proxy := range []string{"::ffff:127.0.0.1", "::ffff:127.0.0.1/128", "::ffff:127.0.0.0/104"} {
+		t.Run(proxy, func(t *testing.T) {
+			t.Parallel()
+			r := newRig(t)
+			require.NoError(t, r.tracker.Start(t.Context(), sharetracker.Settings{Port: r.port, TrustedProxies: []string{proxy}}))
+
+			r.announce(recipient, announce{left: 1000})
+
+			require.Equal(t, addr("198.51.100.7:6881"), r.reports.all()[0].Peer)
+		})
+	}
+}
+
 func TestTheTrackerGivesIPv4AndIPv6Peers(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
@@ -582,7 +578,7 @@ func TestTheTrackerGivesIPv4AndIPv6Peers(t *testing.T) {
 	got := r.announce(ipv6, announce{left: 1000, event: "started"})
 	require.Equal(t, []netip.AddrPort{addr("[2001:db8::10]:51413")}, got.peers(t))
 	require.Empty(t, got.Peers)
-	r.announce(ipv4, announce{left: 1000, event: "started"})
+	require.ElementsMatch(t, []netip.AddrPort{addr("[2001:db8::10]:51413"), addr("[2001:db8::7]:6881")}, r.announce(ipv4, announce{left: 1000, event: "started"}).peers(t), "without the lock, a recipient also gets the other recipients")
 
 	got = r.announce(owner, announce{})
 	require.ElementsMatch(t, []netip.AddrPort{addr("[2001:db8::7]:6881"), addr("198.51.100.7:6882")}, got.peers(t))

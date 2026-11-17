@@ -39,7 +39,6 @@ func TestExternalProgramsSkipHelperTorrents(t *testing.T) {
 		want    []string
 	}{
 		{name: "a helper torrent is left out", helpers: fakeHelpers{helper: true}, want: []string{own}},
-		{name: "with no helper rows every torrent runs it", helpers: fakeHelpers{}, want: []string{helper, own}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

@@ -126,7 +126,8 @@ func (h *SharesHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := startSharesResponse{Shares: []shareView{}, Refused: []refusedShare{}}
-	failed := false
+	failed := 0
+	var lastErr error
 	for _, hash := range req.Hashes {
 		sh, err := h.service.Start(r.Context(), share.Request{
 			InstanceID:          req.InstanceID,
@@ -139,17 +140,22 @@ func (h *SharesHandler) Start(w http.ResponseWriter, r *http.Request) {
 		case share.IsRefusal(err):
 			res.Refused = append(res.Refused, refusedShare{Hash: hash, Reason: err.Error()})
 		case err != nil:
-			log.Error().Err(err).Int("instanceID", req.InstanceID).Str("hash", hash).Msg("share: failed to start the Share")
+			log.Debug().Err(err).Int("instanceID", req.InstanceID).Str("hash", hash).Msg("share: failed to start the Share")
 			res.Refused = append(res.Refused, refusedShare{Hash: hash, Reason: "qui could not start the Share. The log has the details."})
-			failed = true
+			failed++
+			lastErr = err
 		default:
 			res.Shares = append(res.Shares, viewOf(sh))
 		}
 	}
+	if failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", req.InstanceID).Int("started", len(res.Shares)).Int("failed", failed).
+			Msg("share: failed to start Shares")
+	}
 	switch {
 	case len(res.Shares) > 0:
 		RespondJSON(w, http.StatusCreated, res)
-	case failed:
+	case failed > 0:
 		res.Error = "Failed to start the Share"
 		RespondJSON(w, http.StatusInternalServerError, res)
 	default:
@@ -308,8 +314,8 @@ func (h *SharesHandler) Settings(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, settingsView(settings))
 }
 
-// SaveSettings saves the settings of Settings → Shares. A busy tracker port
-// answers 409.
+// SaveSettings saves the settings of Settings → Shares. A busy tracker port,
+// or a move of qui's tracker while a Share on it is active, answers 409.
 // PUT /api/shares/settings
 func (h *SharesHandler) SaveSettings(w http.ResponseWriter, r *http.Request) {
 	var body shareSettings
@@ -341,6 +347,9 @@ func (h *SharesHandler) SaveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, sharetracker.ErrPortBusy):
 		RespondError(w, http.StatusConflict, fmt.Sprintf("Another program uses port %d. Pick another port.", body.Port))
+		return
+	case share.IsRefusal(err):
+		RespondError(w, http.StatusConflict, err.Error())
 		return
 	case err != nil:
 		log.Error().Err(err).Msg("share: failed to save the Share settings")

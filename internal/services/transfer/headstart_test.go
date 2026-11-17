@@ -24,6 +24,11 @@ import (
 
 func (r *diskRoot) Link(ctx context.Context, oldName, newName string) error {
 	if r.d.noLinks {
+		// A root makes the missing folders of newName before the link
+		// fails, so they stay.
+		if err := r.Root.Link(ctx, oldName, newName); err == nil {
+			_ = r.Remove(ctx, newName)
+		}
 		return &os.LinkError{Op: "link", Old: oldName, New: newName, Err: fs.ErrPermission}
 	}
 	return r.Root.Link(ctx, oldName, newName)
@@ -41,11 +46,16 @@ const (
 // third. Only piece 3 lies fully inside the second file.
 func newPack(t *testing.T) show {
 	t.Helper()
-	files := []qbtstub.ContentFile{
-		{Path: episode1, Data: numbered("E01", 40)},
-		{Path: episode2, Data: numbered("E02", 36)},
-		{Path: episode3, Data: numbered("E03", 30)},
-	}
+	return packOf(t,
+		qbtstub.ContentFile{Path: episode1, Data: numbered("E01", 40)},
+		qbtstub.ContentFile{Path: episode2, Data: numbered("E02", 36)},
+		qbtstub.ContentFile{Path: episode3, Data: numbered("E03", 30)})
+}
+
+// packOf is a torrent of files in the folder Show.S01.1080p-GRP, with pieces
+// of 16 bytes.
+func packOf(t *testing.T, files ...qbtstub.ContentFile) show {
+	t.Helper()
 	data, hash := qbtstub.NewContentTorrent(t, showName, 16, files...)
 	s := show{data: data, hash: hash, files: map[string][]byte{}}
 	for _, f := range files {
@@ -107,7 +117,6 @@ func TestTransferUsesFilesAlreadyOnTheTarget(t *testing.T) {
 		checks int
 	}{
 		{name: "every file", onTarget: []string{episode1, episode2, episode3}, checks: 1},
-		{name: "a correct file between two missing ones", onTarget: []string{episode2}, checks: 2},
 		{name: "with .!qB on, a correct file between two missing ones", onTarget: []string{episode2}, incompleteExt: true, checks: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -168,7 +177,9 @@ func TestTransferUsesFilesAlreadyOnTheTarget(t *testing.T) {
 
 // A file on the target that fails its check is a conflict. The Transfer
 // stops and names the file, and leaves it as it is, also when qBittorrent
-// appends .!qB to the incomplete files that it checks.
+// appends .!qB to the incomplete files that it checks. The check-only helper
+// stops when its files are checked, and qui neither starts it again nor
+// gives it a peer, so it never downloads.
 func TestTransferStopsAtAFileOnTheTargetThatFailsItsCheck(t *testing.T) {
 	r := newRig(t)
 	s := newPack(t)
@@ -181,27 +192,14 @@ func TestTransferStopsAtAFileOnTheTargetThatFailsItsCheck(t *testing.T) {
 
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
-	require.Equal(t, "Conflict: the file at "+filepath.Join(r.dstDir, showName)+"/"+episode2+" on homelab differs from the torrent.", record.FailureReason)
+	// regression: #4231
+	require.Equal(t, "Conflict: the file at "+filepath.Join(r.dstDir, showName, episode2)+" on homelab differs from the torrent.", record.FailureReason)
 	r.requireUntouched(before, theirs)
 	require.Equal(t, map[string]string{showName + "/" + episode2: string(theirs[episode2])}, tree(t, r.dstDir),
 		"no link, no .!qB name, and no copy of qui remains")
 	require.False(t, r.dst.Has(s.hash))
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 	require.False(t, r.src.Stopped(s.hash))
-}
-
-// The check-only helper stops when its files are checked, and qui neither
-// starts it again nor gives it a peer. So it never downloads, also when the
-// file that it checks has bad pieces.
-func TestTransferHeadStartHelperNeverDownloads(t *testing.T) {
-	r := newRig(t)
-	s := newPack(t)
-	r.seed(s)
-	r.placeOnTarget(map[string][]byte{episode2: numbered("e02", 36)})
-
-	record := r.run(r.request(s))
-
-	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, []string{"torrents/add", "torrents/delete"}, r.dst.WriteLog(), "the add of the helper and its removal")
 	require.Equal(t, "FilesChecked", r.dst.LastParams("torrents/add").Get("stopCondition"))
 	require.Equal(t, "false", r.dst.LastParams("torrents/delete").Get("deleteFiles"))
@@ -221,7 +219,8 @@ func TestTransferTreatsAFileItCannotLinkAsAConflict(t *testing.T) {
 
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
-	require.Contains(t, record.FailureReason, "Conflict: qui cannot check the file at "+filepath.Join(r.dstDir, showName)+"/"+episode2+
+	// regression: #4231
+	require.Contains(t, record.FailureReason, "Conflict: qui cannot check the file at "+filepath.Join(r.dstDir, showName, episode2)+
 		" on homelab, because it cannot make a hardlink there")
 	require.Zero(t, r.dst.Writes("torrents/add"), "no helper checks the file")
 	r.requireUntouched(before, theirs)

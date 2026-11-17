@@ -7059,7 +7059,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: Another program uses the port. qui saves nothing.
+          description: >-
+            Another program uses the port, or the change moves qui's own tracker (a new port or public address) while
+            a Share on it is active. qui saves nothing.
           content:
             application/json:
               schema:

@@ -4,14 +4,17 @@
 package transfer
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
-	"path"
 	"slices"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
 
 // linkName is the hardlink through which a check-only helper checks a file
@@ -31,7 +34,7 @@ func (j *job) checkName(f file) string {
 }
 
 func (j *job) inTheWay(rel string) error {
-	return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, path.Join(j.rootDir, rel))
+	return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, j.targetPath(rel))
 }
 
 // findOnTarget marks each file of the group that the target already has. A
@@ -75,7 +78,8 @@ func (p *part) hasOnTarget() bool {
 // headStart checks the files that were on the target before the copy, with
 // the pieces of each member that has one. A file passes when every piece
 // that lies fully inside it passes, so a piece that it shares with a missing
-// file does not count against it. A file that fails is a conflict, and qui
+// file does not count against it. In the BitTorrent way, its bytes in such a
+// piece must also match the source. A file that fails is a conflict, and qui
 // never writes into it or over it.
 func (j *job) headStart(ctx context.Context) error {
 	if !slices.ContainsFunc(j.files, func(f *groupFile) bool { return f.onTarget }) {
@@ -103,8 +107,13 @@ func (j *job) headStart(ctx context.Context) error {
 			}
 			for piece := first; piece < end; piece++ {
 				if states[piece] != qbt.PieceStateAlreadyDownloaded {
-					return permanent("Conflict: the file at %s on %s differs from the torrent.", path.Join(j.rootDir, p.rel(f)), j.target.Name)
+					return j.differs(p, f)
 				}
+			}
+		}
+		if j.rec.Way == WayBitTorrent {
+			if err := j.sameEdges(ctx, p, states); err != nil {
+				return err
 			}
 		}
 		p.headStartProven = !slices.ContainsFunc(states, func(s qbt.PieceState) bool { return s != qbt.PieceStateAlreadyDownloaded })
@@ -121,6 +130,66 @@ func (j *job) headStart(ctx context.Context) error {
 	return j.step(ctx, StateCopying, "copy the missing files")
 }
 
+func (j *job) differs(p *part, f file) error {
+	return permanent("Conflict: the file at %s on %s differs from the torrent.", j.targetPath(p.rel(f)), j.target.Name)
+}
+
+// sameEdges compares with the source the bytes of each file of the member
+// that was on the target in each piece that failed the check: a piece that
+// the file shares with another file. The Transfer torrent downloads such a
+// piece through the link to the file.
+func (j *job) sameEdges(ctx context.Context, p *part, states []qbt.PieceState) error {
+	length := p.src.info.PieceLength
+	for _, f := range p.plan {
+		if !f.onTarget {
+			continue
+		}
+		end := f.offset + f.size
+		for from := f.offset; from < end; from = (from/length + 1) * length {
+			if states[from/length] == qbt.PieceStateAlreadyDownloaded {
+				continue
+			}
+			if j.srcFiles == nil {
+				return permanent("Conflict: qui cannot check a part of the file at %s on %s, because it cannot read the files on %s.",
+					j.targetPath(p.rel(f)), j.target.Name, j.source.Name)
+			}
+			to := min((from/length+1)*length, end)
+			same, err := j.sameBytes(ctx, p, f, from-f.offset, to-from)
+			if err != nil {
+				return err
+			}
+			if !same {
+				return j.differs(p, f)
+			}
+		}
+	}
+	return nil
+}
+
+// sameBytes reports whether n bytes from offset of a file of the member are
+// the same on the target and on the source.
+func (j *job) sameBytes(ctx context.Context, p *part, f file, offset, n int64) (bool, error) {
+	paths := j.srcFiles.Paths()
+	theirs, ours := make([]byte, n), make([]byte, n)
+	if err := readAt(ctx, j.srcFiles, paths.Join(p.src.torrent.SavePath, paths.FromSlash(f.name)), offset, ours); err != nil {
+		return false, temporary("qui cannot read %s on %s: %v", f.name, j.source.Name, err)
+	}
+	if err := readAt(ctx, j.dstFiles, j.targetPath(p.rel(f)), offset, theirs); err != nil {
+		return false, temporary("qui cannot read %s on %s: %v", j.targetPath(p.rel(f)), j.target.Name, err)
+	}
+	return bytes.Equal(theirs, ours), nil
+}
+
+func readAt(ctx context.Context, files fsops.Backend, name string, offset int64, into []byte) error {
+	r, err := files.OpenRead(ctx, name, offset)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	_, err = io.ReadFull(r, into)
+	return err
+}
+
 // link makes the hardlink of each file of the member that was on the
 // target. A file that qui cannot link is a conflict, whatever the error: it
 // differs between filesystems and SFTP servers.
@@ -131,7 +200,7 @@ func (j *job) link(ctx context.Context, p *part) error {
 		}
 		if err := j.root.Link(ctx, p.rel(f), j.linkName(p.rel(f))); err != nil {
 			return permanent("Conflict: qui cannot check the file at %s on %s, because it cannot make a hardlink there: %v",
-				path.Join(j.rootDir, p.rel(f)), j.target.Name, err)
+				j.targetPath(p.rel(f)), j.target.Name, err)
 		}
 	}
 	return nil

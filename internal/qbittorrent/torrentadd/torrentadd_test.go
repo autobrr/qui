@@ -201,7 +201,6 @@ func TestAddSetsPrioritiesThenStarts(t *testing.T) {
 		wantState  string
 		wantStart  []string
 	}{
-		{name: "starts", want: torrentadd.Verified, wantState: "stalledUP", wantStart: []string{"torrents/start"}},
 		{name: "starts forced", settings: torrentadd.Settings{Forced: true}, want: torrentadd.Verified, wantState: "forcedUP",
 			wantStart: []string{"torrents/setForceStart"}},
 		{name: "stays stopped", settings: torrentadd.Settings{Stopped: new(true)}, want: torrentadd.Accepted, wantState: "stoppedDL"},

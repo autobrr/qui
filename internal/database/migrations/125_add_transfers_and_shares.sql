@@ -1,0 +1,194 @@
+-- Copyright (c) 2025-2026, s0up and the autobrr contributors.
+-- SPDX-License-Identifier: GPL-2.0-or-later
+
+-- Transfers and Export to Instance runs (#4144), and the helper torrents that
+-- qui adds for Transfers and Shares. transfer_history is another thing: the
+-- bytes on the Statistics page. No table has a foreign key to instances or
+-- automations, so that a Transfer of a removed instance or rule stays to
+-- fail and to show.
+
+-- kind is transfer or export. state holds the states of both kinds.
+-- started_by is rule, with rule_id, or user. The endpoints are the JSON of
+-- fsops.Endpoint at the start. finished_at is NULL while the Transfer holds
+-- its torrents and folders. failure_class is temporary or permanent.
+CREATE TABLE IF NOT EXISTS torrent_transfers (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind                 TEXT NOT NULL,
+    way                  TEXT NOT NULL DEFAULT '',
+    state                TEXT NOT NULL,
+    started_by           TEXT NOT NULL,
+    rule_id              INTEGER,
+    source_instance_id   INTEGER NOT NULL,
+    target_instance_id   INTEGER NOT NULL,
+    source_endpoint_json TEXT NOT NULL,
+    target_endpoint_json TEXT NOT NULL,
+    options_json         TEXT NOT NULL DEFAULT '{}',
+    steps_json           TEXT NOT NULL DEFAULT '[]',
+    log_json             TEXT NOT NULL DEFAULT '[]',
+    flush_state          TEXT NOT NULL DEFAULT '',
+    reserved_bytes       INTEGER NOT NULL DEFAULT 0,
+    retry_at             DATETIME,
+    failure_class        TEXT NOT NULL DEFAULT '',
+    failure_reason       TEXT NOT NULL DEFAULT '',
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at          DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS torrent_transfers_running
+    ON torrent_transfers (finished_at);
+
+-- Each torrent of a Transfer, by its infohash on the Transfer source, with its
+-- placement on target_instance_id: the Transfer target, or the Cross-seed
+-- instance of the target. proven_pieces is the resume record: one bit for
+-- each Proven piece, piece 0 in the high bit of the first byte.
+CREATE TABLE IF NOT EXISTS torrent_transfer_members (
+    transfer_id        INTEGER NOT NULL REFERENCES torrent_transfers(id) ON DELETE CASCADE,
+    position           INTEGER NOT NULL,
+    hash               TEXT NOT NULL,
+    name               TEXT NOT NULL,
+    source_save_path   TEXT NOT NULL,
+    target_instance_id INTEGER NOT NULL,
+    target_save_path   TEXT NOT NULL,
+    placement_json     TEXT NOT NULL DEFAULT '{}',
+    proven_pieces      BLOB,
+    PRIMARY KEY (transfer_id, position)
+);
+
+-- The torrents that running Transfers hold. The key refuses a second claim of
+-- a torrent.
+CREATE TABLE IF NOT EXISTS torrent_transfer_claims (
+    instance_id INTEGER NOT NULL,
+    hash        TEXT NOT NULL,
+    transfer_id INTEGER NOT NULL REFERENCES torrent_transfers(id) ON DELETE CASCADE,
+    PRIMARY KEY (instance_id, hash)
+);
+
+CREATE INDEX IF NOT EXISTS torrent_transfer_claims_transfer
+    ON torrent_transfer_claims (transfer_id);
+
+-- Each helper torrent (a Transfer torrent or a Share torrent) that qui adds,
+-- written before the add. random is the stored random value of the helper
+-- builder. owner_kind is transfer or share, and owner_id the id of the owner
+-- in its own table.
+CREATE TABLE IF NOT EXISTS helper_torrents (
+    instance_id INTEGER NOT NULL,
+    hash        TEXT NOT NULL,
+    random      BLOB NOT NULL,
+    owner_kind  TEXT NOT NULL,
+    owner_id    INTEGER NOT NULL,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (instance_id, hash)
+);
+
+CREATE INDEX IF NOT EXISTS helper_torrents_owner
+    ON helper_torrents (owner_kind, owner_id);
+
+-- The public peer address (host:port) at which other BitTorrent clients reach
+-- the qBittorrent of the instance, as the user sets it. Empty when the user set
+-- none: qui then works the address out from what qBittorrent reports at each
+-- use, and never stores it.
+ALTER TABLE instances ADD COLUMN public_peer_address TEXT NOT NULL DEFAULT '';
+
+DROP VIEW IF EXISTS instances_view;
+CREATE VIEW instances_view AS
+SELECT
+    i.id,
+    n.value AS name,
+    h.value AS host,
+    u.value AS username,
+    i.password_encrypted,
+    i.api_key_encrypted,
+    bu.value AS basic_username,
+    i.basic_password_encrypted,
+    i.tls_skip_verify,
+    i.sort_order,
+    i.is_active,
+    i.has_local_filesystem_access,
+    i.use_hardlinks,
+    i.hardlink_base_dir,
+    i.hardlink_dir_preset,
+    i.use_reflinks,
+    i.fallback_to_regular_mode,
+    i.ssh_host,
+    i.ssh_port,
+    i.ssh_username,
+    i.ssh_key_encrypted,
+    i.ssh_host_key_encrypted,
+    i.ssh_tier,
+    i.ssh_hardlink,
+    i.public_peer_address
+FROM instances i
+LEFT JOIN string_pool n ON i.name_id = n.id
+LEFT JOIN string_pool h ON i.host_id = h.id
+LEFT JOIN string_pool u ON i.username_id = u.id
+LEFT JOIN string_pool bu ON i.basic_username_id = bu.id;
+
+-- The Share tracker settings, in one row. Without the row, port is 0 and the
+-- tracker never listens. public_address is the URL at which recipients reach
+-- the tracker. trusted_proxies is a JSON array of the addresses and CIDR
+-- prefixes whose X-Forwarded-For the tracker trusts.
+CREATE TABLE IF NOT EXISTS share_tracker_settings (
+    id              INTEGER PRIMARY KEY CHECK (id = 1),
+    port            INTEGER NOT NULL,
+    public_address  TEXT NOT NULL,
+    trusted_proxies TEXT NOT NULL
+);
+
+-- Shares (#4144): the files of one torrent, given to someone whose client qui
+-- does not manage, through a Share torrent that the user's client seeds. No
+-- foreign key to instances, so that the Share of a removed instance stays to
+-- end and to show.
+
+-- instance_id, hash, name, save_path, files_json, and size are the real
+-- torrent at the start: a move or a rename of its files ends the Share.
+-- helper_hash is the infohash of the Share torrent. tracker is own (qui's own
+-- Share tracker) or outside (the tracker URL of the settings). torrent_file is
+-- the .torrent of the recipient. holder is the address, without a port, of the
+-- recipient client that holds the lock of a Share with first_downloader_only,
+-- or '' while no client holds it. state is active, ending, or ended.
+-- peers_json is the addresses that announced, or the connected peers with an
+-- outside tracker. downloaded is the bytes that the recipient has, and
+-- uploaded the bytes that the user's client sent. ended_at is NULL until the
+-- Share torrent is gone from the client.
+CREATE TABLE IF NOT EXISTS shares (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    instance_id           INTEGER NOT NULL,
+    hash                  TEXT NOT NULL,
+    name                  TEXT NOT NULL,
+    save_path             TEXT NOT NULL,
+    files_json            TEXT NOT NULL,
+    size                  INTEGER NOT NULL,
+    helper_hash           TEXT NOT NULL,
+    tracker               TEXT NOT NULL,
+    owner_secret          TEXT NOT NULL,
+    recipient_secret      TEXT NOT NULL,
+    torrent_file          BLOB NOT NULL,
+    end_at_first_download BOOLEAN NOT NULL,
+    first_downloader_only BOOLEAN NOT NULL,
+    holder                TEXT NOT NULL DEFAULT '',
+    expires_at            DATETIME NOT NULL,
+    state                 TEXT NOT NULL,
+    end_reason            TEXT NOT NULL DEFAULT '',
+    peers_json            TEXT NOT NULL DEFAULT '[]',
+    downloaded            INTEGER NOT NULL DEFAULT 0,
+    uploaded              INTEGER NOT NULL DEFAULT 0,
+    created_at            DATETIME NOT NULL,
+    ended_at              DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS shares_state
+    ON shares (state, ended_at);
+
+-- The Share settings, in one row. Without the row, qui uses the defaults.
+-- tracker_url is the outside tracker URL, used when qui's own Share tracker
+-- has no port or no public address. The default_ columns fill in the form of
+-- a new Share.
+CREATE TABLE IF NOT EXISTS share_settings (
+    id                            INTEGER PRIMARY KEY CHECK (id = 1),
+    max_active                    INTEGER NOT NULL,
+    peers_per_share               INTEGER NOT NULL,
+    tracker_url                   TEXT NOT NULL,
+    default_days                  INTEGER NOT NULL,
+    default_end_at_first_download BOOLEAN NOT NULL,
+    default_first_downloader_only BOOLEAN NOT NULL
+);

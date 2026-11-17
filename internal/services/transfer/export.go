@@ -6,11 +6,13 @@ package transfer
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 )
@@ -56,6 +58,10 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 	if s.ctx.Err() != nil {
 		return 0, nil, errShutdown
 	}
+	target, err := s.deps.Instances.Get(ctx, req.TargetInstanceID)
+	if err != nil {
+		return 0, nil, err
+	}
 	record := &Record{
 		Kind:             KindExport,
 		State:            StateWaiting,
@@ -63,7 +69,9 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 		RuleID:           new(req.RuleID),
 		SourceInstanceID: req.SourceInstanceID,
 		TargetInstanceID: req.TargetInstanceID,
-		Options:          Options{After: AfterKeepSeeding, Paused: req.Paused, SkipChecking: new(req.SkipChecking)},
+		// The cleanup removes nothing from a target with a new address.
+		TargetEndpoint: fsops.EndpointOf(target),
+		Options:        Options{After: AfterKeepSeeding, Paused: req.Paused, SkipChecking: new(req.SkipChecking)},
 		// The start holds the name of the rule, for the delete of a resumed
 		// run.
 		Steps: []Step{{Name: "start", At: s.deps.Now(), Detail: req.RuleName}},
@@ -126,17 +134,31 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 	}
 	m := e.member()
 	if e.reached(stepAdd) {
-		has, err := e.svc.has(ctx, m.TargetInstanceID, m.Hash)
+		torrent, err := e.svc.torrent(ctx, m.TargetInstanceID, m.Hash)
 		switch {
 		case ctx.Err() != nil:
 			return ExportResult{}, false
-		case err == nil && has:
+		case err == nil && torrent != nil:
 			e.logf("Resumed: the target has the torrent, so qui checks it there.")
-			added := e.svc.adder.Confirm(ctx, e.addRequest(nil))
+			req := e.addRequest(nil)
+			unchecked := torrent.Progress == 0 &&
+				slices.Contains([]qbt.TorrentState{qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedDl}, torrent.State)
+			if req.Settings.Recheck && unchecked {
+				// qui stopped before the recheck of the paused add, and
+				// qBittorrent does not check a stopped torrent by itself.
+				err := e.svc.deps.Sync.BulkAction(ctx, m.TargetInstanceID, []string{m.Hash}, "recheck")
+				switch {
+				case ctx.Err() != nil:
+					return ExportResult{}, false
+				case err != nil:
+					return e.endResumed(ctx, "Recheck on target failed: "+err.Error()), true
+				}
+			}
+			added := e.svc.adder.Confirm(ctx, req)
 			if ctx.Err() != nil {
 				return ExportResult{}, false
 			}
-			return e.end(ctx, e.verify(ctx, added), true), true
+			return e.endResumed(ctx, e.verify(ctx, added)), true
 		}
 		e.logf("Resumed: the add did not reach the target, so qui adds the torrent again.")
 	}
@@ -169,10 +191,24 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		return ExportResult{}, false
 	case added.Failure == torrentadd.AddRefused:
 		return e.end(ctx, "Add to target failed: "+added.Err.Error(), false), true
-	case added.Failure == torrentadd.AfterAddFailed:
+	}
+	e.rec.Steps = append(e.rec.Steps, Step{Name: stepAdded, At: e.svc.deps.Now()})
+	e.save(ctx)
+	if added.Failure == torrentadd.AfterAddFailed {
 		return e.end(ctx, "Recheck on target failed: "+added.Err.Error(), true), true
 	}
 	return e.end(ctx, e.verify(ctx, added), true), true
+}
+
+// endResumed ends a resumed run that found the torrent on the target. When
+// the add did not answer, the torrent may be the user's, and qui keeps it
+// after a failed check.
+func (e *exportJob) endResumed(ctx context.Context, reason string) ExportResult {
+	if reason == "" || e.reached(stepAdded) {
+		return e.end(ctx, reason, true)
+	}
+	return e.end(ctx, "Ownership unknown: the target has the torrent, but its add did not answer, so qui cannot tell "+
+		"who added it, and keeps it there. "+reason, false)
 }
 
 func (e *exportJob) addRequest(data []byte) torrentadd.Request {
@@ -240,6 +276,17 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 
 func (e *exportJob) removeFromTarget(ctx context.Context) {
 	m := e.member()
+	target, err := e.svc.deps.Instances.Get(ctx, m.TargetInstanceID)
+	switch {
+	case err != nil:
+		e.logf("qui could not remove the torrent from the target: %v", err)
+		return
+	case fsops.EndpointOf(target).URL != e.rec.TargetEndpoint.URL:
+		// The torrent there is not the one that qui added. The delete goes
+		// through qBittorrent, so only its address counts.
+		e.logf("The target has a new address, so qui leaves the torrent there.")
+		return
+	}
 	actor := qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: e.ruleName}
 	if err := e.svc.deps.Sync.DeleteTorrents(ctx, m.TargetInstanceID, []string{m.Hash}, false, actor); err != nil {
 		e.logf("qui could not remove the torrent from the target: %v", err)

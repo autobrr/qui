@@ -37,14 +37,15 @@ func (sm *SyncManager) helpers() HelperTorrents {
 
 // RefuseHelperFiles returns ErrHelperTorrentFiles when a delete with files
 // would reach a helper torrent of the instance. As in qBittorrent, the list
-// ["all"] names each torrent of the instance.
+// ["all"] names each torrent of the instance, read fresh so that it holds a
+// helper added since the last sync.
 func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, hashes []string) error {
 	helpers := sm.helpers()
 	if helpers == nil {
 		return nil
 	}
 	if len(hashes) == 1 && hashes[0] == "all" {
-		torrents, err := sm.GetAllTorrentRefs(ctx, instanceID)
+		torrents, err := sm.GetTorrentRefsFresh(ctx, instanceID, TorrentRefFilter{})
 		if err != nil {
 			return fmt.Errorf("read the torrents of instance %d: %w", instanceID, err)
 		}

@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
 // exportPolls shortens the wait of an Export run for the target.
@@ -167,7 +169,7 @@ func (h holdAt) ExecContext(ctx context.Context, query string, args ...any) (sql
 // restartOn starts qui again with its store on q.
 func (r *rig) restartOn(q dbinterface.Querier) {
 	r.t.Helper()
-	r.svc.Close()
+	closeService(r.t, r.svc)
 	store, err := transfer.NewStore(r.t.Context(), q)
 	require.NoError(r.t, err)
 	r.store, r.deps.Store = store, store
@@ -212,7 +214,7 @@ func TestExportRunsFiveAtATimeOutsideTheTransferQueue(t *testing.T) {
 	for i := range exports {
 		name := fmt.Sprintf("Other.Show.S%02d.720p-GRP", i+1)
 		s := newShow(t, name)
-		r.src.Seed(s.data, r.srcDir)
+		r.src.Seed(s.data, r.srcPath())
 		write(t, filepath.Join(r.dstDir, name), s.files)
 		req := r.exportRequest(s)
 		req.Name = name
@@ -243,18 +245,30 @@ func TestExportRunsFiveAtATimeOutsideTheTransferQueue(t *testing.T) {
 
 // qui ends at each step of an Export run that it records, and at the add.
 // After the restart, the run adds the torrent once and checks it on the
-// target, or finishes its cleanup. A second restart sends nothing.
+// target, or finishes its cleanup. A failed torrent whose add did not
+// answer stays on the target, because qui cannot tell who added it. A
+// second restart sends nothing.
 func TestExportResumesAfterACrash(t *testing.T) {
 	for _, tc := range []struct {
 		at        string
 		killAtAdd bool
 		// missing leaves the files off the target.
 		missing bool
-		want    transfer.State
+		// recheckFails makes the add paused, with a check, and makes the
+		// recheck after the restart fail.
+		recheckFails bool
+		want         transfer.State
+		// kept, when set, is a part of the failure reason of a run that
+		// keeps the failed torrent on the target.
+		kept string
 	}{
 		{at: "after:add", want: transfer.StateDone},
 		{killAtAdd: true, want: transfer.StateDone},
-		{killAtAdd: true, missing: true, want: transfer.StateFailed},
+		// regression: #4231
+		{killAtAdd: true, missing: true, want: transfer.StateFailed, kept: "Files missing on target instance"},
+		// regression: #4231
+		{killAtAdd: true, recheckFails: true, want: transfer.StateFailed, kept: "Recheck on target failed"},
+		{at: "after:added", missing: true, want: transfer.StateFailed},
 		{at: "after:clean up", missing: true, want: transfer.StateFailed},
 		{at: "after:done", want: transfer.StateDone},
 	} {
@@ -265,6 +279,9 @@ func TestExportResumesAfterACrash(t *testing.T) {
 		if tc.missing {
 			name += ", files missing"
 		}
+		if tc.recheckFails {
+			name += ", the recheck fails"
+		}
 		t.Run(name, func(t *testing.T) {
 			r := newRig(t, exportPolls)
 			s := newShow(t, showName)
@@ -273,6 +290,9 @@ func TestExportResumesAfterACrash(t *testing.T) {
 				write(t, filepath.Join(r.dstDir, showName), s.files)
 			}
 			req := r.exportRequest(s)
+			if tc.recheckFails {
+				req.Paused, req.SkipChecking = true, false
+			}
 			child := make(chan *os.Process, 1)
 			r.dst.OnAdd = func(string) {
 				if tc.killAtAdd {
@@ -280,6 +300,14 @@ func TestExportResumesAfterACrash(t *testing.T) {
 				}
 			}
 			runCrashChild(t, crash{DB: r.dbPath, Export: &req, At: tc.at}, child, tc.killAtAdd)
+			if tc.recheckFails {
+				r.dst.OnWrite = func(endpoint string) {
+					r.dst.Reject = 0
+					if endpoint == "torrents/recheck" {
+						r.dst.Reject = http.StatusInternalServerError
+					}
+				}
+			}
 
 			r.restart()
 			r.svc.Wait()
@@ -290,9 +318,16 @@ func TestExportResumesAfterACrash(t *testing.T) {
 			require.False(t, record.FinishedAt.IsZero(), "the Export run ended after the restart")
 			require.Equal(t, tc.want, record.State, record.FailureReason)
 			require.Equal(t, 1, r.dst.Writes("torrents/add"), "qui adds the torrent once")
-			if tc.want == transfer.StateDone {
+			switch {
+			case tc.want == transfer.StateDone:
 				require.True(t, r.seeding(r.target.ID, s.hash))
-			} else {
+			case tc.kept != "":
+				require.Contains(t, record.FailureReason, "Ownership unknown")
+				require.Contains(t, record.FailureReason, tc.kept)
+				require.True(t, r.dst.Has(s.hash), "qui keeps the torrent that it may not have added")
+				require.Zero(t, r.dst.Writes("torrents/delete"))
+				require.Zero(t, countSteps(record, "clean up"))
+			default:
 				require.Equal(t, "Files missing on target instance (savePath: "+r.dstDir+")", record.FailureReason)
 				require.False(t, r.dst.Has(s.hash), "qui takes the failed torrent off the target")
 				require.Equal(t, 1, r.dst.Writes("torrents/delete"))
@@ -307,6 +342,108 @@ func TestExportResumesAfterACrash(t *testing.T) {
 			require.Equal(t, dst, r.dst.Requests())
 		})
 	}
+}
+
+// wakeAtCommit wakes the Service after each commit on the store, as the
+// loop of Wake can between the record of an Export run and its start.
+type wakeAtCommit struct {
+	dbinterface.Querier
+	wake func()
+}
+
+func (w wakeAtCommit) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	tx, err := w.Querier.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return wakeTx{TxQuerier: tx, wake: w.wake}, nil
+}
+
+type wakeTx struct {
+	dbinterface.TxQuerier
+	wake func()
+}
+
+func (t wakeTx) Commit() error {
+	err := t.TxQuerier.Commit()
+	if err == nil {
+		t.wake()
+	}
+	return err
+}
+
+// A Wake that reads a new Export run before its Export call starts it
+// leaves the run to that call, so the caller gets the result.
+// regression: #4231
+func TestExportSendsItsResultWhenAWakeComesFirst(t *testing.T) {
+	r := newRig(t, exportPolls)
+	r.restartOn(wakeAtCommit{Querier: r.db, wake: func() { r.svc.Wake() }})
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+
+	record, res := r.export(r.exportRequest(s))
+
+	require.Empty(t, res.Failure)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, 1, r.dst.Writes("torrents/add"))
+}
+
+// qBittorrent does not check a torrent that was added stopped. When qui
+// stops between a paused add and its recheck, the run sends the recheck
+// after the restart, and the torrent passes its check on the target.
+// regression: #4231
+func TestExportRechecksAPausedAddAfterACrash(t *testing.T) {
+	r := newRig(t, exportPolls)
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+	req := r.exportRequest(s)
+	req.Paused, req.SkipChecking = true, false
+	child := make(chan *os.Process, 1)
+	r.dst.OnAdd = func(string) { require.NoError(t, (<-child).Kill()) }
+	runCrashChild(t, crash{DB: r.dbPath, Export: &req}, child, true)
+	require.Zero(t, r.dst.Writes("torrents/recheck"), "qui stopped before the recheck")
+
+	r.restart()
+	r.svc.Wait()
+
+	var id int64
+	require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+	record := r.get(id)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, 1, r.dst.Writes("torrents/add"), "qui adds the torrent once")
+	require.Equal(t, 1, r.dst.Writes("torrents/recheck"))
+	require.True(t, r.dst.Has(s.hash))
+	require.True(t, r.dst.Stopped(s.hash), "the torrent stays paused")
+}
+
+// The cleanup of a failed Export run that resumes after a restart removes
+// nothing from a target that got a new address: the torrent there is not
+// the one that qui added.
+// regression: #4231
+func TestExportRemovesNothingFromATargetWithANewAddress(t *testing.T) {
+	r := newRig(t, exportPolls)
+	s := newShow(t, showName)
+	r.seed(s)
+	req := r.exportRequest(s)
+	runCrashChild(t, crash{DB: r.dbPath, Export: &req, At: "after:clean up"}, make(chan *os.Process, 1), false)
+	moved := qbtstub.New(t, r.dstDir)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+	moved.Seed(s.data, r.dstDir)
+	_, err := r.instances.Update(t.Context(), r.target.ID, "homelab", moved.URL, "", "", nil, nil, nil)
+	require.NoError(t, err)
+
+	r.restart()
+	r.svc.Wait()
+
+	var id int64
+	require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+	record := r.get(id)
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.False(t, record.FinishedAt.IsZero())
+	require.True(t, moved.Has(s.hash), "qui keeps the torrent of the new address")
+	require.Zero(t, moved.Writes("torrents/delete"))
 }
 
 // The add on the target gets the parameters that the old Export path sends

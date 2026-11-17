@@ -114,7 +114,9 @@ type Service struct {
 
 	mu     sync.Mutex
 	closed bool
-	// queues holds the Transfers of each source, the running one first.
+	// queues holds the Transfers of each source, the running one first. A
+	// source is in it while its worker runs, also when a cancel emptied its
+	// queue before the worker took the first Transfer.
 	queues map[int][]int64
 	// runs holds each Transfer that is queued, runs, or is being cancelled.
 	runs map[int64]*run
@@ -157,7 +159,7 @@ func NewService(ctx context.Context, deps Deps) *Service {
 		reserved: map[int]int64{},
 		exports:  make(chan struct{}, exportsAtATime),
 	}
-	s.Wake()                            //nolint:contextcheck // the Service runs on its own context, s.ctx
+	s.wake(true)                        //nolint:contextcheck // the Service runs on its own context, s.ctx
 	go s.tick(deps.Config.WakeInterval) //nolint:contextcheck // the Service runs on its own context, s.ctx
 	return s
 }
@@ -184,6 +186,13 @@ func (s *Service) tick(interval time.Duration) {
 // interrupted, one whose retry time came, and one whose instances are on
 // again.
 func (s *Service) Wake() {
+	s.wake(false)
+}
+
+// wake with exports also runs each Export run that a stop of qui
+// interrupted. Only the start does: later, an Export run that the Service
+// does not hold is one whose Export call has not started it yet.
+func (s *Service) wake(exports bool) {
 	ids, err := s.deps.Store.Unfinished(s.ctx)
 	if err != nil {
 		if s.ctx.Err() == nil {
@@ -192,23 +201,32 @@ func (s *Service) Wake() {
 		return
 	}
 	now := s.deps.Now()
+	unread := 0
+	var readErr error
 	for _, id := range ids {
 		if s.holds(id) {
 			continue
 		}
 		record, err := s.deps.Store.Get(s.ctx, id)
 		if err != nil {
-			log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
+			log.Debug().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
+			unread++
+			readErr = err
 			continue
 		}
 		if record.Kind == KindExport {
-			s.export(record, make(chan ExportResult, 1))
+			if exports {
+				s.export(record, make(chan ExportResult, 1))
+			}
 			continue
 		}
 		if record.Kind != KindTransfer || record.RetryAt.After(now) || s.off(s.ctx, record) {
 			continue
 		}
 		s.enqueue(record)
+	}
+	if unread > 0 {
+		log.Error().Err(readErr).Int("transfers", unread).Msg("transfer: cannot read Transfers to wake")
 	}
 }
 
@@ -283,9 +301,9 @@ func (s *Service) enqueue(r *Record) {
 		return
 	}
 	s.runs[r.ID] = &run{}
-	queue := s.queues[r.SourceInstanceID]
+	queue, working := s.queues[r.SourceInstanceID]
 	s.queues[r.SourceInstanceID] = append(queue, r.ID)
-	if len(queue) == 0 {
+	if !working {
 		s.wg.Go(func() { s.drain(r.SourceInstanceID) })
 	}
 }
@@ -296,6 +314,10 @@ func (s *Service) drain(sourceID int) {
 		s.mu.Lock()
 		queue := s.queues[sourceID]
 		if len(queue) == 0 || s.ctx.Err() != nil {
+			// A stop leaves the queued Transfers to the next start.
+			for _, id := range queue {
+				delete(s.runs, id)
+			}
 			delete(s.queues, sourceID)
 			s.mu.Unlock()
 			return
@@ -310,8 +332,15 @@ func (s *Service) drain(sourceID int) {
 
 		s.mu.Lock()
 		s.queues[sourceID] = s.queues[sourceID][1:]
-		delete(s.runs, id)
+		cancelled := s.runs[id].cancelled
+		if !cancelled {
+			delete(s.runs, id)
+		}
 		s.mu.Unlock()
+		// A cancel that came while the run ended still rolls it back.
+		if cancelled {
+			s.rollBack(context.WithoutCancel(s.ctx), id)
+		}
 	}
 }
 
@@ -374,7 +403,11 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 		return nil
 	default:
 		r.cancelled = true
-		s.queues[record.SourceInstanceID] = slices.DeleteFunc(s.queues[record.SourceInstanceID], func(queued int64) bool { return queued == id })
+		// An Export run is held but sits in no queue: a source key without
+		// a worker would stop the next Transfer of the source.
+		if queue, ok := s.queues[record.SourceInstanceID]; ok {
+			s.queues[record.SourceInstanceID] = slices.DeleteFunc(queue, func(queued int64) bool { return queued == id })
+		}
 	}
 	s.wg.Go(func() { s.rollBack(context.WithoutCancel(ctx), id) })
 	return nil
@@ -421,7 +454,7 @@ func (s *Service) commit(id int64) bool {
 }
 
 func (s *Service) newJob(record *Record) *job {
-	return &job{svc: s, rec: record, away: map[int]bool{}}
+	return &job{svc: s, rec: record, unanswered: map[string]bool{}, away: map[int]bool{}}
 }
 
 // Wait waits until every Transfer that started has ended or stopped.
@@ -429,27 +462,47 @@ func (s *Service) Wait() {
 	s.wg.Wait()
 }
 
-// Close stops the running Transfers and waits for them. They keep their
-// partial data and stay unfinished.
-func (s *Service) Close() {
+// Close stops the running Transfers and waits for them until ctx ends. They
+// keep their partial data and stay unfinished. A run that waits on a call
+// which ignores the stop, such as an SFTP write that the server never
+// answers, can outlast ctx: Close then returns ctx's error and leaves the
+// run to the exit of qui, after which the next start resumes it.
+func (s *Service) Close(ctx context.Context) error {
 	s.mu.Lock()
 	s.closed = true
 	s.mu.Unlock()
 	s.cancel()
-	<-s.ticked
-	s.wg.Wait()
+	stopped := make(chan struct{})
+	go func() {
+		<-s.ticked
+		s.wg.Wait()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+		return nil
+	case <-ctx.Done():
+		s.mu.Lock()
+		running := len(s.runs)
+		s.mu.Unlock()
+		log.Warn().Int("runs", running).Msg("transfer: runs did not stop in time, the next start resumes them")
+		return ctx.Err()
+	}
 }
 
-// reserve claims bytes of the free space on a target, and fails when free
-// does not hold them next to what the running Transfers to it claimed.
-func (s *Service) reserve(targetID int, bytes, free int64) error {
+// reserve claims bytes of free, the free space on a target, for a Transfer
+// that claimed own of it already. It fails when free does not hold the bytes
+// next to own and others, what the other running Transfers to the target
+// claimed.
+func (s *Service) reserve(targetID int, bytes, free, own int64) (others int64, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if others := s.reserved[targetID]; free-others < bytes {
-		return fmt.Errorf("not enough free space on the target: the Transfer needs %s, and %s is free", formatBytes(bytes), formatBytes(max(free-others, 0)))
+	others = s.reserved[targetID] - own
+	if free-own-others < bytes {
+		return others, false
 	}
 	s.reserved[targetID] += bytes
-	return nil
+	return others, true
 }
 
 func (s *Service) unreserve(targetID int, bytes int64) {

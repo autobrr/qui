@@ -73,6 +73,9 @@ type Torrent struct {
 	// peers, which sync/torrentPeers reports.
 	Uploaded int64
 	Peers    []qbt.TorrentPeer
+	// Moving reports the state "moving", as qBittorrent does while it moves
+	// the files to a new save path. The save path changes when the move ends.
+	Moving bool
 
 	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
@@ -163,7 +166,7 @@ type Server struct {
 	BittorrentProtocol int
 	// FreeSpace is the free space that the server state reports for the
 	// default save path, and app/getFreeSpaceAtPath for any path from
-	// qBittorrent 5.3.
+	// qBittorrent 5.3. A download from a stub of the swarm takes its bytes.
 	FreeSpace int64
 	// Unreachable is a closed port: no peer of the swarm connects to the
 	// stub, and the stub still connects to its peers.
@@ -182,6 +185,8 @@ type Server struct {
 	syncs        int
 	synced       map[int]chan struct{}
 	versionReads int
+	// freeSpacePath is the path of the last app/getFreeSpaceAtPath request.
+	freeSpacePath string
 }
 
 // New starts a stub whose default save path is savePath.
@@ -337,6 +342,13 @@ func (s *Server) Synced(n int) <-chan struct{} {
 	return ch
 }
 
+// FreeSpacePath is the path of the last app/getFreeSpaceAtPath request.
+func (s *Server) FreeSpacePath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.freeSpacePath
+}
+
 // VersionReads counts the app/webapiVersion requests qBittorrent received.
 func (s *Server) VersionReads() int {
 	s.mu.Lock()
@@ -386,18 +398,36 @@ func (s *Server) contentPath(t *Torrent) string {
 		return s.anchor(t)
 	case RootFolder, SingleFile:
 	}
-	return filepath.Join(s.anchor(t), t.Name)
+	return join(s.anchor(t), t.Name)
 }
 
 func (s *Server) diskFiles(t *Torrent) []string {
+	content := onHost(s.contentPath(t))
 	if t.Layout == SingleFile {
-		return []string{s.contentPath(t)}
+		return []string{content}
 	}
 	files := make([]string, 0, len(t.Files))
 	for _, f := range t.Files {
-		files = append(files, filepath.Join(s.contentPath(t), filepath.FromSlash(f)))
+		files = append(files, filepath.Join(content, filepath.FromSlash(f)))
 	}
 	return files
+}
+
+// onHost is the host path of p. A stub whose files qui reaches over sshtest
+// names them as pkg/sftp does, /C:/x on Windows for the host path C:\x.
+func onHost(p string) string {
+	if native, ok := strings.CutPrefix(p, "/"); ok && filepath.VolumeName(native) != "" {
+		return filepath.FromSlash(native)
+	}
+	return p
+}
+
+// join joins the slash name to dir in the form of dir.
+func join(dir, name string) string {
+	if onHost(dir) != dir {
+		return path.Join(dir, name)
+	}
+	return filepath.Join(dir, filepath.FromSlash(name))
 }
 
 // fileNames are the file names that torrents/files reports.
@@ -436,7 +466,7 @@ func (s *Server) categoryPath(name string) string {
 	if name == "" {
 		return s.savePath
 	}
-	return filepath.Join(s.savePath, filepath.FromSlash(name))
+	return join(s.savePath, name)
 }
 
 // move relocates the content the way libtorrent's move_storage does: file by
@@ -480,7 +510,7 @@ func (s *Server) relocate(from, to *Torrent) {
 		assert.NoError(s.t, os.Rename(old[i], f))
 	}
 	if from.Layout == RootFolder {
-		assert.NoError(s.t, os.RemoveAll(s.contentPath(from)))
+		assert.NoError(s.t, os.RemoveAll(onHost(s.contentPath(from))))
 	}
 }
 
@@ -489,7 +519,7 @@ func (s *Server) relocate(from, to *Torrent) {
 // missing, such as one set to Do Not Download, is skipped.
 func (s *Server) remove(t *Torrent) {
 	if t.Layout == RootFolder {
-		assert.NoError(s.t, os.RemoveAll(s.contentPath(t)))
+		assert.NoError(s.t, os.RemoveAll(onHost(s.contentPath(t))))
 		return
 	}
 	for _, f := range s.diskFiles(t) {
@@ -583,7 +613,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case "app/preferences":
 		downloadPath := s.DownloadPath
 		if downloadPath == "" {
-			downloadPath = filepath.Join(s.savePath, "incomplete")
+			downloadPath = join(s.savePath, "incomplete")
 		}
 		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": downloadPath,
 			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "torrent_changed_tmm_enabled": true,
@@ -616,6 +646,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 			}
+			if t.Moving {
+				state = string(qbt.TorrentStateMoving)
+			}
 			row := map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
 				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2,
@@ -624,7 +657,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				row["state"] = state
 			}
 			if t.add != nil {
-				row["downloaded"] = t.add.downloaded
+				row["downloaded"], row["amount_left"] = t.add.downloaded, t.add.amountLeft()
 			}
 			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
 				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata

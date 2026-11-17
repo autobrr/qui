@@ -181,7 +181,7 @@ func (s *Server) renameFile(w http.ResponseWriter, param func(string) string) {
 	save := s.anchor(t)
 	names[index] = newPath
 	t.Layout, t.Files = NoRootFolder, names
-	to := filepath.Join(save, filepath.FromSlash(newPath))
+	to := filepath.Join(onHost(save), filepath.FromSlash(newPath))
 	if _, err := os.Stat(from); err == nil {
 		assert.NoError(s.t, os.MkdirAll(filepath.Dir(to), 0o755))
 		assert.NoError(s.t, os.Rename(from, to))

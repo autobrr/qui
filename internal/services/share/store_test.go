@@ -4,6 +4,7 @@
 package share_test
 
 import (
+	"net/netip"
 	"testing"
 	"time"
 
@@ -62,12 +63,20 @@ func TestTheShareStoreKeepsASharePostgresIntegration(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, want, got)
 
+		holder := netip.MustParseAddr("2001:db8::7")
+		require.NoError(t, store.SetHolder(ctx, want.ID, holder))
+		got, err = store.Get(ctx, want.ID)
+		require.NoError(t, err)
+		require.Equal(t, holder, got.Holder)
+
 		peers := []share.Peer{{Address: "198.51.100.7:6881", Progress: 0.5, SeenAt: storeClock.Add(time.Minute)}}
 		require.NoError(t, store.SaveActivity(ctx, want.ID, share.Activity{Peers: peers, Downloaded: 35, Uploaded: 40}))
 		require.NoError(t, store.SetState(ctx, want.ID, share.StateEnded, "Stopped by the user.", storeClock.Add(time.Hour)))
+		require.NoError(t, store.SetHolder(ctx, want.ID, netip.Addr{}))
 
 		got, err = store.Get(ctx, want.ID)
 		require.NoError(t, err)
+		require.Zero(t, got.Holder, "the zero address clears the holder")
 		require.Equal(t, peers, got.Peers)
 		require.Equal(t, int64(35), got.Downloaded)
 		require.Equal(t, int64(40), got.Uploaded)

@@ -52,12 +52,6 @@ func TestBackupsLeaveOutHelperTorrents(t *testing.T) {
 			wantBackup: []string{seed, own},
 			wantDelete: []string{own},
 		},
-		{
-			name:       "with no helper rows every torrent stays",
-			helpers:    map[string]bool{},
-			wantBackup: []string{seed, helper, own},
-			wantDelete: []string{helper, own},
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

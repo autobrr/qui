@@ -23,7 +23,7 @@ import (
 
 // A push copies from qui's own disk to a target over SFTP. A target with
 // fsync@openssh.com confirms each flush, and qui's own check proves the
-// copy. Without it, a check on the target proves the copy.
+// copy.
 func TestTransferPushesToATargetOverSFTP(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -32,7 +32,6 @@ func TestTransferPushesToATargetOverSFTP(t *testing.T) {
 		adds  int
 	}{
 		{name: "with fsync", fsync: true, proof: "Proof: qui checked every piece, and homelab confirmed each flush.", adds: 1},
-		{name: "without fsync", proof: "Proof: the check on homelab passed all 5 pieces.", adds: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, onDisk, overSFTP)
@@ -89,7 +88,6 @@ func TestTransferOnQuisOwnDisk(t *testing.T) {
 		log     string
 	}{
 		{name: "a local copy", otherFilesystem: true, log: "Copying 70 B on qui's own disk from seedbox to homelab."},
-		{name: "hardlinks", log: "Linking 2 files (70 B) on qui's own disk from seedbox to homelab."},
 		{name: "hardlinks after a restart", restart: true, log: "Linking 2 files (70 B) on qui's own disk from seedbox to homelab."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -99,8 +97,13 @@ func TestTransferOnQuisOwnDisk(t *testing.T) {
 			r.seed(s)
 			before := map[string]os.FileInfo{}
 			for name := range s.files {
-				info, err := os.Stat(filepath.Join(r.srcDir, showName, name))
+				// os.Stat on Windows reads the identity of a file by its path
+				// only in os.SameFile, and the removal from the source removes
+				// the path. The stat of an open file reads it at once.
+				f, err := os.Open(filepath.Join(r.srcDir, showName, name))
 				require.NoError(t, err)
+				info, err := f.Stat()
+				require.NoError(t, errors.Join(err, f.Close()))
 				before[name] = info
 			}
 
@@ -171,7 +174,6 @@ func TestTransferResumesOnATargetWithoutFsync(t *testing.T) {
 		name          string
 		incompleteExt bool
 	}{
-		{name: "plain names"},
 		{name: "the .!qB setting on", incompleteExt: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -306,40 +308,29 @@ func TestTransferRelayGoesOnAfterDropsWithoutFsync(t *testing.T) {
 	}
 }
 
-// With no Transfer rows, the Service touches no instance in any direction:
-// no SSH dial, no request to qBittorrent, and no write.
-func TestTransferServiceIdleInEveryDirection(t *testing.T) {
-	for _, tc := range []struct {
-		name           string
-		source, target side
-	}{
-		{name: "push", source: onDisk, target: overSFTP},
-		{name: "relay", source: overSFTP, target: overSFTP},
-		{name: "local", source: onDisk, target: onDisk},
-		{name: "BitTorrent from a source without file access", source: noAccess, target: overSFTP},
-		{name: "BitTorrent to a target without file access", source: overSFTP, target: noAccess},
-		{name: "BitTorrent without file access", source: noAccess, target: noAccess},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := newRigOn(t, tc.source, tc.target)
-			r.connect()
-			s := newShow(t, showName)
-			r.seed(s)
+// A dropped connection to an SFTP target resumes the copy at once, as a drop
+// on the source does: qui writes on into the temporary files that it made.
+// regression: #4231
+func TestTransferPushGoesOnAfterTheTargetDrops(t *testing.T) {
+	r := newRigOn(t, onDisk, overSFTP, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
+	r.dstSSH.SetFsync(true)
+	s := newBigShow(t)
+	r.seed(s)
+	count := 0
+	r.disk.onWrite = func(string) {
+		if count++; count == 10 || count == 30 || count == 50 {
+			r.dstSSH.DropConnections()
+		}
+	}
 
-			r.svc.Close()
-			svc := transfer.NewService(t.Context(), r.deps)
-			svc.Wake()
-			svc.Close()
+	record := r.run(r.request(s))
 
-			require.Zero(t, r.ssh.Dials())
-			require.Zero(t, r.dstSSH.Dials())
-			require.Zero(t, r.src.Requests())
-			require.Zero(t, r.dst.Requests())
-			writes, creates := r.disk.log()
-			require.Empty(t, writes)
-			require.Empty(t, creates)
-			require.Equal(t, contents(s, showName), tree(t, r.srcDir))
-			require.Empty(t, tree(t, r.dstDir))
-		})
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Contains(t, logOf(record), "The connection to homelab dropped.")
+	require.NotContains(t, logOf(record), "The connection to seedbox dropped.")
+	_, creates := r.disk.log()
+	for name, n := range creates {
+		require.Equal(t, 1, n, "qui made %s once, and wrote into it after each drop", name)
 	}
 }

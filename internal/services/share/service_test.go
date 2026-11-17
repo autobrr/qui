@@ -318,28 +318,6 @@ func TestAShareSeedsAShareTorrentThatQuisTrackerAnnounces(t *testing.T) {
 	require.Zero(t, listed.Downloaded)
 }
 
-func TestAShareEndsAtTheFirstCompleteDownload(t *testing.T) {
-	r := newRig(t)
-	sh := r.start(share.Request{})
-	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
-	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
-	r.announce(ownerURL, sh.HelperHash, 51413, 0, "started")
-	r.announce(recipientURL, sh.HelperHash, 6881, 70, "started")
-	r.announce(recipientURL, sh.HelperHash, 6881, 30, "")
-	r.check()
-	require.Equal(t, share.StateActive, r.get(sh.ID).State)
-	require.Equal(t, int64(40), r.get(sh.ID).Downloaded)
-
-	r.announce(recipientURL, sh.HelperHash, 6881, 0, "completed")
-	r.check()
-
-	r.requireEnded(sh.ID, "The recipient has the files.")
-	require.False(t, listening(r.port), "the Share tracker stops with the last Share on it")
-	ended := r.get(sh.ID)
-	require.Equal(t, int64(70), ended.Downloaded)
-	require.Equal(t, []share.Peer{{Address: "127.0.0.1:6881", Progress: 1, SeenAt: r.clock.Now()}}, ended.Peers)
-}
-
 func TestAShareWithoutTheEndAtTheFirstDownloadRunsOn(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{EndAtFirstDownload: new(false)})
@@ -358,10 +336,6 @@ func TestAShareEnds(t *testing.T) {
 		"after the set days": {
 			act:    func(r *rig, _ *share.Share) { r.clock.advance(3 * 24 * time.Hour) },
 			reason: "The Share expired.",
-		},
-		"when the user stops it": {
-			act:    func(r *rig, sh *share.Share) { require.NoError(r.t, r.svc.Stop(r.t.Context(), sh.ID)) },
-			reason: "Stopped by the user.",
 		},
 		"when another client deletes the real torrent": {
 			act:    func(r *rig, _ *share.Share) { r.stub.DeleteElsewhereKeepFiles(r.hash) },
@@ -513,6 +487,60 @@ func TestAShareStaysEndingWhileTheClientKeepsTheShareTorrent(t *testing.T) {
 	r.requireEnded(sh.ID, "Stopped by the user.")
 }
 
+// failActivityWrites makes each write of the activity of a Share fail until
+// the returned func runs.
+func (r *rig) failActivityWrites() (stop func()) {
+	r.t.Helper()
+	_, err := r.db.ExecContext(r.t.Context(), `
+		CREATE TRIGGER fail_share_activity BEFORE UPDATE OF peers_json ON shares
+		BEGIN SELECT RAISE(ABORT, 'activity write failed'); END`)
+	require.NoError(r.t, err)
+	return func() {
+		_, err := r.db.ExecContext(r.t.Context(), `DROP TRIGGER fail_share_activity`)
+		require.NoError(r.t, err)
+	}
+}
+
+// stored reads a Share from the database, as qui does after a restart.
+func (r *rig) stored(id int64) *share.Share {
+	r.t.Helper()
+	sh, err := share.NewStore(r.db).Get(r.t.Context(), id)
+	require.NoError(r.t, err)
+	return sh
+}
+
+// regression: #4231
+func TestTheCheckWritesTheActivityAgainAfterAFailedWrite(t *testing.T) {
+	r := newRig(t)
+	sh := r.start(share.Request{})
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	r.announce(recipientURL, sh.HelperHash, 6881, 70, "started")
+	stop := r.failActivityWrites()
+
+	require.ErrorContains(t, r.svc.Check(t.Context()), "activity write failed")
+	stop()
+	r.check()
+
+	require.Len(t, r.stored(sh.ID).Peers, 1, "the activity of the Share is saved")
+}
+
+// regression: #4231
+func TestAnEndingShareKeepsItsActivityUntilQuiSavesIt(t *testing.T) {
+	r := newRig(t)
+	sh := r.start(share.Request{})
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	r.announce(recipientURL, sh.HelperHash, 6881, 70, "started")
+	stop := r.failActivityWrites()
+
+	require.ErrorContains(t, r.svc.Stop(t.Context(), sh.ID), "activity write failed")
+	require.Equal(t, share.StateEnding, r.stored(sh.ID).State)
+	stop()
+	r.check()
+
+	r.requireEnded(sh.ID, "Stopped by the user.")
+	require.Len(t, r.stored(sh.ID).Peers, 1, "the activity of the Share stays")
+}
+
 func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
@@ -533,9 +561,33 @@ func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	require.Len(t, listed.Peers, 1, "the peers of the Share stay")
 	r.announce(ownerURL, sh.HelperHash, 51413, 0, "started")
 	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(recipientURL, sh.HelperHash, 6881, 40, ""))
+	require.Equal(t, int64(30), r.get(sh.ID).Downloaded)
 	r.announce(recipientURL, sh.HelperHash, 6881, 0, "completed")
 	r.check()
 	r.requireEnded(sh.ID, "The recipient has the files.")
+	ended := r.get(sh.ID)
+	require.Equal(t, int64(70), ended.Downloaded)
+	require.Equal(t, []share.Peer{{Address: "127.0.0.1:6881", Progress: 1, SeenAt: r.clock.Now()}}, ended.Peers)
+}
+
+// regression: #4231
+func TestTheShareTrackerStartsAtTheNextCheckOnceItsPortIsFree(t *testing.T) {
+	r := newRig(t)
+	sh := r.start(share.Request{})
+	r.svc.Close()
+	busy, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:"+strconv.Itoa(r.port))
+	require.NoError(t, err)
+
+	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	require.ErrorIs(t, r.svc.Resume(t.Context()), sharetracker.ErrPortBusy)
+	require.NoError(t, busy.Close())
+	r.check()
+
+	require.True(t, listening(r.port), "the tracker starts for the active Share")
+	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	r.announce(ownerURL, sh.HelperHash, 51413, 0, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(recipientURL, sh.HelperHash, 6881, 70, "started"))
 }
 
 func TestAShareKeepsToTheLimitsOfTheSettings(t *testing.T) {
@@ -559,6 +611,23 @@ func TestAShareKeepsToTheLimitsOfTheSettings(t *testing.T) {
 
 	require.NoError(t, r.svc.Stop(t.Context(), sh.ID))
 	r.start(share.Request{Hash: other})
+}
+
+// regression: #4231
+func TestAStartThatTheUserCancelsAfterTheAddEndsItsShare(t *testing.T) {
+	r := newRig(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	r.stub.OnAdd = func(string) { cancel() }
+
+	_, err := r.svc.Start(ctx, share.Request{InstanceID: r.instance.ID, Hash: r.hash})
+	require.True(t, share.IsRefusal(err), "%v", err)
+	r.check()
+
+	list, err := r.svc.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, share.StateEnded, list[0].State)
+	require.False(t, r.stub.Has(list[0].HelperHash), "the Share torrent leaves the client")
 }
 
 func TestAShareIsRefused(t *testing.T) {
@@ -687,6 +756,7 @@ func (r *rig) ids() []int64 {
 
 func TestTheShareSettingsMoveTheTracker(t *testing.T) {
 	r := newRig(t)
+	r.useOutsideTracker()
 	r.start(share.Request{})
 	busy, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -696,6 +766,7 @@ func TestTheShareSettingsMoveTheTracker(t *testing.T) {
 
 	changed := before
 	changed.Tracker.Port = busy.Addr().(*net.TCPAddr).Port
+	changed.Tracker.PublicAddress = "http://127.0.0.1:" + strconv.Itoa(changed.Tracker.Port)
 	changed.Options.MaxActive = 3
 	require.ErrorIs(t, r.svc.SaveSettings(t.Context(), changed), sharetracker.ErrPortBusy)
 	after, err := r.svc.Settings(t.Context())
@@ -703,15 +774,51 @@ func TestTheShareSettingsMoveTheTracker(t *testing.T) {
 	require.Equal(t, before, after, "a busy port saves nothing")
 
 	changed.Tracker.Port = freePort(t)
-	require.NoError(t, r.svc.SaveSettings(t.Context(), changed))
+	changed.Tracker.PublicAddress = "http://127.0.0.1:" + strconv.Itoa(changed.Tracker.Port)
+	require.NoError(t, r.svc.SaveSettings(t.Context(), changed), "a Share on the outside tracker keeps no port")
 	after, err = r.svc.Settings(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, changed, after)
+	sh := r.start(share.Request{Hash: r.seed("Other.Show.S01.1080p-GRP")})
 	require.True(t, listening(changed.Tracker.Port))
-	require.False(t, listening(r.port))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	require.Equal(t, changed.Tracker.PublicAddress+"/announce/"+sh.RecipientSecret, recipientURL)
 
 	changed.Options.PeersPerShare = 0
 	require.ErrorIs(t, r.svc.SaveSettings(t.Context(), changed), share.ErrInvalidSettings)
+}
+
+// regression: #4231
+func TestTheShareSettingsKeepTheTrackerWhileASharesRunsOnIt(t *testing.T) {
+	r := newRig(t)
+	sh := r.start(share.Request{})
+	before, err := r.svc.Settings(t.Context())
+	require.NoError(t, err)
+
+	for name, change := range map[string]func(*sharetracker.Settings){
+		"a new port":           func(s *sharetracker.Settings) { s.Port = freePort(t) },
+		"a new public address": func(s *sharetracker.Settings) { s.PublicAddress = "http://198.51.100.20:" + strconv.Itoa(s.Port) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := before
+			change(&changed.Tracker)
+			err := r.svc.SaveSettings(t.Context(), changed)
+			require.True(t, share.IsRefusal(err), "%v", err)
+			require.EqualError(t, err, "End the active Shares on qui's tracker first: their .torrent files carry the old address.")
+			after, err := r.svc.Settings(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, before, after, "a refused change saves nothing")
+		})
+	}
+	require.True(t, listening(r.port), "the tracker stays for the active Share")
+
+	changed := before
+	changed.Options.MaxActive = 3
+	require.NoError(t, r.svc.SaveSettings(t.Context(), changed), "a save that keeps the port and the address")
+	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	r.announce(ownerURL, sh.HelperHash, 51413, 0, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(recipientURL, sh.HelperHash, 6881, 70, "started"))
 }
 
 func TestUnlockLetsTheNextDownloaderIn(t *testing.T) {
@@ -734,6 +841,40 @@ func TestUnlockLetsTheNextDownloaderIn(t *testing.T) {
 
 	peers, _ = r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "")
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers)
+}
+
+// regression: #4231
+func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
+	r := newRig(t)
+	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
+		Port: r.port, PublicAddress: "http://127.0.0.1:" + strconv.Itoa(r.port), TrustedProxies: []string{"127.0.0.1"},
+	}))
+	sh := r.start(share.Request{FirstDownloaderOnly: new(true)})
+	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	const first, next = "198.51.100.7", "198.51.100.8"
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
+	peers, _ := r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 70, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, peers)
+
+	r.svc.Close()
+	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	require.NoError(t, r.svc.Resume(t.Context()))
+
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
+	peers, _ = r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "started")
+	require.Empty(t, peers, "the first downloader still holds the Share after a restart")
+	peers, _ = r.sendAnnounce(first, recipientURL, sh.HelperHash, 7000, 60, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "the first downloader goes on from a new port")
+
+	r.svc.Close()
+	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	require.NoError(t, r.svc.Resume(t.Context()))
+	require.NoError(t, r.svc.Unlock(t.Context(), sh.ID))
+
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "")
+	peers, _ = r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "Unlock after a restart lets the next downloader in")
 }
 
 func TestUnlockIsRefused(t *testing.T) {

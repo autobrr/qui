@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path"
 	"slices"
 	"strings"
 	"time"
@@ -72,9 +71,11 @@ type job struct {
 	blind    bool
 	dstFiles fsops.Backend
 	root     fsops.Root
-	// rootDir is the folder on the target that holds every member.
-	rootDir  string
-	reserved int64
+	// rootDir is the folder on the target that holds every member, in the
+	// path dialect rootPaths.
+	rootDir   string
+	rootPaths fsops.PathDialect
+	reserved  int64
 	// helper is the infohash of a helper torrent on the target that qui has
 	// not removed yet.
 	helper        string
@@ -82,6 +83,9 @@ type job struct {
 	// made holds the temporary files on the target, with their size when the
 	// run found them.
 	made map[*groupFile]int64
+	// unanswered holds the names on the target where a create or a link of
+	// this run lost its answer, so the target may have made them.
+	unanswered map[string]bool
 	// away holds the instances that were deleted or changed their endpoint.
 	away map[int]bool
 	// flushedPieces counts the pieces that qui wrote and flushed in this run,
@@ -191,7 +195,7 @@ func (j *job) prepare(ctx context.Context) error {
 		return temporary("qui cannot write the files of the Transfer target: %v", err)
 	}
 
-	if err := j.readParts(ctx, j.dstFiles.Paths()); err != nil {
+	if err := j.readParts(ctx, pathsOf(j.target, j.dstFiles, j.rec.Members[0].Placement.SavePath)); err != nil {
 		return err
 	}
 	if !j.blind {
@@ -204,7 +208,13 @@ func (j *job) prepare(ctx context.Context) error {
 	if j.reached(stepPlace) {
 		need = 0
 	}
-	known, err := j.reserve(ctx, need)
+	var known bool
+	if j.blind {
+		// pass reserves what each Transfer torrent still needs after its check.
+		_, known, err = j.freeSpace(ctx)
+	} else {
+		known, err = j.reserve(ctx, need)
+	}
 	if err != nil {
 		return err
 	}
@@ -256,7 +266,7 @@ func (j *job) freeSpace(ctx context.Context) (free int64, known bool, err error)
 	if !j.blind {
 		stat, err := j.dstFiles.Statfs(ctx, j.rootDir)
 		if err != nil {
-			return 0, false, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+			return 0, false, temporary("qui cannot read the free space on %s: %w", j.target.Name, targetError{err})
 		}
 		return stat.BytesAvailable, true, nil
 	}
@@ -271,7 +281,7 @@ func (j *job) freeSpace(ctx context.Context) (free int64, known bool, err error)
 	if err != nil {
 		return 0, false, temporary("qui cannot read the default save path of %s: %v", j.target.Name, err)
 	}
-	if d := j.dstFiles.Paths(); d.Clean(prefs.SavePath) != j.rootDir {
+	if j.rootPaths.Clean(prefs.SavePath) != j.rootDir {
 		return 0, false, nil
 	}
 	if free, err = j.svc.deps.Sync.GetFreeSpace(ctx, j.target.ID); err != nil {
@@ -356,11 +366,32 @@ func (j *job) reserve(ctx context.Context, bytes int64) (bool, error) {
 	if err != nil || !known {
 		return known, err
 	}
-	if err := j.svc.reserve(j.target.ID, bytes, free); err != nil {
-		return true, permanent("Not enough free space on %s: %v", j.target.Name, err)
+	return true, j.claim(bytes, free)
+}
+
+// claim reserves bytes of free, the free space that qui read on the target.
+// A disk without the bytes fails the Transfer. When only what the other
+// running Transfers to the target reserved stands in the way, the Transfer
+// fails for a retry, because the shortage ends with them.
+func (j *job) claim(bytes, free int64) error {
+	left := free - j.reserved
+	if left < bytes {
+		return permanent("Not enough free space on %s: not enough free space on the target: the Transfer needs %s, and %s is free",
+			j.target.Name, formatBytes(bytes), formatBytes(max(left, 0)))
+	}
+	if others, ok := j.svc.reserve(j.target.ID, bytes, free, j.reserved); !ok {
+		return temporary("Not enough free space on %s for now: the Transfer needs %s, and %s is free, but other Transfers to %s that run now set aside %s.",
+			j.target.Name, formatBytes(bytes), formatBytes(left), j.target.Name, formatBytes(others))
 	}
 	j.reserved += bytes
-	return true, nil
+	return nil
+}
+
+// unclaim gives back bytes that the run reserved and wrote: the free space
+// on the target shows them now.
+func (j *job) unclaim(bytes int64) {
+	j.svc.unreserve(j.target.ID, bytes)
+	j.reserved -= bytes
 }
 
 // readParts reads each member on the source again, and places it below the
@@ -371,7 +402,7 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 	for i := range j.rec.Members {
 		saves[i] = j.rec.Members[i].Placement.SavePath
 	}
-	j.rootDir = topFolder(d, saves)
+	j.rootDir, j.rootPaths = topFolder(d, saves), d
 	for i := range j.rec.Members {
 		p := &part{Member: &j.rec.Members[i], position: i}
 		if p.src, err = j.svc.readSource(ctx, j.source.ID, p.Hash); err != nil {
@@ -416,8 +447,9 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 	return nil
 }
 
-// checkSource fails when a torrent of the Transfer moved on the source, was
-// renamed, is rechecked, or has other files than at the start of the copy.
+// checkSource fails when a torrent of the Transfer moves or moved on the
+// source, was renamed, is rechecked, or has other files than at the start of
+// the copy.
 func (j *job) checkSource(ctx context.Context) error {
 	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
 	if err != nil {
@@ -430,7 +462,7 @@ func (j *job) checkSource(ctx context.Context) error {
 		}
 		torrent := torrents[i]
 		switch {
-		case torrent.SavePath != p.src.torrent.SavePath:
+		case torrent.SavePath != p.src.torrent.SavePath || torrent.State == qbt.TorrentStateMoving:
 			return sourceGone("it moved")
 		case torrent.Name != p.src.torrent.Name:
 			return sourceChanged("it was renamed")
@@ -459,8 +491,9 @@ func isChecking(state qbt.TorrentState) bool {
 // retryAfter is the least time between a temporary failure and its retry.
 const retryAfter = time.Hour
 
-// cleanupContext outlives the run, so that a stop never cuts a cleanup
-// short.
+// cleanupContext outlives the run, so that a stop does not cut a cleanup
+// short. A shutdown waits for it only until its own limit; the cleanup step
+// is recorded first, so the next start finishes a cleanup that the exit cut.
 func cleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 }
@@ -612,26 +645,27 @@ func (j *job) release() {
 }
 
 func (j *job) startSource(ctx context.Context) {
-	if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, j.hashes(), "resume"); err != nil {
-		j.logf("qui could not start %s on %s again: %v", j.torrents("the"), j.source.Name, err)
-		return
+	if hashes := j.stoppedByQui(); len(hashes) > 0 {
+		if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, hashes, "resume"); err != nil {
+			j.logf("qui could not start %s on %s again: %v", j.torrents("the"), j.source.Name, err)
+			return
+		}
 	}
 	j.stoppedSource = false
 }
 
-// remove removes the files that exist and reports whether it removed one.
-func (j *job) remove(ctx context.Context, names ...string) bool {
-	removed := false
+// remove removes the files that exist.
+func (j *job) remove(ctx context.Context, names ...string) {
 	for _, name := range names {
-		err := j.root.Remove(ctx, name)
-		switch {
-		case err == nil:
-			removed = true
-		case !errors.Is(err, fs.ErrNotExist):
-			j.logf("qui could not remove %s on %s: %v", path.Join(j.rootDir, name), j.target.Name, err)
+		if err := j.root.Remove(ctx, name); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			j.logf("qui could not remove %s on %s: %v", j.targetPath(name), j.target.Name, err)
 		}
 	}
-	return removed
+}
+
+// targetPath is the path on the target of a slash name below the root.
+func (j *job) targetPath(name string) string {
+	return j.rootPaths.Join(j.rootDir, j.rootPaths.FromSlash(name))
 }
 
 func (j *job) actor() qbittorrent.DeleteActor {

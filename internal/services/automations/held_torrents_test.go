@@ -47,16 +47,15 @@ func TestRulesLeaveOutTorrentsThatQuiHolds(t *testing.T) {
 			_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{tt.rule}, false)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, stub.writtenHashes())
-		})
-		t.Run(name+" (dry run)", func(t *testing.T) {
-			svc, instanceID, stub := newWriteStubService(t, torrents)
+
+			svc, instanceID, stub = newWriteStubService(t, torrents)
 			svc.SetHeldTorrents(held)
 			rule := *tt.rule
 			rule.DryRun = true
 			activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{&rule}, true)
 			require.NoError(t, err)
-			require.Equal(t, tt.want, dryRunActivityHashes(t, svc, instanceID, activities))
-			require.Empty(t, stub.writtenHashes())
+			require.Equal(t, tt.want, dryRunActivityHashes(t, svc, instanceID, activities), "dry run")
+			require.Empty(t, stub.writtenHashes(), "dry run")
 		})
 	}
 

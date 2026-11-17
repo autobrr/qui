@@ -40,6 +40,12 @@ const (
 	// call, so the copy of a big file keeps its connection.
 	idleTimeout = 10 * time.Minute
 
+	// stallTimeout closes a connection whose running sftp calls got no answer
+	// for this long. pkg/sftp gives a request no timeout, so a server that
+	// stops answering while sshd still answers keepalives would otherwise
+	// hold its callers forever. A single call may run this long.
+	stallTimeout = 6 * idleTimeout
+
 	// maxConnections bounds the connections SFTPConns gives a caller. On a
 	// 1 Gbit line 28 ms away, four filled the line and eight added nothing.
 	maxConnections = 4
@@ -522,14 +528,14 @@ func (e *entry) watchExtra(instanceID int, x *extra, done chan struct{}) {
 // still running is use: a find over a large tree can take longer than the
 // idle limit.
 func (e *entry) keepalive(instanceID int, client *ssh.Client, calls *sftpCalls, done <-chan struct{}, interval time.Duration) {
-	keepalive(instanceID, client, done, interval, func() bool {
+	keepalive(instanceID, client, calls, done, interval, func() bool {
 		return len(e.slots) == int(e.parked.Load()) && unused(calls, &e.lastUsed)
 	})
 }
 
 // keepalive runs the keepalive loop of an extra connection.
 func (x *extra) keepalive(instanceID int, done <-chan struct{}, interval time.Duration) {
-	keepalive(instanceID, x.client, done, interval, func() bool { return unused(x.calls, &x.lastUsed) })
+	keepalive(instanceID, x.client, x.calls, done, interval, func() bool { return unused(x.calls, &x.lastUsed) })
 }
 
 // unused reports that no sftp call runs on a connection and that nothing used
@@ -540,10 +546,10 @@ func unused(calls *sftpCalls, lastUsed *atomic.Int64) bool {
 }
 
 // keepalive pings the host until the connection goes away, and closes it once
-// idle reports it unused. The request is sent from a goroutine because
-// SendRequest has no deadline of its own: a host that accepts bytes and never
-// answers would otherwise wedge this loop forever.
-func keepalive(instanceID int, client *ssh.Client, done <-chan struct{}, interval time.Duration, idle func() bool) {
+// idle reports it unused or its sftp calls stalled. The request is sent from a
+// goroutine because SendRequest has no deadline of its own: a host that
+// accepts bytes and never answers would otherwise wedge this loop forever.
+func keepalive(instanceID int, client *ssh.Client, calls *sftpCalls, done <-chan struct{}, interval time.Duration, idle func() bool) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -554,6 +560,12 @@ func keepalive(instanceID int, client *ssh.Client, done <-chan struct{}, interva
 		case <-ticker.C:
 		}
 
+		if calls.stalled() {
+			log.Debug().Int("instanceID", instanceID).Int64("calls", calls.running.Load()).Dur("noAnswerFor", stallTimeout).
+				Msg("sshpool: closing a connection whose sftp calls get no answer")
+			_ = client.Close()
+			return
+		}
 		if idle() {
 			log.Debug().Int("instanceID", instanceID).Msg("sshpool: closing idle connection")
 			_ = client.Close()

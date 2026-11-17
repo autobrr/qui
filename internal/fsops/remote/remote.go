@@ -917,8 +917,10 @@ func await[T any](ctx context.Context, call func() (T, error)) (T, error) {
 // leaves the server in a state the caller cannot know, so the call completes
 // and the caller records what it made before honouring the cancel. pkg/sftp
 // gives a request no timeout, so only an answer or a closed connection ends
-// the wait: about 45 s when keepalives fail, the pool's idle close when they
-// do not, and no bound while other callers keep that instance busy.
+// the wait: about 45 s when keepalives fail, and when they do not, the pool's
+// close of a connection whose calls got no answer for an hour. A server that
+// still answers the other calls on the connection holds this one with no
+// bound.
 func awaitMutation(_ context.Context, call func() error) error {
 	return call()
 }

@@ -53,7 +53,8 @@ func (j *job) linksCopyLater(f *groupFile) bool {
 // linkCopies makes the temporary file of each hardlink of the group a
 // hardlink to the temporary file of the file that it links to, so that qui
 // copies the bytes once. A file that the target cannot link gets a copy of
-// its own, and qui reserves the free space for it.
+// its own, and qui reserves the free space for it. A dropped connection is
+// no sign that the target cannot link: copyAll links the file again.
 func (j *job) linkCopies(ctx context.Context) error {
 	for _, f := range j.files {
 		if !j.linksCopyLater(f) {
@@ -65,11 +66,17 @@ func (j *job) linkCopies(ctx context.Context) error {
 				return err
 			}
 		}
-		err := j.root.Link(ctx, j.tempOf(ctx, orig), j.tempName(f.rel))
+		name := j.tempName(f.rel)
+		j.retake(ctx, name)
+		err := j.root.Link(ctx, j.tempOf(ctx, orig), name)
 		if err == nil {
 			f.linksCopy = true
 			j.made[f] = f.size
 			continue
+		}
+		if errors.Is(err, fsops.ErrConnectionLost) {
+			j.unanswered[name] = true
+			return temporary("qui cannot link %s on %s: %w", f.rel, j.target.Name, targetError{err})
 		}
 		j.logf("qui cannot link %s on %s, so it copies the file: %v", f.rel, j.target.Name, err)
 		if _, err := j.reserve(ctx, f.size); err != nil {
@@ -78,25 +85,30 @@ func (j *job) linkCopies(ctx context.Context) error {
 		if err := j.createTemp(ctx, f); err != nil {
 			return err
 		}
+		if err := j.stepWith(ctx, StateCopying, stepOwnCopy, f.rel); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // relink keeps the temporary file of each hardlink that an earlier run
-// linked to the temporary file of the file that it links to. It removes the
+// linked to the temporary file of the file that it links to, and the copy
+// of its own of each hardlink that the target could not link. It removes the
 // other temporary files of hardlinks, so that linkCopies links them again.
 func (j *job) relink(ctx context.Context) {
 	for _, f := range j.files {
 		if _, made := j.made[f]; !made || f.hardlinkOf == nil {
 			continue
 		}
-		if j.sameFile(ctx, j.tempName(f.rel), j.tempName(f.hardlinkOf.rel)) {
+		switch {
+		case j.sameFile(ctx, j.tempName(f.rel), j.tempName(f.hardlinkOf.rel)):
 			f.linksCopy = true
 			j.made[f] = f.size
-			continue
+		case !j.reachedFor(stepOwnCopy, f.rel):
+			j.remove(ctx, j.tempName(f.rel))
+			delete(j.made, f)
 		}
-		j.remove(ctx, j.tempName(f.rel))
-		delete(j.made, f)
 	}
 }
 
