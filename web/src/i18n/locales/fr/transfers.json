@@ -60,6 +60,7 @@
   },
   "actions": {
     "details": "Détails",
+    "menu": "Actions pour {{name}}",
     "retry": "Réessayer",
     "cancel": "Annuler",
     "remove": "Retirer",

@@ -15,12 +15,15 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatNarrowAge, formatRelativeTime } from "@/lib/dateTimeUtils"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { transfersApi, type TransferFilter, type TransferRow } from "@/lib/transfers-api"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { MoreVertical } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -212,13 +215,40 @@ function TransferTableRow({ row, onDetails, onRetry, onCancel, onRemove }: Trans
         <div className="text-muted-foreground">{formatRelativeTime(row.createdAt)}</div>
       </TableCell>
       <TableCell pinEnd className="text-right">
-        <div className="flex justify-end gap-1">
-          <Button size="sm" variant="ghost" onClick={onDetails}>{t("actions.details")}</Button>
-          {canRetry(row) && <Button size="sm" variant="ghost" onClick={onRetry}>{t("actions.retry")}</Button>}
-          {canCancel(row) && <Button size="sm" variant="ghost" onClick={onCancel}>{t("actions.cancel")}</Button>}
-          {canRemove(row) && <Button size="sm" variant="ghost" onClick={onRemove}>{t("actions.remove")}</Button>}
-        </div>
+        <RowActions row={row} onDetails={onDetails} onRetry={onRetry} onCancel={onCancel} onRemove={onRemove} />
       </TableCell>
     </TableRow>
+  )
+}
+
+/** The actions of a row: buttons, or one menu on a phone, where the pinned column must stay narrow. */
+function RowActions({ row, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
+  const { t } = useTranslation("transfers")
+  const phone = useIsPhone()
+  const actions = [
+    { label: t("actions.details"), run: onDetails, shown: true },
+    { label: t("actions.retry"), run: onRetry, shown: canRetry(row) },
+    { label: t("actions.cancel"), run: onCancel, shown: canCancel(row) },
+    { label: t("actions.remove"), run: onRemove, shown: canRemove(row) },
+  ].filter(action => action.shown)
+
+  if (phone) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t("actions.menu", { name: row.name })}>
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {actions.map(action => <DropdownMenuItem key={action.label} onSelect={action.run}>{action.label}</DropdownMenuItem>)}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+  return (
+    <div className="flex justify-end gap-1">
+      {actions.map(action => <Button key={action.label} size="sm" variant="ghost" onClick={action.run}>{action.label}</Button>)}
+    </div>
   )
 }

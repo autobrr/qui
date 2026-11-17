@@ -61,6 +61,7 @@
   },
   "actions": {
     "details": "Podrobnosti",
+    "menu": "Akce pro {{name}}",
     "retry": "Zkusit znovu",
     "cancel": "Zrušit",
     "remove": "Odstranit",
