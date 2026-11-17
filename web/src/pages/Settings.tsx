@@ -32,6 +32,7 @@ import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { CopyButton } from "@/components/ui/copy-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ReportsSettingsPanel } from "@/components/report-problem/prototype/VariantSettings" // PROTOTYPE, remove
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
@@ -867,7 +868,8 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
   const activeTab: SettingsTab = search.tab ?? DEFAULT_SETTINGS_TAB
   const navGroups: SectionNavGroup<SettingsTab>[] = SETTINGS_NAV_GROUPS.map(group => ({
     label: "labelKey" in group ? t(group.labelKey) : undefined,
-    sections: group.tabs.map(entry => ({ value: entry.tab, label: t(entry.labelKey) })),
+    // PROTOTYPE, remove the filter and the label override with the Problem reports prototype.
+    sections: group.tabs.filter(entry => import.meta.env.DEV || entry.tab !== "reports").map(entry => ({ value: entry.tab, label: entry.tab === "reports" ? "Problem reports" : t(entry.labelKey) })),
   }))
   const appInfoQuery = useQuery({
     queryKey: ["application-info"],
@@ -1100,6 +1102,8 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
         {activeTab === "logs" && (
           <LogSettingsPanel />
         )}
+
+        {import.meta.env.DEV && activeTab === "reports" && <ReportsSettingsPanel />}
       </SectionedPage>
     </Page>
   )

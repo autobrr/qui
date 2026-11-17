@@ -37,7 +37,8 @@ export const SETTINGS_NAV_GROUPS = [
       { tab: "security", labelKey: "tabs.security" },
     ],
   },
-  { tabs: [{ tab: "logs", labelKey: "tabs.logs" }] },
+  // PROTOTYPE, remove: "reports" is the Problem reports prototype, shown in dev builds only.
+  { tabs: [{ tab: "logs", labelKey: "tabs.logs" }, { tab: "reports", labelKey: "tabs.logs" }] },
 ] as const
 
 export type SettingsTab = (typeof SETTINGS_NAV_GROUPS)[number]["tabs"][number]["tab"]

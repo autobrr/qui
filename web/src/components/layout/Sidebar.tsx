@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
+import { ProtoSidebarEntry } from "@/components/report-problem/prototype/SidebarEntry" // PROTOTYPE, remove
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
@@ -284,6 +285,7 @@ export function Sidebar() {
             </div>
           </div>
           <div className="flex items-center gap-0.5">
+            {import.meta.env.DEV && <ProtoSidebarEntry />}
             <DropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>

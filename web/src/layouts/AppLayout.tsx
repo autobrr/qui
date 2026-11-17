@@ -5,6 +5,7 @@
 
 import { Outlet } from "@tanstack/react-router"
 import { CommandPalette } from "@/components/command-palette/CommandPalette"
+import { ReportPrototype } from "@/components/report-problem/prototype/ReportPrototype"
 import { MobileFooterNav } from "@/components/layout/MobileFooterNav"
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
@@ -75,6 +76,7 @@ function AppLayoutContent() {
       <MobileFooterNav />
 
       <CommandPalette />
+      {import.meta.env.DEV && <ReportPrototype />}
     </div>
   )
 }
