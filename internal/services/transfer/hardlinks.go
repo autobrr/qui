@@ -66,13 +66,16 @@ func (j *job) linkCopies(ctx context.Context) error {
 				return err
 			}
 		}
-		err := j.root.Link(ctx, j.tempOf(ctx, orig), j.tempName(f.rel))
+		name := j.tempName(f.rel)
+		j.retake(ctx, name)
+		err := j.root.Link(ctx, j.tempOf(ctx, orig), name)
 		if err == nil {
 			f.linksCopy = true
 			j.made[f] = f.size
 			continue
 		}
 		if errors.Is(err, fsops.ErrConnectionLost) {
+			j.unanswered[name] = true
 			return temporary("qui cannot link %s on %s: %w", f.rel, j.target.Name, targetError{err})
 		}
 		j.logf("qui cannot link %s on %s, so it copies the file: %v", f.rel, j.target.Name, err)

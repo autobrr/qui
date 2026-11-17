@@ -423,7 +423,7 @@ func (s *Service) commit(id int64) bool {
 }
 
 func (s *Service) newJob(record *Record) *job {
-	return &job{svc: s, rec: record, away: map[int]bool{}}
+	return &job{svc: s, rec: record, unanswered: map[string]bool{}, away: map[int]bool{}}
 }
 
 // Wait waits until every Transfer that started has ended or stopped.

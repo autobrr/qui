@@ -82,6 +82,9 @@ type job struct {
 	// made holds the temporary files on the target, with their size when the
 	// run found them.
 	made map[*groupFile]int64
+	// unanswered holds the names on the target where a create or a link of
+	// this run lost its answer, so the target may have made them.
+	unanswered map[string]bool
 	// away holds the instances that were deleted or changed their endpoint.
 	away map[int]bool
 	// flushedPieces counts the pieces that qui wrote and flushed in this run,

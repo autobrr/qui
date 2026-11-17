@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
+	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
 // crossSeedOf builds a torrent of the same files as s with another piece
@@ -446,74 +447,120 @@ func TestTransferKeepsTheFilesOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
 	}
 }
 
-// A connection that drops while qui links a hardlink on the target is no
-// sign that the target cannot link. qui reconnects and links the path of the
-// cross-seed to the copy, and writes no second copy.
+// A connection that drops while qui links a hardlink on the target, or
+// creates a temporary file there, is no sign that the target cannot link. qui
+// reconnects, makes again a name that the target may have made before the
+// drop, and links the path of the cross-seed to the copy. It writes no second
+// copy.
 // regression: #4231
 func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
-	r := newRigOn(t, onDisk, overSFTP)
-	r.disk.otherFilesystem = true
-	s := newShow(t, showName)
-	r.seed(s)
-	_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
-	r.dropAtFirstLink()
+	for _, tc := range []struct {
+		name string
+		drop targetDrop
+	}{
+		{name: "before a link", drop: targetDrop{op: "link"}},
+		{name: "after a link", drop: targetDrop{op: "link", served: true}},
+		{name: "after a create", drop: targetDrop{op: "create", served: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, onDisk, overSFTP)
+			r.disk.otherFilesystem = true
+			s := newShow(t, showName)
+			r.seed(s)
+			_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+			r.dropAtFirst(tc.drop)
 
-	record := r.run(r.request(s))
+			record := r.run(r.request(s))
 
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	require.Contains(t, logOf(record), "The connection to homelab dropped.")
-	require.NotContains(t, logOf(record), "so it copies the file")
-	require.Equal(t, map[string]bool{showName: true}, r.writtenFolders(), "qui writes no byte of the cross-seed")
-	for name := range s.files {
-		require.True(t, sameFile(t, filepath.Join(r.dstDir, showName, name), filepath.Join(r.dstDir, "links", showName, name)), name)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Contains(t, logOf(record), "The connection to homelab dropped.")
+			require.NotContains(t, logOf(record), "so it copies the file")
+			require.Equal(t, map[string]bool{showName: true}, r.writtenFolders(), "qui writes no byte of the cross-seed")
+			for name := range s.files {
+				require.True(t, sameFile(t, filepath.Join(r.dstDir, showName, name), filepath.Join(r.dstDir, "links", showName, name)), name)
+			}
+			require.True(t, r.seeding(r.target.ID, crossSeedHash))
+		})
 	}
-	require.True(t, r.seeding(r.target.ID, crossSeedHash))
 }
 
-// dropAtFirstLink starts qui again on an SFTP target whose connections drop
-// at the first hardlink that qui makes there, before the link.
-func (r *rig) dropAtFirstLink() {
+// targetDrop drops the connections to an SFTP target once, at the first
+// request op of qui there: "link" or "create". With served, the target takes
+// the request, and only its answer is lost.
+type targetDrop struct {
+	op     string
+	served bool
+}
+
+// dropAtFirst starts qui again on an SFTP target whose connections drop as
+// d says.
+func (r *rig) dropAtFirst(d targetDrop) {
 	r.t.Helper()
 	ssh := sshpool.NewPool(sshpool.NewDialer(r.instances))
 	r.t.Cleanup(ssh.Close)
-	var dropped atomic.Bool
-	drop := func() bool {
-		if !dropped.CompareAndSwap(false, true) {
-			return false
-		}
-		r.dstSSH.DropConnections()
-		return true
-	}
+	drops := &drops{targetDrop: d, server: r.dstSSH}
 	r.deps.Files = fsops.NewPoolWithRemote(r.instances, r.disk, func(inst *models.Instance) fsops.Backend {
-		return &linkDrops{sftpFiles: &sftpFiles{Backend: remote.New(ssh, inst), d: r.disk}, drop: drop}
+		return &dropFiles{sftpFiles: &sftpFiles{Backend: remote.New(ssh, inst), d: r.disk}, drops: drops}
 	})
 	r.restart()
 }
 
-type linkDrops struct {
-	*sftpFiles
-	drop func() bool
+type drops struct {
+	targetDrop
+	server  *sshtest.Server
+	dropped atomic.Bool
 }
 
-func (f *linkDrops) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
+// request runs a request op on name, and fails it as the remote backend
+// fails on a dropped connection when it is the request that drops.
+func (d *drops) request(op, name string, request func() error) error {
+	if op != d.op || !d.dropped.CompareAndSwap(false, true) {
+		return request()
+	}
+	if d.served {
+		if err := request(); err != nil {
+			return err
+		}
+	}
+	d.server.DropConnections()
+	return fmt.Errorf("%s %s: %w", op, name, fsops.ErrConnectionLost)
+}
+
+type dropFiles struct {
+	*sftpFiles
+	drops *drops
+}
+
+func (f *dropFiles) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
 	root, err := f.sftpFiles.OpenRoot(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
-	return &linkDropRoot{Root: root, drop: f.drop}, nil
+	return &dropRoot{Root: root, drops: f.drops}, nil
 }
 
-type linkDropRoot struct {
+type dropRoot struct {
 	fsops.Root
-	drop func() bool
+	drops *drops
 }
 
-// Link fails as the remote backend fails on a dropped connection.
-func (r *linkDropRoot) Link(ctx context.Context, oldName, newName string) error {
-	if r.drop() {
-		return fmt.Errorf("link %s: %w", newName, fsops.ErrConnectionLost)
+func (r *dropRoot) Link(ctx context.Context, oldName, newName string) error {
+	return r.drops.request("link", newName, func() error { return r.Root.Link(ctx, oldName, newName) })
+}
+
+func (r *dropRoot) Create(ctx context.Context, name string) (fsops.FileWriter, error) {
+	var w fsops.FileWriter
+	err := r.drops.request("create", name, func() (err error) {
+		w, err = r.Root.Create(ctx, name)
+		return err
+	})
+	if err != nil {
+		if w != nil {
+			_ = w.Close()
+		}
+		return nil, err
 	}
-	return r.Root.Link(ctx, oldName, newName)
+	return w, nil
 }
 
 // writtenFolders returns the folders below the root of the Transfer of the

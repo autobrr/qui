@@ -269,8 +269,10 @@ func (c *copier) create(ctx context.Context, tasks []task) error {
 // createTemp creates the temporary file of f on the target.
 func (j *job) createTemp(ctx context.Context, f *groupFile) error {
 	name := j.tempName(f.rel)
+	j.retake(ctx, name)
 	w, err := j.root.Create(ctx, name)
 	if errors.Is(err, fsops.ErrConnectionLost) {
+		j.unanswered[name] = true
 		return temporary("qui cannot create %s on %s: %w", name, j.target.Name, targetError{err})
 	}
 	if err != nil {
@@ -292,6 +294,18 @@ func (j *job) createTemp(ctx context.Context, f *groupFile) error {
 		return temporary("qui cannot close %s on %s: %w", f.rel, j.target.Name, targetError{err})
 	}
 	return nil
+}
+
+// retake removes a name where a create or a link of this run lost its
+// answer, so that qui can make it again. The name was free when the run
+// started, and only qui writes a name with the ID of the Transfer.
+func (j *job) retake(ctx context.Context, name string) {
+	if !j.unanswered[name] {
+		return
+	}
+	if err := j.root.Remove(ctx, name); err == nil || errors.Is(err, fs.ErrNotExist) {
+		delete(j.unanswered, name)
+	}
 }
 
 // prove records whether the target confirmed the flushes of a checkpoint,
