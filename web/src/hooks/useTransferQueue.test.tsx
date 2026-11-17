@@ -14,7 +14,7 @@ vi.mock("@/lib/shares-api", async (importOriginal) => ({
   listShares: vi.fn(),
 }))
 
-import { useRunningTransfers } from "@/hooks/useRunningTransfers"
+import { useTransferQueue } from "@/hooks/useTransferQueue"
 import { listShares, type Share } from "@/lib/shares-api"
 import { transfersApi, type TransferList } from "@/lib/transfers-api"
 
@@ -28,13 +28,14 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
-it("counts the Transfers that run and the Shares that have not ended", async () => {
+// regression: #4242
+it("counts the Transfers that run or wait, and the Shares that have not ended", async () => {
   vi.mocked(transfersApi.list).mockResolvedValue({ rows: [], counts: { active: 2, waiting: 4, finished: 9, failed: 1 } } as TransferList)
   vi.mocked(listShares).mockResolvedValue([{ state: "active" }, { state: "ending" }, { state: "ended" }] as Share[])
 
-  const { result } = renderHook(() => useRunningTransfers(), { wrapper })
+  const { result } = renderHook(() => useTransferQueue(), { wrapper })
   expect(result.current).toBe(0)
 
-  await waitFor(() => expect(result.current).toBe(4))
+  await waitFor(() => expect(result.current).toBe(8))
   expect(transfersApi.list).toHaveBeenCalledWith("active")
 })

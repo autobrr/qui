@@ -6,7 +6,7 @@
     "crossSeed": "辅种",
     "automations": "自动化",
     "transfers": "传输",
-    "transfersRunning_other": "{{count}} 项正在运行",
+    "transfersQueued_other": "{{count}} 项正在运行或等待",
     "backups": "备份",
     "rss": "RSS",
     "settings": "设置",

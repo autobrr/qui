@@ -6,7 +6,7 @@
     "crossSeed": "輔種",
     "automations": "自動化",
     "transfers": "傳輸",
-    "transfersRunning_other": "{{count}} 項正在執行",
+    "transfersQueued_other": "{{count}} 項正在執行或等待",
     "backups": "備份",
     "rss": "RSS",
     "settings": "設定",

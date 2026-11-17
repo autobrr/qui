@@ -6,7 +6,7 @@
     "crossSeed": "Cross-Seed",
     "automations": "자동화",
     "transfers": "전송",
-    "transfersRunning_other": "실행 중인 항목 {{count}}개",
+    "transfersQueued_other": "실행 중이거나 대기 중인 항목 {{count}}개",
     "backups": "백업",
     "rss": "RSS",
     "settings": "설정",

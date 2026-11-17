@@ -139,7 +139,7 @@ Copied files get the permissions 775 for folders and 664 for files where the tar
 
 ## The Transfers page
 
-To open the page, click **Transfers** in the sidebar. On a phone, tap **Settings** in the bottom bar, and then tap **Transfers**. The sidebar shows the count of running Transfers and Shares.
+To open the page, click **Transfers** in the sidebar. On a phone, tap **Settings** in the bottom bar, and then tap **Transfers**. The number beside **Transfers** in the sidebar counts the Transfers that run or wait for their turn, and the Shares that run.
 
 The **Transfers** tab has one row for each Transfer and for each run of an Export to Instance rule. A row shows the torrents, the source and the target, the way, the progress, the speed, the time left, the state, and who started it. The chips **Active**, **Waiting**, **Finished**, and **Failed** filter the rows.
 
@@ -147,7 +147,7 @@ The states are **Waiting**, **Copying**, **Checking**, **Finishing**, **Done**, 
 
 Each row has these actions:
 
-- **Details** opens a panel with the reason of a failure, the torrents, the steps, and the log.
+- **Details** opens a dialog with four tabs: an overview with the reason of a failure, the torrents, the steps, and the log.
 - **Retry** starts a failed or cancelled Transfer again.
 - **Cancel** stops the Transfer. qui removes the files that it wrote and the torrents that it added on the target, and starts the torrent on the source again. After the removal from the source starts, a cancel does not roll back.
 - **Remove** removes the row of a Transfer that ended.

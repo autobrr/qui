@@ -33,7 +33,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
-import { useRunningTransfers } from "@/hooks/useRunningTransfers"
+import { useTransferQueue } from "@/hooks/useTransferQueue"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 import type { Theme } from "@/config/themes"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
@@ -134,7 +134,7 @@ export function MobileFooterNav() {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
-  const runningTransfers = useRunningTransfers()
+  const transferQueue = useTransferQueue()
   const isSelectionMode = hasSelection(useTorrentSelectionContext().selection)
   const { isFooterVisible } = useMobileScroll()
   const isMobile = useIsMobile()
@@ -522,9 +522,9 @@ export function MobileFooterNav() {
                   >
                     <ArrowRightLeft className="h-4 w-4" />
                     {t("nav.transfers")}
-                    {runningTransfers > 0 && (
-                      <Badge variant="default" className="ml-auto" aria-label={t("nav.transfersRunning", { count: runningTransfers })}>
-                        {runningTransfers}
+                    {transferQueue > 0 && (
+                      <Badge variant="default" className="ml-auto" aria-label={t("nav.transfersQueued", { count: transferQueue })}>
+                        {transferQueue}
                       </Badge>
                     )}
                   </Link>
