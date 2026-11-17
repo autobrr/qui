@@ -64,3 +64,26 @@ func TestProxyDeletesTheFilesOfATorrentThatIsNoHelper(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	r.requireGone("torrents/tv/Show.S01E02-GRP")
 }
+
+// qui cannot tell whether a delete that it cannot read names a helper
+// torrent, so it refuses the delete. qBittorrent reads a multipart body
+// without its closing boundary, and a Content-Type that only starts with the
+// urlencoded type.
+// regression: #4231
+func TestProxyRefusesADeleteThatQuiCannotRead(t *testing.T) {
+	t.Parallel()
+	r := newHelperProxyRig(t)
+	requests := map[string]struct{ contentType, body string }{
+		"multipart without its closing boundary": {"multipart/form-data; boundary=rig",
+			"--rig\r\nContent-Disposition: form-data; name=\"hashes\"\r\n\r\n" + proxyHashA + "\r\n" +
+				"--rig\r\nContent-Disposition: form-data; name=\"deleteFiles\"\r\n\r\ntrue\r\n"},
+		"urlencoded type with a suffix": {"application/x-www-form-urlencodedx",
+			"hashes=" + proxyHashA + "&deleteFiles=true&x=1;2"},
+	}
+	for name, req := range requests {
+		rec := r.postAs(r.handler.handleDeleteTorrents, "torrents/delete", req.contentType, req.body)
+
+		require.Equal(t, http.StatusBadRequest, rec.Code, name)
+	}
+	require.Zero(t, r.stub.Calls("torrents/delete"), "qBittorrent gets no delete")
+}

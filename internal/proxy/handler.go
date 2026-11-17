@@ -2085,8 +2085,16 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// qui cannot tell whether a delete that it cannot read names a helper
+	// torrent, and qBittorrent reads more bodies than qui does.
 	noted, deleteFiles, parsed := deleteHashes(r, bodyBytes)
-	if parsed && deleteFiles {
+	if !parsed {
+		log.Warn().Int("instanceId", instanceID).Str("client", clientAPIKey.ClientName).
+			Msg("Refused a proxied delete that qui cannot read")
+		http.Error(w, "qui cannot read the torrents and the deleteFiles value of this delete", http.StatusBadRequest)
+		return
+	}
+	if deleteFiles {
 		if err := h.syncManager.RefuseHelperFiles(ctx, instanceID, noted); err != nil {
 			log.Warn().Err(err).Int("instanceId", instanceID).Str("client", clientAPIKey.ClientName).
 				Msg("Refused a proxied delete with files")
@@ -2142,9 +2150,7 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if parsed {
-		h.deleteNoter.NoteProxiedDelete(ctx, instanceID, noted, clientAPIKey.ClientName)
-	}
+	h.deleteNoter.NoteProxiedDelete(ctx, instanceID, noted, clientAPIKey.ClientName)
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
 		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
 			strings.EqualFold(form.get("deleteFiles"), "true")
