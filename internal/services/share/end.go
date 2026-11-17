@@ -61,15 +61,12 @@ func (s *Service) removeTorrent(ctx context.Context, sh *Share) error {
 		log.Warn().Err(err).Int64("share", sh.ID).Msg("share: the Share torrent is not gone yet; qui retries")
 		return nil
 	}
+	if err := s.saveActivity(ctx, sh.ID); err != nil {
+		return err
+	}
 	s.mu.Lock()
-	l := s.live[sh.ID]
 	delete(s.live, sh.ID)
 	s.mu.Unlock()
-	if l != nil {
-		if err := s.deps.Store.SaveActivity(ctx, sh.ID, l.activity()); err != nil {
-			return err
-		}
-	}
 	sh.State, sh.EndedAt = StateEnded, s.deps.Now().UTC()
 	if err := s.deps.Store.SetState(ctx, sh.ID, StateEnded, sh.EndReason, sh.EndedAt); err != nil {
 		return err

@@ -524,6 +524,23 @@ func TestTheCheckWritesTheActivityAgainAfterAFailedWrite(t *testing.T) {
 	require.Len(t, r.stored(sh.ID).Peers, 1, "the activity of the Share is saved")
 }
 
+// regression: #4231
+func TestAnEndingShareKeepsItsActivityUntilQuiSavesIt(t *testing.T) {
+	r := newRig(t)
+	sh := r.start(share.Request{})
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	r.announce(recipientURL, sh.HelperHash, 6881, 70, "started")
+	stop := r.failActivityWrites()
+
+	require.ErrorContains(t, r.svc.Stop(t.Context(), sh.ID), "activity write failed")
+	require.Equal(t, share.StateEnding, r.stored(sh.ID).State)
+	stop()
+	r.check()
+
+	r.requireEnded(sh.ID, "Stopped by the user.")
+	require.Len(t, r.stored(sh.ID).Peers, 1, "the activity of the Share stays")
+}
+
 func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
