@@ -86,12 +86,12 @@ func TestShareListAndRemoveRoutes(t *testing.T) {
 	rig, store, helpers := newShareRig(t)
 	cookie := rig.sessionCookie(t)
 	created := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
-	add := func(helperHash string, state share.State, endedAt time.Time) int64 {
+	add := func(helperHash string, state share.State, reason string, endedAt time.Time) int64 {
 		sh := &share.Share{
 			InstanceID: 1, Hash: "aaaa", Name: "Show.S01.1080p-GRP", Files: []string{"Show.S01E01.mkv"}, Size: 200,
 			HelperHash: helperHash, Tracker: share.TrackerOwn,
 			OwnerSecret: "owner", RecipientSecret: "recipient", TorrentFile: []byte("d8:announce0:e"),
-			EndAtFirstDownload: true, ExpiresAt: created.Add(7 * 24 * time.Hour), State: state, CreatedAt: created,
+			EndAtFirstDownload: true, ExpiresAt: created.Add(7 * 24 * time.Hour), State: state, EndReason: reason, CreatedAt: created,
 			EndedAt: endedAt, Downloaded: 50, Uploaded: 60,
 			Peers: []share.Peer{{Address: "198.51.100.7:6881", Progress: 0.25, SeenAt: created}},
 		}
@@ -101,8 +101,8 @@ func TestShareListAndRemoveRoutes(t *testing.T) {
 		}))
 		return sh.ID
 	}
-	active := add(strings.Repeat("b", 40), share.StateActive, time.Time{})
-	ended := add(strings.Repeat("c", 40), share.StateEnded, created.Add(time.Hour))
+	active := add(strings.Repeat("b", 40), share.StateActive, "", time.Time{})
+	ended := add(strings.Repeat("c", 40), share.StateEnded, "The Share expired.", created.Add(time.Hour))
 
 	status, body := rig.sendBody(t, http.MethodGet, "/api/shares", "", cookie, "")
 	require.Equal(t, http.StatusOK, status)
@@ -111,7 +111,8 @@ func TestShareListAndRemoveRoutes(t *testing.T) {
 	require.Len(t, list, 2)
 	require.Equal(t, map[string]any{
 		"id": float64(ended), "instanceId": float64(1), "hash": "aaaa", "name": "Show.S01.1080p-GRP", "size": float64(200),
-		"tracker": "own", "endAtFirstDownload": true, "firstDownloaderOnly": false, "state": "ended", "endReason": "",
+		"tracker": "own", "endAtFirstDownload": true, "firstDownloaderOnly": false, "state": "ended",
+		"endReason": "The Share expired.", "endReasonCode": "expired",
 		"createdAt": "2026-11-01T12:00:00Z", "expiresAt": "2026-11-08T12:00:00Z", "endedAt": "2026-11-01T13:00:00Z",
 		"peers":    []any{map[string]any{"address": "198.51.100.7:6881", "progress": 0.25, "seenAt": "2026-11-01T12:00:00Z"}},
 		"progress": 0.25, "downloaded": float64(50), "uploaded": float64(60),

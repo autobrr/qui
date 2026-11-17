@@ -72,6 +72,7 @@ type shareView struct {
 	FirstDownloaderOnly bool         `json:"firstDownloaderOnly"`
 	State               string       `json:"state"`
 	EndReason           string       `json:"endReason"`
+	EndReasonCode       string       `json:"endReasonCode"`
 	CreatedAt           time.Time    `json:"createdAt"`
 	ExpiresAt           time.Time    `json:"expiresAt"`
 	EndedAt             *time.Time   `json:"endedAt"`
@@ -93,6 +94,7 @@ func viewOf(sh *share.Share) shareView {
 		FirstDownloaderOnly: sh.FirstDownloaderOnly,
 		State:               string(sh.State),
 		EndReason:           sh.EndReason,
+		EndReasonCode:       sh.EndReasonCode(),
 		CreatedAt:           sh.CreatedAt,
 		ExpiresAt:           sh.ExpiresAt,
 		Peers:               sh.Peers,

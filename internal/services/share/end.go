@@ -31,6 +31,28 @@ const (
 	reasonGone       = "The Share torrent is gone from the client."
 )
 
+// reasonCodes gives each reason a code that stays when its text changes.
+var reasonCodes = map[string]string{
+	reasonDownloaded: "downloaded",
+	reasonExpired:    "expired",
+	reasonStopped:    "stopped",
+	reasonDeleted:    "torrent_deleted",
+	reasonMoved:      "torrent_moved",
+	reasonRenamed:    "files_renamed",
+	reasonGone:       "share_torrent_gone",
+}
+
+// EndReasonCode returns the code of the end reason of sh, for the UI to
+// translate: "" while sh has no end reason, and "other" for a reason with no
+// code.
+func (sh *Share) EndReasonCode() string {
+	code, ok := reasonCodes[sh.EndReason]
+	if !ok && sh.EndReason != "" {
+		return "other"
+	}
+	return code
+}
+
 // end ends an active Share: the tracker forgets it, and qui removes the
 // Share torrent from the client, never its files. The Share stays ending
 // while the client is offline. by names what ended it, for the log. Call it

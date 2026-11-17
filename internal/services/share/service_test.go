@@ -196,13 +196,15 @@ func (r *rig) check() {
 	require.NoError(r.t, r.svc.Check(r.t.Context()))
 }
 
-// requireEnded checks that the Share ended for reason, that the Share torrent
-// left the client, and that the files of the real torrent stayed.
-func (r *rig) requireEnded(id int64, reason string) {
+// requireEnded checks that the Share ended for reason, with its code, that
+// the Share torrent left the client, and that the files of the real torrent
+// stayed.
+func (r *rig) requireEnded(id int64, code, reason string) {
 	r.t.Helper()
 	sh := r.get(id)
 	require.Equal(r.t, share.StateEnded, sh.State)
 	require.Equal(r.t, reason, sh.EndReason)
+	require.Equal(r.t, code, sh.EndReasonCode())
 	require.Equal(r.t, r.clock.Now(), sh.EndedAt)
 	require.False(r.t, r.stub.Has(sh.HelperHash), "the Share torrent stays in the client")
 	for _, name := range []string{"Show.S01E01.mkv", "Show.S01E02.mkv"} {
@@ -395,33 +397,49 @@ func TestAShareWithoutTheEndAtTheFirstDownloadRunsOn(t *testing.T) {
 	require.Equal(t, share.StateActive, r.get(sh.ID).State)
 }
 
+// A Share with no end reason has no code. A reason without a code keeps its
+// text and gets the code other.
+// regression: #4231
+func TestAnEndReasonWithoutACodeIsOther(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, (&share.Share{State: share.StateActive}).EndReasonCode())
+	require.Equal(t, "other", (&share.Share{State: share.StateEnded, EndReason: "The client lost the files."}).EndReasonCode())
+}
+
 func TestAShareEnds(t *testing.T) {
 	for name, tc := range map[string]struct {
 		act    func(r *rig, sh *share.Share)
+		code   string
 		reason string
 	}{
 		"after the set days": {
 			act:    func(r *rig, _ *share.Share) { r.clock.advance(3 * 24 * time.Hour) },
+			code:   "expired",
 			reason: "The Share expired.",
 		},
 		"when another client deletes the real torrent": {
 			act:    func(r *rig, _ *share.Share) { r.stub.DeleteElsewhereKeepFiles(r.hash) },
+			code:   "torrent_deleted",
 			reason: "The torrent was deleted.",
 		},
 		"when another client moves the real torrent": {
 			act: func(r *rig, _ *share.Share) {
 				r.stub.Edit(r.hash, func(t *qbtstub.Torrent) { t.SavePath = filepath.Join(r.dir, "moved") })
 			},
+			code:   "torrent_moved",
 			reason: "The torrent was moved.",
 		},
 		"when another client renames a file of the real torrent": {
 			act: func(r *rig, _ *share.Share) {
 				r.stub.Edit(r.hash, func(t *qbtstub.Torrent) { t.Files = []string{"Show.S01E01.mkv", "Renamed.S01E02.mkv"} })
 			},
+			code:   "files_renamed",
 			reason: "The files of the torrent were renamed.",
 		},
 		"when the Share torrent leaves the client": {
 			act:    func(r *rig, sh *share.Share) { r.stub.DeleteElsewhereKeepFiles(sh.HelperHash) },
+			code:   "share_torrent_gone",
 			reason: "The Share torrent is gone from the client.",
 		},
 	} {
@@ -435,7 +453,7 @@ func TestAShareEnds(t *testing.T) {
 			tc.act(r, sh)
 			r.check()
 
-			r.requireEnded(sh.ID, tc.reason)
+			r.requireEnded(sh.ID, tc.code, tc.reason)
 			require.False(t, listening(r.port))
 		})
 	}
@@ -532,7 +550,7 @@ func TestAShareOnAnOutsideTrackerReadsThePeersOfTheClient(t *testing.T) {
 	r.stub.Edit(sh.HelperHash, func(t *qbtstub.Torrent) { t.Peers[0].Progress = 1 })
 	r.check()
 
-	r.requireEnded(sh.ID, "The recipient has the files.")
+	r.requireEnded(sh.ID, "downloaded", "The recipient has the files.")
 }
 
 func TestAShareStaysEndingWhileTheClientKeepsTheShareTorrent(t *testing.T) {
@@ -551,7 +569,7 @@ func TestAShareStaysEndingWhileTheClientKeepsTheShareTorrent(t *testing.T) {
 	r.stub.Reject = 0
 	r.check()
 
-	r.requireEnded(sh.ID, "Stopped by the user.")
+	r.requireEnded(sh.ID, "stopped", "Stopped by the user.")
 }
 
 // failWrites makes each write of column in the row of a Share fail with
@@ -604,7 +622,7 @@ func TestAnEndingShareKeepsItsActivityUntilQuiSavesIt(t *testing.T) {
 	stop()
 	r.check()
 
-	r.requireEnded(sh.ID, "Stopped by the user.")
+	r.requireEnded(sh.ID, "stopped", "Stopped by the user.")
 	require.Len(t, r.stored(sh.ID).Peers, 1, "the activity of the Share stays")
 }
 
@@ -631,7 +649,7 @@ func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	require.Equal(t, int64(30), r.get(sh.ID).Downloaded)
 	r.announce(recipientURL, sh.HelperHash, 6881, 0, "completed")
 	r.check()
-	r.requireEnded(sh.ID, "The recipient has the files.")
+	r.requireEnded(sh.ID, "downloaded", "The recipient has the files.")
 	ended := r.get(sh.ID)
 	require.Equal(t, int64(70), ended.Downloaded)
 	require.Equal(t, []share.Peer{{Address: "127.0.0.1:6881", Progress: 1, SeenAt: r.clock.Now()}}, ended.Peers)
@@ -1015,7 +1033,7 @@ func TestALockedOutDownloaderDoesNotEndTheShare(t *testing.T) {
 
 			r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 0, event)
 			r.check()
-			r.requireEnded(sh.ID, "The recipient has the files.")
+			r.requireEnded(sh.ID, "downloaded", "The recipient has the files.")
 		})
 	}
 }
