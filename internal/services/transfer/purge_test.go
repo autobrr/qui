@@ -68,3 +68,16 @@ func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	require.False(t, r.store.IsHelper(r.target.ID, "helperaaaa"), "the registry row of its helper torrent goes with it")
 	require.True(t, r.exists(running.ID), "a Transfer that runs stays")
 }
+
+// regression: #4242
+// A removal that comes between the two reads of Get leaves the Transfer
+// without its torrents: Get reports it as not found.
+func TestGetOfATransferThatARemovalTook(t *testing.T) {
+	r := newRig(t)
+	id := r.ended("aaaa", transfer.StateDone)
+	_, err := r.db.ExecContext(t.Context(), `DELETE FROM torrent_transfer_members WHERE transfer_id = ?`, id)
+	require.NoError(t, err)
+
+	_, err = r.store.Get(t.Context(), id)
+	require.ErrorIs(t, err, transfer.ErrNotFound)
+}

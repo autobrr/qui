@@ -247,6 +247,10 @@ func (s *Store) Get(ctx context.Context, id int64) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(members) == 0 {
+		// A removal of the Transfer came between the two reads.
+		return nil, fmt.Errorf("%w: %d", ErrNotFound, id)
+	}
 	r.Members = members
 	return &r, nil
 }
