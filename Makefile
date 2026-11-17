@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -248,8 +248,8 @@ check-mojibake:
 generate:
 	go run ./internal/automationsgen
 
-# Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, lint, then the frontend tests when the branch changes web/ or internal/
-precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend test-frontend-changed
+# Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, lint, the frontend type and i18n checks, then the frontend tests when the branch changes web/ or internal/
+precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend check-i18n test-frontend-changed
 	@echo "Pre-commit checks passed."
 
 # Warn when the local golangci-lint is not the version that CI pins, because lint and lint-ratchet can then find problems that CI does not
@@ -280,6 +280,11 @@ lint-full:
 typecheck-frontend:
 	@echo "Type-checking frontend..."
 	cd $(WEB_DIR) && pnpm exec tsc -b
+
+# The i18n checks that lint.yml runs in CI
+check-i18n:
+	@echo "Checking i18n..."
+	cd $(WEB_DIR) && pnpm check:i18n
 
 # Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
 lint-ratchet: lint-version
@@ -355,7 +360,7 @@ help:
 	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
 	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields, API key areas)"
-	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet + frontend type check + frontend tests when web/ or internal/ changed)"
+	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet + frontend type and i18n checks + frontend tests when web/ or internal/ changed)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"

@@ -3,747 +3,421 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from "@/components/ui/dialog"
-import { FieldHelp } from "@/components/ui/field-help"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import { api } from "@/lib/api"
-import type { NotificationEventDefinition, NotificationTarget, NotificationTargetRequest } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bell, Edit, Loader2, Plus, Send, Trash2 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { Bell, ChevronDown, Plus, Send, Trash2 } from "lucide-react"
+import { useId, useMemo, useRef, useState, type Ref } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-  if (typeof error === "string" && error.trim()) {
-    return error
-  }
-  return fallback
-}
+import { Editor } from "@/components/kit/Editor"
+import { Field } from "@/components/kit/Field"
+import { ResourceList } from "@/components/kit/ResourceList"
+import { Section } from "@/components/kit/Section"
+import { SwitchRow } from "@/components/kit/SwitchRow"
+import { usePendingIds } from "@/components/kit/use-pending-ids"
+import {
+  groupNotificationEvents,
+  maskNotificationUrl,
+  normalizeNotificationUrl,
+  type NotificationEventGroup
+} from "@/components/settings/notification-targets"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Input } from "@/components/ui/input"
+import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
+import type { NotificationEventDefinition, NotificationTarget, NotificationTargetRequest } from "@/types"
 
-const maskNotificationUrl = (rawUrl: string) => {
-  const trimmed = rawUrl.trim()
-  if (!trimmed) return ""
-  const redacted = "••••"
-  try {
-    const parsed = new URL(trimmed)
-    const scheme = parsed.protocol.replace(":", "")
-    if (!scheme) {
-      return redacted
-    }
-    if (scheme === "notifiarr" || scheme === "notifiarrapi") {
-      return `${scheme}://${redacted}`
-    }
-    const hasUserInfo = parsed.username !== "" || parsed.password !== ""
-    const host = parsed.host
-    const hasPath = parsed.pathname && parsed.pathname !== "/"
-    const path = hasPath ? `/${redacted}` : ""
+const TARGETS_KEY = ["notificationTargets"]
 
-    if (hasUserInfo) {
-      return `${scheme}://${redacted}@${host}${path}`
-    }
-    if (host) {
-      return `${scheme}://${host}${path}`
-    }
-    return `${scheme}://${redacted}`
-  } catch {
-    return redacted
-  }
-}
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback
 
-const convertDiscordWebhookUrl = (rawUrl: string) => {
-  let parsed: URL
-  try {
-    parsed = new URL(rawUrl)
-  } catch {
-    return null
-  }
-
-  const protocol = parsed.protocol.toLowerCase()
-  if (protocol !== "https:" && protocol !== "http:") {
-    return null
-  }
-
-  const host = parsed.hostname.toLowerCase()
-  if (!host.endsWith("discord.com") && !host.endsWith("discordapp.com")) {
-    return null
-  }
-
-  const parts = parsed.pathname.split("/").filter(Boolean)
-  const [apiPrefix, webhookPrefix, webhookId, token] = parts
-  if (parts.length < 4 || apiPrefix !== "api" || webhookPrefix !== "webhooks" || !webhookId || !token) {
-    return null
-  }
-
-  const threadId = parsed.searchParams.get("thread_id")
-  const suffix = threadId ? `?thread_id=${encodeURIComponent(threadId)}` : ""
-  return `discord://${token}@${webhookId}${suffix}`
-}
-
-const normalizeNotificationUrl = (rawUrl: string) => {
-  const trimmed = rawUrl.trim()
-  if (!trimmed) return rawUrl
-  if (trimmed.startsWith("discord://")) return rawUrl
-  const converted = convertDiscordWebhookUrl(trimmed)
-  return converted ?? rawUrl
-}
-
-interface NotificationTargetFormProps {
-  initial?: NotificationTarget | null
-  eventDefinitions: NotificationEventDefinition[]
-  onSubmit: (data: NotificationTargetRequest) => void
-  onCancel: () => void
-  isPending: boolean
-}
-
-function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel, isPending }: NotificationTargetFormProps) {
-  const { t } = useTranslation("settings")
-  const [name, setName] = useState(initial?.name ?? "")
-  const [url, setUrl] = useState(initial?.url ?? "")
-  const [enabled, setEnabled] = useState(initial?.enabled ?? true)
-  const [eventTypes, setEventTypes] = useState<string[]>(initial?.eventTypes ?? [])
-  const [initialized, setInitialized] = useState(false)
-
-  useEffect(() => {
-    if (initialized) return
-    if (initial) {
-      setEventTypes(initial.eventTypes ?? [])
-      setInitialized(true)
-    } else if (eventDefinitions.length > 0) {
-      setEventTypes(eventDefinitions.map((event) => event.type))
-      setInitialized(true)
-    }
-  }, [eventDefinitions, initial, initialized])
-
-  const toggleEvent = (type: string) => {
-    setEventTypes((prev) =>
-      prev.includes(type) ? prev.filter((eventType) => eventType !== type) : [...prev, type]
-    )
-  }
-
-  const selectGroupEvents = (events: NotificationEventDefinition[]) => {
-    setEventTypes((prev) => {
-      const next = new Set(prev)
-      for (const event of events) {
-        next.add(event.type)
-      }
-      return Array.from(next)
-    })
-  }
-
-  const clearGroupEvents = (events: NotificationEventDefinition[]) => {
-    setEventTypes((prev) => {
-      const blocked = new Set(events.map((event) => event.type))
-      return prev.filter((eventType) => !blocked.has(eventType))
-    })
-  }
-
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-
-    const trimmedName = name.trim()
-    const trimmedUrl = normalizeNotificationUrl(url).trim()
-
-    if (!trimmedName) {
-      toast.error(t("notifications.validation.nameRequired"))
-      return
-    }
-    if (!trimmedUrl) {
-      toast.error(t("notifications.validation.urlRequired"))
-      return
-    }
-    if (eventTypes.length === 0) {
-      toast.error(t("notifications.validation.selectEvent"))
-      return
-    }
-
-    onSubmit({
-      name: trimmedName,
-      url: trimmedUrl,
-      enabled,
-      eventTypes,
-    })
-  }
-
-  const allSelected = eventDefinitions.length > 0 && eventTypes.length === eventDefinitions.length
-  const groupedEvents = useMemo(() => {
-    const groups = new Map<string, NotificationEventDefinition[]>()
-    const addToGroup = (id: string, event: NotificationEventDefinition) => {
-      const existing = groups.get(id)
-      if (existing) {
-        existing.push(event)
-      } else {
-        groups.set(id, [event])
-      }
-    }
-
-    for (const event of eventDefinitions) {
-      if (event.type.startsWith("torrent_")) {
-        addToGroup("torrent", event)
-      } else if (
-        event.type === "backup_succeeded" ||
-        event.type === "backup_failed" ||
-        event.type === "dir_scan_completed" ||
-        event.type === "dir_scan_failed" ||
-        event.type === "orphan_scan_completed" ||
-        event.type === "orphan_scan_failed"
-      ) {
-        addToGroup("maintenance", event)
-      } else if (event.type.startsWith("cross_seed_")) {
-        addToGroup("crossSeed", event)
-      } else if (event.type.startsWith("automations_")) {
-        addToGroup("automations", event)
-      } else {
-        addToGroup("other", event)
-      }
-    }
-
-    const ordered = ["torrent", "maintenance", "crossSeed", "automations", "other"]
-    return ordered
-      .map((id) => ({ label: t(`notifications.groups.${id}`), events: groups.get(id) ?? [] }))
-      .filter((group) => group.events.length > 0)
-  }, [eventDefinitions, t])
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="notification-name">{t("notifications.form.name")}</Label>
-        <Input
-          id="notification-name"
-          placeholder={t("notifications.form.namePlaceholder")}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          data-1p-ignore
-          autoComplete="off"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="notification-url" className="flex items-center gap-1">
-          {t("notifications.form.url")}
-          <FieldHelp>
-            {t("notifications.form.urlDescriptionPrefix")} <span className="font-mono">{t("notifications.form.examples.notifiarr")}</span>.
-            {" "}
-            {t("notifications.form.urlDescriptionSuffix")} <span className="font-mono">{t("notifications.form.examples.discord")}</span>.
-          </FieldHelp>
-        </Label>
-        <Input
-          id="notification-url"
-          placeholder={t("notifications.form.urlPlaceholder")}
-          value={url}
-          onChange={(e) => setUrl(normalizeNotificationUrl(e.target.value))}
-        />
-      </div>
-
-      <div className="flex items-center justify-between rounded-md border px-3 py-2">
-        <Label className="text-sm">{t("notifications.form.enabled")}</Label>
-        <Switch checked={enabled} onCheckedChange={setEnabled} />
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-sm">{t("notifications.form.events")}</Label>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setEventTypes(eventDefinitions.map((event) => event.type))}
-              disabled={eventDefinitions.length === 0 || allSelected}
-            >
-              {t("notifications.form.selectAll")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setEventTypes([])}
-              disabled={eventTypes.length === 0}
-            >
-              {t("notifications.form.clear")}
-            </Button>
-          </div>
-        </div>
-        <div className="space-y-4 rounded-md border p-3">
-          {eventDefinitions.length === 0 && (
-            <p className="text-sm text-muted-foreground">{t("notifications.form.loadingEventTypes")}</p>
-          )}
-          <Accordion type="multiple" className="space-y-2">
-            {groupedEvents.map((group) => {
-              const groupTypes = group.events.map((event) => event.type)
-              const groupSelected = groupTypes.filter((type) => eventTypes.includes(type))
-              const allGroupSelected = groupSelected.length === groupTypes.length
-              const anyGroupSelected = groupSelected.length > 0
-              return (
-                <AccordionItem
-                  key={group.label}
-                  value={group.label}
-                  className="rounded-md border last:!border-b"
-                >
-                  <AccordionTrigger className="px-3 py-2 text-sm hover:no-underline">
-                    <div className="flex flex-1 items-center justify-between gap-3">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {group.label}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="outline"
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            selectGroupEvents(group.events)
-                          }}
-                          disabled={group.events.length === 0 || allGroupSelected}
-                        >
-                          {t("notifications.form.select")}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="outline"
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            clearGroupEvents(group.events)
-                          }}
-                          disabled={!anyGroupSelected}
-                        >
-                          {t("notifications.form.clear")}
-                        </Button>
-                      </div>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="space-y-3 px-3 pb-3">
-                    {group.events.map((event) => (
-                      <label key={event.type} className="flex items-start gap-3 text-sm">
-                        <Checkbox
-                          checked={eventTypes.includes(event.type)}
-                          onCheckedChange={() => toggleEvent(event.type)}
-                        />
-                        <span className="space-y-1">
-                          <span className="font-medium text-foreground">{event.label}</span>
-                          <span className="block text-xs text-muted-foreground">{event.description}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </AccordionContent>
-                </AccordionItem>
-              )
-            })}
-          </Accordion>
-        </div>
-      </div>
-
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-          {t("notifications.dialog.cancel")}
-        </Button>
-        <Button type="submit" disabled={isPending}>
-          {isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t("notifications.dialog.saving")}
-            </>
-          ) : (
-            t("notifications.dialog.save")
-          )}
-        </Button>
-      </div>
-    </form>
-  )
-}
+const TOGGLE_KEY = ["notificationTargets", "toggle"]
+const TEST_KEY = ["notificationTargets", "test"]
 
 export function NotificationsManager() {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [editTarget, setEditTarget] = useState<NotificationTarget | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<NotificationTarget | null>(null)
-  const [expandedTargets, setExpandedTargets] = useState<number[]>([])
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editing, setEditing] = useState<NotificationTarget | null>(null)
+  // A new key on each open gives the form fresh state.
+  const [editorSession, setEditorSession] = useState(0)
 
-  const { data: eventDefinitions = [] } = useQuery({
+  const eventsQuery = useQuery({
     queryKey: ["notificationEvents"],
     queryFn: () => api.listNotificationEvents(),
     staleTime: 5 * 60 * 1000,
   })
-
-  const { data: targets, isLoading, error } = useQuery({
-    queryKey: ["notificationTargets"],
+  const targetsQuery = useQuery({
+    queryKey: TARGETS_KEY,
     queryFn: () => api.listNotificationTargets(),
     staleTime: 30 * 1000,
   })
+  const definitions = eventsQuery.data
+  const knownTypes = useMemo(() => new Set(definitions?.map((event) => event.type)), [definitions])
 
-  const formatFallbackLabel = (value: string) =>
-    value
-      .trim()
-      .replace(/[_-]+/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase())
-
-  const eventLabelMap = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const event of eventDefinitions) {
-      map.set(event.type, event.label)
-    }
-    return map
-  }, [eventDefinitions])
-
-  const createMutation = useMutation({
-    mutationFn: (data: NotificationTargetRequest) => api.createNotificationTarget(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notificationTargets"] })
-      setShowCreateDialog(false)
-      toast.success(t("notifications.toasts.created"))
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, t("notifications.toasts.createFailed")))
+  const saveMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number | null; data: NotificationTargetRequest }) =>
+      id === null ? api.createNotificationTarget(data) : api.updateNotificationTarget(id, data),
+    onSuccess: (saved, { id }) => {
+      // The switch sends the name and the URL of its row, so the row holds the saved values before the switch is in reach again.
+      if (id !== null) queryClient.setQueryData<NotificationTarget[]>(TARGETS_KEY, (old) => old?.map((item) => item.id === id ? saved : item))
+      void queryClient.invalidateQueries({ queryKey: TARGETS_KEY })
+      setEditorOpen(false)
+      toast.success(t(id === null ? "notifications.toasts.created" : "notifications.toasts.updated"))
     },
   })
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: NotificationTargetRequest }) => api.updateNotificationTarget(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notificationTargets"] })
-      setEditTarget(null)
-      toast.success(t("notifications.toasts.updated"))
+  const setEnabledInCache = (id: number, enabled: boolean) =>
+    queryClient.setQueryData<NotificationTarget[]>(TARGETS_KEY, (old) => old?.map((item) => item.id === id ? { ...item, enabled } : item))
+
+  // The switch and the editor of a target take no save while its switch save runs, so two saves of one target never overlap.
+  const toggleMutation = useMutation({
+    mutationKey: TOGGLE_KEY,
+    // The event list stays out of the request, so the server keeps it as it is.
+    mutationFn: ({ id, name, url, enabled }: NotificationTarget) => api.updateNotificationTarget(id, { name, url, enabled }),
+    onMutate: async (target) => {
+      await queryClient.cancelQueries({ queryKey: TARGETS_KEY })
+      setEnabledInCache(target.id, target.enabled)
     },
-    onError: (error: unknown) => {
+    onError: (error, target) => {
+      setEnabledInCache(target.id, !target.enabled)
       toast.error(getErrorMessage(error, t("notifications.toasts.updateFailed")))
     },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: TARGETS_KEY }),
   })
+  const toggling = usePendingIds(TOGGLE_KEY)
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteNotificationTarget(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notificationTargets"] })
-      setDeleteTarget(null)
+      void queryClient.invalidateQueries({ queryKey: TARGETS_KEY })
       toast.success(t("notifications.toasts.deleted"))
     },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, t("notifications.toasts.deleteFailed")))
-    },
+    onError: (error) => toast.error(getErrorMessage(error, t("notifications.toasts.deleteFailed"))),
   })
 
   const testMutation = useMutation({
+    mutationKey: TEST_KEY,
     mutationFn: (id: number) => api.testNotificationTarget(id),
-    onSuccess: () => {
-      toast.success(t("notifications.toasts.testSent"))
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, t("notifications.toasts.testFailed")))
-    },
+    onSuccess: () => toast.success(t("notifications.toasts.testSent")),
+    onError: (error) => toast.error(getErrorMessage(error, t("notifications.toasts.testFailed"))),
   })
+  const testing = usePendingIds(TEST_KEY)
 
-  const formatEventLabel = (type: string) => eventLabelMap.get(type) ?? formatFallbackLabel(type)
+  const openEditor = (target: NotificationTarget | null) => {
+    saveMutation.reset()
+    setEditing(target)
+    setEditorSession((session) => session + 1)
+    setEditorOpen(true)
+  }
 
-  const groupedSelectedEvents = useMemo(() => {
-    const groups = new Map<string, string[]>()
-    const addToGroup = (id: string, eventType: string) => {
-      const existing = groups.get(id)
-      if (existing) {
-        existing.push(eventType)
-      } else {
-        groups.set(id, [eventType])
-      }
-    }
-
-    const categorize = (eventType: string): string => {
-      if (eventType.startsWith("torrent_")) {
-        return "torrent"
-      }
-      if (
-        eventType === "backup_succeeded" ||
-        eventType === "backup_failed" ||
-        eventType === "dir_scan_completed" ||
-        eventType === "dir_scan_failed" ||
-        eventType === "orphan_scan_completed" ||
-        eventType === "orphan_scan_failed"
-      ) {
-        return "maintenance"
-      }
-      if (eventType.startsWith("cross_seed_")) {
-        return "crossSeed"
-      }
-      if (eventType.startsWith("automations_")) {
-        return "automations"
-      }
-      return "other"
-    }
-
-    const known = new Set(eventDefinitions.map((event) => event.type))
-    for (const event of eventDefinitions) {
-      if (known.has(event.type)) {
-        addToGroup(categorize(event.type), event.type)
-      }
-    }
-
-    const ordered = ["torrent", "maintenance", "crossSeed", "automations", "other"]
-    return ordered
-      .map((id) => ({ label: t(`notifications.groups.${id}`), events: groups.get(id) ?? [] }))
-      .filter((group) => group.events.length > 0)
-  }, [eventDefinitions, t])
-
-  const renderEventBadges = (events: string[], targetId: number) => {
-    if (events.length === 0) {
-      return <Badge variant="secondary">{t("notifications.allEvents")}</Badge>
-    }
-    const selected = new Set(events)
-    const unknownEvents = events.filter((event) => !eventLabelMap.has(event))
-    const isExpanded = expandedTargets.includes(targetId)
-    const counts = groupedSelectedEvents.map((group) => ({
-      label: group.label,
-      count: group.events.filter((event) => selected.has(event)).length,
-    }))
-    if (unknownEvents.length > 0) {
-      counts.push({ label: t("notifications.groups.unknown"), count: unknownEvents.length })
-    }
-    const summary = counts
-      .filter((group) => group.count > 0)
-      .map((group) => `${group.label} (${group.count})`)
-      .join(" · ")
-    return (
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{summary}</p>
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            onClick={() =>
-              setExpandedTargets((prev) =>
-                prev.includes(targetId) ? prev.filter((id) => id !== targetId) : [...prev, targetId]
-              )
-            }
-          >
-            {isExpanded ? t("notifications.hideList") : t("notifications.showList")}
-          </Button>
-        </div>
-        {isExpanded && (
-          <div className="space-y-3">
-            {groupedSelectedEvents.map((group) => {
-              const groupEvents = group.events.filter((event) => selected.has(event))
-              if (groupEvents.length === 0) {
-                return null
-              }
-              return (
-                <div key={group.label} className="space-y-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {group.label}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {groupEvents.map((event) => (
-                      <Badge key={event} variant="outline" className="text-xs">
-                        {formatEventLabel(event)}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-            {unknownEvents.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {t("notifications.groups.unknown")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {unknownEvents.map((event) => (
-                    <Badge key={event} variant="outline" className="text-xs">
-                      {formatEventLabel(event)}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    )
+  const eventSummary = ({ eventTypes }: NotificationTarget) => {
+    if (!eventTypes?.length) return t("notifications.allEvents")
+    const selected = eventTypes.filter((type) => knownTypes.has(type)).length
+    return selected === knownTypes.size ? t("notifications.form.allEvents") : t("notifications.eventSummary", { selected, total: knownTypes.size })
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="w-full sm:w-auto">
-              <Plus className="mr-2 h-4 w-4" />
-              {t("notifications.addButton")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
-            <DialogHeader>
-              <DialogTitle>{t("notifications.dialog.newTitle")}</DialogTitle>
-              <DialogDescription>
-                {t("notifications.dialog.newDescription")}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <NotificationTargetForm
-                eventDefinitions={eventDefinitions}
-                onSubmit={(data) => createMutation.mutate(data)}
-                onCancel={() => setShowCreateDialog(false)}
-                isPending={createMutation.isPending}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
+    <>
+      <Section
+        title={t("notifications.cardTitle")}
+        description={t("notifications.cardDescription")}
+        actions={
+          <Button variant="outline" size="sm" disabled={!definitions} onClick={() => openEditor(null)}>
+            <Plus />
+            {t("notifications.addButton")}
+          </Button>
+        }
+        queries={[targetsQuery, eventsQuery]}
+      >
+        <ResourceList
+          label={t("notifications.cardTitle")}
+          items={targetsQuery.data ?? []}
+          itemKey={(target) => target.id}
+          row={(target) => ({
+            title: target.name,
+            icon: Bell,
+            meta: [maskNotificationUrl(target.url), eventSummary(target)],
+            enabled: {
+              checked: target.enabled,
+              onCheckedChange: (enabled) => toggleMutation.mutate({ ...target, enabled }),
+              disabled: toggling.has(target.id),
+            },
+            onOpen: () => openEditor(target),
+            actions: [
+              {
+                label: t("notifications.actions.sendTest"),
+                icon: Send,
+                pending: testing.has(target.id),
+                onSelect: () => testMutation.mutate(target.id),
+              },
+              {
+                label: t("notifications.dialog.delete"),
+                icon: Trash2,
+                destructive: true,
+                onSelect: () => deleteMutation.mutateAsync(target.id),
+                confirm: {
+                  title: t("notifications.dialog.deleteTitle"),
+                  description: t("notifications.dialog.deleteDescription", { name: target.name }),
+                  confirmLabel: t("notifications.dialog.delete"),
+                },
+              },
+            ],
+          })}
+          empty={{
+            title: t("notifications.emptyTitle"),
+            description: t("notifications.emptyDescription"),
+            onAdd: () => openEditor(null),
+          }}
+        />
+      </Section>
+      {/* Outside the section, so a failed refetch of the list never takes an open form away. */}
+      {definitions && (
+        <TargetEditor
+          key={editorSession}
+          open={editorOpen}
+          onOpenChange={setEditorOpen}
+          target={editing}
+          definitions={definitions}
+          pending={saveMutation.isPending}
+          submitDisabled={editing !== null && toggling.has(editing.id)}
+          error={saveMutation.error ? getErrorMessage(saveMutation.error, t(editing ? "notifications.toasts.updateFailed" : "notifications.toasts.createFailed")) : undefined}
+          onSave={(data) => saveMutation.mutate({ id: editing?.id ?? null, data })}
+        />
+      )}
+    </>
+  )
+}
+
+interface TargetEditorProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** The target to edit, or null for a new one. */
+  target: NotificationTarget | null
+  definitions: readonly NotificationEventDefinition[]
+  pending: boolean
+  submitDisabled: boolean
+  error?: string
+  onSave: (data: NotificationTargetRequest) => void
+}
+
+interface FormErrors {
+  name?: string
+  url?: string
+  events?: string
+}
+
+function TargetEditor({ open, onOpenChange, target, definitions, pending, submitDisabled, error, onSave }: TargetEditorProps) {
+  const { t } = useTranslation("settings")
+  const groups = useMemo(() => groupNotificationEvents(definitions), [definitions])
+  const [name, setName] = useState(target?.name ?? "")
+  const [url, setUrl] = useState(target?.url ?? "")
+  const [enabled, setEnabled] = useState(target?.enabled ?? true)
+  const [eventTypes, setEventTypes] = useState<ReadonlySet<string>>(() => {
+    const known = definitions.map((event) => event.type)
+    // The server takes only the events that it knows, so a type that it no longer knows drops out here.
+    return new Set(target ? known.filter((type) => target.eventTypes?.includes(type)) : known)
+  })
+  const [errors, setErrors] = useState<FormErrors>({})
+  const nameRef = useRef<HTMLInputElement>(null)
+  const urlRef = useRef<HTMLInputElement>(null)
+  const eventsRef = useRef<HTMLDivElement>(null)
+
+  const submit = () => {
+    const trimmedName = name.trim()
+    const trimmedUrl = normalizeNotificationUrl(url).trim()
+    const next: FormErrors = {
+      name: trimmedName ? undefined : t("notifications.validation.nameRequired"),
+      url: trimmedUrl ? undefined : t("notifications.validation.urlRequired"),
+      events: eventTypes.size > 0 ? undefined : t("notifications.validation.selectEvent"),
+    }
+    setErrors(next)
+    if (next.name) {
+      nameRef.current?.focus()
+    } else if (next.url) {
+      urlRef.current?.focus()
+    } else if (next.events) {
+      eventsRef.current?.focus()
+    } else {
+      onSave({ name: trimmedName, url: trimmedUrl, enabled, eventTypes: [...eventTypes] })
+    }
+  }
+
+  return (
+    <Editor
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t(target ? "notifications.dialog.editTitle" : "notifications.dialog.newTitle")}
+      description={t(target ? "notifications.dialog.editDescription" : "notifications.dialog.newDescription")}
+      submitLabel={t(target ? "notifications.dialog.save" : "notifications.addButton")}
+      onSubmit={submit}
+      pending={pending}
+      submitDisabled={submitDisabled}
+      error={error}
+    >
+      <Field label={t("notifications.form.name")} error={errors.name}>
+        <Input
+          ref={nameRef}
+          value={name}
+          placeholder={t("notifications.form.namePlaceholder")}
+          autoComplete="off"
+          onChange={(event) => {
+            setName(event.target.value)
+            setErrors((prev) => ({ ...prev, name: undefined }))
+          }}
+        />
+      </Field>
+      <Field
+        label={t("notifications.form.url")}
+        help={
+          <>
+            {t("notifications.form.urlDescriptionPrefix")} <span className="font-mono">{t("notifications.form.examples.notifiarr")}</span>.{" "}
+            {t("notifications.form.urlDescriptionSuffix")} <span className="font-mono">{t("notifications.form.examples.discord")}</span>.
+          </>
+        }
+        error={errors.url}
+      >
+        <Input
+          ref={urlRef}
+          value={url}
+          placeholder={t("notifications.form.urlPlaceholder")}
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          className="font-mono text-[13px]"
+          onChange={(event) => {
+            setUrl(normalizeNotificationUrl(event.target.value))
+            setErrors((prev) => ({ ...prev, url: undefined }))
+          }}
+        />
+      </Field>
+      <SwitchRow label={t("notifications.form.enabled")} checked={enabled} onCheckedChange={setEnabled} />
+      <EventPicker
+        ref={eventsRef}
+        groups={groups}
+        selected={eventTypes}
+        error={errors.events}
+        onChange={(next) => {
+          setEventTypes(next)
+          setErrors((prev) => ({ ...prev, events: undefined }))
+        }}
+      />
+    </Editor>
+  )
+}
+
+interface EventPickerProps {
+  ref: Ref<HTMLDivElement>
+  groups: readonly NotificationEventGroup[]
+  selected: ReadonlySet<string>
+  error?: string
+  onChange: (next: ReadonlySet<string>) => void
+}
+
+/** The events of a target in their groups. A group folds open to show its events, and its checkbox sets them all. */
+function EventPicker({ ref, groups, selected, error, onChange }: EventPickerProps) {
+  const { t } = useTranslation("settings")
+  const labelId = useId()
+  const errorId = useId()
+  const allTypes = groups.flatMap((group) => group.events.map((event) => event.type))
+
+  const setTypes = (types: readonly string[], on: boolean) => {
+    const next = new Set(selected)
+    for (const type of types) {
+      if (on) next.add(type)
+      else next.delete(type)
+    }
+    onChange(next)
+  }
+
+  return (
+    <div ref={ref} role="group" tabIndex={-1} aria-labelledby={labelId} aria-describedby={error ? errorId : undefined} className="scroll-mb-4 space-y-2 outline-none">
+      <p id={labelId} className="text-sm font-medium leading-5">{t("notifications.form.events")}</p>
+      <div className={cn("divide-y rounded-lg border", error && "border-destructive")}>
+        <EventCheckRow
+          label={t("notifications.form.allEvents")}
+          count={selected.size}
+          total={allTypes.length}
+          onCheckedChange={(on) => setTypes(allTypes, on)}
+        />
+        {groups.map((group) => (
+          <EventGroupRows key={group.id} group={group} selected={selected} onSet={setTypes} />
+        ))}
       </div>
-
-      {isLoading && <div className="text-center py-8">{t("notifications.loading")}</div>}
-      {error && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-destructive">{t("notifications.loadFailed")}</div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!isLoading && !error && (!targets || targets.length === 0) && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground">
-              {t("notifications.empty")}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {targets && targets.length > 0 && (
-        <div className="grid gap-4">
-          {targets.map((target) => (
-            <Card className="bg-muted/40" key={target.id}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1 flex-1">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Bell className="h-4 w-4" />
-                        {target.name}
-                      </CardTitle>
-                      <Badge variant={target.enabled ? "default" : "secondary"}>
-                        {target.enabled ? t("notifications.badges.enabled") : t("notifications.badges.disabled")}
-                      </Badge>
-                    </div>
-                    <CardDescription className="text-xs break-all">
-                      {maskNotificationUrl(target.url)}
-                    </CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => testMutation.mutate(target.id)}
-                      aria-label={t("notifications.ariaLabels.sendTest", { name: target.name })}
-                      disabled={testMutation.isPending}
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditTarget(target)}
-                      aria-label={t("notifications.ariaLabels.edit", { name: target.name })}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (deleteMutation.isPending) {
-                          return
-                        }
-                        setDeleteTarget(target)
-                      }}
-                      aria-label={t("notifications.ariaLabels.delete", { name: target.name })}
-                      disabled={deleteMutation.isPending}
-                      aria-disabled={deleteMutation.isPending}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <div>
-                  <p className="text-muted-foreground text-xs mb-2">{t("notifications.form.events")}</p>
-                  {renderEventBadges(target.eventTypes, target.id)}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      <Dialog open={!!editTarget} onOpenChange={(open) => !open && setEditTarget(null)}>
-        <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{t("notifications.dialog.editTitle")}</DialogTitle>
-            <DialogDescription>{t("notifications.dialog.editDescription")}</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto min-h-0">
-            {editTarget && (
-              <NotificationTargetForm
-                initial={editTarget}
-                eventDefinitions={eventDefinitions}
-                onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
-                onCancel={() => setEditTarget(null)}
-                isPending={updateMutation.isPending}
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("notifications.dialog.deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("notifications.dialog.deleteDescription", { name: deleteTarget?.name ?? "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("notifications.dialog.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deleteMutation.isPending}
-              aria-busy={deleteMutation.isPending}
-            >
-              {t("notifications.dialog.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {error && <p id={errorId} className="text-xs text-destructive">{error}</p>}
     </div>
+  )
+}
+
+const CHECKBOX_TAP = "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-3"
+
+function checkState(count: number, total: number) {
+  if (count === 0) return false
+  return count === total ? true : "indeterminate"
+}
+
+function EventCheckRow({ label, count, total, onCheckedChange }: { label: string; count: number; total: number; onCheckedChange: (on: boolean) => void }) {
+  const id = useId()
+  return (
+    <div className="flex min-h-11 items-center gap-3 px-3">
+      <Checkbox id={id} checked={checkState(count, total)} onCheckedChange={() => onCheckedChange(count < total)} className={CHECKBOX_TAP} />
+      <label htmlFor={id} className="flex-1 cursor-pointer text-sm font-medium">{label}</label>
+      <span className="text-xs tabular-nums text-muted-foreground">{count}/{total}</span>
+    </div>
+  )
+}
+
+function EventGroupRows({ group, selected, onSet }: { group: NotificationEventGroup; selected: ReadonlySet<string>; onSet: (types: readonly string[], on: boolean) => void }) {
+  const { t } = useTranslation("settings")
+  const types = group.events.map((event) => event.type)
+  const count = types.filter((type) => selected.has(type)).length
+  const label = t(`notifications.groups.${group.id}`)
+
+  return (
+    <Collapsible>
+      <div className="flex min-h-11 items-center gap-1 pr-1 pl-3">
+        <Checkbox
+          checked={checkState(count, types.length)}
+          onCheckedChange={() => onSet(types, count < types.length)}
+          aria-label={t("notifications.form.selectGroup", { group: label })}
+          className={CHECKBOX_TAP}
+        />
+        <CollapsibleTrigger className="group flex min-h-10 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm outline-none transition-colors hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50">
+          <span className="flex-1">{label}</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{count}/{types.length}</span>
+          <ChevronDown aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent>
+        <ul className="space-y-0.5 pb-2">
+          {group.events.map((event) => (
+            <EventOption key={event.type} event={event} checked={selected.has(event.type)} onCheckedChange={(on) => onSet([event.type], on)} />
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function EventOption({ event, checked, onCheckedChange }: { event: NotificationEventDefinition; checked: boolean; onCheckedChange: (on: boolean) => void }) {
+  const id = useId()
+  const descriptionId = useId()
+  return (
+    <li className="flex items-start gap-3 py-1.5 pr-3 pl-9">
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={(next) => onCheckedChange(next === true)}
+        aria-describedby={descriptionId}
+        className={cn("mt-0.5", CHECKBOX_TAP)}
+      />
+      <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
+        <span className="block text-sm">{event.label}</span>
+        <span id={descriptionId} className="block text-xs text-muted-foreground">{event.description}</span>
+      </label>
+    </li>
   )
 }

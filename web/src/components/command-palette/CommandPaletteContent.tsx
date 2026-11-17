@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useReturnFocus } from "@/components/display-profiles/use-return-focus"
+import { useReturnFocus } from "@/components/kit/use-return-focus"
 import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command"
 import { DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { isMac, keyLabels, modShortcut } from "@/lib/keyboard"
+import { passwordManagerAttributes } from "@/lib/password-manager"
 import { cn } from "@/lib/utils"
 import { Command as CommandPrimitive } from "cmdk"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Search, X } from "lucide-react"
@@ -188,6 +189,7 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
           <CommandPrimitive.Input asChild value="" onValueChange={changeText}>
             <input
               ref={inputRef}
+              {...passwordManagerAttributes()}
               value={state.query}
               aria-activedescendant={highlighted && rowId(highlighted)}
               placeholder={parent ? t("common:commandPalette.placeholderIn", { name: parent.label }) : t("common:commandPalette.placeholder")}

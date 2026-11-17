@@ -168,6 +168,7 @@ export function Login() {
                       <Input
                         id={field.name}
                         type="text"
+                        autoComplete="username"
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
@@ -195,6 +196,7 @@ export function Login() {
                       <Input
                         id={field.name}
                         type="password"
+                        autoComplete="current-password"
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}

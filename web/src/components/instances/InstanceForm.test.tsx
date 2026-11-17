@@ -61,11 +61,11 @@ const instance = {
 
 describe("InstanceForm", () => {
   it("points a new instance at the SSH tab, and an existing one not", () => {
-    const { unmount } = render(<InstanceForm onSuccess={vi.fn()} onCancel={vi.fn()} />)
+    const { unmount } = render(<InstanceForm open onOpenChange={vi.fn()} onSuccess={vi.fn()} />)
     expect(screen.getByText("form.sshAfterSave")).not.toBeNull()
     unmount()
 
-    render(<InstanceForm instance={instance} onSuccess={vi.fn()} onCancel={vi.fn()} />)
+    render(<InstanceForm open onOpenChange={vi.fn()} instance={instance} onSuccess={vi.fn()} />)
     expect(screen.queryByText("form.sshAfterSave")).toBeNull()
   })
 })

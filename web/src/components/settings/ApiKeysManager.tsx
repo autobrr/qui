@@ -192,7 +192,6 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
             value={name}
             onBlur={() => setNameTouched(true)}
             onChange={(e) => setName(e.target.value)}
-            data-1p-ignore
             autoComplete="off"
           />
           {nameTouched && !name && (

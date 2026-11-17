@@ -11,6 +11,8 @@ Each bulk action handler takes the action value and the Action target. A new sur
 
 The table menu keeps no copy of the torrents it acts on. Since #3368, a right-click on a row outside the selection selects only that row before the menu opens. A copy that differs from the selection can make a delete reach torrents that the user did not pick.
 
+On the mobile cards, the card that shows its swipe actions is the Action target while no torrent is ticked. A card does not swipe while a torrent is ticked, so the swiped card and the selection never name different torrents.
+
 ## Considered options
 
 - **A hook that reads the selection context.** Rejected: the table and the cards get their rows in different ways, so the hook needs both ways passed in.
