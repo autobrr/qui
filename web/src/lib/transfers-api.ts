@@ -117,11 +117,24 @@ export interface TransferSummary {
   hints: TransferHint[]
 }
 
+/** The number of rows on a page of the Transfers list. */
+export const transferPageSize = 50
+
+/** The query of one page of the Transfers list. The Transfers page and the badge of the sidebar share it. */
+export const transferListQuery = (filter: TransferFilter, page: number) => ({
+  queryKey: ["transfers", "list", filter, page],
+  queryFn: () => transfersApi.list(filter, page),
+})
+
 const json = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) })
 
 export const transfersApi = {
-  list: (filter: TransferFilter) =>
-    apiRequest<TransferList>(filter === "all" ? "/transfers" : `/transfers?filter=${filter}`),
+  /** One page of the rows behind filter, the newest first. Page 0 is the first page. */
+  list: (filter: TransferFilter, page: number) => {
+    const query = new URLSearchParams({ limit: String(transferPageSize), offset: String(page * transferPageSize) })
+    if (filter !== "all") query.set("filter", filter)
+    return apiRequest<TransferList>(`/transfers?${query}`)
+  },
   get: (id: number) => apiRequest<TransferDetail>(`/transfers/${id}`),
   summary: (req: TransferRequest) => apiRequest<TransferSummary>("/transfers/summary", json(req)),
   start: (req: TransferRequest) => apiRequest<{ id: number }>("/transfers", json(req)),

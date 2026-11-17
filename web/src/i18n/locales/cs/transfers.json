@@ -74,7 +74,10 @@
   "list": {
     "description": "Torrenty, které qui přesouvá do jiné instance, a běhy pravidel s akcí Exportovat do instance.",
     "empty": "Zatím tu není žádný přenos.",
-    "limit": "Seznam ukazuje 500 nejnovějších řádků."
+    "pages": "Stránky seznamu",
+    "range": "{{from}}–{{to}} z {{total}}",
+    "previous": "Předchozí",
+    "next": "Další"
   },
   "details": {
     "title": "Podrobnosti přenosu",

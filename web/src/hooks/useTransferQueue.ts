@@ -5,7 +5,7 @@
 
 import { isDemo } from "@/lib/demo"
 import { listShares, sharesQueryKey } from "@/lib/shares-api"
-import { transfersApi } from "@/lib/transfers-api"
+import { transferListQuery } from "@/lib/transfers-api"
 import { useQuery } from "@tanstack/react-query"
 
 // The sidebar shows the count on every page, so it asks less often than the Transfers page.
@@ -16,10 +16,9 @@ const REFRESH_MS = 15_000
  * Shares that have not ended.
  */
 export function useTransferQueue(): number {
-  // The same keys as the Transfers page, so that the page and the sidebar share one fetch.
+  // The same query as the first page of Active on the Transfers page, so that the page and the sidebar share one fetch.
   const transfers = useQuery({
-    queryKey: ["transfers", "list", "active"],
-    queryFn: () => transfersApi.list("active"),
+    ...transferListQuery("active", 0),
     refetchInterval: REFRESH_MS,
     // The demo has no Transfers page.
     enabled: !isDemo,

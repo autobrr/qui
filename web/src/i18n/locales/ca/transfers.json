@@ -73,7 +73,10 @@
   "list": {
     "description": "Els torrents que qui mou a una altra instància, i les execucions de les regles «Exporta a una instància».",
     "empty": "Encara no hi ha cap transferència.",
-    "limit": "La llista mostra les 500 files més recents."
+    "pages": "Pàgines de la llista",
+    "range": "{{from}}–{{to}} de {{total}}",
+    "previous": "Anterior",
+    "next": "Següent"
   },
   "details": {
     "title": "Detalls de la transferència",

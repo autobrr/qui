@@ -73,7 +73,10 @@
   "list": {
     "description": "Torrents that qui moves to another instance, and the runs of Export to Instance rules.",
     "empty": "No Transfer here yet.",
-    "limit": "The list shows the newest 500 rows."
+    "pages": "Pages of the list",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next"
   },
   "details": {
     "title": "Transfer details",

@@ -8,14 +8,15 @@ import { EmptyTile } from "@/components/kit/EmptyTile"
 import { Section } from "@/components/kit/Section"
 import { usePendingIds } from "@/components/kit/use-pending-ids"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TorrentName } from "@/components/ui/torrent-name"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import { transfersApi, type TransferFilter, type TransferRow } from "@/lib/transfers-api"
+import { transferListQuery, transferPageSize, transfersApi, type TransferFilter, type TransferRow } from "@/lib/transfers-api"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { FileText, RotateCcw, Trash2, X, type LucideIcon } from "lucide-react"
-import { useId, useMemo, useState } from "react"
+import { ChevronLeft, ChevronRight, FileText, RotateCcw, Trash2, X, type LucideIcon } from "lucide-react"
+import { useId, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { RowActions, type RowAction } from "./RowActions"
@@ -33,22 +34,22 @@ const removeKey = ["transfers", "remove"]
 
 /** A step of a row that waits for its answer. */
 type RowStep = "retry" | "cancel" | "remove"
-/** The list of the backend holds at most this many rows. */
-const listLimit = 500
 
 /** The Transfers section of the Transfers page: the Transfers and the Export runs, newest first. */
 export function TransfersTab() {
   const { t, i18n } = useTranslation("transfers")
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<TransferFilter>("all")
+  // Page 0 is the first page.
+  const [page, setPage] = useState(0)
+  const top = useRef<HTMLDivElement>(null)
   const [detailsId, setDetailsId] = useState<number | null>(null)
   // The row stays while the dialog fades out.
   const [cancelling, setCancelling] = useState<{ row: TransferRow; open: boolean } | null>(null)
 
   const list = useQuery({
-    queryKey: ["transfers", "list", filter],
-    queryFn: () => transfersApi.list(filter),
-    // The rows and the counts stay while the rows of another filter load.
+    ...transferListQuery(filter, page),
+    // The rows and the counts stay while the rows of another filter or page load.
     placeholderData: keepPreviousData,
     // Progress and speed move while a Transfer runs.
     refetchInterval: 3000,
@@ -85,19 +86,27 @@ export function TransfersTab() {
   const rows = list.data?.rows ?? []
   const formatCount = useMemo(() => new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language), [i18n.resolvedLanguage, i18n.language])
   const countOf = (chip: TransferFilter) => counts && (chip === "all" ? counts.active + counts.waiting + counts.finished + counts.failed : counts[chip])
+  const total = countOf(filter) ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / transferPageSize))
+  // When rows end or go away, the page can lie past the last page. The list then shows the last page.
+  if (counts && page >= pageCount) setPage(pageCount - 1)
+  const turnTo = (next: number) => {
+    setPage(next)
+    // The buttons sit below the rows, so the top of the list comes into view.
+    top.current?.scrollIntoView({ block: "nearest" })
+  }
 
   return (
     <>
       <Section
         title={t("tabs.transfers")}
         description={t("list.description")}
-        footer={rows.length >= listLimit ? t("list.limit") : undefined}
         queries={[list]}
       >
         <div className="space-y-4">
           {/* A phone scrolls the filters sideways when their labels do not fit. */}
-          <div className="overflow-x-auto">
-            <Tabs value={filter} onValueChange={value => setFilter(value as TransferFilter)}>
+          <div ref={top} className="overflow-x-auto">
+            <Tabs value={filter} onValueChange={value => { setFilter(value as TransferFilter); setPage(0) }}>
               <TabsList aria-label={t("chips.label")} className="max-sm:w-max max-sm:min-w-full">
                 {chips.map(chip => (
                   <TabsTrigger key={chip} value={chip} className="gap-1.5 px-3 max-sm:gap-1 max-sm:px-1.5 max-sm:text-xs">
@@ -138,6 +147,29 @@ export function TransfersTab() {
                 </TableBody>
               </Table>
             </div>
+          )}
+
+          {pageCount > 1 && (
+            <nav aria-label={t("list.pages")} className="flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground tabular-nums">
+                {t("list.range", {
+                  from: formatCount.format(page * transferPageSize + 1),
+                  to: formatCount.format(Math.min((page + 1) * transferPageSize, total)),
+                  total: formatCount.format(total),
+                })}
+              </p>
+              {/* A phone shows the arrows only, at the size of a finger. */}
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="max-sm:size-11" disabled={page === 0} onClick={() => turnTo(page - 1)}>
+                  <ChevronLeft aria-hidden="true" />
+                  <span className="max-sm:sr-only">{t("list.previous")}</span>
+                </Button>
+                <Button variant="outline" size="sm" className="max-sm:size-11" disabled={page >= pageCount - 1} onClick={() => turnTo(page + 1)}>
+                  <span className="max-sm:sr-only">{t("list.next")}</span>
+                  <ChevronRight aria-hidden="true" />
+                </Button>
+              </div>
+            </nav>
           )}
         </div>
       </Section>

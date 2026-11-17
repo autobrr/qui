@@ -16,7 +16,7 @@ import (
 // torrent that qui added.
 func (r *rig) requireNothingStarted(hash string) {
 	r.t.Helper()
-	list, err := r.store.List(r.t.Context(), transfer.FilterAll, 10)
+	list, err := r.store.List(r.t.Context(), transfer.FilterAll, 10, 0)
 	require.NoError(r.t, err)
 	require.Empty(r.t, list.Rows, "the summary records no Transfer")
 	require.False(r.t, r.store.IsClaimed(r.source.ID, hash), "the summary claims no torrent")

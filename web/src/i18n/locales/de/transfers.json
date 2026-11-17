@@ -73,7 +73,10 @@
   "list": {
     "description": "Torrents, die qui auf eine andere Instanz verschiebt, und die Läufe der Regeln „In Instanz exportieren“.",
     "empty": "Hier gibt es noch keinen Transfer.",
-    "limit": "Die Liste zeigt die neuesten 500 Zeilen."
+    "pages": "Seiten der Liste",
+    "range": "{{from}}–{{to}} von {{total}}",
+    "previous": "Zurück",
+    "next": "Weiter"
   },
   "details": {
     "title": "Transfer-Details",

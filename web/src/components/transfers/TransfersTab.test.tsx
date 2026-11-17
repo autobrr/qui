@@ -203,6 +203,54 @@ describe("the Transfers tab", () => {
     expect(failedFilter.getAttribute("aria-selected")).toBe("true")
   })
 
+  it("splits a long list into pages of 50 rows, and keeps the counts of every row", async () => {
+    const long = { active: 0, waiting: 120, finished: 0, failed: 0 }
+    server.use(http.get("*/api/transfers", ({ request }) => {
+      const query = new URL(request.url).searchParams
+      const offset = Number(query.get("offset"))
+      requests.push(`GET /api/transfers?${query}`)
+      const rows = Array.from({ length: Math.min(50, long.waiting - offset) }, (_, i) =>
+        row({ id: 1000 - offset - i, hash: `h${offset + i}`, name: `Built.Show.E${offset + i + 1}.1080p-GRP` }))
+      return HttpResponse.json({ rows, counts: long })
+    }))
+    // jsdom has no layout, so it has no scrollIntoView.
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    try {
+      renderTab()
+      const pages = await screen.findByRole("navigation", { name: "Pages of the list" })
+      const previous = within(pages).getByRole("button", { name: "Previous" })
+      const next = within(pages).getByRole("button", { name: "Next" })
+      expect(within(pages).getByText("1–50 of 120")).toBeTruthy()
+      expect(previous.hasAttribute("disabled")).toBe(true)
+      expect(screen.getByText("Built.Show.E1.1080p-GRP")).toBeTruthy()
+
+      fireEvent.click(next)
+      await screen.findByText("Built.Show.E51.1080p-GRP")
+      expect(within(pages).getByText("51–100 of 120")).toBeTruthy()
+      expect(requests).toContain("GET /api/transfers?limit=50&offset=50")
+      expect(scrollIntoView).toHaveBeenCalled()
+
+      fireEvent.click(next)
+      await screen.findByText("Built.Show.E120.1080p-GRP")
+      expect(within(pages).getByText("101–120 of 120")).toBeTruthy()
+      expect(next.hasAttribute("disabled")).toBe(true)
+
+      // Another filter starts on its first page.
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /^Waiting/ }), { button: 0 })
+      await waitFor(() => expect(requests).toContain("GET /api/transfers?limit=50&offset=0&filter=waiting"))
+      expect(await within(pages).findByText("1–50 of 120")).toBeTruthy()
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView
+    }
+  })
+
+  it("shows no pages when the rows fit on one page", async () => {
+    renderTab()
+    await rowOf("Film.2019.2160p-ABC")
+    expect(screen.queryByRole("navigation", { name: "Pages of the list" })).toBeNull()
+  })
+
   it("puts the actions of a row in one menu on a phone", async () => {
     screenSize.phone = true
     renderTab()

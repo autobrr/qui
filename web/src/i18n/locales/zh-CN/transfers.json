@@ -72,7 +72,10 @@
   "list": {
     "description": "qui 移到其他实例的种子，以及“导出到实例”规则的运行记录。",
     "empty": "暂无传输。",
-    "limit": "列表仅显示最新的 500 行。"
+    "pages": "列表分页",
+    "range": "第 {{from}}–{{to}} 项，共 {{total}} 项",
+    "previous": "上一页",
+    "next": "下一页"
   },
   "details": {
     "title": "传输详情",

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -169,8 +170,12 @@ type transferDetail struct {
 	Members []transferMember   `json:"members"`
 }
 
-// transferListLimit is how many rows the Transfers page shows.
-const transferListLimit = 500
+// transferPageSize is the number of rows on a page of the list when the
+// request names no limit. transferPageMax is the largest limit.
+const (
+	transferPageSize = 50
+	transferPageMax  = 500
+)
 
 // ruleNames names the rules of the rows of one request, each rule once. A
 // rule that is gone has no name.
@@ -220,16 +225,27 @@ func (h *TransfersHandler) row(ctx context.Context, row transfer.Row, names *rul
 	return out
 }
 
-// List returns the newest Transfers and Export runs behind a filter chip,
-// with the counts of every chip.
-// GET /api/transfers?filter=active|waiting|finished|failed
+// List returns one page of the Transfers and Export runs behind a filter
+// chip, the newest first, with the counts of every chip.
+// GET /api/transfers?filter=active|waiting|finished|failed&limit=50&offset=0
 func (h *TransfersHandler) List(w http.ResponseWriter, r *http.Request) {
-	filter, ok := transfer.Filters[r.URL.Query().Get("filter")]
+	query := r.URL.Query()
+	filter, ok := transfer.Filters[query.Get("filter")]
 	if !ok {
 		RespondError(w, http.StatusBadRequest, "filter must be active, waiting, finished, or failed")
 		return
 	}
-	list, err := h.store.List(r.Context(), filter, transferListLimit)
+	limit, err := queryNumber(query.Get("limit"), transferPageSize)
+	if err != nil || limit < 1 || limit > transferPageMax {
+		RespondError(w, http.StatusBadRequest, fmt.Sprintf("limit must be a number from 1 to %d", transferPageMax))
+		return
+	}
+	offset, err := queryNumber(query.Get("offset"), 0)
+	if err != nil || offset < 0 {
+		RespondError(w, http.StatusBadRequest, "offset must be 0 or a larger number")
+		return
+	}
+	list, err := h.store.List(r.Context(), filter, limit, offset)
 	if err != nil {
 		log.Error().Err(err).Msg("transfer: failed to list the Transfers")
 		RespondError(w, http.StatusInternalServerError, "Failed to list the Transfers")
@@ -241,6 +257,14 @@ func (h *TransfersHandler) List(w http.ResponseWriter, r *http.Request) {
 		res.Rows = append(res.Rows, h.row(r.Context(), row, names))
 	}
 	RespondJSON(w, http.StatusOK, res)
+}
+
+// queryNumber reads a number of the query. An empty value gives fallback.
+func queryNumber(value string, fallback int) (int, error) {
+	if value == "" {
+		return fallback, nil
+	}
+	return strconv.Atoi(value)
 }
 
 // transferID reads the id of the path. It answers 400 and returns false for

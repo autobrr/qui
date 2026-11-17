@@ -73,7 +73,10 @@
   "list": {
     "description": "I torrent che qui sposta su un'altra istanza e le esecuzioni delle regole «Esporta verso l'istanza».",
     "empty": "Ancora nessun trasferimento.",
-    "limit": "L'elenco mostra le 500 righe più recenti."
+    "pages": "Pagine dell'elenco",
+    "range": "{{from}}–{{to}} di {{total}}",
+    "previous": "Precedente",
+    "next": "Successiva"
   },
   "details": {
     "title": "Dettagli del trasferimento",

@@ -78,9 +78,9 @@ type List struct {
 	Counts Counts
 }
 
-// List returns the newest rows behind filter, at most limit, and the counts
-// of every chip.
-func (s *Store) List(ctx context.Context, filter Filter, limit int) (*List, error) {
+// List returns one page of the rows behind filter, the newest first: at most
+// limit rows after the first offset. It also returns the counts of every chip.
+func (s *Store) List(ctx context.Context, filter Filter, limit, offset int) (*List, error) {
 	query := `SELECT t.id, t.kind, t.way, t.state, t.started_by, t.rule_id, t.source_instance_id, t.target_instance_id,
 			m.hash, m.name, (SELECT COUNT(*) FROM torrent_transfer_members c WHERE c.transfer_id = t.id),
 			t.options_json, t.log_json, t.retry_at, t.failure_class, t.failure_reason, t.created_at, t.finished_at
@@ -93,8 +93,8 @@ func (s *Store) List(ctx context.Context, filter Filter, limit int) (*List, erro
 			args = append(args, string(state))
 		}
 	}
-	query += ` ORDER BY t.id DESC LIMIT ?`
-	args = append(args, limit)
+	query += ` ORDER BY t.id DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

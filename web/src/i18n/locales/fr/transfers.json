@@ -73,7 +73,10 @@
   "list": {
     "description": "Les torrents que qui déplace vers une autre instance, et les exécutions des règles « Exporter vers l'instance ».",
     "empty": "Aucun transfert pour l'instant.",
-    "limit": "La liste affiche les 500 lignes les plus récentes."
+    "pages": "Pages de la liste",
+    "range": "{{from}}–{{to}} sur {{total}}",
+    "previous": "Précédent",
+    "next": "Suivant"
   },
   "details": {
     "title": "Détails du transfert",

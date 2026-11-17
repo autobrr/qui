@@ -68,18 +68,27 @@ func TestTheListFiltersTheTransfersByChipPostgresIntegration(t *testing.T) {
 			{transfer.FilterAll, []int64{exporting, permanent, cancelled, done, retrying, waiting, copying}},
 			{transfer.FilterActive, []int64{exporting, copying}},
 		} {
-			list, err := store.List(ctx, tc.filter, 100)
+			list, err := store.List(ctx, tc.filter, 100, 0)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, ids(list.Rows), "chip %q", tc.filter)
 			require.Equal(t, transfer.Counts{Active: 2, Waiting: 1, Finished: 2, Failed: 2}, list.Counts, "chip %q", tc.filter)
 		}
 
-		list, err := store.List(ctx, transfer.FilterAll, 2)
+		list, err := store.List(ctx, transfer.FilterAll, 2, 0)
 		require.NoError(t, err)
 		require.Equal(t, []int64{exporting, permanent}, ids(list.Rows), "the newest rows up to the limit")
 		require.Equal(t, 7, list.Counts.Active+list.Counts.Waiting+list.Counts.Finished+list.Counts.Failed, "the counts ignore the limit")
 
-		list, err = store.List(ctx, transfer.FilterAll, 100)
+		list, err = store.List(ctx, transfer.FilterAll, 2, 2)
+		require.NoError(t, err)
+		require.Equal(t, []int64{cancelled, done}, ids(list.Rows), "the second page starts after the first")
+		require.Equal(t, 7, list.Counts.Active+list.Counts.Waiting+list.Counts.Finished+list.Counts.Failed, "the counts ignore the page")
+
+		list, err = store.List(ctx, transfer.FilterActive, 2, 1)
+		require.NoError(t, err)
+		require.Equal(t, []int64{copying}, ids(list.Rows), "a page of a chip skips rows of that chip only")
+
+		list, err = store.List(ctx, transfer.FilterAll, 100, 0)
 		require.NoError(t, err)
 		byID := map[int64]transfer.Row{}
 		for _, row := range list.Rows {

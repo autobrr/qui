@@ -73,7 +73,10 @@
   "list": {
     "description": "Torrents que o qui move para outra instância e as execuções das regras de exportação para outra instância.",
     "empty": "Nenhuma transferência aqui ainda.",
-    "limit": "A lista mostra as 500 linhas mais recentes."
+    "pages": "Páginas da lista",
+    "range": "{{from}}–{{to}} de {{total}}",
+    "previous": "Anterior",
+    "next": "Próxima"
   },
   "details": {
     "title": "Detalhes da transferência",

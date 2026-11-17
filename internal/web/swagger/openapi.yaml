@@ -6900,8 +6900,8 @@ paths:
         - Transfers
       summary: List Transfers
       description: >-
-        Lists the newest Transfers and Export to Instance runs, at most 500, behind a filter chip of the Transfers
-        page, with the counts of every chip. Active is copying, checking, and finishing; Waiting is waiting; Finished
+        Lists one page of the Transfers and Export to Instance runs behind a filter chip of the Transfers page, the
+        newest first, with the counts of every chip. Active is copying, checking, and finishing; Waiting is waiting; Finished
         is done and cancelled; Failed is failed, also a failure that waits for its retry. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
@@ -6917,6 +6917,23 @@ paths:
               - finished
               - failed
           description: The filter chip. Without it the list has every row.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+          description: The most rows on the page.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: The number of rows before the page.
       responses:
         '200':
           description: The rows and the counts of the chips
@@ -6949,7 +6966,7 @@ paths:
                       failed:
                         type: integer
         '400':
-          description: Unknown filter
+          description: An unknown filter, or a limit or offset out of range
           content:
             application/json:
               schema:
