@@ -77,6 +77,8 @@ type disk struct {
 	// damage flips the byte at an offset of the file with this final name.
 	damage  map[string]int64
 	onWrite func(name string)
+	// onStatfs runs at each read of the free space, before it answers.
+	onStatfs func()
 	// failRemove fails the removal of each name below the root that it
 	// reports.
 	failRemove func(name string) bool
@@ -104,6 +106,9 @@ func (d *disk) log() ([]diskWrite, map[string]int) {
 }
 
 func (d *disk) Statfs(ctx context.Context, path string) (*fsops.StatfsResult, error) {
+	if d.onStatfs != nil {
+		d.onStatfs()
+	}
 	if d.free > 0 {
 		return &fsops.StatfsResult{BytesAvailable: d.free, BytesTotal: d.free}, nil
 	}

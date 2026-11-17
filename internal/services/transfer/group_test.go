@@ -687,8 +687,65 @@ func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	// regression: #4231
 	require.Equal(t, transfer.FailureTemporary, records[secondID].FailureClass, records[secondID].FailureReason)
 	require.Equal(t, "Not enough free space on homelab for now: the Transfer needs 70 B, and 100 B is free, "+
-		"but other Transfers to homelab that run now set aside 70 B.", records[secondID].FailureReason)
+		"but other Transfers to homelab take 70 B of it.", records[secondID].FailureReason)
 	require.Equal(t, transfer.StateDone, records[thirdID].State, records[thirdID].FailureReason)
+}
+
+// A Transfer that ends gives back its free space on the target, and its
+// files take that space. A read of the free space from before that end does
+// not show them, so the Transfer that read it counts them.
+// regression: #4231
+func TestTransferCountsTheFilesOfATransferThatEndedAfterTheRead(t *testing.T) {
+	r := newRig(t)
+	first := newShow(t, showName)
+	r.seed(first)
+	small, smallHash := singleFileTorrent(t, "Small.mkv", []byte("ten bytes!"))
+	write(t, r.srcDir, map[string][]byte{"Small.mkv": []byte("ten bytes!")})
+	r.src.Seed(small, r.srcPath())
+	otherDir := t.TempDir()
+	otherPath := pathOn(overSFTP, otherDir)
+	other := qbtstub.New(t, otherPath)
+	otherSource := r.sshInstance("seedbox two", other.URL)
+	second := newShow(t, "Other.Show.S02.720p-GRP")
+	write(t, filepath.Join(otherDir, "Other.Show.S02.720p-GRP"), second.files)
+	other.Seed(second.data, otherPath)
+	r.disk.free = 100
+
+	// The first Transfer copies once the second reads the free space, and
+	// that read answers once the first has ended: the third Transfer waits
+	// behind the first on the same source, so its read tells that.
+	reading, ended := make(chan struct{}), make(chan struct{})
+	var reads atomic.Int32
+	r.disk.onStatfs = func() {
+		switch reads.Add(1) {
+		case 2:
+			close(reading)
+			<-ended
+		case 3:
+			close(ended)
+		}
+	}
+	copying := make(chan struct{})
+	wait := sync.OnceFunc(func() {
+		close(copying)
+		<-reading
+	})
+	r.disk.onWrite = func(string) { wait() }
+	firstID, err := r.svc.Start(t.Context(), r.request(first))
+	require.NoError(t, err)
+	<-copying
+	secondID, err := r.svc.Start(t.Context(), transfer.Request{SourceInstanceID: otherSource.ID, Hash: second.hash, TargetInstanceID: r.target.ID})
+	require.NoError(t, err)
+	thirdID, err := r.svc.Start(t.Context(), transfer.Request{SourceInstanceID: r.source.ID, Hash: smallHash, TargetInstanceID: r.target.ID})
+	require.NoError(t, err)
+	r.svc.Wait()
+
+	require.Equal(t, transfer.StateDone, r.get(firstID).State)
+	record := r.get(secondID)
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
+	require.Contains(t, record.FailureReason, "Not enough free space on homelab for now: the Transfer needs 70 B, and 100 B is free")
+	require.Equal(t, transfer.StateDone, r.get(thirdID).State)
 }
 
 // A file of the group that is on the target before the Transfer is a head

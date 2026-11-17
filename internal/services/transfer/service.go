@@ -118,8 +118,8 @@ type Service struct {
 	// runs holds each Transfer that is queued, runs, or is being cancelled.
 	runs map[int64]*run
 	// reserved is the free space that the running Transfers need on each
-	// target.
-	reserved map[int]int64
+	// target, and freed what the runs gave back there since the start.
+	reserved, freed map[int]int64
 	// exports holds a place for each Export run that runs.
 	exports chan struct{}
 }
@@ -154,6 +154,7 @@ func NewService(ctx context.Context, deps Deps) *Service {
 		queues:   map[int][]int64{},
 		runs:     map[int64]*run{},
 		reserved: map[int]int64{},
+		freed:    map[int]int64{},
 		exports:  make(chan struct{}, exportsAtATime),
 	}
 	s.wake(true)                        //nolint:contextcheck // the Service runs on its own context, s.ctx
@@ -459,15 +460,16 @@ func (s *Service) Close(ctx context.Context) error {
 	}
 }
 
-// reserve claims bytes of free, the free space on a target, for a Transfer
-// that claimed own of it already. It fails when free does not hold the bytes
-// next to own and others, what the other running Transfers to the target
-// claimed.
-func (s *Service) reserve(targetID int, bytes, free, own int64) (others int64, ok bool) {
+// reserve claims bytes of read, the free space on a target, for a Transfer
+// that claimed own of it already. It fails when the free space does not hold
+// the bytes next to own and others: what the other running Transfers to the
+// target claimed, and what runs gave back there since the read, because
+// their files can fill that space now.
+func (s *Service) reserve(targetID int, bytes int64, read space, own int64) (others int64, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	others = s.reserved[targetID] - own
-	if free-own-others < bytes {
+	others = s.reserved[targetID] - own + s.freed[targetID] - read.freed
+	if read.free-own-others < bytes {
 		return others, false
 	}
 	s.reserved[targetID] += bytes
@@ -477,10 +479,18 @@ func (s *Service) reserve(targetID int, bytes, free, own int64) (others int64, o
 func (s *Service) unreserve(targetID int, bytes int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.freed[targetID] += bytes
 	s.reserved[targetID] -= bytes
 	if s.reserved[targetID] <= 0 {
 		delete(s.reserved, targetID)
 	}
+}
+
+// freedOn is what the runs gave back on a target since the start.
+func (s *Service) freedOn(targetID int) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.freed[targetID]
 }
 
 func formatBytes(n int64) string {
