@@ -4,10 +4,13 @@
 package transfer_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
+	"maps"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
 const (
@@ -51,6 +55,8 @@ type crash struct {
 	Cancel bool
 	// FailSave fails the save that records this step.
 	FailSave string
+	// Resume starts no Transfer: qui resumes the unfinished ones.
+	Resume bool
 }
 
 // qui ends at each step that it records, and at the adds that it cannot
@@ -254,6 +260,187 @@ func TestTransferCleanupKeepsTheHeadStartWhenTheResumeFails(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 }
 
+// A rename on the source while qui is stopped fails the resume, as a rename
+// during the copy does, and the cleanup finds the files under the old names.
+// regression: #4231
+func TestTransferStopsAtARenameWhileQuiIsStopped(t *testing.T) {
+	const first, second, spare = "Show.S01E05.mkv", "Show.S01E06.mkv", "Show.S01E07.mkv"
+	swap := []string{first, spare, second, first, spare, second}
+	for _, tc := range []struct {
+		name   string
+		at     string
+		rename []string
+	}{
+		{name: "a swap before the files are in place", at: "before:place", rename: swap},
+		{name: "a swap after the files are in place", at: "before:add", rename: swap},
+		{name: "a rename before the files are in place", at: "before:place", rename: []string{first, spare}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			files := map[string][]byte{
+				episode1: bytes.Repeat([]byte("one|"), 10),
+				episode2: bytes.Repeat([]byte("two|"), 10),
+			}
+			data, hash := qbtstub.NewContentTorrent(t, showName, 16,
+				qbtstub.ContentFile{Path: episode1, Data: files[episode1]},
+				qbtstub.ContentFile{Path: episode2, Data: files[episode2]})
+			s := show{data: data, hash: hash, files: files}
+			r.seed(s)
+			r.renameOnSource(s, episode1, first, episode2, second)
+			runCrashChild(t, crash{DB: r.dbPath, Request: r.request(s), At: tc.at}, make(chan *os.Process, 1), false)
+			r.renameOnSource(s, tc.rename...)
+			source := tree(t, r.srcDir)
+
+			r.restart()
+			r.svc.Wait()
+
+			var id int64
+			require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+			record := r.get(id)
+			require.Equal(t, transfer.StateFailed, record.State, record.FailureReason)
+			require.Contains(t, record.FailureReason, "a file was renamed")
+			require.Empty(t, tree(t, r.dstDir), "the cleanup removes the files of qui")
+			require.False(t, r.dst.Has(s.hash))
+			require.True(t, r.src.Has(s.hash))
+			require.Equal(t, source, tree(t, r.srcDir))
+		})
+	}
+}
+
+// A cleanup that runs without the run that read the names, after a cancel
+// or after a stop during the cleanup, finds the files under the names that
+// the first run recorded. A file of someone else at the new name of a
+// renamed file stays.
+// regression: #4231
+func TestTransferCleanupUsesTheRecordedNames(t *testing.T) {
+	const renamed = "Show.S01E05.mkv"
+	for _, tc := range []struct {
+		name string
+		// stop leaves the Transfer unfinished with its files in place, and
+		// renames episode1 on the source.
+		stop func(r *rig, s show) int64
+		// end ends the Transfer with a cleanup that reads the names again.
+		end  func(r *rig, id int64)
+		want transfer.State
+	}{
+		{
+			name: "a cancel while the Transfer waits for a retry",
+			stop: func(r *rig, s show) int64 {
+				r.dst.Reject = http.StatusInternalServerError
+				record := r.run(r.request(s))
+				require.Equal(t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
+				r.dst.Reject = 0
+				r.renameOnSource(s, episode1, renamed)
+				return record.ID
+			},
+			end: func(r *rig, id int64) {
+				require.NoError(t, r.svc.Cancel(t.Context(), id))
+				r.svc.Wait()
+			},
+			want: transfer.StateCancelled,
+		},
+		{
+			name: "a cleanup that a stop interrupted",
+			stop: func(r *rig, s show) int64 {
+				runCrashChild(t, crash{DB: r.dbPath, Request: r.request(s), At: "before:add"}, make(chan *os.Process, 1), false)
+				r.renameOnSource(s, episode1, renamed)
+				runCrashChild(t, crash{DB: r.dbPath, Resume: true, At: "after:clean up"}, make(chan *os.Process, 1), false)
+				var id int64
+				require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+				return id
+			},
+			end: func(r *rig, _ int64) {
+				r.restart()
+				r.svc.Wait()
+			},
+			want: transfer.StateFailed,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			s := newShow(t, showName)
+			r.seed(s)
+			id := tc.stop(r, s)
+			require.ElementsMatch(t, []string{showName + "/" + episode1, showName + "/" + episode2}, slices.Collect(maps.Keys(tree(t, r.dstDir))),
+				"the files are in place on the target")
+			theirs := map[string]string{showName + "/" + renamed: "theirs"}
+			write(t, filepath.Join(r.dstDir, showName), map[string][]byte{renamed: []byte("theirs")})
+
+			tc.end(r, id)
+
+			record := r.get(id)
+			require.Equal(t, tc.want, record.State, record.FailureReason)
+			require.Equal(t, theirs, tree(t, r.dstDir), "the files of qui go, and the file at the new name stays")
+		})
+	}
+}
+
+// A rename or a move on the source after the copy, with a file of someone
+// else of the same size at the old path, keeps the files on the source: the
+// removal would take the file of someone else for the file that qui copied.
+// regression: #4231
+func TestTransferKeepsTheSourceFilesAfterAChangeOnTheSource(t *testing.T) {
+	const renamed = "Show.S01E05.mkv"
+	theirs := bytes.Repeat([]byte("x"), 40)
+	for _, change := range []struct {
+		name   string
+		change func(r *rig, s show)
+		reason string
+		// moved is the folder below the save path that holds the files of
+		// the torrent after the change.
+		moved string
+		file  string
+	}{
+		{name: "a rename", change: func(r *rig, s show) {
+			r.renameOnSource(s, episode1, renamed)
+		}, reason: "a file was renamed on seedbox", file: renamed},
+		{name: "a move", change: func(r *rig, s show) {
+			require.NoError(t, r.sync.SetLocation(t.Context(), r.source.ID, []string{s.hash}, filepath.Join(r.srcDir, "moved")))
+		}, reason: "a torrent moved on seedbox", moved: "moved/", file: episode1},
+	} {
+		for _, when := range []struct {
+			name string
+			run  func(r *rig, s show, change func())
+		}{
+			{name: "a removal that resumes after a stop", run: func(r *rig, s show, change func()) {
+				runCrashChild(t, crash{DB: r.dbPath, Request: r.request(s), At: "after:remove from source"}, make(chan *os.Process, 1), false)
+				change()
+				r.restart()
+				r.svc.Wait()
+			}},
+			{name: "a removal in the run of the copy", run: func(r *rig, s show, change func()) {
+				r.dst.OnAdd = func(string) { change() }
+				r.run(r.request(s))
+			}},
+		} {
+			t.Run(change.name+", "+when.name, func(t *testing.T) {
+				r := newRig(t)
+				s := newShow(t, showName)
+				r.seed(s)
+				require.Len(t, s.files[episode1], len(theirs))
+
+				when.run(r, s, func() {
+					change.change(r, s)
+					write(t, filepath.Join(r.srcDir, showName), map[string][]byte{episode1: theirs})
+				})
+
+				var id int64
+				require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+				record := r.get(id)
+				require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+				require.False(t, r.src.Has(s.hash))
+				require.Equal(t, map[string]string{
+					showName + "/" + episode1:                   string(theirs),
+					change.moved + showName + "/" + change.file: string(s.files[episode1]),
+					change.moved + showName + "/" + episode2:    string(s.files[episode2]),
+				}, tree(t, r.srcDir))
+				require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+				require.Contains(t, logOf(record), "kept its files, because "+change.reason)
+			})
+		}
+	}
+}
+
 // A file that lands at a path of the copy during the copy stops the
 // Transfer at the rename into place, and the cleanup keeps it. A crash after
 // the cleanup, before qui recorded the end, keeps it too: the cleanup that
@@ -363,9 +550,10 @@ func TestTransferCrashChild(t *testing.T) {
 		cancel := sync.OnceFunc(func() { require.NoError(t, svc.Cancel(t.Context(), <-ids)) })
 		d.onWrite = func(string) { cancel() }
 	}
-	if plan.Export != nil {
+	switch {
+	case plan.Export != nil:
 		_, _, err = svc.Export(t.Context(), *plan.Export)
-	} else {
+	case !plan.Resume:
 		var id int64
 		id, err = svc.Start(t.Context(), plan.Request)
 		ids <- id

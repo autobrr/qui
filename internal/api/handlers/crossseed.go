@@ -185,21 +185,39 @@ func (o *optionalInt) UnmarshalJSON(data []byte) error {
 }
 
 type searchSettingsPatchRequest struct {
-	InstanceID      optionalInt `json:"instanceId"`
-	Categories      *[]string   `json:"categories,omitempty"`
-	Tags            *[]string   `json:"tags,omitempty"`
-	IndexerIDs      *[]int      `json:"indexerIds,omitempty"`
-	IntervalSeconds *int        `json:"intervalSeconds,omitempty"`
-	CooldownMinutes *int        `json:"cooldownMinutes,omitempty"`
+	InstanceID             optionalInt `json:"instanceId"`
+	Categories             *[]string   `json:"categories,omitempty"`
+	Tags                   *[]string   `json:"tags,omitempty"`
+	ExcludeCategories      *[]string   `json:"excludeCategories,omitempty"`
+	ExcludeTags            *[]string   `json:"excludeTags,omitempty"`
+	IndexerIDs             *[]int      `json:"indexerIds,omitempty"`
+	IntervalSeconds        *int        `json:"intervalSeconds,omitempty"`
+	CooldownMinutes        *int        `json:"cooldownMinutes,omitempty"`
+	MaxAddedAgeDays        *int        `json:"maxAddedAgeDays,omitempty"`
+	SkipIndividualEpisodes *bool       `json:"skipIndividualEpisodes,omitempty"`
+	TorznabEnabled         *bool       `json:"torznabEnabled,omitempty"`
+	ScheduleEnabled        *bool       `json:"scheduleEnabled,omitempty"`
+	ScheduleIntervalHours  *int        `json:"scheduleIntervalHours,omitempty"`
+	ScheduleMaxSearches    *int        `json:"scheduleMaxSearches,omitempty"`
+	ScheduleMaxAgeDays     *int        `json:"scheduleMaxAgeDays,omitempty"`
 }
 
 func (r searchSettingsPatchRequest) isEmpty() bool {
 	return !r.InstanceID.Set &&
 		r.Categories == nil &&
 		r.Tags == nil &&
+		r.ExcludeCategories == nil &&
+		r.ExcludeTags == nil &&
 		r.IndexerIDs == nil &&
 		r.IntervalSeconds == nil &&
-		r.CooldownMinutes == nil
+		r.CooldownMinutes == nil &&
+		r.MaxAddedAgeDays == nil &&
+		r.SkipIndividualEpisodes == nil &&
+		r.TorznabEnabled == nil &&
+		r.ScheduleEnabled == nil &&
+		r.ScheduleIntervalHours == nil &&
+		r.ScheduleMaxSearches == nil &&
+		r.ScheduleMaxAgeDays == nil
 }
 
 func (r automationSettingsPatchRequest) isEmpty() bool {
@@ -507,13 +525,15 @@ type automationRunRequest struct {
 }
 
 type searchRunRequest struct {
-	InstanceID      int      `json:"instanceId"`
-	Categories      []string `json:"categories"`
-	Tags            []string `json:"tags"`
-	IntervalSeconds int      `json:"intervalSeconds"`
-	IndexerIDs      []int    `json:"indexerIds"`
-	DisableTorznab  bool     `json:"disableTorznab"`
-	CooldownMinutes int      `json:"cooldownMinutes"`
+	InstanceID        int      `json:"instanceId"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+	IntervalSeconds   int      `json:"intervalSeconds"`
+	IndexerIDs        []int    `json:"indexerIds"`
+	DisableTorznab    bool     `json:"disableTorznab"`
+	CooldownMinutes   int      `json:"cooldownMinutes"`
 	// SkipIndividualEpisodes stops the run from searching loose TV episodes
 	// one by one. Episodes still count toward ensemble season-pack searches.
 	SkipIndividualEpisodes bool `json:"skipIndividualEpisodes"`
@@ -589,6 +609,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 			r.With(crossSeed.Read).Get("/status", h.GetSearchRunStatus)
 			r.With(crossSeed.Run).Post("/run", h.StartSearchRun)
 			r.With(crossSeed.Run).Post("/run/cancel", h.CancelSearchRun)
+			r.With(crossSeed.Run).Post("/schedule/run", h.RunSearchScheduleNow)
 			r.With(crossSeed.Read).Get("/runs", h.ListSearchRunHistory)
 		})
 		r.With(authMiddleware).Route("/manual", func(r chi.Router) {
@@ -1595,13 +1616,22 @@ func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Re
 	}
 
 	updated, err := h.service.PatchSearchSettings(r.Context(), crossseed.SearchSettingsPatch{
-		InstanceIDSet:   patch.InstanceID.Set,
-		InstanceID:      patch.InstanceID.Value,
-		Categories:      patch.Categories,
-		Tags:            patch.Tags,
-		IndexerIDs:      patch.IndexerIDs,
-		IntervalSeconds: patch.IntervalSeconds,
-		CooldownMinutes: patch.CooldownMinutes,
+		InstanceIDSet:          patch.InstanceID.Set,
+		InstanceID:             patch.InstanceID.Value,
+		Categories:             patch.Categories,
+		Tags:                   patch.Tags,
+		ExcludeCategories:      patch.ExcludeCategories,
+		ExcludeTags:            patch.ExcludeTags,
+		IndexerIDs:             patch.IndexerIDs,
+		IntervalSeconds:        patch.IntervalSeconds,
+		CooldownMinutes:        patch.CooldownMinutes,
+		MaxAddedAgeDays:        patch.MaxAddedAgeDays,
+		SkipIndividualEpisodes: patch.SkipIndividualEpisodes,
+		TorznabEnabled:         patch.TorznabEnabled,
+		ScheduleEnabled:        patch.ScheduleEnabled,
+		ScheduleIntervalHours:  patch.ScheduleIntervalHours,
+		ScheduleMaxSearches:    patch.ScheduleMaxSearches,
+		ScheduleMaxAgeDays:     patch.ScheduleMaxAgeDays,
 	})
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
@@ -1641,6 +1671,8 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		InstanceID:             req.InstanceID,
 		Categories:             req.Categories,
 		Tags:                   req.Tags,
+		ExcludeCategories:      req.ExcludeCategories,
+		ExcludeTags:            req.ExcludeTags,
 		IntervalSeconds:        req.IntervalSeconds,
 		IndexerIDs:             req.IndexerIDs,
 		DisableTorznab:         req.DisableTorznab,
@@ -1660,6 +1692,37 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		}
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().Err(err).Msg("Failed to start search run")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, run)
+}
+
+// RunSearchScheduleNow godoc
+// @Summary Run the Library Scan schedule now
+// @Description Starts a scheduled Library Scan run with the saved Library settings. The schedule counts its next run from this start.
+// @Tags cross-seed
+// @Produce json
+// @Success 202 {object} models.CrossSeedSearchRun
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 409 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/search/schedule/run [post]
+func (h *CrossSeedHandler) RunSearchScheduleNow(w http.ResponseWriter, r *http.Request) {
+	run, err := h.service.RunScheduledSearchNow(context.WithoutCancel(r.Context()))
+	if err != nil {
+		if errors.Is(err, crossseed.ErrSearchRunActive) {
+			RespondError(w, http.StatusConflict, "Search run already active")
+			return
+		}
+		if errors.Is(err, crossseed.ErrNoIndexersConfigured) {
+			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer, or a RED or OPS key, before the Library Scan schedule can run.")
+			return
+		}
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to start a scheduled search run")
 		RespondError(w, status, err.Error())
 		return
 	}

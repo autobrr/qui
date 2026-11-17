@@ -254,6 +254,28 @@
         "fix": "Si la clau és incorrecta, crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Orpheus i enganxa-la a la configuració Gazelle (OPS/RED) de qui. Si Orpheus ha bloquejat la IP de qui, una clau nova no ajuda: contacta amb l'equip de Orpheus.",
         "menuFix": "Enganxa una clau nova a la configuració",
         "action": "Obre la configuració Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Programació de l'exploració bloquejada",
+        "title": "La programació de l'exploració de la biblioteca no es pot executar",
+        "effect": "qui no pot iniciar l'execució programada de l'exploració de la biblioteca. Ho torna a provar cada hora.",
+        "fix": "Comprova la configuració de l'exploració de la biblioteca. qui ho torna a provar cada hora.",
+        "menuFix": "Comprova la configuració de l'exploració",
+        "action": "Obre la configuració de l'exploració de la biblioteca",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab està desactivat a la configuració de l'exploració de la biblioteca, i no hi ha cap clau API de RED ni d'OPS. Activa Torznab, o afegeix una clau de RED o d'OPS a la configuració Gazelle (OPS/RED). qui ho torna a provar cada hora.",
+            "menuFix": "Activa Torznab, o afegeix una clau de RED o d'OPS"
+          },
+          "no_indexer": {
+            "fix": "No hi ha cap indexador activat. Activa un indexador Torznab, o afegeix una clau de RED o d'OPS a la configuració Gazelle (OPS/RED). qui ho torna a provar cada hora.",
+            "menuFix": "Activa un indexador"
+          },
+          "instance_missing": {
+            "fix": "La instància de la configuració desada de l'exploració de la biblioteca no existeix. Tria una instància a la configuració de l'exploració de la biblioteca i desa. qui ho torna a provar cada hora.",
+            "menuFix": "Tria una instància i desa"
+          }
+        }
       }
     },
     "actions": {

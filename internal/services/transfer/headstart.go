@@ -37,21 +37,35 @@ func (j *job) inTheWay(rel string) error {
 	return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, j.targetPath(rel))
 }
 
+// cannotLook is a lookup for a file in the way that got no answer, such as
+// on a dropped SFTP connection. It found no file, so the Transfer tries
+// again later.
+func cannotLook(instance string, err error) error {
+	return temporary("qui cannot look for a file in the way on %s: %w", instance, err)
+}
+
 // findOnTarget marks each file of the group that the target already has. A
 // regular file of the right size is a head start, and anything else is a
 // conflict, as is any file at a name that qui writes.
 func (j *job) findOnTarget(ctx context.Context) error {
 	for _, f := range j.files {
 		for _, name := range []string{j.tempName(f.rel), j.tempName(f.rel) + incompleteExt, j.linkName(f.rel), j.linkName(f.rel) + incompleteExt} {
-			if _, err := j.root.Lstat(ctx, name); !errors.Is(err, fs.ErrNotExist) {
+			_, err := j.root.Lstat(ctx, name)
+			switch {
+			case errors.Is(err, fs.ErrNotExist):
+			case err != nil:
+				return cannotLook(j.target.Name, err)
+			default:
 				return j.inTheWay(name)
 			}
 		}
 		info, err := j.root.Lstat(ctx, f.rel)
-		if errors.Is(err, fs.ErrNotExist) {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
 			continue
-		}
-		if err != nil || !info.Mode.IsRegular() || info.Size != f.size {
+		case err != nil:
+			return cannotLook(j.target.Name, err)
+		case !info.Mode.IsRegular() || info.Size != f.size:
 			return j.inTheWay(f.rel)
 		}
 		f.onTarget = true
@@ -192,13 +206,18 @@ func readAt(ctx context.Context, files fsops.Backend, name string, offset int64,
 
 // link makes the hardlink of each file of the member that was on the
 // target. A file that qui cannot link is a conflict, whatever the error: it
-// differs between filesystems and SFTP servers.
+// differs between filesystems and SFTP servers. A dropped connection is no
+// such answer, so the Transfer tries again.
 func (j *job) link(ctx context.Context, p *part) error {
 	for _, f := range p.plan {
 		if !f.onTarget {
 			continue
 		}
-		if err := j.root.Link(ctx, p.rel(f), j.linkName(p.rel(f))); err != nil {
+		err := j.root.Link(ctx, p.rel(f), j.linkName(p.rel(f)))
+		if errors.Is(err, fsops.ErrConnectionLost) {
+			return temporary("qui cannot link %s on %s: %w", p.rel(f), j.target.Name, targetError{err})
+		}
+		if err != nil {
 			return permanent("Conflict: qui cannot check the file at %s on %s, because it cannot make a hardlink there: %v",
 				j.targetPath(p.rel(f)), j.target.Name, err)
 		}

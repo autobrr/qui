@@ -16,6 +16,8 @@ import (
 // for a Transfer or a Share. A tag proves nothing. ADR 0005.
 type helperTorrents interface {
 	IsHelper(instanceID int, hash string) bool
+	// HelperCheck returns nil when the instance has no helper torrent.
+	HelperCheck(instanceID int) func(hash string) bool
 }
 
 // SetHelperTorrents hides the helper torrents from cross-seed: no search,
@@ -39,14 +41,20 @@ type withoutHelpers struct {
 
 func (w withoutHelpers) GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	torrents, err := w.qbittorrentSync.GetTorrentRefs(ctx, instanceID, filter)
-	return leaveOut(torrents, func(t *qbt.Torrent) bool { return w.helpers.IsHelper(instanceID, t.Hash) }), err
+	if isHelper := w.helpers.HelperCheck(instanceID); isHelper != nil {
+		torrents = leaveOut(torrents, func(t *qbt.Torrent) bool { return isHelper(t.Hash) })
+	}
+	return torrents, err
 }
 
 func (w withoutHelpers) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
 	torrents, err := w.qbittorrentSync.GetCachedInstanceTorrents(ctx, instanceID)
-	return leaveOut(torrents, func(t qbittorrent.CrossInstanceTorrentView) bool {
-		return t.TorrentView != nil && t.Torrent != nil && w.helpers.IsHelper(instanceID, t.Hash)
-	}), err
+	if isHelper := w.helpers.HelperCheck(instanceID); isHelper != nil {
+		torrents = leaveOut(torrents, func(t qbittorrent.CrossInstanceTorrentView) bool {
+			return t.TorrentView != nil && t.Torrent != nil && isHelper(t.Hash)
+		})
+	}
+	return torrents, err
 }
 
 // leaveOut returns items without the ones that out names. items can be a

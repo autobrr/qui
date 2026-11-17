@@ -26,7 +26,12 @@ type fakeTransfers struct {
 	folders []string
 }
 
-func (f fakeTransfers) IsHelper(_ int, hash string) bool { return f.helpers[hash] }
+func (f fakeTransfers) HelperCheck(int) func(hash string) bool {
+	if len(f.helpers) == 0 {
+		return nil
+	}
+	return func(hash string) bool { return f.helpers[hash] }
+}
 
 func (f fakeTransfers) RunningFolders(context.Context, int) ([]string, error) { return f.folders, nil }
 

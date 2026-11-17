@@ -1947,6 +1947,8 @@ class ApiClient {
     instanceId: number
     categories: string[]
     tags: string[]
+    excludeCategories: string[]
+    excludeTags: string[]
     intervalSeconds: number
     indexerIds: number[]
     disableTorznab?: boolean
@@ -1958,6 +1960,11 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(payload),
     })
+  }
+
+  /** Starts a scheduled run with the saved settings and restarts the schedule clock. Fails with 409 while a run is active. */
+  async runCrossSeedSearchScheduleNow(): Promise<CrossSeedSearchRun> {
+    return this.request<CrossSeedSearchRun>("/cross-seed/search/schedule/run", { method: "POST" })
   }
 
   async cancelCrossSeedSearchRun(): Promise<void> {

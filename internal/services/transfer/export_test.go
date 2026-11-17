@@ -19,9 +19,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
+	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
 // exportPolls shortens the wait of an Export run for the target.
@@ -418,32 +420,72 @@ func TestExportRechecksAPausedAddAfterACrash(t *testing.T) {
 	require.True(t, r.dst.Stopped(s.hash), "the torrent stays paused")
 }
 
-// The cleanup of a failed Export run that resumes after a restart removes
-// nothing from a target that got a new address: the torrent there is not
-// the one that qui added.
+// An Export run that resumes after a restart touches nothing on a target
+// that got a new address: the torrent there is not the one that qui added.
+// It stops before the add, after the add, and at its cleanup, also when it
+// cannot read the address.
 // regression: #4231
-func TestExportRemovesNothingFromATargetWithANewAddress(t *testing.T) {
-	r := newRig(t, exportPolls)
-	s := newShow(t, showName)
-	r.seed(s)
-	req := r.exportRequest(s)
-	runCrashChild(t, crash{DB: r.dbPath, Export: &req, At: "after:clean up"}, make(chan *os.Process, 1), false)
-	moved := qbtstub.New(t, r.dstDir)
-	write(t, filepath.Join(r.dstDir, showName), s.files)
-	moved.Seed(s.data, r.dstDir)
-	_, err := r.instances.Update(t.Context(), r.target.ID, "homelab", moved.URL, "", "", nil, nil, nil)
-	require.NoError(t, err)
+func TestExportTouchesNothingOnATargetWithANewAddress(t *testing.T) {
+	for _, tc := range []struct {
+		at string
+		// has seeds the torrent on the client at the new address.
+		has bool
+		// unread fails each read of an instance by the Export run, as on a
+		// database that does not answer, while the clients still find the
+		// new address.
+		unread bool
+	}{
+		{at: "after:add"},
+		{at: "after:added", has: true},
+		{at: "after:clean up", has: true},
+		{at: "after:add", unread: true},
+		{at: "after:added", has: true, unread: true},
+	} {
+		name := tc.at
+		if tc.unread {
+			name += " unread"
+		}
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t, exportPolls)
+			s := newShow(t, showName)
+			r.seed(s)
+			req := r.exportRequest(s)
+			runCrashChild(t, crash{DB: r.dbPath, Export: &req, At: tc.at}, make(chan *os.Process, 1), false)
+			moved := qbtstub.New(t, r.dstDir)
+			write(t, filepath.Join(r.dstDir, showName), s.files)
+			if tc.has {
+				moved.Seed(s.data, r.dstDir)
+			}
 
-	r.restart()
-	r.svc.Wait()
+			_, err := r.instances.Update(t.Context(), r.target.ID, "homelab", moved.URL, "", "", nil, nil, nil)
+			require.NoError(t, err)
 
-	var id int64
-	require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
-	record := r.get(id)
-	require.Equal(t, transfer.StateFailed, record.State)
-	require.False(t, record.FinishedAt.IsZero())
-	require.True(t, moved.Has(s.hash), "qui keeps the torrent of the new address")
-	require.Zero(t, moved.Writes("torrents/delete"))
+			r.restartWithNewClients(func(deps *transfer.Deps) {
+				if tc.unread {
+					deps.Instances, err = models.NewInstanceStore(unanswered{r.db}, sshtest.EncryptionKey())
+					require.NoError(t, err)
+				}
+			})
+			r.svc.Wait()
+
+			var id int64
+			require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+			record := r.get(id)
+			require.Equal(t, transfer.StateFailed, record.State, record.FailureReason)
+			require.False(t, record.FinishedAt.IsZero())
+			require.Equal(t, tc.has, moved.Has(s.hash), "qui adds nothing at the new address, and removes nothing there")
+			for _, endpoint := range []string{"torrents/add", "torrents/recheck", "torrents/delete"} {
+				require.Zero(t, moved.Writes(endpoint), endpoint)
+			}
+		})
+	}
+}
+
+// unanswered is a database whose single-row reads fail.
+type unanswered struct{ dbinterface.Querier }
+
+func (u unanswered) QueryRowContext(ctx context.Context, _ string, _ ...any) *sql.Row {
+	return u.Querier.QueryRowContext(ctx, "SELECT no_answer")
 }
 
 // The add on the target gets the parameters that the old Export path sends

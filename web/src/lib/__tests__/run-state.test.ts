@@ -53,6 +53,7 @@ const readyLibrary: LibraryRunInput = {
   cancelPending: false,
   needsGazelle: false,
   hasSearchSource: true,
+  scheduledRun: false,
 }
 
 describe("libraryRunState", () => {
@@ -76,6 +77,10 @@ describe("libraryRunState", () => {
 
   it("is running while a scan is in progress, even when a reason applies", () => {
     expect(libraryRunState({ ...readyLibrary, running: true, hasInstance: false }, t)).toEqual({ kind: "running" })
+  })
+
+  it("says that the active scan is a scheduled run", () => {
+    expect(libraryRunState({ ...readyLibrary, running: true, scheduledRun: true }, t)).toEqual({ kind: "running", note: "scan.schedule.scheduledRunActive" })
   })
 
   it("is cancelling while a cancel request is pending", () => {

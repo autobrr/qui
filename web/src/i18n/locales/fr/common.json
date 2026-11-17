@@ -254,6 +254,28 @@
         "fix": "Si la clé est incorrecte, créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Orpheus, puis collez-la dans les paramètres Gazelle (OPS/RED) de qui. Si Orpheus a banni l’IP de qui, une nouvelle clé ne suffit pas : contactez l’équipe de Orpheus.",
         "menuFix": "Coller une nouvelle clé dans les paramètres",
         "action": "Ouvrir les paramètres Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Planning de l’analyse bloqué",
+        "title": "Le planning de l’analyse de la bibliothèque ne peut pas s’exécuter",
+        "effect": "qui ne peut pas démarrer l’exécution planifiée de l’analyse de la bibliothèque. Il réessaie toutes les heures.",
+        "fix": "Vérifiez les paramètres de l’analyse de la bibliothèque. qui réessaie toutes les heures.",
+        "menuFix": "Vérifier les paramètres de l’analyse",
+        "action": "Ouvrir les paramètres de l’analyse de la bibliothèque",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab est désactivé dans les paramètres de l’analyse de la bibliothèque, et aucune clé API RED ou OPS n’est définie. Activez Torznab, ou ajoutez une clé RED ou OPS dans les paramètres Gazelle (OPS/RED). qui réessaie toutes les heures.",
+            "menuFix": "Activer Torznab, ou ajouter une clé RED ou OPS"
+          },
+          "no_indexer": {
+            "fix": "Aucun indexeur n’est activé. Activez un indexeur Torznab, ou ajoutez une clé RED ou OPS dans les paramètres Gazelle (OPS/RED). qui réessaie toutes les heures.",
+            "menuFix": "Activer un indexeur"
+          },
+          "instance_missing": {
+            "fix": "L’instance des paramètres enregistrés de l’analyse de la bibliothèque n’existe pas. Choisissez une instance dans les paramètres de l’analyse de la bibliothèque, puis enregistrez. qui réessaie toutes les heures.",
+            "menuFix": "Choisir une instance, puis enregistrer"
+          }
+        }
       }
     },
     "actions": {

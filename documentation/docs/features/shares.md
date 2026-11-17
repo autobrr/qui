@@ -35,7 +35,7 @@ If you turned off authentication for listed networks with `QUI__AUTH_DISABLED` a
 
 ## Start a Share
 
-1. In the torrent list, select one or more torrents of one instance.
+1. In the torrent list, select 1 to 100 torrents of one instance. If you select more than 100 torrents, the menu does not show **Share with someone…**.
 2. Right-click and click **Share with someone…**. Each torrent gets its own Share.
 3. Set the three fields. They start with the defaults from **Settings → Shares**:
    - **Days until a Share ends**: 7 by default, 365 at most.

@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 )
@@ -94,6 +95,16 @@ func (s *Service) export(record *Record, done chan<- ExportResult) {
 		close(done)
 		return
 	}
+	// A cancel may have ended the run since the caller read it, or saved its
+	// cleanup and failed to record the end, and a cancel leaves s.runs once
+	// its cleanup ends.
+	if current, err := s.deps.Store.Get(s.ctx, record.ID); err == nil {
+		if !current.FinishedAt.IsZero() {
+			close(done)
+			return
+		}
+		record = current
+	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	s.runs[record.ID] = &run{cancel: cancel}
 	s.wg.Go(func() {
@@ -145,6 +156,16 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		return e.end(ctx, e.rec.FailureReason, true), true
 	}
 	m := e.member()
+	target, err := e.svc.deps.Instances.Get(ctx, m.TargetInstanceID)
+	switch {
+	case ctx.Err() != nil:
+		return ExportResult{}, false
+	case err != nil:
+		return e.end(ctx, fmt.Sprintf("qui cannot read instance %d, so it adds nothing there and removes nothing from it: %v",
+			m.TargetInstanceID, err), false), true
+	case e.targetMoved(target):
+		return e.end(ctx, target.Name+" changed its address, so qui adds nothing there and removes nothing from it.", false), true
+	}
 	if e.reached(stepAdd) {
 		torrent, err := e.svc.torrent(ctx, m.TargetInstanceID, m.Hash)
 		switch {
@@ -198,14 +219,18 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		return e.end(ctx, "qui cannot record the Export run: "+err.Error(), false), true
 	}
 	added := e.svc.adder.Add(ctx, e.addRequest(data))
+	if added.Failure != torrentadd.AddRefused {
+		// The target answered the add, so a cancel or a restart during the
+		// wait for the torrent still knows that qui added it.
+		e.rec.Steps = append(e.rec.Steps, Step{Name: stepAdded, At: e.svc.deps.Now()})
+		e.save(context.WithoutCancel(ctx))
+	}
 	switch {
 	case ctx.Err() != nil:
 		return ExportResult{}, false
 	case added.Failure == torrentadd.AddRefused:
 		return e.end(ctx, "Add to target failed: "+added.Err.Error(), false), true
 	}
-	e.rec.Steps = append(e.rec.Steps, Step{Name: stepAdded, At: e.svc.deps.Now()})
-	e.save(ctx)
 	if added.Failure == torrentadd.AfterAddFailed {
 		return e.end(ctx, "Recheck on target failed: "+added.Err.Error(), true), true
 	}
@@ -266,7 +291,7 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 	event := log.Info()
 	if reason == "" {
 		e.logf("Done.")
-		e.finish(ctx, StateDone)
+		_ = e.finish(ctx, StateDone)
 	} else {
 		event = log.Warn().Str("reason", reason)
 		e.rec.FailureReason = reason
@@ -282,7 +307,7 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 		} else {
 			e.logf("Failed: %s", reason)
 		}
-		e.finish(ctx, StateFailed)
+		_ = e.finish(ctx, StateFailed)
 	}
 	event.Int64("transfer", e.rec.ID).Int("rule", *e.rec.RuleID).Int("source", e.rec.SourceInstanceID).
 		Int("target", m.TargetInstanceID).Str("hash", m.Hash).Msg("transfer: the Export run ended")
@@ -304,7 +329,7 @@ func (e *exportJob) cancel(ctx context.Context) ExportResult {
 	if e.reached(stepAdded) {
 		e.removeFromTarget(ctx)
 	}
-	e.finish(ctx, StateCancelled)
+	_ = e.finish(ctx, StateCancelled)
 	log.Info().Int64("transfer", e.rec.ID).Int("rule", *e.rec.RuleID).Msg("transfer: the Export run was cancelled")
 	return ExportResult{Failure: "Cancelled."}
 }
@@ -316,9 +341,7 @@ func (e *exportJob) removeFromTarget(ctx context.Context) {
 	case err != nil:
 		e.logf("qui could not remove the torrent from the target: %v", err)
 		return
-	case fsops.EndpointOf(target).URL != e.rec.TargetEndpoint.URL:
-		// The torrent there is not the one that qui added. The delete goes
-		// through qBittorrent, so only its address counts.
+	case e.targetMoved(target):
 		e.logf("The target has a new address, so qui leaves the torrent there.")
 		return
 	}
@@ -328,6 +351,13 @@ func (e *exportJob) removeFromTarget(ctx context.Context) {
 		return
 	}
 	e.logf("Removed the torrent from the target, and kept its files.")
+}
+
+// targetMoved reports whether the target got a new address since the rule
+// started the run. The torrent there is not the one that qui added. The add
+// and the delete go through qBittorrent, so only its address counts.
+func (e *exportJob) targetMoved(target *models.Instance) bool {
+	return fsops.EndpointOf(target).URL != e.rec.TargetEndpoint.URL
 }
 
 // exportSettings are the settings of the add on the target.

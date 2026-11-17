@@ -358,14 +358,13 @@ type rowValues struct {
 type rowBuilder struct {
 	reannounce, popularity bool // the instance sends them in the torrent list
 	values                 []rowValues
-	// helpers is nil when no helper registry is set.
-	helpers    HelperTorrents
-	instanceID int
+	helpers                snapshotHelpers
 }
 
-// newRowBuilder returns a builder for n rows of the instance of c.
-func (c *Client) newRowBuilder(n int, helpers HelperTorrents) rowBuilder {
-	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5), helpers: helpers, instanceID: c.instanceID}
+// newRowBuilder returns a builder for n rows of the instance of c, which are
+// torrents of snapshot.
+func (c *Client) newRowBuilder(n int, helpers HelperTorrents, snapshot *qbt.SyncSnapshot) rowBuilder {
+	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5), helpers: helpersOf(snapshot, helpers, c.instanceID)}
 	if b.reannounce || b.popularity {
 		b.values = make([]rowValues, n)
 	}
@@ -376,10 +375,7 @@ func (c *Client) newRowBuilder(n int, helpers HelperTorrents) rowBuilder {
 // sends neither Reannounce nor Popularity, allocates for a row with a known
 // Private.
 func (b *rowBuilder) view(i int, t *qbt.Torrent, health TrackerHealth) TorrentView {
-	tv := TorrentView{Torrent: t, TrackerHealth: health}
-	if b.helpers != nil {
-		tv.QuiHelper = b.helpers.HelperKind(b.instanceID, t.Hash)
-	}
+	tv := TorrentView{Torrent: t, TrackerHealth: health, QuiHelper: b.helpers.kind(t)}
 	privateKnown := !PrivateUnknown(t)
 	if !b.reannounce && !b.popularity && !privateKnown {
 		return tv
@@ -1813,14 +1809,14 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	var paginatedViews []TorrentView
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
-		rows := client.newRowBuilder(len(paginatedTorrents), sm.helpers())
+		rows := client.newRowBuilder(len(paginatedTorrents), sm.helpers(), syncSnapshot)
 		for i := range paginatedTorrents {
 			paginatedViews[i] = rows.view(i, paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash))
 		}
 	}
 	if len(groupedRows) > 0 {
 		paginatedViews = make([]TorrentView, len(groupedRows))
-		rows := client.newRowBuilder(len(groupedRows), sm.helpers())
+		rows := client.newRowBuilder(len(groupedRows), sm.helpers(), syncSnapshot)
 		for i, grouped := range groupedRows {
 			torrent := filteredTorrents[grouped.row]
 			paginatedViews[i] = rows.view(i, torrent, cachedHealth.Health(torrent.Hash))
@@ -1913,7 +1909,7 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, err
 	}
 
-	return sm.instanceTorrentViews(client, instanceID, name, TorrentRefFilter{}.Select(syncManager.Snapshot())), nil
+	return sm.instanceTorrentViews(client, instanceID, name, syncManager.Snapshot()), nil
 }
 
 func (sm *SyncManager) lookupInstanceName(ctx context.Context, instanceID int) (string, error) {
@@ -1927,8 +1923,10 @@ func (sm *SyncManager) lookupInstanceName(ctx context.Context, instanceID int) (
 	return instance.Name, nil
 }
 
-// instanceTorrentViews sorts the views by name, then hash. It returns nil for no torrents.
-func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, instanceName string, torrents []*qbt.Torrent) []CrossInstanceTorrentView {
+// instanceTorrentViews returns the views of the torrents of snapshot, sorted by
+// name, then hash. It returns nil for no torrents.
+func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, instanceName string, snapshot *qbt.SyncSnapshot) []CrossInstanceTorrentView {
+	torrents := snapshotTorrents(snapshot)
 	if len(torrents) == 0 {
 		return nil
 	}
@@ -1938,7 +1936,7 @@ func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, inst
 		cachedHealth = sm.GetTrackerHealthSnapshot(instanceID)
 	}
 
-	rows := client.newRowBuilder(len(torrents), sm.helpers())
+	rows := client.newRowBuilder(len(torrents), sm.helpers(), snapshot)
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i := range torrents {
 		views[i] = CrossInstanceTorrentView{

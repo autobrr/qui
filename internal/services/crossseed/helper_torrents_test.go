@@ -18,6 +18,13 @@ type fakeHelpers map[string]bool
 
 func (f fakeHelpers) IsHelper(instanceID int, hash string) bool { return instanceID == 1 && f[hash] }
 
+func (f fakeHelpers) HelperCheck(instanceID int) func(hash string) bool {
+	if instanceID != 1 || len(f) == 0 {
+		return nil
+	}
+	return func(hash string) bool { return f[hash] }
+}
+
 // Cross-seed matches no helper torrent. A torrent of the user with the helper
 // tag and no registry row is a normal cross-seed.
 func TestCrossSeedSkipsHelperTorrents(t *testing.T) {

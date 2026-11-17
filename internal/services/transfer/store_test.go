@@ -240,6 +240,35 @@ func TestHoldNamesWhyQuiKeepsATorrent(t *testing.T) {
 	require.ErrorIs(t, store.Hold(source, "AAAA"), transfer.ErrClaimed, "a hash in upper case names the same torrent")
 }
 
+// A pass over the torrents of an instance reads the registry one time. Its
+// check is nil when the instance has nothing that the check names, so the
+// pass can skip it.
+func TestTheChecksOfAnInstanceNameWhatQuiKeepsThere(t *testing.T) {
+	t.Parallel()
+
+	store := open(t, testdb.NewMigratedSQLite(t, "transfer-records"))
+	require.Nil(t, store.HelperKinds(target))
+	require.Nil(t, store.HelperCheck(target))
+	require.Nil(t, store.HoldCheck(source))
+
+	require.NoError(t, store.Create(t.Context(), group("aaaa")))
+	require.NoError(t, store.RegisterHelper(t.Context(), transfer.Helper{InstanceID: target, Hash: "ffff", Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1}))
+	require.Nil(t, store.HelperKinds(source), "a claim is no helper torrent")
+	require.Nil(t, store.HelperCheck(source))
+
+	require.Equal(t, map[string]string{"ffff": "share"}, store.HelperKinds(target))
+	isHelper := store.HelperCheck(target)
+	require.True(t, isHelper("ffff"))
+	require.False(t, isHelper("aaaa"))
+
+	isHeld := store.HoldCheck(source)
+	require.True(t, isHeld("AAAA"))
+	require.False(t, isHeld("ffff"), "the helper torrent is on the target")
+	isHeld = store.HoldCheck(target)
+	require.True(t, isHeld("ffff"))
+	require.False(t, isHeld("aaaa"), "the claim holds the torrent on the source only")
+}
+
 // The Transfer saves its progress while it runs: the state, the steps and the
 // log, the failure, and the Proven pieces of each member.
 func TestSaveKeepsTheProgressPostgresIntegration(t *testing.T) {

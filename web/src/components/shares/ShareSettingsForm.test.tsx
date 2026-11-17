@@ -67,6 +67,9 @@ beforeEach(() => {
       if (refuseWith) {
         return HttpResponse.json({ error: refuseWith.error }, { status: refuseWith.status })
       }
+      if (!Number.isInteger(body.port) || body.port < 0 || body.port > 65535) {
+        return HttpResponse.json({ error: "invalid Share tracker settings: the port is not between 0 and 65535" }, { status: 400 })
+      }
       const own = body.port !== 0 && body.publicAddress !== ""
       stored = { ...body, trackerInUse: own ? "own" : body.trackerUrl ? "outside" : "" }
       return HttpResponse.json(stored)
@@ -135,6 +138,21 @@ describe("ShareSettingsForm", () => {
       peersPerShare: 5,
       defaults: { days: 2, endAtFirstDownload: false, firstDownloaderOnly: false },
     })
+  })
+
+  // regression: #4242
+  it("refuses a port that is not a whole number, and keeps qui's tracker on", async () => {
+    stored = { ...defaults, port: 6969, publicAddress: "https://share.example.com", trackerInUse: "own" }
+    renderForm()
+    await screen.findByLabelText("Port")
+
+    type("Port", "6969.5")
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+
+    const alert = await screen.findByRole("alert")
+    expect(alert.textContent).toContain("the port is not between 0 and 65535")
+    expect(stored.port).toBe(6969)
+    expect(screen.getByText("New Shares use qui's tracker.")).not.toBeNull()
   })
 
   it("shows why qui refused to move its tracker while Shares on it run", async () => {

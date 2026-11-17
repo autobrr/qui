@@ -341,6 +341,50 @@ func TestAShareSeedsAShareTorrentThatQuisTrackerAnnounces(t *testing.T) {
 	require.Zero(t, listed.Downloaded)
 }
 
+// regression: #4231
+func TestQuisTrackerAnswersTheFirstAnnounceOfAShareTorrent(t *testing.T) {
+	for name, otherShare := range map[string]bool{
+		"the first Share":                false,
+		"while another Share runs on it": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			if otherShare {
+				r.start(share.Request{Hash: r.seed("Other.Show.S01.1080p-GRP")})
+			}
+			// qBittorrent announces a torrent that starts at once, so the
+			// announce goes out while the add runs.
+			var status int
+			var announceErr error
+			r.stub.OnAdd = func(hash string) {
+				unfinished, err := share.NewStore(r.db).Unfinished(t.Context())
+				if err != nil {
+					announceErr = err
+					return
+				}
+				i := slices.IndexFunc(unfinished, func(sh share.Share) bool { return sh.HelperHash == hash })
+				if i < 0 {
+					announceErr = fmt.Errorf("no unfinished Share has the torrent %s", hash)
+					return
+				}
+				announceURL := "http://127.0.0.1:" + strconv.Itoa(r.port) + "/announce/" + unfinished[i].OwnerSecret
+				resp, err := http.DefaultClient.Do(r.announceRequest("", announceURL, hash, 51413, 0, "started"))
+				if err != nil {
+					announceErr = err
+					return
+				}
+				status = resp.StatusCode
+				_ = resp.Body.Close()
+			}
+
+			r.start(share.Request{})
+
+			require.NoError(t, announceErr)
+			require.Equal(t, http.StatusOK, status)
+		})
+	}
+}
+
 func TestAShareWithoutTheEndAtTheFirstDownloadRunsOn(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{EndAtFirstDownload: new(false)})
@@ -644,6 +688,7 @@ func TestAStartThatTheUserCancelsAfterTheAddEndsItsShare(t *testing.T) {
 
 	_, err := r.svc.Start(ctx, share.Request{InstanceID: r.instance.ID, Hash: r.hash})
 	require.True(t, share.IsRefusal(err), "%v", err)
+	require.False(t, listening(r.port), "the tracker stops with the Share that did not start")
 	r.check()
 
 	list, err := r.svc.List(t.Context())

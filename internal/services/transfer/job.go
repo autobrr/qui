@@ -200,6 +200,9 @@ func (j *job) prepare(ctx context.Context) error {
 	if err := j.readParts(ctx, pathsOf(j.target, j.dstFiles, j.rec.Members[0].Placement.SavePath)); err != nil {
 		return err
 	}
+	if err := j.recordNames(ctx); err != nil {
+		return err
+	}
 	if !j.blind {
 		if err := j.openRoot(ctx, resumed); err != nil {
 			return err
@@ -248,7 +251,11 @@ func (j *job) openRoot(ctx context.Context, resumed bool) error {
 		return permanent("qui cannot write new files on %s.", j.target.Name)
 	}
 	var err error
-	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
+	j.root, err = opener.OpenRoot(ctx, j.rootDir)
+	switch {
+	case errors.Is(err, fsops.ErrConnectionLost):
+		return temporary("qui cannot open the save path %s on %s: %w", j.rootDir, j.target.Name, err)
+	case err != nil:
 		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
 	}
 	find := j.findOnTarget
@@ -482,6 +489,9 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 				"so the Transfer stopped. qui cleans up nothing on %s.", j.crossSeed.Name, j.crossSeed.Name)
 		}
 	}
+	if j.useRecordedNames(parts) {
+		return sourceGone("a file was renamed")
+	}
 	if j.files, j.byRel, err = groupFiles(parts); err != nil {
 		return permanent("The torrents of the group do not agree on their files: %v", err)
 	}
@@ -549,7 +559,7 @@ func (j *job) rollBack(ctx context.Context) {
 	// The check marks the instances that the cleanup must not touch.
 	_ = j.checkInstances(ctx)
 	j.logf("Cancelled.")
-	j.cleanUp(ctx, StateCancelled)
+	_ = j.cleanUp(ctx, StateCancelled)
 }
 
 // cleanUpAgain finishes a cleanup that a stop interrupted, and sends the
@@ -560,8 +570,7 @@ func (j *job) cleanUpAgain(ctx context.Context) {
 	defer j.release()
 	_ = j.checkInstances(ctx)
 	j.cleanup(ctx)
-	j.finish(ctx, j.rec.State)
-	if j.rec.State == StateFailed {
+	if err := j.finish(ctx, j.rec.State); err == nil && j.rec.State == StateFailed {
 		j.notify(ctx, notifications.EventTransferFailed)
 	}
 }
@@ -576,8 +585,9 @@ func (j *job) end(ctx context.Context, runErr error) {
 
 	if runErr == nil {
 		j.logf("Done.")
-		j.finish(ctx, StateDone)
-		j.notify(ctx, notifications.EventTransferFinished)
+		if err := j.finish(ctx, StateDone); err == nil {
+			j.notify(ctx, notifications.EventTransferFinished)
+		}
 		return
 	}
 	class, reason := FailureTemporary, runErr.Error()
@@ -598,8 +608,9 @@ func (j *job) end(ctx context.Context, runErr error) {
 	j.rec.FailureClass, j.rec.FailureReason = class, reason
 	if class == FailurePermanent {
 		j.logf("Failed: %s", reason)
-		j.cleanUp(ctx, StateFailed)
-		j.notify(ctx, notifications.EventTransferFailed)
+		if err := j.cleanUp(ctx, StateFailed); err == nil {
+			j.notify(ctx, notifications.EventTransferFailed)
+		}
 		return
 	}
 
@@ -658,23 +669,27 @@ func (j *job) save(ctx context.Context) {
 }
 
 // cleanUp records the step clean up, takes back what the Transfer did, and
-// finishes it in state.
-func (j *job) cleanUp(ctx context.Context, state State) {
+// finishes it in state. It returns the error of finish.
+func (j *job) cleanUp(ctx context.Context, state State) error {
 	j.rec.State = state
 	j.rec.Steps = append(j.rec.Steps, Step{Name: stepCleanUp, At: j.svc.deps.Now()})
 	j.save(ctx)
 	j.cleanup(ctx)
-	j.finish(ctx, state)
+	return j.finish(ctx, state)
 }
 
-// finish records the end of the Transfer and releases its torrents.
-func (j *job) finish(ctx context.Context, state State) {
+// finish records the end of the Transfer and releases its torrents. On an
+// error the Transfer stays unfinished, and the next start of qui ends it
+// again, so the caller sends the event of the end only on success.
+func (j *job) finish(ctx context.Context, state State) error {
 	j.rec.State = state
 	j.rec.Steps = append(j.rec.Steps, Step{Name: string(state), At: j.svc.deps.Now()})
 	j.save(ctx)
 	if err := j.svc.deps.Store.Finish(ctx, j.rec.ID, state); err != nil {
 		log.Error().Err(err).Int64("transfer", j.rec.ID).Msg("transfer: cannot finish the Transfer")
+		return err
 	}
+	return nil
 }
 
 // release frees what the run holds, and keeps the files.

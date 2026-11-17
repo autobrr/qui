@@ -252,6 +252,28 @@
         "fix": "如果密钥有误，请在您的 Orpheus 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。如果 Orpheus 封禁了 qui 的 IP，新密钥也无济于事：请联系 Orpheus 的管理团队。",
         "menuFix": "在设置中粘贴新密钥",
         "action": "打开 Gazelle (OPS/RED) 设置"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "做种库扫描计划受阻",
+        "title": "做种库扫描计划无法运行",
+        "effect": "qui 无法启动做种库扫描的计划运行。它会每小时重试一次。",
+        "fix": "请检查做种库扫描设置。qui 会每小时重试一次。",
+        "menuFix": "检查做种库扫描设置",
+        "action": "打开做种库扫描设置",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "做种库扫描设置中的 Torznab 已关闭，且未设置 RED 或 OPS API 密钥。请打开 Torznab，或在 Gazelle (OPS/RED) 设置中添加 RED 或 OPS 密钥。qui 会每小时重试一次。",
+            "menuFix": "打开 Torznab，或添加 RED 或 OPS 密钥"
+          },
+          "no_indexer": {
+            "fix": "没有启用的索引器。请启用一个 Torznab 索引器，或在 Gazelle (OPS/RED) 设置中添加 RED 或 OPS 密钥。qui 会每小时重试一次。",
+            "menuFix": "启用一个索引器"
+          },
+          "instance_missing": {
+            "fix": "已保存的做种库扫描设置中的实例不存在。请在做种库扫描设置中选择一个实例，然后保存。qui 会每小时重试一次。",
+            "menuFix": "选择一个实例，然后保存"
+          }
+        }
       }
     },
     "actions": {

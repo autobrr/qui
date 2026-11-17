@@ -309,7 +309,6 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "auto_managed",
   "moved",
   "exported_to_instance",
-  "transferred_to_instance",
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
@@ -1838,7 +1837,8 @@ function RulePreview({
     tagActions.some((action) => action.enabled && action.condition) ||
     (rule.conditions?.category?.enabled && rule.conditions.category.condition) ||
     (rule.conditions?.move?.enabled && rule.conditions.move.condition) ||
-    (rule.conditions?.externalProgram?.enabled && rule.conditions.externalProgram.condition)
+    (rule.conditions?.externalProgram?.enabled && rule.conditions.externalProgram.condition) ||
+    (rule.conditions?.transferToInstance?.enabled && rule.conditions.transferToInstance.condition)
   )
 
   return (

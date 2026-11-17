@@ -254,6 +254,28 @@
         "fix": "If the key is wrong, make an API key with the Torrents permission in your Orpheus profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If Orpheus banned the IP of qui, a new key does not help: contact the staff of Orpheus.",
         "menuFix": "Paste a new key in settings",
         "action": "Open Gazelle (OPS/RED) settings"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Library Scan schedule blocked",
+        "title": "Library Scan schedule cannot run",
+        "effect": "qui cannot start the scheduled Library Scan run. It tries again every hour.",
+        "fix": "Check the Library Scan settings. qui tries again every hour.",
+        "menuFix": "Check the Library Scan settings",
+        "action": "Open the Library Scan settings",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab is off in the Library Scan settings, and no RED or OPS API key is set. Turn Torznab on, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+            "menuFix": "Turn Torznab on, or add a RED or OPS key"
+          },
+          "no_indexer": {
+            "fix": "No indexer is enabled. Enable a Torznab indexer, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+            "menuFix": "Enable an indexer"
+          },
+          "instance_missing": {
+            "fix": "The instance in the saved Library Scan settings does not exist. Pick an instance in the Library Scan settings, then save. qui tries again every hour.",
+            "menuFix": "Pick an instance, then save"
+          }
+        }
       }
     },
     "actions": {

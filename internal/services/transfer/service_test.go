@@ -5,6 +5,7 @@ package transfer_test
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha1" //nolint:gosec // BitTorrent v1 pieces are SHA-1
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -84,6 +86,11 @@ type disk struct {
 	failRemove func(name string) bool
 	// failOpenRoots is how many of the next OpenRoot calls fail.
 	failOpenRoots int
+	// lostAt fails each call that it reports, as the remote backend fails it
+	// on a dropped connection: op "lstat" below a root or on an SFTP
+	// instance, "link" below a root, and "readdir" and "openroot" on this
+	// disk.
+	lostAt func(op, name string) bool
 
 	mu      sync.Mutex
 	writes  []diskWrite
@@ -122,7 +129,17 @@ func (d *disk) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) 
 	return d.Backend.SameFilesystem(ctx, p1, p2)
 }
 
+func (d *disk) ReadDir(ctx context.Context, dir string) ([]fsops.DirEntry, error) {
+	if d.lostAt != nil && d.lostAt("readdir", dir) {
+		return nil, &fs.PathError{Op: "readdir", Path: dir, Err: fsops.ErrConnectionLost}
+	}
+	return d.Backend.ReadDir(ctx, dir)
+}
+
 func (d *disk) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
+	if d.lostAt != nil && d.lostAt("openroot", dir) {
+		return nil, &fs.PathError{Op: "openroot", Path: dir, Err: fsops.ErrConnectionLost}
+	}
 	if d.failOpenRoots > 0 {
 		d.failOpenRoots--
 		return nil, &fs.PathError{Op: "openat", Path: dir, Err: fs.ErrPermission}
@@ -152,6 +169,13 @@ func (f *sftpFiles) OpenRoot(ctx context.Context, dir string) (fsops.Root, error
 		return nil, err
 	}
 	return &diskRoot{Root: root, d: f.d}, nil
+}
+
+func (f *sftpFiles) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	if f.d.lostAt != nil && f.d.lostAt("lstat", p) {
+		return nil, &fs.PathError{Op: "lstat", Path: p, Err: fsops.ErrConnectionLost}
+	}
+	return f.Backend.Lstat(ctx, p)
 }
 
 // Statfs reads the free space of the host folder where the SFTP server of
@@ -184,6 +208,13 @@ func (r *diskRoot) Create(ctx context.Context, name string) (fsops.FileWriter, e
 	r.d.creates[name]++
 	r.d.mu.Unlock()
 	return r.d.opened(&diskWriter{FileWriter: w, d: r.d, name: name}), nil
+}
+
+func (r *diskRoot) Lstat(ctx context.Context, name string) (*fsops.LstatInfo, error) {
+	if r.d.lostAt != nil && r.d.lostAt("lstat", name) {
+		return nil, &fs.PathError{Op: "lstat", Path: name, Err: fsops.ErrConnectionLost}
+	}
+	return r.Root.Lstat(ctx, name)
 }
 
 func (r *diskRoot) Remove(ctx context.Context, name string) error {
@@ -729,6 +760,46 @@ func TestTransferKeepsTheFileNamesOfTheSource(t *testing.T) {
 		[]string{(*files)[0].Name, (*files)[1].Name})
 }
 
+// A file that the source renamed in case only keeps its new name on the
+// target. On a target that ignores case, the old name finds the copy, which
+// is no conflict, also on a target without file identities.
+// regression: #4231
+func TestTransferKeepsARenameInCase(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		target side
+	}{
+		{name: "on disk", target: onDisk},
+		{name: "over SFTP", target: overSFTP},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, overSFTP, tc.target)
+			s := newShow(t, showName)
+			r.seed(s)
+			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01e01.mkv")
+
+			record := r.run(r.request(s))
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, map[string]string{
+				showName + "/Show.S01e01.mkv": string(s.files["Show.S01E01.mkv"]),
+				showName + "/Show.S01E02.mkv": string(s.files["Show.S01E02.mkv"]),
+			}, tree(t, r.dstDir))
+		})
+	}
+}
+
+// ignoresCase reports whether the filesystem of dir finds a file under
+// another case of its name.
+func ignoresCase(t *testing.T, dir string) bool {
+	t.Helper()
+	probe := filepath.Join(dir, "case-probe")
+	require.NoError(t, os.WriteFile(probe, nil, 0o600))
+	defer func() { require.NoError(t, os.Remove(probe)) }()
+	_, err := os.Lstat(filepath.Join(dir, "CASE-PROBE"))
+	return err == nil
+}
+
 // seedEpisode seeds a torrent of one file that is a file of s, as a
 // cross-seed of one episode does.
 func (r *rig) seedEpisode(s show) string {
@@ -761,12 +832,15 @@ func TestTransferQueuesBySource(t *testing.T) {
 	r.seed(first)
 	write(t, filepath.Join(r.srcDir, "Other.Show.S02.720p-GRP"), second.files)
 	r.src.Seed(second.data, r.srcPath())
-	copying, release := make(chan struct{}), make(chan struct{})
+	copying, held := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	// Runs before the rig closes the Service, also when the test fails first.
+	t.Cleanup(release)
 	var once sync.Once
 	r.disk.onWrite = func(string) {
 		once.Do(func() {
 			close(copying)
-			<-release
+			<-held
 		})
 	}
 
@@ -780,7 +854,7 @@ func TestTransferQueuesBySource(t *testing.T) {
 	require.Equal(t, transfer.StateWaiting, waiting.State)
 	_, err = r.svc.Start(t.Context(), r.request(second))
 	require.ErrorIs(t, err, transfer.ErrClaimed, "a waiting Transfer holds its torrent")
-	close(release)
+	release()
 	r.svc.Wait()
 
 	for _, id := range []int64{firstID, secondID} {
@@ -801,14 +875,23 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 		// sameSize gives the file in the way the size of the file of the
 		// torrent at its name.
 		sameSize bool
+		// inCase needs a target that tells case apart, to hold a second file
+		// at the old name.
+		inCase bool
 	}{
 		{name: "a file at a name that the copy writes", theirs: "Show.S01E02.mkv"},
 		// regression: #4231
 		{name: "a file at the original name of a renamed file", rename: []string{"Show.S01E01.mkv", "Show.S01E00.mkv"},
 			theirs: "Show.S01E01.mkv", sameSize: true},
+		// regression: #4231
+		{name: "a file at the original name of a file renamed in case", rename: []string{"Show.S01E01.mkv", "Show.S01e01.mkv"},
+			theirs: "Show.S01E01.mkv", sameSize: true, inCase: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t)
+			if tc.inCase && ignoresCase(t, r.dstDir) {
+				t.Skip("the target ignores case, so it cannot hold a second file at the old name")
+			}
 			s := newShow(t, showName)
 			r.seed(s)
 			r.renameOnSource(s, tc.rename...)
@@ -826,6 +909,117 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 			require.Equal(t, map[string]string{showName + "/" + tc.theirs: string(theirs)}, tree(t, r.dstDir))
 			require.True(t, r.src.Has(s.hash))
 			require.False(t, r.src.Stopped(s.hash))
+		})
+	}
+}
+
+// A look at the files that gets no answer, as on a dropped SFTP connection,
+// finds nothing: no file in the way, no missing copy, and no file that
+// cannot be linked. The Transfer fails for a retry and keeps what it
+// copied, on the source, on the target, and when it resumes.
+// regression: #4231
+func TestTransferRetriesALookupThatGetsNoAnswer(t *testing.T) {
+	const episode, temp = "Show.S01E01.mkv", "Show.S01E01.mkv.qui-transfer-1"
+	for _, tc := range []struct {
+		name string
+		// op is the call that fails, any lookup when empty, and at the base
+		// name that it fails at, any name when empty.
+		op, at   string
+		onSource bool
+		rename   []string
+		// theirs puts a file of the size of the episode at its name on a
+		// target that tells case apart.
+		theirs bool
+		// resumed ends qui at the third write of the copy first, or at
+		// crashAt.
+		resumed bool
+		crashAt string
+		// placed moves the temporary file of the episode to its name after
+		// the end: a link is what a stop between the link and the remove of
+		// the rename leaves, and a rename is a rename that ended.
+		placed func(oldname, newname string) error
+		// headStart puts the episode on the target first.
+		headStart bool
+	}{
+		{name: "a name of the Transfer torrent on the source", at: temp, onSource: true},
+		{name: "a temporary name", at: temp},
+		{name: "a file of the torrent", at: episode},
+		{name: "the original name of a renamed file", at: episode, rename: []string{episode, "Show.S01E00.mkv"}},
+		{name: "the folder of a file renamed in case", at: showName, rename: []string{episode, "Show.S01e01.mkv"}, theirs: true},
+		{name: "a file of the torrent on a resume", at: episode, resumed: true},
+		{name: "a temporary file on a resume", at: temp, resumed: true},
+		{name: "a file in place on a resume", at: temp, resumed: true, crashAt: "after:place", placed: os.Link},
+		{name: "a file renamed into place on a resume", at: episode, resumed: true, crashAt: "after:place", placed: os.Rename},
+		{name: "the save path", op: "openroot"},
+		{name: "the link of a head start", op: "link", at: episode + ".qui-link-1", headStart: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			if tc.theirs && ignoresCase(t, r.dstDir) {
+				t.Skip("the target ignores case, so it cannot hold a second file at the old name")
+			}
+			s := newShow(t, showName)
+			r.seed(s)
+			r.renameOnSource(s, tc.rename...)
+			source := tree(t, r.srcDir)
+			want := maps.Clone(source)
+			if tc.theirs {
+				theirs := bytes.Repeat([]byte("t"), len(s.files[episode]))
+				write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode: theirs})
+				want[showName+"/"+episode] = string(theirs)
+			}
+			if tc.headStart {
+				write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode: s.files[episode]})
+			}
+			req := r.request(s)
+			if tc.onSource {
+				r.connect()
+				req.Options.ForcedWay = transfer.WayBitTorrent
+			}
+			lost := func(op, name string) bool {
+				return (tc.op == "" && op != "openroot" && op != "link" || op == tc.op) &&
+					strings.HasPrefix(name, pathOn(overSFTP, r.srcDir)) == tc.onSource &&
+					(tc.at == "" || path.Base(filepath.ToSlash(name)) == tc.at)
+			}
+
+			var record *transfer.Record
+			var copied map[string]string
+			if tc.resumed {
+				runCrashChild(t, crash{DB: r.dbPath, Request: req, At: cmp.Or(tc.crashAt, "write:3")}, make(chan *os.Process, 1), false)
+				if tc.placed != nil {
+					dir := filepath.Join(r.dstDir, showName)
+					require.NoError(t, tc.placed(filepath.Join(dir, temp), filepath.Join(dir, episode)))
+				}
+				copied = tree(t, r.dstDir)
+				require.NotEmpty(t, copied)
+				r.disk.lostAt = lost
+				r.restart()
+				r.svc.Wait()
+				var id int64
+				require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+				record = r.get(id)
+			} else {
+				r.disk.lostAt = lost
+				record = r.run(req)
+			}
+
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Equal(t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
+			require.Contains(t, record.FailureReason, fsops.ErrConnectionLost.Error())
+			require.True(t, record.FinishedAt.IsZero())
+			require.True(t, r.store.IsClaimed(r.source.ID, s.hash))
+			require.Equal(t, source, tree(t, r.srcDir), "the source keeps its files")
+			switch {
+			case tc.resumed:
+				require.Equal(t, copied, tree(t, r.dstDir), "qui keeps what it copied")
+			case tc.rename != nil:
+				require.Equal(t, want, tree(t, r.dstDir), "qui keeps the copy in place")
+			case tc.onSource:
+				require.Zero(t, r.src.Writes("torrents/renameFile"))
+				r.requireNoHelpers(record)
+			case tc.headStart:
+				require.Equal(t, map[string]string{showName + "/" + episode: string(s.files[episode])}, tree(t, r.dstDir))
+			}
 		})
 	}
 }

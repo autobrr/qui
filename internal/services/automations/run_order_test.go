@@ -149,10 +149,12 @@ func activityKeysByID(t *testing.T, db *database.DB, instanceID int) []string {
 func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
 	svc, db, instanceIDs := newStubService(t, nil, stub)
-	svc.SetTransferRunner(&transfers{})
+	runner := &transfers{}
+	svc.SetTransferRunner(runner)
 
 	_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, everyActionRules(), false)
 	require.NoError(t, err)
+	require.Equal(t, []string{stoppedHash}, runner.hashes(), "only the torrent of the Transfer rule starts a Transfer")
 
 	writes := stub.recordedWrites()
 	requestKeys := make([]string, 0, len(writes))
@@ -173,11 +175,14 @@ func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 func TestApplyRulesDryRun_ReportsActionsInRunOrder(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
 	svc, _, instanceIDs := newStubService(t, nil, stub)
-	svc.SetTransferRunner(&transfers{})
+	runner := &transfers{}
+	svc.SetTransferRunner(runner)
 
 	activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, everyActionRules(), true)
 	require.NoError(t, err)
 	require.Empty(t, stub.recordedWrites(), "a dry run sends no writes")
+	require.Len(t, runner.previews, 1, "only the torrent of the Transfer rule gets a preview")
+	require.Equal(t, stoppedHash, runner.previews[0].Hash)
 
 	keys := make([]string, 0, len(activities))
 	for _, activity := range activities {

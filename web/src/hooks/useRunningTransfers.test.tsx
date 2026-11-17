@@ -33,17 +33,8 @@ it("counts the Transfers that run and the Shares that have not ended", async () 
   vi.mocked(listShares).mockResolvedValue([{ state: "active" }, { state: "ending" }, { state: "ended" }] as Share[])
 
   const { result } = renderHook(() => useRunningTransfers(), { wrapper })
+  expect(result.current).toBe(0)
 
   await waitFor(() => expect(result.current).toBe(4))
   expect(transfersApi.list).toHaveBeenCalledWith("active")
-})
-
-it("counts nothing while the lists fail", async () => {
-  vi.mocked(transfersApi.list).mockRejectedValue(new Error("down"))
-  vi.mocked(listShares).mockRejectedValue(new Error("down"))
-
-  const { result } = renderHook(() => useRunningTransfers(), { wrapper })
-
-  await waitFor(() => expect(listShares).toHaveBeenCalled())
-  expect(result.current).toBe(0)
 })

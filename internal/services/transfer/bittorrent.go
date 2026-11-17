@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"strconv"
 	"strings"
 	"time"
@@ -217,8 +218,14 @@ func (j *job) addHelper(ctx context.Context, inst *models.Instance, helper helpe
 }
 
 // seedFromSource renames the files of the stopped Transfer torrent to the
-// files of the source: a rename of a missing file changes only its name.
+// files of the source: a rename of a missing file changes only its name. A
+// file at an old name is a conflict: qBittorrent would move it over the file
+// of the source.
 func (j *job) seedFromSource(ctx context.Context, p *part, helper helpertorrent.Helper, random string, targetNames []string) error {
+	sourceNames := names(p.plan)
+	if err := j.noFileOnSource(ctx, p, targetNames, sourceNames); err != nil {
+		return err
+	}
 	if err := j.addHelper(ctx, j.source, helper, random, torrentadd.Settings{
 		SavePath: p.src.torrent.SavePath,
 		Stopped:  new(true),
@@ -227,7 +234,6 @@ func (j *job) seedFromSource(ctx context.Context, p *part, helper helpertorrent.
 		return err
 	}
 	ctx = qbittorrent.WithPostAddBulkActionRetry(ctx)
-	sourceNames := names(p.plan)
 	for i, name := range targetNames {
 		if name == sourceNames[i] {
 			continue
@@ -245,6 +251,30 @@ func (j *job) seedFromSource(ctx context.Context, p *part, helper helpertorrent.
 		return err
 	case !seeds:
 		return temporary("The Transfer torrent on %s did not start to seed.", j.source.Name)
+	}
+	return nil
+}
+
+// noFileOnSource fails when the source has a file at an old name of a
+// rename in seedFromSource.
+func (j *job) noFileOnSource(ctx context.Context, p *part, targetNames, sourceNames []string) error {
+	if j.srcFiles == nil {
+		return nil
+	}
+	paths := j.srcFiles.Paths()
+	for i, name := range targetNames {
+		if name == sourceNames[i] {
+			continue
+		}
+		old := paths.Join(p.src.torrent.SavePath, paths.FromSlash(name))
+		_, err := j.srcFiles.Lstat(ctx, old)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+		case err != nil:
+			return cannotLook(j.source.Name, err)
+		default:
+			return permanent("Conflict: a file is in the way on %s at %s.", j.source.Name, old)
+		}
 	}
 	return nil
 }

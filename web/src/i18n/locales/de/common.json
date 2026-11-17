@@ -254,6 +254,28 @@
         "fix": "Wenn der Schlüssel falsch ist, erstelle in deinen Orpheus-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein. Wenn Orpheus die IP von qui gesperrt hat, hilft ein neuer Schlüssel nicht: wende dich an das Team von Orpheus.",
         "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
         "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Zeitplan des Bibliotheks-Scans blockiert",
+        "title": "Zeitplan des Bibliotheks-Scans kann nicht laufen",
+        "effect": "qui kann den geplanten Bibliotheks-Scan nicht starten. qui versucht es jede Stunde erneut.",
+        "fix": "Prüfe die Einstellungen des Bibliotheks-Scans. qui versucht es jede Stunde erneut.",
+        "menuFix": "Einstellungen des Bibliotheks-Scans prüfen",
+        "action": "Einstellungen des Bibliotheks-Scans öffnen",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab ist in den Einstellungen des Bibliotheks-Scans aus, und kein RED- oder OPS-API-Schlüssel ist gesetzt. Schalte Torznab ein, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",
+            "menuFix": "Torznab einschalten oder RED- oder OPS-Schlüssel hinzufügen"
+          },
+          "no_indexer": {
+            "fix": "Kein Indexer ist aktiviert. Aktiviere einen Torznab-Indexer, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",
+            "menuFix": "Einen Indexer aktivieren"
+          },
+          "instance_missing": {
+            "fix": "Die Instanz in den gespeicherten Einstellungen des Bibliotheks-Scans existiert nicht. Wähle eine Instanz in den Einstellungen des Bibliotheks-Scans und speichere. qui versucht es jede Stunde erneut.",
+            "menuFix": "Instanz wählen, dann speichern"
+          }
+        }
       }
     },
     "actions": {

@@ -17,7 +17,9 @@ import type { TransferFormValue } from "./transfer-form-value"
 
 const afterOptions: readonly TransferAfter[] = ["removeWithFiles", "keepFiles", "keepSeeding"]
 const wayOptions: readonly TransferWayChoice[] = ["auto", "copy", "bittorrent"]
-const noCategory = "__none__"
+// Each category option carries a prefix, so that no category name equals the value of "No category".
+const noCategory = "none"
+const categoryPrefix = "category:"
 
 interface TransferFormProps {
   value: TransferFormValue
@@ -79,8 +81,8 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-category`}>{t("form.category")}</Label>
           <Select
-            value={value.category || noCategory}
-            onValueChange={category => set({ category: category === noCategory ? "" : category })}
+            value={value.category ? categoryPrefix + value.category : noCategory}
+            onValueChange={option => set({ category: option === noCategory ? "" : option.slice(categoryPrefix.length) })}
             disabled={value.targetInstanceId === null}
           >
             <SelectTrigger id={`${id}-category`} className="w-full">
@@ -89,7 +91,7 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
             <SelectContent>
               <SelectItem value={noCategory}>{t("form.noCategory")}</SelectItem>
               {categories.map(category => (
-                <SelectItem key={category} value={category}>{category}</SelectItem>
+                <SelectItem key={category} value={categoryPrefix + category}>{category}</SelectItem>
               ))}
             </SelectContent>
           </Select>

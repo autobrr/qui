@@ -103,8 +103,9 @@ func (j *job) relink(ctx context.Context) {
 		if _, made := j.made[f]; !made || f.hardlinkOf == nil {
 			continue
 		}
+		same, err := j.sameFile(ctx, j.tempName(f.rel), j.tempName(f.hardlinkOf.rel))
 		switch {
-		case j.sameFile(ctx, j.tempName(f.rel), j.tempName(f.hardlinkOf.rel)):
+		case err == nil && same:
 			f.linksCopy = true
 			j.made[f] = f.size
 		case !j.reachedFor(stepOwnCopy, f.rel):

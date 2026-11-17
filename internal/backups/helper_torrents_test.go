@@ -19,8 +19,11 @@ type fakeHelpers struct {
 	hashes     map[string]bool
 }
 
-func (f fakeHelpers) IsHelper(instanceID int, hash string) bool {
-	return instanceID == f.instanceID && f.hashes[hash]
+func (f fakeHelpers) HelperCheck(instanceID int) func(hash string) bool {
+	if instanceID != f.instanceID || len(f.hashes) == 0 {
+		return nil
+	}
+	return func(hash string) bool { return f.hashes[hash] }
 }
 
 // A backup holds no helper torrent, and a restore neither changes nor removes

@@ -256,6 +256,28 @@
         "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Orpheus klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Orpheus zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Orpheus.",
         "menuFix": "Vložte nový klíč v nastavení",
         "action": "Otevřít nastavení Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Plán hledání ve sdílených je blokovaný",
+        "title": "Plán hledání ve sdílených nemůže běžet",
+        "effect": "qui nemůže spustit plánované hledání ve sdílených. Zkusí to znovu každou hodinu.",
+        "fix": "Zkontrolujte nastavení hledání ve sdílených. qui to zkusí znovu každou hodinu.",
+        "menuFix": "Zkontrolovat nastavení hledání ve sdílených",
+        "action": "Otevřít nastavení hledání ve sdílených",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab je v nastavení hledání ve sdílených vypnutý a není nastaven žádný klíč API pro RED ani OPS. Zapněte Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout Torznab, nebo přidat klíč pro RED nebo OPS"
+          },
+          "no_indexer": {
+            "fix": "Není zapnutý žádný indexer. Zapněte indexer Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout indexer"
+          },
+          "instance_missing": {
+            "fix": "Instance v uloženém nastavení hledání ve sdílených neexistuje. Vyberte instanci v nastavení hledání ve sdílených a uložte. qui to zkusí znovu každou hodinu.",
+            "menuFix": "Vybrat instanci a uložit"
+          }
+        }
       }
     },
     "actions": {

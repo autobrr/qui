@@ -55,11 +55,18 @@ function toNumber(text: string): number {
   return Number.isInteger(value) ? value : 0
 }
 
+/** An empty port is 0, no port. A bad port goes to the server as -1, which it refuses: port 0 would turn qui's tracker off. */
+function toPort(text: string): number {
+  if (text.trim() === "") return 0
+  const value = Number(text.trim())
+  return Number.isInteger(value) ? value : -1
+}
+
 function settingsOf(draft: Draft, saved: ShareSettings): ShareSettings {
   const own = draft.tracker === "own"
   return {
     // An outside tracker closes qui's port: qui uses the tracker URL only while its own tracker is off.
-    port: own ? toNumber(draft.port) : 0,
+    port: own ? toPort(draft.port) : 0,
     publicAddress: own ? draft.publicAddress.trim() : "",
     trustedProxies: draft.trustedProxies.split(/[\s,]+/).filter(Boolean),
     trackerUrl: draft.trackerUrl.trim(),

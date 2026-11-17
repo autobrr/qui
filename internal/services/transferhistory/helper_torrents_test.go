@@ -12,10 +12,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeHelpers is the helper registry: the helper torrents of instance 1.
-type fakeHelpers map[string]bool
+// fakeHelpers is the helper registry: the kind of each helper torrent of
+// instance 1.
+type fakeHelpers map[string]string
 
-func (f fakeHelpers) IsHelper(instanceID int, hash string) bool { return instanceID == 1 && f[hash] }
+func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
+	if instanceID != 1 || len(f) == 0 {
+		return nil
+	}
+	return f
+}
 
 // A Transfer torrent shows a full-size download and upload, so Statistics
 // counts no helper torrent. A torrent of the user with the helper tag and no
@@ -39,7 +45,7 @@ func TestStatisticsCountNoHelperTorrent(t *testing.T) {
 		helpers fakeHelpers
 		want    []string
 	}{
-		{name: "a helper torrent is left out", helpers: fakeHelpers{helper: true}, want: []string{seed, own}},
+		{name: "a helper torrent is left out", helpers: fakeHelpers{helper: "transfer"}, want: []string{seed, own}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {

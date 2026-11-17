@@ -73,6 +73,7 @@ export function RunFooter({ state, runLabel, runIcon, onRun, onCancel, cancelDia
             )}
           </Tooltip>
         )}
+        {state.kind === "running" && state.note && <span className="text-sm text-muted-foreground">{state.note}</span>}
         {options}
       </div>
       {children}

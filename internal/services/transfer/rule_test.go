@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -108,6 +109,45 @@ func TestTransferSendsItsEndAsAnEvent(t *testing.T) {
 	}
 	require.Equal(t, "Torrent: "+showName+"\nTarget: homelab", finished.Message)
 	require.True(t, strings.HasPrefix(failed.Message, "Torrent: "+showName+"\nTarget: homelab\nError: Not enough free space on homelab"), failed.Message)
+}
+
+// regression: #4242
+// A Transfer sends the event of its end after qui records the end. When that
+// record fails, the next start of qui ends the Transfer again and sends the
+// one event.
+func TestATransferSendsOneEventAfterTheRecordOfItsEnd(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		free  int64
+		event notifications.EventType
+	}{
+		{name: "finished", event: notifications.EventTransferFinished},
+		{name: "failed for good", free: 69, event: notifications.EventTransferFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			sent := &events{}
+			r.deps.Notifier = sent
+			var failing atomic.Bool
+			r.restartOn(failTx{Querier: r.db, failing: &failing})
+			s := newShow(t, showName)
+			r.seed(s)
+			r.disk.free = tc.free
+			r.disk.onStatfs = func() { failing.Store(true) }
+
+			record := r.run(r.request(s))
+			require.True(t, record.FinishedAt.IsZero(), "the record of the end failed")
+			require.Empty(t, sent.events)
+
+			r.disk.onStatfs = nil
+			failing.Store(false)
+			r.restart()
+			r.svc.Wait()
+			require.False(t, r.get(record.ID).FinishedAt.IsZero())
+			require.Len(t, sent.events, 1)
+			require.Equal(t, tc.event, sent.events[0].Type)
+		})
+	}
 }
 
 // regression: #4242

@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,11 +18,11 @@ import (
 // instance 1.
 type fakeHelpers map[string]string
 
-func (f fakeHelpers) HelperKind(instanceID int, hash string) string {
-	if instanceID != 1 {
-		return ""
+func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
+	if instanceID != 1 || len(f) == 0 {
+		return nil
 	}
-	return f[hash]
+	return f
 }
 
 // newHelperRig has a helper torrent (hashA) and a torrent of the user with
@@ -67,6 +68,15 @@ func TestATaggedTorrentWithoutARegistryRowIsNoHelper(t *testing.T) {
 	badges := map[string]string{}
 	for _, row := range resp.Torrents {
 		badges[row.Hash] = row.QuiHelper
+	}
+	require.Equal(t, map[string]string{hashA: "transfer", hashB: ""}, badges)
+
+	sm.instanceName = func(context.Context, int) (string, error) { return "seedbox", nil }
+	views, err := sm.GetCachedInstanceTorrents(t.Context(), 1)
+	require.NoError(t, err)
+	clear(badges)
+	for _, view := range views {
+		badges[view.Hash] = view.QuiHelper
 	}
 	require.Equal(t, map[string]string{hashA: "transfer", hashB: ""}, badges)
 

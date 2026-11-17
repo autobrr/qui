@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -153,18 +154,28 @@ func (s stopWrites) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterfa
 }
 
 // regression: #4242
-// Cancel ends an Export run after its add: the torrent comes off the target,
-// and its files stay there. The rule gets the cancel as the result. When qui
-// stops right after the removal, the run ends as cancelled after the restart
-// and adds nothing.
+// Cancel ends an Export run while it waits for the target to list the torrent
+// that it added: the torrent comes off the target, and its files stay there.
+// The rule gets the cancel as the result. When qui stops right after the
+// removal, the run ends as cancelled after the restart and adds nothing.
 func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
-	r := newRig(t, exportPolls)
-	hold := newHoldAt(r.db, "added")
+	r := newRig(t, func(c *transfer.Config) { c.ExportPolls, c.ExportPollInterval = 2, time.Hour })
 	var stopped atomic.Bool
-	r.restartOn(stopWrites{Querier: hold, stopped: &stopped})
+	r.restartOn(stopWrites{Querier: r.db, stopped: &stopped})
 	s := newShow(t, showName)
 	r.seed(s)
 	write(t, filepath.Join(r.dstDir, showName), s.files)
+	r.dst.ListAfterSyncs = 1
+	// Both hooks run under the lock of the stub, so polled closes at the
+	// first sync after the add.
+	added, polled := false, make(chan struct{})
+	r.dst.OnAdd = func(string) { added = true }
+	r.dst.OnSync = func() {
+		if added {
+			added = false
+			close(polled)
+		}
+	}
 	r.dst.OnWrite = func(endpoint string) {
 		if endpoint == "torrents/delete" {
 			stopped.Store(true)
@@ -173,7 +184,7 @@ func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
 
 	id, done, err := r.svc.Export(t.Context(), r.exportRequest(s))
 	require.NoError(t, err)
-	<-hold.held
+	<-polled
 	require.True(t, r.dst.Has(s.hash))
 	require.NoError(t, r.svc.Cancel(t.Context(), id))
 	res, ok := <-done
@@ -238,6 +249,104 @@ func TestCancelLeavesAnExportRunThatEndedMeanwhile(t *testing.T) {
 	r.svc.Wait()
 	require.Equal(t, transfer.StateDone, r.get(id).State)
 	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
+}
+
+// holdCreate holds the first write of a Transfer after its commit, once
+// armed, until release closes.
+type holdCreate struct {
+	dbinterface.Querier
+	armed   *atomic.Bool
+	held    chan struct{}
+	release chan struct{}
+}
+
+func (h holdCreate) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	tx, err := h.Querier.BeginTx(ctx, opts)
+	if err != nil || !h.armed.CompareAndSwap(true, false) {
+		return tx, err
+	}
+	return heldCommit{TxQuerier: tx, held: h.held, release: h.release}, nil
+}
+
+type heldCommit struct {
+	dbinterface.TxQuerier
+	held    chan struct{}
+	release chan struct{}
+}
+
+func (c heldCommit) Commit() error {
+	err := c.TxQuerier.Commit()
+	close(c.held)
+	<-c.release
+	return err
+}
+
+// failTx refuses each transaction while failing is set: the record of the
+// end of a Transfer fails, and a save of its steps goes through.
+type failTx struct {
+	dbinterface.Querier
+	failing *atomic.Bool
+}
+
+func (f failTx) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	if f.failing.Load() {
+		return nil, errors.New("database is locked")
+	}
+	return f.Querier.BeginTx(ctx, opts)
+}
+
+// regression: #4242
+// A cancel that ends an Export run between its record and its start keeps
+// it cancelled: the run adds nothing to the target. When the cancel saved
+// its cleanup but could not record the end, the run finishes the cancel.
+func TestCancelBeforeAnExportRunStartsKeepsItCancelled(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		finishFails bool
+	}{
+		{name: "the cancel records the end"},
+		{name: "the record of the end fails", finishFails: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t, exportPolls)
+			var armed, failing atomic.Bool
+			hold := holdCreate{Querier: r.db, armed: &armed, held: make(chan struct{}), release: make(chan struct{})}
+			r.restartOn(failTx{Querier: hold, failing: &failing})
+			s := newShow(t, showName)
+			r.seed(s)
+			write(t, filepath.Join(r.dstDir, showName), s.files)
+
+			armed.Store(true)
+			type started struct {
+				done <-chan transfer.ExportResult
+				err  error
+			}
+			export := make(chan started, 1)
+			go func() {
+				_, done, err := r.svc.Export(t.Context(), r.exportRequest(s))
+				export <- started{done, err}
+			}()
+			<-hold.held
+			ids, err := r.store.Unfinished(t.Context())
+			require.NoError(t, err)
+			require.Len(t, ids, 1)
+			failing.Store(tc.finishFails)
+			require.NoError(t, r.svc.Cancel(t.Context(), ids[0]))
+			r.svc.Wait()
+			failing.Store(false)
+			require.Equal(t, tc.finishFails, r.get(ids[0]).FinishedAt.IsZero())
+			close(hold.release)
+			run := <-export
+			require.NoError(t, run.err)
+			<-run.done
+			r.svc.Wait()
+
+			record := r.get(ids[0])
+			require.Equal(t, transfer.StateCancelled, record.State)
+			require.False(t, record.FinishedAt.IsZero())
+			require.False(t, r.dst.Has(s.hash), "the cancelled run adds nothing")
+		})
+	}
 }
 
 // regression: #4242

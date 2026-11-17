@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/fsops"
@@ -49,11 +50,15 @@ type Store struct {
 	mu      sync.RWMutex
 	claims  map[torrentKey]int64
 	helpers map[torrentKey]OwnerKind
+	// orphans holds, for each helper torrent whose Transfer row is gone, the
+	// time after which a sync of its instance shows whether it is gone.
+	orphans map[torrentKey]time.Time
 }
 
 // NewStore reads the claims and the helper torrents of db.
 func NewStore(ctx context.Context, db dbinterface.Querier) (*Store, error) {
-	s := &Store{db: db, claims: make(map[torrentKey]int64), helpers: make(map[torrentKey]OwnerKind)}
+	s := &Store{db: db, claims: make(map[torrentKey]int64), helpers: make(map[torrentKey]OwnerKind),
+		orphans: make(map[torrentKey]time.Time)}
 	if err := s.load(ctx); err != nil {
 		return nil, err
 	}
@@ -521,6 +526,85 @@ func (s *Store) Hold(instanceID int, hash string) error {
 		return ErrHelper
 	}
 	return nil
+}
+
+// HelperKinds returns the owner kind of each helper torrent of one instance,
+// by its hash in lower case. It reads the registry one time, and returns nil
+// when the instance has no helper torrent.
+func (s *Store) HelperKinds(instanceID int) map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var kinds map[string]string
+	for key, kind := range s.helpers {
+		if key.instanceID != instanceID {
+			continue
+		}
+		if kinds == nil {
+			kinds = make(map[string]string)
+		}
+		kinds[key.hash] = string(kind)
+	}
+	return kinds
+}
+
+// HelperCheck is IsHelper for a pass over the torrents of one instance: it
+// reads the registry one time. It returns nil when the instance has no helper
+// torrent.
+func (s *Store) HelperCheck(instanceID int) func(hash string) bool {
+	s.mu.RLock()
+	helpers := hashesOn(nil, s.helpers, instanceID)
+	s.mu.RUnlock()
+	return hashCheck(helpers)
+}
+
+// HoldCheck reports for a pass over the torrents of one instance whether Hold
+// refuses a torrent: it reads the claims and the registry one time. It
+// returns nil when Hold refuses no torrent of the instance.
+func (s *Store) HoldCheck(instanceID int) func(hash string) bool {
+	s.mu.RLock()
+	held := hashesOn(hashesOn(nil, s.claims, instanceID), s.helpers, instanceID)
+	s.mu.RUnlock()
+	return hashCheck(held)
+}
+
+// hashesOn adds the hashes of the entries of one instance to hashes, and
+// returns hashes. It returns nil when hashes is nil and the instance has no
+// entry.
+func hashesOn[V any](hashes map[string]struct{}, entries map[torrentKey]V, instanceID int) map[string]struct{} {
+	for key := range entries {
+		if key.instanceID != instanceID {
+			continue
+		}
+		if hashes == nil {
+			hashes = make(map[string]struct{})
+		}
+		hashes[key.hash] = struct{}{}
+	}
+	return hashes
+}
+
+// hashCheck returns a check of whether a hash, in any case, is in hashes. It
+// returns nil when hashes is nil.
+func hashCheck(hashes map[string]struct{}) func(hash string) bool {
+	if hashes == nil {
+		return nil
+	}
+	return func(hash string) bool {
+		_, ok := hashes[lowerHash(hash)]
+		return ok
+	}
+}
+
+// lowerHash is strings.ToLower for the hash of a torrent. qBittorrent sends
+// the hash in lower case, and on a hex hash strings.ToLower costs a pass over
+// the torrents about 100 ns per torrent.
+func lowerHash(hash string) string {
+	for i := 0; i < len(hash); i++ {
+		if c := hash[i]; c >= utf8.RuneSelf || 'A' <= c && c <= 'Z' {
+			return strings.ToLower(hash)
+		}
+	}
+	return hash
 }
 
 type endpointJSON struct {
