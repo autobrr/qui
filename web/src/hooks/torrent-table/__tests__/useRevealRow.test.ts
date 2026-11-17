@@ -28,6 +28,7 @@ function setup(initial: ListState) {
 afterEach(cleanup)
 
 describe("useRevealRow", () => {
+  // regression: #4260
   it("waits while the new search loads, then scrolls to the row", () => {
     const { rerender, virtualizer, onDone } = setup({ rows: toRows(["old"]), safeLoadedRows: 1, isLoading: true })
     expect(onDone).not.toHaveBeenCalled()
@@ -38,6 +39,7 @@ describe("useRevealRow", () => {
     expect(onDone).toHaveBeenCalledOnce()
   })
 
+  // regression: #4260
   it("renders more rows when the row is loaded past the rendered rows, then scrolls to it", () => {
     const rows = toRows(["a", "b", "picked"])
     const { rerender, virtualizer, loadMore } = setup({ rows, safeLoadedRows: 2, isLoading: false })
@@ -49,6 +51,7 @@ describe("useRevealRow", () => {
     expect(virtualizer.scrollToIndex).toHaveBeenCalledExactlyOnceWith(2, { align: "center" })
   })
 
+  // regression: #4260
   it("gives up without a scroll when the loaded list does not hold the row", () => {
     const { virtualizer, onDone } = setup({ rows: toRows(["a", "b"]), safeLoadedRows: 2, isLoading: false })
 
