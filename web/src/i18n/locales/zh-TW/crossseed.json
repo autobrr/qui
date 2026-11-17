@@ -120,18 +120,6 @@
     "skipIndividualEpisodesAutomationOff": "季度包自動組裝已關閉。本次執行不會搜尋季度包。",
     "maxAddedAgeLabel": "種子最長新增時間（天）",
     "maxAddedAgeDescription": "跳過新增時間超過該天數的種子。0 表示不限制。從未搜尋過某個種子的索引器始終包含在內。",
-    "categories": "分類",
-    "tags": "標籤",
-    "allCategoriesAll": "所有分類（留空表示全部）",
-    "allTagsAll": "所有標籤（留空表示全部）",
-    "selectInstanceToLoadCategories": "選擇一個實例以載入分類",
-    "selectInstanceToLoadTags": "選擇一個實例以載入標籤",
-    "categoriesLoadAfterInstance": "選擇實例後載入分類；您仍可手動輸入分類名稱。",
-    "allCategoriesIncluded": "所有分類都將包含在掃描中。",
-    "selectedCategoriesScanned": "僅掃描已選擇的 {{count}} 個分類。",
-    "tagsLoadAfterInstance": "選擇實例後載入標籤；您仍可手動輸入標籤。",
-    "allTagsIncluded": "所有標籤都將包含在掃描中。",
-    "selectedTagsScanned": "僅掃描已選擇的 {{count}} 個標籤。",
     "sourceInstance": "源實例",
     "selectAnInstance": "選擇一個實例",
     "addInstanceToSearch": "新增一個實例以搜尋您已做種的種子。",
@@ -208,6 +196,34 @@
         "notMusic": "不是音樂",
         "other": "其他"
       }
+    },
+    "schedule": {
+      "enableLabel": "依排程執行",
+      "enableHelp": "qui 每隔幾小時使用此卡片中已儲存的設定啟動一次排程執行。排程執行只搜尋最近新增的種子，從最新的開始，並在達到搜尋上限時停止。失敗的索引器仍保持待搜尋狀態，下一次排程執行會再次查詢它。「立即執行排程」會馬上啟動一次排程執行，並重新開始計時。",
+      "intervalLabel": "執行間隔（小時）",
+      "intervalHelp": "從一次排程執行開始到下一次排程執行開始的時間。qui 重新啟動後仍保留這段時間。",
+      "maxSearchesLabel": "每次執行的最大搜尋數",
+      "maxSearchesHelp": "當這麼多種子傳送過搜尋後，排程執行停止。被冷卻時間或篩選條件略過的種子不計入。剩餘的種子等待下一次執行。",
+      "maxAgeLabel": "只搜尋最近新增的種子（天）",
+      "maxAgeHelp": "排程執行會略過新增時間早於這麼多天的每個種子，對從未搜尋過它的索引器也是如此。「開始執行」不使用此限制。",
+      "runNow": "立即執行排程",
+      "runStarted": "排程執行已啟動",
+      "runAlreadyActive": "做種庫掃描已在執行。",
+      "nextRun": "下次排程執行：{{time}}",
+      "dueNow": "排程執行現在到期",
+      "dueAfterCurrentRun": "排程執行將在目前執行結束後開始",
+      "scheduledRunActive": "排程執行正在進行。"
+    },
+    "runKind": {
+      "scheduled": "排程",
+      "manual": "手動"
+    },
+    "stoppedAtLimit_other": "已在 {{limit}} 次搜尋的上限處停止。{{count}} 個種子等待下一次執行。",
+    "runFilters": {
+      "include": "包含：{{filters}}",
+      "exclude": "排除：{{filters}}",
+      "categories": "分類 {{list}}",
+      "tags": "標籤 {{list}}"
     }
   },
   "rules": {
@@ -486,7 +502,8 @@
   "validation": {
     "minInterval": "最少 {{min}} 分鐘",
     "minIntervalSeconds": "最少 {{min}} 秒",
-    "minCooldown": "最少 {{min}} 分鐘"
+    "minCooldown": "最少 {{min}} 分鐘",
+    "atLeast": "最少為 {{min}}"
   },
   "blocklist": {
     "title": "輔種封鎖清單",

@@ -15,6 +15,7 @@ export const systemNoticeRoutes: Partial<Record<string, SystemNoticeRoute>> = {
   redacted_key_rejected: { to: "/settings", search: { tab: "indexers" } },
   orpheus_key_rejected: { to: "/settings", search: { tab: "indexers" } },
   low_disk: { to: "/settings", search: { tab: "statistics" } },
+  library_scan_schedule_blocked: { to: "/cross-seed", search: { tab: "library" } },
 }
 
 const freshMs = 10 * 60 * 1000

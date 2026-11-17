@@ -63,15 +63,50 @@ qui makes this comparison before it downloads the intended torrent file. RSS doe
 
 ### Library Scan
 
-Library Scan searches other trackers for torrents you already seed. Configure it in the **Library** tab. **Save** stores the settings without a run. **Start** stores them and starts a run.
+Library Scan searches other trackers for torrents you already seed. Configure it in the **Library** tab. **Save** stores the settings of the card. **Start** starts a manual run with the values on the card now, also values that you did not save.
 
-- **Source instance**: The qBittorrent instance to scan
-- **Categories/Tags**: Filter which torrents to include
-- **Interval**: The delay between torrents. If you enable Torznab, the minimum is 60 seconds. If you disable Torznab and configure Gazelle, the minimum is 5 seconds. Set 10 seconds or more for Gazelle-only runs.
+- **Source instance**: The qBittorrent instance to scan.
+- **Include categories/tags**: qui scans only torrents that match these filters. Leave them empty to scan all torrents.
+- **Exclude categories/tags**: qui never searches a torrent that matches these filters, in a manual run or in a scheduled run. For example, exclude a `no-cross-seed` category or a `no-cs` tag. These are the same pickers that RSS, webhook, and completion use.
+- **Interval**: The delay between torrents. If Torznab is on, the minimum is 60 seconds. If Torznab is off, the minimum is 5 seconds. Set 10 seconds or more for Gazelle-only runs.
+- **Torznab**: The switch beside the indexers. If you turn it off, qui asks only the OPS/RED APIs. qui saves the switch with the other settings, and the switch applies to manual runs and to scheduled runs.
 - **Cooldown**: qui skips torrents that it searched within this window (minimum 12 hours). qui records a Torznab cooldown after an indexer completes its search. If you enable Gazelle, qui records a cooldown when it sends a lookup or local checks find nothing to look up. If the search fails before a lookup, qui can try the torrent in the next run.
+- **Max age for repeat searches**: An indexer that already searched a torrent does not search it again after this many days. 0 turns off this rule.
 - **Skip individual episodes**: The run does not search single TV episodes. If [automatic assembly](./season-packs.md#automatic-assembly) is on, groups of episodes still start season pack searches.
 
 The run details show a Skipped row with no cooldown if qBittorrent moves or checks a torrent at its turn. The same applies to a torrent that is not complete at its turn, and to a torrent with an error or missing files when error recovery is off.
+
+#### Library Scan schedule
+
+The schedule searches your recent torrents again every few hours. It finds a cross-seed that qui missed because a tracker was down, or because qui was offline when the download completed. The schedule is off by default. To turn it on, set **Run on a schedule** on the **Library** card, then click **Save**.
+
+- **Run every (hours)**: The time from the start of one scheduled run to the start of the next. Default: 24. qui saves the start time of the last scheduled run, so a restart of qui does not start a run at once.
+- **Max searches per run**: A scheduled run stops after this many torrents sent a search. Default: 400. A torrent counts when it sent at least one request to a Torznab indexer or to RED/OPS. A torrent that the Cooldown or the filters skip does not count.
+- **Only torrents added in the last (days)**: A scheduled run searches only torrents that you added in this many last days. Default: 14. qui uses the day that the torrent was added to qBittorrent. This limit applies also to an indexer that never searched the torrent, so a new indexer does not make the schedule search your full library. A season group stays in the run when one of its episodes is inside the window.
+
+A scheduled run uses the saved settings of the card, not the values on the card that you did not save. It searches first the torrents that an indexer or RED/OPS never searched, newest first. Then it searches the other torrents, newest first. It skips torrents that each indexer searched within the Cooldown. A manual run keeps its own order and age rule: it can search a torrent of any age for an indexer that never searched it.
+
+When you turn the schedule on and click **Save**, the first scheduled run starts at once. This is also true when you turn the schedule off and on again. The card shows the time of the next scheduled run beside **Start**. **Run schedule now** starts a scheduled run with the saved settings at once and restarts the schedule clock. Only one Library Scan run can be active at a time. If a scheduled run comes due during a manual run, it starts when the manual run ends.
+
+When a scheduled run stops at the limit, the run history shows a message such as "Stopped at the limit of 400 searches. 200 torrents wait for the next run." Each row in the run history shows **Scheduled** or **Manual**, and the include and exclude filters of the run.
+
+#### How a down tracker gets a second chance
+
+qui marks a torrent as searched for an indexer only when that indexer answered. If an indexer fails, times out, or is rate limited, qui does not mark the torrent. The next scheduled run then asks that indexer again. This is how qui later finds a cross-seed on a tracker that was down.
+
+A completion search also records which indexers answered. The next scheduled run then asks only the indexers that failed at completion. The tracker that the torrent came from, and a tracker where you already seed the same content, stay skipped.
+
+#### When a scheduled run cannot start
+
+If a scheduled run cannot start, qui tries again every hour. It sends one failure notification for each outage, not one for each try. A scheduled run notifies only when it added a cross-seed or a torrent failed. A manual run notifies after each run.
+
+If the saved settings make a run impossible, qui also opens the System notice "Library Scan schedule cannot run". These settings cause the notice:
+
+- Torznab is off, and no RED or OPS API key is set.
+- No indexer is enabled.
+- The instance in the saved settings does not exist.
+
+The notice gives the fix, and its button opens the **Library** tab. The notice closes when a scheduled run starts, or when you turn off the schedule. qui opens no notice when qBittorrent is offline or a tracker is down, because these faults clear without an action from you.
 
 #### What the scan card counts
 
@@ -82,7 +117,7 @@ The unit of a run is a search candidate: one source torrent, or one season group
 - **Cross-seeds added**: Successful adds into the client. One candidate can add several cross-seeds, so this number can be larger than the candidate count.
 
 :::warning
-Run this sparingly. The scan touches every matching torrent and queries Torznab and/or Gazelle for each one. Use RSS automation or autobrr for routine coverage. Reserve Library Scan for occasional catch-up passes.
+Start a manual run sparingly. A manual run touches every matching torrent and queries Torznab and Gazelle for each one. Use RSS automation or autobrr for routine coverage. The schedule keeps each run small with the age window and the search limit.
 :::
 
 ### Auto-Search on Completion

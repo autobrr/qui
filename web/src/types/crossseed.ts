@@ -435,27 +435,33 @@ export interface CrossSeedAutomationStatus {
 export interface CrossSeedSearchFilters {
   categories: string[]
   tags: string[]
+  excludeCategories?: string[]
+  excludeTags?: string[]
 }
 
 export interface CrossSeedSearchSettings {
   instanceId?: number | null
   categories: string[]
   tags: string[]
+  excludeCategories: string[]
+  excludeTags: string[]
   indexerIds: number[]
   intervalSeconds: number
   cooldownMinutes: number
+  /** 0 turns the rule off. */
+  maxAddedAgeDays: number
+  skipIndividualEpisodes: boolean
+  torznabEnabled: boolean
+  scheduleEnabled: boolean
+  scheduleIntervalHours: number
+  scheduleMaxSearches: number
+  /** A scheduled run searches only torrents added in this many last days. */
+  scheduleMaxAgeDays: number
   createdAt?: string
   updatedAt?: string
 }
 
-export interface CrossSeedSearchSettingsPatch {
-  instanceId?: number | null
-  categories?: string[]
-  tags?: string[]
-  indexerIds?: number[]
-  intervalSeconds?: number
-  cooldownMinutes?: number
-}
+export type CrossSeedSearchSettingsPatch = Partial<Omit<CrossSeedSearchSettings, "createdAt" | "updatedAt">>
 
 export type CrossSeedSearchResultStatus = "added" | "skipped" | "failed"
 
@@ -472,9 +478,12 @@ export interface CrossSeedSearchResult {
   crossSeedInstanceName?: string
 }
 
+export type CrossSeedSearchRunKind = "scheduled" | "manual"
+
 export interface CrossSeedSearchRun {
   id: number
   instanceId: number
+  kind: CrossSeedSearchRunKind
   status: string
   startedAt: string
   completedAt?: string
@@ -492,6 +501,10 @@ export interface CrossSeedSearchRun {
   cooldownMinutes: number
   results: CrossSeedSearchResult[]
   gazelleSummary?: CrossSeedGazelleSiteSummary[]
+  /** The cap of a scheduled run. */
+  searchLimit?: number
+  /** Set when the run stopped at its cap: the torrents left for the next run. */
+  waitingTorrents?: number
   createdAt: string
 }
 
@@ -508,6 +521,8 @@ export interface CrossSeedSearchStatus {
   currentTorrent?: CrossSeedSearchCandidate
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
+  /** Set while the Library Scan schedule is on. A time in the past means the run is due. */
+  nextScheduledRunAt?: string
   effectiveIntervalSeconds?: number
 }
 

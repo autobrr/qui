@@ -251,6 +251,28 @@
         "fix": "Se a chave estiver errada, crie uma chave de API com a permissão \"Torrents\" nas configurações do seu perfil no Orpheus e cole-a nas configurações Gazelle (OPS/RED) do qui. Se o Orpheus baniu o IP do qui, uma nova chave não resolve: fale com a equipe do Orpheus.",
         "menuFix": "Cole uma nova chave nas configurações",
         "action": "Abrir configurações Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Agendamento da Busca na Biblioteca bloqueado",
+        "title": "O agendamento da Busca na Biblioteca não pode ser executado",
+        "effect": "O qui não consegue iniciar a execução agendada da Busca na Biblioteca. Ele tenta de novo a cada hora.",
+        "fix": "Confira as configurações da Busca na Biblioteca. O qui tenta de novo a cada hora.",
+        "menuFix": "Conferir as configurações da Busca na Biblioteca",
+        "action": "Abrir as configurações da Busca na Biblioteca",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "O Torznab está desligado nas configurações da Busca na Biblioteca, e nenhuma chave de API do RED ou do OPS está definida. Ligue o Torznab, ou adicione uma chave do RED ou do OPS nas configurações Gazelle (OPS/RED). O qui tenta de novo a cada hora.",
+            "menuFix": "Ligar o Torznab, ou adicionar uma chave do RED ou do OPS"
+          },
+          "no_indexer": {
+            "fix": "Nenhum indexador está ativado. Ative um indexador Torznab, ou adicione uma chave do RED ou do OPS nas configurações Gazelle (OPS/RED). O qui tenta de novo a cada hora.",
+            "menuFix": "Ativar um indexador"
+          },
+          "instance_missing": {
+            "fix": "A instância das configurações salvas da Busca na Biblioteca não existe. Escolha uma instância nas configurações da Busca na Biblioteca e salve. O qui tenta de novo a cada hora.",
+            "menuFix": "Escolher uma instância e salvar"
+          }
+        }
       }
     },
     "actions": {

@@ -250,6 +250,28 @@
         "fix": "如果金鑰有誤，請在您的 Orpheus 個人檔案設定中建立具有 Torrents 權限的 API 金鑰，然後將其貼到 qui 的 Gazelle (OPS/RED) 設定中。如果 Orpheus 封鎖了 qui 的 IP，新金鑰也無濟於事：請聯絡 Orpheus 的管理團隊。",
         "menuFix": "在設定中貼上新金鑰",
         "action": "開啟 Gazelle (OPS/RED) 設定"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "做種庫掃描排程受阻",
+        "title": "做種庫掃描排程無法執行",
+        "effect": "qui 無法啟動做種庫掃描的排程執行。它會每小時重試一次。",
+        "fix": "請檢查做種庫掃描設定。qui 會每小時重試一次。",
+        "menuFix": "檢查做種庫掃描設定",
+        "action": "開啟做種庫掃描設定",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "做種庫掃描設定中的 Torznab 已關閉，且未設定 RED 或 OPS API 金鑰。請開啟 Torznab，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",
+            "menuFix": "開啟 Torznab，或新增 RED 或 OPS 金鑰"
+          },
+          "no_indexer": {
+            "fix": "沒有已啟用的索引器。請啟用一個 Torznab 索引器，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",
+            "menuFix": "啟用一個索引器"
+          },
+          "instance_missing": {
+            "fix": "已儲存的做種庫掃描設定中的實例不存在。請在做種庫掃描設定中選擇一個實例，然後儲存。qui 會每小時重試一次。",
+            "menuFix": "選擇一個實例，然後儲存"
+          }
+        }
       }
     },
     "actions": {

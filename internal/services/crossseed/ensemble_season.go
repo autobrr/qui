@@ -101,6 +101,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torr
 	type groupInfo struct {
 		displayTitle string
 		episodes     map[int]struct{}
+		addedOn      int64
 	}
 	groups := make(map[ensembleGroupKey]*groupInfo)
 	packs := make(map[ensembleGroupKey]struct{})
@@ -150,6 +151,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torr
 		if group.displayTitle == "" {
 			group.displayTitle = release.Title
 		}
+		group.addedOn = max(group.addedOn, torrent.AddedOn)
 		if isRange {
 			// A range counts each episode it names toward the group.
 			for _, se := range release.SeriesEpisodes() {
@@ -178,6 +180,8 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torr
 			Hash:     ensembleSeasonPseudoHash(key),
 			Name:     name,
 			Progress: 1.0,
+			// The newest episode dates the group for a scheduled run.
+			AddedOn: group.addedOn,
 		})
 	}
 
@@ -226,7 +230,9 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 			return true, nil
 		}
 		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusFailed, fmt.Sprintf("search failed: %v", err))
-		return false, err
+		// As for a torrent, a sent search counts also when it failed: the run
+		// waits the interval, and a scheduled run counts it toward its cap.
+		return true, err
 	}
 	if len(resp.CoveredIndexerIDs) > 0 {
 		state.torznabSearched = true

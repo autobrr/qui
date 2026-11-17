@@ -4,7 +4,7 @@
  */
 
 import { RunFooter } from "@/components/cross-seed/RunFooter"
-import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
+import { AutoResumeSwitch, SourceFilterFields, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -29,21 +29,21 @@ import {
   useFormatDateValue,
   useMissingIndexersToast
 } from "@/hooks/useCrossSeedSettings"
-import { api } from "@/lib/api"
-import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
+import { APIError, api } from "@/lib/api"
 import { crossSeedRouteText, normalizeNumberList, normalizeStringList, parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import { libraryRunState } from "@/lib/run-state"
 import type {
   CrossSeedGazelleLookupReason,
   CrossSeedGazelleSiteSummary,
   CrossSeedAutomationSettings,
+  CrossSeedSearchFilters,
   CrossSeedSearchResult,
   CrossSeedSearchSettings,
   Instance
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock, History, Loader2, Rocket, XCircle } from "lucide-react"
+import { AlertTriangle, CalendarClock, CheckCircle2, ChevronDown, Clock, History, Loader2, Rocket, XCircle } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -51,6 +51,7 @@ import { toast } from "sonner"
 const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60
 const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5  // Gazelle-only seeded search: still be polite; per-torrent work can trigger multiple API calls
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720
+const MIN_SCHEDULE_VALUE = 1
 
 const gazelleReasonKeys: Partial<Record<CrossSeedGazelleLookupReason, string>> = {
   disabled: "scan.gazelleSummary.reasons.disabled",
@@ -74,6 +75,34 @@ function GazelleRunSummary({ summary }: { summary: CrossSeedGazelleSiteSummary[]
     return notAskedTotal > 0 ? t("scan.gazelleSummary.siteWithNotAsked", { counts, notAsked: notAskedTotal, reasons }) : counts
   })
   return <p className="px-2 pt-0.5 text-[11px] text-muted-foreground">{t("scan.gazelleSummary.line", { sites: sites.join("; ") })}</p>
+}
+
+/** RunFiltersLine shows the include and exclude filters that one run used. */
+function RunFiltersLine({ filters }: { filters: CrossSeedSearchFilters }) {
+  const { t } = useTranslation("crossseed")
+  // The server sends an empty list as null.
+  const describe = (categories?: string[] | null, tags?: string[] | null) => [
+    ...(categories?.length ? [t("scan.runFilters.categories", { list: categories.join(", ") })] : []),
+    ...(tags?.length ? [t("scan.runFilters.tags", { list: tags.join(", ") })] : []),
+  ].join("; ")
+  const include = describe(filters.categories, filters.tags)
+  const exclude = describe(filters.excludeCategories, filters.excludeTags)
+  if (!include && !exclude) return null
+  return (
+    <p className="flex flex-wrap gap-x-4 px-2 pt-0.5 text-[11px] text-muted-foreground">
+      {include && <span>{t("scan.runFilters.include", { filters: include })}</span>}
+      {exclude && <span>{t("scan.runFilters.exclude", { filters: exclude })}</span>}
+    </p>
+  )
+}
+
+/** The text beside Start about the next scheduled run. A time in the past means the run is due. */
+function NextScheduledRun({ at, running }: { at: string; running: boolean }) {
+  const { t } = useTranslation("crossseed")
+  const formatDateValue = useFormatDateValue()
+  let text = running ? t("scan.schedule.dueAfterCurrentRun") : t("scan.schedule.dueNow")
+  if (Date.parse(at) > Date.now()) text = t("scan.schedule.nextRun", { time: formatDateValue(at) })
+  return <span className="text-xs text-muted-foreground">{text}</span>
 }
 
 export function LibraryTab({ settings }: { settings: CrossSeedAutomationSettings }) {
@@ -106,16 +135,24 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
   const { handleIndexerError } = useMissingIndexersToast()
 
   const [searchInstanceId, setSearchInstanceId] = useState<number | null>(searchSettings.instanceId ?? instances[0]?.id ?? null)
-  const [searchCategories, setSearchCategories] = useState(() => normalizeStringList(searchSettings.categories ?? []))
-  const [searchTags, setSearchTags] = useState(() => normalizeStringList(searchSettings.tags ?? []))
+  const [searchFilters, setSearchFilters] = useState(() => ({
+    categories: normalizeStringList(searchSettings.categories ?? []),
+    tags: normalizeStringList(searchSettings.tags ?? []),
+    excludeCategories: normalizeStringList(searchSettings.excludeCategories ?? []),
+    excludeTags: normalizeStringList(searchSettings.excludeTags ?? []),
+  }))
   const [searchIndexerIds, setSearchIndexerIds] = useState<number[]>(searchSettings.indexerIds ?? [])
   const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(searchSettings.intervalSeconds ?? MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
   const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(searchSettings.cooldownMinutes ?? MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
   const [seededSearchTags, setSeededSearchTags] = useState<string[]>(settings.seededSearchTags)
   const [skipAutoResume, setSkipAutoResume] = useState(settings.skipAutoResumeSeededSearch)
-  const [seededSearchTorznabEnabled, setSeededSearchTorznabEnabled] = useState(true)
-  const [skipIndividualEpisodes, setSkipIndividualEpisodes] = useState(false)
-  const [maxAddedAgeDays, setMaxAddedAgeDays] = useState(0)
+  const [seededSearchTorznabEnabled, setSeededSearchTorznabEnabled] = useState(searchSettings.torznabEnabled)
+  const [skipIndividualEpisodes, setSkipIndividualEpisodes] = useState(searchSettings.skipIndividualEpisodes)
+  const [maxAddedAgeDays, setMaxAddedAgeDays] = useState(searchSettings.maxAddedAgeDays)
+  const [scheduleEnabled, setScheduleEnabled] = useState(searchSettings.scheduleEnabled)
+  const [scheduleIntervalHours, setScheduleIntervalHours] = useState(searchSettings.scheduleIntervalHours)
+  const [scheduleMaxSearches, setScheduleMaxSearches] = useState(searchSettings.scheduleMaxSearches)
+  const [scheduleMaxAgeDays, setScheduleMaxAgeDays] = useState(searchSettings.scheduleMaxAgeDays)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [searchResultsOpen, setSearchResultsOpen] = useState(false)
 
@@ -156,11 +193,17 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
       const [search, global] = await Promise.all([
         api.patchCrossSeedSearchSettings({
           instanceId: searchInstanceId,
-          categories: searchCategories,
-          tags: searchTags,
+          ...searchFilters,
           indexerIds: seededSearchEffectiveIndexerIds,
           intervalSeconds: searchIntervalSeconds,
           cooldownMinutes: searchCooldownMinutes,
+          maxAddedAgeDays,
+          skipIndividualEpisodes,
+          torznabEnabled: seededSearchTorznabEnabled,
+          scheduleEnabled,
+          scheduleIntervalHours,
+          scheduleMaxSearches,
+          scheduleMaxAgeDays,
         }),
         api.patchCrossSeedSettings({
           seededSearchTags,
@@ -174,6 +217,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
       queryClient.setQueryData(CROSS_SEED_SEARCH_SETTINGS_KEY, search)
       queryClient.setQueryData(CROSS_SEED_SETTINGS_KEY, global)
       void queryClient.refetchQueries({ queryKey: CROSS_SEED_STATUS_KEY })
+      void refetchSearchStatus()
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -192,6 +236,23 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     },
     onError: (error: Error) => {
       if (handleIndexerError(error, t("scan.searchNeedsTorznabUnlessGazelle"))) {
+        return
+      }
+      toast.error(error.message)
+    },
+  })
+
+  const runScheduleNowMutation = useMutation({
+    mutationFn: () => api.runCrossSeedSearchScheduleNow(),
+    onSuccess: () => {
+      toast.success(t("scan.schedule.runStarted"))
+      void refetchSearchStatus()
+      void refetchSearchRuns()
+    },
+    onError: (error: Error) => {
+      if (error instanceof APIError && error.status === 409) {
+        toast.error(t("scan.schedule.runAlreadyActive"))
+        void refetchSearchStatus()
         return
       }
       toast.error(error.message)
@@ -234,8 +295,9 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     cancelPending: cancelSearchRunMutation.isPending,
     needsGazelle: seededSearchNeedsGazelle,
     hasSearchSource: hasEnabledIndexers || gazelleSavedConfigured,
+    scheduledRun: activeSearchRun?.kind === "scheduled",
   }, t)
-  const seededSearchIntervalMinimum = seededSearchGazelleOnlyRun ? MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS : MIN_SEEDED_SEARCH_INTERVAL_SECONDS
+  const seededSearchIntervalMinimum = seededSearchTorznabEnabled ? MIN_SEEDED_SEARCH_INTERVAL_SECONDS : MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
 
   useEffect(() => {
     setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
@@ -321,19 +383,8 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
 
   const seededSearchFlowSummary = gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? t("overview.seededSearch.gazelleFullDescription") : t("overview.seededSearch.gazellePartialDescription")) : t("overview.seededSearch.noGazelleDescription")
 
-  const searchTagNames = useMemo(() => searchMetadata?.tags ?? [], [searchMetadata])
-
-  const searchCategorySelectOptions = useMemo(
-    () => buildCategorySelectOptions(searchMetadata?.categories ?? {}, searchCategories),
-    [searchCategories, searchMetadata?.categories]
-  )
-
-  const searchTagSelectOptions = useMemo(
-    () => buildTagSelectOptions(searchTagNames, searchTags),
-    [searchTagNames, searchTags]
-  )
-
-  const validateTiming = (): boolean => {
+  /** Start checks only the fields that a manual run uses; Save checks the schedule too. */
+  const validate = (withSchedule: boolean): boolean => {
     const errors: Record<string, string> = {}
     if (searchIntervalSeconds < seededSearchIntervalMinimum) {
       errors.searchIntervalSeconds = t("validation.minIntervalSeconds", { min: seededSearchIntervalMinimum })
@@ -341,12 +392,18 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     if (searchCooldownMinutes < MIN_SEEDED_SEARCH_COOLDOWN_MINUTES) {
       errors.searchCooldownMinutes = t("validation.minCooldown", { min: MIN_SEEDED_SEARCH_COOLDOWN_MINUTES })
     }
+    if (withSchedule) {
+      const scheduleFields = { scheduleIntervalHours, scheduleMaxSearches, scheduleMaxAgeDays }
+      for (const [field, value] of Object.entries(scheduleFields)) {
+        if (value < MIN_SCHEDULE_VALUE) errors[field] = t("validation.atLeast", { min: MIN_SCHEDULE_VALUE })
+      }
+    }
     setValidationErrors(errors)
     return Object.keys(errors).length === 0
   }
 
   const handleSave = () => {
-    if (!validateTiming()) return
+    if (!validate(true)) return
     saveMutation.mutate()
   }
 
@@ -372,12 +429,11 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
       return
     }
 
-    if (!validateTiming()) return
+    if (!validate(false)) return
 
     startSearchRunMutation.mutate({
       instanceId: searchInstanceId,
-      categories: searchCategories,
-      tags: searchTags,
+      ...searchFilters,
       intervalSeconds: searchIntervalSeconds,
       indexerIds: seededSearchTorznabEnabled ? seededSearchEffectiveIndexerIds : [],
       disableTorznab: !seededSearchTorznabEnabled,
@@ -494,43 +550,12 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-3">
-            <Label>{t("scan.categories")}</Label>
-            <MultiSelect
-              options={searchCategorySelectOptions}
-              selected={searchCategories}
-              onChange={values => setSearchCategories(normalizeStringList(values))}
-              placeholder={
-                searchInstanceId ? searchCategorySelectOptions.length ? t("scan.allCategoriesAll") : t("automation.typeToAddCategories") : t("scan.selectInstanceToLoadCategories")
-              }
-              creatable
-              onCreateOption={value => setSearchCategories(prev => normalizeStringList([...prev, value]))}
-              disabled={!searchInstanceId}
-            />
-            <p className="text-xs text-muted-foreground">
-              {searchInstanceId && searchCategorySelectOptions.length === 0 ? t("scan.categoriesLoadAfterInstance") : searchCategories.length === 0 ? t("scan.allCategoriesIncluded") : t("scan.selectedCategoriesScanned", { count: searchCategories.length })}
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <Label>{t("scan.tags")}</Label>
-            <MultiSelect
-              options={searchTagSelectOptions}
-              selected={searchTags}
-              onChange={values => setSearchTags(normalizeStringList(values))}
-              placeholder={
-                searchInstanceId ? searchTagSelectOptions.length ? t("scan.allTagsAll") : t("automation.typeToAddTags") : t("scan.selectInstanceToLoadTags")
-              }
-              creatable
-              onCreateOption={value => setSearchTags(prev => normalizeStringList([...prev, value]))}
-              disabled={!searchInstanceId}
-            />
-            <p className="text-xs text-muted-foreground">
-              {searchInstanceId && searchTagSelectOptions.length === 0 ? t("scan.tagsLoadAfterInstance") : searchTags.length === 0 ? t("scan.allTagsIncluded") : t("scan.selectedTagsScanned", { count: searchTags.length })}
-            </p>
-          </div>
-        </div>
+        <SourceFilterFields
+          filters={searchFilters}
+          onChange={setSearchFilters}
+          metadata={searchMetadata}
+          disabled={!searchInstanceId}
+        />
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-3">
@@ -562,8 +587,8 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                 {gazelleSavedConfigured ? t("scan.torznabIndexersNonOpsRed") : t("scan.torznabIndexers")}
               </Label>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">{t("scan.torznab")}</span>
-                <Switch checked={seededSearchTorznabEnabled} onCheckedChange={value => setSeededSearchTorznabEnabled(!!value)} />
+                <Label htmlFor="library-torznab-enabled" className="text-xs font-normal text-muted-foreground">{t("scan.torznab")}</Label>
+                <Switch id="library-torznab-enabled" checked={seededSearchTorznabEnabled} onCheckedChange={value => setSeededSearchTorznabEnabled(!!value)} />
               </div>
             </div>
             <MultiSelect
@@ -632,6 +657,44 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
             onSkipChange={setSkipAutoResume}
             help={t("rules.postInjection.seededSearchDescription")}
           />
+        </div>
+
+        <Separator />
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="library-schedule-enabled" className="font-medium">{t("scan.schedule.enableLabel")}</Label>
+              <FieldHelp>{t("scan.schedule.enableHelp")}</FieldHelp>
+            </div>
+            <Switch id="library-schedule-enabled" checked={scheduleEnabled} onCheckedChange={value => setScheduleEnabled(!!value)} />
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <ScheduleNumberField
+              id="library-schedule-interval-hours"
+              label={t("scan.schedule.intervalLabel")}
+              help={t("scan.schedule.intervalHelp")}
+              value={scheduleIntervalHours}
+              onChange={setScheduleIntervalHours}
+              error={validationErrors.scheduleIntervalHours}
+            />
+            <ScheduleNumberField
+              id="library-schedule-max-searches"
+              label={t("scan.schedule.maxSearchesLabel")}
+              help={t("scan.schedule.maxSearchesHelp")}
+              value={scheduleMaxSearches}
+              onChange={setScheduleMaxSearches}
+              error={validationErrors.scheduleMaxSearches}
+            />
+            <ScheduleNumberField
+              id="library-schedule-max-age-days"
+              label={t("scan.schedule.maxAgeLabel")}
+              help={t("scan.schedule.maxAgeHelp")}
+              value={scheduleMaxAgeDays}
+              onChange={setScheduleMaxAgeDays}
+              error={validationErrors.scheduleMaxAgeDays}
+            />
+          </div>
         </div>
 
         <Separator />
@@ -728,6 +791,9 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                 {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
                                 {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
                                 {run.status === "canceled" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                <Badge variant="outline" className="text-[10px] shrink-0">
+                                  {run.kind === "scheduled" ? t("scan.runKind.scheduled") : t("scan.runKind.manual")}
+                                </Badge>
                                 <span className="text-xs text-muted-foreground">
                                   {t("scan.torrentsCount", { count: run.status === "running" ? `${run.processed}/${run.totalTorrents}` : run.totalTorrents })}
                                 </span>
@@ -747,6 +813,12 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                               </div>
                             </div>
                           </CollapsibleTrigger>
+                          {(run.waitingTorrents ?? 0) > 0 && (
+                            <p className="px-2 pt-0.5 text-[11px] text-muted-foreground">
+                              {t("scan.stoppedAtLimit", { limit: run.searchLimit, count: run.waitingTorrents })}
+                            </p>
+                          )}
+                          <RunFiltersLine filters={run.filters} />
                           {run.gazelleSummary && run.gazelleSummary.length > 0 && <GazelleRunSummary summary={run.gazelleSummary} />}
                           {hasResults && (
                             <CollapsibleContent>
@@ -817,6 +889,22 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
         onRun={handleStartSearchRun}
         onCancel={() => cancelSearchRunMutation.mutate()}
         cancelDialog={{ title: t("scan.cancelDialog.title"), description: t("scan.cancelDialog.description") }}
+        options={
+          <>
+            {searchSettings.scheduleEnabled && (
+              <Button
+                variant="outline"
+                className="min-h-11 md:min-h-9"
+                onClick={() => runScheduleNowMutation.mutate()}
+                disabled={searchRunning || runScheduleNowMutation.isPending}
+              >
+                {runScheduleNowMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-2 h-4 w-4" />}
+                {t("scan.schedule.runNow")}
+              </Button>
+            )}
+            {searchStatus?.nextScheduledRunAt && <NextScheduledRun at={searchStatus.nextScheduledRunAt} running={searchRunning} />}
+          </>
+        }
       >
         <Button className="min-h-11 md:min-h-9" onClick={handleSave} disabled={saveMutation.isPending}>
           {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -824,5 +912,34 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
         </Button>
       </RunFooter>
     </Card>
+  )
+}
+
+interface ScheduleNumberFieldProps {
+  id: string
+  label: string
+  help: string
+  value: number
+  onChange: (value: number) => void
+  error?: string
+}
+
+function ScheduleNumberField({ id, label, help, value, onChange, error }: ScheduleNumberFieldProps) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-1.5">
+        <Label htmlFor={id}>{label}</Label>
+        <FieldHelp>{help}</FieldHelp>
+      </div>
+      <Input
+        id={id}
+        type="number"
+        min={MIN_SCHEDULE_VALUE}
+        value={value}
+        onChange={event => onChange(parseNonNegativeInt(event.target.value))}
+        className={error ? "border-destructive" : ""}
+      />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
   )
 }

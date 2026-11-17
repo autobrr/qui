@@ -15,13 +15,22 @@ import (
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
 type SearchSettingsPatch struct {
-	InstanceIDSet   bool
-	InstanceID      *int
-	Categories      *[]string
-	Tags            *[]string
-	IndexerIDs      *[]int
-	IntervalSeconds *int
-	CooldownMinutes *int
+	InstanceIDSet          bool
+	InstanceID             *int
+	Categories             *[]string
+	Tags                   *[]string
+	ExcludeCategories      *[]string
+	ExcludeTags            *[]string
+	IndexerIDs             *[]int
+	IntervalSeconds        *int
+	CooldownMinutes        *int
+	MaxAddedAgeDays        *int
+	SkipIndividualEpisodes *bool
+	TorznabEnabled         *bool
+	ScheduleEnabled        *bool
+	ScheduleIntervalHours  *int
+	ScheduleMaxSearches    *int
+	ScheduleMaxAgeDays     *int
 }
 
 // GetAutomationSettings returns the persisted automation configuration.
@@ -129,24 +138,20 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	}
 }
 
-func normalizeSearchTiming(intervalSeconds, cooldownMinutes int) (int, int) {
-	if intervalSeconds < minSearchIntervalSecondsTorznab {
-		intervalSeconds = minSearchIntervalSecondsTorznab
-	}
-	if cooldownMinutes < minSearchCooldownMinutes {
-		cooldownMinutes = minSearchCooldownMinutes
-	}
-	return intervalSeconds, cooldownMinutes
-}
-
 func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettings) {
 	if settings == nil {
 		return
 	}
 	settings.Categories = normalizeStringSlice(settings.Categories)
 	settings.Tags = normalizeStringSlice(settings.Tags)
+	settings.ExcludeCategories = normalizeStringSlice(settings.ExcludeCategories)
+	settings.ExcludeTags = normalizeStringSlice(settings.ExcludeTags)
 	settings.IndexerIDs = uniquePositiveInts(settings.IndexerIDs)
-	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchTiming(settings.IntervalSeconds, settings.CooldownMinutes)
+	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchRunTiming(settings.IntervalSeconds, settings.CooldownMinutes, !settings.TorznabEnabled)
+	settings.MaxAddedAgeDays = max(settings.MaxAddedAgeDays, 0)
+	settings.ScheduleIntervalHours = max(settings.ScheduleIntervalHours, 1)
+	settings.ScheduleMaxSearches = max(settings.ScheduleMaxSearches, 1)
+	settings.ScheduleMaxAgeDays = max(settings.ScheduleMaxAgeDays, 1)
 }
 
 // GetSearchSettings returns stored defaults for seeded torrent searches.
@@ -216,6 +221,42 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 		settings = models.DefaultCrossSeedSearchSettings()
 	}
 
+	turnedOn := patch.ScheduleEnabled != nil && *patch.ScheduleEnabled && !settings.ScheduleEnabled
+	patch.apply(settings)
+
+	s.normalizeSearchSettings(settings)
+
+	if settings.InstanceID != nil {
+		instance, err := s.instanceStore.Get(ctx, *settings.InstanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, *settings.InstanceID)
+			}
+			return nil, fmt.Errorf("load instance %d: %w", *settings.InstanceID, err)
+		}
+		if instance == nil {
+			return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, *settings.InstanceID)
+		}
+	}
+
+	// The first scheduled run starts as soon as the user turns the schedule
+	// on. The clear comes first: while the saved schedule is still off, no
+	// run starts that the clear could forget.
+	if turnedOn {
+		if err := s.forgetLastScheduledStart(ctx); err != nil {
+			return nil, err
+		}
+	}
+	saved, err := s.automationStore.UpsertSearchSettings(ctx, settings)
+	if err != nil {
+		return nil, err
+	}
+	s.librarySettingsSaved()
+	return saved, nil
+}
+
+// apply copies each field that the patch sets into settings.
+func (patch SearchSettingsPatch) apply(settings *models.CrossSeedSearchSettings) {
 	if patch.InstanceIDSet {
 		settings.InstanceID = patch.InstanceID
 	}
@@ -234,21 +275,31 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 	if patch.CooldownMinutes != nil {
 		settings.CooldownMinutes = *patch.CooldownMinutes
 	}
-
-	s.normalizeSearchSettings(settings)
-
-	if settings.InstanceID != nil {
-		instance, err := s.instanceStore.Get(ctx, *settings.InstanceID)
-		if err != nil {
-			if errors.Is(err, models.ErrInstanceNotFound) {
-				return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, *settings.InstanceID)
-			}
-			return nil, fmt.Errorf("load instance %d: %w", *settings.InstanceID, err)
-		}
-		if instance == nil {
-			return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, *settings.InstanceID)
-		}
+	if patch.ExcludeCategories != nil {
+		settings.ExcludeCategories = slices.Clone(*patch.ExcludeCategories)
 	}
-
-	return s.automationStore.UpsertSearchSettings(ctx, settings)
+	if patch.ExcludeTags != nil {
+		settings.ExcludeTags = slices.Clone(*patch.ExcludeTags)
+	}
+	if patch.MaxAddedAgeDays != nil {
+		settings.MaxAddedAgeDays = *patch.MaxAddedAgeDays
+	}
+	if patch.SkipIndividualEpisodes != nil {
+		settings.SkipIndividualEpisodes = *patch.SkipIndividualEpisodes
+	}
+	if patch.TorznabEnabled != nil {
+		settings.TorznabEnabled = *patch.TorznabEnabled
+	}
+	if patch.ScheduleEnabled != nil {
+		settings.ScheduleEnabled = *patch.ScheduleEnabled
+	}
+	if patch.ScheduleIntervalHours != nil {
+		settings.ScheduleIntervalHours = *patch.ScheduleIntervalHours
+	}
+	if patch.ScheduleMaxSearches != nil {
+		settings.ScheduleMaxSearches = *patch.ScheduleMaxSearches
+	}
+	if patch.ScheduleMaxAgeDays != nil {
+		settings.ScheduleMaxAgeDays = *patch.ScheduleMaxAgeDays
+	}
 }
