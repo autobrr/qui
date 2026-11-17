@@ -3,10 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { FieldHelp } from "@/components/ui/field-help"
+import { Field } from "@/components/kit/Field"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useId } from "react"
 import { useTranslation } from "react-i18next"
 
 interface PublicPeerAddressFieldProps {
@@ -26,22 +24,16 @@ interface PublicPeerAddressFieldProps {
  */
 export function PublicPeerAddressField({ value, resolvedValue, onChange }: PublicPeerAddressFieldProps) {
   const { t } = useTranslation("instances")
-  const id = useId()
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5">
-        <Label htmlFor={id}>{t("publicPeerAddress.label")}</Label>
-        <FieldHelp>{t("publicPeerAddress.description")}</FieldHelp>
-      </div>
+    <Field label={t("publicPeerAddress.label")} help={t("publicPeerAddress.description")}>
       <Input
-        id={id}
         value={value}
         placeholder={resolvedValue || t("publicPeerAddress.noResolvedAddress")}
         onChange={(event) => onChange(event.target.value)}
         autoComplete="off"
         spellCheck={false}
       />
-    </div>
+    </Field>
   )
 }

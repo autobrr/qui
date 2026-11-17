@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ShareSettingsForm } from "@/components/shares/ShareSettingsForm"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -50,6 +50,12 @@ function type(label: string, value: string) {
 }
 
 beforeEach(() => {
+  // The section and its tooltips measure their elements, and jsdom has no ResizeObserver.
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
   stored = structuredClone(defaults)
   saved = []
   refuseWith = null
@@ -68,7 +74,10 @@ beforeEach(() => {
   )
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe("ShareSettingsForm", () => {
   it("says that a Share needs a tracker while none is set, and shows the defaults", async () => {

@@ -102,7 +102,6 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
       <div className="space-y-5">
         <TrackerInUse settings={settings} />
         <ShareOptionFields
-          idPrefix="share-dialog"
           days={days}
           endAtFirstDownload={endAtFirstDownload}
           firstDownloaderOnly={firstDownloaderOnly}
