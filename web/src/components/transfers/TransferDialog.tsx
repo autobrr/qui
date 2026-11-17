@@ -86,9 +86,12 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
 
   const warnings: string[] = []
   if (state.kind === "summary") {
-    const { free, freeKnown, bytes, noFileAccess } = state.summary
+    const { free, freeKnown, bytes, noFileAccess, stayOnSource } = state.summary
+    const names = { source: instanceName(sourceInstanceId), target: instanceName(state.targetInstanceId) }
+    // At a target with file access, cross-seeds stay only when the user chose the way "Transfer torrent".
+    if (stayOnSource > 0) warnings.push(t(noFileAccess ? "summary.crossSeedsStay" : "summary.crossSeedsStayForced", { count: stayOnSource, ...names }))
     if (freeKnown && free < bytes) warnings.push(t("summary.notEnoughSpace"))
-    if (noFileAccess) warnings.push(t("summary.noFileAccess", { instance: instanceName(state.targetInstanceId) }))
+    if (noFileAccess) warnings.push(t("summary.noFileAccess", { instance: names.target }))
   }
 
   return (

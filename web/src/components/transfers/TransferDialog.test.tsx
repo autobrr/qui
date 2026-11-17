@@ -43,7 +43,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   summary = {
-    way: "sftp", bytes: 4 * GiB, free: 100 * GiB, freeKnown: true, noFileAccess: false, hints: [],
+    way: "sftp", bytes: 4 * GiB, free: 100 * GiB, freeKnown: true, noFileAccess: false, stayOnSource: 0, hints: [],
     members: [
       { hash: "aaaa", name: "Show.S01.1080p-GRP", targetInstanceId: 2, savePath: "/srv/tv", category: "", tags: [] },
       { hash: "bbbb", name: "Show.S01.1080p-GRP.cs", targetInstanceId: 3, savePath: "/srv/cs", category: "", tags: [] },
@@ -155,13 +155,15 @@ describe("the Transfer dialog", () => {
   })
 
   it("warns about free space and a target without file access next to Start, and hints at TCP and μTP", async () => {
-    summary = { ...summary, way: "bittorrent", free: 1 * GiB, noFileAccess: true, hints: [{ kind: "tcpAndUtp", instanceId: 2 }] }
+    summary = { ...summary, way: "bittorrent", free: 1 * GiB, noFileAccess: true, stayOnSource: 2, hints: [{ kind: "tcpAndUtp", instanceId: 2 }] }
     renderDialog()
     await pickTarget("homelab")
 
     await waitFor(() => expect(figure("Way")).toBe("BitTorrent"))
     const alerts = within(screen.getByRole("dialog")).getAllByRole("alert")
     expect(alerts.map(alert => alert.textContent)).toEqual([
+      "2 cross-seeds stay on seedbox. They read these files through hardlinks, and qui cannot make hardlinks on homelab without file access. " +
+        "To move them too, give qui file access to homelab, on qui's own disk or over SSH, or cross-seed again on homelab.",
       "The target has less free space than the Transfer needs.",
       "qui cannot see the files on homelab, so a file with other content at the same path can be replaced.",
     ])
@@ -172,6 +174,18 @@ describe("the Transfer dialog", () => {
     }
     expect(screen.queryByText("qui checks every piece on the target before it changes the source.")).toBeNull()
     expect(summaryText()).toContain("homelab uses qBittorrent's default \"TCP and μTP\"")
+  })
+
+  it("names the other ways when a forced Transfer torrent leaves a cross-seed on the source", async () => {
+    summary = { ...summary, way: "bittorrent", stayOnSource: 1 }
+    renderDialog()
+    await pickTarget("homelab")
+
+    await waitFor(() => expect(figure("Way")).toBe("BitTorrent"))
+    expect(within(screen.getByRole("dialog")).getAllByRole("alert").map(alert => alert.textContent)).toEqual([
+      "1 cross-seed stays on seedbox. It reads these files through hardlinks, and a Transfer torrent cannot make hardlinks. " +
+        "To move it too, select the way \"Auto\" or \"Copy through qui\".",
+    ])
   })
 
   it("marks a cross-seed of the same target, and leaves the torrent itself unmarked", async () => {

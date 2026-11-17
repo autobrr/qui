@@ -207,6 +207,10 @@
     "freeUnknown": "Freier Speicher unbekannt: Vor qBittorrent 5.3 meldet qBittorrent ihn nur für seinen Standard-Speicherpfad.",
     "notEnoughSpace": "Das Ziel hat weniger freien Speicher, als der Transfer braucht.",
     "noFileAccess": "qui sieht die Dateien auf {{instance}} nicht, daher kann eine Datei mit anderem Inhalt am selben Pfad ersetzt werden.",
+    "crossSeedsStay_one": "{{count}} Cross-Seed bleibt auf {{source}}. Er liest diese Dateien über Hardlinks, und qui kann auf {{target}} ohne Dateizugriff keine Hardlinks anlegen. Um ihn mit zu übertragen, gib qui Dateizugriff auf {{target}}, auf dem eigenen Datenträger von qui oder über SSH, oder führe Cross-Seed auf {{target}} erneut aus.",
+    "crossSeedsStay_other": "{{count}} Cross-Seeds bleiben auf {{source}}. Sie lesen diese Dateien über Hardlinks, und qui kann auf {{target}} ohne Dateizugriff keine Hardlinks anlegen. Um sie mit zu übertragen, gib qui Dateizugriff auf {{target}}, auf dem eigenen Datenträger von qui oder über SSH, oder führe Cross-Seed auf {{target}} erneut aus.",
+    "crossSeedsStayForced_one": "{{count}} Cross-Seed bleibt auf {{source}}. Er liest diese Dateien über Hardlinks, und ein Transfer-Torrent kann keine Hardlinks anlegen. Um ihn mit zu übertragen, wähle die Methode „Auto“ oder „Über qui kopieren“.",
+    "crossSeedsStayForced_other": "{{count}} Cross-Seeds bleiben auf {{source}}. Sie lesen diese Dateien über Hardlinks, und ein Transfer-Torrent kann keine Hardlinks anlegen. Um sie mit zu übertragen, wähle die Methode „Auto“ oder „Über qui kopieren“.",
     "crossSeed": "Cross-Seed",
     "crossSeedInstance": "Auf {{instance}}"
   }

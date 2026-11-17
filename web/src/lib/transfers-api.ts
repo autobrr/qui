@@ -137,6 +137,8 @@ export interface TransferSummary {
   free: number
   freeKnown: boolean
   noFileAccess: boolean
+  /** The cross-seeds on hardlinks that stay on the source, because a Transfer torrent makes no hardlinks. */
+  stayOnSource: number
   hints: TransferHint[]
 }
 

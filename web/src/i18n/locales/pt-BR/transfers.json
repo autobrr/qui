@@ -207,6 +207,10 @@
     "freeUnknown": "Espaço livre desconhecido: antes da versão 5.3, o qBittorrent só o informa no seu caminho de salvamento padrão.",
     "notEnoughSpace": "O destino tem menos espaço livre do que a transferência precisa.",
     "noFileAccess": "O qui não vê os arquivos em {{instance}}, então um arquivo com outro conteúdo no mesmo caminho pode ser substituído.",
+    "crossSeedsStay_one": "{{count}} cross-seed fica em {{source}}. Ele lê estes arquivos por hardlinks, e o qui não consegue criar hardlinks em {{target}} sem acesso aos arquivos. Para movê-lo também, dê ao qui acesso aos arquivos de {{target}}, no próprio disco do qui ou por SSH, ou faça o cross-seed novamente em {{target}}.",
+    "crossSeedsStay_other": "{{count}} cross-seeds ficam em {{source}}. Eles leem estes arquivos por hardlinks, e o qui não consegue criar hardlinks em {{target}} sem acesso aos arquivos. Para movê-los também, dê ao qui acesso aos arquivos de {{target}}, no próprio disco do qui ou por SSH, ou faça o cross-seed novamente em {{target}}.",
+    "crossSeedsStayForced_one": "{{count}} cross-seed fica em {{source}}. Ele lê estes arquivos por hardlinks, e um torrent de transferência não consegue criar hardlinks. Para movê-lo também, selecione o modo \"Automático\" ou \"Copiar pelo qui\".",
+    "crossSeedsStayForced_other": "{{count}} cross-seeds ficam em {{source}}. Eles leem estes arquivos por hardlinks, e um torrent de transferência não consegue criar hardlinks. Para movê-los também, selecione o modo \"Automático\" ou \"Copiar pelo qui\".",
     "crossSeed": "Cross-seed",
     "crossSeedInstance": "Em {{instance}}"
   }

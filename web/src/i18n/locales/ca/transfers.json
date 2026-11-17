@@ -207,6 +207,10 @@
     "freeUnknown": "Espai lliure desconegut: abans de qBittorrent 5.3, qBittorrent només l'informa al seu camí de desada predeterminat.",
     "notEnoughSpace": "La destinació té menys espai lliure del que necessita la transferència.",
     "noFileAccess": "qui no veu els fitxers a {{instance}}, de manera que un fitxer amb un altre contingut al mateix camí es pot substituir.",
+    "crossSeedsStay_one": "{{count}} cross-seed es queda a {{source}}. Llegeix aquests fitxers a través de hardlinks, i qui no pot crear hardlinks a {{target}} sense accés als fitxers. Per moure'l també, dona a qui accés als fitxers de {{target}}, al disc propi de qui o per SSH, o torna a fer cross-seed a {{target}}.",
+    "crossSeedsStay_other": "{{count}} cross-seeds es queden a {{source}}. Llegeixen aquests fitxers a través de hardlinks, i qui no pot crear hardlinks a {{target}} sense accés als fitxers. Per moure'ls també, dona a qui accés als fitxers de {{target}}, al disc propi de qui o per SSH, o torna a fer cross-seed a {{target}}.",
+    "crossSeedsStayForced_one": "{{count}} cross-seed es queda a {{source}}. Llegeix aquests fitxers a través de hardlinks, i un torrent de transferència no pot crear hardlinks. Per moure'l també, selecciona el mètode «Auto» o «Copia a través de qui».",
+    "crossSeedsStayForced_other": "{{count}} cross-seeds es queden a {{source}}. Llegeixen aquests fitxers a través de hardlinks, i un torrent de transferència no pot crear hardlinks. Per moure'ls també, selecciona el mètode «Auto» o «Copia a través de qui».",
     "crossSeed": "Cross-seed",
     "crossSeedInstance": "A {{instance}}"
   }

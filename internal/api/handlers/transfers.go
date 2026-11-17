@@ -331,6 +331,7 @@ type transferSummaryResponse struct {
 	Free         int64            `json:"free"`
 	FreeKnown    bool             `json:"freeKnown"`
 	NoFileAccess bool             `json:"noFileAccess"`
+	StayOnSource int              `json:"stayOnSource"`
 	Hints        []transfer.Hint  `json:"hints"`
 }
 
@@ -353,7 +354,8 @@ func (h *TransfersHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := transferSummaryResponse{Way: summary.Way, Bytes: summary.Bytes, Members: make([]transferMember, len(summary.Members)),
-		Free: summary.Free, FreeKnown: summary.FreeKnown, NoFileAccess: summary.NoFileAccess, Hints: summary.Hints}
+		Free: summary.Free, FreeKnown: summary.FreeKnown, NoFileAccess: summary.NoFileAccess,
+		StayOnSource: summary.Stay, Hints: summary.Hints}
 	if res.Hints == nil {
 		res.Hints = []transfer.Hint{}
 	}

@@ -8871,6 +8871,7 @@ components:
         - free
         - freeKnown
         - noFileAccess
+        - stayOnSource
         - hints
       properties:
         way:
@@ -8898,6 +8899,11 @@ components:
         noFileAccess:
           type: boolean
           description: qui cannot see the files on the target, so a file with other content at the same path can be replaced
+        stayOnSource:
+          type: integer
+          description: >-
+            The cross-seeds that stay on the source. They read the files through hardlinks, and a Transfer torrent
+            makes no hardlinks on the target
         hints:
           type: array
           items:

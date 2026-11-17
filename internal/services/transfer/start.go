@@ -60,86 +60,94 @@ const (
 	reasonSkipped = "Torrents with skipped files are unsupported"
 )
 
-// check runs the entry checks and returns the Transfer to record, with the
-// Shared-file group as it read it.
-func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, error) {
+// planned is the Transfer to record, with the Shared-file group as check
+// read it.
+type planned struct {
+	record *Record
+	group  []*source
+	// stay counts the cross-seeds on hardlinks that stay on the source.
+	stay int
+}
+
+// check runs the entry checks and plans the Transfer.
+func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	hash := strings.ToLower(strings.TrimSpace(req.Hash))
 	if hash == "" {
-		return nil, nil, refuse("Name the torrent to transfer.")
+		return nil, refuse("Name the torrent to transfer.")
 	}
 	if req.SourceInstanceID == req.TargetInstanceID {
-		return nil, nil, refuse("The Transfer source and the Transfer target are the same instance.")
+		return nil, refuse("The Transfer source and the Transfer target are the same instance.")
 	}
 	if err := s.waitsForUser(ctx, req, hash); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	source, err := s.instance(ctx, req.SourceInstanceID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	target, err := s.instance(ctx, req.TargetInstanceID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	for _, inst := range []*models.Instance{source, target} {
 		if err := s.supported(ctx, inst); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 	way, err := checkWay(source, target, req.Options.ForcedWay)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if s.deps.Store.IsHelper(source.ID, hash) {
-		return nil, nil, refuse("qui added this torrent for a Transfer or a Share.")
+		return nil, refuse("qui added this torrent for a Transfer or a Share.")
 	}
 
 	src, err := s.readSource(ctx, source.ID, hash)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if src == nil {
-		return nil, nil, refuse("%s has no torrent %s.", source.Name, hash)
+		return nil, refuse("%s has no torrent %s.", source.Name, hash)
 	}
 	if err := src.movable(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if onTarget, err := s.has(ctx, target.ID, hash); err != nil {
-		return nil, nil, err
+		return nil, err
 	} else if onTarget {
-		return nil, nil, refuse("Already on the target: %s has this torrent.", target.Name)
+		return nil, refuse("Already on the target: %s has this torrent.", target.Name)
 	}
-	group, err := s.groupOf(ctx, source.ID, src)
+	group, stay, err := s.groupOf(ctx, source.ID, src, way)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	others := make([]string, 0, len(group)-1)
 	for _, member := range group[1:] {
 		others = append(others, member.torrent.Hash)
 	}
 	if err := s.waitsForUser(ctx, req, others...); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	placement := req.Placement
 	placement.ContentLayout = ""
 	targetFiles, err := s.deps.Files.GetBackend(ctx, target.ID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
+		return nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
 	}
 	if placement.SavePath == "" {
 		if placement.SavePath, err = s.categorySavePath(ctx, target, targetFiles, placement.Category); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 	td := pathsOf(target, targetFiles, placement.SavePath)
 	if !td.IsAbs(placement.SavePath) {
-		return nil, nil, refuse("The save path %q on %s is not an absolute path.", placement.SavePath, target.Name)
+		return nil, refuse("The save path %q on %s is not an absolute path.", placement.SavePath, target.Name)
 	}
 	placement.SavePath = td.Clean(placement.SavePath)
 	members, err := s.members(ctx, source, target, group, placement)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if way == WayLocal && s.seesSameFiles(ctx, source, target, targetFiles, group, members) {
 		way = WayNone
@@ -150,13 +158,17 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 		options.After = AfterRemoveWithFiles
 	}
 	if !slices.Contains([]After{AfterRemoveWithFiles, AfterKeepFiles, AfterKeepSeeding}, options.After) {
-		return nil, nil, refuse("Unknown choice for after the transfer: %q.", options.After)
+		return nil, refuse("Unknown choice for after the transfer: %q.", options.After)
 	}
 	startedBy := req.StartedBy
 	if startedBy == "" {
 		startedBy = StartedByUser
 	}
-	return &Record{
+	var logged []LogLine
+	if stay > 0 {
+		logged = []LogLine{{At: s.deps.Now(), Message: stayLine(stay, source, target)}}
+	}
+	return &planned{stay: stay, group: group, record: &Record{
 		Kind:             KindTransfer,
 		Way:              way,
 		State:            StateWaiting,
@@ -168,9 +180,10 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 		TargetEndpoint:   fsops.EndpointOf(target),
 		Options:          options,
 		Steps:            []Step{{Name: "start", At: s.deps.Now()}},
+		Log:              logged,
 		Members:          members,
 		Size:             src.torrent.Size,
-	}, group, nil
+	}}, nil
 }
 
 // waitsForUser returns ErrWaitsForUser for a Transfer that a rule starts when

@@ -9,7 +9,7 @@ description: "Transfer to Instance moves a torrent, its cross-seeds, and their f
 
 A Transfer moves a torrent and its files from one qBittorrent instance to another instance in qui. For example, you can move a torrent from a seedbox to a home server after 90 days. qui copies the files that the target does not have, checks every piece against the `.torrent`, and adds the torrent on the target. Then qui removes the torrent from the source, or keeps it, as you select.
 
-A Transfer also moves each torrent on the source instance that reads the same files, for example a cross-seed. The source is the instance that has the torrent now. The target is the instance that gets it.
+A Transfer also moves each torrent on the source instance that reads the same files, for example a cross-seed. With a [Transfer torrent](#transfer-torrent), a cross-seed that reads the files through hardlinks stays on the source. The source is the instance that has the torrent now. The target is the instance that gets it.
 
 To move only a torrent whose files are already on the target, use [Export to Instance](./automations.md#export-to-instance).
 
@@ -74,6 +74,10 @@ A Transfer torrent is a temporary private copy of the torrent, with a new infoha
 The target connects to the [public peer address](./instance-settings.md#public-peer-address) of the source. If no bytes arrive in 2 minutes, qui asks the source to connect to the target. If that also fails and qui can reach the files of both instances over SSH, qui copies the files over SFTP. Otherwise, the Transfer fails and tries again later.
 
 If an instance uses the default "TCP and μTP" peer connection protocol of qBittorrent, the Transfers page shows a hint. In qui's tests, "TCP only" was about three times faster. qui does not change this setting.
+
+A Transfer torrent cannot make hardlinks on the target. Thus only the torrent that you selected moves, with the torrents that read its files at the same path. A cross-seed that reads the files through hardlinks stays on the source and continues to seed. The summary and the log of the Transfer show how many cross-seeds stay. qui also keeps the files of the moved torrent on the source, because the cross-seeds use the same data. These files use no more disk space.
+
+To move these cross-seeds too, give qui file access to the target, on qui's own disk or over SSH. You can also cross-seed again on the target.
 
 ## The proof
 

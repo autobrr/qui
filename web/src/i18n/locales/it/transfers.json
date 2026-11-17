@@ -207,6 +207,10 @@
     "freeUnknown": "Spazio libero sconosciuto: prima di qBittorrent 5.3, qBittorrent lo riporta solo per il suo percorso di salvataggio predefinito.",
     "notEnoughSpace": "La destinazione ha meno spazio libero di quanto serve al trasferimento.",
     "noFileAccess": "qui non vede i file su {{instance}}, quindi un file con contenuto diverso nello stesso percorso può essere sostituito.",
+    "crossSeedsStay_one": "{{count}} cross-seed resta su {{source}}. Legge questi file tramite hardlink, e qui non può creare hardlink su {{target}} senza accesso ai file. Per spostarlo insieme, dai a qui l'accesso ai file di {{target}}, sul disco di qui o tramite SSH, oppure esegui di nuovo il cross-seed su {{target}}.",
+    "crossSeedsStay_other": "{{count}} cross-seed restano su {{source}}. Leggono questi file tramite hardlink, e qui non può creare hardlink su {{target}} senza accesso ai file. Per spostarli insieme, dai a qui l'accesso ai file di {{target}}, sul disco di qui o tramite SSH, oppure esegui di nuovo il cross-seed su {{target}}.",
+    "crossSeedsStayForced_one": "{{count}} cross-seed resta su {{source}}. Legge questi file tramite hardlink, e un torrent di trasferimento non può creare hardlink. Per spostarlo insieme, seleziona il metodo «Auto» o «Copia tramite qui».",
+    "crossSeedsStayForced_other": "{{count}} cross-seed restano su {{source}}. Leggono questi file tramite hardlink, e un torrent di trasferimento non può creare hardlink. Per spostarli insieme, seleziona il metodo «Auto» o «Copia tramite qui».",
     "crossSeed": "Cross-seed",
     "crossSeedInstance": "Su {{instance}}"
   }

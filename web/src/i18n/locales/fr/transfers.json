@@ -207,6 +207,10 @@
     "freeUnknown": "Espace libre inconnu : avant qBittorrent 5.3, qBittorrent ne l'indique que pour son chemin de sauvegarde par défaut.",
     "notEnoughSpace": "La cible a moins d'espace libre que le transfert n'en demande.",
     "noFileAccess": "qui ne voit pas les fichiers sur {{instance}}, donc un fichier au contenu différent au même chemin peut être remplacé.",
+    "crossSeedsStay_one": "{{count}} cross-seed reste sur {{source}}. Il lit ces fichiers via des liens physiques, et qui ne peut pas créer de liens physiques sur {{target}} sans accès aux fichiers. Pour le déplacer aussi, donnez à qui l'accès aux fichiers de {{target}}, sur le disque de qui ou via SSH, ou relancez le cross-seed sur {{target}}.",
+    "crossSeedsStay_other": "{{count}} cross-seeds restent sur {{source}}. Ils lisent ces fichiers via des liens physiques, et qui ne peut pas créer de liens physiques sur {{target}} sans accès aux fichiers. Pour les déplacer aussi, donnez à qui l'accès aux fichiers de {{target}}, sur le disque de qui ou via SSH, ou relancez le cross-seed sur {{target}}.",
+    "crossSeedsStayForced_one": "{{count}} cross-seed reste sur {{source}}. Il lit ces fichiers via des liens physiques, et un torrent de transfert ne peut pas créer de liens physiques. Pour le déplacer aussi, sélectionnez la méthode « Auto » ou « Copier via qui ».",
+    "crossSeedsStayForced_other": "{{count}} cross-seeds restent sur {{source}}. Ils lisent ces fichiers via des liens physiques, et un torrent de transfert ne peut pas créer de liens physiques. Pour les déplacer aussi, sélectionnez la méthode « Auto » ou « Copier via qui ».",
     "crossSeed": "Cross-seed",
     "crossSeedInstance": "Sur {{instance}}"
   }

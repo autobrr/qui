@@ -219,6 +219,12 @@
     "freeUnknown": "Volné místo není známé: qBittorrent před verzí 5.3 ho hlásí jen pro svou výchozí cestu uložení.",
     "notEnoughSpace": "Cíl má méně volného místa, než přenos potřebuje.",
     "noFileAccess": "qui nevidí soubory na instanci {{instance}}, takže soubor s jiným obsahem na stejné cestě může být nahrazen.",
+    "crossSeedsStay_one": "{{count}} křížové sdílení zůstává na instanci {{source}}. Čte tyto soubory přes hardlinky, a qui nemůže na instanci {{target}} vytvářet hardlinky bez přístupu k souborům. Chcete-li ho přenést také, dejte qui přístup k souborům instance {{target}}, na vlastním disku qui nebo přes SSH, nebo na instanci {{target}} spusťte křížové sdílení znovu.",
+    "crossSeedsStay_few": "{{count}} křížová sdílení zůstávají na instanci {{source}}. Čtou tyto soubory přes hardlinky, a qui nemůže na instanci {{target}} vytvářet hardlinky bez přístupu k souborům. Chcete-li je přenést také, dejte qui přístup k souborům instance {{target}}, na vlastním disku qui nebo přes SSH, nebo na instanci {{target}} spusťte křížové sdílení znovu.",
+    "crossSeedsStay_other": "{{count}} křížových sdílení zůstává na instanci {{source}}. Čtou tyto soubory přes hardlinky, a qui nemůže na instanci {{target}} vytvářet hardlinky bez přístupu k souborům. Chcete-li je přenést také, dejte qui přístup k souborům instance {{target}}, na vlastním disku qui nebo přes SSH, nebo na instanci {{target}} spusťte křížové sdílení znovu.",
+    "crossSeedsStayForced_one": "{{count}} křížové sdílení zůstává na instanci {{source}}. Čte tyto soubory přes hardlinky, a přenosový torrent hardlinky vytvářet nemůže. Chcete-li ho přenést také, vyberte způsob „Auto“ nebo „Kopírovat přes qui“.",
+    "crossSeedsStayForced_few": "{{count}} křížová sdílení zůstávají na instanci {{source}}. Čtou tyto soubory přes hardlinky, a přenosový torrent hardlinky vytvářet nemůže. Chcete-li je přenést také, vyberte způsob „Auto“ nebo „Kopírovat přes qui“.",
+    "crossSeedsStayForced_other": "{{count}} křížových sdílení zůstává na instanci {{source}}. Čtou tyto soubory přes hardlinky, a přenosový torrent hardlinky vytvářet nemůže. Chcete-li je přenést také, vyberte způsob „Auto“ nebo „Kopírovat přes qui“.",
     "crossSeed": "Křížové sdílení",
     "crossSeedInstance": "Na instanci {{instance}}"
   }

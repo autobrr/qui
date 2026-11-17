@@ -195,6 +195,8 @@
     "freeUnknown": "可用空间未知：在 qBittorrent 5.3 之前，qBittorrent 仅报告其默认保存路径的可用空间。",
     "notEnoughSpace": "目标的可用空间少于此传输所需的空间。",
     "noFileAccess": "qui 无法查看 {{instance}} 上的文件，因此同一路径下内容不同的文件可能会被替换。",
+    "crossSeedsStay_other": "{{count}} 个辅种会留在 {{source}}。它们通过硬链接读取这些文件，而 qui 在没有文件访问权限时无法在 {{target}} 上创建硬链接。若要一并传输，请为 qui 提供 {{target}} 的文件访问权限（qui 自己的磁盘或 SSH），或在 {{target}} 上重新辅种。",
+    "crossSeedsStayForced_other": "{{count}} 个辅种会留在 {{source}}。它们通过硬链接读取这些文件，而传输种子无法创建硬链接。若要一并传输，请选择方式“自动”或“通过 qui 复制”。",
     "crossSeed": "辅种",
     "crossSeedInstance": "添加到 {{instance}}"
   }

@@ -271,10 +271,11 @@ func (s *Service) Start(ctx context.Context, req Request) (int64, error) {
 	if s.ctx.Err() != nil {
 		return 0, errShutdown
 	}
-	record, _, err := s.check(ctx, req)
+	plan, err := s.check(ctx, req)
 	if err != nil {
 		return 0, err
 	}
+	record := plan.record
 	if err := s.deps.Store.Create(ctx, record); err != nil {
 		return 0, err
 	}
@@ -289,15 +290,19 @@ type Preview struct {
 	// two members read at one path once.
 	Bytes   int64
 	Members []Member
+	// Stay counts the cross-seeds that stay on the source: they read the
+	// files through hardlinks, and a Transfer torrent makes no hardlinks.
+	Stay int
 }
 
 // Preview runs the checks of Start, with its refusals, and records and claims
 // nothing.
 func (s *Service) Preview(ctx context.Context, req Request) (*Preview, error) {
-	record, group, err := s.check(ctx, req)
+	plan, err := s.check(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+	record := plan.record
 	for _, m := range record.Members {
 		if s.deps.Store.IsClaimed(record.SourceInstanceID, m.Hash) {
 			return nil, fmt.Errorf("%w: %s on instance %d", ErrClaimed, m.Hash, record.SourceInstanceID)
@@ -307,7 +312,7 @@ func (s *Service) Preview(ctx context.Context, req Request) (*Preview, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read the files of instance %d: %w", record.SourceInstanceID, err)
 	}
-	return &Preview{Way: record.Way, Bytes: groupBytes(files.Paths(), group), Members: record.Members}, nil
+	return &Preview{Way: record.Way, Bytes: groupBytes(files.Paths(), plan.group), Members: record.Members, Stay: plan.stay}, nil
 }
 
 func (s *Service) enqueue(r *Record) {
