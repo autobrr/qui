@@ -348,6 +348,40 @@ func TestPoolRunningSFTPCallKeepsTheConnectionFromIdleClose(t *testing.T) {
 }
 
 // regression: #4231
+// A server that stops answering while sshd still answers keepalives would
+// hold its callers forever. Once the running calls got no answer for
+// stallTimeout, the pool closes the connection and the calls fail.
+func TestPoolClosesAConnectionWhoseSFTPCallsGetNoAnswer(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	client, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	server.SetSFTP(sshtest.SFTPHoldNextMutation)
+	call := make(chan error, 1)
+	go func() { call <- client.Mkdir(filepath.Join(dir, "held")) }()
+	<-server.Stalled()
+
+	pool.mu.Lock()
+	entry := pool.conns[inst.ID]
+	pool.mu.Unlock()
+	entry.calls.lastAnswer.Store(time.Now().Add(-stallTimeout - time.Second).UnixNano())
+	done := make(chan struct{})
+	defer close(done)
+	go entry.keepalive(inst.ID, entry.client, entry.calls, done, 20*time.Millisecond)
+
+	// The server's own stall timer answers the call after a few seconds, so
+	// only a close by the pool makes it fail.
+	require.Error(t, <-call, "the pool must close a connection whose sftp calls get no answer")
+}
+
+// regression: #4231
 // The keepalive loop can look while the answer of a call that ran past the
 // idle limit comes in. At no point in between may the connection look idle,
 // or the loop closes it under the caller.
@@ -373,6 +407,47 @@ func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
 	assert.False(t, idleSeen, "the connection looked idle while the answer came in")
 	assert.False(t, unused(calls, &lastUsed))
 }
+
+// regression: #4231
+// The wait of the running calls starts with the first of them and again at
+// each answer: a connection that had no sftp call for hours, and a copy that
+// keeps calls in flight for hours, must not look stalled.
+func TestPoolSFTPCallsStallOnlyWithoutAnAnswer(t *testing.T) {
+	t.Parallel()
+
+	packet := []byte{0, 0, 0, 1, 101}
+	tests := []struct {
+		name    string
+		running int64
+		pass    func(*sftpCalls) error
+		stalled bool
+	}{
+		{name: "running calls that heard nothing", running: 1, pass: func(*sftpCalls) error { return nil }, stalled: true},
+		{name: "a call that begins after hours without one", pass: func(calls *sftpCalls) error {
+			_, err := (&requestWriter{WriteCloser: discardCloser{io.Discard}, calls: calls}).Write(packet)
+			return err
+		}},
+		{name: "an answer while another call runs", running: 2, pass: func(calls *sftpCalls) error {
+			_, err := io.ReadAll(&answerReader{Reader: bytes.NewReader(packet), calls: calls})
+			return err
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			calls := &sftpCalls{answered: func() {}}
+			calls.running.Store(tt.running)
+			calls.lastAnswer.Store(time.Now().Add(-stallTimeout - time.Second).UnixNano())
+
+			require.NoError(t, tt.pass(calls))
+			assert.Equal(t, tt.stalled, calls.stalled())
+		})
+	}
+}
+
+type discardCloser struct{ io.Writer }
+
+func (discardCloser) Close() error { return nil }
 
 // regression: #4231
 // Stderr and the answers share the window of the channel, so stderr that

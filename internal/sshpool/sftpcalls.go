@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -17,8 +18,16 @@ import (
 // first byte out to the last byte of its answer in.
 type sftpCalls struct {
 	running atomic.Int64
+	// lastAnswer is when the last answer came in, or when a call began with
+	// none running: the running calls have heard nothing since.
+	lastAnswer atomic.Int64
 	// answered marks the connection used each time a call ends.
 	answered func()
+}
+
+// stalled reports that calls run and none got an answer within stallTimeout.
+func (c *sftpCalls) stalled() bool {
+	return c.running.Load() > 0 && time.Since(time.Unix(0, c.lastAnswer.Load())) > stallTimeout
 }
 
 // newSFTPClient opens the sftp subsystem on client the way sftp.NewClient
@@ -59,6 +68,11 @@ type requestWriter struct {
 
 func (w *requestWriter) Write(p []byte) (int, error) {
 	if began, _ := w.frames.scan(p); began > 0 {
+		// A call that finds none running starts the wait. Only an answer
+		// lowers running, and it stores lastAnswer first.
+		if w.calls.running.Load() == 0 {
+			w.calls.lastAnswer.Store(time.Now().UnixNano())
+		}
 		w.calls.running.Add(int64(began))
 	}
 	return w.WriteCloser.Write(p)
@@ -76,6 +90,7 @@ func (r *answerReader) Read(p []byte) (int, error) {
 	if _, ended := r.frames.scan(p[:n]); ended > 0 {
 		// The mark of use comes first: in between, the idle close would see
 		// no call running and the old time of a call longer than its limit.
+		r.calls.lastAnswer.Store(time.Now().UnixNano())
 		r.calls.answered()
 		r.calls.running.Add(-int64(ended))
 	}
