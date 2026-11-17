@@ -194,33 +194,36 @@ func headStartDetail(files []*groupFile) string {
 	return string(detail)
 }
 
-// keepNames fails a run after a stop when the source renamed a file since
-// the first run. The cleanup then looks for the files under the old names.
-func (j *job) keepNames(ctx context.Context) error {
-	now := make([][]string, len(j.parts))
-	for i, p := range j.parts {
-		now[i] = names(p.plan)
-	}
-	i := slices.IndexFunc(j.rec.Steps, func(s Step) bool { return s.Name == stepNames })
-	if i < 0 {
-		detail, _ := json.Marshal(now)
-		return j.stepWith(ctx, StateCopying, stepNames, string(detail))
-	}
-	var kept [][]string
-	_ = json.Unmarshal([]byte(j.rec.Steps[i].Detail), &kept)
-	if slices.EqualFunc(kept, now, slices.Equal) {
+func (j *job) recordNames(ctx context.Context) error {
+	if j.reached(stepNames) {
 		return nil
 	}
-	for i, old := range kept {
-		plan := j.parts[i].plan
-		for k := range plan {
-			if !plan[k].pad && len(old) > 0 {
-				plan[k].name, old = old[0], old[1:]
+	recorded := make([][]string, len(j.parts))
+	for i, p := range j.parts {
+		recorded[i] = names(p.plan)
+	}
+	detail, _ := json.Marshal(recorded)
+	return j.stepWith(ctx, StateCopying, stepNames, string(detail))
+}
+
+// useRecordedNames gives the files of the parts the names that the first
+// run recorded, and reports whether the source renamed a file since then.
+func (j *job) useRecordedNames(parts []*part) (renamed bool) {
+	i := slices.IndexFunc(j.rec.Steps, func(s Step) bool { return s.Name == stepNames })
+	var recorded [][]string
+	if i < 0 || json.Unmarshal([]byte(j.rec.Steps[i].Detail), &recorded) != nil {
+		return false
+	}
+	for _, p := range parts {
+		old := recorded[p.position]
+		for k := range p.plan {
+			if !p.plan[k].pad && len(old) > 0 {
+				renamed = renamed || p.plan[k].name != old[0]
+				p.plan[k].name, old = old[0], old[1:]
 			}
 		}
 	}
-	j.files, j.byRel, _ = groupFiles(j.parts)
-	return sourceGone("a file was renamed")
+	return renamed
 }
 
 // ownTemp finds the temporary file of f, also under the .!qB name that a
@@ -482,6 +485,7 @@ func (j *job) readGroup(ctx context.Context) bool {
 	if j.parts == nil {
 		return false
 	}
+	j.useRecordedNames(j.parts)
 	if j.files, j.byRel, err = groupFiles(j.parts); err != nil {
 		j.parts = nil
 		return false

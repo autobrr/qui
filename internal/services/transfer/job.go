@@ -197,7 +197,7 @@ func (j *job) prepare(ctx context.Context) error {
 	if err := j.readParts(ctx, pathsOf(j.target, j.dstFiles, j.rec.Members[0].Placement.SavePath)); err != nil {
 		return err
 	}
-	if err := j.keepNames(ctx); err != nil {
+	if err := j.recordNames(ctx); err != nil {
 		return err
 	}
 	if !j.blind {
@@ -466,6 +466,9 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 			return permanent("The Cross-seed instance %s changed its address, its SSH server, or its file access since the Transfer started, "+
 				"so the Transfer stopped. qui cleans up nothing on %s.", j.crossSeed.Name, j.crossSeed.Name)
 		}
+	}
+	if j.useRecordedNames(parts) {
+		return sourceGone("a file was renamed")
 	}
 	if j.files, j.byRel, err = groupFiles(parts); err != nil {
 		return permanent("The torrents of the group do not agree on their files: %v", err)
