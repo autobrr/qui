@@ -287,11 +287,6 @@ func NewServer(deps *Dependencies) *Server {
 	return &s
 }
 
-// Switches returns the server-side switches that the router was built with.
-func (s *Server) Switches() rollout.Switches {
-	return s.switches
-}
-
 // transferRoutes adds the Transfer and Share routes while the switch for
 // Transfers and Shares is on.
 func (s *Server) transferRoutes(r chi.Router) {
