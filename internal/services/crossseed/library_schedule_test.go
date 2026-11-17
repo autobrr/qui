@@ -687,6 +687,7 @@ func TestLibraryScheduleLoop_StartsAfterManualRun(t *testing.T) {
 
 // A season group search that the indexer answers with an error still counts
 // as a sent search, so it counts toward the cap of a scheduled run.
+// regression: #4246
 func TestProcessEnsembleSeasonCandidate_FailedSearchCountsAsSent(t *testing.T) {
 	t.Parallel()
 	tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
