@@ -151,8 +151,8 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 			}
 			runCrashChild(t, plan, child, tc.killAtAdd > 0 || tc.killAtRemoval)
 
-			sent := &events{}
-			r.deps.Notifier = sent
+			notified := &events{}
+			r.deps.Notifier = notified
 			r.restart()
 			r.svc.Wait()
 
@@ -210,21 +210,21 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 
 			switch tc.want {
 			case "cancelled":
-				require.Empty(t, sent.events, "a cancel sends no event")
+				require.Empty(t, notified.events, "a cancel sends no event")
 			case "done":
-				require.Len(t, sent.events, 1, "the restart sends the end of the Transfer once")
-				require.Equal(t, notifications.EventTransferFinished, sent.events[0].Type)
+				require.Len(t, notified.events, 1, "the restart sends the end of the Transfer once")
+				require.Equal(t, notifications.EventTransferFinished, notified.events[0].Type)
 			default:
-				require.Len(t, sent.events, 1, "the restart sends the end of the Transfer once")
-				require.Equal(t, notifications.EventTransferFailed, sent.events[0].Type)
+				require.Len(t, notified.events, 1, "the restart sends the end of the Transfer once")
+				require.Equal(t, notifications.EventTransferFailed, notified.events[0].Type)
 			}
 
-			src, dst, sends := r.src.Requests(), r.dst.Requests(), len(sent.events)
+			src, dst, sends := sent(r.src), sent(r.dst), len(notified.events)
 			r.restart()
 			r.svc.Wait()
-			require.Equal(t, src, r.src.Requests())
-			require.Equal(t, dst, r.dst.Requests())
-			require.Len(t, sent.events, sends)
+			require.Equal(t, src, sent(r.src))
+			require.Equal(t, dst, sent(r.dst))
+			require.Len(t, notified.events, sends)
 		})
 	}
 }

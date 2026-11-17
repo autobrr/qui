@@ -6,6 +6,7 @@ package share_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -510,16 +511,16 @@ func TestAShareStaysEndingWhileTheClientKeepsTheShareTorrent(t *testing.T) {
 	r.requireEnded(sh.ID, "Stopped by the user.")
 }
 
-// failActivityWrites makes each write of the activity of a Share fail until
-// the returned func runs.
-func (r *rig) failActivityWrites() (stop func()) {
+// failWrites makes each write of column in the row of a Share fail with
+// "<column> write failed" until the returned func runs.
+func (r *rig) failWrites(column string) (stop func()) {
 	r.t.Helper()
-	_, err := r.db.ExecContext(r.t.Context(), `
-		CREATE TRIGGER fail_share_activity BEFORE UPDATE OF peers_json ON shares
-		BEGIN SELECT RAISE(ABORT, 'activity write failed'); END`)
+	_, err := r.db.ExecContext(r.t.Context(), fmt.Sprintf(`
+		CREATE TRIGGER fail_share_%[1]s BEFORE UPDATE OF %[1]s ON shares
+		BEGIN SELECT RAISE(ABORT, '%[1]s write failed'); END`, column))
 	require.NoError(r.t, err)
 	return func() {
-		_, err := r.db.ExecContext(r.t.Context(), `DROP TRIGGER fail_share_activity`)
+		_, err := r.db.ExecContext(r.t.Context(), `DROP TRIGGER fail_share_`+column)
 		require.NoError(r.t, err)
 	}
 }
@@ -538,9 +539,9 @@ func TestTheCheckWritesTheActivityAgainAfterAFailedWrite(t *testing.T) {
 	sh := r.start(share.Request{})
 	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
 	r.announce(recipientURL, sh.HelperHash, 6881, 70, "started")
-	stop := r.failActivityWrites()
+	stop := r.failWrites("peers_json")
 
-	require.ErrorContains(t, r.svc.Check(t.Context()), "activity write failed")
+	require.ErrorContains(t, r.svc.Check(t.Context()), "peers_json write failed")
 	stop()
 	r.check()
 
@@ -553,9 +554,9 @@ func TestAnEndingShareKeepsItsActivityUntilQuiSavesIt(t *testing.T) {
 	sh := r.start(share.Request{})
 	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
 	r.announce(recipientURL, sh.HelperHash, 6881, 70, "started")
-	stop := r.failActivityWrites()
+	stop := r.failWrites("peers_json")
 
-	require.ErrorContains(t, r.svc.Stop(t.Context(), sh.ID), "activity write failed")
+	require.ErrorContains(t, r.svc.Stop(t.Context(), sh.ID), "peers_json write failed")
 	require.Equal(t, share.StateEnding, r.stored(sh.ID).State)
 	stop()
 	r.check()
@@ -948,6 +949,54 @@ func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing
 	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
 	peers, _ = r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "")
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "the next downloader holds the Share after a restart")
+}
+
+// regression: #4231
+func TestTheCheckStoresTheLockHolderAfterAFailedWrite(t *testing.T) {
+	r := newRig(t)
+	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
+		Port: r.port, PublicAddress: "http://127.0.0.1:" + strconv.Itoa(r.port), TrustedProxies: []string{"127.0.0.1"},
+	}))
+	sh := r.start(share.Request{FirstDownloaderOnly: new(true)})
+	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	const first = "198.51.100.7"
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
+	stop := r.failWrites("holder")
+
+	peers, _ := r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 70, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, peers)
+	require.ErrorContains(t, r.svc.Check(t.Context()), "holder write failed")
+	stop()
+	r.check()
+
+	require.Equal(t, netip.MustParseAddr(first), r.stored(sh.ID).Holder, "the lock holder outlives a restart of qui")
+}
+
+// A recipient that the lock keeps out cannot end the Share: only the
+// progress of the first downloader counts.
+// regression: #4231
+func TestALockedOutDownloaderDoesNotEndTheShare(t *testing.T) {
+	r := newRig(t)
+	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
+		Port: r.port, PublicAddress: "http://127.0.0.1:" + strconv.Itoa(r.port), TrustedProxies: []string{"127.0.0.1"},
+	}))
+	sh := r.start(share.Request{FirstDownloaderOnly: new(true)})
+	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	const first, next = "198.51.100.7", "198.51.100.8"
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
+	r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 70, "started")
+	r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "started")
+
+	r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 0, "completed")
+	r.check()
+	require.Equal(t, share.StateActive, r.get(sh.ID).State)
+	require.Zero(t, r.get(sh.ID).Downloaded)
+
+	r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 0, "completed")
+	r.check()
+	r.requireEnded(sh.ID, "The recipient has the files.")
 }
 
 func TestUnlockIsRefused(t *testing.T) {

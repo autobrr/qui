@@ -115,7 +115,9 @@ const (
 // Report is one announce that the tracker answered. Peer is the address of
 // the connection, or the forwarded address from a trusted proxy, with the
 // port that the client announced. Locked is true when this announce took the
-// lock of a Share with FirstDownloaderOnly for the address of Peer.
+// lock of a Share with FirstDownloaderOnly for the address of Peer. Blocked is
+// true when that lock keeps the recipient client at Peer from the user's
+// client.
 type Report struct {
 	ShareID    int64
 	Owner      bool
@@ -125,6 +127,7 @@ type Report struct {
 	Left       int64
 	Event      Event
 	Locked     bool
+	Blocked    bool
 }
 
 // Reports receives a Report for each announce. Announced runs before the
@@ -350,6 +353,7 @@ func (t *Tracker) serve(w http.ResponseWriter, r *http.Request) {
 		Left:       req.left,
 		Event:      req.event,
 		Locked:     answer.locked,
+		Blocked:    answer.blocked,
 	})
 	reply(w, answer.peers[:min(len(answer.peers), req.numwant)])
 }
