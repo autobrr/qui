@@ -531,6 +531,37 @@ func TestTransferCancelRemovesNothingFromACrossSeedInstanceWithANewAddress(t *te
 	require.True(t, moved.Has(s.hash))
 }
 
+// A cancel after the Cross-seed instance got a new address during the run
+// removes nothing there, also when the run read the instance before the
+// change.
+// regression: #4231
+func TestTransferCancelRemovesNothingFromACrossSeedInstanceThatMovedDuringTheRun(t *testing.T) {
+	r := newRig(t)
+	cs := r.withCrossSeedInstance()
+	s := r.seedRouted()
+	moved := qbtstub.New(t, t.TempDir())
+	ids := make(chan int64, 1)
+	moveAndCancel := sync.OnceFunc(func() {
+		_, err := r.instances.Update(t.Context(), cs.inst.ID, cs.inst.Name, moved.URL, "", "", nil, nil, nil)
+		require.NoError(t, err)
+		require.NoError(t, r.svc.Cancel(t.Context(), <-ids))
+	})
+	cs.stub.OnWrite = func(endpoint string) {
+		if endpoint == "torrents/start" {
+			moveAndCancel()
+		}
+	}
+
+	id, err := r.svc.Start(t.Context(), r.request(s))
+	require.NoError(t, err)
+	ids <- id
+	r.svc.Wait()
+
+	require.Equal(t, transfer.StateCancelled, r.get(id).State, r.get(id).FailureReason)
+	require.Zero(t, cs.stub.Writes("torrents/delete"), "qui removes nothing from the Cross-seed instance")
+	require.True(t, cs.stub.Has(s.hash))
+}
+
 // A stop during the copy, and then a new address of the Cross-seed
 // instance, stops the Transfer, and the cleanup still removes the partial
 // copy on the target.
