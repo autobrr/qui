@@ -243,15 +243,13 @@
     overflow: hidden;
   }
 
-  /* The space above the app, and the gap AppLayout keeps below the iOS status bar fade.
-     Full-height layouts subtract both, because #root clips what extends below the screen. */
+  /* Full-height layouts subtract both, because #root clips what extends below the screen. */
   :root {
     --app-inset-top: env(safe-area-inset-top);
     --app-fade-gap: 0px;
   }
 
-  /* iOS 26.1+ Home Screen web apps fade the content below the status bar (autobrr/qui#2520).
-     The gap is fixed, because there the web view starts below the status bar and the top inset is 0. */
+  /* iOS 26.1+ Home Screen web apps fade the content below the status bar (autobrr/qui#2520); the top inset can be 0 there, so the gap is fixed. */
   @media (display-mode: standalone) {
     @supports (-webkit-touch-callout: none) {
       :root {
