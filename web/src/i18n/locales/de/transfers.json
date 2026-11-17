@@ -137,8 +137,8 @@
     }
   },
   "dialog": {
-    "title": "{{name}} übertragen",
-    "description": "Verschiebe den Torrent und seine Cross-Seeds auf eine andere Instanz. qui prüft jedes Piece auf dem Ziel, bevor es die Quelle ändert.",
+    "title": "Auf eine andere Instanz übertragen",
+    "verified": "qui prüft jedes Piece auf dem Ziel, bevor es die Quelle ändert.",
     "start": "Transfer starten",
     "starting": "Wird gestartet…",
     "started": "Der Transfer von {{name}} wartet, bis er an der Reihe ist.",
@@ -149,13 +149,15 @@
     "pickTarget": "Wähle eine Ziel-Instanz aus, um die Zusammenfassung zu sehen.",
     "loading": "Transfer wird geplant…",
     "refused": "qui startet diesen Transfer nicht: {{message}}",
-    "torrents_one": "{{count}} Torrent, {{size}}",
-    "torrents_other": "{{count}} Torrents, {{size}}",
-    "way": "Methode: {{way}}",
-    "free": "Frei auf dem Ziel: {{size}}",
+    "torrents": "Torrents",
+    "size": "Größe",
+    "way": "Methode",
+    "free": "Frei auf dem Ziel",
+    "unknown": "Unbekannt",
     "freeUnknown": "Freier Speicher unbekannt: Vor qBittorrent 5.3 meldet qBittorrent ihn nur für seinen Standard-Speicherpfad.",
     "notEnoughSpace": "Das Ziel hat weniger freien Speicher, als der Transfer braucht.",
     "noFileAccess": "qui sieht die Dateien auf {{instance}} nicht, daher kann eine Datei mit anderem Inhalt am selben Pfad ersetzt werden.",
+    "crossSeed": "Cross-Seed",
     "crossSeedInstance": "Auf {{instance}}"
   }
 }

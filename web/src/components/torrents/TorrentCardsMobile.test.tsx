@@ -664,3 +664,44 @@ describe("TorrentCardsMobile Display profile", () => {
     await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("textbox", { name: "displayProfiles.newDialog.name" })))
   })
 })
+
+describe("TorrentCardsMobile Transfer and Share", () => {
+  const moreActions = (view: ReturnType<typeof render>) => {
+    fireEvent.click(view.getByRole("button", { name: "mobileCards.more" }))
+    return within(view.getByRole("dialog"))
+  }
+
+  // regression: #4242
+  it("offers Transfer and Share for one selected torrent, and the pick reaches only that torrent", () => {
+    const view = renderCards(flatRows(3))
+    longPress(cardOf(view.container, "Release 1"))
+
+    const sheet = moreActions(view)
+    expect(sheet.getByRole("button", { name: "contextMenu.shareWithSomeone" })).toBeTruthy()
+    fireEvent.click(sheet.getByRole("button", { name: "contextMenu.transferToInstance" }))
+
+    expect(picks.map(({ pick }) => pick)).toEqual([{ action: "transfer" }])
+    const target = picks[0].target
+    expect(target?.kind === "ticks" ? target.hashes : undefined).toEqual(["hash-1"])
+  })
+
+  it("offers only Share for two selected torrents", () => {
+    const view = renderCards(flatRows(3))
+    longPress(cardOf(view.container, "Release 0"))
+    fireEvent.click(cardOf(view.container, "Release 2"))
+
+    const sheet = moreActions(view)
+    expect(sheet.queryByRole("button", { name: "contextMenu.transferToInstance" })).toBeNull()
+    expect(sheet.getByRole("button", { name: "contextMenu.shareWithSomeone" })).toBeTruthy()
+  })
+
+  it("offers neither in the demo", () => {
+    scenario.isDemo = true
+    const view = renderCards(flatRows(3))
+    longPress(cardOf(view.container, "Release 1"))
+
+    const sheet = moreActions(view)
+    expect(sheet.queryByRole("button", { name: "contextMenu.transferToInstance" })).toBeNull()
+    expect(sheet.queryByRole("button", { name: "contextMenu.shareWithSomeone" })).toBeNull()
+  })
+})

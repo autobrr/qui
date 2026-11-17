@@ -37,6 +37,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
+  ArrowRightLeft,
   ArrowUpDown,
   Blocks,
   CheckCircle2,
@@ -63,6 +64,7 @@ import {
   Radio,
   Search,
   Settings2,
+  Share2,
   Sprout,
   Tag,
   Trash2,
@@ -94,6 +96,7 @@ import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
 import { CopyGroupPill } from "./table/CopyGroupPill"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
+import { transferShareOffer } from "./transfer-share-offer"
 
 interface TorrentCardsMobileProps {
   instanceId: number
@@ -981,6 +984,7 @@ export function TorrentCardsMobile({
   const { count: effectiveSelectionCount, previewTorrents: selectedTorrents } = actionTarget
   const actionInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, instanceId), [actionTarget, instanceId])
   const supportsTorrentExport = useInstancesSupport(actionInstanceIds, "supportsTorrentExport")
+  const offer = transferShareOffer(selectedTorrents, effectiveSelectionCount, actionInstanceIds)
 
   const selectionBarVisible = selectionMode && effectiveSelectionCount > 0
 
@@ -1668,6 +1672,26 @@ export function TorrentCardsMobile({
               >
                 <Download className="mr-2 h-4 w-4" />
                 {effectiveSelectionCount > 1 ? t("contextMenu.exportTorrents", { count: effectiveSelectionCount }) : t("contextMenu.exportTorrent")}
+              </Button>
+            )}
+            {offer.transfer && (
+              <Button
+                variant="outline"
+                onClick={() => pickBulkAction({ action: "transfer" })}
+                className="justify-start"
+              >
+                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                {t("contextMenu.transferToInstance")}
+              </Button>
+            )}
+            {offer.share && (
+              <Button
+                variant="outline"
+                onClick={() => pickBulkAction({ action: "share" })}
+                className="justify-start"
+              >
+                <Share2 className="mr-2 h-4 w-4" />
+                {t("contextMenu.shareWithSomeone")}
               </Button>
             )}
             <Button

@@ -137,8 +137,8 @@
     }
   },
   "dialog": {
-    "title": "Transfer {{name}}",
-    "description": "Move the torrent and its cross-seeds to another instance. qui checks every piece on the target before it changes the source.",
+    "title": "Transfer to another instance",
+    "verified": "qui checks every piece on the target before it changes the source.",
     "start": "Start Transfer",
     "starting": "Starting…",
     "started": "The Transfer of {{name}} waits for its turn.",
@@ -149,13 +149,15 @@
     "pickTarget": "Select a target instance to see the summary.",
     "loading": "Planning the Transfer…",
     "refused": "qui does not start this Transfer: {{message}}",
-    "torrents_one": "{{count}} torrent, {{size}}",
-    "torrents_other": "{{count}} torrents, {{size}}",
-    "way": "Way: {{way}}",
-    "free": "Free on the target: {{size}}",
+    "torrents": "Torrents",
+    "size": "Size",
+    "way": "Way",
+    "free": "Free on the target",
+    "unknown": "Unknown",
     "freeUnknown": "Free space unknown: before qBittorrent 5.3, qBittorrent reports it only at its default save path.",
     "notEnoughSpace": "The target has less free space than the Transfer needs.",
     "noFileAccess": "qui cannot see the files on {{instance}}, so a file with other content at the same path can be replaced.",
+    "crossSeed": "Cross-seed",
     "crossSeedInstance": "On {{instance}}"
   }
 }

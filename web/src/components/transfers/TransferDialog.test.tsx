@@ -96,7 +96,13 @@ async function pickTarget(name: string) {
   fireEvent.click(await screen.findByRole("option", { name }))
 }
 
-const summaryText = () => document.querySelector("section[aria-labelledby='transfer-summary-title']")?.textContent ?? ""
+const summaryPanel = () => document.querySelector<HTMLElement>("section[aria-labelledby='transfer-summary-title']")!
+const summaryText = () => summaryPanel().textContent ?? ""
+const figureLabels = () => Array.from(summaryPanel().querySelectorAll("dt"), label => label.textContent)
+/** The value under one label of the figures at the top of the summary. */
+const figure = (label: string) =>
+  Array.from(summaryPanel().querySelectorAll("dt")).find(term => term.textContent === label)?.nextElementSibling?.textContent ?? null
+const memberRow = (name: string) => Array.from(summaryPanel().querySelectorAll("li")).find(row => row.firstElementChild?.textContent === name)?.textContent ?? null
 const startButton = () => screen.getByRole<HTMLButtonElement>("button", { name: "Start Transfer" })
 
 describe("the Transfer dialog", () => {
@@ -127,12 +133,13 @@ describe("the Transfer dialog", () => {
     fireEvent.click(screen.getByRole("option", { name: "homelab" }))
     fireEvent.change(screen.getByLabelText("Tags"), { target: { value: "moved,, kept, " } })
 
-    await waitFor(() => expect(summaryText()).toContain("2 torrents, 4 GiB"))
-    const text = summaryText()
-    expect(text).toContain("Way: Copy over SFTP")
-    expect(text).toContain("Free on the target: 100 GiB")
-    expect(text).toContain("Show.S01.1080p-GRP.cs (On crossbox)")
-    expect(text).not.toContain("less free space")
+    await waitFor(() => expect(figure("Torrents")).toBe("2"))
+    expect(figure("Size")).toBe("4 GiB")
+    expect(figure("Way")).toBe("Copy over SFTP")
+    expect(figure("Free on the target")).toBe("100 GiB")
+    expect(memberRow("Show.S01.1080p-GRP")).toBe("Show.S01.1080p-GRP")
+    expect(memberRow("Show.S01.1080p-GRP.cs")).toBe("Show.S01.1080p-GRP.csOn crossbox")
+    expect(summaryText()).not.toContain("less free space")
     expect(starts).toEqual([])
 
     await waitFor(() => expect(startButton().disabled).toBe(false))
@@ -152,7 +159,7 @@ describe("the Transfer dialog", () => {
     renderDialog()
     await pickTarget("homelab")
 
-    await waitFor(() => expect(summaryText()).toContain("Way: BitTorrent"))
+    await waitFor(() => expect(figure("Way")).toBe("BitTorrent"))
     const warnings = within(screen.getByRole("dialog")).getAllByRole("alert").map(alert => alert.textContent)
     expect(warnings).toEqual([
       "The target has less free space than the Transfer needs.",
@@ -161,12 +168,57 @@ describe("the Transfer dialog", () => {
     expect(summaryText()).toContain("homelab uses qBittorrent's default \"TCP and μTP\"")
   })
 
+  it("marks a cross-seed of the same target, and leaves the torrent itself unmarked", async () => {
+    summary = { ...summary, members: summary.members.map(member => ({ ...member, targetInstanceId: 2 })) }
+    renderDialog()
+    await pickTarget("homelab")
+
+    await waitFor(() => expect(figure("Torrents")).toBe("2"))
+    expect(memberRow("Show.S01.1080p-GRP")).toBe("Show.S01.1080p-GRP")
+    expect(memberRow("Show.S01.1080p-GRP.cs")).toBe("Show.S01.1080p-GRP.csCross-seed")
+  })
+
+  // regression: #4242
+  it("keeps the same figures in place before, while, and after a summary loads", async () => {
+    let answer: () => void = () => {}
+    server.use(http.post("*/api/transfers/summary", async ({ request }) => {
+      summaries.push(await request.json() as TransferRequest)
+      await new Promise<void>(resolve => { answer = resolve })
+      return HttpResponse.json(summary)
+    }))
+    const labels = ["Torrents", "Size", "Way", "Free on the target"]
+    renderDialog()
+    await screen.findByRole("combobox", { name: "Target instance" })
+    expect(figureLabels()).toEqual(labels)
+    expect(figure("Torrents")).toBe("—")
+
+    await pickTarget("homelab")
+    await waitFor(() => expect(summaries).toHaveLength(1))
+    expect(figureLabels()).toEqual(labels)
+    expect(summaryPanel().getAttribute("aria-busy")).toBe("true")
+    act(() => answer())
+    await waitFor(() => expect(figure("Torrents")).toBe("2"))
+    expect(summaryPanel().getAttribute("aria-busy")).toBe("false")
+
+    // The next summary loads behind the last one, and Start waits for it.
+    fireEvent.change(screen.getByLabelText("Tags"), { target: { value: "kept" } })
+    await waitFor(() => expect(summaries).toHaveLength(2))
+    expect(figureLabels()).toEqual(labels)
+    expect(figure("Torrents")).toBe("2")
+    expect(summaryPanel().getAttribute("aria-busy")).toBe("true")
+    expect(startButton().disabled).toBe(true)
+    act(() => answer())
+    await waitFor(() => expect(startButton().disabled).toBe(false))
+    expect(summaryPanel().getAttribute("aria-busy")).toBe("false")
+  })
+
   it("says when qBittorrent does not report the free space", async () => {
     summary = { ...summary, freeKnown: false, free: 0 }
     renderDialog()
     await pickTarget("homelab")
 
     await waitFor(() => expect(summaryText()).toContain("Free space unknown"))
+    expect(figure("Free on the target")).toBe("Unknown")
     expect(summaryText()).not.toContain("less free space")
   })
 
@@ -201,7 +253,7 @@ describe("the Transfer dialog", () => {
     queryClient.setQueryData(["instance-metadata", 2], { categories: { tv: { name: "tv", savePath: "" } }, tags: [] })
     renderDialog(queryClient)
     await pickTarget("homelab")
-    await waitFor(() => expect(summaryText()).toContain("2 torrents, 4 GiB"))
+    await waitFor(() => expect(figure("Torrents")).toBe("2"))
     const settled = commits
     await act(() => new Promise(resolve => setTimeout(resolve, 500)))
     expect(commits).toBe(settled)

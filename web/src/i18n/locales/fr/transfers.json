@@ -137,8 +137,8 @@
     }
   },
   "dialog": {
-    "title": "Transférer {{name}}",
-    "description": "Déplacez le torrent et ses cross-seeds vers une autre instance. qui vérifie chaque pièce sur la cible avant de modifier la source.",
+    "title": "Transférer vers une autre instance",
+    "verified": "qui vérifie chaque pièce sur la cible avant de modifier la source.",
     "start": "Démarrer le transfert",
     "starting": "Démarrage…",
     "started": "Le transfert de {{name}} attend son tour.",
@@ -149,13 +149,15 @@
     "pickTarget": "Sélectionnez une instance cible pour voir le résumé.",
     "loading": "Planification du transfert…",
     "refused": "qui ne démarre pas ce transfert : {{message}}",
-    "torrents_one": "{{count}} torrent, {{size}}",
-    "torrents_other": "{{count}} torrents, {{size}}",
-    "way": "Méthode : {{way}}",
-    "free": "Libre sur la cible : {{size}}",
+    "torrents": "Torrents",
+    "size": "Taille",
+    "way": "Méthode",
+    "free": "Libre sur la cible",
+    "unknown": "Inconnu",
     "freeUnknown": "Espace libre inconnu : avant qBittorrent 5.3, qBittorrent ne l'indique que pour son chemin de sauvegarde par défaut.",
     "notEnoughSpace": "La cible a moins d'espace libre que le transfert n'en demande.",
     "noFileAccess": "qui ne voit pas les fichiers sur {{instance}}, donc un fichier au contenu différent au même chemin peut être remplacé.",
+    "crossSeed": "Cross-seed",
     "crossSeedInstance": "Sur {{instance}}"
   }
 }

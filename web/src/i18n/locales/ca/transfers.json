@@ -137,8 +137,8 @@
     }
   },
   "dialog": {
-    "title": "Transfereix {{name}}",
-    "description": "Mou el torrent i els seus cross-seeds a una altra instància. qui comprova cada peça a la destinació abans de canviar l'origen.",
+    "title": "Transfereix a una altra instància",
+    "verified": "qui comprova cada peça a la destinació abans de canviar l'origen.",
     "start": "Inicia la transferència",
     "starting": "S'està iniciant…",
     "started": "La transferència de {{name}} espera el seu torn.",
@@ -149,13 +149,15 @@
     "pickTarget": "Selecciona una instància de destinació per veure el resum.",
     "loading": "S'està planificant la transferència…",
     "refused": "qui no inicia aquesta transferència: {{message}}",
-    "torrents_one": "{{count}} torrent, {{size}}",
-    "torrents_other": "{{count}} torrents, {{size}}",
-    "way": "Mètode: {{way}}",
-    "free": "Lliure a la destinació: {{size}}",
+    "torrents": "Torrents",
+    "size": "Mida",
+    "way": "Mètode",
+    "free": "Lliure a la destinació",
+    "unknown": "Desconegut",
     "freeUnknown": "Espai lliure desconegut: abans de qBittorrent 5.3, qBittorrent només l'informa al seu camí de desada predeterminat.",
     "notEnoughSpace": "La destinació té menys espai lliure del que necessita la transferència.",
     "noFileAccess": "qui no veu els fitxers a {{instance}}, de manera que un fitxer amb un altre contingut al mateix camí es pot substituir.",
+    "crossSeed": "Cross-seed",
     "crossSeedInstance": "A {{instance}}"
   }
 }

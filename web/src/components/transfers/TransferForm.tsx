@@ -41,43 +41,61 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
   }, [metadata, value.category])
   const set = (patch: Partial<TransferFormValue>) => onChange({ ...value, ...patch })
 
+  // A container query, not a viewport one: the form also sits in the narrower Transfer action of a rule.
   return (
-    <div className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-target`}>{t("form.target")}</Label>
-        {targets?.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("form.noTargets")}</p>
-        ) : (
-          <Select
-            value={value.targetInstanceId?.toString() ?? ""}
-            onValueChange={target => set({ targetInstanceId: Number(target), category: "" })}
-          >
-            <SelectTrigger id={`${id}-target`} className="w-full">
-              <SelectValue placeholder={t("form.targetPlaceholder")} />
+    <div className="@container">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @lg:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-target`}>{t("form.target")}</Label>
+          {targets?.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("form.noTargets")}</p>
+          ) : (
+            <Select
+              value={value.targetInstanceId?.toString() ?? ""}
+              onValueChange={target => set({ targetInstanceId: Number(target), category: "" })}
+            >
+              <SelectTrigger id={`${id}-target`} className="w-full">
+                <SelectValue placeholder={t("form.targetPlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {targets?.map(instance => (
+                  <SelectItem key={instance.id} value={instance.id.toString()}>{instance.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-way`}>
+            {t("form.way")}
+            <FieldHelp>{t("form.wayHelp")}</FieldHelp>
+          </Label>
+          <Select value={value.way} onValueChange={way => set({ way: way as TransferWayChoice })}>
+            <SelectTrigger id={`${id}-way`} className="w-full">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {targets?.map(instance => (
-                <SelectItem key={instance.id} value={instance.id.toString()}>{instance.name}</SelectItem>
+              {wayOptions.map(option => (
+                <SelectItem key={option} value={option}>{t(`form.wayOptions.${option}`)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-        )}
-      </div>
+        </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-save-path`}>
-          {t("form.savePath")}
-          <FieldHelp>{t("form.savePathHelp")}</FieldHelp>
-        </Label>
-        <Input
-          id={`${id}-save-path`}
-          value={value.savePath}
-          onChange={event => set({ savePath: event.target.value })}
-          placeholder={t("form.savePathPlaceholder")}
-        />
-      </div>
+        <div className="space-y-1.5 @lg:col-span-2">
+          <Label htmlFor={`${id}-save-path`}>
+            {t("form.savePath")}
+            <FieldHelp>{t("form.savePathHelp")}</FieldHelp>
+          </Label>
+          <Input
+            id={`${id}-save-path`}
+            value={value.savePath}
+            onChange={event => set({ savePath: event.target.value })}
+            placeholder={t("form.savePathPlaceholder")}
+          />
+        </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-category`}>{t("form.category")}</Label>
           <Select
@@ -96,6 +114,7 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
             </SelectContent>
           </Select>
         </div>
+
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-tags`}>{t("form.tags")}</Label>
           <Input
@@ -105,47 +124,32 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
             placeholder={t("form.tagsPlaceholder")}
           />
         </div>
-      </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-after`}>
-          {t("form.after")}
-          <FieldHelp>{t("form.afterHelp")}</FieldHelp>
-        </Label>
-        <Select value={value.after} onValueChange={after => set({ after: after as TransferAfter })}>
-          <SelectTrigger id={`${id}-after`} className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {afterOptions.map(option => (
-              <SelectItem key={option} value={option}>{t(`form.afterOptions.${option}`)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        <div className="space-y-1.5 @lg:col-span-2">
+          <Label htmlFor={`${id}-after`}>
+            {t("form.after")}
+            <FieldHelp>{t("form.afterHelp")}</FieldHelp>
+          </Label>
+          <Select value={value.after} onValueChange={after => set({ after: after as TransferAfter })}>
+            <SelectTrigger id={`${id}-after`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {afterOptions.map(option => (
+                <SelectItem key={option} value={option}>{t(`form.afterOptions.${option}`)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-way`}>
-          {t("form.way")}
-          <FieldHelp>{t("form.wayHelp")}</FieldHelp>
-        </Label>
-        <Select value={value.way} onValueChange={way => set({ way: way as TransferWayChoice })}>
-          <SelectTrigger id={`${id}-way`} className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {wayOptions.map(option => (
-              <SelectItem key={option} value={option}>{t(`form.wayOptions.${option}`)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="@lg:col-span-2">
+          <SwitchRow
+            label={t("form.leaveStopped")}
+            checked={value.leaveStopped}
+            onCheckedChange={leaveStopped => set({ leaveStopped })}
+          />
+        </div>
       </div>
-
-      <SwitchRow
-        label={t("form.leaveStopped")}
-        checked={value.leaveStopped}
-        onCheckedChange={leaveStopped => set({ leaveStopped })}
-      />
     </div>
   )
 }

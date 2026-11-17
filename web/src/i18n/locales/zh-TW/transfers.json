@@ -136,8 +136,8 @@
     }
   },
   "dialog": {
-    "title": "傳輸 {{name}}",
-    "description": "將種子及其輔種移到另一個實例。qui 會在變更來源之前檢查目標上的每個區塊。",
+    "title": "傳輸到另一個實例",
+    "verified": "qui 會在變更來源之前檢查目標上的每個區塊。",
     "start": "開始傳輸",
     "starting": "正在開始…",
     "started": "{{name}} 的傳輸正在排隊等候。",
@@ -148,12 +148,15 @@
     "pickTarget": "選擇目標實例以檢視摘要。",
     "loading": "正在規劃傳輸…",
     "refused": "qui 不會啟動此傳輸：{{message}}",
-    "torrents_other": "{{count}} 個種子，{{size}}",
-    "way": "方式：{{way}}",
-    "free": "目標可用空間：{{size}}",
+    "torrents": "種子",
+    "size": "大小",
+    "way": "方式",
+    "free": "目標可用空間",
+    "unknown": "未知",
     "freeUnknown": "可用空間未知：在 qBittorrent 5.3 之前，qBittorrent 僅回報其預設儲存路徑的可用空間。",
     "notEnoughSpace": "目標的可用空間少於此傳輸所需的空間。",
     "noFileAccess": "qui 無法檢視 {{instance}} 上的檔案，因此同一路徑下內容不同的檔案可能會被取代。",
+    "crossSeed": "輔種",
     "crossSeedInstance": "新增到 {{instance}}"
   }
 }

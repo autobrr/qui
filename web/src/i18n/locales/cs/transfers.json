@@ -138,8 +138,8 @@
     }
   },
   "dialog": {
-    "title": "Přenést {{name}}",
-    "description": "Přesune torrent a jeho křížová sdílení do jiné instance. qui zkontroluje v cíli každý kus, než změní zdroj.",
+    "title": "Přenést do jiné instance",
+    "verified": "qui zkontroluje v cíli každý kus, než změní zdroj.",
     "start": "Spustit přenos",
     "starting": "Spouštění…",
     "started": "Přenos {{name}} čeká, až na něj přijde řada.",
@@ -150,14 +150,15 @@
     "pickTarget": "Vyberte cílovou instanci, abyste viděli souhrn.",
     "loading": "Plánování přenosu…",
     "refused": "qui tento přenos nespustí: {{message}}",
-    "torrents_one": "{{count}} torrent, {{size}}",
-    "torrents_few": "{{count}} torrenty, {{size}}",
-    "torrents_other": "{{count}} torrentů, {{size}}",
-    "way": "Způsob: {{way}}",
-    "free": "Volné místo v cíli: {{size}}",
+    "torrents": "Torrenty",
+    "size": "Velikost",
+    "way": "Způsob",
+    "free": "Volné místo v cíli",
+    "unknown": "Neznámé",
     "freeUnknown": "Volné místo není známé: qBittorrent před verzí 5.3 ho hlásí jen pro svou výchozí cestu uložení.",
     "notEnoughSpace": "Cíl má méně volného místa, než přenos potřebuje.",
     "noFileAccess": "qui nevidí soubory na instanci {{instance}}, takže soubor s jiným obsahem na stejné cestě může být nahrazen.",
+    "crossSeed": "Křížové sdílení",
     "crossSeedInstance": "Na instanci {{instance}}"
   }
 }
