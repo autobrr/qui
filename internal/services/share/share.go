@@ -6,7 +6,10 @@
 // client seeds, and owns qui's own Share tracker.
 package share
 
-import "time"
+import (
+	"net/netip"
+	"time"
+)
 
 // State is the state of a Share.
 type State string
@@ -34,6 +37,8 @@ const (
 // Share is one Share. InstanceID, Hash, Name, SavePath, Files, and Size are
 // the real torrent at the start. HelperHash is the infohash of the Share
 // torrent. TorrentFile is the .torrent of the recipient; List leaves it out.
+// Holder is the address of the recipient client that holds the lock of a
+// Share with FirstDownloaderOnly, and zero while no client holds it.
 type Share struct {
 	ID                  int64
 	InstanceID          int
@@ -49,6 +54,7 @@ type Share struct {
 	TorrentFile         []byte
 	EndAtFirstDownload  bool
 	FirstDownloaderOnly bool
+	Holder              netip.Addr
 	ExpiresAt           time.Time
 	State               State
 	EndReason           string

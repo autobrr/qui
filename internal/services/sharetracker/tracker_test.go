@@ -96,7 +96,7 @@ type reports struct {
 	list []sharetracker.Report
 }
 
-func (r *reports) Announced(report sharetracker.Report) {
+func (r *reports) Announced(_ context.Context, report sharetracker.Report) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.list = append(r.list, report)

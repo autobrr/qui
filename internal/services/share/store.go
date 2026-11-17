@@ -9,6 +9,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -41,12 +42,12 @@ func (s *Store) Create(ctx context.Context, sh *Share) error {
 	}
 	err = s.db.QueryRowContext(ctx, `INSERT INTO shares (
 			instance_id, hash, name, save_path, files_json, size, helper_hash, tracker, owner_secret, recipient_secret,
-			torrent_file, end_at_first_download, first_downloader_only, expires_at, state, end_reason,
+			torrent_file, end_at_first_download, first_downloader_only, holder, expires_at, state, end_reason,
 			peers_json, downloaded, uploaded, created_at, ended_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
 		sh.InstanceID, sh.Hash, sh.Name, sh.SavePath, string(files), sh.Size, sh.HelperHash, string(sh.Tracker), sh.OwnerSecret, sh.RecipientSecret,
-		sh.TorrentFile, sh.EndAtFirstDownload, sh.FirstDownloaderOnly, sh.ExpiresAt.UTC(), string(sh.State), sh.EndReason,
+		sh.TorrentFile, sh.EndAtFirstDownload, sh.FirstDownloaderOnly, string(sh.Holder.AppendTo(nil)), sh.ExpiresAt.UTC(), string(sh.State), sh.EndReason,
 		string(peers), sh.Downloaded, sh.Uploaded, sh.CreatedAt.UTC(), nullTime(sh.EndedAt),
 	).Scan(&sh.ID)
 	if err != nil {
@@ -56,7 +57,7 @@ func (s *Store) Create(ctx context.Context, sh *Share) error {
 }
 
 const columns = `id, instance_id, hash, name, save_path, files_json, size, helper_hash, tracker, owner_secret, recipient_secret,
-	end_at_first_download, first_downloader_only, expires_at, state, end_reason, peers_json, downloaded, uploaded, created_at, ended_at`
+	end_at_first_download, first_downloader_only, holder, expires_at, state, end_reason, peers_json, downloaded, uploaded, created_at, ended_at`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -67,11 +68,12 @@ func scanShare(row scanner, extra ...any) (*Share, error) {
 		sh             Share
 		tracker, state string
 		files, peers   string
+		holder         string
 		endedAt        sql.NullTime
 	)
 	dest := append([]any{
 		&sh.ID, &sh.InstanceID, &sh.Hash, &sh.Name, &sh.SavePath, &files, &sh.Size, &sh.HelperHash, &tracker, &sh.OwnerSecret, &sh.RecipientSecret,
-		&sh.EndAtFirstDownload, &sh.FirstDownloaderOnly, &sh.ExpiresAt, &state, &sh.EndReason, &peers, &sh.Downloaded, &sh.Uploaded, &sh.CreatedAt, &endedAt,
+		&sh.EndAtFirstDownload, &sh.FirstDownloaderOnly, &holder, &sh.ExpiresAt, &state, &sh.EndReason, &peers, &sh.Downloaded, &sh.Uploaded, &sh.CreatedAt, &endedAt,
 	}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return nil, err
@@ -86,6 +88,9 @@ func scanShare(row scanner, extra ...any) (*Share, error) {
 	}
 	if err := json.Unmarshal([]byte(peers), &sh.Peers); err != nil {
 		return nil, fmt.Errorf("decode peers of share %d: %w", sh.ID, err)
+	}
+	if err := sh.Holder.UnmarshalText([]byte(holder)); err != nil {
+		return nil, fmt.Errorf("decode holder of share %d: %w", sh.ID, err)
 	}
 	if len(sh.Peers) == 0 {
 		sh.Peers = nil
@@ -141,6 +146,15 @@ func (s *Store) SetState(ctx context.Context, id int64, state State, reason stri
 	if _, err := s.db.ExecContext(ctx, `UPDATE shares SET state = ?, end_reason = ?, ended_at = ? WHERE id = ?`,
 		string(state), reason, nullTime(endedAt), id); err != nil {
 		return fmt.Errorf("save state of share %d: %w", id, err)
+	}
+	return nil
+}
+
+// SetHolder writes the address that holds the lock of a Share. The zero
+// address clears it.
+func (s *Store) SetHolder(ctx context.Context, id int64, holder netip.Addr) error {
+	if _, err := s.db.ExecContext(ctx, `UPDATE shares SET holder = ? WHERE id = ?`, string(holder.AppendTo(nil)), id); err != nil {
+		return fmt.Errorf("save holder of share %d: %w", id, err)
 	}
 	return nil
 }

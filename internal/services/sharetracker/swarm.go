@@ -24,10 +24,12 @@ type swarm struct {
 }
 
 // answer is the peer list of one announce. owner is true when the client also
-// gets the public peer address of the user's own client.
+// gets the public peer address of the user's own client. locked is true when
+// the client took the lock.
 type answer struct {
-	owner bool
-	peers []netip.AddrPort
+	owner  bool
+	locked bool
+	peers  []netip.AddrPort
 }
 
 // join records the announce of client in the swarm of its Share and returns
@@ -35,7 +37,7 @@ type answer struct {
 // its peers per Share gets errFull. With FirstDownloaderOnly, the first
 // recipient client that announces with something left to download takes the
 // lock, and from then on the user's client and that address see only each
-// other.
+// other. A new swarm starts with the holder of the table.
 func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req announceRequest) (answer, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -43,13 +45,14 @@ func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req 
 	// announce already joined, so the swarms follow the table as it is now.
 	active := t.shares.ActiveShares()
 	for id := range t.swarms {
-		if !active.has(id) {
+		if _, ok := active.share(id); !ok {
 			delete(t.swarms, id)
 		}
 	}
 	s := t.swarms[client.share.ID]
 	if s == nil {
-		s = &swarm{recipients: make(map[netip.AddrPort]time.Time)}
+		stored, _ := active.share(client.share.ID)
+		s = &swarm{recipients: make(map[netip.AddrPort]time.Time), holder: stored.Holder}
 		t.swarms[client.share.ID] = s
 	}
 	now := t.now()
@@ -83,11 +86,12 @@ func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req 
 		return answer{}, errFull
 	}
 	s.recipients[peer] = now
-	if lock && !s.holder.IsValid() && req.left > 0 {
-		s.holder = peer.Addr()
-	}
 	if lock {
-		return answer{owner: peer.Addr() == s.holder && !s.ownerSeen.IsZero()}, nil
+		locked := !s.holder.IsValid() && req.left > 0
+		if locked {
+			s.holder = peer.Addr()
+		}
+		return answer{owner: peer.Addr() == s.holder && !s.ownerSeen.IsZero(), locked: locked}, nil
 	}
 	a := answer{owner: !s.ownerSeen.IsZero()}
 	for p := range s.recipients {
@@ -98,7 +102,8 @@ func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req 
 	return a, nil
 }
 
-// Unlock lets the next downloader of the Share take the lock.
+// Unlock lets the next downloader of the Share take the lock. A swarm that
+// starts later takes the holder of the table, so clear it there first.
 func (t *Tracker) Unlock(shareID int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

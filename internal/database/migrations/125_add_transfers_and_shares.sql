@@ -143,11 +143,13 @@ CREATE TABLE IF NOT EXISTS share_tracker_settings (
 -- torrent at the start: a move or a rename of its files ends the Share.
 -- helper_hash is the infohash of the Share torrent. tracker is own (qui's own
 -- Share tracker) or outside (the tracker URL of the settings). torrent_file is
--- the .torrent of the recipient. state is active, ending, or ended. peers_json
--- is the addresses that announced, or the connected peers with an outside
--- tracker. downloaded is the bytes that the recipient has, and uploaded the
--- bytes that the user's client sent. ended_at is NULL until the Share torrent
--- is gone from the client.
+-- the .torrent of the recipient. holder is the address, without a port, of the
+-- recipient client that holds the lock of a Share with first_downloader_only,
+-- or '' while no client holds it. state is active, ending, or ended.
+-- peers_json is the addresses that announced, or the connected peers with an
+-- outside tracker. downloaded is the bytes that the recipient has, and
+-- uploaded the bytes that the user's client sent. ended_at is NULL until the
+-- Share torrent is gone from the client.
 CREATE TABLE IF NOT EXISTS shares (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     instance_id           INTEGER NOT NULL,
@@ -163,6 +165,7 @@ CREATE TABLE IF NOT EXISTS shares (
     torrent_file          BLOB NOT NULL,
     end_at_first_download BOOLEAN NOT NULL,
     first_downloader_only BOOLEAN NOT NULL,
+    holder                TEXT NOT NULL DEFAULT '',
     expires_at            DATETIME NOT NULL,
     state                 TEXT NOT NULL,
     end_reason            TEXT NOT NULL DEFAULT '',

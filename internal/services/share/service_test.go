@@ -805,6 +805,40 @@ func TestUnlockLetsTheNextDownloaderIn(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers)
 }
 
+// regression: #4231
+func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
+	r := newRig(t)
+	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
+		Port: r.port, PublicAddress: "http://127.0.0.1:" + strconv.Itoa(r.port), TrustedProxies: []string{"127.0.0.1"},
+	}))
+	sh := r.start(share.Request{FirstDownloaderOnly: new(true)})
+	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	const first, next = "198.51.100.7", "198.51.100.8"
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
+	peers, _ := r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 70, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, peers)
+
+	r.svc.Close()
+	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	require.NoError(t, r.svc.Resume(t.Context()))
+
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
+	peers, _ = r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "started")
+	require.Empty(t, peers, "the first downloader still holds the Share after a restart")
+	peers, _ = r.sendAnnounce(first, recipientURL, sh.HelperHash, 7000, 60, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "the first downloader goes on from a new port")
+
+	r.svc.Close()
+	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	require.NoError(t, r.svc.Resume(t.Context()))
+	require.NoError(t, r.svc.Unlock(t.Context(), sh.ID))
+
+	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "")
+	peers, _ = r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "Unlock after a restart lets the next downloader in")
+}
+
 func TestUnlockIsRefused(t *testing.T) {
 	r := newRig(t)
 	open := r.start(share.Request{FirstDownloaderOnly: new(false)})

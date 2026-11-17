@@ -230,7 +230,7 @@ func (s *Service) refresh(ctx context.Context) error {
 				continue
 			}
 			tracked = append(tracked, sharetracker.Share{ID: sh.ID, InfoHash: infoHash, OwnerSecret: sh.OwnerSecret,
-				RecipientSecret: sh.RecipientSecret, FirstDownloaderOnly: sh.FirstDownloaderOnly})
+				RecipientSecret: sh.RecipientSecret, FirstDownloaderOnly: sh.FirstDownloaderOnly, Holder: sh.Holder})
 		}
 	}
 	s.mu.Unlock()
@@ -286,8 +286,15 @@ func resolve(ctx context.Context, hostPort string) (netip.AddrPort, error) {
 
 // Announced keeps what one announce to qui's own tracker reported: the bytes
 // that the user's client sent, and the address and the progress of a
-// recipient. A recipient that completed wakes Run.
-func (s *Service) Announced(r sharetracker.Report) {
+// recipient. It stores the address of a recipient that takes the lock before
+// the tracker answers, so that the lock outlives a restart of qui. A recipient
+// that completed wakes Run.
+func (s *Service) Announced(ctx context.Context, r sharetracker.Report) {
+	if r.Locked {
+		if err := s.deps.Store.SetHolder(context.WithoutCancel(ctx), r.ShareID, r.Peer.Addr()); err != nil {
+			log.Error().Err(err).Int64("share", r.ShareID).Msg("share: cannot store who holds the lock; after a restart, the next downloader takes it")
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	l := s.live[r.ShareID]

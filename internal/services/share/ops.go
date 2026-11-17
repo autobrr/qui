@@ -6,6 +6,9 @@ package share
 import (
 	"context"
 	"errors"
+	"net/netip"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/pkg/torrentname"
@@ -62,11 +65,13 @@ func (s *Service) Stop(ctx context.Context, id int64) error {
 }
 
 // Unlock lets the next downloader of an active Share with "Only the first
-// downloader" in.
+// downloader" in, also after a restart of qui.
 func (s *Service) Unlock(ctx context.Context, id int64) error {
 	if !s.on() {
 		return ErrOff
 	}
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	sh, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		return err
@@ -78,6 +83,12 @@ func (s *Service) Unlock(ctx context.Context, id int64) error {
 		return refuse("Unlock needs qui's own tracker. With an outside tracker, every downloader gets the address.")
 	case !sh.FirstDownloaderOnly:
 		return refuse("The Share lets every downloader in already.")
+	}
+	if err := s.deps.Store.SetHolder(ctx, id, netip.Addr{}); err != nil {
+		return err
+	}
+	if err := s.refresh(ctx); err != nil {
+		log.Error().Err(err).Msg("share: cannot update the Share tracker")
 	}
 	s.tracker.Unlock(id)
 	return nil

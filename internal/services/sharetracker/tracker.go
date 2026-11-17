@@ -34,20 +34,23 @@ var ErrPortBusy = errors.New("the Share tracker port is in use")
 
 // Share is an active Share as the tracker sees it. The user's own client
 // announces with OwnerSecret, and the recipient's copy of the .torrent
-// carries RecipientSecret.
+// carries RecipientSecret. Holder is the stored address that holds the lock
+// of a Share with FirstDownloaderOnly. A swarm that the tracker starts takes
+// it, so the lock outlives a restart of qui.
 type Share struct {
 	ID                  int64
 	InfoHash            [20]byte
 	OwnerSecret         string
 	RecipientSecret     string
 	FirstDownloaderOnly bool
+	Holder              netip.Addr
 }
 
 // Table is the active Shares at one moment. It never changes after NewTable
 // returns it, so announces can read it at the same time.
 type Table struct {
 	clients       map[string]announcer
-	ids           map[int64]bool
+	shares        map[int64]Share
 	peersPerShare int
 }
 
@@ -59,11 +62,11 @@ type announcer struct {
 // NewTable returns the table of shares, with at most peersPerShare recipient
 // clients in each Share.
 func NewTable(shares []Share, peersPerShare int) *Table {
-	t := &Table{clients: make(map[string]announcer, 2*len(shares)), ids: make(map[int64]bool, len(shares)), peersPerShare: peersPerShare}
+	t := &Table{clients: make(map[string]announcer, 2*len(shares)), shares: make(map[int64]Share, len(shares)), peersPerShare: peersPerShare}
 	for _, s := range shares {
 		t.clients[s.OwnerSecret] = announcer{share: s, owner: true}
 		t.clients[s.RecipientSecret] = announcer{share: s}
-		t.ids[s.ID] = true
+		t.shares[s.ID] = s
 	}
 	return t
 }
@@ -76,12 +79,16 @@ func (t *Table) lookup(secret string) (announcer, bool) {
 	return a, ok
 }
 
-func (t *Table) has(id int64) bool {
-	return t != nil && t.ids[id]
+func (t *Table) share(id int64) (Share, bool) {
+	if t == nil {
+		return Share{}, false
+	}
+	s, ok := t.shares[id]
+	return s, ok
 }
 
 func (t *Table) empty() bool {
-	return t == nil || len(t.ids) == 0
+	return t == nil || len(t.shares) == 0
 }
 
 // Shares is the owner of the table of active Shares.
@@ -107,7 +114,8 @@ const (
 
 // Report is one announce that the tracker answered. Peer is the address of
 // the connection, or the forwarded address from a trusted proxy, with the
-// port that the client announced.
+// port that the client announced. Locked is true when this announce took the
+// lock of a Share with FirstDownloaderOnly for the address of Peer.
 type Report struct {
 	ShareID    int64
 	Owner      bool
@@ -116,12 +124,14 @@ type Report struct {
 	Downloaded int64
 	Left       int64
 	Event      Event
+	Locked     bool
 }
 
 // Reports receives a Report for each announce. Announced runs before the
-// tracker answers, so it must return quickly.
+// tracker answers, so it must return quickly, and what it stores is stored
+// before the client gets the answer.
 type Reports interface {
-	Announced(Report)
+	Announced(ctx context.Context, r Report)
 }
 
 // Config is what New needs. Host is the address that the tracker listens on;
@@ -331,7 +341,7 @@ func (t *Tracker) serve(w http.ResponseWriter, r *http.Request) {
 			answer.peers = append([]netip.AddrPort{address}, answer.peers...)
 		}
 	}
-	t.reports.Announced(Report{
+	t.reports.Announced(r.Context(), Report{
 		ShareID:    client.share.ID,
 		Owner:      client.owner,
 		Peer:       peer,
@@ -339,6 +349,7 @@ func (t *Tracker) serve(w http.ResponseWriter, r *http.Request) {
 		Downloaded: req.downloaded,
 		Left:       req.left,
 		Event:      req.event,
+		Locked:     answer.locked,
 	})
 	reply(w, answer.peers[:min(len(answer.peers), req.numwant)])
 }
