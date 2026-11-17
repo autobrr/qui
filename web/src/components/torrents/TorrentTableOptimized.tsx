@@ -10,6 +10,7 @@ import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServe
 import { useTorrentSelectionContext, type ListFacts } from "@/contexts/TorrentSelectionContext"
 import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
 import { useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
+import { useRevealRow } from "@/hooks/torrent-table/useRevealRow"
 import { useTorrentTableArrowNavigation } from "@/hooks/torrent-table/useTorrentTableArrowNavigation"
 import { useTorrentTableColumns } from "@/hooks/torrent-table/useTorrentTableColumns"
 import { useTorrentTableFilterExpr } from "@/hooks/torrent-table/useTorrentTableFilterExpr"
@@ -187,6 +188,9 @@ interface TorrentTableOptimizedProps {
   filters: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
+  /** A torrent that a link selected. The table scrolls to its row, then calls onRevealDone. */
+  revealTorrent?: Torrent | null
+  onRevealDone?: () => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (
@@ -212,6 +216,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   filters,
   selectedTorrent,
   onTorrentSelect,
+  revealTorrent,
+  onRevealDone,
   addTorrentModalOpen,
   onAddTorrentModalChange,
   onFilteredDataUpdate,
@@ -846,6 +852,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
     virtualizer.scrollToOffset(0)
   }, [listKey, parentRef, virtualizer])
+
+  useRevealRow({ target: revealTorrent, rows, totalCount, safeLoadedRows, isLoading, loadMore: reportNearEnd, virtualizer, getSelectionIdentity, onDone: onRevealDone })
 
   useTorrentTableArrowNavigation({
     rows,

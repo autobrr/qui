@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { AUTOMATIONS_NAV_GROUPS, DEFAULT_AUTOMATIONS_TAB } from "@/components/automations/tabs"
 import { CROSS_SEED_NAV_GROUPS, DEFAULT_CROSS_SEED_TAB } from "@/components/cross-seed/tabs"
 import { NAV_ITEMS } from "@/components/layout/navigation"
 import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_GROUPS } from "@/components/settings/tabs"
@@ -12,7 +13,7 @@ import { isDemo } from "@/lib/demo"
 import { useIncognitoMode } from "@/lib/incognito"
 import { navigateWithSearch } from "@/lib/router-search"
 import { useLocation, useNavigate } from "@tanstack/react-router"
-import { EyeOff, GitBranch, HardDrive, Layers, Plus, Rss, Settings } from "lucide-react"
+import { EyeOff, GitBranch, HardDrive, Layers, Plus, Rss, Settings, Zap } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import type { PaletteEntry, PaletteGroup } from "./palette"
 import { useThemeEntry } from "./useThemeEntry"
@@ -118,6 +119,18 @@ export function useDestinations(close: () => void): PaletteGroup[] {
     }
   })
 
+  const automationsSections: PaletteGroup[] = AUTOMATIONS_NAV_GROUPS.map((group, index) => ({
+    id: `automations.group.${index}`,
+    entries: group.tabs.map(entry => ({
+      id: `automations.${entry.tab}`,
+      label: t(`automations:${entry.labelKey}`),
+      icon: Zap,
+      trail: t("common:nav.automations"),
+      current: pathname === "/automations" && (tab ?? DEFAULT_AUTOMATIONS_TAB) === entry.tab,
+      run: go(() => navigate({ to: "/automations", search: { tab: entry.tab } })),
+    })),
+  }))
+
   const rssSections: PaletteGroup[] = [{
     id: "rss.group",
     entries: (["feeds", "rules"] as const).map(section => ({
@@ -143,6 +156,7 @@ export function useDestinations(close: () => void): PaletteGroup[] {
   }
   const pageSections: Record<string, PaletteGroup[]> = {
     "cross-seed": crossSeedSections,
+    automations: automationsSections,
     rss: rssSections,
     settings: settingsSections,
   }
