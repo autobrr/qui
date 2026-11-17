@@ -12,7 +12,7 @@ import { canRetry, percentOf, timeLeftMs } from "./transfer-display"
 function row(edit: Partial<TransferRow>): TransferRow {
   return {
     id: 1, kind: "transfer", way: "sftp", state: "waiting", startedBy: "user", ruleId: null, ruleName: "",
-    sourceInstanceId: 1, targetInstanceId: 2, hash: "aaaa", name: "Show.S01.1080p-GRP", torrents: 1,
+    sourceInstanceId: 1, targetInstanceId: 2, hash: "aaaa", name: "Show.S01.1080p-GRP", torrents: 1, size: 0,
     after: "removeWithFiles", leaveStopped: false, retryAt: null, failureClass: "", failureReason: "",
     createdAt: "2026-11-17T10:00:00Z", finishedAt: null, hints: [], progress: null,
     ...edit,

@@ -132,6 +132,7 @@ type transferRow struct {
 	Hash             string             `json:"hash"`
 	Name             string             `json:"name"`
 	Torrents         int                `json:"torrents"`
+	Size             int64              `json:"size"`
 	After            transfer.After     `json:"after"`
 	LeaveStopped     bool               `json:"leaveStopped"`
 	RetryAt          *time.Time         `json:"retryAt"`
@@ -206,7 +207,7 @@ func (h *TransfersHandler) row(ctx context.Context, row transfer.Row, names *rul
 		ID: row.ID, Kind: row.Kind, Way: row.Way, State: row.State, StartedBy: row.StartedBy,
 		RuleID: row.RuleID, RuleName: names.name(ctx, row.SourceInstanceID, row.RuleID),
 		SourceInstanceID: row.SourceInstanceID, TargetInstanceID: row.TargetInstanceID,
-		Hash: row.Hash, Name: row.Name, Torrents: row.Torrents,
+		Hash: row.Hash, Name: row.Name, Torrents: row.Torrents, Size: row.Size,
 		After: row.Options.After, LeaveStopped: row.Options.LeaveStopped,
 		FailureClass: string(row.FailureClass), FailureReason: row.FailureReason,
 		CreatedAt: row.CreatedAt, Hints: row.Hints,
@@ -294,7 +295,7 @@ func (h *TransfersHandler) Get(w http.ResponseWriter, r *http.Request) {
 	row := transfer.Row{
 		ID: record.ID, Kind: record.Kind, Way: record.Way, State: record.State, StartedBy: record.StartedBy,
 		RuleID: record.RuleID, SourceInstanceID: record.SourceInstanceID, TargetInstanceID: record.TargetInstanceID,
-		Hash: record.Members[0].Hash, Name: record.Members[0].Name, Torrents: len(record.Members), Options: record.Options,
+		Hash: record.Members[0].Hash, Name: record.Members[0].Name, Torrents: len(record.Members), Size: record.Size, Options: record.Options,
 		RetryAt: record.RetryAt, FailureClass: record.FailureClass, FailureReason: record.FailureReason,
 		CreatedAt: record.CreatedAt, FinishedAt: record.FinishedAt,
 	}

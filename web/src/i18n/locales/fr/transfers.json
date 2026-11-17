@@ -17,6 +17,7 @@
   },
   "columns": {
     "torrent": "Torrent",
+    "size": "Taille",
     "progress": "Progression",
     "state": "État",
     "started": "Démarré",

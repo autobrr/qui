@@ -39,7 +39,7 @@ const finished = "2026-11-17T11:00:00Z"
 function row(edit: Partial<TransferRow>): TransferRow {
   return {
     id: 1, kind: "transfer", way: "sftp", state: "waiting", startedBy: "user", ruleId: null, ruleName: "",
-    sourceInstanceId: 1, targetInstanceId: 2, hash: "aaaa", name: "Show.S01.1080p-GRP", torrents: 1,
+    sourceInstanceId: 1, targetInstanceId: 2, hash: "aaaa", name: "Show.S01.1080p-GRP", torrents: 1, size: 0,
     after: "removeWithFiles", leaveStopped: false, retryAt: null, failureClass: "", failureReason: "",
     createdAt: "2026-11-17T10:00:00Z", finishedAt: null, hints: [], progress: null,
     ...edit,
@@ -47,7 +47,7 @@ function row(edit: Partial<TransferRow>): TransferRow {
 }
 
 const copying = row({
-  id: 1, name: "Show.S01.1080p-GRP", state: "copying", torrents: 3,
+  id: 1, name: "Show.S01.1080p-GRP", state: "copying", torrents: 3, size: 1024 * 1024 * 1024,
   progress: { done: 512 * 1024 * 1024, total: 1024 * 1024 * 1024, speed: 1024 * 1024 },
 })
 const failed = row({
@@ -183,8 +183,12 @@ describe("the Transfers tab", () => {
     expect(text).toContain("Copying")
     expect(text).toContain("By you")
     expect(buttonNames(tr)).toEqual(["Details", "Cancel"])
+    // The size has its own column, and the route names it too for a narrow table.
+    expect(within(tr).getAllByText("1 GiB")).toHaveLength(2)
 
     const failedRow = await rowOf("Film.2019.2160p-ABC")
+    // A row with no recorded size names none.
+    expect(within(failedRow).queryAllByText(/iB$/)).toEqual([])
     expect(failedRow.textContent).toContain("A file on the target does not match.")
     expect(failedRow.textContent).toContain("By rule Move old seeds")
     expect(failedRow.textContent).toContain("homelab uses qBittorrent's default \"TCP and μTP\"")

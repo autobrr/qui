@@ -55,6 +55,7 @@ type Row struct {
 	// Torrents counts the torrents of the Transfer, the torrent of the
 	// request with it.
 	Torrents      int
+	Size          int64
 	Options       Options
 	RetryAt       time.Time
 	FailureClass  FailureClass
@@ -83,7 +84,7 @@ type List struct {
 func (s *Store) List(ctx context.Context, filter Filter, limit, offset int) (*List, error) {
 	query := `SELECT t.id, t.kind, t.way, t.state, t.started_by, t.rule_id, t.source_instance_id, t.target_instance_id,
 			m.hash, m.name, (SELECT COUNT(*) FROM torrent_transfer_members c WHERE c.transfer_id = t.id),
-			t.options_json, t.log_json, t.retry_at, t.failure_class, t.failure_reason, t.created_at, t.finished_at
+			t.size, t.options_json, t.log_json, t.retry_at, t.failure_class, t.failure_reason, t.created_at, t.finished_at
 		FROM torrent_transfers t
 		JOIN torrent_transfer_members m ON m.transfer_id = t.id AND m.position = 0`
 	clause, args := whereState(filter, "t.state")
@@ -155,7 +156,7 @@ func scanRow(rows *sql.Rows) (Row, error) {
 		retryAt, finishedAt         sql.NullTime
 	)
 	if err := rows.Scan(&r.ID, &kind, &way, &state, &startedBy, &ruleID, &r.SourceInstanceID, &r.TargetInstanceID,
-		&r.Hash, &r.Name, &r.Torrents, &options, &logLines, &retryAt, &failureClass, &r.FailureReason, &r.CreatedAt, &finishedAt); err != nil {
+		&r.Hash, &r.Name, &r.Torrents, &r.Size, &options, &logLines, &retryAt, &failureClass, &r.FailureReason, &r.CreatedAt, &finishedAt); err != nil {
 		return Row{}, fmt.Errorf("list transfers: %w", err)
 	}
 	r.Kind, r.Way, r.State, r.StartedBy, r.FailureClass = Kind(kind), Way(way), State(state), StartedBy(startedBy), FailureClass(failureClass)

@@ -30,6 +30,8 @@ type ExportRequest struct {
 	TargetInstanceID int
 	Hash             string
 	Name             string
+	// Size is the size of the torrent, for the list of the Transfers page.
+	Size int64
 	// Placement is where the target keeps the torrent. Without a save path,
 	// a category lets the category choose it (Auto TMM), and without either,
 	// the default save path of the target holds it.
@@ -78,6 +80,7 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 		Steps: []Step{{Name: "start", At: s.deps.Now(), Detail: req.RuleName}},
 		Members: []Member{{Hash: req.Hash, Name: req.Name, TargetInstanceID: req.TargetInstanceID,
 			Placement: req.Placement}},
+		Size: req.Size,
 	}
 	if err := s.deps.Store.Create(ctx, record); err != nil {
 		return 0, nil, err

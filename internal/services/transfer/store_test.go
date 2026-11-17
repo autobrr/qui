@@ -175,6 +175,7 @@ func TestRecordKeepsEveryFieldPostgresIntegration(t *testing.T) {
 			}},
 			FlushState:    transfer.FlushConfirmed,
 			ReservedBytes: 5 << 30,
+			Size:          8 << 30,
 			RetryAt:       retryAt,
 			FailureClass:  transfer.FailureTemporary,
 			FailureReason: "the source went offline",

@@ -31,7 +31,9 @@ func TestTheListFiltersTheTransfersByChipPostgresIntegration(t *testing.T) {
 			require.NoError(t, store.Finish(ctx, id, state))
 		}
 
-		copying := add(group("aaaa", "bbbb", "cccc"), transfer.StateCopying)
+		first := group("aaaa", "bbbb", "cccc")
+		first.Size = 8 << 30
+		copying := add(first, transfer.StateCopying)
 		waiting := add(group("dddd"), transfer.StateWaiting)
 		retry := group("eeee")
 		retry.RetryAt = time.Date(2026, 11, 16, 13, 0, 0, 0, time.UTC)
@@ -98,6 +100,7 @@ func TestTheListFiltersTheTransfersByChipPostgresIntegration(t *testing.T) {
 		require.Equal(t, "aaaa", group.Hash)
 		require.Equal(t, "Name aaaa", group.Name, "a row names the torrent of the request")
 		require.Equal(t, 3, group.Torrents)
+		require.Equal(t, int64(8<<30), group.Size, "a row has the size of the torrent of the request")
 		require.Equal(t, transfer.KindExport, byID[exporting].Kind)
 		require.True(t, byID[retrying].RetryAt.Equal(retry.RetryAt))
 		require.Equal(t, "The source went offline.", byID[retrying].FailureReason)

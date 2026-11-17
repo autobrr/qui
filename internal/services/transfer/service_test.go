@@ -826,6 +826,20 @@ func singleFileTorrent(t *testing.T, name string, data []byte) ([]byte, string) 
 }
 
 // One Transfer runs at a time for each source. The next one waits.
+// A Transfer records the size of its torrent at the start, for the list of
+// the Transfers page.
+func TestTransferRecordsTheSizeOfItsTorrent(t *testing.T) {
+	r := newRig(t)
+	show := newShow(t, showName)
+	r.seed(show)
+	id, err := r.svc.Start(t.Context(), r.request(show))
+	require.NoError(t, err)
+	r.svc.Wait()
+	record, err := r.store.Get(t.Context(), id)
+	require.NoError(t, err)
+	require.Equal(t, int64(70), record.Size, "the two files of the show hold 40 and 30 bytes")
+}
+
 func TestTransferQueuesBySource(t *testing.T) {
 	r := newRig(t)
 	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")

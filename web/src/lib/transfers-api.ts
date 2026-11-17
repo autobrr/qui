@@ -44,6 +44,8 @@ export interface TransferRow {
   name: string
   /** The torrent of the request with its cross-seeds. */
   torrents: number
+  /** The size of the torrent of the request at the start, in bytes. 0 when unknown. */
+  size: number
   after: TransferAfter
   leaveStopped: boolean
   /** Set while a failure waits for its retry. */

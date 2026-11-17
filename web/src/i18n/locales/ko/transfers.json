@@ -17,6 +17,7 @@
   },
   "columns": {
     "torrent": "토렌트",
+    "size": "크기",
     "progress": "진행률",
     "state": "상태",
     "started": "시작",

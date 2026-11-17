@@ -179,12 +179,12 @@ func insertRecord(ctx context.Context, tx dbinterface.TxQuerier, r *Record) (int
 	err = tx.QueryRowContext(ctx, `INSERT INTO torrent_transfers (
 			kind, way, state, started_by, rule_id, source_instance_id, target_instance_id,
 			source_endpoint_json, target_endpoint_json, options_json, steps_json, log_json,
-			flush_state, reserved_bytes, retry_at, failure_class, failure_reason
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			flush_state, reserved_bytes, size, retry_at, failure_class, failure_reason
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
 		string(r.Kind), string(r.Way), string(r.State), string(r.StartedBy), r.RuleID, r.SourceInstanceID, r.TargetInstanceID,
 		string(source), string(target), string(options), string(steps), string(logLines),
-		string(r.FlushState), r.ReservedBytes, nullTime(r.RetryAt), string(r.FailureClass), r.FailureReason,
+		string(r.FlushState), r.ReservedBytes, r.Size, nullTime(r.RetryAt), string(r.FailureClass), r.FailureReason,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert transfer: %w", err)
@@ -219,11 +219,11 @@ func (s *Store) Get(ctx context.Context, id int64) (*Record, error) {
 	)
 	err := s.db.QueryRowContext(ctx, `SELECT id, kind, way, state, started_by, rule_id, source_instance_id, target_instance_id,
 			source_endpoint_json, target_endpoint_json, options_json, steps_json, log_json,
-			flush_state, reserved_bytes, retry_at, failure_class, failure_reason, created_at, finished_at
+			flush_state, reserved_bytes, size, retry_at, failure_class, failure_reason, created_at, finished_at
 		FROM torrent_transfers WHERE id = ?`, id).Scan(
 		&r.ID, &kind, &way, &state, &startedBy, &ruleID, &r.SourceInstanceID, &r.TargetInstanceID,
 		&source, &target, &options, &steps, &logLines,
-		&flushState, &r.ReservedBytes, &retryAt, &failureClass, &r.FailureReason, &r.CreatedAt, &finishedAt,
+		&flushState, &r.ReservedBytes, &r.Size, &retryAt, &failureClass, &r.FailureReason, &r.CreatedAt, &finishedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: %d", ErrNotFound, id)

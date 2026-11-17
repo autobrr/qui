@@ -141,7 +141,7 @@ Copied files get the permissions 775 for folders and 664 for files where the tar
 
 To open the page, click **Transfers** in the sidebar. On a phone, tap **Settings** in the bottom bar, and then tap **Transfers**. The number beside **Transfers** in the sidebar counts the Transfers that run or wait for their turn, and the Shares that run.
 
-The **Transfers** tab has one row for each Transfer and for each run of an Export to Instance rule. A row shows the torrents, the source and the target, the way, the progress, the speed, the time left, the state, and who started it. The chips **Active**, **Waiting**, **Finished**, and **Failed** filter the rows. The list shows 50 rows on each page. To see the other rows, use **Previous** and **Next** below the list.
+The **Transfers** tab has one row for each Transfer and for each run of an Export to Instance rule. A row shows the torrents, the size of the torrent, the source and the target, the way, the progress, the speed, the time left, the state, and who started it. The chips **Active**, **Waiting**, **Finished**, and **Failed** filter the rows. The list shows 50 rows on each page. To see the other rows, use **Previous** and **Next** below the list.
 
 The states are **Waiting**, **Copying**, **Checking**, **Finishing**, **Done**, **Failed**, and **Cancelled**.
 

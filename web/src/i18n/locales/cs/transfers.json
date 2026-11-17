@@ -17,6 +17,7 @@
   },
   "columns": {
     "torrent": "Torrent",
+    "size": "Velikost",
     "progress": "Postup",
     "state": "Stav",
     "started": "Spuštěno",

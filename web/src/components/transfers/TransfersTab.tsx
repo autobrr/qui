@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TorrentName } from "@/components/ui/torrent-name"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { transferListQuery, transferPageSize, transfersApi, type TransferBulkAction, type TransferBulkRequest, type TransferBulkResult, type TransferFilter, type TransferRow } from "@/lib/transfers-api"
-import { cn } from "@/lib/utils"
+import { cn, formatBytes } from "@/lib/utils"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ChevronLeft, ChevronRight, FileText, RotateCcw, Trash2, X, type LucideIcon } from "lucide-react"
 import { useId, useMemo, useRef, useState } from "react"
@@ -186,6 +186,7 @@ export function TransfersTab() {
                       <Checkbox checked={pageTick} onCheckedChange={tickPage} aria-label={t("bulk.pickPage")} className={cn("align-middle", CHECKBOX_TAP)} />
                     </TableHead>
                     <TableHead className="w-full">{t("columns.torrent")}</TableHead>
+                    <TableHead className="hidden text-right @xl:table-cell">{t("columns.size")}</TableHead>
                     <TableHead className="hidden @lg:table-cell">{t("columns.state")}</TableHead>
                     <TableHead className="hidden @2xl:table-cell">{t("columns.started")}</TableHead>
                     <TableHead pinEnd className="pr-6 max-sm:pr-4"><span className="sr-only">{t("columns.actions")}</span></TableHead>
@@ -328,6 +329,13 @@ function TransferTableRow({ row, picked, onTick, running, onDetails, onRetry, on
               <span>{t([`ways.${row.way}`, "ways.fallback"])}</span>
             </>
           )}
+          {/* A narrow table has no Size column, so the route names the size. */}
+          {row.size > 0 && (
+            <span className="flex items-center gap-x-1.5 @xl:hidden">
+              <span aria-hidden="true">·</span>
+              <span className="tabular-nums">{formatBytes(row.size)}</span>
+            </span>
+          )}
           {row.torrents > 1 && <Mark>{t("row.crossSeeds", { count: row.torrents - 1 })}</Mark>}
           {row.kind === "export" && <Mark>{t("row.export")}</Mark>}
         </div>
@@ -346,6 +354,9 @@ function TransferTableRow({ row, picked, onTick, running, onDetails, onRetry, on
         </div>
         {row.failureReason && <p className="mt-1 text-xs text-destructive [overflow-wrap:anywhere]">{display.text(row.failureReason)}</p>}
         {row.way === "bittorrent" && row.hints.length > 0 && <div className="mt-1"><TransferHints hints={row.hints} /></div>}
+      </TableCell>
+      <TableCell className="hidden text-right align-top tabular-nums @xl:table-cell">
+        {row.size > 0 ? formatBytes(row.size) : <span aria-hidden="true" className="text-muted-foreground">–</span>}
       </TableCell>
       <TableCell className="hidden align-top @lg:table-cell">
         <StateLabel state={row.state} className="text-sm" />

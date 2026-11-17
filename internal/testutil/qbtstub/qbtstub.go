@@ -688,7 +688,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				row["state"] = state
 			}
 			if t.add != nil {
-				row["downloaded"], row["amount_left"] = t.add.downloaded, t.add.amountLeft()
+				var size int64
+				for _, n := range t.add.sizes {
+					size += n
+				}
+				row["size"], row["downloaded"], row["amount_left"] = size, t.add.downloaded, t.add.amountLeft()
 			}
 			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
 				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata

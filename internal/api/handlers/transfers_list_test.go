@@ -25,7 +25,7 @@ func TestTheTransferListAnswersOnePage(t *testing.T) {
 	for _, hash := range hashes {
 		record := &transfer.Record{
 			Kind: transfer.KindTransfer, State: transfer.StateWaiting, StartedBy: transfer.StartedByUser,
-			SourceInstanceID: 1, TargetInstanceID: 2,
+			SourceInstanceID: 1, TargetInstanceID: 2, Size: 4 << 30,
 			Members: []transfer.Member{{Hash: hash, Name: "Name " + hash, SourceSavePath: "/src", TargetInstanceID: 2}},
 		}
 		require.NoError(t, store.Create(t.Context(), record))
@@ -56,6 +56,7 @@ func TestTheTransferListAnswersOnePage(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	require.Equal(t, []int64{ids[1], ids[0]}, rowIDs(res), "the page after the newest row")
 	require.Equal(t, 3, res.Counts.Waiting, "the counts hold the rows of every page")
+	require.Equal(t, int64(4<<30), res.Rows[0].Size, "a row has the size of its torrent")
 
 	code, res = list("")
 	require.Equal(t, http.StatusOK, code)

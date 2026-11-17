@@ -17,6 +17,7 @@
   },
   "columns": {
     "torrent": "種子",
+    "size": "大小",
     "progress": "進度",
     "state": "狀態",
     "started": "開始時間",

@@ -170,6 +170,7 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 		Options:          options,
 		Steps:            []Step{{Name: "start", At: s.deps.Now()}},
 		Members:          members,
+		Size:             src.torrent.Size,
 	}, group, nil
 }
 

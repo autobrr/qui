@@ -17,6 +17,7 @@
   },
   "columns": {
     "torrent": "Торент",
+    "size": "Розмір",
     "progress": "Прогрес",
     "state": "Стан",
     "started": "Запущено",

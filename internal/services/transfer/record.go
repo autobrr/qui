@@ -105,6 +105,8 @@ type Record struct {
 	Members          []Member
 	FlushState       FlushState
 	ReservedBytes    int64
+	// Size is the size of the torrent of the request at the start.
+	Size int64
 	// RetryAt is zero when no retry waits.
 	RetryAt       time.Time
 	FailureClass  FailureClass

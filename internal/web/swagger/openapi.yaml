@@ -8911,6 +8911,7 @@ components:
         - hash
         - name
         - torrents
+        - size
         - after
         - leaveStopped
         - retryAt
@@ -8971,6 +8972,10 @@ components:
         torrents:
           type: integer
           description: The torrents of the Transfer, the torrent of the request with its cross-seeds
+        size:
+          type: integer
+          format: int64
+          description: The size of the torrent of the request at the start of the Transfer, in bytes
         after:
           type: string
         leaveStopped:

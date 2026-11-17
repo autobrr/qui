@@ -46,6 +46,7 @@ func (s *Service) Retry(ctx context.Context, id int64) (int64, error) {
 			TargetInstanceID: record.TargetInstanceID,
 			Hash:             m.Hash,
 			Name:             m.Name,
+			Size:             record.Size,
 			Placement:        m.Placement,
 			Paused:           record.Options.Paused,
 			SkipChecking:     record.Options.SkipChecking == nil || *record.Options.SkipChecking,

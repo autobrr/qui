@@ -17,6 +17,7 @@
   },
   "columns": {
     "torrent": "种子",
+    "size": "大小",
     "progress": "进度",
     "state": "状态",
     "started": "开始时间",

@@ -46,6 +46,7 @@ func (s *Service) exportOnTransfers(ctx context.Context, sourceInstanceID int, e
 		TargetInstanceID: exec.action.TargetInstanceID,
 		Hash:             exec.hash,
 		Name:             exec.torrent.Name,
+		Size:             exec.torrent.Size,
 		Placement: transfer.Placement{SavePath: exec.resolvedSavePath, Category: exec.action.Category, Tags: exec.action.Tags,
 			ContentLayout: exec.action.ContentLayout},
 		Paused:       exec.action.Paused,
