@@ -91,6 +91,8 @@ type job struct {
 	// flushedPieces counts the pieces that qui wrote and flushed in this run,
 	// also on a target that does not confirm a flush.
 	flushedPieces int
+	// meter counts the bytes that reached the target.
+	meter *meter
 }
 
 func (j *job) hashes() []string {

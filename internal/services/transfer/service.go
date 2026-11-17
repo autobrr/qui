@@ -141,6 +141,8 @@ type run struct {
 	cancelled bool
 	// committed is set once a cancel no longer rolls the Transfer back.
 	committed bool
+	// meter counts the bytes of a Transfer that runs.
+	meter *meter
 }
 
 // NewService returns a Service whose Transfers stop when ctx ends or at
@@ -335,10 +337,11 @@ func (s *Service) drain(sourceID int) {
 		}
 		id := queue[0]
 		ctx, cancel := context.WithCancel(s.ctx)
-		s.runs[id].cancel = cancel
+		m := &meter{now: s.deps.Now}
+		s.runs[id].cancel, s.runs[id].meter = cancel, m
 		s.mu.Unlock()
 
-		s.runOne(ctx, id)
+		s.runOne(ctx, id, m)
 		cancel()
 
 		s.mu.Lock()
@@ -355,7 +358,7 @@ func (s *Service) drain(sourceID int) {
 	}
 }
 
-func (s *Service) runOne(ctx context.Context, id int64) {
+func (s *Service) runOne(ctx context.Context, id int64, m *meter) {
 	record, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
@@ -365,6 +368,7 @@ func (s *Service) runOne(ctx context.Context, id int64) {
 		return
 	}
 	j := s.newJob(record)
+	j.meter = m
 	if j.reached(stepCleanUp) {
 		j.cleanUpAgain(ctx)
 		return

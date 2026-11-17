@@ -157,7 +157,8 @@ func (j *job) copy(ctx context.Context) error {
 	if err := j.linkCopies(ctx); err != nil {
 		return err
 	}
-	runs, total := j.runs()
+	runs, total, all := j.runs()
+	j.meter.set(all-total, all)
 	conns, err := c.connections(ctx, total)
 	if err != nil {
 		return err
@@ -188,8 +189,9 @@ func (j *job) copy(ctx context.Context) error {
 
 // runs lists the runs of pieces that the copy copies: the pieces that are
 // not Proven pieces, did not pass the check of the partial files, and hold a
-// file that their member writes. total is their bytes.
-func (j *job) runs() (runs []task, total int64) {
+// file that their member writes. total is their bytes, and all counts the
+// bytes of every piece that holds a file that its member writes.
+func (j *job) runs() (runs []task, total, all int64) {
 	for _, p := range j.parts {
 		info := p.src.info
 		p.proven = make([]byte, (info.NumPieces()+7)/8)
@@ -197,7 +199,11 @@ func (j *job) runs() (runs []task, total int64) {
 		for piece := range info.NumPieces() {
 			start := int64(piece) * info.PieceLength
 			length := min(info.PieceLength, info.TotalLength()-start)
-			if p.isProven(piece) || p.isChecked(piece) || !slices.ContainsFunc(p.segments(start, length), func(s segment) bool { return j.writes(p, s) }) {
+			if !slices.ContainsFunc(p.segments(start, length), func(s segment) bool { return j.writes(p, s) }) {
+				continue
+			}
+			all += length
+			if p.isProven(piece) || p.isChecked(piece) {
 				continue
 			}
 			total += length
@@ -208,7 +214,7 @@ func (j *job) runs() (runs []task, total int64) {
 			}
 		}
 	}
-	return runs, total
+	return runs, total, all
 }
 
 // split cuts the runs at pieces into tasks of about total/n bytes.
@@ -481,6 +487,7 @@ func (s *stream) piece(ctx context.Context, p *part, piece int, data []byte) err
 	}
 	s.pending = append(s.pending, copied{part: p, piece: piece})
 	s.written += int64(len(data))
+	s.c.j.meter.add(int64(len(data)))
 	return nil
 }
 

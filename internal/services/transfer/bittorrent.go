@@ -36,17 +36,27 @@ type noConnectionError struct{ reason string }
 func (e *noConnectionError) Error() string { return e.reason }
 
 func (j *job) passByBitTorrent(ctx context.Context) error {
+	var total int64
+	for _, p := range j.parts {
+		if !p.headStartProven {
+			total += p.src.info.TotalLength()
+		}
+	}
+	j.meter.set(0, total)
+	var done int64
 	for _, p := range j.parts {
 		if p.headStartProven {
 			continue
 		}
-		err := j.pass(ctx, p)
+		err := j.pass(ctx, p, done)
 		if why, ok := errors.AsType[*noConnectionError](err); ok {
 			return j.fallBack(ctx, why)
 		}
 		if err != nil {
 			return err
 		}
+		done += p.src.info.TotalLength()
+		j.meter.reach(done)
 	}
 	return nil
 }
@@ -81,7 +91,9 @@ func (j *job) fallBack(ctx context.Context, why *noConnectionError) error {
 	return nil
 }
 
-func (j *job) pass(ctx context.Context, p *part) error {
+// pass passes the files of p by a Transfer torrent, after base bytes of the
+// parts before.
+func (j *job) pass(ctx context.Context, p *part, base int64) error {
 	if !j.blind {
 		defer j.unlink(context.WithoutCancel(ctx), p)
 		if err := j.link(ctx, p); err != nil {
@@ -139,7 +151,7 @@ func (j *job) pass(ctx context.Context, p *part) error {
 		if err := j.connect(ctx, helper.InfoHash); err != nil {
 			return err
 		}
-		if torrent, err = j.download(ctx, helper.InfoHash); err != nil {
+		if torrent, err = j.download(ctx, helper.InfoHash, base, p.src.info.TotalLength()); err != nil {
 			return err
 		}
 	}
@@ -266,7 +278,9 @@ func (j *job) connect(ctx context.Context, hash string) error {
 	return &noConnectionError{reason: "The clients did not connect: " + strings.Join(why, ", and ") + "."}
 }
 
-func (j *job) download(ctx context.Context, hash string) (*qbt.Torrent, error) {
+// download waits until the target has every piece of the Transfer torrent of
+// size bytes, after base bytes of the parts before.
+func (j *job) download(ctx context.Context, hash string, base, size int64) (*qbt.Torrent, error) {
 	cfg := j.svc.deps.Config
 	last, idle := int64(-1), 0
 	for poll := 0; ; poll++ {
@@ -279,6 +293,9 @@ func (j *job) download(ctx context.Context, hash string) (*qbt.Torrent, error) {
 			return nil, err
 		case torrent == nil:
 			return nil, temporary("The Transfer torrent left %s.", j.target.Name)
+		}
+		j.meter.reach(base + int64(torrent.Progress*float64(size)))
+		switch {
 		case torrent.Progress >= 1 && !isChecking(torrent.State):
 			return torrent, nil
 		case torrent.Downloaded > last:
