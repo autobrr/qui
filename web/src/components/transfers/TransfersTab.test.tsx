@@ -226,6 +226,43 @@ describe("the Transfers tab", () => {
     expect(requests.filter(r => r.endsWith("/retry"))).toEqual(["POST /api/transfers/2/retry", "POST /api/transfers/4/retry"])
   })
 
+  // regression: #4242
+  it("sends one Cancel and one Remove for a row while the answers wait, and keeps the Cancel question open until its answer", async () => {
+    let answer: () => void = () => {}
+    const answered = new Promise<void>(resolve => { answer = resolve })
+    server.use(
+      http.post("*/api/transfers/:id/cancel", async ({ params }) => {
+        requests.push(`POST /api/transfers/${params.id}/cancel`)
+        await answered
+        // As qui's server sends it: no body, and a length of 0.
+        return new HttpResponse(null, { status: 202, headers: { "Content-Length": "0" } })
+      }),
+      http.delete("*/api/transfers/:id", async ({ params }) => {
+        requests.push(`DELETE /api/transfers/${params.id}`)
+        await answered
+        return new HttpResponse(null, { status: 204 })
+      })
+    )
+    renderTab()
+    const remove = within(await rowOf("Film.2019.2160p-ABC")).getByRole<HTMLButtonElement>("button", { name: "Remove" })
+    fireEvent.click(remove)
+    await waitFor(() => expect(remove.disabled).toBe(true))
+    fireEvent.click(remove)
+
+    const cancel = within(await rowOf("Show.S01.1080p-GRP")).getByRole<HTMLButtonElement>("button", { name: "Cancel" })
+    fireEvent.click(cancel)
+    const dialog = await screen.findByRole("alertdialog")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel the Transfer" }))
+    await waitFor(() => expect(requests).toContain("POST /api/transfers/1/cancel"))
+    expect(screen.getByRole("alertdialog")).toBe(dialog)
+    expect(cancel.disabled).toBe(true)
+    answer()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+    expect(requests.filter(r => r.startsWith("DELETE") || r.endsWith("/cancel"))).toEqual(["DELETE /api/transfers/2", "POST /api/transfers/1/cancel"])
+  })
+
   it("cancels a Transfer only after the user confirms", async () => {
     renderTab()
     fireEvent.click(within(await rowOf("Show.S01.1080p-GRP")).getByRole("button", { name: "Cancel" }))

@@ -30,6 +30,11 @@ import { useInstanceName } from "./use-instance-name"
 
 const chips: readonly TransferFilter[] = ["all", "active", "waiting", "finished", "failed"]
 const retryKey = ["transfers", "retry"]
+const cancelKey = ["transfers", "cancel"]
+const removeKey = ["transfers", "remove"]
+
+/** A step of a row that waits for its answer. */
+type RowStep = "retry" | "cancel" | "remove"
 /** The list of the backend holds at most this many rows. */
 const listLimit = 500
 
@@ -72,17 +77,23 @@ export function TransfersTab() {
     onError,
   })
   const cancel = useMutation({
+    mutationKey: cancelKey,
     mutationFn: transfersApi.cancel,
     onSuccess: () => { toast.success(t("actions.cancelled")); void refresh() },
     onError,
   })
   const remove = useMutation({
+    mutationKey: removeKey,
     mutationFn: transfersApi.remove,
     onSuccess: () => { toast.success(t("actions.removed")); void refresh() },
     onError,
   })
 
   const retrying = usePendingIds(retryKey)
+  const cancelRuns = usePendingIds(cancelKey)
+  const removing = usePendingIds(removeKey)
+  const runningStep = (id: number): RowStep | null =>
+    retrying.has(id) ? "retry" : cancelRuns.has(id) ? "cancel" : removing.has(id) ? "remove" : null
   const counts = list.data?.counts
   const rows = list.data?.rows ?? []
   const formatCount = useMemo(() => new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language), [i18n.resolvedLanguage, i18n.language])
@@ -131,7 +142,7 @@ export function TransfersTab() {
                       key={row.id}
                       row={row}
                       onDetails={() => setDetailsId(row.id)}
-                      retrying={retrying.has(row.id)}
+                      running={runningStep(row.id)}
                       onRetry={() => retry.mutate(row.id)}
                       onCancel={() => setCancelling({ row, open: true })}
                       onRemove={() => remove.mutate(row.id)}
@@ -154,7 +165,7 @@ export function TransfersTab() {
           description={t("cancelDialog.description", { name: display.name(cancelling.row) })}
           confirmLabel={t("cancelDialog.confirm")}
           cancelLabel={t("cancelDialog.keep")}
-          onConfirm={() => cancel.mutate(cancelling.row.id)}
+          onConfirm={() => cancel.mutateAsync(cancelling.row.id)}
         />
       )}
     </>
@@ -163,15 +174,15 @@ export function TransfersTab() {
 
 interface TransferTableRowProps {
   row: TransferRow
-  /** A Retry of the row waits for its answer. */
-  retrying: boolean
+  /** The step of the row that waits for its answer: the row takes no other step until then. */
+  running: RowStep | null
   onDetails: () => void
   onRetry: () => void
   onCancel: () => void
   onRemove: () => void
 }
 
-function TransferTableRow({ row, retrying, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
+function TransferTableRow({ row, running, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
   const display = useIncognitoDisplay()
@@ -182,11 +193,13 @@ function TransferTableRow({ row, retrying, onDetails, onRetry, onCancel, onRemov
       ? t("row.byRule", { name: row.ruleName })
       : t("row.byDeletedRule")
   const started = formatRelativeTime(row.createdAt)
+  const step = (name: RowStep, label: string, icon: LucideIcon, onSelect: () => void, destructive = false): RowAction =>
+    ({ label, icon, onSelect, destructive, pending: running === name, disabled: running !== null })
   const actions: RowAction[] = [
     { label: t("actions.details"), icon: FileText, onSelect: onDetails },
-    ...(canRetry(row) ? [{ label: t("actions.retry"), icon: RotateCcw, onSelect: onRetry, pending: retrying }] : []),
-    ...(canCancel(row) ? [{ label: t("actions.cancel"), icon: X, onSelect: onCancel }] : []),
-    ...(canRemove(row) ? [{ label: t("actions.remove"), icon: Trash2, onSelect: onRemove, destructive: true }] : []),
+    ...(canRetry(row) ? [step("retry", t("actions.retry"), RotateCcw, onRetry)] : []),
+    ...(canCancel(row) ? [step("cancel", t("actions.cancel"), X, onCancel)] : []),
+    ...(canRemove(row) ? [step("remove", t("actions.remove"), Trash2, onRemove, true)] : []),
   ]
 
   return (
