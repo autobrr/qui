@@ -97,11 +97,13 @@
       "remove_one": "S'ha eliminat {{count}} fila.",
       "remove_other": "S'han eliminat {{count}} files."
     },
-    "skipped_one": "{{count}} fila no encaixa amb aquest pas i es queda com estava.",
-    "skipped_other": "{{count}} files no encaixen amb aquest pas i es queden com estaven.",
+    "skipped_one": "{{count}} fila es queda com estava: l'acció no s'hi aplica.",
+    "skipped_other": "{{count}} files es queden com estaven: l'acció no s'hi aplica.",
     "failed_one": "{{count}} fila ha fallat. El registre de qui en dona el motiu.",
     "failed_other": "{{count}} files han fallat. El registre de qui en dona el motiu.",
-    "nothing": "Cap fila seleccionada no encaixa amb aquest pas.",
+    "failedBecause_one": "{{count}} fila ha fallat. {{reasons}}",
+    "failedBecause_other": "{{count}} files han fallat. {{reasons}}",
+    "nothing": "L'acció no s'aplica a cap fila seleccionada.",
     "cancelDialog": {
       "title": "Vols cancel·lar les files seleccionades?",
       "description_one": "Hi ha {{count}} fila seleccionada. Si no ha acabat, qui la cancel·la i desfà el que ha fet: elimina els fitxers i els torrents que ha afegit a la destinació, i torna a iniciar el torrent a l'origen.",
@@ -131,7 +133,8 @@
     "log": "Registre",
     "noLog": "Encara no hi ha línies de registre.",
     "loading": "S'està carregant la transferència…",
-    "error": "qui no pot carregar la transferència: {{message}}"
+    "error": "qui no pot carregar la transferència: {{message}}",
+    "stale": "qui no pot actualitzar els detalls, així que poden estar desactualitzats: {{message}}"
   },
   "steps": {
     "start": "Iniciada",

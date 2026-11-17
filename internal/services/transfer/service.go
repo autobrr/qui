@@ -374,6 +374,14 @@ func (s *Service) runOne(ctx context.Context, id int64, m *meter) {
 		j.cleanUpAgain(ctx)
 		return
 	}
+	// A cancel with nothing to take back saves its state, and then ends the
+	// Transfer. A stop of qui between the two writes leaves only the end.
+	if record.State == StateCancelled {
+		if err := s.deps.Store.Finish(ctx, id, StateCancelled); err != nil {
+			log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot finish the Transfer")
+		}
+		return
+	}
 	err = j.run(ctx)
 	switch {
 	case s.cancelled(id):

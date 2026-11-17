@@ -97,11 +97,13 @@
       "remove_one": "{{count}} riga è stata rimossa.",
       "remove_other": "{{count}} righe sono state rimosse."
     },
-    "skipped_one": "{{count}} riga non è adatta a questo passo e resta com'era.",
-    "skipped_other": "{{count}} righe non sono adatte a questo passo e restano com'erano.",
+    "skipped_one": "{{count}} riga resta com'era: l'azione non la riguarda.",
+    "skipped_other": "{{count}} righe restano com'erano: l'azione non le riguarda.",
     "failed_one": "{{count}} riga non è riuscita. Il log di qui ne indica il motivo.",
     "failed_other": "{{count}} righe non sono riuscite. Il log di qui ne indica il motivo.",
-    "nothing": "Nessuna riga selezionata è adatta a questo passo.",
+    "failedBecause_one": "{{count}} riga non è riuscita. {{reasons}}",
+    "failedBecause_other": "{{count}} righe non sono riuscite. {{reasons}}",
+    "nothing": "L'azione non riguarda nessuna riga selezionata.",
     "cancelDialog": {
       "title": "Annullare le righe selezionate?",
       "description_one": "È selezionata {{count}} riga. Se non è terminata, qui la annulla e ripristina ciò che ha fatto: rimuove i file e i torrent che ha aggiunto sulla destinazione, e riavvia il torrent sulla sorgente.",
@@ -131,7 +133,8 @@
     "log": "Log",
     "noLog": "Ancora nessuna riga di log.",
     "loading": "Caricamento del trasferimento…",
-    "error": "qui non riesce a caricare il trasferimento: {{message}}"
+    "error": "qui non riesce a caricare il trasferimento: {{message}}",
+    "stale": "qui non riesce ad aggiornare i dettagli, quindi possono essere non aggiornati: {{message}}"
   },
   "steps": {
     "start": "Avviato",

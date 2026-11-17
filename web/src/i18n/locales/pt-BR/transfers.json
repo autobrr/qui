@@ -101,6 +101,8 @@
     "skipped_other": "{{count}} linhas não se aplicam a esta ação e ficam como estavam.",
     "failed_one": "{{count}} linha falhou. O log do qui mostra o motivo.",
     "failed_other": "{{count}} linhas falharam. O log do qui mostra o motivo.",
+    "failedBecause_one": "{{count}} linha falhou. {{reasons}}",
+    "failedBecause_other": "{{count}} linhas falharam. {{reasons}}",
     "nothing": "Nenhuma linha selecionada se aplica a esta ação.",
     "cancelDialog": {
       "title": "Cancelar as linhas selecionadas?",
@@ -131,7 +133,8 @@
     "log": "Log",
     "noLog": "Nenhuma linha de log ainda.",
     "loading": "Carregando a transferência…",
-    "error": "O qui não consegue carregar a transferência: {{message}}"
+    "error": "O qui não consegue carregar a transferência: {{message}}",
+    "stale": "O qui não consegue atualizar os detalhes, então eles podem estar desatualizados: {{message}}"
   },
   "steps": {
     "start": "Iniciada",

@@ -131,7 +131,8 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
             <FieldHelp>{t("form.afterHelp")}</FieldHelp>
           </Label>
           <Select value={value.after} onValueChange={after => set({ after: after as TransferAfter })}>
-            <SelectTrigger id={`${id}-after`} className="w-full">
+            {/* The values are long, so the field wraps its value on a phone in place of a cut. */}
+            <SelectTrigger id={`${id}-after`} className="w-full whitespace-normal text-left data-[size=default]:h-auto data-[size=default]:min-h-9 *:data-[slot=select-value]:line-clamp-none">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

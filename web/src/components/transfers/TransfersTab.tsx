@@ -54,7 +54,7 @@ export function TransfersTab() {
   // The row stays while the dialog fades out.
   const [cancelling, setCancelling] = useState<{ row: TransferRow; open: boolean } | null>(null)
   const [selection, setSelection] = useState<Selection>(noSelection)
-  // The index on the page of the row that the user ticked last, for a range with Shift.
+  // The id of the row that the user ticked last, for a range with Shift.
   const lastTicked = useRef<number | null>(null)
   // The step for the picked rows that waits for the question. The step stays while the dialog fades out.
   const [asking, setAsking] = useState<{ action: "cancel" | "remove"; open: boolean } | null>(null)
@@ -98,10 +98,12 @@ export function TransfersTab() {
     },
     onError,
   })
-  const reportBulk = (action: TransferBulkAction, { done, skipped, failed }: TransferBulkResult) => {
+  const reportBulk = (action: TransferBulkAction, { done, skipped, failed, reasons }: TransferBulkResult) => {
+    // A refusal names its reason. Another error has its reason in the log only.
+    const why = reasons.map(reason => display.text(reason)).join(" ")
     const more = [
       skipped > 0 && t("bulk.skipped", { count: skipped }),
-      failed > 0 && t("bulk.failed", { count: failed }),
+      failed > 0 && (why ? t("bulk.failedBecause", { count: failed, reasons: why }) : t("bulk.failed", { count: failed })),
     ].filter(Boolean).join(" ")
     if (done === 0 && failed === 0) toast.info(t("bulk.nothing"))
     else if (failed > 0) toast.error(t(`bulk.done.${action}`, { count: done }), { description: more })
@@ -115,6 +117,8 @@ export function TransfersTab() {
     retrying.has(id) ? "retry" : cancelRuns.has(id) ? "cancel" : removing.has(id) ? "remove" : null
   const counts = list.data?.counts
   const rows = list.data?.rows ?? []
+  // The rows of the last chip or page show until the new rows arrive. They take no tick and no step until then.
+  const stale = list.isPlaceholderData
   const formatCount = useMemo(() => new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language), [i18n.resolvedLanguage, i18n.language])
   const countOf = (chip: TransferFilter) => counts && (chip === "all" ? counts.active + counts.waiting + counts.finished + counts.failed : counts[chip])
   const total = countOf(filter) ?? 0
@@ -139,14 +143,15 @@ export function TransfersTab() {
   const isPicked = (row: TransferRow) => selection.kind === "filter" || selection.ids.has(row.id)
   const tick = (index: number, range: boolean) => {
     setSelection(tickRow(selection, rows, index, range ? lastTicked.current : null))
-    lastTicked.current = index
+    lastTicked.current = rows[index].id
   }
   const tickPage = () => {
     if (pageTick === true) clearSelection()
     else setSelection({ kind: "rows", ids: new Set(rows.map(row => row.id)) })
   }
+  // A whole chip offers no Retry, so a retry always names its rows.
   const runBulk = (action: TransferBulkAction) =>
-    bulk.mutateAsync(selection.kind === "filter" ? { action, filter } : { action, ids: fittingIds(action, picked) })
+    bulk.mutateAsync(selection.kind === "filter" && action !== "retry" ? { action, filter } : { action, ids: fittingIds(action, picked) })
   const pickAction = (action: TransferBulkAction) => {
     if (action === "retry") runBulk(action).catch(() => {})
     else setAsking({ action, open: true })
@@ -178,12 +183,12 @@ export function TransfersTab() {
             <EmptyTile title={t("list.empty")} />
           ) : (
             // The table reaches the edges of the card, as the tables of Statistics do, and fits its columns to the card.
-            <div className="@container -mx-6 border-t max-sm:-mx-4">
+            <div aria-busy={stale} className={cn("@container -mx-6 border-t transition-opacity max-sm:-mx-4", stale && "opacity-60")}>
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-px pr-0 pl-6 max-sm:pl-4">
-                      <Checkbox checked={pageTick} onCheckedChange={tickPage} aria-label={t("bulk.pickPage")} className={cn("align-middle", CHECKBOX_TAP)} />
+                      <Checkbox checked={pageTick} disabled={stale} onCheckedChange={tickPage} aria-label={t("bulk.pickPage")} className={cn("align-middle", CHECKBOX_TAP)} />
                     </TableHead>
                     <TableHead className="w-full">{t("columns.torrent")}</TableHead>
                     <TableHead className="hidden text-right @xl:table-cell">{t("columns.size")}</TableHead>
@@ -198,6 +203,7 @@ export function TransfersTab() {
                       key={row.id}
                       row={row}
                       picked={isPicked(row)}
+                      stale={stale}
                       onTick={range => tick(index, range)}
                       onDetails={() => setDetailsId(row.id)}
                       running={runningStep(row.id)}
@@ -282,6 +288,8 @@ interface TransferTableRowProps {
   row: TransferRow
   /** The row is in the selection of the selection bar. */
   picked: boolean
+  /** The row belongs to the last chip or page, and the new rows load: it takes no tick and no step. */
+  stale: boolean
   /** A tick on the box of the row. With range, Shift was down. */
   onTick: (range: boolean) => void
   /** The step of the row that waits for its answer: the row takes no other step until then. */
@@ -292,16 +300,16 @@ interface TransferTableRowProps {
   onRemove: () => void
 }
 
-function TransferTableRow({ row, picked, onTick, running, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
+function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
   const display = useIncognitoDisplay()
   const nameId = useId()
   const started = formatRelativeTime(row.createdAt)
   const step = (name: RowStep, label: string, icon: LucideIcon, onSelect: () => void, destructive = false): RowAction =>
-    ({ label, icon, onSelect, destructive, pending: running === name, disabled: running !== null })
+    ({ label, icon, onSelect, destructive, pending: running === name, disabled: stale || running !== null })
   const actions: RowAction[] = [
-    { label: t("actions.details"), icon: FileText, onSelect: onDetails },
+    { label: t("actions.details"), icon: FileText, onSelect: onDetails, disabled: stale },
     ...(canRetry(row) ? [step("retry", t("actions.retry"), RotateCcw, onRetry)] : []),
     ...(canCancel(row) ? [step("cancel", t("actions.cancel"), X, onCancel)] : []),
     ...(canRemove(row) ? [step("remove", t("actions.remove"), Trash2, onRemove, true)] : []),
@@ -313,6 +321,7 @@ function TransferTableRow({ row, picked, onTick, running, onDetails, onRetry, on
         {/* The box lines up with the first line of the name. The click carries Shift, which a change of the box does not. */}
         <Checkbox
           checked={picked}
+          disabled={stale}
           onClick={event => onTick(event.shiftKey)}
           aria-labelledby={nameId}
           className={cn("mt-0.5", CHECKBOX_TAP)}
@@ -332,9 +341,10 @@ function TransferTableRow({ row, picked, onTick, running, onDetails, onRetry, on
           )}
           <span className="flex items-center gap-x-1.5">
             <span>{t("row.route", { source: instanceName(row.sourceInstanceId), target: instanceName(row.targetInstanceId) })}</span>
-            {row.way !== "" && <span aria-hidden="true">·</span>}
+            {row.way !== "" && <span aria-hidden="true" className="@max-lg:hidden">·</span>}
           </span>
-          {row.way !== "" && <span>{t([`ways.${row.way}`, "ways.fallback"])}</span>}
+          {/* A phone leaves out the way, so the facts take one line. The details name the way. */}
+          {row.way !== "" && <span className="@max-lg:hidden">{t([`ways.${row.way}`, "ways.fallback"])}</span>}
           {row.torrents > 1 && <Mark>{t("row.crossSeeds", { count: row.torrents - 1 })}</Mark>}
           {row.kind === "export" && <Mark>{t("row.export")}</Mark>}
         </div>

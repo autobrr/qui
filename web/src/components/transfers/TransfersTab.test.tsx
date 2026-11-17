@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -160,7 +160,7 @@ const selectionBar = () => screen.queryByRole("region", { name: "Selected rows" 
 const tick = async (name: string, shiftKey = false) => fireEvent.click(within(await rowOf(name)).getByRole("checkbox"), { shiftKey })
 
 /** Answers each bulk step with result, and records its body. */
-function answerBulk(result: { done: number; skipped: number; failed: number }) {
+function answerBulk(result: { done: number; skipped: number; failed: number; reasons: string[] }) {
   server.use(http.post("*/api/transfers/bulk", async ({ request }) => {
     requests.push(`POST /api/transfers/bulk ${JSON.stringify(await request.json())}`)
     return HttpResponse.json(result)
@@ -365,7 +365,7 @@ describe("the Transfers tab", () => {
   })
 
   it("cancels and removes the picked rows that each step fits, after a question", async () => {
-    answerBulk({ done: 1, skipped: 0, failed: 0 })
+    answerBulk({ done: 1, skipped: 0, failed: 0, reasons: [] })
     renderTab()
     await tick("Show.S01.1080p-GRP")
     await tick("Film.2019.2160p-ABC")
@@ -397,7 +397,7 @@ describe("the Transfers tab", () => {
   })
 
   it("retries the picked rows without a question, and ticks a range of rows with Shift", async () => {
-    answerBulk({ done: 2, skipped: 0, failed: 0 })
+    answerBulk({ done: 2, skipped: 0, failed: 0, reasons: [] })
     renderTab()
     await tick("Film.2019.2160p-ABC")
     await tick("Doc.2018.720p-QRS", true)
@@ -422,7 +422,7 @@ describe("the Transfers tab", () => {
         row({ id: 1000 - offset - i, hash: `h${offset + i}`, name: `Built.Show.E${offset + i + 1}.1080p-GRP` }))
       return HttpResponse.json({ rows, counts: long })
     }))
-    answerBulk({ done: 118, skipped: 1, failed: 1 })
+    answerBulk({ done: 118, skipped: 1, failed: 1, reasons: [] })
     // jsdom has no layout, so it has no scrollIntoView.
     Element.prototype.scrollIntoView = vi.fn()
     try {
@@ -447,28 +447,81 @@ describe("the Transfers tab", () => {
       fireEvent.click(pageBox)
       fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Select all 120" }))
 
-      // The All chip offers each step, because the page does not know the rows of the other pages. The server skips
-      // each row that a step does not fit.
-      expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Retry", "Cancel", "Remove", "Clear"])
+      // The All chip offers Cancel and Remove, because the page does not know the rows of the other pages. The server
+      // skips each row that a step does not fit. A retry plans each Transfer again, so it takes picked rows only.
+      expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Cancel", "Remove", "Clear"])
       fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Cancel" }))
       const ask = await screen.findByRole("alertdialog")
       expect(within(ask).getByText(/^120 rows are selected\./)).toBeTruthy()
       fireEvent.click(within(ask).getByRole("button", { name: "Cancel the rows" }))
       await waitFor(() => expect(requests).toContain("POST /api/transfers/bulk {\"action\":\"cancel\",\"filter\":\"all\"}"))
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith("qui cancels 118 rows.", {
-        description: "1 row does not fit the step and stays as it was. 1 row failed. The log of qui gives the reason.",
+        description: "1 row stays as it was: the action does not apply to it. 1 row failed. The log of qui gives the reason.",
       }))
     } finally {
       delete (Element.prototype as Partial<Element>).scrollIntoView
     }
   })
 
-  it("says so when no picked row fits the step", async () => {
-    answerBulk({ done: 0, skipped: 3, failed: 0 })
+  it("says so when the action applies to no picked row", async () => {
+    answerBulk({ done: 0, skipped: 3, failed: 0, reasons: [] })
     renderTab()
     await tick("Film.2019.2160p-ABC")
     fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Retry" }))
-    await waitFor(() => expect(toast.info).toHaveBeenCalledWith("No selected row fits this step."))
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith("The action does not apply to any selected row."))
+  })
+
+  // regression: #4242
+  it("names the reason of each row that qui refused", async () => {
+    answerBulk({ done: 1, skipped: 0, failed: 1, reasons: ["The target has no free space for this Transfer."] })
+    renderTab()
+    await tick("Film.2019.2160p-ABC")
+    await tick("Doc.2018.720p-QRS")
+    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Retry" }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("1 row runs again.", {
+      description: "1 row failed. The target has no free space for this Transfer.",
+    }))
+  })
+
+  // regression: #4242
+  it("takes no tick and no step on the rows of the last chip while the rows of the next chip load", async () => {
+    let answer: () => void = () => {}
+    const loaded = new Promise<void>(resolve => { answer = resolve })
+    server.use(http.get("*/api/transfers", async ({ request }) => {
+      const filter = new URL(request.url).searchParams.get("filter")
+      if (filter === "failed") await loaded
+      return HttpResponse.json(listOf(filter))
+    }))
+    renderTab()
+    const copyingRow = await rowOf("Show.S01.1080p-GRP")
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Failed/ }), { button: 0 })
+
+    await waitFor(() => expect(within(copyingRow).getByRole<HTMLButtonElement>("checkbox").disabled).toBe(true))
+    expect(screen.getByRole<HTMLButtonElement>("checkbox", { name: "Select the rows of this page" }).disabled).toBe(true)
+    expect(within(copyingRow).getByRole<HTMLButtonElement>("button", { name: "Cancel" }).disabled).toBe(true)
+
+    answer()
+    await waitFor(() => expect(screen.queryByText("Show.S01.1080p-GRP")).toBeNull())
+    expect(within(await rowOf("Film.2019.2160p-ABC")).getByRole<HTMLButtonElement>("checkbox").disabled).toBe(false)
+  })
+
+  // regression: #4242
+  it("keeps the start of a Shift range on its row when a refresh moves the rows", async () => {
+    let newest = false
+    server.use(http.get("*/api/transfers", () => {
+      const list = listOf(null)
+      return HttpResponse.json(newest ? { ...list, rows: [row({ id: 9, hash: "eeee", name: "New.2021.1080p-NEW" }), ...list.rows] } : list)
+    }))
+    renderTab()
+    await tick("Film.2019.2160p-ABC")
+    // A Retry refreshes the list, and a new row comes in at the top.
+    newest = true
+    fireEvent.click(within(await rowOf("Doc.2018.720p-QRS")).getByRole("button", { name: "Retry" }))
+    await rowOf("New.2021.1080p-NEW")
+
+    await tick("Doc.2018.720p-QRS", true)
+    expect(within(selectionBar()!).getByText("3 selected")).toBeTruthy()
+    expect((await rowOf("Show.S01.1080p-GRP")).getAttribute("data-state")).toBeNull()
   })
 
   it("opens the Details dialog on Overview, with a short title, the name, the state, and the route", async () => {
@@ -527,6 +580,49 @@ describe("the Transfers tab", () => {
     expect(steps.textContent).not.toContain("Film.2019.2160p-ABC.mkv")
   })
 
+  // regression: #4242
+  it("names the size, and the day of the steps and the log lines when they span more than one day", async () => {
+    server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({
+      ...detail,
+      size: 4 * 1024 ** 3,
+      steps: [{ name: "start", at: "2026-11-15T10:00:00Z", detail: "" }, { name: "failed", at: "2026-11-17T10:00:07Z", detail: "" }],
+      log: [
+        { at: "2026-11-15T10:00:05Z", message: "First line." },
+        { at: "2026-11-15T10:00:06Z", message: "Second line." },
+        { at: "2026-11-17T10:00:05Z", message: "Last line." },
+      ],
+    })))
+    renderTab()
+    const dialog = await openDetails("Film.2019.2160p-ABC")
+    expect(within(dialog).getByRole("tabpanel").textContent).toContain("Size4 GiB")
+    openTab(dialog, /^Steps/)
+    // The time of day follows the time zone of the machine, and the day is the same in each zone of the test.
+    const clocks = Array.from(within(dialog).getByRole("tabpanel").querySelectorAll("time"), time => time.textContent)
+    expect(clocks).toEqual([expect.stringMatching(/^2026-11-15 · \d\d:00:00$/), expect.stringMatching(/^2026-11-17 · \d\d:00:07$/)])
+    openTab(dialog, /^Log/)
+    const lines = within(within(dialog).getByRole("tabpanel")).getAllByRole("listitem").map(item => item.textContent)
+    expect(lines).toEqual(["2026-11-15", expect.stringMatching(/First line\.$/), expect.stringMatching(/Second line\.$/), "2026-11-17", expect.stringMatching(/Last line\.$/)])
+  })
+
+  // regression: #4242
+  it("says that the details can be out of date when a refresh fails", async () => {
+    renderTab()
+    const dialog = await openDetails("Film.2019.2160p-ABC")
+    expect(within(dialog).queryByRole("status")).toBeNull()
+    server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({ error: "qui does not answer." }, { status: 503 })))
+    try {
+      // A return to the window refreshes the details.
+      act(() => {
+        focusManager.setFocused(false)
+        focusManager.setFocused(true)
+      })
+      expect((await within(dialog).findByRole("status")).textContent).toBe("qui cannot refresh the details, so they can be out of date: qui does not answer.")
+      expect(within(dialog).getByRole("tabpanel").textContent).toContain("A file on the target does not match.")
+    } finally {
+      focusManager.setFocused(undefined)
+    }
+  })
+
   it("puts the tabs beside the content on a wide screen, and above it on a phone", async () => {
     renderTab()
     let dialog = await openDetails("Film.2019.2160p-ABC")
@@ -582,19 +678,25 @@ describe("the Transfers tab", () => {
     await within(dialog).findByText(getLinuxIsoName("aaaa"))
     let text = within(dialog).getByRole("tabpanel").textContent ?? ""
     expect(text).toContain("Hidden in incognito mode")
+    // The dialog renders the open tab only, so each tab gets its own look for the real values.
+    const real = ["Film.2019.2160p-ABC", "/srv/movies", "A file on the target does not match.", "Passing 70 B", "movies-private", "tracker-tag"]
+    const expectNoRealValue = () => {
+      const all = dialog.textContent ?? ""
+      for (const value of real) expect(all, value).not.toContain(value)
+    }
+    expectNoRealValue()
     openTab(dialog, /^Torrents/)
     text = within(dialog).getByRole("tabpanel").textContent ?? ""
     expect(text).toContain(getLinuxIsoName("bbbb"))
     expect(text).toContain(getLinuxSavePath("bbbb"))
+    expectNoRealValue()
     openTab(dialog, /^Steps/)
     text = within(dialog).getByRole("tabpanel").textContent ?? ""
     expect(text).toContain("Placed the files")
     expect(text).toContain(getLinuxIsoName("bbbb"))
+    expectNoRealValue()
     openTab(dialog, /^Log/)
     expect(within(dialog).getByRole("tabpanel").textContent).toContain("Hidden in incognito mode")
-    const all = dialog.textContent ?? ""
-    for (const real of ["Film.2019.2160p-ABC", "/srv/movies", "A file on the target does not match.", "Passing 70 B", "movies-private", "tracker-tag"]) {
-      expect(all).not.toContain(real)
-    }
+    expectNoRealValue()
   })
 })

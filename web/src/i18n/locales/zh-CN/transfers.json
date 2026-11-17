@@ -92,6 +92,7 @@
     },
     "skipped_other": "{{count}} 行不适用此操作，保持不变。",
     "failed_other": "{{count}} 行失败。qui 日志中有原因。",
+    "failedBecause_other": "{{count}} 行失败。{{reasons}}",
     "nothing": "没有已选行适用此操作。",
     "cancelDialog": {
       "title": "取消已选行？",
@@ -120,7 +121,8 @@
     "log": "日志",
     "noLog": "暂无日志。",
     "loading": "正在加载传输…",
-    "error": "qui 无法加载此传输：{{message}}"
+    "error": "qui 无法加载此传输：{{message}}",
+    "stale": "qui 无法刷新详情，内容可能已过时：{{message}}"
   },
   "steps": {
     "start": "已开始",

@@ -13,13 +13,16 @@ export const noSelection: Selection = { kind: "rows", ids: new Set() }
 
 const fits: Record<TransferBulkAction, (row: TransferRow) => boolean> = { retry: canRetry, cancel: canCancel, remove: canRemove }
 
+/** A step for every row behind a chip. A retry plans each Transfer again, so it takes picked rows only. */
+export type ChipAction = Exclude<TransferBulkAction, "retry">
+
 /** The steps that fit some row behind each chip. The page does not know the rows of the other pages. */
-const chipActions: Record<TransferFilter, readonly TransferBulkAction[]> = {
-  all: ["retry", "cancel", "remove"],
+const chipActions: Record<TransferFilter, readonly ChipAction[]> = {
+  all: ["cancel", "remove"],
   active: ["cancel"],
   waiting: ["cancel"],
-  finished: ["retry", "remove"],
-  failed: ["retry", "cancel", "remove"],
+  finished: ["remove"],
+  failed: ["cancel", "remove"],
 }
 
 /** The steps that the selection bar offers: each step that fits one or more of the picked rows. */
@@ -34,15 +37,17 @@ export function fittingIds(action: TransferBulkAction, picked: readonly Transfer
 }
 
 /**
- * The selection after a tick on the row at index. With range, the rows from the last ticked row up to this one take
- * the new state of this row, as in a file manager.
+ * The selection after a tick on the row at index. With an anchor, the rows from the anchor row up to this one take the
+ * new state of this row, as in a file manager. The anchor is the id of the row that the user ticked last: a refresh
+ * can move that row to another place on the page, or off the page.
  */
-export function tickRow(selection: Selection, rows: readonly TransferRow[], index: number, last: number | null): Selection {
+export function tickRow(selection: Selection, rows: readonly TransferRow[], index: number, anchor: number | null): Selection {
   const on = !(selection.kind === "filter" || selection.ids.has(rows[index].id))
   // A tick in a selection of the whole chip keeps the rows of this page only.
   const ids = new Set(selection.kind === "filter" ? rows.map(row => row.id) : selection.ids)
-  const from = last === null ? index : Math.min(last, index)
-  const to = last === null ? index : Math.max(last, index)
+  const last = anchor === null ? -1 : rows.findIndex(row => row.id === anchor)
+  const from = last === -1 ? index : Math.min(last, index)
+  const to = last === -1 ? index : Math.max(last, index)
   for (const row of rows.slice(from, to + 1)) {
     if (on) ids.add(row.id)
     else ids.delete(row.id)

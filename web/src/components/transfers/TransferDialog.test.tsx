@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { Profiler } from "react"
@@ -154,17 +154,23 @@ describe("the Transfer dialog", () => {
     expect(toast.success).toHaveBeenCalledWith("The Transfer of Show.S01.1080p-GRP waits for its turn.")
   })
 
-  it("warns about free space, a target without file access, and TCP and μTP", async () => {
+  it("warns about free space and a target without file access next to Start, and hints at TCP and μTP", async () => {
     summary = { ...summary, way: "bittorrent", free: 1 * GiB, noFileAccess: true, hints: [{ kind: "tcpAndUtp", instanceId: 2 }] }
     renderDialog()
     await pickTarget("homelab")
 
     await waitFor(() => expect(figure("Way")).toBe("BitTorrent"))
-    const warnings = within(screen.getByRole("dialog")).getAllByRole("alert").map(alert => alert.textContent)
-    expect(warnings).toEqual([
+    const alerts = within(screen.getByRole("dialog")).getAllByRole("alert")
+    expect(alerts.map(alert => alert.textContent)).toEqual([
       "The target has less free space than the Transfer needs.",
       "qui cannot see the files on homelab, so a file with other content at the same path can be replaced.",
     ])
+    // The user reads each warning after the summary and before Start.
+    for (const alert of alerts) {
+      expect(summaryPanel().compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(alert.compareDocumentPosition(startButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+    expect(screen.queryByText("qui checks every piece on the target before it changes the source.")).toBeNull()
     expect(summaryText()).toContain("homelab uses qBittorrent's default \"TCP and μTP\"")
   })
 
@@ -210,6 +216,28 @@ describe("the Transfer dialog", () => {
     act(() => answer())
     await waitFor(() => expect(startButton().disabled).toBe(false))
     expect(summaryPanel().getAttribute("aria-busy")).toBe("false")
+  })
+
+  // regression: #4242
+  it("keeps Start off while the browser is offline and the summary of the last form shows", async () => {
+    const queryClient = newQueryClient()
+    renderDialog(queryClient)
+    await pickTarget("homelab")
+    await waitFor(() => expect(startButton().disabled).toBe(false))
+
+    onlineManager.setOnline(false)
+    try {
+      fireEvent.change(screen.getByLabelText("Tags"), { target: { value: "kept" } })
+      // The summary of the new form waits for the network, and the last summary stays in place.
+      await waitFor(() => expect(queryClient.getQueryCache().findAll({ queryKey: ["transfers", "summary"] })
+        .some(query => query.state.fetchStatus === "paused")).toBe(true))
+      expect(figure("Torrents")).toBe("2")
+      expect(startButton().disabled).toBe(true)
+    } finally {
+      act(() => onlineManager.setOnline(true))
+    }
+    await waitFor(() => expect(startButton().disabled).toBe(false))
+    expect(summaries.at(-1)?.tags).toEqual(["kept"])
   })
 
   it("says when qBittorrent does not report the free space", async () => {

@@ -862,7 +862,6 @@ func singleFileTorrent(t *testing.T, name string, data []byte) ([]byte, string) 
 	return buf.Bytes(), mi.HashInfoBytes().HexString()
 }
 
-// One Transfer runs at a time for each source. The next one waits.
 // A Transfer records the size of its torrent at the start, for the list of
 // the Transfers page.
 func TestTransferRecordsTheSizeOfItsTorrent(t *testing.T) {
@@ -877,6 +876,7 @@ func TestTransferRecordsTheSizeOfItsTorrent(t *testing.T) {
 	require.Equal(t, int64(70), record.Size, "the two files of the show hold 40 and 30 bytes")
 }
 
+// One Transfer runs at a time for each source. The next one waits.
 func TestTransferQueuesBySource(t *testing.T) {
 	r := newRig(t)
 	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")
@@ -955,6 +955,49 @@ func TestCancelOfAWaitingTransferRunsNoCleanup(t *testing.T) {
 	require.False(t, r.store.IsClaimed(r.source.ID, second.hash), "the cancel frees the torrent")
 	require.False(t, r.src.Stopped(second.hash))
 	require.Equal(t, transfer.StateDone, r.get(firstID).State)
+}
+
+// A cancel that saved its state, but that a stop of qui cut before the end,
+// ends the Transfer when its turn comes. The Transfer does not run.
+func TestASavedCancelEndsTheTransferAtItsTurn(t *testing.T) {
+	r := newRig(t)
+	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")
+	r.seed(first)
+	write(t, filepath.Join(r.srcDir, "Other.Show.S02.720p-GRP"), second.files)
+	r.src.Seed(second.data, r.srcPath())
+	copying, held := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	t.Cleanup(release)
+	var once sync.Once
+	r.disk.onWrite = func(string) {
+		once.Do(func() {
+			close(copying)
+			<-held
+		})
+	}
+
+	_, err := r.svc.Start(t.Context(), r.request(first))
+	require.NoError(t, err)
+	<-copying
+	secondID, err := r.svc.Start(t.Context(), r.request(second))
+	require.NoError(t, err)
+	// The first write of a cancel of a waiting Transfer, without the second.
+	record := r.get(secondID)
+	record.State = transfer.StateCancelled
+	record.Steps = append(record.Steps, transfer.Step{Name: string(transfer.StateCancelled), At: r.now()})
+	require.NoError(t, r.store.Save(t.Context(), record))
+	release()
+	r.svc.Wait()
+
+	cancelled := r.get(secondID)
+	require.Equal(t, transfer.StateCancelled, cancelled.State)
+	require.False(t, cancelled.FinishedAt.IsZero(), "the Transfer ended")
+	steps := make([]string, 0, len(cancelled.Steps))
+	for _, step := range cancelled.Steps {
+		steps = append(steps, step.Name)
+	}
+	require.Equal(t, []string{"start", "cancelled"}, steps, "the Transfer did not run")
+	require.False(t, r.store.IsClaimed(r.source.ID, second.hash), "the end frees the torrent")
 }
 
 // A file at a path that the copy writes stops the Transfer, and qui leaves

@@ -9,13 +9,13 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SIDEWAYS_PHONE_QUERY, useIsMobile, useMediaQuery } from "@/hooks/useMediaQuery"
-import { formatISOTimestamp, formatRelativeTime, formatTimeOnly } from "@/lib/dateTimeUtils"
+import { formatDateOnly, formatISOTimestamp, formatRelativeTime, formatTimeOnly } from "@/lib/dateTimeUtils"
 import { transfersApi, type TransferDetail, type TransferMember, type TransferState, type TransferStep } from "@/lib/transfers-api"
-import { cn } from "@/lib/utils"
+import { cn, formatBytes } from "@/lib/utils"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 import { useQuery } from "@tanstack/react-query"
-import { CircleX, FolderOpen, Server } from "lucide-react"
-import { useState } from "react"
+import { AlertTriangle, CircleX, FolderOpen, Server } from "lucide-react"
+import { Fragment, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { shownSteps, stepKey } from "./transfer-display"
 import { TransferHints } from "./TransferHints"
@@ -65,8 +65,11 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
 
   return (
     <Dialog open={transferId !== null} onOpenChange={open => !open && onClose()}>
-      {/* A fixed height, so that the dialog keeps its size while it loads and from tab to tab. */}
-      <DialogContent className="flex h-[min(38rem,90dvh)] flex-col gap-0 p-0 sm:max-w-2xl lg:max-w-4xl">
+      {/*
+        A fixed height, so that the dialog keeps its size while it loads and from tab to tab. The top stays in place, as
+        in the Add torrent dialog.
+      */}
+      <DialogContent className="flex h-[min(38rem,90dvh)] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:h-[min(38rem,85dvh)] sm:max-w-2xl lg:max-w-4xl">
         <DialogHeader className="space-y-0 border-b px-6 pt-5 pb-4 pr-12 text-left max-md:px-4 max-md:pr-12">
           <DialogTitle>{t(data?.kind === "export" ? "details.exportTitle" : "details.title")}</DialogTitle>
           <DialogDescription className="line-clamp-2 break-all" title={data ? display.name(data) : undefined}>
@@ -80,6 +83,14 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
             </div>
           )}
         </DialogHeader>
+
+        {/* The last details stay when a refresh fails, so the dialog says that they can be old. */}
+        {data && detail.isRefetchError && (
+          <p role="status" className="flex shrink-0 items-start gap-1.5 border-b bg-amber-500/10 px-6 py-2 text-xs text-amber-700 max-md:px-4 dark:text-amber-400">
+            <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+            <span className="[overflow-wrap:anywhere]">{t("details.stale", { message: display.text(detail.error.message) })}</span>
+          </p>
+        )}
 
         {data ? (
           <Tabs
@@ -118,7 +129,7 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
         ) : (
           <div className="min-h-0 flex-1 px-6 py-5 max-md:px-4">
             {detail.isError ? (
-              <p role="alert" className="text-sm text-destructive">{t("details.error", { message: detail.error.message })}</p>
+              <p role="alert" className="text-sm text-destructive">{t("details.error", { message: display.text(detail.error.message) })}</p>
             ) : (
               <div className="space-y-3" aria-hidden="true">
                 <span className="block h-4 w-2/3 animate-pulse rounded bg-muted" />
@@ -143,6 +154,7 @@ function Overview({ data }: { data: TransferDetail }) {
   if (data.progress || (data.state === "failed" && data.finishedAt === null && data.retryAt)) {
     facts.push({ label: t("columns.progress"), value: <StateDetail row={data} /> })
   }
+  if (data.size > 0) facts.push({ label: t("summary.size"), value: formatBytes(data.size) })
   if (data.way !== "") facts.push({ label: t("summary.way"), value: t([`ways.${data.way}`, "ways.fallback"]) })
   if (data.kind === "transfer") {
     facts.push({
@@ -238,6 +250,7 @@ function Steps({ data }: { data: TransferDetail }) {
     return member ? display.name(member) : null
   }
   const lastDot = lastDots[data.state] ?? "bg-primary motion-safe:animate-pulse"
+  const days = dayBreaks(steps.map(step => step.at))
 
   return (
     <ol>
@@ -251,7 +264,7 @@ function Steps({ data }: { data: TransferDetail }) {
             {!last && <span aria-hidden="true" className="absolute top-[18px] -bottom-1 left-[4.5px] w-px bg-border" />}
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-sm">{t(stepKey(step.name) ?? "stepFallback")}</span>
-              <Clock at={step.at} className="text-xs" />
+              <Clock at={step.at} day={days[index]} className="text-xs" />
             </div>
             {name && <div className="mt-0.5 text-xs text-muted-foreground break-all">{name}</div>}
           </li>
@@ -266,22 +279,37 @@ function Log({ data }: { data: TransferDetail }) {
   const display = useIncognitoDisplay()
   if (data.log.length === 0) return <EmptyTile title={t("details.noLog")} />
   if (display.incognito) return <EmptyTile title={t("incognitoHidden")} />
+  const days = dayBreaks(data.log.map(line => line.at))
   return (
     <ol className="divide-y overflow-hidden rounded-lg border bg-muted/20 font-mono text-xs">
       {data.log.map((line, index) => (
-        <li key={index} className="flex gap-3 px-3 py-2">
-          <Clock at={line.at} />
-          <span className="min-w-0 [overflow-wrap:anywhere]">{line.message}</span>
-        </li>
+        <Fragment key={index}>
+          {days[index] && <li className="bg-muted/40 px-3 py-1.5 font-sans font-medium text-muted-foreground">{days[index]}</li>}
+          <li className="flex gap-3 px-3 py-2">
+            <Clock at={line.at} />
+            <span className="min-w-0 [overflow-wrap:anywhere]">{line.message}</span>
+          </li>
+        </Fragment>
       ))}
     </ol>
   )
 }
 
-/** The time of day with seconds. The title gives the date as well. */
-function Clock({ at, className }: { at: string; className?: string }) {
+/**
+ * The date of each entry where a new day starts. A touch screen shows no title, so the date must be in the text. When
+ * all the entries are of one day, no entry names its date.
+ */
+function dayBreaks(times: readonly string[]): (string | null)[] {
+  const days = times.map(at => formatDateOnly(Date.parse(at) / 1000))
+  if (new Set(days).size < 2) return days.map(() => null)
+  return days.map((day, index) => (index === 0 || day !== days[index - 1] ? day : null))
+}
+
+/** The time of day with seconds, after the date where a new day starts. The title gives the date as well. */
+function Clock({ at, day, className }: { at: string; day?: string | null; className?: string }) {
   return (
     <time dateTime={at} title={formatISOTimestamp(at)} className={cn("shrink-0 tabular-nums text-muted-foreground", className)}>
+      {day && `${day} · `}
       {formatTimeOnly(Date.parse(at) / 1000, undefined, true)}
     </time>
   )

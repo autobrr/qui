@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -234,7 +235,7 @@ func (h *TransfersHandler) List(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	filter, ok := transfer.Filters[query.Get("filter")]
 	if !ok {
-		RespondError(w, http.StatusBadRequest, "filter must be active, waiting, finished, or failed")
+		RespondError(w, http.StatusBadRequest, "filter must be all, active, waiting, finished, or failed")
 		return
 	}
 	limit, err := queryNumber(query.Get("limit"), transferPageSize)
@@ -436,7 +437,9 @@ func (h *TransfersHandler) Remove(w http.ResponseWriter, r *http.Request) {
 type bulkTransfersRequest struct {
 	Action string  `json:"action"`
 	IDs    []int64 `json:"ids"`
-	// Filter, when set, picks every row behind the chip in place of IDs.
+	// Filter, when set, picks every row behind the chip in place of IDs. A
+	// retry takes IDs only: each retry plans a Transfer, so a chip of many
+	// rows would hold the request open too long.
 	Filter *string `json:"filter"`
 }
 
@@ -446,8 +449,11 @@ type bulkTransfersResponse struct {
 	// Skipped counts the rows that the action does not fit, for example a
 	// cancel of a finished Transfer.
 	Skipped int `json:"skipped"`
-	// Failed counts the rows where the action failed for another reason.
+	// Failed counts the rows where qui refused the action or an error stopped it.
 	Failed int `json:"failed"`
+	// Reasons holds each reason of a refusal once, for example a target
+	// that runs an old qBittorrent.
+	Reasons []string `json:"reasons"`
 }
 
 // Bulk retries, cancels, or removes many Transfers and Export runs: the rows
@@ -473,6 +479,10 @@ func (h *TransfersHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ids := req.IDs
+	if req.Filter != nil && req.Action == "retry" {
+		RespondError(w, http.StatusBadRequest, "retry takes ids, not a filter")
+		return
+	}
 	if req.Filter != nil {
 		filter, ok := transfer.Filters[*req.Filter]
 		if !ok {
@@ -487,19 +497,31 @@ func (h *TransfersHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var res bulkTransfersResponse
+	res := bulkTransfersResponse{Reasons: []string{}}
+	errored := 0
+	var lastErr error
 	for _, id := range ids {
 		err := act(r.Context(), id)
+		refusal, refused := errors.AsType[*transfer.RefusalError](err)
 		switch {
 		case err == nil:
 			res.Done++
+		case refused:
+			res.Failed++
+			if !slices.Contains(res.Reasons, refusal.Reason) {
+				res.Reasons = append(res.Reasons, refusal.Reason)
+			}
 		// A row that ended or went away since the page loaded is skipped too.
 		case errors.Is(err, transfer.ErrNotFound), actionDoesNotFit(err):
 			res.Skipped++
 		default:
 			res.Failed++
-			log.Error().Err(err).Int64("transfer", id).Str("action", req.Action).Msg("transfer: failed to act on a Transfer of a bulk action")
+			errored++
+			lastErr = err
 		}
+	}
+	if errored > 0 {
+		log.Error().Err(lastErr).Int("rows", errored).Str("action", req.Action).Msg("transfer: a bulk action failed on some rows")
 	}
 	RespondJSON(w, http.StatusOK, res)
 }

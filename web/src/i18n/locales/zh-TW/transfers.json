@@ -92,6 +92,7 @@
     },
     "skipped_other": "{{count}} 列不適用此操作，保持不變。",
     "failed_other": "{{count}} 列失敗。qui 日誌中有原因。",
+    "failedBecause_other": "{{count}} 列失敗。{{reasons}}",
     "nothing": "沒有已選列適用此操作。",
     "cancelDialog": {
       "title": "取消已選列？",
@@ -120,7 +121,8 @@
     "log": "日誌",
     "noLog": "尚無日誌。",
     "loading": "正在載入傳輸…",
-    "error": "qui 無法載入此傳輸：{{message}}"
+    "error": "qui 無法載入此傳輸：{{message}}",
+    "stale": "qui 無法重新整理詳細資料，內容可能已過時：{{message}}"
   },
   "steps": {
     "start": "已開始",

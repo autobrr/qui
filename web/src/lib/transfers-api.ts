@@ -111,16 +111,23 @@ export interface TransferRequest {
   way: TransferWayChoice
 }
 
-/** A bulk step names the rows by id, or picks every row behind a filter chip, on every page. */
-export type TransferBulkRequest = { action: TransferBulkAction } & ({ ids: number[] } | { filter: TransferFilter })
+/**
+ * A bulk step names the rows by id, or picks every row behind a filter chip, on every page. A retry plans each
+ * Transfer again, so it takes ids only.
+ */
+export type TransferBulkRequest =
+  | { action: TransferBulkAction; ids: number[] }
+  | { action: Exclude<TransferBulkAction, "retry">; filter: TransferFilter }
 
 export interface TransferBulkResult {
   /** The rows that took the step. */
   done: number
   /** The rows that the step does not fit, for example a cancel of a row that ended. */
   skipped: number
-  /** The rows where the step failed for another reason. */
+  /** The rows where qui refused the step or an error stopped it. */
   failed: number
+  /** Each reason that qui gave for a refusal, once. */
+  reasons: string[]
 }
 
 export interface TransferSummary {

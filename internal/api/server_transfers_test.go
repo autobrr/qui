@@ -180,29 +180,44 @@ func TestTransferBulkRoute(t *testing.T) {
 	first := addTransfer(t, rig, "aaaa", transfer.StateDone, true, nil)
 	second := addTransfer(t, rig, "bbbb", transfer.StateCancelled, true, nil)
 	running := addTransfer(t, rig, "cccc", transfer.StateCopying, false, nil)
-	bulk := func(body string) (int, map[string]int) {
+	// A Transfer to its own source: a retry plans it again, and qui refuses it.
+	refused := addTransfer(t, rig, "dddd", transfer.StateFailed, true, func(r *transfer.Record) {
+		r.TargetInstanceID, r.Members[0].TargetInstanceID = 1, 1
+	})
+	type answer struct {
+		Done    int      `json:"done"`
+		Skipped int      `json:"skipped"`
+		Failed  int      `json:"failed"`
+		Reasons []string `json:"reasons"`
+	}
+	bulk := func(body string) (int, answer) {
 		t.Helper()
-		status, answer := rig.sendBody(t, http.MethodPost, "/api/transfers/bulk", "", cookie, body)
-		var counts map[string]int
+		status, text := rig.sendBody(t, http.MethodPost, "/api/transfers/bulk", "", cookie, body)
+		var res answer
 		if status == http.StatusOK {
-			require.NoError(t, json.Unmarshal([]byte(answer), &counts))
+			require.NoError(t, json.Unmarshal([]byte(text), &res))
 		}
-		return status, counts
+		return status, res
 	}
 
-	status, counts := bulk(`{"action":"remove","ids":[` + strconv.FormatInt(first, 10) + `,` + strconv.FormatInt(running, 10) + `,999]}`)
+	status, res := bulk(`{"action":"remove","ids":[` + strconv.FormatInt(first, 10) + `,` + strconv.FormatInt(running, 10) + `,999]}`)
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, map[string]int{"done": 1, "skipped": 2, "failed": 0}, counts, "a running row and an unknown row are skipped")
+	require.Equal(t, answer{Done: 1, Skipped: 2, Reasons: []string{}}, res, "a running row and an unknown row are skipped")
 
-	status, counts = bulk(`{"action":"remove","filter":"finished"}`)
+	status, res = bulk(`{"action":"retry","ids":[` + strconv.FormatInt(refused, 10) + `,` + strconv.FormatInt(running, 10) + `]}`)
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, map[string]int{"done": 1, "skipped": 0, "failed": 0}, counts, "the filter picks the finished row that is left")
+	require.Equal(t, answer{Skipped: 1, Failed: 1, Reasons: []string{"The Transfer source and the Transfer target are the same instance."}}, res,
+		"a refusal fails with its reason, and a running row is skipped")
+
+	status, res = bulk(`{"action":"remove","filter":"finished"}`)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, answer{Done: 1, Reasons: []string{}}, res, "the filter picks the finished row that is left")
 	_, err := rig.deps.Transfers.Get(t.Context(), second)
 	require.ErrorIs(t, err, transfer.ErrNotFound)
 	_, err = rig.deps.Transfers.Get(t.Context(), running)
 	require.NoError(t, err, "the filter leaves the running row")
 
-	for _, body := range []string{`{"action":"pause","ids":[1]}`, `{"action":"remove","filter":"sideways"}`, `{`} {
+	for _, body := range []string{`{"action":"pause","ids":[1]}`, `{"action":"remove","filter":"sideways"}`, `{"action":"retry","filter":"failed"}`, `{`} {
 		status, _ := bulk(body)
 		require.Equal(t, http.StatusBadRequest, status, body)
 	}

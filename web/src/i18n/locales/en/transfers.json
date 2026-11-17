@@ -97,11 +97,13 @@
       "remove_one": "{{count}} row is removed.",
       "remove_other": "{{count}} rows are removed."
     },
-    "skipped_one": "{{count}} row does not fit the step and stays as it was.",
-    "skipped_other": "{{count}} rows do not fit the step and stay as they were.",
+    "skipped_one": "{{count}} row stays as it was: the action does not apply to it.",
+    "skipped_other": "{{count}} rows stay as they were: the action does not apply to them.",
     "failed_one": "{{count}} row failed. The log of qui gives the reason.",
     "failed_other": "{{count}} rows failed. The log of qui gives the reason.",
-    "nothing": "No selected row fits this step.",
+    "failedBecause_one": "{{count}} row failed. {{reasons}}",
+    "failedBecause_other": "{{count}} rows failed. {{reasons}}",
+    "nothing": "The action does not apply to any selected row.",
     "cancelDialog": {
       "title": "Cancel the selected rows?",
       "description_one": "{{count}} row is selected. If it has not ended, qui cancels it and takes back what it did: it removes the files and torrents that it added on the target, and starts the torrent on the source again.",
@@ -131,7 +133,8 @@
     "log": "Log",
     "noLog": "No log lines yet.",
     "loading": "Loading the Transfer…",
-    "error": "qui cannot load the Transfer: {{message}}"
+    "error": "qui cannot load the Transfer: {{message}}",
+    "stale": "qui cannot refresh the details, so they can be out of date: {{message}}"
   },
   "steps": {
     "start": "Started",

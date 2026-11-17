@@ -104,13 +104,16 @@
       "remove_few": "{{count}} řádky jsou odstraněny.",
       "remove_other": "{{count}} řádků je odstraněno."
     },
-    "skipped_one": "{{count}} řádek se k tomuto kroku nehodí a zůstává beze změny.",
-    "skipped_few": "{{count}} řádky se k tomuto kroku nehodí a zůstávají beze změny.",
-    "skipped_other": "{{count}} řádků se k tomuto kroku nehodí a zůstává beze změny.",
+    "skipped_one": "{{count}} řádek zůstává beze změny: akce se na něj nevztahuje.",
+    "skipped_few": "{{count}} řádky zůstávají beze změny: akce se na ně nevztahuje.",
+    "skipped_other": "{{count}} řádků zůstává beze změny: akce se na ně nevztahuje.",
     "failed_one": "{{count}} řádek selhal. Důvod je v logu qui.",
     "failed_few": "{{count}} řádky selhaly. Důvod je v logu qui.",
     "failed_other": "{{count}} řádků selhalo. Důvod je v logu qui.",
-    "nothing": "K tomuto kroku se nehodí žádný vybraný řádek.",
+    "failedBecause_one": "{{count}} řádek selhal. {{reasons}}",
+    "failedBecause_few": "{{count}} řádky selhaly. {{reasons}}",
+    "failedBecause_other": "{{count}} řádků selhalo. {{reasons}}",
+    "nothing": "Akce se nevztahuje na žádný vybraný řádek.",
     "cancelDialog": {
       "title": "Zrušit vybrané řádky?",
       "description_one": "Je vybrán {{count}} řádek. Pokud neskončil, qui ho zruší a vrátí zpět, co udělal: odstraní soubory a torrenty, které přidal v cíli, a znovu spustí torrent ve zdroji.",
@@ -142,7 +145,8 @@
     "log": "Log",
     "noLog": "Zatím žádné řádky logu.",
     "loading": "Načítání přenosu…",
-    "error": "qui nemůže načíst přenos: {{message}}"
+    "error": "qui nemůže načíst přenos: {{message}}",
+    "stale": "qui nemůže obnovit podrobnosti, takže mohou být zastaralé: {{message}}"
   },
   "steps": {
     "start": "Spuštěno",

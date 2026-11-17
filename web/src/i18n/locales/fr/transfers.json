@@ -101,6 +101,8 @@
     "skipped_other": "{{count}} lignes ne conviennent pas à cette action et restent inchangées.",
     "failed_one": "{{count}} ligne a échoué. Le journal de qui en donne la raison.",
     "failed_other": "{{count}} lignes ont échoué. Le journal de qui en donne la raison.",
+    "failedBecause_one": "{{count}} ligne a échoué. {{reasons}}",
+    "failedBecause_other": "{{count}} lignes ont échoué. {{reasons}}",
     "nothing": "Aucune ligne sélectionnée ne convient à cette action.",
     "cancelDialog": {
       "title": "Annuler les lignes sélectionnées ?",
@@ -131,7 +133,8 @@
     "log": "Journal",
     "noLog": "Aucune ligne de journal pour l'instant.",
     "loading": "Chargement du transfert…",
-    "error": "qui ne peut pas charger le transfert : {{message}}"
+    "error": "qui ne peut pas charger le transfert : {{message}}",
+    "stale": "qui ne peut pas actualiser les détails, ils peuvent donc être obsolètes : {{message}}"
   },
   "steps": {
     "start": "Démarré",

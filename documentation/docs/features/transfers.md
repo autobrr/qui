@@ -23,7 +23,7 @@ To move only a torrent whose files are already on the target, use [Export to Ins
 
 You can start a Transfer in two ways:
 
-- In the torrent list, right-click one torrent and click **Transfer to instance…**. The dialog shows a summary before the start: the torrents of the group, their size, the way that qui uses, and the free space on the target.
+- In the torrent list, right-click one torrent and click **Transfer to instance…**. On a phone, press and hold one torrent to select it. Then tap **More** in the bar at the bottom, and tap **Transfer to instance…**. The dialog shows a summary before the start: the torrents of the group, their size, the way that qui uses, and the free space on the target. If the target has less free space than the Transfer needs, a warning shows next to **Start Transfer**. A warning also shows there if qui cannot see the files on the target.
 - In an automation, add the action **Transfer to Instance**. Each torrent that matches the rule starts one Transfer. A dry run lists the Transfers that the rule starts in a live run. See [Automations](./automations.md#transfer-to-instance).
 
 The dialog and the action have the same fields:
@@ -141,7 +141,7 @@ Copied files get the permissions 775 for folders and 664 for files where the tar
 
 To open the page, click **Transfers** in the sidebar. On a phone, tap **Settings** in the bottom bar, and then tap **Transfers**. The number beside **Transfers** in the sidebar counts the Transfers that run or wait for their turn, and the Shares that run.
 
-The **Transfers** tab has one row for each Transfer and for each run of an Export to Instance rule. A row shows the torrents, the size of the torrent, the source and the target, the way, the progress, the speed, the time left, the state, and who started it. The chips **Active**, **Waiting**, **Finished**, and **Failed** filter the rows. The list shows 50 rows on each page. To see the other rows, use **Previous** and **Next** below the list.
+The **Transfers** tab has one row for each Transfer and for each run of an Export to Instance rule. A row shows the torrents, the size of the torrent, the source and the target, the way, the progress, the speed, the time left, the state, and who started it. On a phone, a row does not show the way. **Details** shows it. The chips **Active**, **Waiting**, **Finished**, and **Failed** filter the rows. The list shows 50 rows on each page. To see the other rows, use **Previous** and **Next** below the list.
 
 The states are **Waiting**, **Copying**, **Checking**, **Finishing**, **Done**, **Failed**, and **Cancelled**.
 
@@ -156,7 +156,7 @@ On a phone, the actions of a row are in one menu.
 
 To act on many rows at once, select the box at the start of each row. To select a range of rows, hold Shift when you select the box of the last row. The box in the header selects all the rows of the page. After you select all the rows of the page, **Select all** selects each row of the chip, also the rows on the other pages.
 
-A bar at the bottom of the list shows **Retry**, **Cancel**, and **Remove** for the selected rows. An action changes only the rows where it is possible, and qui skips the other rows. For example, **Cancel** skips a Transfer that ended. qui asks before it cancels or removes rows. The message after the action tells you how many rows changed and how many qui skipped.
+A bar at the bottom of the list shows **Retry**, **Cancel**, and **Remove** for the selected rows. An action changes only the rows where it is possible, and qui skips the other rows. For example, **Cancel** skips a Transfer that ended. **Retry** acts only on rows of the page that you select. After **Select all**, the bar does not show **Retry**, because qui plans each Transfer again. qui asks before it cancels or removes rows. The message after the action tells you how many rows changed and how many qui skipped. If qui refused a row, the message gives the reason.
 
 Finished rows stay for 30 days.
 

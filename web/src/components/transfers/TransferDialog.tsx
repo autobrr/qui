@@ -33,6 +33,7 @@ interface TransferDialogProps {
 export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, name }: TransferDialogProps) {
   const { t } = useTranslation("transfers")
   const display = useIncognitoDisplay()
+  const instanceName = useInstanceName()
   const shownName = display.name({ hash, name })
   const queryClient = useQueryClient()
   const { instances } = useInstances()
@@ -62,9 +63,10 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
     onError: (error: Error) => toast.error(t("actions.failed", { message: display.text(error.message) })),
   })
 
-  // Start sends the request that the summary shows, once that summary is in.
+  // Start sends the request that the summary shows, once that summary is in. The summary of an older form stays in
+  // place while the next one loads, also while the browser is offline and the query waits.
   const settled = request !== null && JSON.stringify(request) === JSON.stringify(debounced)
-  const current = settled && summary.isSuccess && !summary.isFetching
+  const current = settled && summary.isSuccess && !summary.isFetching && !summary.isPlaceholderData
   const canStart = current && !start.isPending
 
   let state: SummaryState
@@ -73,32 +75,45 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
   else if (summary.data) state = { kind: "summary", summary: summary.data, current, targetInstanceId: request.targetInstanceId }
   else state = { kind: "loading" }
 
+  // A warning that the Transfer can lose data, or cannot fit, sits next to Start, so the user reads it before the start.
+  const warnings: string[] = []
+  if (state.kind === "summary") {
+    const { free, freeKnown, bytes, noFileAccess } = state.summary
+    if (freeKnown && free < bytes) warnings.push(t("summary.notEnoughSpace"))
+    if (noFileAccess) warnings.push(t("summary.noFileAccess", { instance: instanceName(state.targetInstanceId) }))
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 p-0 sm:max-w-2xl lg:max-w-5xl">
-        <DialogHeader className="border-b px-6 pt-5 pb-4 pr-12 text-left">
+      {/* The frame of the Add torrent dialog: the top stays in place, so a phone keyboard does not push the title off. */}
+      <DialogContent className="flex max-h-[90dvh] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:max-h-[85dvh] sm:max-w-2xl lg:max-w-5xl">
+        <DialogHeader className="flex-shrink-0 border-b px-5 pt-5 pb-3 pr-12 text-left sm:px-6">
           <DialogTitle>{t("dialog.title")}</DialogTitle>
           <DialogDescription className="line-clamp-2 break-all" title={shownName}>{shownName}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
             <TransferForm value={value} onChange={setValue} targets={targets} />
             {/* On a wide screen the panel fills the height of the form, so neither moves the other. */}
             <div className="relative lg:min-h-80">
-              <SummaryPanel state={state} hash={hash} className="h-80 lg:absolute lg:inset-0 lg:h-auto" />
+              <SummaryPanel state={state} hash={hash} className="min-h-80 lg:absolute lg:inset-0 lg:min-h-0" />
             </div>
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-t px-6 py-4 sm:flex-row sm:items-center">
-          <p className="flex flex-1 items-start gap-1.5 text-xs text-muted-foreground">
-            <ShieldCheck className="mt-px size-3.5 shrink-0" aria-hidden />
-            <span>{t("dialog.verified")}</span>
-          </p>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>{t("dialog.cancel")}</Button>
-            <Button disabled={!canStart} onClick={() => request && start.mutate(request)}>
+        <div className="flex flex-shrink-0 flex-col gap-3 border-t bg-background px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:px-6">
+          <div className={cn("min-w-0 flex-1 space-y-1 transition-opacity", state.kind === "summary" && !state.current && "opacity-50")}>
+            {warnings.length > 0 ? warnings.map(warning => <Note key={warning} tone="warning">{warning}</Note>) : (
+              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <ShieldCheck className="mt-px size-3.5 shrink-0" aria-hidden />
+                <span>{t("dialog.verified")}</span>
+              </p>
+            )}
+          </div>
+          <div className="flex gap-2 sm:justify-end">
+            <Button variant="outline" className="h-11 px-5 sm:h-10" onClick={() => onOpenChange(false)}>{t("dialog.cancel")}</Button>
+            <Button className="h-11 flex-1 sm:h-10 sm:min-w-36 sm:flex-none" disabled={!canStart} onClick={() => request && start.mutate(request)}>
               {start.isPending && <Loader2 className="animate-spin" aria-hidden />}
               {start.isPending ? t("dialog.starting") : t("dialog.start")}
             </Button>
@@ -117,9 +132,8 @@ type SummaryState =
   | { kind: "summary"; summary: TransferSummary; current: boolean; targetInstanceId: number }
 
 /**
- * What Start would start: the torrents, the size, the way, the free space, and
- * the warnings. Every state keeps the same figures in the same place, so the
- * panel keeps its height while a summary loads.
+ * What Start would start: the torrents, the size, the way, the free space, and the notes. Every state keeps the same
+ * figures in the same place, so the panel keeps its height while a summary loads. The warnings sit next to Start.
  */
 function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: string; className?: string }) {
   const { t } = useTranslation("transfers")
@@ -127,6 +141,7 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
   const display = useIncognitoDisplay()
   const shown = state.kind === "summary" ? state.summary : null
   const loading = state.kind === "loading" || (state.kind === "summary" && !state.current)
+  const dim = state.kind === "summary" && !state.current && "opacity-50"
   const notEnoughSpace = shown !== null && shown.freeKnown && shown.free < shown.bytes
   // A cross-seed of another target goes to its Cross-seed instance.
   const targetInstanceId = state.kind === "summary" ? state.targetInstanceId : null
@@ -152,7 +167,7 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
         )}
       </div>
 
-      <dl className={cn("grid grid-cols-2 gap-x-4 gap-y-3 px-4 pt-3 pb-4 transition-opacity", state.kind === "summary" && !state.current && "opacity-50")}>
+      <dl className={cn("grid grid-cols-2 gap-x-4 gap-y-3 px-4 pt-3 pb-4 transition-opacity", dim)}>
         <Figure label={t("summary.torrents")}>{figure(shown ? String(shown.members.length) : undefined)}</Figure>
         <Figure label={t("summary.size")}>{figure(shown ? formatBytes(shown.bytes) : undefined)}</Figure>
         <Figure label={t("summary.way")}>{figure(shown ? t([`ways.${shown.way}`, "ways.fallback"]) : undefined)}</Figure>
@@ -161,7 +176,15 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
         </Figure>
       </dl>
 
-      <div className={cn("min-h-0 flex-1 space-y-3 overflow-y-auto border-t px-4 py-3 text-sm transition-opacity", state.kind === "summary" && !state.current && "opacity-50")}>
+      {/* The notes stay in view above the torrents, which scroll on a wide screen. */}
+      {shown && (!shown.freeKnown || shown.hints.length > 0) && (
+        <div className={cn("space-y-1.5 border-t px-4 py-3 transition-opacity", dim)}>
+          {!shown.freeKnown && <Note>{t("summary.freeUnknown")}</Note>}
+          <TransferHints hints={shown.hints} />
+        </div>
+      )}
+
+      <div className={cn("min-h-0 flex-1 overflow-y-auto border-t px-4 py-3 text-sm transition-opacity", dim)}>
         {state.kind === "pickTarget" && <p className="text-muted-foreground">{t("summary.pickTarget")}</p>}
         {state.kind === "loading" && (
           <div className="space-y-2" aria-hidden>
@@ -171,26 +194,18 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
         )}
         {state.kind === "refused" && <p role="alert" className="text-destructive">{t("summary.refused", { message: state.message })}</p>}
         {shown && (
-          <>
-            <ul className="space-y-1.5">
-              {shown.members.map(member => (
-                <li key={member.hash} className="flex items-start gap-2">
-                  <span className="min-w-0 flex-1 break-all text-xs leading-5">{display.name(member)}</span>
-                  {member.targetInstanceId !== targetInstanceId ? (
-                    <Badge variant="outline" className="shrink-0 font-normal">{t("summary.crossSeedInstance", { instance: instanceName(member.targetInstanceId) })}</Badge>
-                  ) : member.hash !== hash && (
-                    <Badge variant="secondary" className="shrink-0 font-normal">{t("summary.crossSeed")}</Badge>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {notEnoughSpace && <Note tone="warning">{t("summary.notEnoughSpace")}</Note>}
-            {shown.noFileAccess && targetInstanceId !== null && (
-              <Note tone="warning">{t("summary.noFileAccess", { instance: instanceName(targetInstanceId) })}</Note>
-            )}
-            {!shown.freeKnown && <Note>{t("summary.freeUnknown")}</Note>}
-            <TransferHints hints={shown.hints} />
-          </>
+          <ul className="space-y-1.5">
+            {shown.members.map(member => (
+              <li key={member.hash} className="flex items-start gap-2">
+                <span className="min-w-0 flex-1 break-all text-xs leading-5">{display.name(member)}</span>
+                {member.targetInstanceId !== targetInstanceId ? (
+                  <Badge variant="outline" className="shrink-0 font-normal">{t("summary.crossSeedInstance", { instance: instanceName(member.targetInstanceId) })}</Badge>
+                ) : member.hash !== hash && (
+                  <Badge variant="secondary" className="shrink-0 font-normal">{t("summary.crossSeed")}</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </section>

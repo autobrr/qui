@@ -92,6 +92,7 @@
     },
     "skipped_other": "{{count}}개 행은 이 작업에 맞지 않아 그대로 둡니다.",
     "failed_other": "{{count}}개 행이 실패했습니다. qui 로그에서 이유를 확인할 수 있습니다.",
+    "failedBecause_other": "{{count}}개 행이 실패했습니다. {{reasons}}",
     "nothing": "선택한 행 중 이 작업에 맞는 행이 없습니다.",
     "cancelDialog": {
       "title": "선택한 행을 취소할까요?",
@@ -120,7 +121,8 @@
     "log": "로그",
     "noLog": "아직 로그가 없습니다.",
     "loading": "전송 불러오는 중…",
-    "error": "qui가 전송을 불러올 수 없습니다: {{message}}"
+    "error": "qui가 전송을 불러올 수 없습니다: {{message}}",
+    "stale": "qui가 세부 정보를 새로 고칠 수 없어 오래된 정보일 수 있습니다: {{message}}"
   },
   "steps": {
     "start": "시작함",

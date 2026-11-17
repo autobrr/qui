@@ -1476,6 +1476,27 @@ export function TorrentCardsMobile({
               <Radio className="mr-2 h-4 w-4" />
               {t("managementBar.reannounce")}
             </Button>
+            {/* Transfer and Share sit near the top, so the sheet shows them without a scroll. */}
+            {offer.transfer && (
+              <Button
+                variant="outline"
+                onClick={() => pickBulkAction({ action: "transfer" })}
+                className="justify-start"
+              >
+                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                {t("contextMenu.transferToInstance")}
+              </Button>
+            )}
+            {offer.share && (
+              <Button
+                variant="outline"
+                onClick={() => pickBulkAction({ action: "share" })}
+                className="justify-start"
+              >
+                <Share2 className="mr-2 h-4 w-4" />
+                {t("contextMenu.shareWithSomeone")}
+              </Button>
+            )}
             {(() => {
               const { allEnabled: allSeqDlEnabled, mixed: seqDlMixed } = getToggleSelectionState(selectedTorrents.map(t => t.seq_dl), stateUnknownForSelection)
 
@@ -1672,26 +1693,6 @@ export function TorrentCardsMobile({
               >
                 <Download className="mr-2 h-4 w-4" />
                 {effectiveSelectionCount > 1 ? t("contextMenu.exportTorrents", { count: effectiveSelectionCount }) : t("contextMenu.exportTorrent")}
-              </Button>
-            )}
-            {offer.transfer && (
-              <Button
-                variant="outline"
-                onClick={() => pickBulkAction({ action: "transfer" })}
-                className="justify-start"
-              >
-                <ArrowRightLeft className="mr-2 h-4 w-4" />
-                {t("contextMenu.transferToInstance")}
-              </Button>
-            )}
-            {offer.share && (
-              <Button
-                variant="outline"
-                onClick={() => pickBulkAction({ action: "share" })}
-                className="justify-start"
-              >
-                <Share2 className="mr-2 h-4 w-4" />
-                {t("contextMenu.shareWithSomeone")}
               </Button>
             )}
             <Button

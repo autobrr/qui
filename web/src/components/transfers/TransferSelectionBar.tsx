@@ -28,7 +28,8 @@ interface TransferSelectionBarProps {
 
 /**
  * The steps for the picked rows. The bar floats at the bottom of the list, so the rows do not move when it shows, and
- * it stays in reach while the list scrolls. A phone keeps it above the footer navigation.
+ * it stays in reach while the list scrolls. A phone keeps it above the footer navigation, and puts the buttons on a
+ * line of their own, at the size of a finger.
  */
 export function TransferSelectionBar({ count, wholeChip, more, actions, running, onPickAll, onClear, onAction }: TransferSelectionBarProps) {
   const { t } = useTranslation("transfers")
@@ -38,7 +39,7 @@ export function TransferSelectionBar({ count, wholeChip, more, actions, running,
       <div
         role="region"
         aria-label={t("bulk.label")}
-        className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-popover py-2 pr-2 pl-4 text-popover-foreground shadow-lg max-sm:pl-3"
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-popover py-2 pr-2 pl-4 text-popover-foreground shadow-lg max-sm:gap-y-2 max-sm:pl-3"
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-3">
           <p aria-live="polite" className="text-sm font-medium tabular-nums">
@@ -50,7 +51,7 @@ export function TransferSelectionBar({ count, wholeChip, more, actions, running,
             </Button>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1.5 max-sm:w-full">
           {actions.map(action => {
             const Icon = icons[action]
             return (
@@ -58,19 +59,19 @@ export function TransferSelectionBar({ count, wholeChip, more, actions, running,
                 key={action}
                 variant="outline"
                 size="sm"
-                className={cn("max-sm:size-11", action === "remove" && "text-destructive hover:text-destructive")}
+                className={cn("max-sm:h-11 max-sm:flex-1", action === "remove" && "text-destructive hover:text-destructive")}
                 disabled={running !== null}
                 onClick={() => onAction(action)}
               >
                 {running === action ? <Loader2 aria-hidden="true" className="animate-spin" /> : <Icon aria-hidden="true" />}
-                <span className="max-sm:sr-only">{t(`actions.${action}`)}</span>
+                {t(`actions.${action}`)}
               </Button>
             )
           })}
           {/* The X of the bar would read as the X of Cancel, so the selection clears with its own mark. */}
-          <Button variant="ghost" size="sm" className="text-muted-foreground max-sm:size-11" onClick={onClear}>
+          <Button variant="ghost" size="sm" className="text-muted-foreground max-sm:h-11 max-sm:flex-1" onClick={onClear}>
             <ListX aria-hidden="true" />
-            <span className="max-sm:sr-only">{t("bulk.clear")}</span>
+            {t("bulk.clear")}
           </Button>
         </div>
       </div>

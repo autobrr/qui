@@ -6985,9 +6985,9 @@ paths:
       summary: Retry, cancel, or remove many Transfers
       description: >-
         Retries, cancels, or removes the Transfers and Export to Instance runs of ids, or every row behind a filter chip
-        of the Transfers page. qui acts on one row after the other, as the routes of one row do, and runs the cleanups
-        of cancels one at a time. A row that the action does not fit counts as skipped, for example a cancel of a
-        finished Transfer or a row that is gone. Only a signed-in browser can use this route.
+        of the Transfers page. A retry takes ids only. qui acts on one row after the other, as the routes of one row do.
+        A row that the action does not fit counts as skipped, for example a cancel of a finished Transfer or a row that
+        is gone. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -7019,7 +7019,7 @@ paths:
                     - waiting
                     - finished
                     - failed
-                  description: Acts on every row behind this chip, in place of ids.
+                  description: Acts on every row behind this chip, in place of ids. A retry does not take a filter.
       responses:
         '200':
           description: The counts of the rows
@@ -7031,6 +7031,7 @@ paths:
                   - done
                   - skipped
                   - failed
+                  - reasons
                 properties:
                   done:
                     type: integer
@@ -7040,9 +7041,14 @@ paths:
                     description: The rows that the action does not fit
                   failed:
                     type: integer
-                    description: The rows where the action failed for another reason
+                    description: The rows where qui refused the action or an error stopped it
+                  reasons:
+                    type: array
+                    items:
+                      type: string
+                    description: Each reason of a refusal once, for example a target that runs an old qBittorrent
         '400':
-          description: An unknown action or filter, or a body that is not JSON
+          description: An unknown action or filter, a retry with a filter, or a body that is not JSON
           content:
             application/json:
               schema:
