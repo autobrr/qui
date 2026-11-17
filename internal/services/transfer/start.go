@@ -263,6 +263,9 @@ func (s *Service) readSource(ctx context.Context, instanceID int, hash string) (
 
 // movable refuses a torrent that a Transfer cannot move.
 func (src *source) movable() error {
+	if src.torrent.State == qbt.TorrentStateMoving {
+		return refuse("qBittorrent is moving %s. A Transfer can start once the move ends.", src.torrent.Name)
+	}
 	if src.torrent.InfohashV2 != "" || src.info.HasV2() {
 		return refuse(reasonV2)
 	}

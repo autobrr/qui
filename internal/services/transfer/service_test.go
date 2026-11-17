@@ -565,6 +565,17 @@ func TestTransferRefuses(t *testing.T) {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.InfohashV2 = strings.Repeat("ab", 32) })
 			return r.request(s)
 		}, reason: "v2 and hybrid torrents are unsupported"},
+		// regression: #4231
+		{name: "a torrent that qBittorrent moves", setup: func(r *rig, s show) transfer.Request {
+			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.Moving = true })
+			return r.request(s)
+		}, reason: "qBittorrent is moving " + showName + "."},
+		// regression: #4231
+		{name: "a group member that qBittorrent moves", setup: func(r *rig, s show) transfer.Request {
+			episode := r.seedEpisode(s)
+			r.src.Edit(episode, func(t *qbtstub.Torrent) { t.Moving = true })
+			return r.request(s)
+		}, reason: "Show.S01E01.mkv shares the files of this torrent: qBittorrent is moving Show.S01E01.mkv."},
 		{name: "a torrent already on the target", setup: func(r *rig, s show) transfer.Request {
 			write(t, filepath.Join(r.dstDir, showName), s.files)
 			r.dst.Seed(s.data, r.dstDir)
@@ -703,6 +714,10 @@ func TestTransferFailsWhenTheSourceChanges(t *testing.T) {
 	}{
 		{name: "a move", change: func(r *rig, s show) {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.SavePath = filepath.Join(r.srcDir, "moved") })
+		}, reason: "it moved", class: transfer.FailurePermanent},
+		// regression: #4231
+		{name: "a move that has not ended", change: func(r *rig, s show) {
+			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.Moving = true })
 		}, reason: "it moved", class: transfer.FailurePermanent},
 		{name: "a rename", change: func(r *rig, s show) {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.Name = "Show.S01.REPACK.1080p-GRP" })

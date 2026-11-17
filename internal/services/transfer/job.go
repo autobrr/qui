@@ -416,8 +416,9 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 	return nil
 }
 
-// checkSource fails when a torrent of the Transfer moved on the source, was
-// renamed, is rechecked, or has other files than at the start of the copy.
+// checkSource fails when a torrent of the Transfer moves or moved on the
+// source, was renamed, is rechecked, or has other files than at the start of
+// the copy.
 func (j *job) checkSource(ctx context.Context) error {
 	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
 	if err != nil {
@@ -430,7 +431,7 @@ func (j *job) checkSource(ctx context.Context) error {
 		}
 		torrent := torrents[i]
 		switch {
-		case torrent.SavePath != p.src.torrent.SavePath:
+		case torrent.SavePath != p.src.torrent.SavePath || torrent.State == qbt.TorrentStateMoving:
 			return sourceGone("it moved")
 		case torrent.Name != p.src.torrent.Name:
 			return sourceChanged("it was renamed")

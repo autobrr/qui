@@ -73,6 +73,9 @@ type Torrent struct {
 	// peers, which sync/torrentPeers reports.
 	Uploaded int64
 	Peers    []qbt.TorrentPeer
+	// Moving reports the state "moving", as qBittorrent does while it moves
+	// the files to a new save path. The save path changes when the move ends.
+	Moving bool
 
 	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
@@ -633,6 +636,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				if state, progress, listed = s.addedRow(t); !listed {
 					continue
 				}
+			}
+			if t.Moving {
+				state = string(qbt.TorrentStateMoving)
 			}
 			row := map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
