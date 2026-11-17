@@ -466,6 +466,21 @@ func TestText(t *testing.T) {
 			want:  `{"password":"REDACTED","user":"bob"}`,
 		},
 		{
+			name:  "unquoted key value pair with an ampersand in its value",
+			input: "password: abc&def123456 user: bob",
+			want:  "password: REDACTED user: bob",
+		},
+		{
+			name:  "key value pair whose value is a url with a comma in its password",
+			input: "authURL: https://user:pa,ss@host.test\nproxyAuth: http://user:pa;ss@host.test/x",
+			want:  "authURL: REDACTED\nproxyAuth: REDACTED",
+		},
+		{
+			name:  "json field name with a space",
+			input: `{"API Key":"abcdef123456","message":"body {\"Auth Token\":\"abcdef789\"}","user name":"bob"}`,
+			want:  `{"API Key":"REDACTED","message":"body {\"Auth Token\":\"REDACTED\"}","user name":"bob"}`,
+		},
+		{
 			name:  "plain text stays",
 			input: "cross-seed search found 3 results for Some.Show.S01E01",
 			want:  "cross-seed search found 3 results for Some.Show.S01E01",

@@ -164,17 +164,21 @@ func String(s string) string {
 // auth (apiKey, password, client_secret, X-Api-Key, authToken).
 const sensitiveFieldName = `[A-Za-z0-9_.-]*(?i:key|pass|token|secret|auth)[A-Za-z0-9_.-]*`
 
+// sensitiveJSONFieldName also allows a space, for a quoted JSON name such as
+// "API Key".
+const sensitiveJSONFieldName = `[A-Za-z0-9_. -]*(?i:key|pass|token|secret|auth)[A-Za-z0-9_. -]*`
+
 // escapedQuotedValue matches a quoted value inside a JSON string, \"...\",
 // up to the first escaped quote that is not itself escaped.
 const escapedQuotedValue = `\\"(?:[^"\\]|\\[^"\\]|\\\\(?:\\\\|\\"|[^"\\]))*\\"`
 
 var (
-	jsonSecretFlatRegex    = regexp.MustCompile(`((\\?)"` + sensitiveFieldName + `\\?"\s*:\s*)(?:\[[^\[\]{}]*\]|\{[^{}\[\]]*\})`)
-	jsonSecretStringRegex  = regexp.MustCompile(`("` + sensitiveFieldName + `"\s*:\s*)"(?:[^"\\]|\\.)*"`)
-	jsonSecretScalarRegex  = regexp.MustCompile(`(\\?"` + sensitiveFieldName + `\\?"\s*:\s*)[^\s,}\]"{\[\\]+`)
-	escapedJSONSecretRegex = regexp.MustCompile(`(\\"` + sensitiveFieldName + `\\"\s*:\s*)` + escapedQuotedValue)
+	jsonSecretFlatRegex    = regexp.MustCompile(`((\\?)"` + sensitiveJSONFieldName + `\\?"\s*:\s*)(?:\[[^\[\]{}]*\]|\{[^{}\[\]]*\})`)
+	jsonSecretStringRegex  = regexp.MustCompile(`("` + sensitiveJSONFieldName + `"\s*:\s*)"(?:[^"\\]|\\.)*"`)
+	jsonSecretScalarRegex  = regexp.MustCompile(`(\\?"` + sensitiveJSONFieldName + `\\?"\s*:\s*)[^\s,}\]"{\[\\]+`)
+	escapedJSONSecretRegex = regexp.MustCompile(`(\\"` + sensitiveJSONFieldName + `\\"\s*:\s*)` + escapedQuotedValue)
 	authorizationRegex     = regexp.MustCompile(`(?i)(authorization:[ \t]*)(?:[^\s"\\]|\\.)(?:="[^"\r\n]*"|[^\r\n"\\]|\\.)*`)
-	keyValueSecretRegex    = regexp.MustCompile(`(^|[^A-Za-z0-9_.\-/@])(` + sensitiveFieldName + `:[ \t]*)(?:"(?:[^"\\\r\n]|\\.)*"|'(?:[^'\\\r\n]|\\.)*'|` + escapedQuotedValue + `|[^\s,;"'&}\]]+)`)
+	keyValueSecretRegex    = regexp.MustCompile(`(^|[^A-Za-z0-9_.\-/@])(` + sensitiveFieldName + `:[ \t]*)(?:"(?:[^"\\\r\n]|\\.)*"|'(?:[^'\\\r\n]|\\.)*'|` + escapedQuotedValue + `|[^\s,;"'}\]]+)`)
 )
 
 // Text redacts what String does, plus the value of each JSON field and
@@ -192,6 +196,9 @@ func Text(s string) string {
 	result = jsonSecretStringRegex.ReplaceAllString(result, `${1}"REDACTED"`)
 	result = jsonSecretScalarRegex.ReplaceAllString(result, `${1}REDACTED`)
 	result = escapedJSONSecretRegex.ReplaceAllString(result, `${1}\"REDACTED\"`)
+	// URLs are redacted before the key: value pass, because that pass stops
+	// at a comma and would cut a URL whose password holds one.
+	result = urlInTextRegex.ReplaceAllStringFunc(result, URLString)
 	result = authorizationRegex.ReplaceAllString(result, `${1}REDACTED`)
 	result = keyValueSecretRegex.ReplaceAllString(result, `${1}${2}REDACTED`)
 	return String(result)
