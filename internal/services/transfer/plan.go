@@ -151,7 +151,8 @@ func addLayout(info *metainfo.Info, plan []file) qbt.ContentLayout {
 
 // takenName returns the source name of a file that the .torrent gives
 // another file on the target, or "". The rename after the add would move
-// the bytes of this file to the other file.
+// the bytes of this file to the other file. Names compare without case, as
+// on a target whose filesystem ignores case.
 func takenName(info *metainfo.Info, plan []file) string {
 	if !info.IsDir() {
 		return ""
@@ -164,11 +165,11 @@ func takenName(info *metainfo.Info, plan []file) string {
 	original := make(map[string]int, len(files))
 	for i, f := range files {
 		if !plan[i].pad {
-			original[folder+strings.Join(f.BestPath(), "/")] = i
+			original[strings.ToLower(folder+strings.Join(f.BestPath(), "/"))] = i
 		}
 	}
 	for i, f := range plan {
-		if other, ok := original[f.name]; ok && other != i {
+		if other, ok := original[strings.ToLower(f.name)]; ok && other != i {
 			return f.name
 		}
 	}

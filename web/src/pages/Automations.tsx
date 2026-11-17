@@ -3,21 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { AUTOMATIONS_NAV_GROUPS, type AutomationsTab } from "@/components/automations/tabs"
+import { AUTOMATIONS_NAV_GROUPS, DEFAULT_AUTOMATIONS_TAB, type AutomationsTab } from "@/components/automations/tabs"
 import { OrphanScanOverview } from "@/components/instances/preferences/OrphanScanOverview"
 import { OrphanScanSettingsDialog } from "@/components/instances/preferences/OrphanScanSettingsDialog"
 import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
 import { ReannounceSettingsDialog } from "@/components/instances/preferences/ReannounceSettingsDialog"
 import { WorkflowsOverview } from "@/components/instances/preferences/WorkflowsOverview"
-import { Page } from "@/components/layout/Page"
 import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { useInstances } from "@/hooks/useInstances"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 interface AutomationsProps {
-  activeTab: AutomationsTab
-  onTabChange: (tab: AutomationsTab) => void
+  activeTab: AutomationsTab | undefined
+  onTabChange: (tab: AutomationsTab | undefined, options: { replace: boolean }) => void
 }
 
 export function Automations({ activeTab, onTabChange }: AutomationsProps) {
@@ -33,17 +32,27 @@ export function Automations({ activeTab, onTabChange }: AutomationsProps) {
   const configureOrphanScanInstance = instances?.find((inst) => inst.id === configureOrphanScanId)
 
   return (
-    <Page title={t("page.title")} description={t("page.description")}>
-      {instances && instances.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          {t("page.noInstances")}
-        </p>
-      )}
-
-      <SectionedPage navLabel={t("page.title")} groups={navGroups} activeSection={activeTab} onSectionChange={onTabChange}>
-        {activeTab === "workflows" && <WorkflowsOverview />}
-        {activeTab === "reannounce" && <ReannounceOverview onConfigureInstance={setConfigureInstanceId} />}
-        {activeTab === "orphan-scan" && <OrphanScanOverview onConfigureInstance={setConfigureOrphanScanId} />}
+    <>
+      <SectionedPage
+        title={t("page.title")}
+        description={t("page.description")}
+        notice={instances && instances.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            {t("page.noInstances")}
+          </p>
+        )}
+        groups={navGroups}
+        section={activeTab}
+        defaultSection={DEFAULT_AUTOMATIONS_TAB}
+        onSectionChange={onTabChange}
+      >
+        {(tab) => (
+          <>
+            {tab === "workflows" && <WorkflowsOverview />}
+            {tab === "reannounce" && <ReannounceOverview onConfigureInstance={setConfigureInstanceId} />}
+            {tab === "orphan-scan" && <OrphanScanOverview onConfigureInstance={setConfigureOrphanScanId} />}
+          </>
+        )}
       </SectionedPage>
 
       <ReannounceSettingsDialog
@@ -61,6 +70,6 @@ export function Automations({ activeTab, onTabChange }: AutomationsProps) {
         isRemote={configureOrphanScanInstance?.filesystemMode === "remote"}
         hasIdentity={configureOrphanScanInstance?.capabilities.identity}
       />
-    </Page>
+    </>
   )
 }

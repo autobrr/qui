@@ -15,7 +15,7 @@ qui supports indexers from Prowlarr, Jackett, and native tracker endpoints.
 
 Manage indexers under **Settings > Indexers**.
 
-Click **Discover** to import indexers from Prowlarr or Jackett in one step. Enter the server URL and API key, click **Discover**, and select the indexers to import. qui saves the connection, so future imports from the same server do not ask for the API key again. Click **Add single** to add one indexer by hand.
+To import indexers from Prowlarr or Jackett in one step, click **Add indexer**, then **Discover in Jackett or Prowlarr**. Enter the server URL and API key, click **Discover**, and select the indexers to import. qui saves the connection, so future imports from the same server do not ask for the API key again. To add one indexer by hand, click **Add indexer**, then **Add one by URL**.
 
 The indexer timeout sets how long qui waits for a reply from that indexer (30 seconds by default). A search can run for at least as long as the longest timeout of the indexers you selected. Time spent waiting in the queue for a free slot or a rate limit does not count. If you cancel the search, it stops sooner.
 
@@ -74,26 +74,26 @@ The **Refresh from indexers** button repeats the search and bypasses the cache. 
 A cache bypass sends the request directly to every selected indexer. Use it sparingly to avoid rate limits.
 :::
 
-**Settings > Search Cache** shows cache statistics and holds the cache configuration.
+**Settings > Search cache** shows cache statistics and holds the cache configuration.
 
 | Item | Description |
 |------|-------------|
+| Status | **Enabled** or **Disabled** |
 | Entries | Number of cached searches |
-| Hit Count | Total cache hits |
-| Approx. Size | Approximate size of the cached data |
-| TTL | Current cache lifetime |
-| Newest Entry | Time of the most recent cached search |
-| Last Used | Time of the most recent cache hit |
+| Hits | Total cache hits |
+| Approximate size | Approximate size of the cached data |
+| Newest entry | Time of the most recent cached search |
+| Last used | Time of the most recent cache hit |
 
-Set **Cache TTL (minutes)** to control how long results stay cached. The minimum is 1440 minutes (24 hours). Higher values reduce indexer load.
+To control how long results stay cached, set **Cache TTL (minutes)** under **Cache settings**. The minimum is 1440 minutes (24 hours). Higher values reduce indexer load.
 
 ## Search history and activity
 
-**Settings > Indexers** shows two live panels above the indexer list.
+When you have at least one indexer, **Settings > Indexers** shows two live sections below the indexer list.
 
-**Search History** lists the last 50 searches across all sources, such as cross-seed and RSS searches. Each entry shows the indexer, the query, the result count, the duration, and a status: success, failed, skipped, or rate limited. Click an entry to view the full details, such as the exact Torznab parameters and any error message.
+**Scheduler activity** shows the search scheduler in real time: active searches, queued searches, worker usage, and indexers in a rate-limit cooldown with the time until they are ready again.
 
-**Scheduler Activity** shows the search scheduler in real time: active searches, queued searches, worker usage, and indexers in a rate-limit cooldown with the time until they are ready again.
+**Search history** lists the last 50 searches across all sources, such as cross-seed and RSS searches. Each entry shows the indexer, the query, the result count, the duration, and a status: success, failed, skipped, or rate limited. Click an entry to view the full details, such as the exact Torznab parameters and any error message. The section shows the 10 most recent entries. To see the rest, click **Show all**.
 
 ## Sonarr and Radarr integrations
 

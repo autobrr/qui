@@ -29,7 +29,7 @@ Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshootin
 
 ## Prerequisites
 
-You need at least one enabled Torznab indexer. Add indexers in **Settings → Indexers**. Click **Discover** to import them from Prowlarr or Jackett, or **Add single** to add a native tracker endpoint by hand. See [Add indexers](../search.md#add-indexers).
+You need at least one enabled Torznab indexer. Add indexers in **Settings → Indexers**. Click **Add indexer**. Then click **Discover in Jackett or Prowlarr** to import them, or **Add one by URL** to add a native tracker endpoint by hand. See [Add indexers](../search.md#add-indexers).
 
 Library Scan also runs without Torznab if you configure Gazelle keys for OPS/RED. See [OPS/RED (Gazelle)](./gazelle-ops-red.md).
 

@@ -366,5 +366,12 @@
   },
   "labels": {
     "path": "Cesta"
+  },
+  "kit": {
+    "loadFailed": "Tuto sekci se nepodařilo načíst.",
+    "retry": "Zkusit znovu",
+    "edit": "Upravit",
+    "moreActions": "Další akce",
+    "enabled": "Povoleno"
   }
 }

@@ -7,11 +7,20 @@ import { AutodiscoveryDialog } from "@/components/indexers/AutodiscoveryDialog"
 import { api } from "@/lib/api"
 import type { JackettIndexer, TorznabIndexer } from "@/types"
 import { fireEvent, render, screen } from "@testing-library/react"
-import { expect, it, vi } from "vitest"
+import { beforeEach, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/api")
 vi.mock("@/components/ui/scroll-area", () => ({ ScrollArea: "div" }))
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+
+// The checkboxes sit in the editor form, where Radix measures them with a ResizeObserver that jsdom lacks.
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
 
 it("imports only the selected usable row into its matching connection", async () => {
   vi.mocked(api.discoverJackettIndexers).mockResolvedValue({

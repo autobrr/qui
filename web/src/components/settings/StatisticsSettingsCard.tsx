@@ -3,17 +3,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { Facts } from "@/components/kit/Facts"
+import { Field } from "@/components/kit/Field"
+import { Section } from "@/components/kit/Section"
+import { SwitchRow } from "@/components/kit/SwitchRow"
 import { StatisticsDeleteHistory } from "@/components/settings/StatisticsDeleteHistory"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { FieldHelp } from "@/components/ui/field-help"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import { formatBytes } from "@/lib/utils"
 import type { DetailRetentionDays, TransferHistorySettings, TransferHistorySettingsStatus } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -53,37 +52,25 @@ export function StatisticsSettingsCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("statistics.cardTitle")}</CardTitle>
-        <CardDescription>{t("statistics.cardDescription")}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {statusQuery.isPending && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
-        {statusQuery.isError && <p className="text-sm text-destructive">{t("statistics.loadFailed")}</p>}
-        {status && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="statistics-recording">{t("statistics.recording.label")}</Label>
-                <FieldHelp>{t("statistics.recording.description")}</FieldHelp>
-              </div>
-              <Switch
-                id="statistics-recording"
-                checked={status.settings.recording}
-                disabled={mutation.isPending}
-                onCheckedChange={(recording) => save({ recording })}
-              />
-            </div>
+    <Section title={t("statistics.cardTitle")} description={t("statistics.cardDescription")} queries={[statusQuery]}>
+      {status && (
+        <>
+          <SwitchRow
+            label={t("statistics.recording.label")}
+            help={t("statistics.recording.description")}
+            checked={status.settings.recording}
+            disabled={mutation.isPending}
+            onCheckedChange={(recording) => save({ recording })}
+          />
 
-            <div className="space-y-1.5">
-              <Label htmlFor="statistics-retention">{t("statistics.retention.label")}</Label>
+          <Field label={t("statistics.retention.label")} description={t("statistics.retention.description")}>
+            {(control) => (
               <Select
                 value={String(status.settings.detailRetentionDays)}
                 disabled={mutation.isPending}
                 onValueChange={(value) => save({ detailRetentionDays: Number(value) as DetailRetentionDays })}
               >
-                <SelectTrigger id="statistics-retention" className="h-9 w-full sm:w-48">
+                <SelectTrigger {...control} className="h-9 w-full sm:w-48">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -94,18 +81,19 @@ export function StatisticsSettingsCard() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-sm text-muted-foreground">{t("statistics.retention.description")}</p>
-            </div>
+            )}
+          </Field>
 
-            <div className="flex items-baseline justify-between gap-4">
-              <span className="text-sm font-medium">{t("statistics.size.label")}</span>
-              <span className="text-sm tabular-nums" data-testid="statistics-history-size">{formatBytes(status.historyBytes)}</span>
-            </div>
+          <Facts
+            items={[{
+              label: t("statistics.size.label"),
+              value: <span className="tabular-nums" data-testid="statistics-history-size">{formatBytes(status.historyBytes)}</span>,
+            }]}
+          />
 
-            <StatisticsDeleteHistory instances={status.instances} />
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          <StatisticsDeleteHistory instances={status.instances} />
+        </>
+      )}
+    </Section>
   )
 }
