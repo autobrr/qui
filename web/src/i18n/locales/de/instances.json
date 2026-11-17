@@ -2113,5 +2113,10 @@
     "label": "Auch den Übertragungsverlauf löschen",
     "description": "Ohne diese Option behält qui den Verlauf unter dem Namen der Instanz.",
     "failed": "Die Instanz ist gelöscht, aber qui konnte nicht ihren ganzen Verlauf löschen. Sieh unter Einstellungen > Statistik nach und lösche den Rest dort."
+  },
+  "publicPeerAddress": {
+    "label": "Öffentliche Peer-Adresse",
+    "noResolvedAddress": "qui kann noch keine Adresse ermitteln",
+    "description": "Die Adresse und der Port, unter denen andere BitTorrent-Clients dieses qBittorrent erreichen, für Transfers und Freigaben. Lass das Feld leer, damit qui die Adresse bei jeder Verwendung aus qBittorrent ermittelt. Setze sie, wenn qBittorrent in Docker oder hinter NAT läuft."
   }
 }

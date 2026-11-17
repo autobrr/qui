@@ -2113,5 +2113,10 @@
     "label": "Supprimer aussi son historique de transfert",
     "description": "Sans cette option, qui garde l'historique sous le nom de l'instance.",
     "failed": "L'instance est supprimée, mais qui n'a pas pu supprimer tout son historique. Consultez Paramètres > Statistiques et supprimez le reste."
+  },
+  "publicPeerAddress": {
+    "label": "Adresse publique du pair",
+    "noResolvedAddress": "qui ne peut pas encore déterminer d'adresse",
+    "description": "L'adresse et le port par lesquels les autres clients BitTorrent atteignent ce qBittorrent, pour les Transferts et les Partages. Laissez vide pour utiliser l'adresse que qui déduit de qBittorrent à chaque utilisation. Définissez-la quand qBittorrent tourne dans Docker ou derrière un NAT."
   }
 }

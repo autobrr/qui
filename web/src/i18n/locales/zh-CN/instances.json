@@ -2083,5 +2083,10 @@
     "label": "同时删除其传输历史",
     "description": "不勾选时，qui 会以该实例的名称保留历史。",
     "failed": "实例已删除，但 qui 未能删除其全部历史。请在设置 > 统计中查看并删除其余部分。"
+  },
+  "publicPeerAddress": {
+    "label": "公网节点地址",
+    "noResolvedAddress": "qui 暂时无法确定地址",
+    "description": "其他 BitTorrent 客户端访问此 qBittorrent 所用的地址和端口，用于转移和分享。留空则每次使用时由 qui 从 qBittorrent 推断地址。当 qBittorrent 运行在 Docker 中或位于 NAT 之后时，请设置此项。"
   }
 }

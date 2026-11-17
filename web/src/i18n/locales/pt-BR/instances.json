@@ -2113,5 +2113,10 @@
     "label": "Excluir também o histórico de transferências",
     "description": "Sem isso, o qui mantém o histórico com o nome da instância.",
     "failed": "A instância foi excluída, mas o qui não conseguiu excluir todo o histórico. Veja em Configurações > Estatísticas e exclua o restante por lá."
+  },
+  "publicPeerAddress": {
+    "label": "Endereço público de peer",
+    "noResolvedAddress": "O qui ainda não consegue determinar um endereço",
+    "description": "O endereço e a porta pelos quais outros clientes BitTorrent alcançam este qBittorrent, para Transferências e Compartilhamentos. Deixe vazio para usar o endereço que o qui obtém do qBittorrent a cada uso. Defina quando o qBittorrent roda no Docker ou atrás de NAT."
   }
 }

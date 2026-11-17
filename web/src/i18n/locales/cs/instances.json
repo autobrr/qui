@@ -2149,5 +2149,10 @@
     "label": "Smazat i historii přenosů",
     "description": "Bez této volby qui ponechá historii pod názvem instance.",
     "failed": "Instance je smazaná, ale qui nedokázal smazat celou její historii. Podívejte se do Nastavení > Statistiky a smažte zbytek tam."
+  },
+  "publicPeerAddress": {
+    "label": "Veřejná adresa peeru",
+    "noResolvedAddress": "qui zatím nedokáže zjistit adresu",
+    "description": "Adresa a port, na kterých ostatní BitTorrent klienti dosáhnou na tento qBittorrent, pro Přenosy a Sdílení. Nechte prázdné, aby qui při každém použití vzal adresu zjištěnou z qBittorrentu. Nastavte ji, když qBittorrent běží v Dockeru nebo za NAT."
   }
 }

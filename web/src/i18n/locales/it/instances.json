@@ -2113,5 +2113,10 @@
     "label": "Elimina anche la cronologia dei trasferimenti",
     "description": "Senza questa opzione, qui mantiene la cronologia con il nome dell'istanza.",
     "failed": "L'istanza è stata eliminata, ma qui non è riuscito a eliminare tutta la sua cronologia. Controlla in Impostazioni > Statistiche ed elimina il resto da lì."
+  },
+  "publicPeerAddress": {
+    "label": "Indirizzo peer pubblico",
+    "noResolvedAddress": "qui non riesce ancora a determinare un indirizzo",
+    "description": "L'indirizzo e la porta con cui gli altri client BitTorrent raggiungono questo qBittorrent, per Trasferimenti e Condivisioni. Lascia vuoto per usare l'indirizzo che qui ricava da qBittorrent a ogni utilizzo. Impostalo quando qBittorrent gira in Docker o dietro NAT."
   }
 }

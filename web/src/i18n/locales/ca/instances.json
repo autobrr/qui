@@ -2113,5 +2113,10 @@
     "label": "Elimina també l'historial de transferències",
     "description": "Sense aquesta opció, qui conserva l'historial amb el nom de la instància.",
     "failed": "La instància s'ha eliminat, però qui no ha pogut eliminar tot el seu historial. Mira a Configuració > Estadístiques i elimina-hi la resta."
+  },
+  "publicPeerAddress": {
+    "label": "Adreça pública del parell",
+    "noResolvedAddress": "qui encara no pot determinar cap adreça",
+    "description": "L'adreça i el port amb què altres clients BitTorrent arriben a aquest qBittorrent, per a Transferències i Comparticions. Deixa-ho buit per fer servir l'adreça que qui obté de qBittorrent a cada ús. Defineix-la quan qBittorrent s'executa a Docker o darrere de NAT."
   }
 }
