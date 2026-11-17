@@ -46,11 +46,16 @@ const (
 // third. Only piece 3 lies fully inside the second file.
 func newPack(t *testing.T) show {
 	t.Helper()
-	files := []qbtstub.ContentFile{
-		{Path: episode1, Data: numbered("E01", 40)},
-		{Path: episode2, Data: numbered("E02", 36)},
-		{Path: episode3, Data: numbered("E03", 30)},
-	}
+	return packOf(t,
+		qbtstub.ContentFile{Path: episode1, Data: numbered("E01", 40)},
+		qbtstub.ContentFile{Path: episode2, Data: numbered("E02", 36)},
+		qbtstub.ContentFile{Path: episode3, Data: numbered("E03", 30)})
+}
+
+// packOf is a torrent of files in the folder Show.S01.1080p-GRP, with pieces
+// of 16 bytes.
+func packOf(t *testing.T, files ...qbtstub.ContentFile) show {
+	t.Helper()
 	data, hash := qbtstub.NewContentTorrent(t, showName, 16, files...)
 	s := show{data: data, hash: hash, files: map[string][]byte{}}
 	for _, f := range files {

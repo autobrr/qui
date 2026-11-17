@@ -6,6 +6,7 @@ package transfer_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -328,9 +329,11 @@ func TestTransferTorrentFromASourceWithoutFileAccess(t *testing.T) {
 	t.Run("keeps them after a head start", func(t *testing.T) {
 		r := newRigOn(t, noAccess, onDisk)
 		r.connect()
-		s := newShow(t, showName)
+		// The first episode fills pieces 0 and 1, so the check proves it
+		// without a byte of the source.
+		s := packOf(t, qbtstub.ContentFile{Path: episode1, Data: numbered("E01", 32)}, qbtstub.ContentFile{Path: episode2, Data: numbered("E02", 30)})
 		r.seed(s)
-		before := r.placeOnTarget(map[string][]byte{"Show.S01E01.mkv": s.files["Show.S01E01.mkv"]})
+		before := r.placeOnTarget(map[string][]byte{episode1: s.files[episode1]})
 
 		record := r.run(r.request(s))
 
@@ -378,6 +381,58 @@ func TestTransferTorrentStartsAfterTheHeadStart(t *testing.T) {
 		require.Zero(t, r.src.Writes("torrents/add"), "no Transfer torrent")
 		require.Zero(t, r.dst.Calls("torrents/addPeers"))
 	})
+}
+
+// A file on the target passes the check before the Transfer torrent with
+// the pieces that lie fully inside it. The Transfer torrent downloads a piece
+// that the file shares with a missing file through the link to the file, so
+// qui compares the bytes of the file in that piece with the source first. A
+// file that differs there, or that qui cannot compare, is a conflict, and
+// the Transfer torrent never writes into it.
+// regression: #4231
+func TestTransferTorrentNeverWritesIntoAFileOnTheTarget(t *testing.T) {
+	const nfo = "Show.S01.nfo"
+	// Piece 3 lies fully inside the second episode and passes. Pieces 2 and
+	// 4 hold its edges and bytes of the missing episodes.
+	edges := numbered("E02", 36)
+	copy(edges[:8], "XXXXXXXX")
+	copy(edges[24:], "YYYYYYYYYYYY")
+	for _, tc := range []struct {
+		name   string
+		source side
+		// middle lies between two missing episodes, and theirs is the file
+		// at its path on the target.
+		middle qbtstub.ContentFile
+		theirs []byte
+		reason string
+	}{
+		{name: "edges that differ", source: overSFTP, middle: qbtstub.ContentFile{Path: episode2, Data: numbered("E02", 36)},
+			theirs: edges, reason: "Conflict: the file at %s on homelab differs from the torrent."},
+		{name: "no complete piece of its own", source: overSFTP, middle: qbtstub.ContentFile{Path: nfo, Data: numbered("nfo", 10)},
+			theirs: numbered("NFO", 10), reason: "Conflict: the file at %s on homelab differs from the torrent."},
+		{name: "a source without file access", source: noAccess, middle: qbtstub.ContentFile{Path: episode2, Data: numbered("E02", 36)},
+			theirs: numbered("E02", 36),
+			reason: "Conflict: qui cannot check a part of the file at %s on homelab, because it cannot read the files on seedbox."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, tc.source, overSFTP)
+			r.connect()
+			s := packOf(t, qbtstub.ContentFile{Path: episode1, Data: numbered("E01", 40)}, tc.middle,
+				qbtstub.ContentFile{Path: episode3, Data: numbered("E03", 30)})
+			r.seed(s)
+			theirs := map[string][]byte{tc.middle.Path: tc.theirs}
+			before := r.placeOnTarget(theirs)
+
+			record := r.run(r.request(s))
+
+			r.requireUntouched(before, theirs)
+			require.Equal(t, transfer.WayBitTorrent, record.Way)
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Equal(t, transfer.FailurePermanent, record.FailureClass)
+			require.Equal(t, fmt.Sprintf(tc.reason, pathOn(overSFTP, filepath.Join(r.dstDir, showName, tc.middle.Path))), record.FailureReason)
+			require.Zero(t, r.src.Writes("torrents/add"), "no Transfer torrent")
+		})
+	}
 }
 
 // A Transfer torrent that failed for a retry runs again from the start: qui
