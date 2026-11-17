@@ -66,9 +66,10 @@ describe("RunFooter", () => {
     try {
       render(<TooltipProvider>{footer({ kind: "blocked", reason: "Add an indexer first" }, () => {})}</TooltipProvider>)
 
-      const run = screen.getByRole("button", { name: "Run now" })
-      fireEvent.pointerDown(run, { pointerType: "touch" })
-      fireEvent.click(run)
+      // A disabled Button has pointer-events: none, so the tap lands on the wrapper around it.
+      const wrapper = screen.getByRole("button", { name: "Run now" }).parentElement!
+      fireEvent.pointerDown(wrapper, { pointerType: "touch" })
+      fireEvent.click(wrapper)
 
       expect(screen.getByRole("tooltip").textContent).toContain("Add an indexer first")
     } finally {

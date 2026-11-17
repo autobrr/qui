@@ -148,8 +148,10 @@ const TooltipTrigger = React.forwardRef<
         onPointerEnter={handlePointerEnter}
         onKeyDown={handleKeyDown}
         onClick={(e) => {
+          // A mouse click, for example from an iPad trackpad, toggles as before. Only a tap follows openOnTap.
           // A bare trigger renders its own button, which does nothing but show the tooltip.
-          if (openOnTap ?? (!props.asChild || !tapActs(e.target))) {
+          const mouse = (e.nativeEvent as PointerEvent).pointerType === "mouse"
+          if (mouse || (openOnTap ?? (!props.asChild || !tapActs(e.target)))) {
             context.setOpen?.(!context.isOpen)
           }
           onClick?.(e)

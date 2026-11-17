@@ -3797,7 +3797,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
                                       // A checked box stays clickable, so a workflow whose instance lost the option can clear it.
                                       disabled={!hasTrustedIdentity && !formState.exprIncludeHardlinks}
-                                      className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
+                                      className="h-3.5 w-3.5 rounded border-border disabled:pointer-events-none disabled:opacity-50"
                                     />
                                     <span className={!hasTrustedIdentity ? "opacity-50" : ""}>
                                       {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}

@@ -56,10 +56,10 @@ export function RunFooter({ state, runLabel, runIcon, onRun, onCancel, cancelDia
             {t(state.kind === "cancelling" ? "automation.stopping" : "automation.cancel")}
           </Button>
         ) : (
-          // A disabled button gets no tap or hover, so the wrapper takes them and shows why the run is blocked.
+          // A disabled button lets taps and hover through to the wrapper, which shows why the run is blocked.
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className={cn("inline-flex", blocked && "cursor-not-allowed")} tabIndex={blocked ? 0 : undefined}>
+              <span className={cn("inline-flex", blocked && "cursor-not-allowed")}>
                 <Button
                   variant="outline"
                   className="min-h-11 md:min-h-9"

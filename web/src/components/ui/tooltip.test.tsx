@@ -101,6 +101,14 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
+  it("still opens on a mouse click of a button, as on a trackpad", () => {
+    renderTooltip(<TooltipTrigger asChild><button type="button">Pause</button></TooltipTrigger>)
+
+    fireEvent(screen.getByRole("button", { name: "Pause" }), new PointerEvent("click", { bubbles: true, pointerType: "mouse" }))
+
+    expect(tooltipShown()).toBe(true)
+  })
+
   it("opens on a button marked openOnTap", () => {
     renderTooltip(<TooltipTrigger asChild openOnTap><button type="button" aria-label="About grouping">i</button></TooltipTrigger>)
 

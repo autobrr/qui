@@ -223,18 +223,21 @@ const SearchTableRow = memo(function SearchTableRow({
           <TooltipContent>{t("table.downloadTorrent")}</TooltipContent>
         </Tooltip>
         <Tooltip>
+          {/* A disabled button lets taps and hover through to the wrapper, which says there is no info URL. */}
           <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => onViewDetails(result)}
-              disabled={!result.infoUrl}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              <span className="sr-only">{t("card.viewDetails")}</span>
-            </Button>
+            <span className="inline-flex">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => onViewDetails(result)}
+                disabled={!result.infoUrl}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span className="sr-only">{t("card.viewDetails")}</span>
+              </Button>
+            </span>
           </TooltipTrigger>
           <TooltipContent>{result.infoUrl ? t("table.viewDetails") : t("table.noInfoUrl")}</TooltipContent>
         </Tooltip>
