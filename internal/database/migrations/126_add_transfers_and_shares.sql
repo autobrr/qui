@@ -10,8 +10,7 @@
 -- kind is transfer or export. state holds the states of both kinds.
 -- started_by is rule, with rule_id, or user. The endpoints are the JSON of
 -- fsops.Endpoint at the start. finished_at is NULL while the Transfer holds
--- its torrents and folders. failure_class is temporary or permanent. size
--- is the size of the torrent of the request at the start.
+-- its torrents and folders. failure_class is temporary or permanent.
 CREATE TABLE IF NOT EXISTS torrent_transfers (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     kind                 TEXT NOT NULL,
@@ -28,7 +27,6 @@ CREATE TABLE IF NOT EXISTS torrent_transfers (
     log_json             TEXT NOT NULL DEFAULT '[]',
     flush_state          TEXT NOT NULL DEFAULT '',
     reserved_bytes       INTEGER NOT NULL DEFAULT 0,
-    size                 INTEGER NOT NULL DEFAULT 0,
     retry_at             DATETIME,
     failure_class        TEXT NOT NULL DEFAULT '',
     failure_reason       TEXT NOT NULL DEFAULT '',
