@@ -177,6 +177,9 @@ type Placement struct {
 	Category      string
 	Tags          []string
 	ContentLayout string
+	// Endpoint is where qui reached the Cross-seed instance at the start, for
+	// a member that lands there, and zero for a member on the target.
+	Endpoint fsops.Endpoint
 }
 
 // OwnerKind names the table of the owner of a helper torrent.

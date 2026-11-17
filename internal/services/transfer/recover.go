@@ -402,6 +402,12 @@ func (j *job) removeMember(ctx context.Context, m *Member) (keep bool, err error
 			}
 		}
 		inst = j.crossSeed
+		if m.Placement.Endpoint.Changed(inst) {
+			j.away[inst.ID] = true
+		}
+		if !j.reaches(inst) {
+			return true, nil
+		}
 	}
 	present, err := j.svc.has(ctx, inst.ID, m.Hash)
 	switch {
