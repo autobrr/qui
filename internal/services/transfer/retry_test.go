@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -40,6 +41,59 @@ func TestRetryRunsATemporaryFailureNow(t *testing.T) {
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.True(t, r.dst.Has(s.hash))
 	require.False(t, r.src.Has(s.hash))
+}
+
+// holdFirstRetryWrite holds the first write of retry_at, before it reaches
+// the database, until release closes.
+type holdFirstRetryWrite struct {
+	dbinterface.Querier
+	first   *atomic.Bool
+	held    chan struct{}
+	release chan struct{}
+}
+
+func (h holdFirstRetryWrite) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if strings.Contains(query, "retry_at") && h.first.CompareAndSwap(true, false) {
+		close(h.held)
+		<-h.release
+	}
+	return h.Querier.ExecContext(ctx, query, args...)
+}
+
+// regression: #4242
+// Two Retries of a Transfer that waits for its retry come at once. The one
+// that writes last keeps the steps that the running Transfer saved.
+func TestTwoRetriesKeepTheStepsOfTheRun(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	r.dst.Reject = http.StatusInternalServerError
+	failed := r.run(r.request(s))
+	require.Equal(t, transfer.FailureTemporary, failed.FailureClass, failed.FailureReason)
+	r.dst.Reject = 0
+	hold := newHoldAt(r.db, "added")
+	var first atomic.Bool
+	late := holdFirstRetryWrite{Querier: hold, first: &first, held: make(chan struct{}), release: make(chan struct{})}
+	r.restartOn(late)
+
+	first.Store(true)
+	retried := make(chan error, 1)
+	go func() {
+		_, err := r.svc.Retry(t.Context(), failed.ID)
+		retried <- err
+	}()
+	<-late.held
+	_, err := r.svc.Retry(t.Context(), failed.ID)
+	require.NoError(t, err)
+	<-hold.held
+	close(late.release)
+	require.NoError(t, <-retried)
+
+	steps := r.get(failed.ID).Steps
+	require.Equal(t, "added", steps[len(steps)-1].Name, "the late Retry keeps the steps of the run")
+	close(hold.release)
+	r.svc.Wait()
+	require.Equal(t, transfer.StateDone, r.get(failed.ID).State)
 }
 
 // Retry starts a Transfer that failed for good again, as a new Transfer with

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"time"
 )
 
 // ErrNotRetryable refuses a Retry of a Transfer that did not fail and was
@@ -33,8 +32,7 @@ func (s *Service) Retry(ctx context.Context, id int64) (int64, error) {
 		if s.holds(id) {
 			return id, nil
 		}
-		record.RetryAt = time.Time{}
-		if err := s.deps.Store.Save(ctx, record); err != nil {
+		if err := s.deps.Store.clearRetry(ctx, id); err != nil {
 			return 0, err
 		}
 		s.enqueue(record) //nolint:contextcheck // the Transfer outlives the request and runs in the context of the Service
@@ -68,6 +66,16 @@ func (s *Service) Retry(ctx context.Context, id int64) (int64, error) {
 		Options:          Options{After: record.Options.After, LeaveStopped: record.Options.LeaveStopped, ForcedWay: record.Options.ForcedWay},
 		StartedBy:        StartedByUser,
 	})
+}
+
+// clearRetry lets Transfer id, which waits for its retry, run now. It
+// changes nothing once the Transfer runs again or ended.
+func (s *Store) clearRetry(ctx context.Context, id int64) error {
+	if _, err := s.db.ExecContext(ctx, `UPDATE torrent_transfers SET retry_at = NULL WHERE id = ? AND state = ? AND finished_at IS NULL`,
+		id, string(StateFailed)); err != nil {
+		return fmt.Errorf("clear the retry of transfer %d: %w", id, err)
+	}
+	return nil
 }
 
 // groupPlacement returns the placement that the request of record named: the
