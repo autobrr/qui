@@ -26,7 +26,7 @@ func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	s := newShow(t, showName)
 	r.seed(s)
 	crossSeed, _ := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcDir)
+	r.src.Seed(crossSeed, r.srcPath())
 	r.seedEpisode(s)
 
 	preview, err := r.svc.Preview(t.Context(), r.request(s))
@@ -74,7 +74,7 @@ func TestARuleWaitsForTheUserAfterAPermanentFailure(t *testing.T) {
 	_, err = r.svc.Preview(t.Context(), byRule)
 	require.ErrorIs(t, err, transfer.ErrWaitsForUser)
 	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcDir)
+	r.src.Seed(crossSeed, r.srcPath())
 	byRule.Hash = crossSeedHash
 	_, err = r.svc.Start(t.Context(), byRule)
 	require.ErrorIs(t, err, transfer.ErrWaitsForUser, "a new cross-seed would take the torrent along")
