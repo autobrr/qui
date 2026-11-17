@@ -17,16 +17,15 @@ const threshold = 300
 interface ScrollToTopButtonProps {
   scrollContainerRef: React.RefObject<HTMLElement | null>
   /**
-   * Height of the caller's own bars between the bottom navigation bar and the
-   * list, as a CSS length. Applies below 1024px only.
+   * Height of the caller's own fixed bars above the bottom navigation bar, as
+   * a CSS length. Applies below 768px only.
    */
   extraBottomBars?: string
 }
 
-// Shows whenever the scroll container has scrolled past the threshold, at
-// every width. Below 1024px it is fixed to the screen and stays above the
-// bottom navigation bar (MobileFooterNav) and the caller's extra bars. From
-// 1024px it sits in the corner of the list.
+// Shows past the scroll threshold at every width. Below 768px (useIsMobile, the
+// card list) it is fixed above the bottom navigation and the caller's bars;
+// from 768px it sits in the corner of its list.
 export function ScrollToTopButton({
   scrollContainerRef,
   extraBottomBars = "0px",
@@ -77,14 +76,16 @@ export function ScrollToTopButton({
       variant="outline"
       size="icon"
       className={cn(
-        "fixed lg:absolute z-30 shadow-lg bg-background/80 backdrop-blur-sm transition-all duration-200",
-        "bottom-(--scroll-top-bottom) right-[calc(1.5rem+env(safe-area-inset-right))] lg:bottom-4 lg:right-6",
+        "fixed md:absolute z-30 shadow-lg bg-background/80 backdrop-blur-sm transition-all duration-200",
+        "bottom-(--scroll-top-bottom) right-[calc(1.5rem+env(safe-area-inset-right))] md:bottom-4 md:right-6",
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
       )}
       style={{
         "--scroll-top-bottom": `calc(1rem + ${footerNavHeight} + ${extraBottomBars} + env(safe-area-inset-bottom))`,
       } as React.CSSProperties}
       aria-label={t("actions.scrollToTop")}
+      aria-hidden={!isVisible}
+      tabIndex={isVisible ? undefined : -1}
     >
       <ArrowUp className="h-4 w-4" />
     </Button>

@@ -244,14 +244,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   useLayoutEffect(() => {
     setStatusBarContainer(document.getElementById("qui-status-bar-container"))
   }, [])
-  // The status bar sits below the list, so the scroll-to-top button must clear it
-  const [statusBarHeight, setStatusBarHeight] = useState(0)
-  useEffect(() => {
-    if (!statusBarContainer) return
-    const observer = new ResizeObserver(() => setStatusBarHeight(statusBarContainer.offsetHeight))
-    observer.observe(statusBarContainer)
-    return () => observer.disconnect()
-  }, [statusBarContainer])
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const instanceMaxRatio = useGlobalMaxRatio(instanceId)
@@ -1589,7 +1581,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           />
         )}
 
-        <ScrollToTopButton scrollContainerRef={parentRef} extraBottomBars={`${statusBarHeight}px`} />
+        <ScrollToTopButton scrollContainerRef={parentRef} />
       </div>
     </>
   )
