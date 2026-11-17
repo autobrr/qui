@@ -9,7 +9,7 @@ import { TransfersTab } from "@/components/transfers/TransfersTab"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranslation } from "react-i18next"
 
-/** The Transfers page: the Transfers and Export runs, and the Shares. #4170 adds its route and sidebar link. */
+/** The Transfers page: the Transfers and Export runs, and the Shares. */
 export function TransfersPage() {
   const { t } = useTranslation("transfers")
   return (

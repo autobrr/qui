@@ -136,6 +136,7 @@ export function useDestinations(close: () => void): PaletteGroup[] {
     search: t("search:pageDescription"),
     "cross-seed": t("crossseed:pageDescription"),
     automations: t("automations:page.description"),
+    transfers: t("transfers:page.description"),
     backups: t("instances:backups.pageDescription"),
     rss: t("rss:pageDescription"),
     settings: t("settings:description"),

@@ -5,6 +5,8 @@
     "search": "搜尋",
     "crossSeed": "輔種",
     "automations": "自動化",
+    "transfers": "傳輸",
+    "transfersRunning_other": "{{count}} 項正在執行",
     "backups": "備份",
     "rss": "RSS",
     "settings": "設定",
