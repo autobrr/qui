@@ -62,6 +62,9 @@ func TestBulkAction_RefusesDeleteAndMoveOfHeldTorrents(t *testing.T) {
 	held := map[string]string{
 		claimedHash: "a Transfer holds this torrent",
 		helperHash:  "qui added this torrent for a Transfer or a Share",
+		// qBittorrent reads "|" in a hash as a list separator.
+		// regression: #4231
+		"cccc|" + claimedHash: "a Transfer holds this torrent",
 	}
 	for name, payload := range actions {
 		t.Run(name, func(t *testing.T) {

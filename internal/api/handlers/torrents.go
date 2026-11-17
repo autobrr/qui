@@ -89,15 +89,18 @@ func (h *TorrentsHandler) SetHeldTorrents(held heldTorrents) {
 var bulkActionMoves = []string{"delete", "deleteWithFiles", "setLocation", "setCategory", "toggleAutoTMM"}
 
 // respondIfHeld writes a 409 with the reason when qui holds one of the
-// torrents.
+// torrents. qBittorrent reads "|" in a hash as a list separator, so each part
+// counts.
 func (h *TorrentsHandler) respondIfHeld(w http.ResponseWriter, instanceID int, hashes ...string) bool {
 	if h.held == nil {
 		return false
 	}
-	for _, hash := range hashes {
-		if err := h.held.Hold(instanceID, hash); err != nil {
-			RespondError(w, http.StatusConflict, err.Error())
-			return true
+	for _, list := range hashes {
+		for hash := range strings.SplitSeq(list, "|") {
+			if err := h.held.Hold(instanceID, hash); err != nil {
+				RespondError(w, http.StatusConflict, err.Error())
+				return true
+			}
 		}
 	}
 	return false
