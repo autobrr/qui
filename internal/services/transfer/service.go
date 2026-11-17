@@ -404,6 +404,14 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 	r, held := s.runs[id]
 	switch {
 	case !held && record.Kind == KindExport:
+		// The run may have ended since the read above: it leaves s.runs only
+		// after it saved its end.
+		if record, err = s.deps.Store.Get(ctx, id); err != nil {
+			return err
+		}
+		if !record.FinishedAt.IsZero() {
+			return ErrFinished
+		}
 		s.runs[id] = &run{cancelled: true}
 		s.wg.Go(func() {
 			(&exportJob{job: s.newJob(record), ruleName: record.Steps[0].Detail}).cancel(context.WithoutCancel(ctx))

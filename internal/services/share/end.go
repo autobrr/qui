@@ -75,11 +75,12 @@ func (s *Service) removeTorrent(ctx context.Context, sh *Share) error {
 	return nil
 }
 
-// Check ends each active Share whose end condition holds, retries the
-// removal of each ending Share, starts or stops qui's own tracker for the
-// active Shares, which retries a start that failed, and removes the rows of
-// the Shares that ended more than 30 days ago, with the registry rows of
-// their Share torrents. Run calls it at each tick.
+// Check ends each active Share whose end condition holds, stores again a
+// lock holder whose write failed, retries the removal of each ending Share,
+// starts or stops qui's own tracker for the active Shares, which retries a
+// start that failed, and removes the rows of the Shares that ended more than
+// 30 days ago, with the registry rows of their Share torrents. Run calls it
+// at each tick.
 func (s *Service) Check(ctx context.Context) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -106,6 +107,9 @@ func (s *Service) Check(ctx context.Context) error {
 			continue
 		}
 		errs = append(errs, s.saveActivity(ctx, sh.ID))
+		if holder := s.tracker.Holder(sh.ID); holder.IsValid() && holder != sh.Holder {
+			errs = append(errs, s.saveHolder(ctx, sh.ID, holder))
+		}
 	}
 	errs = append(errs, s.refresh(ctx), s.removeOld(ctx))
 	return errors.Join(errs...)

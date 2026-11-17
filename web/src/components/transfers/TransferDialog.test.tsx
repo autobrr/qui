@@ -84,18 +84,6 @@ const summaryText = () => document.querySelector("section[aria-labelledby='trans
 const startButton = () => screen.getByRole<HTMLButtonElement>("button", { name: "Start Transfer" })
 
 describe("the Transfer dialog", () => {
-  it("offers every instance but the source as the target, and plans nothing before a target", async () => {
-    renderDialog()
-    const trigger = await screen.findByRole("combobox", { name: "Target instance" })
-    expect(summaryText()).toContain("Select a target instance to see the summary.")
-    expect(startButton().disabled).toBe(true)
-
-    fireEvent.keyDown(trigger, { key: "Enter" })
-    const options = (await screen.findAllByRole("option")).map(option => option.textContent)
-    expect(options).toEqual(["homelab", "crossbox"])
-    expect(summaries).toEqual([])
-  })
-
   it("keeps the target picker while the instances load, and asks for another instance only when none exists", async () => {
     let answer: () => void = () => {}
     const loaded = new Promise<void>(resolve => { answer = resolve })
@@ -112,9 +100,15 @@ describe("the Transfer dialog", () => {
     expect(screen.queryByRole("combobox", { name: "Target instance" })).toBeNull()
   })
 
-  it("shows the summary of the Transfer before it starts, and starts what the summary showed", async () => {
+  it("offers every instance but the source as the target, shows the summary of the Transfer before it starts, and starts what the summary showed", async () => {
     const onOpenChange = renderDialog()
-    await pickTarget("homelab")
+    const trigger = await screen.findByRole("combobox", { name: "Target instance" })
+    expect(summaryText()).toContain("Select a target instance to see the summary.")
+    expect(startButton().disabled).toBe(true)
+    fireEvent.keyDown(trigger, { key: "Enter" })
+    expect((await screen.findAllByRole("option")).map(option => option.textContent)).toEqual(["homelab", "crossbox"])
+    expect(summaries).toEqual([])
+    fireEvent.click(screen.getByRole("option", { name: "homelab" }))
     fireEvent.change(screen.getByLabelText("Tags"), { target: { value: "moved,, kept, " } })
 
     await waitFor(() => expect(summaryText()).toContain("2 torrents, 4 GiB"))

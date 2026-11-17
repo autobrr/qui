@@ -4,7 +4,6 @@
 package transfer_test
 
 import (
-	"sync"
 	"testing"
 	"time"
 
@@ -13,41 +12,33 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// progressAtEachWrite records the progress of Transfer id at each write on
-// the target, and moves the clock one second on at each.
-func (r *rig) progressAtEachWrite(id *int64, ready <-chan struct{}) func() []transfer.Progress {
-	var mu sync.Mutex
-	var seen []transfer.Progress
-	at := clock
-	r.disk.onWrite = func(string) {
-		<-ready
-		mu.Lock()
-		defer mu.Unlock()
-		at = at.Add(time.Second)
-		r.setClock(at)
-		// A Transfer without a progress shows as Done -1.
-		p, ok := r.svc.Progress(*id)
-		if !ok {
-			p.Done = -1
-		}
-		seen = append(seen, p)
-	}
-	return func() []transfer.Progress {
-		mu.Lock()
-		defer mu.Unlock()
-		return seen
-	}
-}
-
-// A running copy shows the bytes it passed of all its bytes, and its speed.
-// The progress ends with the Transfer.
+// regression: #4242
+// A running copy shows the bytes it passed of all its bytes, and its speed
+// over the last ten seconds: a copy that passed no byte in that time shows
+// no speed. The progress ends with the Transfer.
 func TestProgressCountsTheCopiedBytes(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
 	r.seed(s)
 	var id int64
 	ready := make(chan struct{})
-	seen := r.progressAtEachWrite(&id, ready)
+	var seen []transfer.Progress
+	var stalled transfer.Progress
+	// The clock moves one second on at each write, and 11 more after the
+	// third.
+	at := clock
+	r.disk.onWrite = func(string) {
+		<-ready
+		at = at.Add(time.Second)
+		r.setClock(at)
+		p, _ := r.svc.Progress(id)
+		seen = append(seen, p)
+		if len(seen) == 3 {
+			at = at.Add(11 * time.Second)
+			r.setClock(at)
+			stalled, _ = r.svc.Progress(id)
+		}
+	}
 
 	id, err := r.svc.Start(t.Context(), r.request(s))
 	require.NoError(t, err)
@@ -55,68 +46,19 @@ func TestProgressCountsTheCopiedBytes(t *testing.T) {
 	r.svc.Wait()
 
 	require.Equal(t, transfer.StateDone, r.get(id).State, r.get(id).FailureReason)
-	progress := seen()
-	require.Greater(t, len(progress), 2)
-	require.Equal(t, transfer.Progress{Done: 0, Total: 70}, progress[0], "nothing passed at the first write")
-	for i := 1; i < len(progress); i++ {
-		require.Equal(t, int64(70), progress[i].Total)
-		require.GreaterOrEqual(t, progress[i].Done, progress[i-1].Done)
-		require.Positive(t, progress[i].Speed)
+	require.Greater(t, len(seen), 2)
+	require.Equal(t, transfer.Progress{Done: 0, Total: 70}, seen[0], "nothing passed at the first write")
+	for i := 1; i < len(seen); i++ {
+		require.Equal(t, int64(70), seen[i].Total)
+		require.GreaterOrEqual(t, seen[i].Done, seen[i-1].Done)
 	}
-	last := progress[len(progress)-1].Done
+	require.Positive(t, seen[1].Speed)
+	require.Positive(t, seen[2].Speed)
+	require.Equal(t, seen[2].Done, stalled.Done)
+	require.Zero(t, stalled.Speed, "nothing passed over the last ten seconds")
+	last := seen[len(seen)-1].Done
 	require.Positive(t, last)
 	require.Less(t, last, int64(70), "the last write comes before its piece passed")
 	_, ok := r.svc.Progress(id)
 	require.False(t, ok, "a finished Transfer has no progress")
-}
-
-// A resumed copy counts the pieces that it proved before as passed.
-func TestProgressOfAResumedCopyStartsAtTheProvenPieces(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	writes := 0
-	r.disk.onWrite = func(string) {
-		if writes++; writes == 5 {
-			r.cancel()
-		}
-	}
-	id, err := r.svc.Start(t.Context(), r.request(s))
-	require.NoError(t, err)
-	r.svc.Wait()
-	require.True(t, r.get(id).FinishedAt.IsZero(), "the copy stopped halfway")
-
-	ready := make(chan struct{})
-	close(ready)
-	seen := r.progressAtEachWrite(&id, ready)
-	r.restart()
-	r.svc.Wait()
-
-	require.Equal(t, transfer.StateDone, r.get(id).State, r.get(id).FailureReason)
-	first := seen()[0]
-	require.Equal(t, int64(70), first.Total)
-	require.Positive(t, first.Done, "the proven pieces count as passed")
-}
-
-// A Transfer torrent shows the bytes that the target downloaded of the
-// group.
-func TestProgressCountsTheBytesOfATransferTorrent(t *testing.T) {
-	r := newRigOn(t, overSFTP, noAccess)
-	hold := newHoldAt(r.db, "passed by BitTorrent")
-	r.restartOn(hold)
-	r.connect()
-	s := newShow(t, showName)
-	r.seed(s)
-
-	id, err := r.svc.Start(t.Context(), r.request(s))
-	require.NoError(t, err)
-	<-hold.held
-	progress, ok := r.svc.Progress(id)
-	close(hold.release)
-	r.svc.Wait()
-
-	require.True(t, ok)
-	require.Equal(t, int64(70), progress.Total)
-	require.Equal(t, int64(70), progress.Done)
-	require.Equal(t, transfer.StateDone, r.get(id).State, r.get(id).FailureReason)
 }

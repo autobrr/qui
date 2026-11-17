@@ -118,6 +118,7 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 		if crossSeed != nil && src != representative {
 			lands = crossSeed
 			m.TargetInstanceID = crossSeed.ID
+			m.Placement.Endpoint = fsops.EndpointOf(crossSeed)
 			m.Placement.Category, m.Placement.Tags = "", nil
 		}
 		if i > 0 || lands != target {

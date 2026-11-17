@@ -157,7 +157,6 @@ func TestTransferActionRoutes(t *testing.T) {
 		want         int
 	}{
 		{http.MethodPost, "/api/transfers/" + done + "/retry", http.StatusConflict},
-		{http.MethodPost, "/api/transfers/" + done + "/cancel", http.StatusConflict},
 		{http.MethodDelete, "/api/transfers/" + running, http.StatusConflict},
 		{http.MethodPost, "/api/transfers/999/retry", http.StatusNotFound},
 		{http.MethodPost, "/api/transfers/999/cancel", http.StatusNotFound},

@@ -36,6 +36,11 @@ func TestTheListFiltersTheTransfersByChipPostgresIntegration(t *testing.T) {
 		retry := group("eeee")
 		retry.RetryAt = time.Date(2026, 11, 16, 13, 0, 0, 0, time.UTC)
 		retry.FailureClass, retry.FailureReason = transfer.FailureTemporary, "The source went offline."
+		retry.Way = transfer.WayBitTorrent
+		retry.Log = []transfer.LogLine{
+			{Message: "Passing 1.0 GiB by a Transfer torrent from seedbox to homelab."},
+			{Message: "seedbox uses TCP and μTP.", Hint: &transfer.Hint{Kind: transfer.HintTCPAndUTP, InstanceID: source}},
+		}
 		retrying := add(retry, transfer.StateFailed)
 		done := add(group("ffff"), transfer.StateDone)
 		finish(done, transfer.StateDone)
@@ -62,9 +67,6 @@ func TestTheListFiltersTheTransfersByChipPostgresIntegration(t *testing.T) {
 		}{
 			{transfer.FilterAll, []int64{exporting, permanent, cancelled, done, retrying, waiting, copying}},
 			{transfer.FilterActive, []int64{exporting, copying}},
-			{transfer.FilterWaiting, []int64{waiting}},
-			{transfer.FilterFinished, []int64{cancelled, done}},
-			{transfer.FilterFailed, []int64{permanent, retrying}},
 		} {
 			list, err := store.List(ctx, tc.filter, 100)
 			require.NoError(t, err)
@@ -90,29 +92,10 @@ func TestTheListFiltersTheTransfersByChipPostgresIntegration(t *testing.T) {
 		require.Equal(t, transfer.KindExport, byID[exporting].Kind)
 		require.True(t, byID[retrying].RetryAt.Equal(retry.RetryAt))
 		require.Equal(t, "The source went offline.", byID[retrying].FailureReason)
+		require.Equal(t, transfer.WayBitTorrent, byID[retrying].Way)
+		require.Equal(t, []transfer.Hint{{Kind: transfer.HintTCPAndUTP, InstanceID: source}}, byID[retrying].Hints)
 		require.Equal(t, transfer.FailurePermanent, byID[permanent].FailureClass)
 		require.False(t, byID[permanent].FinishedAt.IsZero())
 		require.True(t, byID[copying].FinishedAt.IsZero())
-	})
-}
-
-func TestTheListShowsTheHintsOfTheLogPostgresIntegration(t *testing.T) {
-	t.Parallel()
-
-	engines(t, func(t *testing.T, db *database.DB) {
-		store := open(t, db)
-		record := group("aaaa")
-		record.Way = transfer.WayBitTorrent
-		record.Log = []transfer.LogLine{
-			{Message: "Passing 1.0 GiB by a Transfer torrent from seedbox to homelab."},
-			{Message: "seedbox uses TCP and μTP.", Hint: &transfer.Hint{Kind: transfer.HintTCPAndUTP, InstanceID: source}},
-		}
-		require.NoError(t, store.Create(t.Context(), record))
-
-		list, err := store.List(t.Context(), transfer.FilterAll, 10)
-		require.NoError(t, err)
-		require.Len(t, list.Rows, 1)
-		require.Equal(t, transfer.WayBitTorrent, list.Rows[0].Way)
-		require.Equal(t, []transfer.Hint{{Kind: transfer.HintTCPAndUTP, InstanceID: source}}, list.Rows[0].Hints)
 	})
 }

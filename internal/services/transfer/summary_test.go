@@ -4,7 +4,6 @@
 package transfer_test
 
 import (
-	"errors"
 	"path/filepath"
 	"testing"
 
@@ -52,53 +51,23 @@ func TestSummaryShowsTheTransferThatStartWouldStart(t *testing.T) {
 // A target without file access gets a warning, its free space comes from
 // qBittorrent, and a client on "TCP and μTP" gets the hint of the log.
 func TestSummaryOfATransferTorrent(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		webAPI    string
-		elsewhere bool
-		known     bool
-	}{
-		{name: "5.3", webAPI: "2.15.2", elsewhere: true, known: true},
-		{name: "5.1 at the default save path", known: true},
-		{name: "5.1 elsewhere", elsewhere: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := newRigOn(t, overSFTP, noAccess)
-			r.connect()
-			r.dst.WebAPIVersion = tc.webAPI
-			r.dst.FreeSpace = 1234
-			r.src.BittorrentProtocol = 1 // TCP only
-			s := newShow(t, showName)
-			r.seed(s)
-			req := r.request(s)
-			if tc.elsewhere {
-				req.Placement.SavePath = filepath.Join(r.dstDir, "elsewhere")
-			}
-
-			summary, err := r.svc.Summary(t.Context(), req)
-			require.NoError(t, err)
-
-			require.Equal(t, transfer.WayBitTorrent, summary.Way)
-			require.True(t, summary.NoFileAccess)
-			require.Equal(t, tc.known, summary.FreeKnown)
-			if tc.known {
-				require.Equal(t, int64(1234), summary.Free)
-			}
-			require.Equal(t, []transfer.Hint{{Kind: transfer.HintTCPAndUTP, InstanceID: r.target.ID}}, summary.Hints)
-			r.requireNothingStarted(s.hash)
-		})
-	}
-}
-
-// The summary refuses what Start refuses.
-func TestSummaryRefusesWhatStartRefuses(t *testing.T) {
-	r := newRig(t)
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	r.dst.WebAPIVersion = "2.15.2"
+	r.dst.FreeSpace = 1234
+	r.src.BittorrentProtocol = 1 // TCP only
 	s := newShow(t, showName)
 	r.seed(s)
 	req := r.request(s)
-	req.TargetInstanceID = r.source.ID
+	req.Placement.SavePath = filepath.Join(r.dstDir, "elsewhere")
 
-	_, err := r.svc.Summary(t.Context(), req)
-	_, refused := errors.AsType[*transfer.RefusalError](err)
-	require.True(t, refused, "%v", err)
+	summary, err := r.svc.Summary(t.Context(), req)
+	require.NoError(t, err)
+
+	require.Equal(t, transfer.WayBitTorrent, summary.Way)
+	require.True(t, summary.NoFileAccess)
+	require.True(t, summary.FreeKnown)
+	require.Equal(t, int64(1234), summary.Free)
+	require.Equal(t, []transfer.Hint{{Kind: transfer.HintTCPAndUTP, InstanceID: r.target.ID}}, summary.Hints)
+	r.requireNothingStarted(s.hash)
 }

@@ -125,6 +125,7 @@ export function TransfersTab() {
                   key={row.id}
                   row={row}
                   onDetails={() => setDetailsId(row.id)}
+                  retrying={retry.isPending && retry.variables === row.id}
                   onRetry={() => retry.mutate(row.id)}
                   onCancel={() => setCancelRow(row)}
                   onRemove={() => remove.mutate(row.id)}
@@ -156,13 +157,15 @@ export function TransfersTab() {
 
 interface TransferTableRowProps {
   row: TransferRow
+  /** A Retry of the row waits for its answer. */
+  retrying: boolean
   onDetails: () => void
   onRetry: () => void
   onCancel: () => void
   onRemove: () => void
 }
 
-function TransferTableRow({ row, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
+function TransferTableRow({ row, retrying, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
   const [speedUnit] = useSpeedUnits()
@@ -215,21 +218,21 @@ function TransferTableRow({ row, onDetails, onRetry, onCancel, onRemove }: Trans
         <div className="text-muted-foreground">{formatRelativeTime(row.createdAt)}</div>
       </TableCell>
       <TableCell pinEnd className="text-right">
-        <RowActions row={row} onDetails={onDetails} onRetry={onRetry} onCancel={onCancel} onRemove={onRemove} />
+        <RowActions row={row} retrying={retrying} onDetails={onDetails} onRetry={onRetry} onCancel={onCancel} onRemove={onRemove} />
       </TableCell>
     </TableRow>
   )
 }
 
 /** The actions of a row: buttons, or one menu on a phone, where the pinned column must stay narrow. */
-function RowActions({ row, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
+function RowActions({ row, retrying, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
   const { t } = useTranslation("transfers")
   const phone = useIsPhone()
   const actions = [
-    { label: t("actions.details"), run: onDetails, shown: true },
-    { label: t("actions.retry"), run: onRetry, shown: canRetry(row) },
-    { label: t("actions.cancel"), run: onCancel, shown: canCancel(row) },
-    { label: t("actions.remove"), run: onRemove, shown: canRemove(row) },
+    { label: t("actions.details"), run: onDetails, shown: true, disabled: false },
+    { label: t("actions.retry"), run: onRetry, shown: canRetry(row), disabled: retrying },
+    { label: t("actions.cancel"), run: onCancel, shown: canCancel(row), disabled: false },
+    { label: t("actions.remove"), run: onRemove, shown: canRemove(row), disabled: false },
   ].filter(action => action.shown)
 
   if (phone) {
@@ -241,14 +244,14 @@ function RowActions({ row, onDetails, onRetry, onCancel, onRemove }: TransferTab
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {actions.map(action => <DropdownMenuItem key={action.label} onSelect={action.run}>{action.label}</DropdownMenuItem>)}
+          {actions.map(action => <DropdownMenuItem key={action.label} disabled={action.disabled} onSelect={action.run}>{action.label}</DropdownMenuItem>)}
         </DropdownMenuContent>
       </DropdownMenu>
     )
   }
   return (
     <div className="flex justify-end gap-1">
-      {actions.map(action => <Button key={action.label} size="sm" variant="ghost" onClick={action.run}>{action.label}</Button>)}
+      {actions.map(action => <Button key={action.label} size="sm" variant="ghost" disabled={action.disabled} onClick={action.run}>{action.label}</Button>)}
     </div>
   )
 }

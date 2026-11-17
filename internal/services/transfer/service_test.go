@@ -1124,13 +1124,13 @@ func TestTransferServiceLeavesFinishedTransfers(t *testing.T) {
 	require.Equal(t, transfer.FailurePermanent, r.run(r.request(s)).FailureClass)
 	require.NoError(t, os.RemoveAll(filepath.Join(r.dstDir, showName)))
 	require.Equal(t, transfer.StateDone, r.run(r.request(s)).State)
-	src, dst := r.src.Requests(), r.dst.Requests()
+	src, dst := sent(r.src), sent(r.dst)
 
 	r.svc.Wake()
 	r.svc.Wait()
 	r.restart()
 	r.svc.Wait()
 
-	require.Equal(t, src, r.src.Requests())
-	require.Equal(t, dst, r.dst.Requests())
+	require.Equal(t, src, sent(r.src))
+	require.Equal(t, dst, sent(r.dst))
 }

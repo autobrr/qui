@@ -152,7 +152,7 @@ func TestTransferResumesAfterADroppedConnection(t *testing.T) {
 
 // A Transfer that qui stops at several points of the copy resumes after each
 // restart, and copies only the pieces that were not Proven pieces at the
-// stop.
+// stop. Its progress counts the Proven pieces as passed.
 func TestTransferResumesAfterARestart(t *testing.T) {
 	r := newRig(t, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
 	s := newBigShow(t)
@@ -164,10 +164,18 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 		count int
 		stops []int
 		at    [][]byte
+		// resumed is set for the first write after the first restart.
+		resumed  bool
+		progress transfer.Progress
+		tracked  bool
 	)
 	r.disk.onWrite = func(string) {
 		once.Do(func() { id = <-ids })
 		count++
+		if resumed {
+			resumed = false
+			progress, tracked = r.svc.Progress(id)
+		}
 		if count == 10 || count == 30 || count == 50 {
 			record, err := r.store.Get(t.Context(), id)
 			require.NoError(t, err)
@@ -181,8 +189,9 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 	started, err := r.svc.Start(t.Context(), r.request(s))
 	require.NoError(t, err)
 	ids <- started
-	for range 3 {
+	for i := range 3 {
 		r.svc.Wait()
+		resumed = i == 0
 		r.restart()
 	}
 	r.svc.Wait()
@@ -192,6 +201,8 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 	require.Len(t, stops, 3)
+	require.True(t, tracked)
+	require.Positive(t, progress.Done, "the Proven pieces count as passed at the first write after the restart")
 	require.Equal(t, 1, r.dst.Writes("torrents/add"))
 
 	writes, creates := r.disk.log()
@@ -252,8 +263,13 @@ func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 }
 
+// sent counts the requests that a stub answered, without the reads of
+// torrents/info: the tracker health loop of qui sends one at a random time
+// after qui connects to a client, and no Transfer reads it.
+func sent(s *qbtstub.Server) int { return s.RequestsWithout("torrents/info") }
+
 // requests counts the requests that both stubs answered.
-func (r *rig) requests() int { return r.src.Requests() + r.dst.Requests() }
+func (r *rig) requests() int { return sent(r.src) + sent(r.dst) }
 
 // A temporary failure keeps the partial data and the claim, and runs again
 // no sooner than an hour later.
@@ -389,7 +405,7 @@ func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 		var before int
 		id := r.startOnWrite(s, func(int64) {
 			require.NoError(t, r.instances.Delete(t.Context(), r.source.ID))
-			before = r.src.Requests()
+			before = sent(r.src)
 		})
 
 		record := r.get(id)
@@ -397,7 +413,7 @@ func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 		require.Equal(t, transfer.FailurePermanent, record.FailureClass)
 		require.Contains(t, record.FailureReason, "was deleted")
 		require.Empty(t, tree(t, r.dstDir), "qui removes what it wrote on the target")
-		require.Equal(t, before, r.src.Requests())
+		require.Equal(t, before, sent(r.src))
 		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
 	})
 	t.Run("the target", func(t *testing.T) {
@@ -407,14 +423,14 @@ func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 		var before int
 		id := r.startOnWrite(s, func(int64) {
 			require.NoError(t, r.instances.Delete(t.Context(), r.target.ID))
-			before = r.dst.Requests()
+			before = sent(r.dst)
 		})
 
 		record := r.get(id)
 		require.Equal(t, transfer.StateFailed, record.State)
 		require.Equal(t, transfer.FailurePermanent, record.FailureClass)
 		require.Contains(t, record.FailureReason, "was deleted")
-		require.Equal(t, before, r.dst.Requests())
+		require.Equal(t, before, sent(r.dst))
 		require.True(t, r.src.Has(s.hash))
 		require.False(t, r.src.Stopped(s.hash))
 	})
@@ -441,6 +457,75 @@ func TestTransferStopsWhenAnEndpointChanges(t *testing.T) {
 	require.NotEmpty(t, tree(t, r.dstDir), "qui removes nothing there")
 	require.True(t, r.src.Has(s.hash))
 	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+}
+
+// moveTheCrossSeedInstance runs a Transfer whose add on the Cross-seed
+// instance leaves the member there but fails, so that a retry waits. Then the
+// Cross-seed instance gets the address of another client that has a torrent
+// with the hash of the member, and qui starts again.
+func (r *rig) moveTheCrossSeedInstance() (show, int64, *qbtstub.Server) {
+	r.t.Helper()
+	cs := r.withCrossSeedInstance()
+	cs.strand = "alignment_failed"
+	s := newShow(r.t, showName)
+	r.seed(s)
+	crossSeed, crossSeedHash := crossSeedOf(r.t, s)
+	r.src.Seed(crossSeed, r.srcPath())
+	r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
+	r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
+	record := r.run(r.request(s))
+	require.Equal(r.t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
+	require.True(r.t, cs.stub.Has(s.hash), "the add left the member on the Cross-seed instance")
+
+	other := r.t.TempDir()
+	moved := qbtstub.New(r.t, other)
+	moved.Seed(s.data, other)
+	_, err := r.instances.Update(r.t.Context(), cs.inst.ID, cs.inst.Name, moved.URL, "", "", nil, nil, nil)
+	require.NoError(r.t, err)
+	// The API drops the client of an instance that it updates. A new pool
+	// does the same here.
+	deps, _, sync := wire(r.t, r.db, r.disk, r.now)
+	deps.Routes, deps.CrossSeeds, deps.Config = r.deps.Routes, r.deps.CrossSeeds, r.deps.Config
+	r.deps, r.sync = deps, sync
+	r.restart()
+	return s, record.ID, moved
+}
+
+// A new address of the Cross-seed instance stops the Transfer, as a new
+// address of the target does. qui sends nothing to the new address.
+// regression: #4231
+func TestTransferStopsWhenTheCrossSeedInstanceGetsANewAddress(t *testing.T) {
+	r := newRig(t)
+	s, id, moved := r.moveTheCrossSeedInstance()
+
+	r.setClock(clock.Add(time.Hour))
+	r.svc.Wake()
+	r.svc.Wait()
+
+	record := r.get(id)
+	const reason = "The Cross-seed instance homelab cross-seed changed its address, its SSH server, or its file access " +
+		"since the Transfer started, so the Transfer stopped. qui cleans up nothing on homelab cross-seed."
+	require.Equal(t, transfer.StateFailed, record.State, record.FailureReason)
+	require.Equal(t, transfer.FailurePermanent, record.FailureClass, record.FailureReason)
+	require.Equal(t, reason, record.FailureReason)
+	require.Contains(t, logOf(record), "Failed: "+reason)
+	require.Zero(t, sent(moved), "qui sends nothing to the new address")
+	require.True(t, moved.Has(s.hash))
+}
+
+// A cancel after the Cross-seed instance got a new address removes nothing
+// there: the torrent at the new address is not the one that qui added.
+// regression: #4231
+func TestTransferCancelRemovesNothingFromACrossSeedInstanceWithANewAddress(t *testing.T) {
+	r := newRig(t)
+	s, id, moved := r.moveTheCrossSeedInstance()
+
+	require.NoError(t, r.svc.Cancel(t.Context(), id))
+	r.svc.Wait()
+
+	require.Equal(t, transfer.StateCancelled, r.get(id).State)
+	require.Zero(t, sent(moved), "qui sends nothing to the new address")
+	require.True(t, moved.Has(s.hash))
 }
 
 // A failure after qui stopped the source starts again only the torrents

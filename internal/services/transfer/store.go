@@ -188,7 +188,7 @@ func insertRecord(ctx context.Context, tx dbinterface.TxQuerier, r *Record) (int
 }
 
 func insertMember(ctx context.Context, tx dbinterface.TxQuerier, transferID int64, position int, m *Member) error {
-	placement, err := json.Marshal(placementJSON{Category: m.Placement.Category, Tags: m.Placement.Tags, ContentLayout: m.Placement.ContentLayout})
+	placement, err := json.Marshal(placementJSON{Category: m.Placement.Category, Tags: m.Placement.Tags, ContentLayout: m.Placement.ContentLayout, Endpoint: endpointJSONOf(m.Placement.Endpoint)})
 	if err != nil {
 		return err
 	}
@@ -247,6 +247,10 @@ func (s *Store) Get(ctx context.Context, id int64) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(members) == 0 {
+		// A removal of the Transfer came between the two reads.
+		return nil, fmt.Errorf("%w: %d", ErrNotFound, id)
+	}
 	r.Members = members
 	return &r, nil
 }
@@ -271,7 +275,7 @@ func (s *Store) members(ctx context.Context, transferID int64) ([]Member, error)
 		if err := json.Unmarshal([]byte(placement), &stored); err != nil {
 			return nil, fmt.Errorf("decode transfer member placement: %w", err)
 		}
-		m.Placement.Category, m.Placement.Tags, m.Placement.ContentLayout = stored.Category, stored.Tags, stored.ContentLayout
+		m.Placement.Category, m.Placement.Tags, m.Placement.ContentLayout, m.Placement.Endpoint = stored.Category, stored.Tags, stored.ContentLayout, stored.Endpoint.endpoint()
 		members = append(members, m)
 	}
 	return members, rows.Err()
@@ -534,9 +538,10 @@ func (e endpointJSON) endpoint() fsops.Endpoint {
 }
 
 type placementJSON struct {
-	Category      string   `json:"category"`
-	Tags          []string `json:"tags"`
-	ContentLayout string   `json:"contentLayout"`
+	Category      string       `json:"category"`
+	Tags          []string     `json:"tags"`
+	ContentLayout string       `json:"contentLayout"`
+	Endpoint      endpointJSON `json:"endpoint,omitzero"`
 }
 
 func nullTime(t time.Time) any {

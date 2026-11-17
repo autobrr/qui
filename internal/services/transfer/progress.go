@@ -76,6 +76,12 @@ func (m *meter) sample() {
 	if last := len(m.samples) - 1; last < 0 || now.Sub(m.samples[last].at) >= time.Second {
 		m.samples = append(m.samples, sample{at: now, done: m.done})
 	}
+	m.age(now)
+}
+
+// age drops the samples that the speed at now no longer needs: it keeps the
+// last sample from before the speedWindow and each one after.
+func (m *meter) age(now time.Time) {
 	for len(m.samples) > 1 && now.Sub(m.samples[1].at) >= speedWindow {
 		m.samples = m.samples[1:]
 	}
@@ -88,8 +94,10 @@ func (m *meter) progress() Progress {
 	if len(m.samples) == 0 {
 		return p
 	}
+	now := m.now()
+	m.age(now)
 	first := m.samples[0]
-	if elapsed := m.now().Sub(first.at); elapsed > 0 {
+	if elapsed := now.Sub(first.at); elapsed > 0 {
 		p.Speed = int64(float64(m.done-first.done) / elapsed.Seconds())
 	}
 	return p
@@ -99,16 +107,19 @@ func (m *meter) progress() Progress {
 // false for any other Transfer.
 func (s *Service) Progress(id int64) (Progress, bool) {
 	s.mu.Lock()
-	r, ok := s.runs[id]
+	var m *meter
+	if r, ok := s.runs[id]; ok {
+		m = r.meter
+	}
 	s.mu.Unlock()
-	if !ok || r.meter == nil {
+	if m == nil {
 		return Progress{}, false
 	}
-	r.meter.mu.Lock()
-	counting := r.meter.total > 0
-	r.meter.mu.Unlock()
+	m.mu.Lock()
+	counting := m.total > 0
+	m.mu.Unlock()
 	if !counting {
 		return Progress{}, false
 	}
-	return r.meter.progress(), true
+	return m.progress(), true
 }

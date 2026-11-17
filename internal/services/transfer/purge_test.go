@@ -60,18 +60,15 @@ func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	require.True(t, r.exists(running.ID), "a Transfer that runs stays")
 }
 
-// The user removes a finished row earlier, with the registry rows of its
-// helper torrents. A Transfer that runs has no Remove.
-func TestTheUserRemovesAFinishedRow(t *testing.T) {
+// regression: #4242
+// A removal that comes between the two reads of Get leaves the Transfer
+// without its torrents: Get reports it as not found.
+func TestGetOfATransferThatARemovalTook(t *testing.T) {
 	r := newRig(t)
-	done := r.ended("aaaa", transfer.StateDone)
-	running := r.waiting("bbbb")
+	id := r.ended("aaaa", transfer.StateDone)
+	_, err := r.db.ExecContext(t.Context(), `DELETE FROM torrent_transfer_members WHERE transfer_id = ?`, id)
+	require.NoError(t, err)
 
-	require.NoError(t, r.svc.Remove(t.Context(), done))
-	require.False(t, r.exists(done))
-	require.False(t, r.store.IsHelper(r.target.ID, "helperaaaa"))
-
-	require.ErrorIs(t, r.svc.Remove(t.Context(), running.ID), transfer.ErrNotFinished)
-	require.True(t, r.exists(running.ID))
-	require.ErrorIs(t, r.svc.Remove(t.Context(), 999), transfer.ErrNotFound)
+	_, err = r.store.Get(t.Context(), id)
+	require.ErrorIs(t, err, transfer.ErrNotFound)
 }

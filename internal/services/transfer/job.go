@@ -472,6 +472,11 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 		if j.crossSeed, err = j.svc.instance(ctx, p.TargetInstanceID); err != nil {
 			return permanent("%v", err)
 		}
+		if p.Placement.Endpoint.Changed(j.crossSeed) {
+			j.away[j.crossSeed.ID] = true
+			return permanent("The Cross-seed instance %s changed its address, its SSH server, or its file access since the Transfer started, "+
+				"so the Transfer stopped. qui cleans up nothing on %s.", j.crossSeed.Name, j.crossSeed.Name)
+		}
 	}
 	if j.files, j.byRel, err = groupFiles(j.parts); err != nil {
 		return permanent("The torrents of the group do not agree on their files: %v", err)

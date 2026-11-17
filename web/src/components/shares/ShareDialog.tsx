@@ -51,7 +51,7 @@ export function ShareDialog({ open, onOpenChange, instanceId, torrents }: ShareD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("dialog.title")}</DialogTitle>
           <DialogDescription>{t("dialog.description", { count: torrents.length, name: torrents[0]?.name ?? "" })}</DialogDescription>
@@ -96,7 +96,7 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
     return <ShareResult response={mutation.data} torrents={torrents} onClose={onClose} />
   }
 
-  const refusedResponse = mutation.error instanceof APIError ? (mutation.error.data as StartSharesResponse | undefined) : undefined
+  const refused = mutation.error instanceof APIError ? (mutation.error.data as Partial<StartSharesResponse> | undefined)?.refused : undefined
 
   return (
     <>
@@ -123,7 +123,7 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
           <Alert variant="destructive">
             <AlertDescription>
               {mutation.error.message}
-              {refusedResponse && refusedResponse.refused.length > 1 && <RefusedList refused={refusedResponse.refused} torrents={torrents} />}
+              {Array.isArray(refused) && refused.length > 1 && <RefusedList refused={refused} torrents={torrents} />}
             </AlertDescription>
           </Alert>
         )}
