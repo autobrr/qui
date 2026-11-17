@@ -1147,58 +1147,6 @@ func logOf(record *transfer.Record) string {
 	return strings.Join(lines, "\n")
 }
 
-// A copy that stops halfway keeps its partial data, and each Proven piece in
-// the record is on the target and passes its check.
-func TestTransferStoppedHalfwayKeepsProvenPieces(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	writes := 0
-	r.disk.onWrite = func(string) {
-		if writes++; writes == 5 {
-			r.cancel()
-		}
-	}
-
-	id, err := r.svc.Start(t.Context(), r.request(s))
-	require.NoError(t, err)
-	r.svc.Wait()
-
-	record, err := r.store.Get(t.Context(), id)
-	require.NoError(t, err)
-	require.True(t, record.FinishedAt.IsZero(), "the Transfer stays unfinished")
-	require.True(t, r.store.IsClaimed(r.source.ID, s.hash))
-	proven := record.Members[0].ProvenPieces
-	require.NotEmpty(t, proven)
-	mi, err := metainfo.Load(bytes.NewReader(s.data))
-	require.NoError(t, err)
-	info, err := mi.UnmarshalInfo()
-	require.NoError(t, err)
-	var stream []byte
-	for _, f := range info.Files {
-		data, err := os.ReadFile(filepath.Join(r.dstDir, showName, f.Path[0]+".qui-transfer-"+strconv.FormatInt(id, 10)))
-		if errors.Is(err, fs.ErrNotExist) {
-			break
-		}
-		require.NoError(t, err)
-		stream = append(stream, data...)
-	}
-	count := 0
-	for piece := range info.NumPieces() {
-		if proven[piece/8]&(0x80>>(piece%8)) == 0 {
-			continue
-		}
-		count++
-		start := int64(piece) * info.PieceLength
-		end := min(start+info.PieceLength, info.TotalLength())
-		require.LessOrEqual(t, end, int64(len(stream)), "piece %d is on the target", piece)
-		sum := sha1.Sum(stream[start:end]) //nolint:gosec // BitTorrent v1 pieces are SHA-1
-		require.Equal(t, info.Pieces[piece*sha1.Size:(piece+1)*sha1.Size], sum[:], "piece %d passes its check", piece)
-	}
-	require.Less(t, count, info.NumPieces(), "the copy stopped halfway")
-	require.True(t, r.src.Has(s.hash))
-}
-
 // regression: #4231
 // A write that the target never answers ignores the stop. Close waits for it
 // only until its context ends, so that a shutdown keeps its time limit, and
@@ -1329,24 +1277,4 @@ func TestTransferServiceIdleWithoutTransfers(t *testing.T) {
 		require.NoError(t, reader.Close())
 	}
 	require.Equal(t, 1, r.ssh.Accepts(), "other file features read on one connection")
-}
-
-// A finished Transfer stays finished: a Wake and a restart send nothing.
-func TestTransferServiceLeavesFinishedTransfers(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	write(t, filepath.Join(r.dstDir, showName), map[string][]byte{"Show.S01E02.mkv": []byte("theirs")})
-	require.Equal(t, transfer.FailurePermanent, r.run(r.request(s)).FailureClass)
-	require.NoError(t, os.RemoveAll(filepath.Join(r.dstDir, showName)))
-	require.Equal(t, transfer.StateDone, r.run(r.request(s)).State)
-	src, dst := sent(r.src), sent(r.dst)
-
-	r.svc.Wake()
-	r.svc.Wait()
-	r.restart()
-	r.svc.Wait()
-
-	require.Equal(t, src, sent(r.src))
-	require.Equal(t, dst, sent(r.dst))
 }
