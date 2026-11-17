@@ -127,12 +127,11 @@ func (j *job) pass(ctx context.Context, p *part) error {
 		return temporary("The check of the Transfer torrent on %s did not end.", j.target.Name)
 	}
 	seeded := torrent.Progress < 1
+	var left int64
 	if seeded {
-		left, err := j.claimLeft(torrent, read)
-		if err != nil {
+		if left, err = j.claimLeft(torrent, read); err != nil {
 			return err
 		}
-		defer j.unclaim(left)
 		if err := j.seedFromSource(ctx, p, helper, random, targetNames); err != nil {
 			return err
 		}
@@ -151,6 +150,8 @@ func (j *job) pass(ctx context.Context, p *part) error {
 			return temporary("qui cannot remove the Transfer torrent from %s: %v", inst.Name, err)
 		}
 	}
+	// A failed pass leaves its reservation to the end of the run.
+	j.unclaim(left)
 	// The fresh read of the source also drops the Transfer torrent from
 	// what qui knows of it.
 	if err := j.checkSource(ctx); err != nil {
