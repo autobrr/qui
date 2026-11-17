@@ -255,7 +255,7 @@ func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
 // sent counts the requests that a stub answered, without the reads of
 // torrents/info: the tracker health loop of qui sends one at a random time
 // after qui connects to a client, and no Transfer reads it.
-func sent(s *qbtstub.Server) int { return s.Requests() - s.Calls("torrents/info") }
+func sent(s *qbtstub.Server) int { return s.RequestsWithout("torrents/info") }
 
 // requests counts the requests that both stubs answered.
 func (r *rig) requests() int { return sent(r.src) + sent(r.dst) }

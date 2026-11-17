@@ -319,6 +319,14 @@ func (s *Server) Requests() int {
 	return s.requests
 }
 
+// RequestsWithout counts every request qBittorrent received, without the
+// requests on endpoint.
+func (s *Server) RequestsWithout(endpoint string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.requests - s.calls[endpoint]
+}
+
 // Syncs counts the sync/maindata requests qBittorrent received.
 func (s *Server) Syncs() int {
 	s.mu.Lock()
