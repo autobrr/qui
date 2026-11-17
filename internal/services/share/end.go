@@ -79,9 +79,10 @@ func (s *Service) removeTorrent(ctx context.Context, sh *Share) error {
 }
 
 // Check ends each active Share whose end condition holds, retries the
-// removal of each ending Share, and removes the rows of the Shares that
-// ended more than 30 days ago, with the registry rows of their Share
-// torrents. Run calls it at each tick.
+// removal of each ending Share, starts or stops qui's own tracker for the
+// active Shares, which retries a start that failed, and removes the rows of
+// the Shares that ended more than 30 days ago, with the registry rows of
+// their Share torrents. Run calls it at each tick.
 func (s *Service) Check(ctx context.Context) error {
 	if !s.on() {
 		return nil
@@ -112,7 +113,7 @@ func (s *Service) Check(ctx context.Context) error {
 		}
 		errs = append(errs, s.saveActivity(ctx, sh.ID))
 	}
-	errs = append(errs, s.removeOld(ctx))
+	errs = append(errs, s.refresh(ctx), s.removeOld(ctx))
 	return errors.Join(errs...)
 }
 

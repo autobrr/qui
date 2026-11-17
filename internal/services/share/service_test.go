@@ -516,6 +516,26 @@ func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	require.Equal(t, []share.Peer{{Address: "127.0.0.1:6881", Progress: 1, SeenAt: r.clock.Now()}}, ended.Peers)
 }
 
+// regression: #4231
+func TestTheShareTrackerStartsAtTheNextCheckOnceItsPortIsFree(t *testing.T) {
+	r := newRig(t)
+	sh := r.start(share.Request{})
+	r.svc.Close()
+	busy, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:"+strconv.Itoa(r.port))
+	require.NoError(t, err)
+
+	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	require.ErrorIs(t, r.svc.Resume(t.Context()), sharetracker.ErrPortBusy)
+	require.NoError(t, busy.Close())
+	r.check()
+
+	require.True(t, listening(r.port), "the tracker starts for the active Share")
+	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	r.announce(ownerURL, sh.HelperHash, 51413, 0, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(recipientURL, sh.HelperHash, 6881, 70, "started"))
+}
+
 func TestAShareKeepsToTheLimitsOfTheSettings(t *testing.T) {
 	r := newRig(t)
 	require.NoError(t, share.NewSettingsStore(r.db).SaveSettings(t.Context(), share.Options{
