@@ -56,10 +56,8 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 	if req.SourceInstanceID == req.TargetInstanceID {
 		return nil, nil, refuse("The Transfer source and the Transfer target are the same instance.")
 	}
-	if req.StartedBy == StartedByRule {
-		if err := s.waitsForUser(ctx, req.SourceInstanceID, hash); err != nil {
-			return nil, nil, err
-		}
+	if err := s.waitsForUser(ctx, req, hash); err != nil {
+		return nil, nil, err
 	}
 	source, err := s.instance(ctx, req.SourceInstanceID)
 	if err != nil {
@@ -101,12 +99,12 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 	if err != nil {
 		return nil, nil, err
 	}
-	if req.StartedBy == StartedByRule {
-		for _, member := range group[1:] {
-			if err := s.waitsForUser(ctx, source.ID, member.torrent.Hash); err != nil {
-				return nil, nil, err
-			}
-		}
+	others := make([]string, 0, len(group)-1)
+	for _, member := range group[1:] {
+		others = append(others, member.torrent.Hash)
+	}
+	if err := s.waitsForUser(ctx, req, others...); err != nil {
+		return nil, nil, err
 	}
 
 	placement := req.Placement
@@ -162,15 +160,20 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 	}, group, nil
 }
 
-// waitsForUser returns ErrWaitsForUser when the last Transfer of the torrent
-// failed for good.
-func (s *Service) waitsForUser(ctx context.Context, instanceID int, hash string) error {
-	waits, err := s.deps.Store.WaitsForUser(ctx, instanceID, hash)
-	if err != nil {
-		return err
+// waitsForUser returns ErrWaitsForUser for a Transfer that a rule starts when
+// the last Transfer of one of the torrents failed for good.
+func (s *Service) waitsForUser(ctx context.Context, req Request, hashes ...string) error {
+	if req.StartedBy != StartedByRule {
+		return nil
 	}
-	if waits {
-		return ErrWaitsForUser
+	for _, hash := range hashes {
+		waits, err := s.deps.Store.WaitsForUser(ctx, req.SourceInstanceID, hash)
+		if err != nil {
+			return err
+		}
+		if waits {
+			return ErrWaitsForUser
+		}
 	}
 	return nil
 }
