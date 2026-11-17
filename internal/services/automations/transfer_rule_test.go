@@ -6,6 +6,7 @@ package automations
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strconv"
 	"sync"
@@ -25,7 +26,7 @@ type transfers struct {
 	mu       sync.Mutex
 	started  []transfer.Request
 	previews []transfer.Request
-	// startErr is the answer of Start, by infohash.
+	// startErr is the answer of Start and Preview, by infohash.
 	startErr map[string]error
 	// preview is the answer of Preview, by infohash. Without one, Preview
 	// answers a Transfer of the torrent alone of 10 bytes, the way of the
@@ -55,6 +56,9 @@ func (f *transfers) Preview(_ context.Context, req transfer.Request) (*transfer.
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.previews = append(f.previews, req)
+	if err := f.startErr[req.Hash]; err != nil {
+		return nil, err
+	}
 	if preview, ok := f.preview[req.Hash]; ok {
 		return preview, nil
 	}
@@ -300,6 +304,28 @@ func TestTransferToInstanceAsksAgainAnHourAfterARefusal(t *testing.T) {
 	run()
 	require.Equal(t, 2, count(runner.hashes(), runningHash))
 	require.Len(t, storedTransferActivities(t, db, instanceIDs[0]), 2)
+}
+
+// regression: #4242
+// When qBittorrent moves a torrent of the group, the module refuses the
+// Transfer with ErrMoving. The rule records nothing and sets no hold, so the
+// next run asks again. A dry run lists nothing for it.
+func TestTransferToInstanceAsksAgainInTheNextRunWhileATorrentMoves(t *testing.T) {
+	svc, db, runner, instanceIDs := transferRig(t, snapshotTorrent, transfersOn)
+	runner.startErr = map[string]error{runningHash: fmt.Errorf("Show.S01E01.mkv shares the files of this torrent: %w", transfer.ErrMoving)}
+	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
+	run := func(dryRun bool) []*models.AutomationActivity {
+		t.Helper()
+		activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, dryRun)
+		require.NoError(t, err)
+		return activities
+	}
+
+	require.Empty(t, transferActivities(t, svc, instanceIDs[0], run(true)), "a dry run lists nothing")
+	run(false)
+	run(false)
+	require.Equal(t, []string{runningHash, runningHash}, runner.hashes(), "each run asks again")
+	require.Empty(t, storedTransferActivities(t, db, instanceIDs[0]))
 }
 
 // regression: #4242

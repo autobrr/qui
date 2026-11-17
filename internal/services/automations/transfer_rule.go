@@ -118,10 +118,11 @@ func (p pendingTransfer) request(instanceID int) transfer.Request {
 }
 
 // quiet reports whether the module turned the Transfer down for a reason
-// that needs no activity: another Transfer holds the torrent, or the last
-// one failed for good and waits for the user.
+// that needs no activity: another Transfer holds the torrent, the last one
+// failed for good and waits for the user, or qBittorrent moves a torrent of
+// the group, which the next run asks about again.
 func quiet(err error) bool {
-	return errors.Is(err, transfer.ErrClaimed) || errors.Is(err, transfer.ErrWaitsForUser)
+	return errors.Is(err, transfer.ErrClaimed) || errors.Is(err, transfer.ErrWaitsForUser) || errors.Is(err, transfer.ErrMoving)
 }
 
 // startTransfers starts the planned Transfers and records each start and each
