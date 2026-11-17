@@ -756,6 +756,7 @@ func (r *rig) ids() []int64 {
 
 func TestTheShareSettingsMoveTheTracker(t *testing.T) {
 	r := newRig(t)
+	r.useOutsideTracker()
 	r.start(share.Request{})
 	busy, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -765,6 +766,7 @@ func TestTheShareSettingsMoveTheTracker(t *testing.T) {
 
 	changed := before
 	changed.Tracker.Port = busy.Addr().(*net.TCPAddr).Port
+	changed.Tracker.PublicAddress = "http://127.0.0.1:" + strconv.Itoa(changed.Tracker.Port)
 	changed.Options.MaxActive = 3
 	require.ErrorIs(t, r.svc.SaveSettings(t.Context(), changed), sharetracker.ErrPortBusy)
 	after, err := r.svc.Settings(t.Context())
@@ -772,15 +774,51 @@ func TestTheShareSettingsMoveTheTracker(t *testing.T) {
 	require.Equal(t, before, after, "a busy port saves nothing")
 
 	changed.Tracker.Port = freePort(t)
-	require.NoError(t, r.svc.SaveSettings(t.Context(), changed))
+	changed.Tracker.PublicAddress = "http://127.0.0.1:" + strconv.Itoa(changed.Tracker.Port)
+	require.NoError(t, r.svc.SaveSettings(t.Context(), changed), "a Share on the outside tracker keeps no port")
 	after, err = r.svc.Settings(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, changed, after)
+	sh := r.start(share.Request{Hash: r.seed("Other.Show.S01.1080p-GRP")})
 	require.True(t, listening(changed.Tracker.Port))
-	require.False(t, listening(r.port))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	require.Equal(t, changed.Tracker.PublicAddress+"/announce/"+sh.RecipientSecret, recipientURL)
 
 	changed.Options.PeersPerShare = 0
 	require.ErrorIs(t, r.svc.SaveSettings(t.Context(), changed), share.ErrInvalidSettings)
+}
+
+// regression: #4231
+func TestTheShareSettingsKeepTheTrackerWhileASharesRunsOnIt(t *testing.T) {
+	r := newRig(t)
+	sh := r.start(share.Request{})
+	before, err := r.svc.Settings(t.Context())
+	require.NoError(t, err)
+
+	for name, change := range map[string]func(*sharetracker.Settings){
+		"a new port":           func(s *sharetracker.Settings) { s.Port = freePort(t) },
+		"a new public address": func(s *sharetracker.Settings) { s.PublicAddress = "http://198.51.100.20:" + strconv.Itoa(s.Port) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := before
+			change(&changed.Tracker)
+			err := r.svc.SaveSettings(t.Context(), changed)
+			require.True(t, share.IsRefusal(err), "%v", err)
+			require.EqualError(t, err, "End the active Shares on qui's tracker first: their .torrent files carry the old address.")
+			after, err := r.svc.Settings(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, before, after, "a refused change saves nothing")
+		})
+	}
+	require.True(t, listening(r.port), "the tracker stays for the active Share")
+
+	changed := before
+	changed.Options.MaxActive = 3
+	require.NoError(t, r.svc.SaveSettings(t.Context(), changed), "a save that keeps the port and the address")
+	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	r.announce(ownerURL, sh.HelperHash, 51413, 0, "started")
+	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(recipientURL, sh.HelperHash, 6881, 70, "started"))
 }
 
 func TestUnlockLetsTheNextDownloaderIn(t *testing.T) {

@@ -314,8 +314,8 @@ func (h *SharesHandler) Settings(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, settingsView(settings))
 }
 
-// SaveSettings saves the settings of Settings → Shares. A busy tracker port
-// answers 409.
+// SaveSettings saves the settings of Settings → Shares. A busy tracker port,
+// or a move of qui's tracker while a Share on it is active, answers 409.
 // PUT /api/shares/settings
 func (h *SharesHandler) SaveSettings(w http.ResponseWriter, r *http.Request) {
 	var body shareSettings
@@ -347,6 +347,9 @@ func (h *SharesHandler) SaveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, sharetracker.ErrPortBusy):
 		RespondError(w, http.StatusConflict, fmt.Sprintf("Another program uses port %d. Pick another port.", body.Port))
+		return
+	case share.IsRefusal(err):
+		RespondError(w, http.StatusConflict, err.Error())
 		return
 	case err != nil:
 		log.Error().Err(err).Msg("share: failed to save the Share settings")

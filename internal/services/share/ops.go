@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"slices"
 
 	"github.com/rs/zerolog/log"
 
@@ -139,9 +140,10 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 
 // SaveSettings saves the settings and applies them to the running tracker.
 // It returns an error that wraps ErrInvalidSettings or
-// sharetracker.ErrInvalidSettings for a value that qui does not take, and
-// sharetracker.ErrPortBusy when another program listens on the port of the
-// tracker. Then it saves nothing.
+// sharetracker.ErrInvalidSettings for a value that qui does not take, a
+// *RefusalError for a new port or public address of qui's tracker while a
+// Share on it is active, and sharetracker.ErrPortBusy when another program
+// listens on the port of the tracker. Then it saves nothing.
 func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
 	if !s.on() {
 		return ErrOff
@@ -154,6 +156,9 @@ func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
 	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
+	if err := s.keepTrackerOfActiveShares(ctx, settings.Tracker); err != nil {
+		return err
+	}
 	if err := s.tracker.CheckPort(ctx, settings.Tracker.Port); err != nil {
 		return err
 	}
@@ -164,6 +169,26 @@ func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
 		return err
 	}
 	return s.refresh(ctx)
+}
+
+// keepTrackerOfActiveShares refuses a new port or public address of qui's
+// tracker, also port 0 for the outside tracker, while a Share on it is active.
+func (s *Service) keepTrackerOfActiveShares(ctx context.Context, next sharetracker.Settings) error {
+	saved, err := s.deps.TrackerSettings.Settings(ctx)
+	if err != nil {
+		return err
+	}
+	if next.Port == saved.Port && next.PublicAddress == saved.PublicAddress {
+		return nil
+	}
+	unfinished, err := s.deps.Store.Unfinished(ctx)
+	if err != nil {
+		return err
+	}
+	if slices.ContainsFunc(unfinished, func(sh Share) bool { return sh.State == StateActive && sh.Tracker == TrackerOwn }) {
+		return refuse("End the active Shares on qui's tracker first: their .torrent files carry the old address.")
+	}
+	return nil
 }
 
 // IsRefusal reports whether err is a refusal for the user.
