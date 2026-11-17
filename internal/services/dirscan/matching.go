@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/autobrr/go-torrent/metainfo"
 
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -95,14 +97,10 @@ func (m *Matcher) Match(searchee *Searchee, torrentFiles []TorrentFile) *MatchRe
 		return result
 	}
 
-	// Try matching based on mode
-	switch m.mode {
-	case MatchModeStrict:
-		m.matchStrict(searchee, torrentFiles, result)
-	case MatchModeFlexible:
-		m.matchFlexible(searchee, torrentFiles, result)
-	default:
-		m.matchStrict(searchee, torrentFiles, result)
+	if searchee.IsArchived {
+		m.matchArchived(searchee, torrentFiles, result)
+	} else {
+		m.matchByMode(searchee, torrentFiles, result)
 	}
 
 	// Calculate ratios
@@ -127,16 +125,83 @@ func (m *Matcher) Match(searchee *Searchee, torrentFiles []TorrentFile) *MatchRe
 	}
 
 	// Determine match type
-	// Perfect match requires all searchee files matched AND all torrent files matched
+	// Perfect match requires all searchee files matched AND all torrent files matched.
+	// An archived release only needs every torrent file: extra files on disk,
+	// such as Thumbs.db, do not block it.
 	allSearcheeFilesMatched := matchedCount == totalSearcheeFiles
 	allTorrentFilesMatched := matchedCount == totalTorrentFiles
-	result.IsPerfectMatch = allSearcheeFilesMatched && allTorrentFilesMatched
+	result.IsPerfectMatch = (allSearcheeFilesMatched || searchee.IsArchived) && allTorrentFilesMatched
 	result.IsPartialMatch = matchedCount > 0 && !result.IsPerfectMatch
 	// IsMatch indicates we have at least one file-level match and can consider this
 	// candidate for injection. Acceptance (perfect vs partial) is decided elsewhere.
 	result.IsMatch = matchedCount > 0
 
 	return result
+}
+
+func (m *Matcher) matchByMode(searchee *Searchee, torrentFiles []TorrentFile, result *MatchResult) {
+	if m.mode == MatchModeFlexible {
+		m.matchFlexible(searchee, torrentFiles, result)
+		return
+	}
+	m.matchStrict(searchee, torrentFiles, result)
+}
+
+// matchArchived pairs the archive volumes of an archived release by their path
+// below the top folder and their size, in both modes, so that equal-size
+// volumes never pair with the wrong partner. The other files pair by mode.
+func (m *Matcher) matchArchived(searchee *Searchee, torrentFiles []TorrentFile, result *MatchResult) {
+	volumes := make(map[string][]int)
+	var otherTorrentFiles []TorrentFile
+	for i, tf := range torrentFiles {
+		if !crossseed.IsArchiveVolume(tf.Path) {
+			otherTorrentFiles = append(otherTorrentFiles, tf)
+			continue
+		}
+		// A multi-file torrent path starts with the torrent folder.
+		_, below, nested := strings.Cut(tf.Path, "/")
+		if !nested {
+			below = tf.Path
+		}
+		key := archivePathKey(below)
+		volumes[key] = append(volumes[key], i)
+	}
+
+	matched := make(map[int]bool)
+	others := &Searchee{}
+	for _, sf := range searchee.Files {
+		if !crossseed.IsArchiveVolume(sf.RelPath) {
+			others.Files = append(others.Files, sf)
+			continue
+		}
+		key := archivePathKey(filepath.ToSlash(sf.RelPath))
+		idx := slices.IndexFunc(volumes[key], func(i int) bool { return torrentFiles[i].Size == sf.Size })
+		if idx < 0 {
+			result.UnmatchedSearcheeFiles = append(result.UnmatchedSearcheeFiles, sf)
+			continue
+		}
+		i := volumes[key][idx]
+		volumes[key] = slices.Delete(volumes[key], idx, idx+1)
+		matched[i] = true
+		result.MatchedFiles = append(result.MatchedFiles, MatchedFilePair{SearcheeFile: sf, TorrentFile: torrentFiles[i]})
+	}
+	for i, tf := range torrentFiles {
+		if crossseed.IsArchiveVolume(tf.Path) && !matched[i] {
+			result.UnmatchedTorrentFiles = append(result.UnmatchedTorrentFiles, tf)
+		}
+	}
+
+	m.matchByMode(others, otherTorrentFiles, result)
+}
+
+// archivePathKey normalizes each segment of a slash path like a file name. It
+// lowercases first, so that movie.RAR and movie.rar give the same key.
+func archivePathKey(slashPath string) string {
+	segments := strings.Split(strings.ToLower(slashPath), "/")
+	for i, segment := range segments {
+		segments[i] = normalizeFileName(segment)
+	}
+	return strings.Join(segments, "/")
 }
 
 // matchStrict matches files by both name and size.

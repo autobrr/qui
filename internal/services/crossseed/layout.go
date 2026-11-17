@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"iter"
 	"path"
 	"regexp"
 	"strings"
@@ -31,16 +32,42 @@ var rarVolumeSuffix = regexp.MustCompile(`(?i)\.[r-z][0-9]{2}$`)
 // releases are structured in practice—the main payload is always the largest
 // file, and any side files (.nfo, .sfv, etc.) are tiny.
 func classifyTorrentLayout(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) TorrentLayout {
+	return classifyLayout(func(yield func(string, int64) bool) {
+		for _, f := range files {
+			if !yield(f.Name, f.Size) {
+				return
+			}
+		}
+	}, normalizer.Normalize)
+}
+
+// IsArchivedRelease reports whether a release stores its payload in archive
+// volumes: its largest file is an archive volume once samples, proofs, and
+// extras are left out. Names are slash paths relative to the release. Library
+// Scan and Dir Scan share this test.
+func IsArchivedRelease(files iter.Seq2[string, int64]) bool {
+	return classifyLayout(files, func(name string) string {
+		return strings.ToLower(strings.TrimSpace(name))
+	}) == LayoutArchives
+}
+
+// IsArchiveVolume reports whether a file name is an archive volume, such as a
+// .rar, .r00, .zip, or .7z file.
+func IsArchiveVolume(name string) bool {
+	return isArchiveFilename(strings.ToLower(name))
+}
+
+func classifyLayout(files iter.Seq2[string, int64], normalize func(string) string) TorrentLayout {
 	var largestName string
 	var largestSize int64
 
-	for _, f := range files {
-		if shouldIgnoreFile(f.Name, normalizer) {
+	for name, size := range files {
+		if isIgnoredFileName(normalize(name)) {
 			continue
 		}
-		if f.Size > largestSize {
-			largestSize = f.Size
-			largestName = f.Name
+		if size > largestSize {
+			largestSize = size
+			largestName = name
 		}
 	}
 
