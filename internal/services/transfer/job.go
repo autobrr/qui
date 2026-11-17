@@ -272,22 +272,29 @@ func (j *job) freeSpace(ctx context.Context) (free int64, known bool, err error)
 		}
 		return stat.BytesAvailable, true, nil
 	}
-	free, err = j.svc.deps.Sync.GetFreeSpaceAtPath(ctx, j.target.ID, j.rootDir)
+	return j.svc.clientFreeSpace(ctx, j.target, j.rootPaths, j.rootDir)
+}
+
+// clientFreeSpace reads the free space at dir on target as its qBittorrent
+// reports it. Before 5.3 qBittorrent reports it only at its default save
+// path, so elsewhere it is not known.
+func (s *Service) clientFreeSpace(ctx context.Context, target *models.Instance, d fsops.PathDialect, dir string) (free int64, known bool, err error) {
+	free, err = s.deps.Sync.GetFreeSpaceAtPath(ctx, target.ID, dir)
 	if !errors.Is(err, qbittorrent.ErrFreeSpaceAtPathUnsupported) {
 		if err != nil {
-			return 0, false, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+			return 0, false, temporary("qui cannot read the free space on %s: %v", target.Name, err)
 		}
 		return free, true, nil
 	}
-	prefs, err := j.svc.deps.Sync.GetAppPreferences(ctx, j.target.ID)
+	prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
 	if err != nil {
-		return 0, false, temporary("qui cannot read the default save path of %s: %v", j.target.Name, err)
+		return 0, false, temporary("qui cannot read the default save path of %s: %v", target.Name, err)
 	}
-	if j.rootPaths.Clean(prefs.SavePath) != j.rootDir {
+	if d.Clean(prefs.SavePath) != dir {
 		return 0, false, nil
 	}
-	if free, err = j.svc.deps.Sync.GetFreeSpace(ctx, j.target.ID); err != nil {
-		return 0, false, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+	if free, err = s.deps.Sync.GetFreeSpace(ctx, target.ID); err != nil {
+		return 0, false, temporary("qui cannot read the free space on %s: %v", target.Name, err)
 	}
 	return free, true, nil
 }
@@ -326,11 +333,7 @@ func (j *job) logStart(ctx context.Context, need int64, known bool) {
 }
 
 func (j *job) hint(ctx context.Context) {
-	for _, inst := range []*models.Instance{j.source, j.target} {
-		prefs, err := j.svc.deps.Sync.GetAppPreferences(ctx, inst.ID)
-		if err != nil || prefs.BittorrentProtocol != bittorrentTCPAndUTP {
-			continue
-		}
+	for _, inst := range j.svc.onTCPAndUTP(ctx, j.source, j.target) {
 		j.rec.Log = append(j.rec.Log, LogLine{
 			At: j.svc.deps.Now(),
 			Message: fmt.Sprintf(`%s uses qBittorrent's default "TCP and μTP". In qui's tests, "TCP only" was about three times faster. `+
@@ -338,6 +341,18 @@ func (j *job) hint(ctx context.Context) {
 			Hint: &Hint{Kind: HintTCPAndUTP, InstanceID: inst.ID},
 		})
 	}
+}
+
+// onTCPAndUTP returns the instances whose qBittorrent uses "TCP and μTP".
+func (s *Service) onTCPAndUTP(ctx context.Context, instances ...*models.Instance) []*models.Instance {
+	var out []*models.Instance
+	for _, inst := range instances {
+		prefs, err := s.deps.Sync.GetAppPreferences(ctx, inst.ID)
+		if err == nil && prefs.BittorrentProtocol == bittorrentTCPAndUTP {
+			out = append(out, inst)
+		}
+	}
+	return out
 }
 
 // bittorrentTCPAndUTP is "TCP and μTP" in qBittorrent's "Peer connection
