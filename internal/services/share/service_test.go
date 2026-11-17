@@ -613,6 +613,23 @@ func TestAShareKeepsToTheLimitsOfTheSettings(t *testing.T) {
 	r.start(share.Request{Hash: other})
 }
 
+// regression: #4231
+func TestAStartThatTheUserCancelsAfterTheAddEndsItsShare(t *testing.T) {
+	r := newRig(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	r.stub.OnAdd = func(string) { cancel() }
+
+	_, err := r.svc.Start(ctx, share.Request{InstanceID: r.instance.ID, Hash: r.hash})
+	require.True(t, share.IsRefusal(err), "%v", err)
+	r.check()
+
+	list, err := r.svc.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, share.StateEnded, list[0].State)
+	require.False(t, r.stub.Has(list[0].HelperHash), "the Share torrent leaves the client")
+}
+
 func TestAShareIsRefused(t *testing.T) {
 	for name, tc := range map[string]struct {
 		setup  func(r *rig)
