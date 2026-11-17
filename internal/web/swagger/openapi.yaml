@@ -6855,7 +6855,7 @@ paths:
         own disk or over SSH, or the two qBittorrents pass them by a Transfer torrent. Then qui checks every piece,
         adds the torrent to the target, and handles the source as the "after" field says. The route answers when the
         Transfer is recorded, before the copy starts. Transfers from the same source run one at a time, in the order
-        they started. Only a signed-in browser can use this route. The route is not available yet.
+        they started. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -6902,7 +6902,7 @@ paths:
       description: >-
         Lists the newest Transfers and Export to Instance runs, at most 500, behind a filter chip of the Transfers
         page, with the counts of every chip. Active is copying, checking, and finishing; Waiting is waiting; Finished
-        is done and cancelled; Failed is failed, also a failure that waits for its retry. Only a signed-in browser can use this route. The route is not available yet.
+        is done and cancelled; Failed is failed, also a failure that waits for its retry. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -6969,7 +6969,7 @@ paths:
       description: >-
         Plans the Transfer of the Transfer dialog with the checks of a start, and records, claims, and starts nothing.
         The answer names the torrents of the group, their size, the way, the free space on the target, and warnings.
-        Only a signed-in browser can use this route. The route is not available yet.
+        Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -7009,7 +7009,7 @@ paths:
       tags:
         - Transfers
       summary: Get a Transfer
-      description: Returns one Transfer or Export to Instance run with its steps, its log, and its torrents. Only a signed-in browser can use this route. The route is not available yet.
+      description: Returns one Transfer or Export to Instance run with its steps, its log, and its torrents. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -7045,7 +7045,7 @@ paths:
       summary: Remove a finished Transfer
       description: >-
         Removes the row of a finished Transfer or Export to Instance run before the 30 days are over, with the registry
-        rows of its helper torrents. Only a signed-in browser can use this route. The route is not available yet.
+        rows of its helper torrents. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -7086,7 +7086,7 @@ paths:
       description: >-
         Runs a failed or cancelled Transfer or Export to Instance run again. A Transfer that waits for its retry runs
         at once as the same Transfer. Any other starts again as a new Transfer or Export run with the same target and
-        choices, and the old row stays. Only a signed-in browser can use this route. The route is not available yet.
+        choices, and the old row stays. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -7137,7 +7137,7 @@ paths:
       summary: Cancel a Transfer
       description: >-
         Stops a Transfer or Export to Instance run and takes back what it did: qui removes the files that it wrote and
-        the torrents that it added, and starts the source again. The cleanup runs in the background. Only a signed-in browser can use this route. The route is not available yet.
+        the torrents that it added, and starts the source again. The cleanup runs in the background. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -7180,7 +7180,7 @@ paths:
         Starts one Share for each torrent. qui builds a Share torrent with the same pieces and a new infohash, and adds
         it to the client of the instance on the same files, forced and in seed mode. The recipient gets the .torrent of
         the Share. A Share needs qBittorrent 5.1 or newer, a tracker in the Share settings, and a complete torrent.
-        Only a signed-in browser can use this route. The route is not available yet.
+        Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -7247,7 +7247,6 @@ paths:
       summary: List the Shares
       description: >-
         Lists every Share, the newest first. An ended Share stays 30 days. Only a signed-in browser can use this route.
-        The route is not available yet.
       security:
         - SessionAuth: []
       responses:
@@ -7273,7 +7272,7 @@ paths:
       summary: Get the Share settings
       description: >-
         Returns the settings of Settings → Shares: qui's own tracker, the outside tracker URL, the limits, and the
-        defaults for a new Share. Only a signed-in browser can use this route. The route is not available yet.
+        defaults for a new Share. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       responses:
@@ -7295,7 +7294,7 @@ paths:
       summary: Save the Share settings
       description: >-
         Saves the settings of Settings → Shares and moves qui's own tracker to the new port. Only a signed-in browser
-        can use this route. The route is not available yet.
+        can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -7339,7 +7338,6 @@ paths:
       summary: Remove an ended Share
       description: >-
         Removes the row of an ended Share before the 30 days are over. Only a signed-in browser can use this route.
-        The route is not available yet.
       security:
         - SessionAuth: []
       parameters:
@@ -7379,8 +7377,7 @@ paths:
       summary: Stop a Share
       description: >-
         Ends an active Share. qui removes the Share torrent from the client and never deletes files. While the client
-        is offline, the Share stays "ending" and qui retries. Only a signed-in browser can use this route. The route is
-        not available yet.
+        is offline, the Share stays "ending" and qui retries. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -7414,7 +7411,7 @@ paths:
       summary: Unlock a Share
       description: >-
         Lets the next downloader of an active Share with "Only the first downloader" get the address of the client.
-        Only a signed-in browser can use this route. The route is not available yet.
+        Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -7454,7 +7451,7 @@ paths:
       summary: Download the .torrent of a Share
       description: >-
         Returns the .torrent for the recipient of a Share again. Anyone who has it can download until the Share ends.
-        Only a signed-in browser can use this route. The route is not available yet.
+        Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
