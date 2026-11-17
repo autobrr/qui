@@ -791,21 +791,43 @@ func TestTransferQueuesBySource(t *testing.T) {
 }
 
 // A file at a path that the copy writes stops the Transfer, and qui leaves
-// the file as it is.
+// the file as it is. So does a file at the original name of a file that the
+// source renamed: the rename after the add would move it over the copy.
 func TestTransferStopsAtAConflict(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	write(t, filepath.Join(r.dstDir, showName), map[string][]byte{"Show.S01E02.mkv": []byte("theirs")})
+	for _, tc := range []struct {
+		name   string
+		rename []string
+		theirs string
+		// sameSize gives the file in the way the size of the file of the
+		// torrent at its name.
+		sameSize bool
+	}{
+		{name: "a file at a name that the copy writes", theirs: "Show.S01E02.mkv"},
+		// regression: #4231
+		{name: "a file at the original name of a renamed file", rename: []string{"Show.S01E01.mkv", "Show.S01E00.mkv"},
+			theirs: "Show.S01E01.mkv", sameSize: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			s := newShow(t, showName)
+			r.seed(s)
+			r.renameOnSource(s, tc.rename...)
+			theirs := []byte("theirs")
+			if tc.sameSize {
+				theirs = bytes.Repeat([]byte("t"), len(s.files[tc.theirs]))
+			}
+			write(t, filepath.Join(r.dstDir, showName), map[string][]byte{tc.theirs: theirs})
 
-	record := r.run(r.request(s))
+			record := r.run(r.request(s))
 
-	require.Equal(t, transfer.StateFailed, record.State)
-	// regression: #4231
-	require.Contains(t, record.FailureReason, "Conflict: a file is in the way on homelab at "+filepath.Join(r.dstDir, showName, "Show.S01E02.mkv"))
-	require.Equal(t, map[string]string{showName + "/Show.S01E02.mkv": "theirs"}, tree(t, r.dstDir))
-	require.True(t, r.src.Has(s.hash))
-	require.False(t, r.src.Stopped(s.hash))
+			require.Equal(t, transfer.StateFailed, record.State, "target: %v", tree(t, r.dstDir))
+			// regression: #4231
+			require.Contains(t, record.FailureReason, "Conflict: a file is in the way on homelab at "+filepath.Join(r.dstDir, showName, tc.theirs))
+			require.Equal(t, map[string]string{showName + "/" + tc.theirs: string(theirs)}, tree(t, r.dstDir))
+			require.True(t, r.src.Has(s.hash))
+			require.False(t, r.src.Stopped(s.hash))
+		})
+	}
 }
 
 // A file that lands at a path of the copy during the copy stops the

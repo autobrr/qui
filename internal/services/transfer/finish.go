@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -443,7 +444,8 @@ func commonRoot(names []string) string {
 }
 
 // rename gives each file of the member on the target the name that it has
-// on the source.
+// on the source. A file at an old name is a conflict: qBittorrent would move
+// it over the copy.
 func (j *job) rename(ctx context.Context, p *part) error {
 	ctx = qbittorrent.WithPostAddBulkActionRetry(ctx)
 	want := names(p.plan)
@@ -457,6 +459,10 @@ func (j *job) rename(ctx context.Context, p *part) error {
 		for i, f := range listed {
 			if f.Name == want[i] {
 				continue
+			}
+			// On a target that ignores case, the old name of a rename in case is the copy.
+			if old := path.Join(p.dir, f.Name); !j.blind && !strings.EqualFold(f.Name, want[i]) && !j.absent(ctx, old) {
+				return j.inTheWay(old)
 			}
 			if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
 				return temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)

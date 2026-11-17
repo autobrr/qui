@@ -396,10 +396,8 @@ func (j *job) absent(ctx context.Context, names ...string) bool {
 func (j *job) removeMember(ctx context.Context, m *Member) (keep bool, err error) {
 	inst := j.target
 	if m.TargetInstanceID != j.target.ID {
-		if j.crossSeed == nil {
-			if j.crossSeed, err = j.svc.instance(ctx, m.TargetInstanceID); err != nil {
-				return false, err
-			}
+		if j.crossSeed, err = j.svc.instance(ctx, m.TargetInstanceID); err != nil {
+			return false, err
 		}
 		inst = j.crossSeed
 		if m.Placement.Endpoint.Changed(inst) {
