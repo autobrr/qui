@@ -48,7 +48,7 @@ export function RemoteAccessIndicator({ instance, variant, className }: RemoteAc
   return (
     <Tooltip>
       {/* A tap opens the tooltip, not the row, which a mouse click still opens. */}
-      <TooltipTrigger asChild onClick={(event) => (event.nativeEvent as PointerEvent).pointerType === "touch" && event.stopPropagation()}>
+      <TooltipTrigger asChild openOnTap onClick={(event) => (event.nativeEvent as PointerEvent).pointerType === "touch" && event.stopPropagation()}>
         {fact}
       </TooltipTrigger>
       <TooltipContent className="max-w-xs">

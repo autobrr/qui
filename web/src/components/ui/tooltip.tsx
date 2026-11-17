@@ -92,14 +92,29 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
   )
 }
 
-type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
+type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger> & {
+  /**
+   * Whether a tap on a touch device opens the tooltip. By default a tap opens it unless the tap also acts: it lands on
+   * an enabled link, button, form control, or menu item, at the trigger or around it. Set it on a button that only
+   * explains, or on a trigger that stops its tap from reaching the control around it.
+   */
+  openOnTap?: boolean
+}
 type TriggerPointerEvent = Parameters<NonNullable<TooltipTriggerProps["onPointerDown"]>>[0]
 type TriggerKeyEvent = Parameters<NonNullable<TooltipTriggerProps["onKeyDown"]>>[0]
+
+const CONTROL_SELECTOR = "a[href], button, input, select, textarea, label, [role=button], [role=menuitem], [role=option]"
+
+function tapActs(target: EventTarget) {
+  const control = target instanceof Element ? target.closest(CONTROL_SELECTOR) : null
+  const activated = control instanceof HTMLLabelElement ? control.control : control
+  return activated !== null && !activated.matches(":disabled, [aria-disabled=true]")
+}
 
 const TooltipTrigger = React.forwardRef<
   React.ComponentRef<typeof TooltipPrimitive.Trigger>,
   TooltipTriggerProps
->(({ onClick, onPointerDown, onPointerEnter, onKeyDown, ...props }, ref) => {
+>(({ openOnTap, onClick, onPointerDown, onPointerEnter, onKeyDown, ...props }, ref) => {
   const context = React.useContext(TooltipContext)
 
   const registerPointerType = context.registerPointerType
@@ -132,11 +147,10 @@ const TooltipTrigger = React.forwardRef<
         onPointerEnter={handlePointerEnter}
         onKeyDown={handleKeyDown}
         onClick={(e) => {
-          // Toggle tooltip on mobile
-          if (context.setOpen) {
-            context.setOpen(!context.isOpen)
+          // A bare trigger renders its own button, which does nothing but show the tooltip.
+          if (openOnTap ?? (!props.asChild || !tapActs(e.target))) {
+            context.setOpen?.(!context.isOpen)
           }
-          // Also call any custom onClick
           onClick?.(e)
         }}
         {...triggerProps}

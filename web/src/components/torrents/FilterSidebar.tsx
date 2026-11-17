@@ -1860,7 +1860,7 @@ const FilterSidebarComponent = ({
             <div className="flex items-center gap-2 min-w-0">
               <h3 className="font-semibold">{t("filterSidebar.title")}</h3>
               <Tooltip>
-                <TooltipTrigger asChild>
+                <TooltipTrigger asChild openOnTap>
                   <button
                     type="button"
                     className="text-muted-foreground hover:text-foreground"

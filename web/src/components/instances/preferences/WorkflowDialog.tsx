@@ -2556,7 +2556,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.grouping.title")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger asChild openOnTap>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3307,7 +3307,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     </Label>
                                     <TooltipProvider delayDuration={150}>
                                       <Tooltip>
-                                        <TooltipTrigger asChild>
+                                        <TooltipTrigger asChild openOnTap>
                                           <button
                                             type="button"
                                             className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3468,7 +3468,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </Label>
                             <TooltipProvider delayDuration={150}>
                               <Tooltip>
-                                <TooltipTrigger asChild>
+                                <TooltipTrigger asChild openOnTap>
                                   <button
                                     type="button"
                                     className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3830,7 +3830,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.freeSpace.title")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger asChild openOnTap>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3949,7 +3949,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <Label className="text-xs">{t("preferences.workflowDialog.category.skipIfCrossSeedExists")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger asChild openOnTap>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -4109,7 +4109,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   {deleteUsesFreeSpace && (
                     <TooltipProvider delayDuration={150}>
                       <Tooltip>
-                        <TooltipTrigger asChild>
+                        <TooltipTrigger asChild openOnTap>
                           <button
                             type="button"
                             className="inline-flex items-center text-muted-foreground hover:text-foreground"
