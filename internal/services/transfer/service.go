@@ -288,8 +288,15 @@ func (s *Service) drain(sourceID int) {
 
 		s.mu.Lock()
 		s.queues[sourceID] = s.queues[sourceID][1:]
-		delete(s.runs, id)
+		cancelled := s.runs[id].cancelled
+		if !cancelled {
+			delete(s.runs, id)
+		}
 		s.mu.Unlock()
+		// A cancel that came while the run ended still rolls it back.
+		if cancelled {
+			s.rollBack(context.WithoutCancel(s.ctx), id)
+		}
 	}
 }
 

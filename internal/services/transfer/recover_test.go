@@ -531,6 +531,38 @@ func TestTransferCancel(t *testing.T) {
 		require.Equal(t, transfer.StateDone, r.get(id).State)
 		require.False(t, r.src.Has(s.hash))
 	})
+	// regression: #4231
+	t.Run("while the run records a temporary failure", func(t *testing.T) {
+		r := newRig(t)
+		s := newShow(t, showName)
+		r.seed(s)
+		r.dst.OnWrite = func(endpoint string) {
+			r.dst.Reject = 0
+			if endpoint == "torrents/start" {
+				r.dst.Reject = http.StatusInternalServerError
+			}
+		}
+		ids := make(chan int64, 1)
+		cancel := sync.OnceFunc(func() { require.NoError(t, r.svc.Cancel(t.Context(), <-ids)) })
+		r.src.OnWrite = func(endpoint string) {
+			if endpoint == "torrents/start" {
+				cancel()
+			}
+		}
+		id, err := r.svc.Start(t.Context(), r.request(s))
+		require.NoError(t, err)
+		ids <- id
+		r.svc.Wait()
+
+		record := r.get(id)
+		require.Equal(t, transfer.StateCancelled, record.State, record.FailureReason)
+		require.False(t, record.FinishedAt.IsZero())
+		require.False(t, r.dst.Has(s.hash), "qui removes the torrent that it added")
+		require.Empty(t, tree(t, r.dstDir))
+		require.True(t, r.src.Has(s.hash))
+		require.False(t, r.src.Stopped(s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+	})
 	t.Run("a Transfer that waits for its retry", func(t *testing.T) {
 		r := newRig(t)
 		s := newShow(t, showName)
