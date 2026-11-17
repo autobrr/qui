@@ -27,11 +27,21 @@ func (f fakeHelpers) IsHelper(instanceID int, hash string) bool {
 	return instanceID == f.instanceID && f.hashes[hash]
 }
 
-func (f fakeHelpers) HelperCheck(instanceID int) func(hash string) bool {
-	if instanceID != f.instanceID || len(f.hashes) == 0 {
+func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
+	if instanceID != f.instanceID {
 		return nil
 	}
-	return func(hash string) bool { return f.hashes[hash] }
+	var kinds map[string]string
+	for hash, helper := range f.hashes {
+		if !helper {
+			continue
+		}
+		if kinds == nil {
+			kinds = make(map[string]string)
+		}
+		kinds[hash] = "transfer"
+	}
+	return kinds
 }
 
 // Reannounce neither watches nor reannounces a helper torrent. A torrent of
