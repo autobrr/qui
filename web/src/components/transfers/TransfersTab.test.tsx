@@ -414,6 +414,31 @@ describe("the Transfers tab", () => {
     expect(selectionBar()).toBeNull()
   })
 
+  // regression: #4242
+  it("holds the steps of each row that a bulk step names until the bulk step answers", async () => {
+    let answer: () => void = () => {}
+    const answered = new Promise<void>(resolve => { answer = resolve })
+    server.use(http.post("*/api/transfers/bulk", async ({ request }) => {
+      requests.push(`POST /api/transfers/bulk ${JSON.stringify(await request.json())}`)
+      await answered
+      return HttpResponse.json({ done: 1, skipped: 0, failed: 0, reasons: [] })
+    }))
+    renderTab()
+    const retry = within(await rowOf("Film.2019.2160p-ABC")).getByRole<HTMLButtonElement>("button", { name: "Retry" })
+    const other = within(await rowOf("Doc.2018.720p-QRS")).getByRole<HTMLButtonElement>("button", { name: "Retry" })
+    await tick("Film.2019.2160p-ABC")
+    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Retry" }))
+    await waitFor(() => expect(requests).toContain("POST /api/transfers/bulk {\"action\":\"retry\",\"ids\":[2]}"))
+    expect(retry.disabled).toBe(true)
+    expect(other.disabled).toBe(false)
+    fireEvent.click(retry)
+    answer()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("1 row runs again.", undefined))
+    await waitFor(() => expect(retry.disabled).toBe(false))
+    expect(requests.filter(r => r.endsWith("/retry"))).toEqual([])
+  })
+
   it("picks every row behind the chip, on every page, and sends the chip in place of the ids", async () => {
     const long = { active: 0, waiting: 120, finished: 0, failed: 0 }
     server.use(http.get("*/api/transfers", ({ request }) => {

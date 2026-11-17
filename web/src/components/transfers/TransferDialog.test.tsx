@@ -231,16 +231,16 @@ describe("the Transfer dialog", () => {
       const labels = () => Array.from(line.querySelectorAll("dt"), label => label.textContent)
       const value = (label: string) =>
         Array.from(line.querySelectorAll("dt")).find(term => term.textContent === label)?.nextElementSibling?.textContent
-      expect(labels()).toEqual(["Torrents", "Way", "Size", "Free on the target"])
+      expect(labels()).toEqual(["Size", "Free on the target", "Way"])
       expect(line.getAttribute("aria-busy")).toBe("true")
       act(() => answer())
       await waitFor(() => expect(value("Size")).toBe("4 GiB"))
-      expect(labels()).toEqual(["Torrents", "Way", "Size", "Free on the target"])
-      expect(value("Torrents")).toBe("2")
+      expect(labels()).toEqual(["Size", "Free on the target", "Way"])
       expect(line.compareDocumentPosition(startButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
       expect(screen.queryByText("Show.S01.1080p-GRP.cs")).toBeNull()
       const torrents = screen.getByRole("button", { name: /^Torrents/ })
+      expect(torrents.textContent).toBe("Torrents2")
       expect(torrents.getAttribute("aria-expanded")).toBe("false")
       fireEvent.click(torrents)
       expect(torrents.getAttribute("aria-expanded")).toBe("true")

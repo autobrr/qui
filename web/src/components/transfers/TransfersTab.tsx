@@ -55,8 +55,9 @@ export function TransfersTab() {
   const [selection, setSelection] = useState<Selection>(noSelection)
   // The id of the row that the user ticked last, for a range with Shift.
   const lastTicked = useRef<number | null>(null)
-  // The step for the picked rows that waits for the question. The step stays while the dialog fades out.
-  const [asking, setAsking] = useState<{ action: "cancel" | "remove"; open: boolean } | null>(null)
+  // The step for the picked rows that waits for the question. The step and its count stay while the dialog fades out,
+  // after the step cleared the selection.
+  const [asking, setAsking] = useState<{ action: "cancel" | "remove"; open: boolean; count: number } | null>(null)
 
   const list = useQuery({
     ...transferListQuery(filter, page),
@@ -111,8 +112,14 @@ export function TransfersTab() {
   const retrying = usePendingIds(retryKey)
   const cancelRuns = usePendingIds(cancelKey)
   const removing = usePendingIds(removeKey)
+  // A bulk step holds the rows that it names, or each row of its chip.
+  const bulkStep = (id: number): RowStep | null => {
+    if (!bulk.isPending) return null
+    const { request } = bulk.variables
+    return !("ids" in request) || request.ids.includes(id) ? request.action : null
+  }
   const runningStep = (id: number): RowStep | null =>
-    retrying.has(id) ? "retry" : cancelRuns.has(id) ? "cancel" : removing.has(id) ? "remove" : null
+    retrying.has(id) ? "retry" : cancelRuns.has(id) ? "cancel" : removing.has(id) ? "remove" : bulkStep(id)
   const counts = list.data?.counts
   const rows = list.data?.rows ?? []
   // The rows of the last chip or page show until the new rows arrive. They take no tick and no step until then.
@@ -156,7 +163,7 @@ export function TransfersTab() {
   }
   const pickAction = (action: TransferBulkAction) => {
     if (action === "retry") runBulk(action).catch(() => {})
-    else setAsking({ action, open: true })
+    else setAsking({ action, open: true, count: pickedCount })
   }
 
   return (
@@ -275,7 +282,7 @@ export function TransfersTab() {
           open={asking.open}
           onOpenChange={open => setAsking(prev => prev && { ...prev, open })}
           title={t(`bulk.${asking.action}Dialog.title`)}
-          description={t(`bulk.${asking.action}Dialog.description`, { count: pickedCount })}
+          description={t(`bulk.${asking.action}Dialog.description`, { count: asking.count })}
           confirmLabel={t(`bulk.${asking.action}Dialog.confirm`)}
           cancelLabel={t(`bulk.${asking.action}Dialog.keep`)}
           onConfirm={() => runBulk(asking.action)}
@@ -354,8 +361,10 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
             <StateLabel state={row.state} />
             <span aria-hidden="true">·</span>
           </span>
-          <span>{started}</span>
-          <span aria-hidden="true">·</span>
+          <span className="flex items-center gap-1.5">
+            <span>{started}</span>
+            <span aria-hidden="true">·</span>
+          </span>
           <span className="[overflow-wrap:anywhere]"><StartedBy row={row} /></span>
         </div>
         <div className="@lg:hidden">

@@ -227,17 +227,20 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
 /** The figures next to Start, in two rows at every width, so the footer keeps its height while they load. */
 function SummaryLine({ state }: { state: SummaryState }) {
   const { t } = useTranslation("transfers")
-  const figures = useFigures(state)
+  // The toggle below the form counts the torrents, so the line leaves them out.
+  const [, way, size, free] = useFigures(state)
   const loading = loadingOf(state)
 
   if (state.kind === "pickTarget") return <p className="min-h-[2.125rem] text-xs text-muted-foreground">{t("summary.pickTarget")}</p>
   if (state.kind === "refused") {
-    return <p role="alert" className="line-clamp-2 min-h-[2.125rem] text-xs text-destructive">{t("summary.refused", { message: state.message })}</p>
+    // The reason shows in full: it says why Start does not work.
+    return <p role="alert" className="min-h-[2.125rem] text-xs text-destructive [overflow-wrap:anywhere]">{t("summary.refused", { message: state.message })}</p>
   }
   return (
     <section aria-label={t("summary.title")} aria-busy={loading} className="flex min-h-[2.125rem] items-start gap-2">
-      <dl className={cn("grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-0.5 text-xs leading-4 transition-opacity", dimOf(state))}>
-        {figures.map(({ label, text, tone }) => (
+      {/* Size and free space take fixed halves, and the spinner has its own place, so no value moves when the summary loads. */}
+      <dl className={cn("grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-0.5 text-xs leading-4 transition-opacity", dimOf(state))}>
+        {[size, free].map(({ label, text, tone }) => (
           <div key={label} className="flex min-w-0 items-baseline gap-1">
             <dt className="min-w-0 truncate text-muted-foreground">{label}</dt>
             <dd className={cn("shrink-0 whitespace-nowrap font-medium tabular-nums", tone === "warning" && warningTone)}>
@@ -245,8 +248,14 @@ function SummaryLine({ state }: { state: SummaryState }) {
             </dd>
           </div>
         ))}
+        <div className="col-span-2 flex min-w-0 items-baseline gap-1">
+          <dt className="shrink-0 text-muted-foreground">{way.label}</dt>
+          <dd className="min-w-0 truncate font-medium">
+            <FigureValue state={state} text={way.text} skeleton="inline-block h-3 w-24 align-middle" />
+          </dd>
+        </div>
       </dl>
-      {loading && <Planning />}
+      <span className="flex w-3.5 shrink-0">{loading && <Planning />}</span>
     </section>
   )
 }

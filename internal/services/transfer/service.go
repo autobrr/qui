@@ -128,9 +128,11 @@ type Service struct {
 	// purged is when qui last removed the rows that finished more than
 	// keepFinished ago.
 	purged time.Time
-	// rollingBack lets one rollback of a cancel run at a time, so that a
-	// cancel of many Transfers does not send all their cleanups to the
-	// instances at once.
+	// rollingBack lets one rollback that Cancel starts run at a time, so
+	// that a cancel of many Transfers does not send all their cleanups to
+	// the instances at once. The rollback of a run that a cancel stopped
+	// does not wait for it: the next Transfers of its source wait for that
+	// rollback.
 	rollingBack sync.Mutex
 }
 
@@ -401,14 +403,9 @@ func (s *Service) runOne(ctx context.Context, id int64, m *meter) {
 // Once the removal of the torrent from the source started, Cancel returns
 // ErrCancelTooLate, and once an Export run records its end, ErrFinished.
 func (s *Service) Cancel(ctx context.Context, id int64) error {
-	record, err := s.deps.Store.Get(ctx, id)
-	switch {
-	case err != nil:
+	record, err := s.current(ctx, id)
+	if err != nil {
 		return err
-	case !record.FinishedAt.IsZero():
-		return ErrFinished
-	case s.newJob(record).reached(stepRemoveFromSource):
-		return ErrCancelTooLate
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -416,16 +413,15 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 		return errShutdown
 	}
 	r, held := s.runs[id]
-	switch {
-	case !held && record.Kind == KindExport:
+	if !held {
 		// The run may have ended since the read above: it leaves s.runs only
 		// after it saved its end.
-		if record, err = s.deps.Store.Get(ctx, id); err != nil {
+		if record, err = s.current(ctx, id); err != nil {
 			return err
 		}
-		if !record.FinishedAt.IsZero() {
-			return ErrFinished
-		}
+	}
+	switch {
+	case !held && record.Kind == KindExport:
 		s.runs[id] = &run{cancelled: true}
 		s.wg.Go(func() {
 			(&exportJob{job: s.newJob(record), ruleName: record.Steps[0].Detail}).cancel(context.WithoutCancel(ctx))
@@ -467,8 +463,26 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 	if !held {
 		s.runs[id] = &run{cancelled: true}
 	}
-	s.wg.Go(func() { s.rollBack(context.WithoutCancel(ctx), id) })
+	s.wg.Go(func() {
+		s.rollingBack.Lock()
+		defer s.rollingBack.Unlock()
+		s.rollBack(context.WithoutCancel(ctx), id)
+	})
 	return nil
+}
+
+// current reads the record of a Transfer that a cancel can still stop.
+func (s *Service) current(ctx context.Context, id int64) (*Record, error) {
+	record, err := s.deps.Store.Get(ctx, id)
+	switch {
+	case err != nil:
+		return nil, err
+	case !record.FinishedAt.IsZero():
+		return nil, ErrFinished
+	case s.newJob(record).reached(stepRemoveFromSource):
+		return nil, ErrCancelTooLate
+	}
+	return record, nil
 }
 
 // keepCancel saves the cancel of a Transfer that does not run, so that a
@@ -488,8 +502,6 @@ func (s *Service) keepCancel(ctx context.Context, record *Record) (ended bool, e
 
 // rollBack takes back what a cancelled Transfer did that does not run.
 func (s *Service) rollBack(ctx context.Context, id int64) {
-	s.rollingBack.Lock()
-	defer s.rollingBack.Unlock()
 	defer func() {
 		s.mu.Lock()
 		delete(s.runs, id)

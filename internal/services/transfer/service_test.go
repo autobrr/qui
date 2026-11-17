@@ -959,38 +959,20 @@ func TestCancelOfAWaitingTransferRunsNoCleanup(t *testing.T) {
 
 // regression: #4242
 // A cancel that saved its state, but that a stop of qui cut before the end,
-// ends the Transfer when its turn comes. The Transfer does not run.
-func TestASavedCancelEndsTheTransferAtItsTurn(t *testing.T) {
+// ends the Transfer at the next start. The Transfer does not run.
+func TestASavedCancelEndsTheTransferAtTheNextStart(t *testing.T) {
 	r := newRig(t)
-	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")
-	r.seed(first)
-	write(t, filepath.Join(r.srcDir, "Other.Show.S02.720p-GRP"), second.files)
-	r.src.Seed(second.data, r.srcPath())
-	copying, held := make(chan struct{}), make(chan struct{})
-	release := sync.OnceFunc(func() { close(held) })
-	t.Cleanup(release)
-	var once sync.Once
-	r.disk.onWrite = func(string) {
-		once.Do(func() {
-			close(copying)
-			<-held
-		})
-	}
-
-	_, err := r.svc.Start(t.Context(), r.request(first))
-	require.NoError(t, err)
-	<-copying
-	secondID, err := r.svc.Start(t.Context(), r.request(second))
-	require.NoError(t, err)
 	// The first write of a cancel of a waiting Transfer, without the second.
-	record := r.get(secondID)
-	record.State = transfer.StateCancelled
-	record.Steps = append(record.Steps, transfer.Step{Name: string(transfer.StateCancelled), At: r.now()})
+	record := r.waiting("bbbb")
+	record.State, record.RetryAt = transfer.StateCancelled, time.Time{}
+	record.Steps = []transfer.Step{{Name: "start", At: r.now()}, {Name: string(transfer.StateCancelled), At: r.now()}}
 	require.NoError(t, r.store.Save(t.Context(), record))
-	release()
+	require.True(t, r.store.IsClaimed(r.source.ID, "bbbb"))
+
+	r.restart()
 	r.svc.Wait()
 
-	cancelled := r.get(secondID)
+	cancelled := r.get(record.ID)
 	require.Equal(t, transfer.StateCancelled, cancelled.State)
 	require.False(t, cancelled.FinishedAt.IsZero(), "the Transfer ended")
 	steps := make([]string, 0, len(cancelled.Steps))
@@ -998,7 +980,7 @@ func TestASavedCancelEndsTheTransferAtItsTurn(t *testing.T) {
 		steps = append(steps, step.Name)
 	}
 	require.Equal(t, []string{"start", "cancelled"}, steps, "the Transfer did not run")
-	require.False(t, r.store.IsClaimed(r.source.ID, second.hash), "the end frees the torrent")
+	require.False(t, r.store.IsClaimed(r.source.ID, "bbbb"), "the end frees the torrent")
 }
 
 // regression: #4242

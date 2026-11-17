@@ -251,6 +251,35 @@ func TestCancelLeavesAnExportRunThatEndedMeanwhile(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
 }
 
+// regression: #4242
+// A cancel that read a Transfer just before the Transfer ended leaves the
+// done Transfer as it is, with its torrent on the target.
+func TestCancelLeavesATransferThatEndedMeanwhile(t *testing.T) {
+	r := newRig(t)
+	hold := newHoldAt(r.db, "added")
+	var armed atomic.Bool
+	pause := pauseRead{Querier: hold, armed: &armed, held: make(chan struct{}), release: make(chan struct{})}
+	r.restartOn(pause)
+	s := newShow(t, showName)
+	r.seed(s)
+
+	id, err := r.svc.Start(t.Context(), r.request(s))
+	require.NoError(t, err)
+	<-hold.held
+	armed.Store(true)
+	cancelled := make(chan error, 1)
+	go func() { cancelled <- r.svc.Cancel(t.Context(), id) }()
+	<-pause.held
+	close(hold.release)
+	r.svc.Wait()
+	close(pause.release)
+
+	require.ErrorIs(t, <-cancelled, transfer.ErrFinished)
+	r.svc.Wait()
+	require.Equal(t, transfer.StateDone, r.get(id).State)
+	require.True(t, r.dst.Has(s.hash), "the torrent of the done Transfer stays on the target")
+}
+
 // holdCreate holds the first write of a Transfer after its commit, once
 // armed, until release closes.
 type holdCreate struct {

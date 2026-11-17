@@ -154,7 +154,7 @@ Each row has these actions:
 
 On a phone, the actions of a row are in one menu.
 
-To act on many rows at once, select the box at the start of each row. To select a range of rows, hold Shift when you select the box of the last row. The box in the header selects all the rows of the page. After you select all the rows of the page, **Select all** selects each row of the chip, also the rows on the other pages.
+To act on many rows at once, select the box at the start of each row. To select a range of rows, hold Shift when you select the box of the last row. The box in the header selects all the rows of the page. After you select all the rows of the page, **Select all** selects each row of the chip, also the rows on the other pages. When you confirm an action after **Select all**, qui acts on the rows that are in the chip at that time. These can include rows that an automation added after the selection.
 
 A bar at the bottom of the list shows **Retry**, **Cancel**, and **Remove** for the selected rows. An action changes only the rows where it is possible, and qui skips the other rows. For example, **Cancel** skips a Transfer that ended. **Retry** acts only on rows of the page that you select. After **Select all**, the bar does not show **Retry**, because qui plans each Transfer again. qui asks before it cancels or removes rows. The message after the action tells you how many rows changed and how many qui skipped. If qui refused a row, the message gives the reason.
 

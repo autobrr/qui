@@ -11,8 +11,9 @@ import { useTranslation } from "react-i18next"
 
 const icons: Record<TransferBulkAction, LucideIcon> = { retry: RotateCcw, cancel: X, remove: Trash2 }
 
-// A phone fits two buttons on a line. A third one takes the next line, so no button leaves the screen.
-const phoneButton = "max-sm:h-11 max-sm:min-w-[calc(50%-0.1875rem)] max-sm:flex-1"
+// On a phone the steps share their own line in equal parts. A step that does not fit takes the next line, so no button
+// leaves the screen.
+const phoneButton = "max-sm:h-11 max-sm:flex-1 max-sm:basis-0"
 
 interface TransferSelectionBarProps {
   count: number
@@ -39,7 +40,8 @@ export function TransferSelectionBar({ count, wholeChip, more, actions, running,
         aria-label={t("bulk.label")}
         className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-popover py-2 pr-2 pl-4 text-popover-foreground shadow-lg max-sm:gap-y-2 max-sm:pl-3"
       >
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3">
+        {/* On a phone the count and the mark that clears it share the first line, and the steps take the line below. */}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 max-sm:flex-1 max-sm:basis-0">
           <p aria-live="polite" className="text-sm font-medium tabular-nums">
             {wholeChip ? t("bulk.wholeChip", { count }) : t("bulk.picked", { count })}
           </p>
@@ -49,7 +51,7 @@ export function TransferSelectionBar({ count, wholeChip, more, actions, running,
             </Button>
           )}
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5 max-sm:w-full">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5 max-sm:order-1 max-sm:w-full">
           {actions.map(action => {
             const Icon = icons[action]
             return (
@@ -66,12 +68,12 @@ export function TransferSelectionBar({ count, wholeChip, more, actions, running,
               </Button>
             )
           })}
-          {/* The X of the bar would read as the X of Cancel, so the selection clears with its own mark. */}
-          <Button variant="ghost" size="sm" className={cn("text-muted-foreground", phoneButton)} onClick={onClear}>
-            <ListX aria-hidden="true" />
-            {t("bulk.clear")}
-          </Button>
         </div>
+        {/* The X of the bar would read as the X of Cancel, so the selection clears with its own mark. */}
+        <Button variant="ghost" size="sm" className="text-muted-foreground max-sm:size-11 max-sm:px-0" onClick={onClear}>
+          <ListX aria-hidden="true" />
+          <span className="max-sm:sr-only">{t("bulk.clear")}</span>
+        </Button>
       </div>
     </div>
   )
