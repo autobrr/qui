@@ -3,14 +3,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isDemo } from "@/lib/demo"
 import type { Torrent } from "@/types"
 
 /**
  * Which of "Transfer to instance…" and "Share with someone…" the torrent menu
  * offers. Both need each torrent of the selection by name, on one instance, and
- * no helper torrent of a Transfer or a Share. A Transfer moves one torrent.
+ * no helper torrent of a Transfer or a Share. A Transfer moves one torrent. The
+ * demo offers neither, because it serves no Transfer or Share request.
  */
 export function transferShareOffer(torrents: Torrent[], count: number, instanceIds: number[] | undefined): { transfer: boolean; share: boolean } {
-  const share = count > 0 && torrents.length === count && instanceIds?.length === 1 && !torrents.some((torrent) => torrent.qui_helper)
+  const share = !isDemo && count > 0 && torrents.length === count && instanceIds?.length === 1 && !torrents.some((torrent) => torrent.qui_helper)
   return { transfer: share && count === 1, share }
 }
