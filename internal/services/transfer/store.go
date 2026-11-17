@@ -517,15 +517,9 @@ func (s *Store) HelperKinds(instanceID int) map[string]string {
 // torrent.
 func (s *Store) HelperCheck(instanceID int) func(hash string) bool {
 	s.mu.RLock()
-	kinds := hashesOn(s.helpers, instanceID)
+	helpers := hashesOn(nil, s.helpers, instanceID)
 	s.mu.RUnlock()
-	if kinds == nil {
-		return nil
-	}
-	return func(hash string) bool {
-		_, ok := kinds[lowerHash(hash)]
-		return ok
-	}
+	return hashCheck(helpers)
 }
 
 // HoldCheck reports for a pass over the torrents of one instance whether Hold
@@ -533,33 +527,37 @@ func (s *Store) HelperCheck(instanceID int) func(hash string) bool {
 // returns nil when Hold refuses no torrent of the instance.
 func (s *Store) HoldCheck(instanceID int) func(hash string) bool {
 	s.mu.RLock()
-	claims, helpers := hashesOn(s.claims, instanceID), hashesOn(s.helpers, instanceID)
+	held := hashesOn(hashesOn(nil, s.claims, instanceID), s.helpers, instanceID)
 	s.mu.RUnlock()
-	if claims == nil && helpers == nil {
-		return nil
-	}
-	return func(hash string) bool {
-		hash = lowerHash(hash)
-		_, claimed := claims[hash]
-		_, helper := helpers[hash]
-		return claimed || helper
-	}
+	return hashCheck(held)
 }
 
-// hashesOn copies the entries of one instance, by hash. It returns nil when
-// the instance has none.
-func hashesOn[V any](entries map[torrentKey]V, instanceID int) map[string]V {
-	var hashes map[string]V
-	for key, value := range entries {
+// hashesOn adds the hashes of the entries of one instance to hashes, and
+// returns hashes. It returns nil when hashes is nil and the instance has no
+// entry.
+func hashesOn[V any](hashes map[string]struct{}, entries map[torrentKey]V, instanceID int) map[string]struct{} {
+	for key := range entries {
 		if key.instanceID != instanceID {
 			continue
 		}
 		if hashes == nil {
-			hashes = make(map[string]V)
+			hashes = make(map[string]struct{})
 		}
-		hashes[key.hash] = value
+		hashes[key.hash] = struct{}{}
 	}
 	return hashes
+}
+
+// hashCheck returns a check of whether a hash, in any case, is in hashes. It
+// returns nil when hashes is nil.
+func hashCheck(hashes map[string]struct{}) func(hash string) bool {
+	if hashes == nil {
+		return nil
+	}
+	return func(hash string) bool {
+		_, ok := hashes[lowerHash(hash)]
+		return ok
+	}
 }
 
 // lowerHash is strings.ToLower for the hash of a torrent. qBittorrent sends
