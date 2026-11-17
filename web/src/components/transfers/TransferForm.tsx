@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { SwitchRow } from "@/components/kit/SwitchRow"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import type { TransferAfter, TransferWayChoice } from "@/lib/transfers-api"
 import type { InstanceResponse } from "@/types"
@@ -139,14 +139,11 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
         </Select>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Switch
-          id={`${id}-leave-stopped`}
-          checked={value.leaveStopped}
-          onCheckedChange={leaveStopped => set({ leaveStopped })}
-        />
-        <Label htmlFor={`${id}-leave-stopped`}>{t("form.leaveStopped")}</Label>
-      </div>
+      <SwitchRow
+        label={t("form.leaveStopped")}
+        checked={value.leaveStopped}
+        onCheckedChange={leaveStopped => set({ leaveStopped })}
+      />
     </div>
   )
 }
