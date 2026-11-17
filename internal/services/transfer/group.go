@@ -61,7 +61,7 @@ func (s *Service) groupOf(ctx context.Context, instanceID int, first *source) ([
 				continue
 			}
 			if err := member.movable(); err != nil {
-				return nil, refuse("%s shares the files of this torrent: %v", m.Name, err)
+				return nil, refuse("%s shares the files of this torrent: %w", m.Name, err)
 			}
 			group = append(group, member)
 			frontier = append(frontier, hash)

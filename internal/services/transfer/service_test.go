@@ -581,6 +581,7 @@ func TestTransferRefuses(t *testing.T) {
 		name   string
 		setup  func(r *rig, s show) transfer.Request
 		reason string
+		moving bool
 	}{
 		{name: "a source before qBittorrent 5.1", setup: func(r *rig, s show) transfer.Request {
 			r.src.WebAPIVersion = "2.11.2"
@@ -608,13 +609,13 @@ func TestTransferRefuses(t *testing.T) {
 		{name: "a torrent that qBittorrent moves", setup: func(r *rig, s show) transfer.Request {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.Moving = true })
 			return r.request(s)
-		}, reason: "qBittorrent is moving " + showName + "."},
+		}, reason: "qBittorrent is moving " + showName + ".", moving: true},
 		// regression: #4231
 		{name: "a group member that qBittorrent moves", setup: func(r *rig, s show) transfer.Request {
 			episode := r.seedEpisode(s)
 			r.src.Edit(episode, func(t *qbtstub.Torrent) { t.Moving = true })
 			return r.request(s)
-		}, reason: "Show.S01E01.mkv shares the files of this torrent: qBittorrent is moving Show.S01E01.mkv."},
+		}, reason: "Show.S01E01.mkv shares the files of this torrent: qBittorrent is moving Show.S01E01.mkv.", moving: true},
 		{name: "a torrent already on the target", setup: func(r *rig, s show) transfer.Request {
 			write(t, filepath.Join(r.dstDir, showName), s.files)
 			r.dst.Seed(s.data, r.dstDir)
@@ -655,6 +656,7 @@ func TestTransferRefuses(t *testing.T) {
 			var refusal *transfer.RefusalError
 			require.ErrorAs(t, err, &refusal)
 			require.Contains(t, refusal.Reason, tc.reason)
+			require.Equal(t, tc.moving, errors.Is(err, transfer.ErrMoving), "a rule waits for the end of a move")
 			require.False(t, r.store.IsClaimed(r.source.ID, s.hash), "a refused Transfer claims nothing")
 			require.Zero(t, r.dst.Writes("torrents/add"))
 		})
