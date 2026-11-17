@@ -57,6 +57,7 @@
     "refusedEntry": "{{name}}: {{reason}}",
     "tracker": {
       "label": "Tracker di Condivisione",
+      "settings": "Impostazioni di condivisione",
       "own": "Tracker di qui su {{address}}",
       "outside": "Tracker esterno {{url}}"
     },

@@ -4,6 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type { ReactNode } from "react"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -13,6 +14,12 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import type { Share, ShareSettings, StartSharesRequest } from "@/lib/shares-api"
 import { server } from "@/test/msw/server"
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ to, search, children, ...props }: { to: string; search?: Record<string, string>; children: ReactNode }) => (
+    <a href={`${to}?${new URLSearchParams(search)}`} {...props}>{children}</a>
+  ),
+}))
 
 const clipboard = vi.hoisted(() => ({ copied: [] as string[] }))
 vi.mock("@/lib/utils", async (importOriginal) => ({
@@ -61,12 +68,12 @@ let settings: ShareSettings
 let started: StartSharesRequest[]
 let refusal: { error: string; refused: Array<{ hash: string; reason: string }> } | null
 
-function renderDialog(torrents = [torrent]) {
+function renderDialog(torrents = [torrent], onOpenChange = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <ShareDialog open onOpenChange={vi.fn()} instanceId={3} torrents={torrents} />
+        <ShareDialog open onOpenChange={onOpenChange} instanceId={3} torrents={torrents} />
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -145,6 +152,17 @@ describe("ShareDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create" }))
     await waitFor(() => expect(started).toHaveLength(1))
     expect(started[0].firstDownloaderOnly).toBe(false)
+  })
+
+  it("links to Settings → Shares, where the tracker is set, and closes on the way there", async () => {
+    settings = { ...ownTracker, port: 0, publicAddress: "", trackerInUse: "" }
+    const onOpenChange = vi.fn()
+    renderDialog([torrent], onOpenChange)
+
+    const link = await screen.findByRole("link", { name: "Share settings" })
+    expect(link.getAttribute("href")).toBe("/settings?tab=shares")
+    fireEvent.click(link)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
   it("starts nothing while no tracker is set", async () => {

@@ -21,6 +21,7 @@ import {
 } from "@/lib/shares-api"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import { Copy, Download, Loader2, TriangleAlert } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -100,7 +101,7 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
   return (
     <>
       <div className="space-y-5">
-        <TrackerInUse settings={settings} />
+        <TrackerInUse settings={settings} onClose={onClose} />
         <ShareOptionFields
           days={days}
           endAtFirstDownload={endAtFirstDownload}
@@ -138,7 +139,8 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
   )
 }
 
-function TrackerInUse({ settings }: { settings: ShareSettings }) {
+/** The tracker of a new Share, with a link to Settings → Shares, where the user sets it. */
+function TrackerInUse({ settings, onClose }: { settings: ShareSettings; onClose: () => void }) {
   const { t } = useTranslation("shares")
   let text: string
   switch (settings.trackerInUse) {
@@ -153,7 +155,12 @@ function TrackerInUse({ settings }: { settings: ShareSettings }) {
   }
   return (
     <div className="space-y-0.5">
-      <p className="text-sm font-medium">{t("dialog.tracker.label")}</p>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-medium">{t("dialog.tracker.label")}</p>
+        <Link to="/settings" search={{ tab: "shares" }} onClick={onClose} className="text-sm text-primary underline-offset-4 hover:underline">
+          {t("dialog.tracker.settings")}
+        </Link>
+      </div>
       <p className={settings.trackerInUse === "" ? "text-sm text-destructive" : "text-sm text-muted-foreground break-all"}>{text}</p>
     </div>
   )
