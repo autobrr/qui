@@ -1027,6 +1027,11 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	}
 
 	state.queue = searchable
+	scheduled := state.opts.Kind == models.CrossSeedSearchRunKindScheduled
+	var copyAddedOn map[string]int64
+	if scheduled {
+		copyAddedOn = newestCopyAddedOn(filtered, duplicates)
+	}
 	if state.opts.EnsembleSeasonSearch {
 		// Pack suppression needs the instance's full torrent list: when the
 		// fetch above was server-side filtered by category/tag, a seeded pack
@@ -1042,7 +1047,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		}
 		// Grouping input is deduplicated, not searchable: episodes excluded
 		// from the queue must still form ensemble season groups.
-		if virtual := s.buildEnsembleSeasonCandidates(deduplicated, packSource); len(virtual) > 0 {
+		if virtual := s.buildEnsembleSeasonCandidates(deduplicated, packSource, copyAddedOn); len(virtual) > 0 {
 			// searchable can alias cache-backed deduplicated; never append to
 			// it in place. Virtual entries go last so real torrents search first.
 			queue := make([]*qbt.Torrent, 0, len(searchable)+len(virtual))
@@ -1051,8 +1056,8 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 			state.queue = queue
 		}
 	}
-	if state.opts.Kind == models.CrossSeedSearchRunKindScheduled {
-		state.queue = scheduledSearchQueue(state.queue, newestCopyAddedOn(filtered, duplicates), state.opts.ScheduleMaxAgeDays, time.Now())
+	if scheduled {
+		state.queue = scheduledSearchQueue(state.queue, copyAddedOn, state.opts.ScheduleMaxAgeDays, time.Now())
 	}
 	state.index = 0
 	state.skipCache = make(map[string]bool, len(state.queue))
@@ -1070,7 +1075,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 			totalEligible++
 		}
 	}
-	if state.opts.Kind == models.CrossSeedSearchRunKindScheduled {
+	if scheduled {
 		// A torrent that an indexer never searched goes before a repeat
 		// search, so the cap cannot spend each run on the same newest torrents.
 		// scheduledSearchQueue made the queue a copy, so the sort is safe.

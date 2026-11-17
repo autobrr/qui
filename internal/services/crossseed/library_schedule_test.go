@@ -253,7 +253,7 @@ func TestScheduledSearchQueue_SeasonGroupDatedByNewestEpisode(t *testing.T) {
 		episode("Azure.Compass.S01E03.1080p.WEB.H264-KIRI", 2),
 	})
 
-	virtual := service.buildEnsembleSeasonCandidates(episodes, episodes)
+	virtual := service.buildEnsembleSeasonCandidates(episodes, episodes, nil)
 	require.Len(t, virtual, 1)
 
 	queue := scheduledSearchQueue(virtual, nil, 14, now)
@@ -678,4 +678,41 @@ func TestProcessEnsembleSeasonCandidate_FailedSearchCountsAsSent(t *testing.T) {
 	sent, err := service.processEnsembleSeasonCandidate(t.Context(), state, torrent, time.Now().UTC())
 	require.Error(t, err)
 	require.True(t, sent)
+}
+
+// scheduledEnsembleState is a scheduled run over episodes, with season groups on.
+func scheduledEnsembleState(t *testing.T, dbName string, episodes []qbt.Torrent) (*Service, *searchRunState, int) {
+	t.Helper()
+	service, state, instanceID := newEnsembleSearchState(t, dbName, episodes, true)
+	files := make(map[string]qbt.TorrentFiles, len(episodes))
+	for _, episode := range episodes {
+		files[strings.ToLower(episode.Hash)] = qbt.TorrentFiles{{Name: episode.Name + ".mkv", Size: episode.Size}}
+	}
+	service.syncManager.(*episodeSyncManager).files[instanceID] = files
+	state.opts.Kind = models.CrossSeedSearchRunKindScheduled
+	state.opts.ScheduleMaxAgeDays = 14
+	state.opts.SkipIndividualEpisodes = true
+	return service, state, instanceID
+}
+
+func episodeAddedDaysAgo(hash, name string, days int) qbt.Torrent {
+	return qbt.Torrent{Hash: hash, Name: name, Progress: 1.0, Size: 1 << 30, AddedOn: time.Now().Add(-time.Duration(days) * 24 * time.Hour).Unix()}
+}
+
+// regression: #4246
+// A new copy of an old episode keeps its season group in the window, as a new
+// copy of an old movie keeps the movie.
+func TestScheduledSearchRun_SeasonGroupDatedByNewestCopy(t *testing.T) {
+	t.Parallel()
+	episodes := []qbt.Torrent{
+		episodeAddedDaysAgo("ep1", "Azure.Compass.S01E01.1080p.WEB.H264-KIRI", 30),
+		episodeAddedDaysAgo("ep2", "Azure.Compass.S01E02.1080p.WEB.H264-KIRI", 30),
+		episodeAddedDaysAgo("ep3", "Azure.Compass.S01E03.1080p.WEB.H264-KIRI", 30),
+		episodeAddedDaysAgo("ep3copy", "Azure.Compass.S01E03.1080p.WEB.H264-KIRI", 1),
+	}
+	service, state, _ := scheduledEnsembleState(t, "crossseed-scheduled-season-new-copy", episodes)
+
+	require.NoError(t, service.refreshSearchQueue(t.Context(), state))
+	require.Len(t, state.queue, 1)
+	require.Equal(t, "season:azure compass:s01", state.queue[0].Hash)
 }

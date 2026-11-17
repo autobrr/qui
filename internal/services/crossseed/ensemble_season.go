@@ -97,7 +97,9 @@ func parseEnsembleSeasonPseudoHash(hash string) (ensembleGroupKey, bool) {
 // content dedup, so groups inherit the run scoping. packSource is the
 // instance's full torrent list: a seeded pack outside the run scope must still
 // suppress its group, or the search re-downloads a pack the user already has.
-func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torrent) []*qbt.Torrent {
+// copyAddedOn gives the added time of the newest copy of a deduplicated
+// episode, which dates the group for a scheduled run.
+func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torrent, copyAddedOn map[string]int64) []*qbt.Torrent {
 	type groupInfo struct {
 		displayTitle string
 		episodes     map[int]struct{}
@@ -151,7 +153,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torr
 		if group.displayTitle == "" {
 			group.displayTitle = release.Title
 		}
-		group.addedOn = max(group.addedOn, torrent.AddedOn)
+		group.addedOn = max(group.addedOn, torrent.AddedOn, copyAddedOn[torrent.Hash])
 		if isRange {
 			// A range counts each episode it names toward the group.
 			for _, se := range release.SeriesEpisodes() {
