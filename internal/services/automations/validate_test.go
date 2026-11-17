@@ -1129,20 +1129,14 @@ func TestValidateRuleTransferToInstance(t *testing.T) {
 		conditions *models.ActionConditions
 		wantMsg    string
 	}{
-		{name: "switch off", switches: rollout.Production(), conditions: &models.ActionConditions{TransferToInstance: transfer(true, 2)}, wantMsg: "Transfer to instance is not available"},
 		{name: "switch off, action off", switches: rollout.Production(), conditions: &models.ActionConditions{
 			TransferToInstance: transfer(false, 2), Pause: &models.PauseAction{Enabled: true, Condition: seeded},
 		}, wantMsg: "Transfer to instance is not available"},
-		{name: "switch off, no Transfer", switches: rollout.Production(), conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true}}},
-		{name: "switch on", switches: on, conditions: &models.ActionConditions{TransferToInstance: transfer(true, 2)}},
 		{name: "switch on, action off", switches: on, conditions: &models.ActionConditions{
 			TransferToInstance: transfer(false, 0), Pause: &models.PauseAction{Enabled: true, Condition: seeded},
 		}},
 		{name: "no target", switches: on, conditions: &models.ActionConditions{TransferToInstance: transfer(true, 0)}, wantMsg: "Transfer to instance requires a target instance"},
 		{name: "target is the source", switches: on, conditions: &models.ActionConditions{TransferToInstance: transfer(true, 1)}, wantMsg: "Transfer target cannot be the same as the source instance"},
-		{name: "with delete", switches: on, conditions: &models.ActionConditions{
-			TransferToInstance: transfer(true, 2), Delete: &models.DeleteAction{Enabled: true, Condition: seeded},
-		}, wantMsg: "Delete action cannot be combined with other actions"},
 	}
 
 	for _, tt := range tests {

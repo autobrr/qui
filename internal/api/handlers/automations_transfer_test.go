@@ -81,10 +81,9 @@ func TestAutomationRuleWithATransferSavesOnlyWithTheSwitch(t *testing.T) {
 		action string
 		want   string
 	}{
-		{"unknown after", action(target.ID, "later", "auto"),
-			`conditions.transferToInstance.after: after does not allow "later"; it allows removeWithFiles, keepFiles, keepSeeding`},
-		{"unknown way", action(target.ID, "", "rsync"),
-			`conditions.transferToInstance.way: way does not allow "rsync"; it allows auto, copy, bittorrent`},
+		{"unknown after and way", action(target.ID, "later", "rsync"),
+			`conditions.transferToInstance.after: after does not allow "later"; it allows removeWithFiles, keepFiles, keepSeeding` + "\n" +
+				`conditions.transferToInstance.way: way does not allow "rsync"; it allows auto, copy, bittorrent`},
 		{"missing target", action(target.ID+100, "", ""), "Target instance not found"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

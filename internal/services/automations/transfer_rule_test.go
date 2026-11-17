@@ -146,31 +146,26 @@ func TestTransferToInstanceStartsATransfer(t *testing.T) {
 
 // While the switch for Transfers and Shares is off, a stored rule with
 // Transfer to Instance reaches no Transfer: no start, no preview, and no
-// activity, in a live run and in a dry run.
+// activity, in a live run and in a dry run. With the switch on, a run without
+// a rule with the action never asks the Transfer module.
 func TestTransferToInstanceStaysOffWithoutTheSwitch(t *testing.T) {
 	svc, db, runner, instanceIDs := transferRig(t, everyActionTorrents(), rollout.Production())
-	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
+	run := func(rules []*models.Automation) []*models.AutomationActivity {
+		t.Helper()
+		_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, false)
+		require.NoError(t, err)
+		activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, true)
+		require.NoError(t, err)
+		return activities
+	}
 
-	_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, false)
-	require.NoError(t, err)
-	activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, true)
-	require.NoError(t, err)
-
+	activities := run([]*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})})
 	runner.untouched(t)
 	require.Empty(t, storedTransferActivities(t, db, instanceIDs[0]))
 	require.Empty(t, transferActivities(t, svc, instanceIDs[0], activities))
-}
 
-// Without a rule with Transfer to Instance, a run never asks the Transfer
-// module, also with the switch on.
-func TestRunWithoutATransferRuleLeavesTheTransferModuleAlone(t *testing.T) {
-	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents(), transfersOn)
-
-	_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, everyActionRules(), false)
-	require.NoError(t, err)
-	_, err = svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, everyActionRules(), true)
-	require.NoError(t, err)
-
+	svc.SetTransferRunner(runner, transfersOn)
+	run(everyActionRules())
 	runner.untouched(t)
 }
 
