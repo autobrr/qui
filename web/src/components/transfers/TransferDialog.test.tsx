@@ -65,10 +65,12 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function renderDialog() {
+const newQueryClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+function renderDialog(queryClient = newQueryClient()) {
   const onOpenChange = vi.fn()
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Profiler id="dialog" onRender={() => { commits++ }}>
           <TransferDialog open onOpenChange={onOpenChange} sourceInstanceId={1} hash="aaaa" name="Show.S01.1080p-GRP" />
@@ -185,7 +187,10 @@ describe("the Transfer dialog", () => {
 
   // regression: #4242
   it("renders nothing more while the form stays as it is", async () => {
-    renderDialog()
+    // The categories and tags of the target are in the cache, so no load of them ends during the wait.
+    const queryClient = newQueryClient()
+    queryClient.setQueryData(["instance-metadata", 2], { categories: { tv: { name: "tv", savePath: "" } }, tags: [] })
+    renderDialog(queryClient)
     await pickTarget("homelab")
     await waitFor(() => expect(summaryText()).toContain("2 torrents, 4 GiB"))
     const settled = commits
