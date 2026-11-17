@@ -65,6 +65,24 @@ func TestProxyDeletesTheFilesOfATorrentThatIsNoHelper(t *testing.T) {
 	r.requireGone("torrents/tv/Show.S01E02-GRP")
 }
 
+// A delete of all torrents with files sees a helper torrent that qBittorrent
+// added after the last sync.
+// regression: #4231
+func TestProxyRefusesDeleteOfAllWithFilesAfterANewHelper(t *testing.T) {
+	t.Parallel()
+	r := newProxyRigWorker(t, false)
+	own := r.perRelease(proxyHashB, "tv")
+	own.SavePath = r.p("torrents/tv/Show.S01E02-GRP")
+	r.add(own)
+	r.stub.Add(r.perRelease(proxyHashA, ""))
+	r.handler.syncManager.SetHelperTorrents(helperRegistry{proxyHashA: "transfer"})
+
+	rec := r.post(r.handler.handleDeleteTorrents, "torrents/delete", "hashes=all&deleteFiles=true")
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	require.Zero(t, r.stub.Calls("torrents/delete"), "qBittorrent gets no delete")
+}
+
 // qui cannot tell whether a delete that it cannot read names a helper
 // torrent, so it refuses the delete. qBittorrent reads a multipart body
 // without its closing boundary, and a Content-Type that only starts with the
