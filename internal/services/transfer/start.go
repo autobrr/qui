@@ -24,9 +24,10 @@ type Request struct {
 	SourceInstanceID int
 	Hash             string
 	TargetInstanceID int
-	// Placement is where the torrent lands. An empty save path is the
-	// default save path of the target. ContentLayout is ignored: the target
-	// gets the layout that is on disk.
+	// Placement is where the torrent lands. An empty save path is the save
+	// path of the category on the target, or its default save path for no
+	// category. ContentLayout is ignored: the target gets the layout that is
+	// on disk.
 	Placement Placement
 	Options   Options
 	StartedBy StartedBy
@@ -122,16 +123,14 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 
 	placement := req.Placement
 	placement.ContentLayout = ""
-	if placement.SavePath == "" {
-		prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("read the default save path of %s: %w", target.Name, err)
-		}
-		placement.SavePath = prefs.SavePath
-	}
 	targetFiles, err := s.deps.Files.GetBackend(ctx, target.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
+	}
+	if placement.SavePath == "" {
+		if placement.SavePath, err = s.categorySavePath(ctx, target, targetFiles, placement.Category); err != nil {
+			return nil, nil, err
+		}
 	}
 	td := pathsOf(target, targetFiles, placement.SavePath)
 	if !td.IsAbs(placement.SavePath) {
@@ -241,6 +240,24 @@ func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 	case WayLocal, WayNone:
 	}
 	return "", refuse("Unknown way: %q.", forced)
+}
+
+// categorySavePath is the folder where the qBittorrent of target saves a
+// torrent of category under automatic management, and its default save path
+// for no category.
+func (s *Service) categorySavePath(ctx context.Context, target *models.Instance, files fsops.Backend, category string) (string, error) {
+	prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
+	if err != nil {
+		return "", fmt.Errorf("read the default save path of %s: %w", target.Name, err)
+	}
+	if category == "" {
+		return prefs.SavePath, nil
+	}
+	folder, err := s.deps.Sync.CategorySaveFolder(ctx, pathsOf(target, files, prefs.SavePath), target.ID, &prefs, category)
+	if err != nil {
+		return "", fmt.Errorf("read the save path of category %q on %s: %w", category, target.Name, err)
+	}
+	return folder, nil
 }
 
 // pathsOf is the path dialect of the save paths of inst: the dialect of its

@@ -73,7 +73,7 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
           id={`${id}-save-path`}
           value={value.savePath}
           onChange={event => set({ savePath: event.target.value })}
-          placeholder={t("form.savePathPlaceholder")}
+          placeholder={value.category ? t("form.savePathPlaceholderCategory") : t("form.savePathPlaceholder")}
         />
       </div>
 

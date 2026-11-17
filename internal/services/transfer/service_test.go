@@ -618,6 +618,43 @@ func TestTransferFollowsTheAfterChoice(t *testing.T) {
 	}
 }
 
+// With no save path, a Transfer lands at the save path of its category on
+// the target, as qBittorrent places a torrent of that category.
+// regression: #4242
+func TestTransferPutsATorrentAtTheSavePathOfItsCategory(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		categoryPath string
+		folder       string
+	}{
+		{name: "category with its own save path", categoryPath: "sorted", folder: "sorted"},
+		{name: "category without a save path", folder: "archive"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			if tc.categoryPath != "" {
+				r.dst.AddCategory("archive", filepath.Join(r.dstDir, tc.categoryPath))
+			} else {
+				r.dst.AddCategory("archive", "")
+			}
+			s := newShow(t, showName)
+			r.seed(s)
+			req := r.request(s)
+			req.Placement.Category = "archive"
+
+			record := r.run(req)
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, contents(s, tc.folder+"/"+showName), tree(t, r.dstDir))
+			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			require.NoError(t, err)
+			require.Len(t, landed, 1)
+			require.Equal(t, "archive", landed[0].Category)
+			require.Equal(t, filepath.Join(r.dstDir, tc.folder), landed[0].SavePath)
+		})
+	}
+}
+
 // Each entry check refuses with its reason, and records no Transfer.
 func TestTransferRefuses(t *testing.T) {
 	for _, tc := range []struct {
