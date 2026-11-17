@@ -166,12 +166,15 @@ func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
 	r.seed(s)
 	write(t, filepath.Join(r.dstDir, showName), s.files)
 	r.dst.ListAfterSyncs = 1
-	polled := make(chan struct{})
-	r.dst.OnAdd = func(string) {
-		go func() {
-			<-r.dst.Synced(r.dst.Syncs() + 1)
+	// Both hooks run under the lock of the stub, so polled closes at the
+	// first sync after the add.
+	added, polled := false, make(chan struct{})
+	r.dst.OnAdd = func(string) { added = true }
+	r.dst.OnSync = func() {
+		if added {
+			added = false
 			close(polled)
-		}()
+		}
 	}
 	r.dst.OnWrite = func(endpoint string) {
 		if endpoint == "torrents/delete" {

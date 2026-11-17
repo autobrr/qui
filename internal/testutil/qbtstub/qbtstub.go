@@ -160,6 +160,9 @@ type Server struct {
 	// with its endpoint, such as torrents/stop. It runs under the lock of
 	// the stub.
 	OnWrite func(endpoint string)
+	// OnSync, when set, runs for each sync/maindata request before the stub
+	// answers it. It runs under the lock of the stub.
+	OnSync func()
 	// ListenPort is reported as the listen_port preference. qBittorrent
 	// reports 0 when it picks a random port.
 	ListenPort int
@@ -641,6 +644,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		s.syncs++
 		if ch, ok := s.synced[s.syncs]; ok {
 			close(ch)
+		}
+		if s.OnSync != nil {
+			s.OnSync()
 		}
 		if s.syncs <= s.FailSyncs {
 			w.WriteHeader(http.StatusInternalServerError)
