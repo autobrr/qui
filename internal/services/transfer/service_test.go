@@ -371,14 +371,21 @@ func wire(t *testing.T, db *database.DB, d *disk, now func() time.Time) (transfe
 func (r *rig) start() {
 	ctx, cancel := context.WithCancel(r.t.Context())
 	r.cancel = cancel
-	r.svc = transfer.NewService(ctx, r.deps)
-	r.t.Cleanup(r.svc.Close)
+	svc := transfer.NewService(ctx, r.deps)
+	r.svc = svc
+	r.t.Cleanup(func() { closeService(r.t, svc) })
+}
+
+// closeService closes svc and waits for its runs with no deadline.
+func closeService(t *testing.T, svc *transfer.Service) {
+	t.Helper()
+	require.NoError(t, svc.Close(context.Background()))
 }
 
 // restart stops the Service, and starts qui again on the same database.
 func (r *rig) restart() {
 	r.t.Helper()
-	r.svc.Close()
+	closeService(r.t, r.svc)
 	store, err := transfer.NewStore(r.t.Context(), r.db)
 	require.NoError(r.t, err)
 	r.store, r.deps.Store = store, store
@@ -917,6 +924,45 @@ func TestTransferStoppedHalfwayKeepsProvenPieces(t *testing.T) {
 	require.True(t, r.src.Has(s.hash))
 }
 
+// regression: #4231
+// A write that the target never answers ignores the stop. Close waits for it
+// only until its context ends, so that a shutdown keeps its time limit, and
+// the Transfer stays unfinished for the next start.
+func TestTransferCloseGivesUpOnARunThatDoesNotStop(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	stalled, held := make(chan struct{}), make(chan struct{})
+	stall, release := sync.OnceFunc(func() { close(stalled) }), sync.OnceFunc(func() { close(held) })
+	// Registered after the rig, so that it runs before the rig closes the
+	// Service, also when the test fails first.
+	t.Cleanup(release)
+	r.disk.onWrite = func(string) {
+		stall()
+		<-held
+	}
+
+	id, err := r.svc.Start(t.Context(), r.request(s))
+	require.NoError(t, err)
+	<-stalled
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	closed := make(chan error, 1)
+	go func() { closed <- r.svc.Close(ctx) }()
+	select {
+	case err := <-closed:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "Close still waits for a write that ignores the stop")
+	}
+
+	release()
+	r.svc.Wait()
+	record, err := r.store.Get(t.Context(), id)
+	require.NoError(t, err)
+	require.True(t, record.FinishedAt.IsZero(), "the Transfer stays unfinished")
+}
+
 // After the Transfer, qui keeps the files on the source when another torrent
 // reads them or another instance uses the same SSH server.
 func TestTransferKeepsSourceFiles(t *testing.T) {
@@ -985,10 +1031,10 @@ func TestTransferServiceIdleWithoutTransfers(t *testing.T) {
 	s := newShow(t, showName)
 	r.seed(s)
 
-	r.svc.Close()
+	closeService(t, r.svc)
 	svc := transfer.NewService(t.Context(), r.deps)
 	svc.Wake()
-	svc.Close()
+	closeService(t, svc)
 
 	require.Zero(t, r.src.Requests())
 	require.Zero(t, r.dst.Requests())

@@ -1165,13 +1165,19 @@ func (app *Application) runServer() {
 		}
 
 		// Closed here because os.Exit below means a defer would never fire. A
-		// job's next read gets ErrConnectionLost with ErrPoolClosed in its
-		// chain, a read in flight gets ErrConnectionLost, and either ends with
-		// the process. A running Transfer stops first and keeps its partial data.
-		transferService.Close()
+		// running Transfer stops first and keeps its partial data. One that
+		// does not stop in time waits on a call that ignores the stop; the pool
+		// then stays open, so that the run cannot go on against a closed pool
+		// and finish a cleanup with leftovers, and the exit ends it the way a
+		// crash does. Another job's next read gets ErrConnectionLost with
+		// ErrPoolClosed in its chain, a read in flight gets ErrConnectionLost,
+		// and either ends with the process.
+		transfersStopped := transferService.Close(ctx) == nil
 		shareCancel()
 		shareService.Close()
-		sshPool.Close()
+		if transfersStopped {
+			sshPool.Close()
+		}
 		return nil
 	}
 

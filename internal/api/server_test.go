@@ -219,7 +219,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		Groups:    crossSeedService,
 		Config:    transfer.DefaultConfig(),
 	})
-	t.Cleanup(transferService.Close)
+	t.Cleanup(func() { require.NoError(t, transferService.Close(context.Background())) })
 	// No Share and every Share setting at its default.
 	shareService := share.NewService(share.Deps{
 		Store:           share.NewStore(db),

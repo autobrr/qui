@@ -168,7 +168,7 @@ func (h holdAt) ExecContext(ctx context.Context, query string, args ...any) (sql
 // restartOn starts qui again with its store on q.
 func (r *rig) restartOn(q dbinterface.Querier) {
 	r.t.Helper()
-	r.svc.Close()
+	closeService(r.t, r.svc)
 	store, err := transfer.NewStore(r.t.Context(), q)
 	require.NoError(r.t, err)
 	r.store, r.deps.Store = store, store

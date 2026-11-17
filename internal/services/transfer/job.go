@@ -460,8 +460,9 @@ func isChecking(state qbt.TorrentState) bool {
 // retryAfter is the least time between a temporary failure and its retry.
 const retryAfter = time.Hour
 
-// cleanupContext outlives the run, so that a stop never cuts a cleanup
-// short.
+// cleanupContext outlives the run, so that a stop does not cut a cleanup
+// short. A shutdown waits for it only until its own limit; the cleanup step
+// is recorded first, so the next start finishes a cleanup that the exit cut.
 func cleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 }

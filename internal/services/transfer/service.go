@@ -283,6 +283,10 @@ func (s *Service) drain(sourceID int) {
 		s.mu.Lock()
 		queue := s.queues[sourceID]
 		if len(queue) == 0 || s.ctx.Err() != nil {
+			// A stop leaves the queued Transfers to the next start.
+			for _, id := range queue {
+				delete(s.runs, id)
+			}
 			delete(s.queues, sourceID)
 			s.mu.Unlock()
 			return
@@ -427,15 +431,32 @@ func (s *Service) Wait() {
 	s.wg.Wait()
 }
 
-// Close stops the running Transfers and waits for them. They keep their
-// partial data and stay unfinished.
-func (s *Service) Close() {
+// Close stops the running Transfers and waits for them until ctx ends. They
+// keep their partial data and stay unfinished. A run that waits on a call
+// which ignores the stop, such as an SFTP write that the server never
+// answers, can outlast ctx: Close then returns ctx's error and leaves the
+// run to the exit of qui, after which the next start resumes it.
+func (s *Service) Close(ctx context.Context) error {
 	s.mu.Lock()
 	s.closed = true
 	s.mu.Unlock()
 	s.cancel()
-	<-s.ticked
-	s.wg.Wait()
+	stopped := make(chan struct{})
+	go func() {
+		<-s.ticked
+		s.wg.Wait()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+		return nil
+	case <-ctx.Done():
+		s.mu.Lock()
+		running := len(s.runs)
+		s.mu.Unlock()
+		log.Warn().Int("runs", running).Msg("transfer: runs did not stop in time, the next start resumes them")
+		return ctx.Err()
+	}
 }
 
 // reserve claims bytes of the free space on a target, and fails when free

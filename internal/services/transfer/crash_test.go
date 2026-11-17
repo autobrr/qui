@@ -282,7 +282,7 @@ func TestTransferCrashChild(t *testing.T) {
 	exportPolls(&deps.Config)
 
 	svc := transfer.NewService(t.Context(), deps)
-	t.Cleanup(svc.Close)
+	t.Cleanup(func() { closeService(t, svc) })
 	if plan.Export != nil {
 		_, _, err = svc.Export(t.Context(), *plan.Export)
 	} else {

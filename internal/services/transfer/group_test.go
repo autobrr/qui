@@ -75,9 +75,10 @@ func (r *rig) withCrossSeedInstance() *crossSeeds {
 	c.inst = inst
 	r.deps.Routes = routes{r.target.ID: {SourceInstanceID: r.target.ID, CrossSeedInstanceID: inst.ID}}
 	r.deps.CrossSeeds = c
-	r.svc.Close()
-	r.svc = transfer.NewService(r.t.Context(), r.deps)
-	r.t.Cleanup(r.svc.Close)
+	closeService(r.t, r.svc)
+	svc := transfer.NewService(r.t.Context(), r.deps)
+	r.svc = svc
+	r.t.Cleanup(func() { closeService(r.t, svc) })
 	return c
 }
 

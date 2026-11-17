@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -153,7 +154,7 @@ func exportOnTransfers(t *testing.T, svc *Service, db dbinterface.Querier, switc
 	require.NoError(t, err)
 	transfers := transfer.NewService(t.Context(), transfer.Deps{Store: store, Instances: svc.instanceStore, Sync: svc.syncManager,
 		Config: transfer.Config{ExportPolls: exportVerifyMaxAttempts, ExportPollInterval: exportVerifyPollInterval}})
-	t.Cleanup(transfers.Close)
+	t.Cleanup(func() { require.NoError(t, transfers.Close(context.Background())) })
 	svc.SetExportRunner(transfers, switches)
 }
 
