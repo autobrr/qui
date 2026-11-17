@@ -80,10 +80,19 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(false)
   })
 
-  it("opens on a tap of a disabled button, to explain why", () => {
-    renderTooltip(<TooltipTrigger asChild><span><button type="button" disabled>Run</button></span></TooltipTrigger>)
+  // A disabled Button has pointer-events: none, so the tap lands on the wrapper, not on the button.
+  it("opens on a tap of the wrapper around a disabled button, to explain why", () => {
+    renderTooltip(<TooltipTrigger asChild><span data-testid="wrapper"><button type="button" disabled>Run</button></span></TooltipTrigger>)
 
-    tap(screen.getByRole("button", { name: "Run" }))
+    tap(screen.getByTestId("wrapper"))
+
+    expect(tooltipShown()).toBe(true)
+  })
+
+  it("opens on a tap of a disabled option, to explain why", () => {
+    renderTooltip(<TooltipTrigger asChild><div><div role="option" aria-selected="false" aria-disabled="true">Keep files</div></div></TooltipTrigger>)
+
+    tap(screen.getByRole("option", { name: "Keep files" }))
 
     expect(tooltipShown()).toBe(true)
   })

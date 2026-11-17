@@ -292,7 +292,7 @@ function InstanceOrphanScanItem({
               )}
               {latestRun?.status === "completed" && latestRun.errorMessage && !latestRun.partial && (
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger asChild openOnTap>
                     <AlertTriangle className="h-4 w-4 text-yellow-500" />
                   </TooltipTrigger>
                   <TooltipContent>

@@ -53,4 +53,4 @@
 A phone has no pointer that hovers, so a phone user never sees what only a hover starts.
 
 - A preload that a hover starts must also start on focus, or when the list that holds the item opens. The router `Link` already preloads on a touch, because `router.tsx` sets `defaultPreload: "intent"`.
-- A `title` attribute does not show on a touch screen. When a cell cuts its text with an ellipsis and only its `title` holds the full text, a tap on the row must open a detail with the full text, or the cell must wrap the text. The `Tooltip` from `@/components/ui/tooltip` already opens on a tap.
+- A `title` attribute does not show on a touch screen. When a cell cuts its text with an ellipsis and only its `title` holds the full text, a tap on the row must open a detail with the full text, or the cell must wrap the text. The `Tooltip` from `@/components/ui/tooltip` opens on a tap, unless the tap lands on a link, button, label, or menu item at the trigger or around it. `TruncatedText` always opens on a tap.
