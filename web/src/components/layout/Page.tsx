@@ -35,7 +35,7 @@ export function Page({ title, description, badge, controls, fill = false, back, 
   return (
     // Below lg, AppLayout pads main for the bottom nav, so the page adds no bottom padding of its own.
     // The top bar of AppLayout is 4rem high.
-    <div className={cn("p-4 lg:p-6", fill && "flex h-[calc(100vh-4rem-var(--app-inset-top))] flex-col overflow-hidden")}>
+    <div className={cn("p-4 lg:p-6", fill && "flex h-[calc(100vh-4rem-var(--app-inset-top)-var(--app-fade-gap))] flex-col overflow-hidden")}>
       <div className="mb-6 flex shrink-0 flex-wrap items-start gap-x-4 gap-y-3">
         <div className="min-w-0 flex-auto space-y-1">
           {back && (

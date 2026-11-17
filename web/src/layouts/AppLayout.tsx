@@ -8,7 +8,7 @@ import { CommandPalette } from "@/components/command-palette/CommandPalette"
 import { MobileFooterNav } from "@/components/layout/MobileFooterNav"
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
-import { LayoutRouteProvider } from "@/contexts/LayoutRouteContext"
+import { LayoutRouteProvider, useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { usePersistedSidebarState } from "@/hooks/usePersistedSidebarState"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -25,9 +25,11 @@ function AppLayoutContent() {
   const { t } = useTranslation("common")
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
   const { isFooterVisible } = useMobileScroll()
+  const isInstanceRoute = useLayoutRoute().state.instanceId !== null
 
   return (
-    <div className="flex h-[calc(100dvh-var(--app-inset-top))] bg-background">
+    // Where Header hides (its classes), the fade gap goes inside main instead, so it scrolls away with the page.
+    <div className={cn("flex h-[calc(100dvh-var(--app-inset-top))] bg-background md:pt-(--app-fade-gap)", !isInstanceRoute && "sideways:pt-0")}>
       {/* Desktop Sidebar - Collapsible */}
       <div className={cn(
         "hidden lg:flex transition-all duration-300 ease-out overflow-hidden",
@@ -63,7 +65,8 @@ function AppLayoutContent() {
           </Tooltip>
         </Header>
         <main className={cn(
-          "flex-1 overflow-y-auto",
+          "flex-1 overflow-y-auto max-md:pt-(--app-fade-gap)",
+          !isInstanceRoute && "sideways:pt-(--app-fade-gap)",
           isFooterVisible ? "pb-[calc(4rem+env(safe-area-inset-bottom))]" : "pb-0",
           "lg:pb-0"
         )}>
