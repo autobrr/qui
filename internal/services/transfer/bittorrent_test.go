@@ -160,6 +160,35 @@ func TestTransferTorrentWritesTheTemporaryNamesOfTheCopy(t *testing.T) {
 	r.requireNoHelpers(record)
 }
 
+// A file on the source at a name of the Transfer torrent there stops the
+// Transfer before the source renames anything: qBittorrent would move that
+// file over the file of the source.
+// regression: #4231
+func TestTransferTorrentStopsAtAFileInTheWayOnTheSource(t *testing.T) {
+	r := newRigOn(t, overSFTP, onDisk)
+	r.connect()
+	s := newShow(t, showName)
+	r.seed(s)
+	// The first Transfer of a rig has the ID 1.
+	theirs := filepath.Join(r.srcDir, showName, "Show.S01E01.mkv.qui-transfer-1")
+	require.NoError(t, os.WriteFile(theirs, []byte("theirs"), 0o600))
+	req := r.request(s)
+	req.Options.ForcedWay = transfer.WayBitTorrent
+
+	record := r.run(req)
+
+	want := contents(s, showName)
+	want[showName+"/Show.S01E01.mkv.qui-transfer-1"] = "theirs"
+	require.Equal(t, want, tree(t, r.srcDir), "the source keeps its files")
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
+	require.Equal(t, "Conflict: a file is in the way on seedbox at "+pathOn(overSFTP, theirs)+".", record.FailureReason)
+	require.Zero(t, r.src.Writes("torrents/renameFile"))
+	require.True(t, r.seeding(r.source.ID, s.hash))
+	require.Empty(t, tree(t, r.dstDir))
+	r.requireNoHelpers(record)
+}
+
 // qui picks a copy through qui when it reaches the files of a side on its
 // own disk, and else a Transfer torrent. A forced way wins.
 func TestTransferPicksTheWay(t *testing.T) {
