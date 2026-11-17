@@ -76,16 +76,47 @@ type crossSeeds struct {
 // withCrossSeedInstance gives the target a Cross-seed instance.
 func (r *rig) withCrossSeedInstance() *crossSeeds {
 	r.t.Helper()
-	c := &crossSeeds{r: r, dir: r.t.TempDir()}
-	c.stub = qbtstub.New(r.t, c.dir)
-	inst, err := r.instances.Create(r.t.Context(), "homelab cross-seed", c.stub.URL, "", "", nil, nil, false, new(true))
-	require.NoError(r.t, err)
-	c.inst = inst
-	r.deps.Routes = routes{r.target.ID: {SourceInstanceID: r.target.ID, CrossSeedInstanceID: inst.ID}}
+	c := r.newCrossSeeds("homelab cross-seed")
+	r.deps.Routes = routes{r.target.ID: {SourceInstanceID: r.target.ID, CrossSeedInstanceID: c.inst.ID}}
 	r.deps.CrossSeeds = c
 	closeService(r.t, r.svc)
 	r.start()
 	return c
+}
+
+// newCrossSeeds adds an instance that takes routed cross-seeds.
+func (r *rig) newCrossSeeds(name string) *crossSeeds {
+	r.t.Helper()
+	c := &crossSeeds{r: r, dir: r.t.TempDir()}
+	c.stub = qbtstub.New(r.t, c.dir)
+	inst, err := r.instances.Create(r.t.Context(), name, c.stub.URL, "", "", nil, nil, false, new(true))
+	require.NoError(r.t, err)
+	c.inst = inst
+	return c
+}
+
+// followRoute is the routed cross-seed add as crossseed runs it: each add
+// reads the route of the matched instance, and goes where the route points
+// at that moment. Without a route, the add goes to the matched instance.
+type followRoute struct {
+	routes routes
+	on     map[int]*crossSeeds
+	adds   int
+}
+
+func (f *followRoute) CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequest) (*crossseed.CrossSeedResponse, error) {
+	f.adds++
+	matchedOn := req.TargetInstanceIDs[0]
+	route, err := f.routes.Get(ctx, matchedOn)
+	if err != nil {
+		return nil, err
+	}
+	if route == nil {
+		return &crossseed.CrossSeedResponse{Success: true, Results: []crossseed.InstanceCrossSeedResult{
+			{InstanceID: matchedOn, Success: true, Status: "added"},
+		}}, nil
+	}
+	return f.on[route.CrossSeedInstanceID].CrossSeed(ctx, req)
 }
 
 func (c *crossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequest) (*crossseed.CrossSeedResponse, error) {
@@ -278,6 +309,53 @@ func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 			require.True(t, r.seeding(cs.inst.ID, s.hash))
 			require.Len(t, cs.requests, tc.requests)
+		})
+	}
+}
+
+// When the target sends its cross-seeds elsewhere while a Transfer waits for
+// its retry, the Transfer stops before its cross-seed add: the add would put
+// the member where qui does not look for it. The cleanup removes the copy.
+// regression: #4231
+func TestTransferStopsWhenTheTargetSendsItsCrossSeedsElsewhere(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		elsewhere bool
+	}{
+		{name: "to another Cross-seed instance", elsewhere: true},
+		{name: "to no Cross-seed instance"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			cs := r.withCrossSeedInstance()
+			next := r.newCrossSeeds("seedbox cross-seed")
+			route := r.deps.Routes.(routes)
+			follow := &followRoute{routes: route, on: map[int]*crossSeeds{cs.inst.ID: cs, next.inst.ID: next}}
+			r.deps.CrossSeeds = follow
+			r.restart()
+			cs.refuse = "no_match"
+			s := r.seedRouted()
+
+			record := r.run(r.request(s))
+			require.Equal(t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
+
+			delete(route, r.target.ID)
+			if tc.elsewhere {
+				route[r.target.ID] = &models.CrossSeedRoute{SourceInstanceID: r.target.ID, CrossSeedInstanceID: next.inst.ID}
+			}
+			cs.refuse = ""
+			r.setClock(clock.Add(time.Hour))
+			r.svc.Wake()
+			r.svc.Wait()
+
+			record = r.get(record.ID)
+			const reason = "homelab no longer sends its cross-seeds to homelab cross-seed, so the Transfer stopped."
+			require.Equal(t, transfer.FailurePermanent, record.FailureClass, record.FailureReason)
+			require.Equal(t, reason, record.FailureReason)
+			require.Equal(t, 1, follow.adds, "the retry sends no cross-seed add")
+			require.False(t, next.stub.Has(s.hash))
+			require.Empty(t, tree(t, r.dstDir), "the cleanup removes the copy")
+			require.True(t, r.seeding(r.source.ID, s.hash))
 		})
 	}
 }

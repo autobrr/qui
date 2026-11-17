@@ -346,6 +346,14 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 	if representative == nil {
 		return permanent("%s has no torrent on %s to link %s to.", j.crossSeed.Name, j.target.Name, p.Name)
 	}
+	// The routed add reads the route when it runs, so it goes where the route points now.
+	route, err := j.svc.deps.Routes.Get(ctx, j.target.ID)
+	if err != nil {
+		return temporary("qui cannot read the cross-seed route of %s: %v", j.target.Name, err)
+	}
+	if route == nil || route.CrossSeedInstanceID != p.TargetInstanceID {
+		return permanent("%s no longer sends its cross-seeds to %s, so the Transfer stopped.", j.target.Name, j.crossSeed.Name)
+	}
 	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash); err != nil {
 		return err
 	}
