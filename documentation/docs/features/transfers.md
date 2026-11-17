@@ -158,7 +158,7 @@ To act on many rows at once, select the box at the start of each row. To select 
 
 A bar at the bottom of the list shows **Retry**, **Cancel**, and **Remove** for the selected rows. An action changes only the rows where it is possible, and qui skips the other rows. For example, **Cancel** skips a Transfer that ended. **Retry** acts only on rows of the page that you select. After **Select all**, the bar does not show **Retry**, because qui plans each Transfer again. qui asks before it cancels or removes rows. The message after the action tells you how many rows changed and how many qui skipped. If qui refused a row, the message gives the reason.
 
-Finished rows stay for 30 days.
+Finished rows stay for 30 days. The row of a permanent failure stays longer, because it stops an automation from a new start of the same Transfer. qui removes that row after 30 days only if a later Transfer of the same torrents exists. To let the automation start the Transfer again, remove the row.
 
 The notification events **Transfer failed** and **Transfer finished** tell you about the result. See [Notifications](./notifications.md).
 

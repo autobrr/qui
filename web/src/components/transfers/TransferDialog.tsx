@@ -61,11 +61,16 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
     onSuccess: () => {
       toast.success(t("dialog.started", { name: shownName }))
       void queryClient.invalidateQueries({ queryKey: ["transfers", "list"] })
-      onOpenChange(false)
-      setValue(emptyTransferForm)
     },
     onError: (error: Error) => toast.error(t("actions.failed", { message: display.text(error.message) })),
   })
+
+  // The answer of a start closes only the dialog that sent it. A dialog that the user closed before the answer is
+  // gone, and the close would hit the dialog that the user opened next.
+  const closeAfterStart = () => {
+    onOpenChange(false)
+    setValue(emptyTransferForm)
+  }
 
   // Start sends the request that the summary shows, once that summary is in, also while the browser is offline and
   // the next summary waits.
@@ -122,7 +127,7 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
           </div>
           <div className="flex gap-2 sm:justify-end">
             <Button variant="outline" className="h-11 px-5 sm:h-10" onClick={() => onOpenChange(false)}>{t("dialog.cancel")}</Button>
-            <Button className="h-11 flex-1 sm:h-10 sm:min-w-36 sm:flex-none" disabled={!canStart} onClick={() => request && start.mutate(request)}>
+            <Button className="h-11 flex-1 sm:h-10 sm:min-w-36 sm:flex-none" disabled={!canStart} onClick={() => request && start.mutate(request, { onSuccess: closeAfterStart })}>
               {start.isPending && <Loader2 className="animate-spin" aria-hidden />}
               {start.isPending ? t("dialog.starting") : t("dialog.start")}
             </Button>

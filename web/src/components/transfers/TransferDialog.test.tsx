@@ -354,6 +354,28 @@ describe("the Transfer dialog", () => {
   })
 
   // regression: #4242
+  it("leaves the next dialog open when the answer of a start comes after the user closed this one", async () => {
+    let answer = () => {}
+    const held = new Promise<void>(resolve => { answer = resolve })
+    server.use(http.post("*/api/transfers", async ({ request }) => {
+      starts.push(await request.json() as TransferRequest)
+      await held
+      return HttpResponse.json({ id: 5 }, { status: 202 })
+    }))
+    const onOpenChange = renderDialog()
+    await pickTarget("homelab")
+    await waitFor(() => expect(startButton().disabled).toBe(false))
+    fireEvent.click(startButton())
+    await waitFor(() => expect(starts).toHaveLength(1))
+
+    // The torrent list unmounts the dialog when the user closes it.
+    cleanup()
+    answer()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("The Transfer of Show.S01.1080p-GRP waits for its turn."))
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  // regression: #4242
   it("shows made-up names in incognito mode, and hides the reason of a refusal", async () => {
     incognito.on = true
     const onOpenChange = renderDialog()

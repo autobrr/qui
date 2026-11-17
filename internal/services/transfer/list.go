@@ -226,9 +226,19 @@ func (s *Store) Remove(ctx context.Context, id int64, gone HelperGone) error {
 
 // RemoveFinishedBefore deletes each Transfer that finished before t, and the
 // registry rows of their helper torrents that gone reports. It returns how
-// many Transfers it deleted.
+// many Transfers it deleted. It keeps a permanent failure that is the last
+// Transfer of one of its torrents: WaitsForUser reads that row to hold a rule
+// off, and without it the rule would start the Transfer again.
 func (s *Store) RemoveFinishedBefore(ctx context.Context, t time.Time, gone HelperGone) (int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, finished_at FROM torrent_transfers WHERE finished_at IS NOT NULL`)
+	rows, err := s.db.QueryContext(ctx, `SELECT t.id, t.finished_at FROM torrent_transfers t
+			WHERE t.finished_at IS NOT NULL
+			AND NOT (t.kind = ? AND t.state = ? AND t.failure_class = ? AND EXISTS (
+				SELECT 1 FROM torrent_transfer_members m WHERE m.transfer_id = t.id AND NOT EXISTS (
+					SELECT 1 FROM torrent_transfers later
+					JOIN torrent_transfer_members lm ON lm.transfer_id = later.id
+					WHERE later.kind = t.kind AND later.source_instance_id = t.source_instance_id
+					AND lm.hash = m.hash AND later.id > t.id)))`,
+		string(KindTransfer), string(StateFailed), string(FailurePermanent))
 	if err != nil {
 		return 0, fmt.Errorf("read finished transfers: %w", err)
 	}
