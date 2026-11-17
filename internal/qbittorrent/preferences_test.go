@@ -6,6 +6,10 @@ package qbittorrent
 import (
 	"context"
 	"encoding/json/v2"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +34,35 @@ func TestGetAppPreferencesServesStaleCacheWhenRefreshFails(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, prefs)
 	require.Equal(t, "203.0.113.7", prefs.AnnounceIP)
+}
+
+// regression: #4242
+// The list of instances reads the listen port from the preferences that qui
+// read last, of any age, so that a slow qBittorrent does not hold up the list.
+// qui asks qBittorrent only while it has no preferences yet.
+func TestGetLastAppPreferencesAsksOnlyWithoutACache(t *testing.T) {
+	var asked atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/app/preferences") {
+			asked.Add(1)
+			_, _ = w.Write([]byte(`{"listen_port":6881}`))
+			return
+		}
+		_, _ = w.Write([]byte("Ok."))
+	}))
+	defer server.Close()
+	c := &Client{Client: qbt.NewClient(qbt.Config{Host: server.URL}), instanceID: 1}
+
+	prefs, err := c.GetLastAppPreferences(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 6881, prefs.ListenPort)
+	require.EqualValues(t, 1, asked.Load())
+
+	c.preferencesFetchedAt = time.Now().Add(-2 * appPreferencesCacheTTL)
+	prefs, err = c.GetLastAppPreferences(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 6881, prefs.ListenPort)
+	require.EqualValues(t, 1, asked.Load(), "an old cache answers with no request")
 }
 
 func TestGetAppPreferencesReturnsErrorWhenNoCacheAndRefreshFails(t *testing.T) {

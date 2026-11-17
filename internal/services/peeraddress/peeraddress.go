@@ -43,8 +43,10 @@ func (r *Resolver) PublicPeerAddress(ctx context.Context, instanceID int) (strin
 }
 
 // LastPublicPeerAddress is PublicPeerAddress from the last sync of the
-// instance. It sends no sync/maindata request, so a list of the instances
-// costs qBittorrent nothing. Before the first sync it returns ErrNoAddress.
+// instance and the preferences that qui read last. It sends no sync/maindata
+// request, and it reads the preferences from qBittorrent only while qui has
+// none, so a list of the instances does not wait for qBittorrent. Before the
+// first sync it returns ErrNoAddress.
 func (r *Resolver) LastPublicPeerAddress(ctx context.Context, instanceID int) (string, error) {
 	return r.address(ctx, instanceID, false)
 }
@@ -71,7 +73,11 @@ func (r *Resolver) address(ctx context.Context, instanceID int, sync bool) (stri
 	if host == "" {
 		return "", ErrNoAddress
 	}
-	prefs, err := r.sync.GetAppPreferences(ctx, instanceID)
+	readPreferences := r.sync.GetLastAppPreferences
+	if sync {
+		readPreferences = r.sync.GetAppPreferences
+	}
+	prefs, err := readPreferences(ctx, instanceID)
 	if err != nil {
 		return "", err
 	}

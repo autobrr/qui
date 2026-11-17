@@ -181,11 +181,8 @@ func TestUpdateInstanceKeepsThePublicPeerAddress(t *testing.T) {
 		PublicPeerAddress         string `json:"publicPeerAddress"`
 		ResolvedPublicPeerAddress string `json:"resolvedPublicPeerAddress"`
 	}
-	list := func() addresses {
+	read := func() addresses {
 		t.Helper()
-		// An update drops the client: connect again, as the async test does.
-		_, err := clientPool.GetClient(t.Context(), instance.ID)
-		require.NoError(t, err)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances", nil))
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -194,12 +191,21 @@ func TestUpdateInstanceKeepsThePublicPeerAddress(t *testing.T) {
 		require.Len(t, got, 1)
 		return got[0]
 	}
+	list := func() addresses {
+		t.Helper()
+		// An update drops the client: connect again, as the async test does.
+		// The list reads the last sync, so sync the new client first.
+		client, err := clientPool.GetClient(t.Context(), instance.ID)
+		require.NoError(t, err)
+		require.NoError(t, client.SyncOwner().Sync(t.Context()))
+		return read()
+	}
 
 	rec := update(`,"tlsSkipVerify":true`)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Equal(t, addresses{ResolvedPublicPeerAddress: "203.0.113.7:51413"}, list())
 	syncs := stub.Calls("sync/maindata")
-	list()
+	read()
 	require.Equal(t, syncs, stub.Calls("sync/maindata"), "the list sends no sync")
 
 	rec = update(`,"publicPeerAddress":"seedbox.example.org:6881"`)
