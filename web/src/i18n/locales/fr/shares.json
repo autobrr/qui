@@ -1,6 +1,7 @@
 {
   "options": {
     "days": "Jours avant la fin d'un Partage",
+    "daysInvalid": "Saisissez un nombre entier de jours, 1 ou plus.",
     "endAtFirstDownload": "Terminer au premier téléchargement complet",
     "endAtFirstDownloadDescription": "Le Partage se termine dès qu'un client possède tous les fichiers.",
     "firstDownloaderOnly": "Premier téléchargeur uniquement",

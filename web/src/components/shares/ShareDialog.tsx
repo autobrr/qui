@@ -65,6 +65,12 @@ export function ShareDialog({ open, onOpenChange, instanceId, torrents }: ShareD
   )
 }
 
+/** The days of the field, or null for text that is not a whole number of 1 or more. */
+function daysOf(text: string): number | null {
+  const days = Number(text.trim())
+  return Number.isInteger(days) && days >= 1 ? days : null
+}
+
 interface ShareFlowProps {
   settings: ShareSettings
   instanceId: number
@@ -79,11 +85,12 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
   const [endAtFirstDownload, setEndAtFirstDownload] = useState(settings.defaults.endAtFirstDownload)
   const [firstDownloaderOnly, setFirstDownloaderOnly] = useState(settings.defaults.firstDownloaderOnly)
   const outside = settings.trackerInUse === "outside"
+  const validDays = daysOf(days)
   const mutation = useMutation({
-    mutationFn: () => startShares({
+    mutationFn: (shareDays: number) => startShares({
       instanceId,
       hashes: torrents.map((torrent) => torrent.hash),
-      days: Number(days.trim()) || 0,
+      days: shareDays,
       endAtFirstDownload,
       // The lock needs the announces that only qui's own tracker sees.
       firstDownloaderOnly: firstDownloaderOnly && !outside,
@@ -103,6 +110,7 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
         <TrackerInUse settings={settings} />
         <ShareOptionFields
           days={days}
+          daysError={validDays === null ? t("options.daysInvalid") : undefined}
           endAtFirstDownload={endAtFirstDownload}
           firstDownloaderOnly={firstDownloaderOnly}
           lockUnavailable={outside}
@@ -129,7 +137,10 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>{t("dialog.cancel")}</Button>
-        <Button onClick={() => mutation.mutate()} disabled={settings.trackerInUse === "" || mutation.isPending}>
+        <Button
+          onClick={() => validDays !== null && mutation.mutate(validDays)}
+          disabled={settings.trackerInUse === "" || validDays === null || mutation.isPending}
+        >
           {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {t("dialog.create")}
         </Button>

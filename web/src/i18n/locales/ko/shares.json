@@ -1,6 +1,7 @@
 {
   "options": {
     "days": "공유가 끝날 때까지의 일수",
+    "daysInvalid": "1 이상의 정수로 일수를 입력하세요.",
     "endAtFirstDownload": "첫 다운로드 완료 시 종료",
     "endAtFirstDownloadDescription": "한 클라이언트가 모든 파일을 받으면 즉시 공유가 종료됩니다.",
     "firstDownloaderOnly": "첫 다운로더만",

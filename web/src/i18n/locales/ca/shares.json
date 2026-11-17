@@ -1,6 +1,7 @@
 {
   "options": {
     "days": "Dies fins que acaba una Compartició",
+    "daysInvalid": "Introdueix un nombre enter de dies, 1 o més.",
     "endAtFirstDownload": "Acaba a la primera baixada completa",
     "endAtFirstDownloadDescription": "La Compartició acaba tan bon punt un client té tots els fitxers.",
     "firstDownloaderOnly": "Només el primer que baixa",

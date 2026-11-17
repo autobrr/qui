@@ -172,11 +172,29 @@ describe("ShareDialog", () => {
   it("shows the error of a request that qui cannot read, and stays on the form", async () => {
     server.use(http.post("*/api/shares", () => HttpResponse.json({ error: "Invalid request body" }, { status: 400 })))
     renderDialog()
-    fireEvent.change(await screen.findByLabelText("Days until a Share ends"), { target: { value: "1.5" } })
-    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Create" }))
 
     expect((await screen.findByRole("alert")).textContent).toContain("Invalid request body")
     expect(screen.getByRole("button", { name: "Create" })).not.toBeNull()
+  })
+
+  // regression: #4242
+  it("asks for a whole number of days, and creates the Share only with one", async () => {
+    renderDialog()
+    const days = await screen.findByLabelText("Days until a Share ends")
+    const create = screen.getByRole<HTMLButtonElement>("button", { name: "Create" })
+    for (const text of ["abc", "0"]) {
+      fireEvent.change(days, { target: { value: text } })
+      expect(create.disabled).toBe(true)
+      expect(days.getAttribute("aria-invalid")).toBe("true")
+      expect(screen.getByText("Enter a whole number of days, 1 or more.")).not.toBeNull()
+    }
+
+    fireEvent.change(days, { target: { value: " 3 " } })
+    expect(screen.queryByText("Enter a whole number of days, 1 or more.")).toBeNull()
+    fireEvent.click(create)
+    await waitFor(() => expect(started).toHaveLength(1))
+    expect(started[0].days).toBe(3)
   })
 
   it("makes one Share for each torrent and names the torrents that qui refused", async () => {

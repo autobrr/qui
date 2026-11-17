@@ -1,6 +1,7 @@
 {
   "options": {
     "days": "Dias até um Compartilhamento terminar",
+    "daysInvalid": "Digite um número inteiro de dias, 1 ou mais.",
     "endAtFirstDownload": "Terminar no primeiro download completo",
     "endAtFirstDownloadDescription": "O Compartilhamento termina assim que um cliente tiver todos os arquivos.",
     "firstDownloaderOnly": "Somente o primeiro a baixar",

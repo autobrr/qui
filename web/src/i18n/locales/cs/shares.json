@@ -1,6 +1,7 @@
 {
   "options": {
     "days": "Počet dní do konce Sdílení",
+    "daysInvalid": "Zadejte celý počet dní, 1 nebo více.",
     "endAtFirstDownload": "Ukončit po prvním dokončeném stažení",
     "endAtFirstDownloadDescription": "Sdílení skončí, jakmile má jeden klient všechny soubory.",
     "firstDownloaderOnly": "Jen první stahující",

@@ -1,6 +1,7 @@
 {
   "options": {
     "days": "Giorni prima che una Condivisione termini",
+    "daysInvalid": "Inserisci un numero intero di giorni, 1 o più.",
     "endAtFirstDownload": "Termina al primo download completo",
     "endAtFirstDownloadDescription": "La Condivisione termina appena un client ha tutti i file.",
     "firstDownloaderOnly": "Solo il primo che scarica",

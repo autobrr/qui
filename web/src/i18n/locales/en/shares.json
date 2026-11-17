@@ -1,6 +1,7 @@
 {
   "options": {
     "days": "Days until a Share ends",
+    "daysInvalid": "Enter a whole number of days, 1 or more.",
     "endAtFirstDownload": "End at the first complete download",
     "endAtFirstDownloadDescription": "The Share ends as soon as one client has every file.",
     "firstDownloaderOnly": "Only the first downloader",

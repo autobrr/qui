@@ -1,6 +1,7 @@
 {
   "options": {
     "days": "分享結束前的天數",
+    "daysInvalid": "請輸入不小於 1 的整數天數。",
     "endAtFirstDownload": "首次完整下載後結束",
     "endAtFirstDownloadDescription": "一旦有用戶端取得全部檔案，分享即結束。",
     "firstDownloaderOnly": "僅限第一個下載者",

@@ -1,6 +1,7 @@
 {
   "options": {
     "days": "Tage bis zum Ende einer Freigabe",
+    "daysInvalid": "Gib eine ganze Zahl von Tagen ein, 1 oder mehr.",
     "endAtFirstDownload": "Beim ersten vollständigen Download beenden",
     "endAtFirstDownloadDescription": "Die Freigabe endet, sobald ein Client alle Dateien hat.",
     "firstDownloaderOnly": "Nur der erste Downloader",

@@ -10,6 +10,8 @@ import { useTranslation } from "react-i18next"
 
 interface ShareOptionFieldsProps {
   days: string
+  /** Why the days are not valid, shown under the field. */
+  daysError?: string
   endAtFirstDownload: boolean
   firstDownloaderOnly: boolean
   /** Shows that the lock is not available, as with an outside tracker. */
@@ -19,11 +21,11 @@ interface ShareOptionFieldsProps {
 }
 
 /** The three options of a Share, in the Share dialog and in the defaults of Settings → Shares. */
-export function ShareOptionFields({ days, endAtFirstDownload, firstDownloaderOnly, lockUnavailable, disabled, onChange }: ShareOptionFieldsProps) {
+export function ShareOptionFields({ days, daysError, endAtFirstDownload, firstDownloaderOnly, lockUnavailable, disabled, onChange }: ShareOptionFieldsProps) {
   const { t } = useTranslation("shares")
   return (
     <div className="space-y-4">
-      <Field label={t("options.days")}>
+      <Field label={t("options.days")} error={daysError}>
         <Input inputMode="numeric" className="w-full sm:w-32" value={days} disabled={disabled} onChange={(e) => onChange({ days: e.target.value })} />
       </Field>
       <SwitchRow
