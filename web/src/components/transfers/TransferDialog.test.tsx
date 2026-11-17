@@ -169,6 +169,21 @@ describe("the Transfer dialog", () => {
   })
 
   // regression: #4242
+  it("starts the Transfer into a target category whose name equals the value of No category", async () => {
+    server.use(http.get("*/api/instances/:id/categories", () => HttpResponse.json({ __none__: { name: "__none__", savePath: "" } })))
+    renderDialog()
+    await pickTarget("homelab")
+    const category = screen.getByRole("combobox", { name: "Category" })
+    fireEvent.keyDown(category, { key: "Enter" })
+    fireEvent.click(await screen.findByRole("option", { name: "__none__" }))
+
+    await waitFor(() => expect(startButton().disabled).toBe(false))
+    fireEvent.click(startButton())
+    await waitFor(() => expect(starts).toHaveLength(1))
+    expect(starts[0].category).toBe("__none__")
+  })
+
+  // regression: #4242
   it("renders nothing more while the form stays as it is", async () => {
     renderDialog()
     await pickTarget("homelab")
