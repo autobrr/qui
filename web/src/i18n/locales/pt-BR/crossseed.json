@@ -120,18 +120,6 @@
     "skipIndividualEpisodesAutomationOff": "A montagem automática de pacotes de temporada está desativada. Esta execução não busca pacotes de temporada.",
     "maxAddedAgeLabel": "Idade máxima do torrent (dias)",
     "maxAddedAgeDescription": "Ignora torrents adicionados há mais dias do que este valor. 0 desativa o limite. Indexadores que nunca pesquisaram um torrent são sempre incluídos.",
-    "categories": "Categorias",
-    "tags": "Tags",
-    "allCategoriesAll": "Todas as categorias (deixe vazio para todas)",
-    "allTagsAll": "Todas as tags (deixe vazio para todas)",
-    "selectInstanceToLoadCategories": "Selecione uma instância para carregar categorias",
-    "selectInstanceToLoadTags": "Selecione uma instância para carregar tags",
-    "categoriesLoadAfterInstance": "As categorias carregam após a seleção de uma instância; você ainda pode digitar o nome de uma categoria.",
-    "allCategoriesIncluded": "Todas as categorias serão incluídas na busca.",
-    "selectedCategoriesScanned": "Categorias varridas: {{count}}.",
-    "tagsLoadAfterInstance": "As tags carregam após a seleção de uma instância; você ainda pode digitar uma tag.",
-    "allTagsIncluded": "Todas as tags serão incluídas na busca.",
-    "selectedTagsScanned": "Tags varridas: {{count}}.",
     "sourceInstance": "Instância de origem",
     "selectAnInstance": "Selecione uma instância",
     "addInstanceToSearch": "Adicione uma instância para buscar os torrents que você já semeia.",
@@ -211,6 +199,35 @@
         "notMusic": "não é música",
         "other": "outros"
       }
+    },
+    "schedule": {
+      "enableLabel": "Executar em um agendamento",
+      "enableHelp": "O qui inicia uma execução agendada a cada poucas horas com as configurações salvas deste cartão. Uma execução agendada busca apenas torrents adicionados recentemente, dos mais novos para os mais antigos, e para no limite de buscas. Um indexador que falhou continua pendente, e a próxima execução agendada consulta ele de novo. \"Executar agendamento agora\" inicia na hora uma execução agendada e reinicia o relógio.",
+      "intervalLabel": "Executar a cada (horas)",
+      "intervalHelp": "O tempo entre o início de uma execução agendada e o início da próxima. O qui mantém esse tempo após reiniciar.",
+      "maxSearchesLabel": "Máx. de buscas por execução",
+      "maxSearchesHelp": "Uma execução agendada para depois que esse número de torrents enviou uma busca. Um torrent que o tempo de espera ou os filtros pulam não conta. Os torrents restantes esperam a próxima execução.",
+      "maxAgeLabel": "Só torrents adicionados nos últimos (dias)",
+      "maxAgeHelp": "Uma execução agendada pula cada torrent adicionado há mais desse número de dias, também para um indexador que nunca buscou ele. \"Iniciar execução\" não usa esse limite.",
+      "runNow": "Executar agendamento agora",
+      "runStarted": "Execução agendada iniciada",
+      "runAlreadyActive": "Uma Busca na Biblioteca já está em andamento.",
+      "nextRun": "Próxima execução agendada: {{time}}",
+      "dueNow": "Execução agendada pendente agora",
+      "dueAfterCurrentRun": "A execução agendada começa depois da execução atual",
+      "scheduledRunActive": "Uma execução agendada está em andamento."
+    },
+    "runKind": {
+      "scheduled": "Agendada",
+      "manual": "Manual"
+    },
+    "stoppedAtLimit_one": "Parou no limite de {{limit}} buscas. {{count}} torrent espera a próxima execução.",
+    "stoppedAtLimit_other": "Parou no limite de {{limit}} buscas. {{count}} torrents esperam a próxima execução.",
+    "runFilters": {
+      "include": "Incluir: {{filters}}",
+      "exclude": "Excluir: {{filters}}",
+      "categories": "categorias {{list}}",
+      "tags": "tags {{list}}"
     }
   },
   "rules": {
@@ -495,7 +512,8 @@
   "validation": {
     "minInterval": "Deve ter pelo menos {{min}} minutos",
     "minIntervalSeconds": "Deve ter pelo menos {{min}} segundos",
-    "minCooldown": "Deve ter pelo menos {{min}} minutos"
+    "minCooldown": "Deve ter pelo menos {{min}} minutos",
+    "atLeast": "Deve ser pelo menos {{min}}"
   },
   "blocklist": {
     "title": "Lista de Bloqueio Cross-Seed",

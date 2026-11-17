@@ -2,7 +2,7 @@ package crossseed
 
 import "testing"
 
-func TestNormalizeSearchTiming(t *testing.T) {
+func TestNormalizeSearchRunTimingWithTorznab(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -32,7 +32,7 @@ func TestNormalizeSearchTiming(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotInterval, gotCooldown := normalizeSearchTiming(tt.interval, tt.cooldown)
+			gotInterval, gotCooldown := normalizeSearchRunTiming(tt.interval, tt.cooldown, false)
 			if gotInterval != tt.wantInterval {
 				t.Fatalf("interval: got %d want %d", gotInterval, tt.wantInterval)
 			}

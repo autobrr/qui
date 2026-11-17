@@ -5,11 +5,11 @@
 
 // i18n-namespace: crossseed
 
-/** What the run controls of a section show. A blocked state carries the reason for the disabled button. */
+/** What the run controls of a section show. A blocked state carries the reason for the disabled button, and a running state can name the active run. */
 export type RunState =
   | { kind: "ready" }
   | { kind: "blocked"; reason: string }
-  | { kind: "running" }
+  | { kind: "running"; note?: string }
   | { kind: "cancelling" }
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
@@ -44,11 +44,16 @@ export interface LibraryRunInput {
   needsGazelle: boolean
   /** An enabled Torznab indexer or a saved Gazelle setup exists. */
   hasSearchSource: boolean
+  /** The active run is a scheduled run. */
+  scheduledRun: boolean
 }
 
 /** A scan in progress wins over every reason, so Cancel stays reachable. */
 export function libraryRunState(input: LibraryRunInput, t: Translate): RunState {
-  if (input.running) return input.cancelPending ? { kind: "cancelling" } : { kind: "running" }
+  if (input.running) {
+    if (input.cancelPending) return { kind: "cancelling" }
+    return input.scheduledRun ? { kind: "running", note: t("scan.schedule.scheduledRunActive") } : { kind: "running" }
+  }
   if (!input.hasInstance) return { kind: "blocked", reason: t("toast.selectInstanceToRun") }
   if (input.startPending) return { kind: "blocked", reason: t("run.starting") }
   if (input.needsGazelle) return { kind: "blocked", reason: t("toast.enableGazelleDescription") }

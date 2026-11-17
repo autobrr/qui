@@ -106,6 +106,13 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 	if state.run.Status != models.CrossSeedSearchRunStatusSuccess {
 		eventType = notifications.EventCrossSeedSearchFailed
 	}
+	// A scheduled run follows the RSS rule: a quiet run sends nothing. A run
+	// with an error, such as Torznab indexers that did not load, is not quiet.
+	if eventType == notifications.EventCrossSeedSearchSucceeded && state.run.Kind == models.CrossSeedSearchRunKindScheduled &&
+		state.run.CrossSeedsAdded == 0 && state.run.TorrentsFailed == 0 &&
+		(state.run.ErrorMessage == nil || strings.TrimSpace(*state.run.ErrorMessage) == "") {
+		return
+	}
 
 	var errorMessage string
 	if state.run.ErrorMessage != nil && strings.TrimSpace(*state.run.ErrorMessage) != "" {
@@ -119,12 +126,16 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 
 	lines := []string{
 		fmt.Sprintf("Run: %d", state.run.ID),
+		fmt.Sprintf("Kind: %s", state.run.Kind),
 		fmt.Sprintf("Status: %s", state.run.Status),
 		fmt.Sprintf("Processed: %d/%d", state.run.Processed, state.run.TotalTorrents),
 		fmt.Sprintf("Cross-seeds added: %d", state.run.CrossSeedsAdded),
 		fmt.Sprintf("Torrents with cross-seeds: %d", state.run.TorrentsWithCrossSeeds),
 		fmt.Sprintf("Failed: %d", state.run.TorrentsFailed),
 		fmt.Sprintf("Skipped: %d", state.run.TorrentsSkipped),
+	}
+	if state.run.Message != nil && strings.TrimSpace(*state.run.Message) != "" {
+		lines = append(lines, "Message: "+strings.TrimSpace(*state.run.Message))
 	}
 	if state.run.ErrorMessage != nil && strings.TrimSpace(*state.run.ErrorMessage) != "" {
 		lines = append(lines, "Error: "+strings.TrimSpace(*state.run.ErrorMessage))

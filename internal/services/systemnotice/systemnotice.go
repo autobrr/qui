@@ -34,6 +34,10 @@ const (
 	// LowDisk opens on SQLite when the disk of the database file has little
 	// free space.
 	LowDisk Kind = "low_disk"
+	// LibraryScanScheduleBlocked opens when the saved Library settings keep
+	// the Library Scan schedule from starting a run. It closes when a
+	// scheduled run starts, or when the schedule is turned off.
+	LibraryScanScheduleBlocked Kind = "library_scan_schedule_blocked"
 )
 
 type Severity string
@@ -79,6 +83,16 @@ var definitions = map[Kind]definition{
 		dismissible: true,
 		fixes: map[string]string{
 			"": "The disk of the qui database has little free space. When the disk is full, each write of qui fails. Free space on the disk, lower \"Keep daily detail for\", or delete older history in the Statistics settings.",
+		},
+	},
+	LibraryScanScheduleBlocked: {
+		severity: SeverityError,
+		title:    "Library Scan schedule cannot run",
+		fixes: map[string]string{
+			"":                       "qui cannot start the scheduled Library Scan run. qui tries again every hour.",
+			"torznab_off_no_gazelle": "Torznab is off in the Library Scan settings, and no RED or OPS API key is set. Turn Torznab on, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+			"no_indexer":             "No indexer is enabled. Enable a Torznab indexer, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+			"instance_missing":       "The instance in the saved Library Scan settings does not exist. Pick an instance in the Library Scan settings, then save. qui tries again every hour.",
 		},
 	},
 	RedactedKeyRejected: keyRejected("Redacted"),

@@ -18,7 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-const publicPeerAddressMigration = "125_add_transfers_and_shares.sql"
+const publicPeerAddressMigration = "126_add_transfers_and_shares.sql"
 
 func TestInstancePublicPeerAddressMigrationSQLite(t *testing.T) {
 	t.Parallel()

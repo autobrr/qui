@@ -252,6 +252,28 @@
         "fix": "키가 잘못된 경우 Orpheus 프로필 설정에서 Torrents 권한이 있는 API 키를 만들고 qui의 Gazelle (OPS/RED) 설정에 붙여 넣으세요. Orpheus에서 qui의 IP를 차단했다면 새 키로는 해결되지 않습니다. Orpheus 운영진에 문의하세요.",
         "menuFix": "설정에 새 키 붙여 넣기",
         "action": "Gazelle (OPS/RED) 설정 열기"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "라이브러리 스캔 일정 차단됨",
+        "title": "라이브러리 스캔 일정을 실행할 수 없습니다",
+        "effect": "qui가 예약된 라이브러리 스캔 실행을 시작할 수 없습니다. 매시간 다시 시도합니다.",
+        "fix": "라이브러리 스캔 설정을 확인하세요. qui는 매시간 다시 시도합니다.",
+        "menuFix": "라이브러리 스캔 설정 확인",
+        "action": "라이브러리 스캔 설정 열기",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "라이브러리 스캔 설정에서 Torznab이 꺼져 있고, RED 또는 OPS API 키가 설정되어 있지 않습니다. Torznab을 켜거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "Torznab을 켜거나 RED 또는 OPS 키 추가"
+          },
+          "no_indexer": {
+            "fix": "활성화된 인덱서가 없습니다. Torznab 인덱서를 활성화하거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "인덱서 활성화"
+          },
+          "instance_missing": {
+            "fix": "저장된 라이브러리 스캔 설정의 인스턴스가 존재하지 않습니다. 라이브러리 스캔 설정에서 인스턴스를 선택한 뒤 저장하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "인스턴스를 선택한 뒤 저장"
+          }
+        }
       }
     },
     "actions": {
