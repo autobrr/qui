@@ -50,11 +50,15 @@ type Store struct {
 	mu      sync.RWMutex
 	claims  map[torrentKey]int64
 	helpers map[torrentKey]OwnerKind
+	// orphans holds, for each helper torrent whose Transfer row is gone, the
+	// time after which a sync of its instance shows whether it is gone.
+	orphans map[torrentKey]time.Time
 }
 
 // NewStore reads the claims and the helper torrents of db.
 func NewStore(ctx context.Context, db dbinterface.Querier) (*Store, error) {
-	s := &Store{db: db, claims: make(map[torrentKey]int64), helpers: make(map[torrentKey]OwnerKind)}
+	s := &Store{db: db, claims: make(map[torrentKey]int64), helpers: make(map[torrentKey]OwnerKind),
+		orphans: make(map[torrentKey]time.Time)}
 	if err := s.load(ctx); err != nil {
 		return nil, err
 	}

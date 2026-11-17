@@ -4,6 +4,7 @@
 package transfer_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -143,6 +144,97 @@ func TestTheRowOfATransferTakesOnlyItsGoneHelpersAlong(t *testing.T) {
 				check()
 			})
 		}
+	}
+}
+
+// regression: #4242
+// A helper torrent that qui kept when the row of its Transfer went, because
+// qui could not see it gone yet, goes at a later hourly pass once its instance
+// has synced and the synced torrent list does not hold it. A helper that is
+// still there, one on an offline instance, and one on an instance with no
+// sync since stay protected, also after a restart.
+func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
+	removals := []struct {
+		name   string
+		remove func(r *rig, ids []int64)
+	}{
+		{name: "the user removes the rows", remove: func(r *rig, ids []int64) {
+			for _, id := range ids {
+				require.NoError(r.t, r.svc.Remove(r.t.Context(), id))
+			}
+		}},
+		{name: "the cleanup at a start removes the rows", remove: func(r *rig, _ []int64) {
+			r.setClock(time.Now().Add(31 * 24 * time.Hour))
+			r.restart()
+		}},
+		{name: "the rows went before the last restart", remove: func(r *rig, _ []int64) {
+			r.setClock(time.Now().Add(31 * 24 * time.Hour))
+			r.restart()
+			r.restart()
+		}},
+	}
+	for _, removal := range removals {
+		t.Run(removal.name, func(t *testing.T) {
+			r := newRig(t, func(c *transfer.Config) { c.WakeInterval = time.Millisecond })
+			ctx := t.Context()
+			syncNow := func(instanceID int) {
+				t.Helper()
+				owner, err := r.sync.GetSyncOwner(ctx, instanceID)
+				require.NoError(t, err)
+				require.NoError(t, owner.Sync(ctx))
+			}
+			file, there := singleFileTorrent(t, "Show.S01E01.mkv", []byte("helper"))
+			r.dst.Seed(file, r.dstDir)
+			offline, err := r.instances.Create(ctx, "offline", "http://127.0.0.1:1", "", "", nil, nil, false, new(false))
+			require.NoError(t, err)
+			syncNow(r.target.ID)
+			syncNow(r.source.ID)
+			helpers := []struct {
+				name       string
+				instanceID int
+				hash       string
+				goes       bool
+			}{
+				{name: "still on the client", instanceID: r.target.ID, hash: there},
+				{name: "on an offline instance", instanceID: offline.ID, hash: "1111111111111111111111111111111111111111"},
+				{name: "gone from the client", instanceID: r.target.ID, hash: "2222222222222222222222222222222222222222", goes: true},
+				{name: "gone, with no sync since", instanceID: r.source.ID, hash: "3333333333333333333333333333333333333333"},
+			}
+			ids := make([]int64, 0, len(helpers))
+			for i, h := range helpers {
+				ids = append(ids, r.endedWithHelper(fmt.Sprintf("aaa%d", i), transfer.StateCancelled, h.instanceID, h.hash))
+			}
+
+			removal.remove(r, ids)
+			for _, id := range ids {
+				require.False(t, r.exists(id))
+			}
+			for _, h := range helpers {
+				require.True(t, r.store.IsHelper(h.instanceID, h.hash), "%s: no sync since the end", h.name)
+			}
+
+			syncNow(r.target.ID)
+			r.setClock(r.now().Add(time.Hour))
+			gone := helpers[2]
+			require.Eventually(t, func() bool { return !r.store.IsHelper(gone.instanceID, gone.hash) },
+				5*time.Second, time.Millisecond, "the next hourly pass forgets the gone helper")
+			check := func() {
+				t.Helper()
+				r.sync.SetHelperTorrents(r.store)
+				for _, h := range helpers {
+					require.Equal(t, !h.goes, r.store.IsHelper(h.instanceID, h.hash), h.name)
+					err := r.sync.RefuseHelperFiles(ctx, h.instanceID, []string{h.hash})
+					if h.goes {
+						require.NoError(t, err, h.name)
+					} else {
+						require.ErrorIs(t, err, qbittorrent.ErrHelperTorrentFiles, h.name)
+					}
+				}
+			}
+			check()
+			r.restart()
+			check()
+		})
 	}
 }
 
