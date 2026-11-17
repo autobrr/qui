@@ -476,6 +476,11 @@ func TestText(t *testing.T) {
 			want:  "password: REDACTED user: bob",
 		},
 		{
+			name:  "key value pair whose value is a flat list or object",
+			input: "apiKeys: [\"abcdef123\",\"uvw]xyz987\"] user: bob\ntokens: [abcdef456, uvwxyz654]\nsecrets: {\"a\":\"abcdef789\"}\nmessage: \"body tokens: [\\\"abcdef321\\\"]\"",
+			want:  "apiKeys: REDACTED user: bob\ntokens: REDACTED\nsecrets: REDACTED\nmessage: \"body tokens: REDACTED\"",
+		},
+		{
 			name:  "key value pair whose value is a url with a comma in its password",
 			input: "authURL: https://user:pa,ss@host.test\nproxyAuth: http://user:pa;ss@host.test/x",
 			want:  "authURL: REDACTED\nproxyAuth: REDACTED",
