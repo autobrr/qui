@@ -35,6 +35,7 @@ const namespaces = [
   "search",
   "instances",
   "automations",
+  "transfers",
 ]
 
 // These technical terms, brand names, and abbreviations can stay untranslated.

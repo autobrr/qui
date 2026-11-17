@@ -607,7 +607,7 @@ function normalizeStreamSubscription(stream: StreamSubscription) {
 }
 
 class ApiClient {
-  private async request<T>(
+  async request<T>(
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
@@ -3194,6 +3194,11 @@ class ApiClient {
       method: "POST",
     })
   }
+}
+
+/** Sends a JSON request through the shared API client (auth, SSO, errors). */
+export function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  return api.request<T>(endpoint, options)
 }
 
 export const api = new ApiClient()

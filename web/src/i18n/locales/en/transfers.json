@@ -1,0 +1,165 @@
+{
+  "page": {
+    "title": "Transfers",
+    "description": "Torrents that qui moves to another instance, and the runs of Export to Instance rules."
+  },
+  "tabs": {
+    "transfers": "Transfers",
+    "shares": "Shares"
+  },
+  "chips": {
+    "label": "Show",
+    "all": "All",
+    "active": "Active ({{count}})",
+    "waiting": "Waiting ({{count}})",
+    "finished": "Finished ({{count}})",
+    "failed": "Failed ({{count}})"
+  },
+  "columns": {
+    "torrent": "Torrent",
+    "route": "From → to",
+    "way": "Way",
+    "progress": "Progress",
+    "speed": "Speed",
+    "timeLeft": "Time left",
+    "state": "State",
+    "started": "Started",
+    "actions": "Actions"
+  },
+  "row": {
+    "crossSeeds_one": "+{{count}} cross-seed",
+    "crossSeeds_other": "+{{count}} cross-seeds",
+    "export": "Export",
+    "route": "{{source}} → {{target}}",
+    "byUser": "By you",
+    "byRule": "By rule {{name}}",
+    "byDeletedRule": "By a rule that is gone",
+    "retryAt": "Retry {{time}}",
+    "unknownInstance": "Instance {{id}}",
+    "noSpeed": "—"
+  },
+  "ways": {
+    "sftp": "Copy over SFTP",
+    "local": "Copy on qui's disk",
+    "none": "No copy",
+    "bittorrent": "BitTorrent",
+    "fallback": "Unknown way"
+  },
+  "states": {
+    "waiting": "Waiting",
+    "copying": "Copying",
+    "checking": "Checking",
+    "finishing": "Finishing",
+    "done": "Done",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "fallback": "Unknown state"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} uses qBittorrent's default \"TCP and μTP\". In qui's tests, \"TCP only\" was about three times faster. Change it in the BitTorrent settings of {{instance}}."
+  },
+  "actions": {
+    "details": "Details",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "retried": "The Transfer runs again.",
+    "cancelled": "qui cancels the Transfer and takes back what it did.",
+    "removed": "The row is removed.",
+    "failed": "Failed: {{message}}"
+  },
+  "cancelDialog": {
+    "title": "Cancel this Transfer?",
+    "description": "qui stops the Transfer of {{name}}, removes the files that it wrote and the torrents that it added on the target, and starts the torrent on the source again.",
+    "keep": "Keep running",
+    "confirm": "Cancel the Transfer"
+  },
+  "list": {
+    "loading": "Loading Transfers…",
+    "error": "qui cannot load the Transfers: {{message}}",
+    "empty": "No Transfer here yet.",
+    "limit": "The list shows the newest 500 rows."
+  },
+  "details": {
+    "title": "Transfer of {{name}}",
+    "exportTitle": "Export run of {{name}}",
+    "failure": "Why it failed",
+    "torrents": "Torrents",
+    "torrentOn": "On {{instance}}, in {{path}}",
+    "steps": "Steps",
+    "log": "Log",
+    "noLog": "No log lines yet.",
+    "loading": "Loading the Transfer…",
+    "error": "qui cannot load the Transfer: {{message}}"
+  },
+  "steps": {
+    "start": "Started",
+    "prepare": "Prepared both sides",
+    "passByBitTorrent": "Passing by a Transfer torrent",
+    "passedByBitTorrent": "Passed by a Transfer torrent",
+    "fallBackToSftp": "Fell back to a copy over SFTP",
+    "copyHardlink": "Copied a hardlink",
+    "check": "Checked on the target",
+    "checkFiles": "Checked the files on the target",
+    "copyMissing": "Copying the missing files",
+    "checkPartials": "Checked the partial files on the target",
+    "copyFailedPieces": "Copying the pieces that failed the check",
+    "place": "Placed the files",
+    "add": "Adding to the target",
+    "added": "Added to the target",
+    "after": "Handled the source",
+    "removeFromSource": "Removing from the source",
+    "cleanUp": "Cleaning up",
+    "removePlaced": "Removed the placed files"
+  },
+  "stepFallback": "Another step",
+  "form": {
+    "target": "Target instance",
+    "targetPlaceholder": "Select an instance",
+    "noTargets": "Add another instance to transfer torrents to it.",
+    "savePath": "Save path",
+    "savePathHelp": "The folder on the target. qui keeps the folders of the torrent and its cross-seeds below it. Empty uses the default save path of the target.",
+    "savePathPlaceholder": "Default save path of the target",
+    "category": "Category",
+    "noCategory": "No category",
+    "tags": "Tags",
+    "tagsPlaceholder": "tag1, tag2",
+    "after": "After the Transfer",
+    "afterHelp": "What qui does with the torrent on the source once the target seeds it.",
+    "afterOptions": {
+      "removeWithFiles": "Remove the torrent and its files from the source",
+      "keepFiles": "Remove the torrent from the source and keep its files",
+      "keepSeeding": "Keep seeding on the source"
+    },
+    "leaveStopped": "Leave the torrent stopped on the target",
+    "way": "Way",
+    "wayHelp": "Auto copies through qui when qui reaches the files of a side on its own disk, and else passes the files by a Transfer torrent between the two qBittorrents.",
+    "wayOptions": {
+      "auto": "Auto",
+      "copy": "Copy through qui",
+      "bittorrent": "Transfer torrent"
+    }
+  },
+  "dialog": {
+    "title": "Transfer {{name}}",
+    "description": "Move the torrent and its cross-seeds to another instance. qui checks every piece on the target before it changes the source.",
+    "start": "Start Transfer",
+    "starting": "Starting…",
+    "started": "The Transfer of {{name}} waits for its turn.",
+    "cancel": "Close"
+  },
+  "summary": {
+    "title": "Summary",
+    "pickTarget": "Select a target instance to see the summary.",
+    "loading": "Planning the Transfer…",
+    "refused": "qui does not start this Transfer: {{message}}",
+    "torrents_one": "{{count}} torrent, {{size}}",
+    "torrents_other": "{{count}} torrents, {{size}}",
+    "way": "Way: {{way}}",
+    "free": "Free on the target: {{size}}",
+    "freeUnknown": "Free space unknown: before qBittorrent 5.3, qBittorrent reports it only at its default save path.",
+    "notEnoughSpace": "The target has less free space than the Transfer needs.",
+    "noFileAccess": "qui cannot see the files on {{instance}}, so a file with other content at the same path can be replaced.",
+    "crossSeedInstance": "On {{instance}}"
+  }
+}
