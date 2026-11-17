@@ -256,6 +256,28 @@ func (s *Server) addedRow(t *Torrent) (state string, progress float64, listed bo
 	return "stalled" + suffix, a.progress, true
 }
 
+// amountLeft is the bytes of the pieces that the last check did not pass,
+// as qBittorrent reports amount_left. It ignores file priorities.
+func (a *added) amountLeft() int64 {
+	var total int64
+	for _, size := range a.sizes {
+		total += size
+	}
+	switch {
+	case a.progress >= 1:
+		return 0
+	case a.pieceStates == nil:
+		return total
+	}
+	var left int64
+	for i, state := range a.pieceStates {
+		if state != 2 {
+			left += min(a.pieceLength, total-int64(i)*a.pieceLength)
+		}
+	}
+	return left
+}
+
 // start answers torrents/start and torrents/setForceStart.
 func (s *Server) start(t *Torrent, forced bool) {
 	if t.add == nil {

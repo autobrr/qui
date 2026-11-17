@@ -134,6 +134,7 @@ func (s *Server) pass(seeder *Server, from, to *Torrent) {
 		}
 		to.add.downloaded += int64(len(data[i]))
 		from.Uploaded += int64(len(data[i]))
+		s.FreeSpace = max(s.FreeSpace-int64(len(data[i])), 0)
 	}
 	to.add.progress, to.add.pieceStates = 1, nil
 }

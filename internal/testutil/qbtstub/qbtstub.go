@@ -166,7 +166,7 @@ type Server struct {
 	BittorrentProtocol int
 	// FreeSpace is the free space that the server state reports for the
 	// default save path, and app/getFreeSpaceAtPath for any path from
-	// qBittorrent 5.3.
+	// qBittorrent 5.3. A download from a stub of the swarm takes its bytes.
 	FreeSpace int64
 	// Unreachable is a closed port: no peer of the swarm connects to the
 	// stub, and the stub still connects to its peers.
@@ -648,7 +648,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				row["state"] = state
 			}
 			if t.add != nil {
-				row["downloaded"] = t.add.downloaded
+				row["downloaded"], row["amount_left"] = t.add.downloaded, t.add.amountLeft()
 			}
 			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
 				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata

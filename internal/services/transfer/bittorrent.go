@@ -88,6 +88,10 @@ func (j *job) pass(ctx context.Context, p *part) error {
 			return err
 		}
 	}
+	free, known, err := j.blindFreeSpace(ctx)
+	if err != nil {
+		return err
+	}
 	salt := make([]byte, 16)
 	_, _ = rand.Read(salt)
 	random := hex.EncodeToString(salt)
@@ -124,6 +128,11 @@ func (j *job) pass(ctx context.Context, p *part) error {
 	}
 	seeded := torrent.Progress < 1
 	if seeded {
+		left, err := j.claimLeft(torrent, free, known)
+		if err != nil {
+			return err
+		}
+		defer j.unclaim(left)
 		if err := j.seedFromSource(ctx, p, helper, random, targetNames); err != nil {
 			return err
 		}
@@ -149,6 +158,26 @@ func (j *job) pass(ctx context.Context, p *part) error {
 	}
 	p.passed = true
 	return j.stepWith(ctx, StateCopying, stepTorrentDone, strconv.FormatInt(torrent.Downloaded, 10))
+}
+
+// blindFreeSpace reads the free space on a target without file access
+// before the add of a Transfer torrent: qBittorrent can allocate its files
+// at once.
+func (j *job) blindFreeSpace(ctx context.Context) (free int64, known bool, err error) {
+	if !j.blind {
+		return 0, false, nil
+	}
+	return j.freeSpace(ctx)
+}
+
+// claimLeft reserves the bytes that a checked Transfer torrent still needs,
+// when blindFreeSpace knew the free space.
+func (j *job) claimLeft(torrent *qbt.Torrent, free int64, known bool) (int64, error) {
+	if !known {
+		return 0, nil
+	}
+	left := max(torrent.AmountLeft, 0)
+	return left, j.claim(left, free)
 }
 
 func (j *job) addHelper(ctx context.Context, inst *models.Instance, helper helpertorrent.Helper, random string, settings torrentadd.Settings) error {

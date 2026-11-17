@@ -252,7 +252,8 @@ func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 			if tc.reason != "" {
 				require.Equal(t, transfer.StateFailed, record.State)
 				require.Equal(t, tc.reason, record.FailureReason)
-				require.Zero(t, r.dst.Writes("torrents/add"), "qui adds nothing on the target")
+				r.requireNoHelpers(record)
+				require.Zero(t, r.src.Writes("torrents/add"), "the source never seeds the Transfer torrent")
 				return
 			}
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
@@ -436,32 +437,55 @@ func TestTransferTorrentNeverWritesIntoAFileOnTheTarget(t *testing.T) {
 }
 
 // A Transfer torrent that failed for a retry runs again from the start: qui
-// removed its Transfer torrents, and adds new ones. The retry downloads
-// every byte, so qui removes the files of the source.
+// removed its Transfer torrents, and adds new ones. A retry that downloads
+// every byte removes the files of the source. On a target without file access,
+// the retry reserves the free space that the target still needs after the
+// check of the Transfer torrent, and a target that had part of the files keeps
+// the files of the source.
 func TestTransferTorrentRetries(t *testing.T) {
-	r := newRigOn(t, overSFTP, noAccess)
-	r.connect()
-	r.src.Unreachable, r.dst.Unreachable = true, true
-	s := newShow(t, showName)
-	r.seed(s)
-	first := r.run(r.request(s))
-	require.Equal(t, transfer.StateFailed, first.State)
-	require.Equal(t, transfer.FailureTemporary, first.FailureClass)
+	for _, tc := range []struct {
+		name   string
+		before func(r *rig, s show)
+		source func(s show) map[string]string
+	}{
+		// regression: #4231
+		{name: "nothing on the target", before: func(*rig, show) {},
+			source: func(show) map[string]string { return map[string]string{} }},
+		// regression: #4231
+		{name: "a download that stopped", before: func(r *rig, s show) {
+			// The target has the first episode. Pieces 0 and 1 pass, so 38 of
+			// the 70 bytes are left.
+			write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode1: s.files[episode1]})
+			r.dst.FreeSpace = 38
+		}, source: func(s show) map[string]string { return contents(s, showName) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, overSFTP, noAccess)
+			r.connect()
+			r.dst.WebAPIVersion = "2.15.2" // qBittorrent 5.3 reads the free space at the save path
+			r.src.Unreachable, r.dst.Unreachable = true, true
+			s := newShow(t, showName)
+			r.seed(s)
+			first := r.run(r.request(s))
+			require.Equal(t, transfer.StateFailed, first.State)
+			require.Equal(t, transfer.FailureTemporary, first.FailureClass)
 
-	r.src.Unreachable = false
-	r.setClock(clock.Add(time.Hour))
-	r.svc.Wake()
-	r.svc.Wait()
+			tc.before(r, s)
+			r.src.Unreachable = false
+			r.setClock(clock.Add(time.Hour))
+			r.svc.Wake()
+			r.svc.Wait()
 
-	record := r.get(first.ID)
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
-	// regression: #4231
-	require.Empty(t, tree(t, r.srcDir))
-	r.requireNoHelpers(record)
-	helpers, err := r.store.HelpersOf(t.Context(), transfer.OwnerTransfer, record.ID)
-	require.NoError(t, err)
-	require.Len(t, helpers, 4, "each run adds a Transfer torrent with a new infohash on both clients")
+			record := r.get(first.ID)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+			require.Equal(t, tc.source(s), tree(t, r.srcDir))
+			r.requireNoHelpers(record)
+			helpers, err := r.store.HelpersOf(t.Context(), transfer.OwnerTransfer, record.ID)
+			require.NoError(t, err)
+			require.Len(t, helpers, 4, "each run adds a Transfer torrent with a new infohash on both clients")
+		})
+	}
 }
 
 // A Transfer torrent downloads each path of a hardlinked cross-seed on its
@@ -474,7 +498,7 @@ func TestTransferTorrentCountsEachPathOfAHardlinkedCrossSeed(t *testing.T) {
 	}{
 		{name: "room for each path", free: 140},
 		{name: "room for one copy", free: 139,
-			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 140 B, and 139 B is free"},
+			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, onDisk, noAccess)
@@ -490,7 +514,8 @@ func TestTransferTorrentCountsEachPathOfAHardlinkedCrossSeed(t *testing.T) {
 			if tc.reason != "" {
 				require.Equal(t, transfer.StateFailed, record.State)
 				require.Equal(t, tc.reason, record.FailureReason)
-				require.Zero(t, r.dst.Writes("torrents/add"), "qui adds nothing on the target")
+				r.requireNoHelpers(record)
+				require.Equal(t, 1, r.src.Writes("torrents/add"), "the first path took 70 B, and the second does not fit")
 				return
 			}
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)

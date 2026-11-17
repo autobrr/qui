@@ -207,7 +207,13 @@ func (j *job) prepare(ctx context.Context) error {
 	if j.reached(stepPlace) {
 		need = 0
 	}
-	known, err := j.reserve(ctx, need)
+	var known bool
+	if j.blind {
+		// pass reserves what each Transfer torrent still needs after its check.
+		_, known, err = j.freeSpace(ctx)
+	} else {
+		known, err = j.reserve(ctx, need)
+	}
 	if err != nil {
 		return err
 	}
@@ -359,11 +365,23 @@ func (j *job) reserve(ctx context.Context, bytes int64) (bool, error) {
 	if err != nil || !known {
 		return known, err
 	}
+	return true, j.claim(bytes, free)
+}
+
+// claim reserves bytes of free, the free space that qui read on the target.
+func (j *job) claim(bytes, free int64) error {
 	if err := j.svc.reserve(j.target.ID, bytes, free); err != nil {
-		return true, permanent("Not enough free space on %s: %v", j.target.Name, err)
+		return permanent("Not enough free space on %s: %v", j.target.Name, err)
 	}
 	j.reserved += bytes
-	return true, nil
+	return nil
+}
+
+// unclaim gives back bytes that the run reserved and wrote: the free space
+// on the target shows them now.
+func (j *job) unclaim(bytes int64) {
+	j.svc.unreserve(j.target.ID, bytes)
+	j.reserved -= bytes
 }
 
 // readParts reads each member on the source again, and places it below the
