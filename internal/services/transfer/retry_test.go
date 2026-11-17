@@ -4,13 +4,18 @@
 package transfer_test
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
@@ -139,6 +144,60 @@ func TestCancelEndsAnExportRun(t *testing.T) {
 			require.True(t, r.src.Has(s.hash))
 		})
 	}
+}
+
+// stopWrites refuses each write once stopped is set, as a qui that stopped
+// writes nothing more.
+type stopWrites struct {
+	dbinterface.Querier
+	stopped *atomic.Bool
+}
+
+func (s stopWrites) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if s.stopped.Load() {
+		return nil, errors.New("qui stopped")
+	}
+	return s.Querier.ExecContext(ctx, query, args...)
+}
+
+func (s stopWrites) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	if s.stopped.Load() {
+		return nil, errors.New("qui stopped")
+	}
+	return s.Querier.BeginTx(ctx, opts)
+}
+
+// regression: #4242
+// qui stops right after a cancel took the torrent of an Export run off the
+// target. After the restart, the run ends as cancelled and adds nothing.
+func TestACancelledExportRunStaysCancelledAfterAStop(t *testing.T) {
+	r := newRig(t, exportPolls)
+	hold := newHoldAt(r.db, "added")
+	var stopped atomic.Bool
+	r.restartOn(stopWrites{Querier: hold, stopped: &stopped})
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+	r.dst.OnWrite = func(endpoint string) {
+		if endpoint == "torrents/delete" {
+			stopped.Store(true)
+		}
+	}
+
+	id, done, err := r.svc.Export(t.Context(), r.exportRequest(s))
+	require.NoError(t, err)
+	<-hold.held
+	require.NoError(t, r.svc.Cancel(t.Context(), id))
+	<-done
+	require.True(t, stopped.Load(), "the cancel took the torrent off the target")
+	r.restart()
+	r.svc.Wait()
+
+	record := r.get(id)
+	require.Equal(t, transfer.StateCancelled, record.State, record.FailureReason)
+	require.False(t, record.FinishedAt.IsZero())
+	require.False(t, r.dst.Has(s.hash))
+	require.Equal(t, 1, r.dst.Writes("torrents/add"), "the restart adds nothing")
 }
 
 // Retry places a group where the first Transfer placed it, also when the

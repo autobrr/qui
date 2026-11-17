@@ -138,7 +138,10 @@ func (e *exportJob) member() *Member {
 // run takes the steps that the Export run did not take. ended is false when
 // qui stopped first.
 func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
-	if e.reached(stepCleanUp) {
+	switch {
+	case e.reached(stepCleanUp) && e.rec.State == StateCancelled:
+		return e.cancel(ctx), true
+	case e.reached(stepCleanUp):
 		return e.end(ctx, e.rec.FailureReason, true), true
 	}
 	m := e.member()
@@ -292,7 +295,12 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 func (e *exportJob) cancel(ctx context.Context) ExportResult {
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
-	e.logf("Cancelled.")
+	if !e.reached(stepCleanUp) {
+		e.logf("Cancelled.")
+		e.rec.State = StateCancelled
+		e.rec.Steps = append(e.rec.Steps, Step{Name: stepCleanUp, At: e.svc.deps.Now()})
+		e.save(ctx)
+	}
 	if e.reached(stepAdded) {
 		e.removeFromTarget(ctx)
 	}
