@@ -248,11 +248,12 @@
     --app-inset-top: env(safe-area-inset-top);
   }
 
-  /* iOS 26.1+ Home Screen web apps fade the content below the status bar; keep the header out of it (autobrr/qui#2520). */
+  /* iOS 26.1+ Home Screen web apps fade the content below the status bar; keep the header out of it (autobrr/qui#2520).
+     The offset is fixed, because there the web view starts below the status bar and the top inset is 0. */
   @media (display-mode: standalone) {
     @supports (-webkit-touch-callout: none) {
       :root {
-        --app-inset-top: calc(env(safe-area-inset-top) + min(env(safe-area-inset-top), 20px));
+        --app-inset-top: calc(env(safe-area-inset-top) + 24px);
       }
     }
   }
