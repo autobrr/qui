@@ -213,6 +213,8 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 		return nil, errors.New("automation storage not configured")
 	}
 
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
 	settings, err := s.GetSearchSettings(ctx)
 	if err != nil {
 		return nil, err
