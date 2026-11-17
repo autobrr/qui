@@ -243,23 +243,28 @@
     overflow: hidden;
   }
 
-  body {
-    @apply bg-background text-foreground;
-    letter-spacing: var(--tracking-normal);
-    font-family: var(--font-sans);
-    /* Handle safe areas for iOS devices (except bottom - handled by MobileFooterNav) */
-    padding-top: env(safe-area-inset-top);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+  /* The space above the app. Full-height layouts subtract it, because #root clips what extends below the screen. */
+  :root {
+    --app-inset-top: env(safe-area-inset-top);
   }
 
   /* iOS 26.1+ Home Screen web apps fade the content below the status bar; keep the header out of it (autobrr/qui#2520). */
   @media (display-mode: standalone) {
     @supports (-webkit-touch-callout: none) {
-      body {
-        padding-top: calc(env(safe-area-inset-top) + min(env(safe-area-inset-top), 20px));
+      :root {
+        --app-inset-top: calc(env(safe-area-inset-top) + min(env(safe-area-inset-top), 20px));
       }
     }
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    letter-spacing: var(--tracking-normal);
+    font-family: var(--font-sans);
+    /* Handle safe areas for iOS devices (except bottom - handled by MobileFooterNav) */
+    padding-top: var(--app-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   /* Apply font families from theme */

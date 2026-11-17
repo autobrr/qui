@@ -27,7 +27,7 @@ function AppLayoutContent() {
   const { isFooterVisible } = useMobileScroll()
 
   return (
-    <div className="flex h-[100dvh] bg-background">
+    <div className="flex h-[calc(100dvh-var(--app-inset-top))] bg-background">
       {/* Desktop Sidebar - Collapsible */}
       <div className={cn(
         "hidden lg:flex transition-all duration-300 ease-out overflow-hidden",
