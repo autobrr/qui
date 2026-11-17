@@ -467,8 +467,10 @@ func (j *job) rename(ctx context.Context, p *part) error {
 			if f.Name == want[i] {
 				continue
 			}
-			if old := path.Join(p.dir, f.Name); !j.blind && !j.absent(ctx, old) && !j.oneFile(ctx, old, path.Join(p.dir, want[i])) {
-				return j.inTheWay(old)
+			if !j.blind {
+				if err := j.noFileAtOldName(ctx, path.Join(p.dir, f.Name), path.Join(p.dir, want[i])); err != nil {
+					return err
+				}
 			}
 			if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
 				return temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)
@@ -480,6 +482,21 @@ func (j *job) rename(ctx context.Context, p *part) error {
 		}
 	}
 	return temporary("The file names of the torrent on %s differ from the source.", j.target.Name)
+}
+
+// noFileAtOldName fails when a file is at the old name of a rename on the
+// target. The copy itself under another case of its name is no conflict.
+func (j *job) noFileAtOldName(ctx context.Context, old, name string) error {
+	_, err := j.root.Lstat(ctx, old)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return cannotLook(j.target.Name, err)
+	case j.oneFile(ctx, old, name):
+		return nil
+	}
+	return j.inTheWay(old)
 }
 
 // oneFile reports whether two names that differ only in case lead to one

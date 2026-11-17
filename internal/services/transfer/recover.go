@@ -128,7 +128,9 @@ func (j *job) findOnTargetAgain(ctx context.Context) error {
 			if made {
 				j.made[f] = size
 			}
-		case made || err != nil || !info.Mode.IsRegular() || info.Size != f.size:
+		case err != nil:
+			return cannotLook(j.target.Name, err)
+		case made || !info.Mode.IsRegular() || info.Size != f.size:
 			return j.inTheWay(f.rel)
 		default:
 			f.onTarget = true
@@ -195,21 +197,23 @@ func (j *job) ownTemp(ctx context.Context, f *groupFile) (int64, bool, error) {
 	temp := j.tempName(f.rel)
 	info, err := j.root.Lstat(ctx, temp)
 	marked, markedErr := j.root.Lstat(ctx, temp+incompleteExt)
+	for _, e := range []error{err, markedErr} {
+		if e != nil && !errors.Is(e, fs.ErrNotExist) {
+			return 0, false, cannotLook(j.target.Name, e)
+		}
+	}
 	switch {
 	case err == nil && !errors.Is(markedErr, fs.ErrNotExist):
 		return 0, false, j.inTheWay(temp + incompleteExt)
 	case errors.Is(err, fs.ErrNotExist) && errors.Is(markedErr, fs.ErrNotExist):
 		return 0, false, nil
 	case errors.Is(err, fs.ErrNotExist):
-		if markedErr != nil {
-			return 0, false, j.inTheWay(temp + incompleteExt)
-		}
 		if err := j.root.RenameNoReplace(ctx, temp+incompleteExt, temp); err != nil {
 			return 0, false, temporary("qui cannot rename %s on %s: %v", temp+incompleteExt, j.target.Name, err)
 		}
-		info, err = marked, nil
+		info = marked
 	}
-	if err != nil || !info.Mode.IsRegular() || info.Size > f.size {
+	if !info.Mode.IsRegular() || info.Size > f.size {
 		return 0, false, j.inTheWay(temp)
 	}
 	return info.Size, true, nil

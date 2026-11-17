@@ -37,21 +37,35 @@ func (j *job) inTheWay(rel string) error {
 	return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, j.targetPath(rel))
 }
 
+// cannotLook is a lookup for a file in the way that got no answer, such as
+// on a dropped SFTP connection. It found no file, so the Transfer tries
+// again later.
+func cannotLook(instance string, err error) error {
+	return temporary("qui cannot look for a file in the way on %s: %w", instance, err)
+}
+
 // findOnTarget marks each file of the group that the target already has. A
 // regular file of the right size is a head start, and anything else is a
 // conflict, as is any file at a name that qui writes.
 func (j *job) findOnTarget(ctx context.Context) error {
 	for _, f := range j.files {
 		for _, name := range []string{j.tempName(f.rel), j.tempName(f.rel) + incompleteExt, j.linkName(f.rel), j.linkName(f.rel) + incompleteExt} {
-			if _, err := j.root.Lstat(ctx, name); !errors.Is(err, fs.ErrNotExist) {
+			_, err := j.root.Lstat(ctx, name)
+			switch {
+			case errors.Is(err, fs.ErrNotExist):
+			case err != nil:
+				return cannotLook(j.target.Name, err)
+			default:
 				return j.inTheWay(name)
 			}
 		}
 		info, err := j.root.Lstat(ctx, f.rel)
-		if errors.Is(err, fs.ErrNotExist) {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
 			continue
-		}
-		if err != nil || !info.Mode.IsRegular() || info.Size != f.size {
+		case err != nil:
+			return cannotLook(j.target.Name, err)
+		case !info.Mode.IsRegular() || info.Size != f.size:
 			return j.inTheWay(f.rel)
 		}
 		f.onTarget = true

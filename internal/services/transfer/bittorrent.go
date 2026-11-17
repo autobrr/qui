@@ -254,7 +254,12 @@ func (j *job) noFileOnSource(ctx context.Context, p *part, targetNames, sourceNa
 			continue
 		}
 		old := paths.Join(p.src.torrent.SavePath, paths.FromSlash(name))
-		if _, err := j.srcFiles.Lstat(ctx, old); !errors.Is(err, fs.ErrNotExist) {
+		_, err := j.srcFiles.Lstat(ctx, old)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+		case err != nil:
+			return cannotLook(j.source.Name, err)
+		default:
 			return permanent("Conflict: a file is in the way on %s at %s.", j.source.Name, old)
 		}
 	}
