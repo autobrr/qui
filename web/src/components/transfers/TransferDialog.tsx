@@ -92,7 +92,7 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
       <DialogContent className="flex max-h-[90dvh] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:max-h-[85dvh] sm:max-w-2xl lg:max-w-5xl">
         <DialogHeader className="flex-shrink-0 border-b px-5 pt-5 pb-3 pr-12 text-left sm:px-6">
           <DialogTitle>{t("dialog.title")}</DialogTitle>
-          <DialogDescription className="line-clamp-2 break-all" title={shownName}>{shownName}</DialogDescription>
+          <DialogDescription className="line-clamp-2 [overflow-wrap:anywhere]" title={shownName}>{shownName}</DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
@@ -154,8 +154,8 @@ function useFigures(state: SummaryState): FigureItem[] {
   const notEnoughSpace = shown !== null && shown.freeKnown && shown.free < shown.bytes
   return [
     { label: t("summary.torrents"), text: shown ? String(shown.members.length) : undefined },
-    { label: t("summary.size"), text: shown ? formatBytes(shown.bytes) : undefined },
     { label: t("summary.way"), text: shown ? t([`ways.${shown.way}`, "ways.fallback"]) : undefined },
+    { label: t("summary.size"), text: shown ? formatBytes(shown.bytes) : undefined },
     {
       label: t("summary.free"),
       text: shown ? (shown.freeKnown ? formatBytes(shown.free) : t("summary.unknown")) : undefined,
@@ -224,23 +224,23 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
   )
 }
 
-/** The figures next to Start. The line keeps room for two rows, so the footer keeps its height while they load. */
+/** The figures next to Start, in two rows at every width, so the footer keeps its height while they load. */
 function SummaryLine({ state }: { state: SummaryState }) {
   const { t } = useTranslation("transfers")
   const figures = useFigures(state)
   const loading = loadingOf(state)
 
-  if (state.kind === "pickTarget") return <p className="min-h-8 text-xs text-muted-foreground">{t("summary.pickTarget")}</p>
+  if (state.kind === "pickTarget") return <p className="min-h-[2.125rem] text-xs text-muted-foreground">{t("summary.pickTarget")}</p>
   if (state.kind === "refused") {
-    return <p role="alert" className="line-clamp-2 min-h-8 text-xs text-destructive">{t("summary.refused", { message: state.message })}</p>
+    return <p role="alert" className="line-clamp-2 min-h-[2.125rem] text-xs text-destructive">{t("summary.refused", { message: state.message })}</p>
   }
   return (
-    <section aria-label={t("summary.title")} aria-busy={loading} className="flex min-h-8 items-start gap-2">
-      <dl className={cn("flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-0.5 text-xs leading-4 transition-opacity", dimOf(state))}>
+    <section aria-label={t("summary.title")} aria-busy={loading} className="flex min-h-[2.125rem] items-start gap-2">
+      <dl className={cn("grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-0.5 text-xs leading-4 transition-opacity", dimOf(state))}>
         {figures.map(({ label, text, tone }) => (
           <div key={label} className="flex min-w-0 items-baseline gap-1">
-            <dt className="text-muted-foreground">{label}</dt>
-            <dd className={cn("font-medium tabular-nums", tone === "warning" && warningTone)}>
+            <dt className="min-w-0 truncate text-muted-foreground">{label}</dt>
+            <dd className={cn("shrink-0 whitespace-nowrap font-medium tabular-nums", tone === "warning" && warningTone)}>
               <FigureValue state={state} text={text} skeleton="inline-block h-3 w-10 align-middle" />
             </dd>
           </div>
@@ -309,7 +309,7 @@ function MemberList({ summary, hash, targetInstanceId }: { summary: TransferSumm
     <ul className="space-y-1.5 text-sm">
       {summary.members.map(member => (
         <li key={member.hash} className="flex items-start gap-2">
-          <span className="min-w-0 flex-1 break-all text-xs leading-5">{display.name(member)}</span>
+          <span className="min-w-0 flex-1 text-xs leading-5 [overflow-wrap:anywhere]">{display.name(member)}</span>
           {member.targetInstanceId !== targetInstanceId ? (
             <Badge variant="outline" className="shrink-0 font-normal">{t("summary.crossSeedInstance", { instance: instanceName(member.targetInstanceId) })}</Badge>
           ) : member.hash !== hash && (

@@ -70,7 +70,7 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
       <DialogContent className="flex h-[min(38rem,90dvh)] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:h-[min(32rem,85dvh)] sm:max-w-2xl lg:max-w-4xl">
         <DialogHeader className="space-y-0 border-b px-6 pt-5 pb-4 pr-12 text-left max-md:px-4 max-md:pr-12">
           <DialogTitle>{t(data?.kind === "export" ? "details.exportTitle" : "details.title")}</DialogTitle>
-          <DialogDescription className="line-clamp-2 break-all" title={data ? display.name(data) : undefined}>
+          <DialogDescription className="line-clamp-2 [overflow-wrap:anywhere]" title={data ? display.name(data) : undefined}>
             {data ? display.name(data) : t("details.loading")}
           </DialogDescription>
           {data && (
@@ -204,7 +204,7 @@ function TorrentRow({ member, crossSeed }: { member: TransferMember; crossSeed: 
   return (
     <li className="space-y-1.5 px-4 py-3">
       <div className="flex items-start gap-2">
-        <span className="min-w-0 flex-1 text-sm font-medium break-all" title={name}>{name}</span>
+        <span className="min-w-0 flex-1 text-sm font-medium [overflow-wrap:anywhere]" title={name}>{name}</span>
         {crossSeed && <Badge variant="secondary" className="shrink-0 font-normal">{t("summary.crossSeed")}</Badge>}
       </div>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -258,7 +258,7 @@ function Steps({ data }: { data: TransferDetail }) {
               <span className="text-sm">{t(stepKey(step.name) ?? "stepFallback")}</span>
               <Clock at={step.at} day={days[index]} className="text-xs" />
             </div>
-            {name && <div className="mt-0.5 text-xs text-muted-foreground break-all">{name}</div>}
+            {name && <div className="mt-0.5 text-xs text-muted-foreground [overflow-wrap:anywhere]">{name}</div>}
           </li>
         )
       })}

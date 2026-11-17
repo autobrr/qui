@@ -231,11 +231,11 @@ describe("the Transfer dialog", () => {
       const labels = () => Array.from(line.querySelectorAll("dt"), label => label.textContent)
       const value = (label: string) =>
         Array.from(line.querySelectorAll("dt")).find(term => term.textContent === label)?.nextElementSibling?.textContent
-      expect(labels()).toEqual(["Torrents", "Size", "Way", "Free on the target"])
+      expect(labels()).toEqual(["Torrents", "Way", "Size", "Free on the target"])
       expect(line.getAttribute("aria-busy")).toBe("true")
       act(() => answer())
       await waitFor(() => expect(value("Size")).toBe("4 GiB"))
-      expect(labels()).toEqual(["Torrents", "Size", "Way", "Free on the target"])
+      expect(labels()).toEqual(["Torrents", "Way", "Size", "Free on the target"])
       expect(value("Torrents")).toBe("2")
       expect(line.compareDocumentPosition(startButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
@@ -258,7 +258,7 @@ describe("the Transfer dialog", () => {
       await new Promise<void>(resolve => { answer = resolve })
       return HttpResponse.json(summary)
     }))
-    const labels = ["Torrents", "Size", "Way", "Free on the target"]
+    const labels = ["Torrents", "Way", "Size", "Free on the target"]
     renderDialog()
     await screen.findByRole("combobox", { name: "Target instance" })
     expect(figureLabels()).toEqual(labels)
