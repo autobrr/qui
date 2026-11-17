@@ -9,6 +9,7 @@ import { Search } from "lucide-react"
 import * as React from "react"
 
 import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { passwordManagerAttributes } from "@/lib/password-manager"
 import { cn } from "@/lib/utils"
 
 const Command = React.forwardRef<
@@ -48,6 +49,7 @@ const CommandInput = React.forwardRef<
     <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
     <CommandPrimitive.Input
       ref={ref}
+      {...passwordManagerAttributes()}
       className={cn(
         "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
         className

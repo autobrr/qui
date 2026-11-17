@@ -25,7 +25,7 @@ qui integrates with autobrr through webhook endpoints. When autobrr announces a 
 
 ### 1. Create an API Key in qui
 
-- Go to **Settings → API Keys**
+- Go to **Settings → API keys**
 - Click **Create API Key**
 - Name it (for example "autobrr webhook")
 - Under **Permissions**, pick **Cross-seed: run**. Pick no instance under **Instance limit**, because the cross-seed routes refuse a key with an Instance limit. See [API key permissions](../../api/permissions.md).
@@ -126,8 +126,8 @@ qui sends the same `404` when it has no active qBittorrent instance to scan. qui
 
 Other problems give a different result:
 
-- `401`, or `403` with the body `Unauthorized`: qui did not get a valid API key. Make sure that the `X-API-Key` header has a key from **Settings → API Keys**.
-- `403` with another body: the key cannot use this route, and the body names the reason. For `API key needs Cross-seed: run`, add this Permission to the key in **Settings → API Keys**. See [API key permissions](../../api/permissions.md).
+- `401`, or `403` with the body `Unauthorized`: qui did not get a valid API key. Make sure that the `X-API-Key` header has a key from **Settings → API keys**.
+- `403` with another body: the key cannot use this route, and the body names the reason. For `API key needs Cross-seed: run`, add this Permission to the key in **Settings → API keys**. See [API key permissions](../../api/permissions.md).
 - `400` with an `error` body: the request is not valid, and the `error` text gives the cause. Make sure that **Data (JSON)** is the same as the template above.
 - A connection error or a timeout: autobrr cannot connect to qui. Make sure that the host and port in **Endpoint** are correct. If you use Docker Compose, read the Docker Compose tip above.
 
@@ -213,7 +213,7 @@ If autobrr shows that the filter accepted the release, or your autobrr notificat
    - `/check`: header `X-API-Key=...`
    - `/apply`: query string `?apikey=...` (as shown in this guide)
 4. **Make sure that qui can reach qBittorrent**
-   - qui UI: **Settings → Instances → Test Connection**
+   - qui UI: **Settings → Instances**, then **Test connection** on the instance
 5. **Check paused torrents**
    - qui often adds cross-seeds **paused**. Look in qBittorrent's paused list and in any cross-seed tag or category you configured.
 

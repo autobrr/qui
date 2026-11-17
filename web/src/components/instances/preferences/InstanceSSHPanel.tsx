@@ -205,7 +205,6 @@ function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
                     className={blur}
-                    data-1p-ignore
                     autoComplete="off"
                     aria-required="true"
                     aria-invalid={field.state.meta.isTouched && !!field.state.meta.errors[0]}

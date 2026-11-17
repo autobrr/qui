@@ -3,379 +3,291 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { api } from "@/lib/api"
-import type { TorznabIndexer, TorznabIndexerFormData } from "@/types"
-import { useEffect, useState } from "react"
+import { useRef, useState, type ChangeEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
+
+import { Editor } from "@/components/kit/Editor"
+import { Facts } from "@/components/kit/Facts"
+import { Field } from "@/components/kit/Field"
+import { SwitchRow } from "@/components/kit/SwitchRow"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import type { TorznabIndexer, TorznabIndexerFormData } from "@/types"
+
+const REDACTED = "<redacted>"
+
+export type IndexerSaveRequest =
+  | { id: null; data: TorznabIndexerFormData }
+  | { id: number; data: Partial<TorznabIndexerFormData> }
 
 interface IndexerDialogProps {
   open: boolean
-  onClose: () => void
-  mode: "create" | "edit"
-  indexer?: TorznabIndexer | null
+  onOpenChange: (open: boolean) => void
+  /** The indexer to edit, or null for a new one. */
+  indexer: TorznabIndexer | null
+  pending: boolean
+  error?: string
+  onSave: (request: IndexerSaveRequest) => void
 }
 
-const DEFAULT_FORM: TorznabIndexerFormData = {
-  name: "",
-  base_url: "",
-  indexer_id: "",
-  api_key: "",
-  basic_username: "",
-  basic_password: "",
-  backend: "jackett",
-  enabled: true,
-  priority: 0,
-  timeout_seconds: 30,
+type Backend = TorznabIndexer["backend"]
+
+interface FormValues {
+  name: string
+  backend: Backend
+  baseUrl: string
+  indexerId: string
+  apiKey: string
+  basicAuth: boolean
+  basicUsername: string
+  basicPassword: string
+  priority: string
+  timeout: string
+  enabled: boolean
 }
 
-export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogProps) {
+type FieldName = "name" | "baseUrl" | "indexerId" | "apiKey" | "basicUsername" | "basicPassword" | "priority" | "timeout"
+type FormErrors = Partial<Record<FieldName, string>>
+
+// The order in which a failed save puts focus on a field.
+const FIELD_ORDER: readonly FieldName[] = ["name", "indexerId", "baseUrl", "apiKey", "priority", "timeout", "basicUsername", "basicPassword"]
+
+function initialValues(indexer: TorznabIndexer | null): FormValues {
+  if (!indexer) {
+    return { name: "", backend: "jackett", baseUrl: "", indexerId: "", apiKey: "", basicAuth: false, basicUsername: "", basicPassword: "", priority: "0", timeout: "30", enabled: true }
+  }
+  const basicAuth = Boolean(indexer.basic_username)
+  return {
+    name: indexer.name,
+    backend: indexer.backend,
+    baseUrl: indexer.base_url,
+    indexerId: indexer.indexer_id,
+    // The server never returns the API key.
+    apiKey: "",
+    basicAuth,
+    basicUsername: indexer.basic_username ?? "",
+    basicPassword: basicAuth ? REDACTED : "",
+    priority: String(indexer.priority),
+    timeout: String(indexer.timeout_seconds),
+    enabled: indexer.enabled,
+  }
+}
+
+const isWholeNumber = (value: string) => /^\d+$/.test(value.trim())
+
+function isAbsoluteUrl(value: string) {
+  try {
+    new URL(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** The form to add or edit one Torznab indexer. */
+export function IndexerDialog({ open, onOpenChange, indexer, pending, error, onSave }: IndexerDialogProps) {
   const { t } = useTranslation("settings")
-  const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState<TorznabIndexerFormData>(DEFAULT_FORM)
-  const [showBasicAuth, setShowBasicAuth] = useState(false)
-  const backend = formData.backend ?? "jackett"
-  const baseUrlPlaceholder = backend === "prowlarr" ? "http://localhost:9696" : "http://localhost:9117"
-  const requiresIndexerId = backend === "prowlarr"
+  const [values, setValues] = useState(() => initialValues(indexer))
+  const [errors, setErrors] = useState<FormErrors>({})
+  const inputs = useRef<Partial<Record<FieldName, HTMLInputElement | null>>>({})
+  const editing = indexer !== null
+  const baseUrlPlaceholder = values.backend === "prowlarr" ? "http://localhost:9696" : "http://localhost:9117"
 
-  useEffect(() => {
-    if (mode === "edit" && indexer) {
-      const hasBasic = !!indexer.basic_username
-      setFormData({
-        name: indexer.name,
-        base_url: indexer.base_url,
-        indexer_id: indexer.indexer_id,
-        api_key: "", // API key not returned from backend for security
-        basic_username: indexer.basic_username ?? "",
-        basic_password: hasBasic ? "<redacted>" : "",
-        backend: indexer.backend,
-        enabled: indexer.enabled,
-        priority: indexer.priority,
-        timeout_seconds: indexer.timeout_seconds,
-      })
-      setShowBasicAuth(hasBasic)
-    } else {
-      setFormData({ ...DEFAULT_FORM })
-      setShowBasicAuth(false)
-    }
-  }, [mode, indexer, open])
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-
-    try {
-      const backendValue = formData.backend ?? "jackett"
-      const trimmedIndexerId = formData.indexer_id !== undefined ? formData.indexer_id.trim() : undefined
-      const trimmedBasicUser = (formData.basic_username ?? "").trim()
-      const basicPass = formData.basic_password ?? ""
-      const isRedactedPassword = basicPass === "<redacted>"
-
-      if (showBasicAuth) {
-        if (!trimmedBasicUser) {
-          toast.error(t("indexers.dialog.toast.basicUsernameRequired"))
-          return
-        }
-        if (mode === "create" && !basicPass.trim()) {
-          toast.error(t("indexers.dialog.toast.basicPasswordRequired"))
-          return
-        }
-        if (mode === "edit" && !isRedactedPassword && !basicPass.trim()) {
-          toast.error(t("indexers.dialog.toast.basicPasswordRequiredOrKeep"))
-          return
-        }
-      }
-
-      if (mode === "create") {
-        const createPayload: TorznabIndexerFormData = {
-          name: formData.name,
-          base_url: formData.base_url,
-          api_key: formData.api_key.trim(),
-          backend: backendValue,
-          enabled: formData.enabled,
-          priority: formData.priority,
-          timeout_seconds: formData.timeout_seconds,
-        }
-        if (trimmedIndexerId) {
-          createPayload.indexer_id = trimmedIndexerId
-        }
-        if (showBasicAuth) {
-          createPayload.basic_username = trimmedBasicUser
-          createPayload.basic_password = basicPass
-        }
-
-        const response = await api.createTorznabIndexer(createPayload)
-        if (response.warnings?.length) {
-          toast.warning(t("indexers.dialog.toast.createdWithWarnings", { warnings: response.warnings.join(", ") }))
-        } else {
-          toast.success(t("indexers.dialog.toast.createdSuccess"))
-        }
-      } else if (mode === "edit" && indexer) {
-        const updatePayload: Partial<TorznabIndexerFormData> = {
-          name: formData.name,
-          base_url: formData.base_url,
-          backend: backendValue,
-          enabled: formData.enabled,
-          priority: formData.priority,
-          timeout_seconds: formData.timeout_seconds,
-        }
-
-        if (formData.indexer_id !== undefined) {
-          updatePayload.indexer_id = trimmedIndexerId ?? ""
-        }
-
-        const trimmedApiKey = formData.api_key.trim()
-        if (trimmedApiKey) {
-          updatePayload.api_key = trimmedApiKey
-        }
-
-        if (showBasicAuth) {
-          updatePayload.basic_username = trimmedBasicUser
-          if (basicPass !== "<redacted>") {
-            updatePayload.basic_password = basicPass
-          }
-        } else {
-          // Explicit clear.
-          updatePayload.basic_username = ""
-          updatePayload.basic_password = ""
-        }
-
-        const response = await api.updateTorznabIndexer(indexer.id, updatePayload)
-        if (response.warnings?.length) {
-          toast.warning(t("indexers.dialog.toast.updatedWithWarnings", { warnings: response.warnings.join(", ") }))
-        } else {
-          toast.success(t("indexers.dialog.toast.updatedSuccess"))
-        }
-      }
-      onClose()
-    } catch {
-      toast.error(mode === "create" ? t("indexers.dialog.toast.failedCreate") : t("indexers.dialog.toast.failedEdit"))
-    } finally {
-      setLoading(false)
+  const validate = (): FormErrors => {
+    const baseUrl = values.baseUrl.trim()
+    const password = values.basicPassword
+    const timeout = Number(values.timeout)
+    return {
+      name: values.name.trim() ? undefined : t("indexers.dialog.validation.nameRequired"),
+      baseUrl: !baseUrl
+        ? t("indexers.dialog.validation.baseUrlRequired")
+        : isAbsoluteUrl(baseUrl) ? undefined : t("indexers.dialog.validation.baseUrlInvalid", { example: baseUrlPlaceholder }),
+      indexerId: values.backend === "prowlarr" && !values.indexerId.trim() ? t("indexers.dialog.validation.indexerIdRequired") : undefined,
+      apiKey: !editing && !values.apiKey.trim() ? t("indexers.dialog.validation.apiKeyRequired") : undefined,
+      basicUsername: values.basicAuth && !values.basicUsername.trim() ? t("indexers.dialog.toast.basicUsernameRequired") : undefined,
+      basicPassword: !values.basicAuth || password.trim() || password === REDACTED
+        ? undefined
+        : t(editing ? "indexers.dialog.toast.basicPasswordRequiredOrKeep" : "indexers.dialog.toast.basicPasswordRequired"),
+      priority: isWholeNumber(values.priority) ? undefined : t("indexers.dialog.validation.priorityInvalid"),
+      timeout: isWholeNumber(values.timeout) && timeout >= 5 && timeout <= 120 ? undefined : t("indexers.dialog.validation.timeoutInvalid"),
     }
   }
 
+  const submit = () => {
+    const next = validate()
+    setErrors(next)
+    const firstInvalid = FIELD_ORDER.find((name) => next[name])
+    if (firstInvalid) {
+      inputs.current[firstInvalid]?.focus()
+      return
+    }
+
+    const indexerId = values.indexerId.trim()
+    const basicUsername = values.basicUsername.trim()
+    const priority = Number(values.priority)
+    const timeout = Number(values.timeout)
+
+    if (!indexer) {
+      const data: TorznabIndexerFormData = {
+        name: values.name,
+        base_url: values.baseUrl,
+        api_key: values.apiKey.trim(),
+        backend: values.backend,
+        enabled: values.enabled,
+        priority,
+        timeout_seconds: timeout,
+      }
+      if (indexerId) data.indexer_id = indexerId
+      if (values.basicAuth) {
+        data.basic_username = basicUsername
+        data.basic_password = values.basicPassword
+      }
+      onSave({ id: null, data })
+      return
+    }
+
+    const data: Partial<TorznabIndexerFormData> = {
+      name: values.name,
+      base_url: values.baseUrl,
+      backend: values.backend,
+      enabled: values.enabled,
+      priority,
+      timeout_seconds: timeout,
+      indexer_id: indexerId,
+    }
+    const apiKey = values.apiKey.trim()
+    if (apiKey) data.api_key = apiKey
+    if (values.basicAuth) {
+      data.basic_username = basicUsername
+      if (values.basicPassword !== REDACTED) data.basic_password = values.basicPassword
+    } else {
+      // Empty values clear the stored basic auth.
+      data.basic_username = ""
+      data.basic_password = ""
+    }
+    onSave({ id: indexer.id, data })
+  }
+
+  const update = (patch: Partial<FormValues>) => setValues((prev) => ({ ...prev, ...patch }))
+
+  const text = (name: FieldName & keyof FormValues) => ({
+    ref: (input: HTMLInputElement | null) => {
+      inputs.current[name] = input
+    },
+    value: values[name] as string,
+    autoComplete: "off",
+    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+      update({ [name]: event.target.value })
+      setErrors((prev) => ({ ...prev, [name]: undefined }))
+    },
+  })
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[525px] max-h-[90dvh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle>
-            {mode === "create" ? t("indexers.dialog.addTitle") : t("indexers.dialog.editTitle")}
-          </DialogTitle>
-          <DialogDescription>
-            {mode === "create" ? t("indexers.dialog.addDescription") : t("indexers.dialog.editDescription")}
-          </DialogDescription>
-        </DialogHeader>
-        <form id="indexer-form" onSubmit={handleSubmit} autoComplete="off" data-1p-ignore className="flex-1 overflow-y-auto min-h-0">
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">{t("indexers.dialog.labels.name")}</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder={t("indexers.dialog.placeholders.name")}
-                autoComplete="off"
-                data-1p-ignore
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="backend">{t("indexers.dialog.labels.backend")}</Label>
-              <Select
-                value={backend}
-                onValueChange={(value) =>
-                  setFormData(prev => ({
-                    ...prev,
-                    backend: value as TorznabIndexerFormData["backend"],
-                    indexer_id: value === "native" ? "" : prev.indexer_id ?? "",
-                  }))
-                }
-              >
-                <SelectTrigger id="backend">
-                  <SelectValue placeholder={t("indexers.dialog.placeholders.selectBackend")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="jackett">{t("indexers.dialog.backends.jackett")}</SelectItem>
-                  <SelectItem value="prowlarr">{t("indexers.dialog.backends.prowlarr")}</SelectItem>
-                  <SelectItem value="native">{t("indexers.dialog.backends.native")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="baseUrl">{t("indexers.dialog.labels.baseUrl")}</Label>
-              <Input
-                id="baseUrl"
-                type="url"
-                value={formData.base_url}
-                onChange={(e) =>
-                  setFormData({ ...formData, base_url: e.target.value })
-                }
-                placeholder={baseUrlPlaceholder}
-                autoComplete="off"
-                data-1p-ignore
-                required
-              />
-            </div>
-            {backend !== "native" && (
-              <div className="grid gap-2">
-                <Label htmlFor="indexerId">
-                  {t("indexers.dialog.labels.indexerId")} {requiresIndexerId && <span className="text-destructive">*</span>}
-                </Label>
-                <Input
-                  id="indexerId"
-                  value={formData.indexer_id ?? ""}
-                  onChange={(e) =>
-                    setFormData({ ...formData, indexer_id: e.target.value })
-                  }
-                  placeholder={backend === "prowlarr" ? t("indexers.dialog.placeholders.indexerIdProwlarr") : t("indexers.dialog.placeholders.indexerIdJackett")}
-                  autoComplete="off"
-                  data-1p-ignore
-                  required={requiresIndexerId}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {backend === "prowlarr" ? t("indexers.dialog.hints.indexerIdProwlarr") : t("indexers.dialog.hints.indexerIdJackett")}
-                </p>
-              </div>
-            )}
-            <div className="grid gap-2">
-              <Label htmlFor="apiKey">{t("indexers.dialog.labels.apiKey")}</Label>
-              <Input
-                id="apiKey"
-                type="password"
-                value={formData.api_key}
-                onChange={(e) =>
-                  setFormData({ ...formData, api_key: e.target.value })
-                }
-                placeholder={mode === "edit" ? t("indexers.dialog.placeholders.apiKeyEdit") : t("indexers.dialog.placeholders.apiKeyCreate")}
-                autoComplete="off"
-                data-1p-ignore
-                required={mode === "create"}
-              />
-            </div>
-            <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
-              <div className="space-y-1">
-                <Label htmlFor="indexer-basic-auth">{t("indexers.dialog.labels.basicAuth")}</Label>
-                <p className="text-sm text-muted-foreground max-w-prose">
-                  {t("indexers.dialog.labels.basicAuthDescription")}
-                </p>
-              </div>
-              <Switch
-                id="indexer-basic-auth"
-                checked={showBasicAuth}
-                onCheckedChange={(checked) => {
-                  setShowBasicAuth(checked)
-                  if (!checked) {
-                    setFormData(prev => ({ ...prev, basic_username: "", basic_password: "" }))
-                  } else if ((formData.basic_username ?? "").trim() === "") {
-                    setFormData(prev => ({ ...prev, basic_username: "", basic_password: "" }))
-                  }
-                }}
-              />
-            </div>
-            {showBasicAuth && (
-              <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="basicUsername">{t("indexers.dialog.labels.basicUsername")}</Label>
-                  <Input
-                    id="basicUsername"
-                    value={formData.basic_username ?? ""}
-                    onChange={(e) => setFormData({ ...formData, basic_username: e.target.value })}
-                    placeholder={t("indexers.dialog.placeholders.username")}
-                    autoComplete="off"
-                    data-1p-ignore
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="basicPassword">{t("indexers.dialog.labels.basicPassword")}</Label>
-                  <Input
-                    id="basicPassword"
-                    type="password"
-                    value={formData.basic_password ?? ""}
-                    onChange={(e) => setFormData({ ...formData, basic_password: e.target.value })}
-                    placeholder={mode === "edit" ? "<redacted>" : t("indexers.dialog.placeholders.password")}
-                    autoComplete="off"
-                    data-1p-ignore
-                    required={mode === "create"}
-                  />
-                  {mode === "edit" && (
-                    <p className="text-xs text-muted-foreground">
-                      {t("indexers.dialog.hints.basicPasswordKeep")}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="priority">{t("indexers.dialog.labels.priority")}</Label>
-                <Input
-                  id="priority"
-                  type="number"
-                  value={formData.priority}
-                  onChange={(e) =>
-                    setFormData({ ...formData, priority: parseInt(e.target.value, 10) })
-                  }
-                  min="0"
-                  autoComplete="off"
-                  data-1p-ignore
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="timeout">{t("indexers.dialog.labels.timeout")}</Label>
-                <Input
-                  id="timeout"
-                  type="number"
-                  value={formData.timeout_seconds}
-                  onChange={(e) =>
-                    setFormData({ ...formData, timeout_seconds: parseInt(e.target.value, 10) })
-                  }
-                  min="5"
-                  max="120"
-                  autoComplete="off"
-                  data-1p-ignore
-                  required
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="enabled">{t("indexers.dialog.labels.enabled")}</Label>
-              <Switch
-                id="enabled"
-                checked={formData.enabled}
-                onCheckedChange={(checked) =>
-                  setFormData({ ...formData, enabled: checked })
-                }
-              />
-            </div>
-          </div>
-        </form>
-        <DialogFooter className="flex-shrink-0">
-          <Button type="button" variant="outline" onClick={onClose}>
-            {t("indexers.dialog.buttons.cancel")}
-          </Button>
-          <Button type="submit" form="indexer-form" disabled={loading}>
-            {loading ? t("indexers.dialog.buttons.saving") : mode === "create" ? t("indexers.dialog.buttons.add") : t("indexers.dialog.buttons.save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <Editor
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t(editing ? "indexers.dialog.editTitle" : "indexers.dialog.addTitle")}
+      description={t(editing ? "indexers.dialog.editDescription" : "indexers.dialog.addDescription")}
+      submitLabel={t(editing ? "indexers.dialog.buttons.save" : "indexers.dialog.addTitle")}
+      onSubmit={submit}
+      pending={pending}
+      error={error}
+    >
+      <Field label={t("indexers.dialog.labels.name")} error={errors.name}>
+        <Input {...text("name")} placeholder={t("indexers.dialog.placeholders.name")} />
+      </Field>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <Field label={t("indexers.dialog.labels.backend")}>
+          {(control) => (
+            <Select
+              value={values.backend}
+              onValueChange={(backend) => {
+                update({ backend: backend as Backend, indexerId: backend === "native" ? "" : values.indexerId })
+                setErrors((prev) => ({ ...prev, indexerId: undefined }))
+              }}
+            >
+              <SelectTrigger {...control} className="w-full max-sm:data-[size=default]:h-10">
+                <SelectValue placeholder={t("indexers.dialog.placeholders.selectBackend")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="jackett">{t("indexers.dialog.backends.jackett")}</SelectItem>
+                <SelectItem value="prowlarr">{t("indexers.dialog.backends.prowlarr")}</SelectItem>
+                <SelectItem value="native">{t("indexers.dialog.backends.native")}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        </Field>
+        {values.backend !== "native" && (
+          <Field
+            label={t("indexers.dialog.labels.indexerId")}
+            help={t(values.backend === "prowlarr" ? "indexers.dialog.hints.indexerIdProwlarr" : "indexers.dialog.hints.indexerIdJackett")}
+            error={errors.indexerId}
+          >
+            <Input
+              {...text("indexerId")}
+              placeholder={t(values.backend === "prowlarr" ? "indexers.dialog.placeholders.indexerIdProwlarr" : "indexers.dialog.placeholders.indexerIdJackett")}
+            />
+          </Field>
+        )}
+      </div>
+      <Field label={t("indexers.dialog.labels.baseUrl")} error={errors.baseUrl}>
+        <Input {...text("baseUrl")} inputMode="url" autoCapitalize="off" spellCheck={false} placeholder={baseUrlPlaceholder} className="font-mono text-[13px]" />
+      </Field>
+      <Field label={t("indexers.dialog.labels.apiKey")} error={errors.apiKey}>
+        <Input
+          {...text("apiKey")}
+          type="password"
+          placeholder={t(editing ? "indexers.dialog.placeholders.apiKeyEdit" : "indexers.dialog.placeholders.apiKeyCreate")}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-4">
+        <Field label={t("indexers.dialog.labels.priority")} error={errors.priority}>
+          <Input {...text("priority")} type="number" inputMode="numeric" />
+        </Field>
+        <Field label={t("indexers.dialog.labels.timeout")} error={errors.timeout}>
+          <Input {...text("timeout")} type="number" inputMode="numeric" />
+        </Field>
+      </div>
+      <SwitchRow
+        label={t("indexers.dialog.labels.basicAuth")}
+        help={t("indexers.dialog.labels.basicAuthDescription")}
+        checked={values.basicAuth}
+        onCheckedChange={(basicAuth) => {
+          // Turning it off throws the credentials away, so turning it on again asks for both.
+          update(basicAuth ? { basicAuth } : { basicAuth, basicUsername: "", basicPassword: "" })
+          setErrors((prev) => ({ ...prev, basicUsername: undefined, basicPassword: undefined }))
+        }}
+      />
+      {values.basicAuth && (
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label={t("indexers.dialog.labels.basicUsername")} error={errors.basicUsername}>
+            <Input {...text("basicUsername")} placeholder={t("indexers.dialog.placeholders.username")} />
+          </Field>
+          <Field
+            label={t("indexers.dialog.labels.basicPassword")}
+            description={editing ? t("indexers.dialog.hints.basicPasswordKeep") : undefined}
+            error={errors.basicPassword}
+          >
+            <Input {...text("basicPassword")} type="password" placeholder={editing ? REDACTED : t("indexers.dialog.placeholders.password")} />
+          </Field>
+        </div>
+      )}
+      <SwitchRow label={t("indexers.dialog.labels.enabled")} checked={values.enabled} onCheckedChange={(enabled) => update({ enabled })} />
+      {indexer && (
+        <Facts
+          items={[
+            {
+              label: t("indexers.table.capabilities"),
+              value: indexer.capabilities?.length ? indexer.capabilities.join(", ") : t("indexers.table.noCapabilities"),
+              mono: Boolean(indexer.capabilities?.length),
+            },
+            // The list shows two lines of the last test error. The editor shows all of it.
+            ...(indexer.last_test_status === "error" && indexer.last_test_error
+              ? [{ label: t("indexers.toast.testFailed"), value: indexer.last_test_error, mono: true, copy: indexer.last_test_error }]
+              : []),
+          ]}
+        />
+      )}
+    </Editor>
   )
 }

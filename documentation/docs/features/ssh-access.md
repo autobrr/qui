@@ -106,7 +106,7 @@ The other pages name the two tiers by what qui can do:
 - "a remote instance where qui can run commands on the host" is the tier **SFTP + commands**.
 - "a remote instance where qui only has SFTP" is the tier **SFTP**.
 
-qui tests again each time that it connects, and the tier follows the result. In **Settings → Instances**, the card of a remote instance shows **Over SSH**. Point at the label to read the limits of the instance. The SSH tab shows the same limits below the settings.
+qui tests again each time that it connects, and the tier follows the result. In **Settings → Instances**, the row of a remote instance shows **Files over SSH**. To read the limits of the instance, open the instance and look below the settings on the SSH tab.
 
 ## What works over SSH
 

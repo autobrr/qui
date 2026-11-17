@@ -9,6 +9,7 @@ import { Plus, Settings2 } from "lucide-react"
 import { useState, type RefObject } from "react"
 import { useTranslation } from "react-i18next"
 
+import { useReturnFocus } from "@/components/kit/use-return-focus"
 import { DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
@@ -16,7 +17,6 @@ import { useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileList } from "./DisplayProfileList"
 import { DisplayProfileTile } from "./DisplayProfileTile"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
-import { useReturnFocus } from "./use-return-focus"
 
 /** "Display profile" with the profile of this browser, and a separator under it, for the menu of the mobile torrent list. */
 export function DisplayProfileMenuItem({ onSelect }: { onSelect: () => void }) {

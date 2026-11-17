@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
@@ -64,6 +65,9 @@ type crossSeeds struct {
 	requests []crossseed.CrossSeedRequest
 	// refuse is the status of a refused add.
 	refuse string
+	// strand is the status of an add that leaves the torrent on the
+	// Cross-seed instance, and reports no success.
+	strand string
 }
 
 // withCrossSeedInstance gives the target a Cross-seed instance.
@@ -120,6 +124,11 @@ func (c *crossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequ
 	hash := c.stub.Seed(data, c.dir)
 	if err := c.r.sync.BulkAction(ctx, c.inst.ID, []string{hash}, "pause"); err != nil {
 		return nil, err
+	}
+	if c.strand != "" {
+		return &crossseed.CrossSeedResponse{Results: []crossseed.InstanceCrossSeedResult{
+			{InstanceID: matchedOn, Status: c.strand, CrossSeedInstanceID: c.inst.ID},
+		}}, nil
 	}
 	return &crossseed.CrossSeedResponse{Success: true, Results: []crossseed.InstanceCrossSeedResult{
 		{InstanceID: matchedOn, Success: true, Status: "added", CrossSeedInstanceID: c.inst.ID},
@@ -214,26 +223,56 @@ func TestTransferWaitsForTheCheckOfARoutedCrossSeed(t *testing.T) {
 	}
 }
 
-// A refused cross-seed add fails the Transfer. The source keeps both
-// torrents and their files.
+// A failed cross-seed add fails the Transfer for a retry, and the source
+// keeps both torrents and their files. The retry adds a member that the add
+// refused again, and checks a member that the add left on the Cross-seed
+// instance.
+// regression: #4231
 func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
-	r := newRig(t)
-	cs := r.withCrossSeedInstance()
-	cs.refuse = "no_match"
-	s := newShow(t, showName)
-	r.seed(s)
-	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcPath())
-	r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
-	r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
+	for _, tc := range []struct {
+		name     string
+		status   string
+		stranded bool
+		requests int
+	}{
+		{name: "a refused add", status: "no_match", requests: 2},
+		{name: "an add that leaves the member", status: "alignment_failed", stranded: true, requests: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			cs := r.withCrossSeedInstance()
+			if tc.stranded {
+				cs.strand = tc.status
+			} else {
+				cs.refuse = tc.status
+			}
+			s := newShow(t, showName)
+			r.seed(s)
+			crossSeed, crossSeedHash := crossSeedOf(t, s)
+			r.src.Seed(crossSeed, r.srcPath())
+			r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
+			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
 
-	record := r.run(r.request(s))
+			record := r.run(r.request(s))
 
-	require.Equal(t, transfer.StateFailed, record.State)
-	require.Equal(t, "homelab cross-seed did not take "+showName+": no_match", record.FailureReason)
-	require.True(t, r.seeding(r.source.ID, s.hash))
-	require.True(t, r.seeding(r.source.ID, crossSeedHash))
-	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Equal(t, transfer.FailureTemporary, record.FailureClass)
+			require.Equal(t, "homelab cross-seed did not take "+showName+": "+tc.status, record.FailureReason)
+			require.True(t, r.seeding(r.source.ID, s.hash))
+			require.True(t, r.seeding(r.source.ID, crossSeedHash))
+			require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+
+			cs.refuse, cs.strand = "", ""
+			r.setClock(clock.Add(time.Hour))
+			r.svc.Wake()
+			r.svc.Wait()
+
+			record = r.get(record.ID)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.True(t, r.seeding(cs.inst.ID, s.hash))
+			require.Len(t, cs.requests, tc.requests)
+		})
+	}
 }
 
 // A group whose torrents hold other files goes whole to the target, also
@@ -450,17 +489,19 @@ func TestTransferKeepsTheFilesOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
 // A connection that drops while qui links a hardlink on the target, or
 // creates a temporary file there, is no sign that the target cannot link. qui
 // reconnects, makes again a name that the target may have made before the
-// drop, and links the path of the cross-seed to the copy. It writes no second
-// copy.
+// drop, also when the removal of that name drops, and links the path of the
+// cross-seed to the copy. It writes no second copy.
 // regression: #4231
 func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		drop targetDrop
+		name  string
+		drops []targetDrop
 	}{
-		{name: "before a link", drop: targetDrop{op: "link"}},
-		{name: "after a link", drop: targetDrop{op: "link", served: true}},
-		{name: "after a create", drop: targetDrop{op: "create", served: true}},
+		{name: "before a link", drops: []targetDrop{{op: "link"}}},
+		{name: "after a link", drops: []targetDrop{{op: "link", served: true}}},
+		{name: "after a link and at its removal", drops: []targetDrop{{op: "link", served: true}, {op: "remove"}}},
+		{name: "after a create", drops: []targetDrop{{op: "create", served: true}}},
+		{name: "after a create and at its removal", drops: []targetDrop{{op: "create", served: true}, {op: "remove"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, onDisk, overSFTP)
@@ -468,7 +509,7 @@ func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
 			s := newShow(t, showName)
 			r.seed(s)
 			_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
-			r.dropAtFirst(tc.drop)
+			r.dropAtFirst(tc.drops...)
 
 			record := r.run(r.request(s))
 
@@ -485,20 +526,20 @@ func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
 }
 
 // targetDrop drops the connections to an SFTP target once, at the first
-// request op of qui there: "link" or "create". With served, the target takes
-// the request, and only its answer is lost.
+// request op of qui there: "link", "create", or "remove". With served, the
+// target takes the request, and only its answer is lost.
 type targetDrop struct {
 	op     string
 	served bool
 }
 
 // dropAtFirst starts qui again on an SFTP target whose connections drop as
-// d says.
-func (r *rig) dropAtFirst(d targetDrop) {
+// each of ds says, in turn.
+func (r *rig) dropAtFirst(ds ...targetDrop) {
 	r.t.Helper()
 	ssh := sshpool.NewPool(sshpool.NewDialer(r.instances))
 	r.t.Cleanup(ssh.Close)
-	drops := &drops{targetDrop: d, server: r.dstSSH}
+	drops := &drops{pending: ds, server: r.dstSSH}
 	r.deps.Files = fsops.NewPoolWithRemote(r.instances, r.disk, func(inst *models.Instance) fsops.Backend {
 		return &dropFiles{sftpFiles: &sftpFiles{Backend: remote.New(ssh, inst), d: r.disk}, drops: drops}
 	})
@@ -506,18 +547,24 @@ func (r *rig) dropAtFirst(d targetDrop) {
 }
 
 type drops struct {
-	targetDrop
 	server  *sshtest.Server
-	dropped atomic.Bool
+	mu      sync.Mutex
+	pending []targetDrop
 }
 
 // request runs a request op on name, and fails it as the remote backend
-// fails on a dropped connection when it is the request that drops.
+// fails on a dropped connection when it is the request that drops next.
 func (d *drops) request(op, name string, request func() error) error {
-	if op != d.op || !d.dropped.CompareAndSwap(false, true) {
+	d.mu.Lock()
+	next := targetDrop{}
+	if len(d.pending) > 0 && d.pending[0].op == op {
+		next, d.pending = d.pending[0], d.pending[1:]
+	}
+	d.mu.Unlock()
+	if next.op == "" {
 		return request()
 	}
-	if d.served {
+	if next.served {
 		if err := request(); err != nil {
 			return err
 		}
@@ -546,6 +593,10 @@ type dropRoot struct {
 
 func (r *dropRoot) Link(ctx context.Context, oldName, newName string) error {
 	return r.drops.request("link", newName, func() error { return r.Root.Link(ctx, oldName, newName) })
+}
+
+func (r *dropRoot) Remove(ctx context.Context, name string) error {
+	return r.drops.request("remove", name, func() error { return r.Root.Remove(ctx, name) })
 }
 
 func (r *dropRoot) Create(ctx context.Context, name string) (fsops.FileWriter, error) {
@@ -636,8 +687,65 @@ func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	// regression: #4231
 	require.Equal(t, transfer.FailureTemporary, records[secondID].FailureClass, records[secondID].FailureReason)
 	require.Equal(t, "Not enough free space on homelab for now: the Transfer needs 70 B, and 100 B is free, "+
-		"but other Transfers to homelab that run now set aside 70 B.", records[secondID].FailureReason)
+		"but other Transfers to homelab take 70 B of it.", records[secondID].FailureReason)
 	require.Equal(t, transfer.StateDone, records[thirdID].State, records[thirdID].FailureReason)
+}
+
+// A Transfer that ends gives back its free space on the target, and its
+// files take that space. A read of the free space from before that end does
+// not show them, so the Transfer that read it counts them.
+// regression: #4231
+func TestTransferCountsTheFilesOfATransferThatEndedAfterTheRead(t *testing.T) {
+	r := newRig(t)
+	first := newShow(t, showName)
+	r.seed(first)
+	small, smallHash := singleFileTorrent(t, "Small.mkv", []byte("ten bytes!"))
+	write(t, r.srcDir, map[string][]byte{"Small.mkv": []byte("ten bytes!")})
+	r.src.Seed(small, r.srcPath())
+	otherDir := t.TempDir()
+	otherPath := pathOn(overSFTP, otherDir)
+	other := qbtstub.New(t, otherPath)
+	otherSource := r.sshInstance("seedbox two", other.URL)
+	second := newShow(t, "Other.Show.S02.720p-GRP")
+	write(t, filepath.Join(otherDir, "Other.Show.S02.720p-GRP"), second.files)
+	other.Seed(second.data, otherPath)
+	r.disk.free = 100
+
+	// The first Transfer copies once the second reads the free space, and
+	// that read answers once the first has ended: the third Transfer waits
+	// behind the first on the same source, so its read tells that.
+	reading, ended := make(chan struct{}), make(chan struct{})
+	var reads atomic.Int32
+	r.disk.onStatfs = func() {
+		switch reads.Add(1) {
+		case 2:
+			close(reading)
+			<-ended
+		case 3:
+			close(ended)
+		}
+	}
+	copying := make(chan struct{})
+	wait := sync.OnceFunc(func() {
+		close(copying)
+		<-reading
+	})
+	r.disk.onWrite = func(string) { wait() }
+	firstID, err := r.svc.Start(t.Context(), r.request(first))
+	require.NoError(t, err)
+	<-copying
+	secondID, err := r.svc.Start(t.Context(), transfer.Request{SourceInstanceID: otherSource.ID, Hash: second.hash, TargetInstanceID: r.target.ID})
+	require.NoError(t, err)
+	thirdID, err := r.svc.Start(t.Context(), transfer.Request{SourceInstanceID: r.source.ID, Hash: smallHash, TargetInstanceID: r.target.ID})
+	require.NoError(t, err)
+	r.svc.Wait()
+
+	require.Equal(t, transfer.StateDone, r.get(firstID).State)
+	record := r.get(secondID)
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
+	require.Contains(t, record.FailureReason, "Not enough free space on homelab for now: the Transfer needs 70 B, and 100 B is free")
+	require.Equal(t, transfer.StateDone, r.get(thirdID).State)
 }
 
 // A file of the group that is on the target before the Transfer is a head

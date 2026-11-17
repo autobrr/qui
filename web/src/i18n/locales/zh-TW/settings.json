@@ -33,7 +33,6 @@
     "newPassword": "新密碼",
     "confirmPassword": "確認新密碼",
     "submit": "修改密碼",
-    "submitting": "修改中...",
     "toasts": {
       "success": "密碼修改成功",
       "error": "密碼修改失敗，請檢查目前密碼。"
@@ -44,84 +43,73 @@
       "minLength": "密碼至少需要 8 個字元",
       "confirmRequired": "請確認密碼",
       "mismatch": "兩次輸入的密碼不一致"
-    }
+    },
+    "newPasswordHint": "至少 8 個字元。"
   },
   "instances": {
     "title": "實例",
     "description": "管理您的 qBittorrent 連線設定",
     "addButton": "新增實例",
-    "loading": "正在載入實例...",
-    "empty": "尚未配置任何實例",
-    "addFirst": "新增您的第一個實例",
     "titleBarSpeeds": {
-      "label": "標題欄速度",
-      "description": "在瀏覽器分頁標題中顯示下載/上傳速度"
+      "label": "在分頁標題中顯示傳輸速度"
     },
-    "addDialog": {
-      "title": "新增實例",
-      "description": "配置一個新的 qBittorrent 實例",
-      "cancel": "取消",
-      "submit": "新增實例",
-      "adding": "新增中..."
-    },
-    "toasts": {
-      "reorderFailed": "重新排序實例失敗"
+    "browserTab": {
+      "title": "瀏覽器分頁"
     }
   },
   "integrations": {
-    "title": "ARR 整合",
-    "description": "配置 Sonarr 和 Radarr 實例，以使用外部 ID 進行增強的 cross-seed 搜尋"
+    "title": "Sonarr 和 Radarr",
+    "description": "cross-seed 會在此查詢 IMDb、TMDb 和 TVDb ID，以取得更精確的配對。"
   },
   "clientApiKeys": {
-    "cardTitle": "用戶端代理 API 金鑰",
-    "cardDescription": "管理外部應用程式透過 qui 連線 qBittorrent 實例的 API 金鑰",
-    "createButton": "建立用戶端 API 金鑰",
-    "loading": "正在載入用戶端 API 金鑰...",
-    "loadFailed": "無法載入用戶端 API 金鑰",
-    "featureUnavailable": "此版本可能不支援該功能",
+    "cardTitle": "用戶端代理金鑰",
+    "cardDescription": "讓 autobrr 等應用程式透過 qui 存取 qBittorrent 的金鑰。",
+    "createButton": "建立金鑰",
     "unknownError": "發生了未知錯誤",
     "instanceDeleted": "實例已刪除",
-    "empty": "尚未建立任何用戶端 API 金鑰",
     "idLabel": "ID：{{id}}",
     "labels": {
       "created": "建立時間：",
       "lastUsed": "最後使用：",
-      "host": "主機：",
       "showHost": "顯示主機",
       "hideHost": "隱藏主機"
     },
     "createDialog": {
-      "title": "建立用戶端 API 金鑰",
-      "description": "為特定用戶端建立一個 API 金鑰，用於連線 qBittorrent 實例。",
+      "title": "新建代理金鑰",
+      "description": "此金鑰只能存取您選擇的 qBittorrent 實例。",
       "clientNameLabel": "用戶端名稱",
       "clientNamePlaceholder": "例如：autobrr、tqm、sonarr、radarr、cross-seed",
       "instanceLabel": "qBittorrent 實例",
-      "instancePlaceholder": "選擇一個實例",
-      "creating": "建立中..."
+      "instancePlaceholder": "選擇一個實例"
     },
     "newKey": {
-      "title": "API 金鑰已建立",
-      "warning": "此資訊僅顯示一次。請在關閉對話方塊前將其儲存到您的密碼管理器中。",
+      "title": "已為 {{name}} 建立金鑰",
+      "warning": "請立即複製代理 URL。qui 只顯示一次。",
       "proxyUrl": "代理 URL",
       "showProxyUrl": "顯示代理 URL",
       "hideProxyUrl": "隱藏代理 URL",
       "done": "完成"
     },
     "deleteDialog": {
-      "title": "刪除用戶端 API 金鑰？",
-      "description": "此操作無法復原。使用此金鑰的所有應用程式將無法存取該 qBittorrent 實例。",
-      "cancel": "取消",
-      "delete": "刪除",
-      "deleteLabel": "刪除 API 金鑰 {{name}}"
+      "title": "刪除金鑰？",
+      "description": "{{name}} 將無法再透過 qui 存取 qBittorrent。此操作無法復原。",
+      "delete": "刪除"
     },
     "toasts": {
       "created": "用戶端 API 金鑰建立成功",
       "createFailed": "建立用戶端 API 金鑰失敗",
       "deleted": "用戶端 API 金鑰已刪除",
-      "deleteFailed": "刪除用戶端 API 金鑰失敗：{{error}}",
+      "deleteFailed": "刪除用戶端 API 金鑰失敗：{{error}}"
+    },
+    "emptyTitle": "尚無金鑰",
+    "emptyDescription": "為每個與 qBittorrent 通訊的應用程式建立一個金鑰。",
+    "lastUsed": "最後使用：{{date}}",
+    "neverUsed": "從未使用",
+    "validation": {
       "clientNameRequired": "用戶端名稱為必填項",
       "selectInstance": "請選擇一個 qBittorrent 實例"
-    }
+    },
+    "created": "建立時間：{{date}}"
   },
   "apiKeys": {
     "cardTitle": "API 金鑰",
@@ -222,19 +210,10 @@
   "externalPrograms": {
     "cardTitle": "外部程式",
     "cardDescription": "配置可從 Torrent 右鍵選單執行的外部程式或指令碼",
-    "createButton": "建立外部程式",
-    "createTitle": "建立外部程式",
+    "createButton": "新增程式",
+    "createTitle": "新增外部程式",
     "createDescription": "配置一個可從 Torrent 右鍵選單執行的外部程式或指令碼。",
-    "loading": "正在載入外部程式...",
-    "loadFailed": "載入外部程式失敗",
     "unknownError": "未知錯誤",
-    "empty": "尚未配置外部程式。建立一個以開始使用。",
-    "enabled": "已啟用",
-    "disabled": "已停用",
-    "created": "建立於 {{date}}",
-    "updated": "更新於 {{date}}",
-    "programPath": "程式路徑：",
-    "argumentsTemplate": "參數範本：",
     "editTitle": "編輯外部程式",
     "deleteTitle": "刪除外部程式",
     "delete": "刪除",
@@ -242,32 +221,22 @@
     "deleteConflictDescription": "如果繼續，外部程式操作將從這些自動化規則中移除。",
     "deleteDescription": "確定要刪除「{{name}}」嗎？此操作無法復原。",
     "deleteAnyway": "仍然刪除",
-    "nameLabel": "名稱 *",
+    "nameLabel": "名稱",
     "namePlaceholder": "我的外部程式",
-    "pathLabel": "程式路徑 *",
+    "pathLabel": "程式路徑",
     "pathPlaceholder": "/usr/bin/my-script.sh or C:\\Scripts\\my-script.bat",
-    "pathDescription": "執行檔的完整路徑",
     "argumentsLabel": "參數範本",
     "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
-    "argumentsDescription": "帶參數的指令碼完整路徑",
-    "availablePlaceholders": "可用佔位符：",
+    "availablePlaceholders": "可用佔位符",
     "pathMappings": "路徑對應",
-    "remotePathPlaceholder": "遠端路徑（例如：/mnt/remote-storage）",
-    "localPathPlaceholder": "本機路徑（例如：/home/user/mounts/remote）",
+    "remotePathPlaceholder": "/mnt/remote-storage",
+    "localPathPlaceholder": "/home/user/mounts/remote",
     "removePathMapping": "移除路徑對應",
     "addPathMapping": "新增路徑對應",
     "pathMappingsDescription": "路徑對應將遠端路徑轉換為本機掛載點。當在本機 qui 伺服器上執行外部程式而 qBittorrent 在遠端時非常有用。路徑按最長字首優先匹配。請使用與遠端 qBittorrent 實例相同的路徑分隔符風格（Linux 使用 /，Windows 使用 \\）。",
     "launchInTerminal": "在終端視窗中啟動",
     "launchInTerminalDescription": "啟用後，程式將在新的終端視窗中開啟。對於 GUI 應用程式或不需要終端輸出的程式，請停用此選項。",
-    "enableProgram": "啟用此程式",
-    "cancel": "取消",
-    "saving": "儲存中...",
-    "updateButton": "更新",
-    "createSubmit": "建立",
-    "ariaLabels": {
-      "edit": "編輯 {{name}}",
-      "delete": "刪除 {{name}}"
-    },
+    "enableProgram": "已啟用",
     "toasts": {
       "created": "外部程式建立成功",
       "createFailed": "建立外部程式失敗：{{error}}",
@@ -291,29 +260,25 @@
       "size": "大小（位元組）",
       "progress": "進度（0-1）",
       "comment": "Torrent 備註"
-    }
+    },
+    "remotePath": "遠端路徑",
+    "localPath": "本機路徑",
+    "save": "儲存",
+    "emptyTitle": "沒有外部程式",
+    "emptyDescription": "新增程式或指令碼，即可從種子的右鍵選單中執行。",
+    "pathMappingsCount_other": "{{count}} 條路徑對應"
   },
   "notifications": {
     "cardTitle": "通知",
     "cardDescription": "透過任何 Shoutrrr 支援的服務傳送警報和狀態更新",
-    "addButton": "新增通知目標",
-    "loading": "正在載入通知目標…",
-    "loadFailed": "載入通知目標失敗",
-    "empty": "尚未配置通知目標。新增一個以開始接收警報。",
+    "addButton": "新增目標",
     "allEvents": "除系統通知外的全部事件",
-    "showList": "顯示清單",
-    "hideList": "隱藏清單",
-    "badges": {
-      "enabled": "已啟用",
-      "disabled": "已停用"
-    },
     "groups": {
       "torrent": "種子",
       "maintenance": "維護",
       "crossSeed": "輔種",
       "automations": "自動化",
-      "other": "其他",
-      "unknown": "未知"
+      "other": "其他"
     },
     "form": {
       "name": "名稱",
@@ -328,10 +293,8 @@
       },
       "enabled": "已啟用",
       "events": "事件",
-      "selectAll": "全選",
-      "select": "選擇",
-      "clear": "清除",
-      "loadingEventTypes": "正在載入事件類型…"
+      "allEvents": "全部事件",
+      "selectGroup": "全部{{group}}事件"
     },
     "dialog": {
       "newTitle": "新建通知目標",
@@ -340,8 +303,6 @@
       "editDescription": "更新此目標的投遞設定。",
       "deleteTitle": "刪除通知目標？",
       "deleteDescription": "這將移除 {{name}}。如有需要，可以稍後重新新增。",
-      "cancel": "取消",
-      "saving": "儲存中…",
       "save": "儲存",
       "delete": "刪除"
     },
@@ -360,18 +321,17 @@
       "testSent": "測試通知傳送成功",
       "testFailed": "傳送測試通知失敗"
     },
-    "ariaLabels": {
-      "sendTest": "傳送測試到 {{name}}",
-      "edit": "編輯 {{name}}",
-      "delete": "刪除 {{name}}"
+    "emptyTitle": "尚無通知目標",
+    "emptyDescription": "新增一個目標，即可透過 Discord、Telegram、Notifiarr 或其他 Shoutrrr 服務接收提醒。",
+    "eventSummary": "{{total}} 個事件中的 {{selected}} 個",
+    "actions": {
+      "sendTest": "傳送測試"
     }
   },
   "dateTime": {
-    "cardTitle": "日期與時間偏好",
+    "cardTitle": "日期和時間",
     "cardDescription": "配置時區、日期格式和時間顯示偏好",
     "timezone": "時區",
-    "timezoneDescription": "選擇您的本機時區以準確顯示時間",
-    "selectTimezone": "選擇時區",
     "detected": "已檢測",
     "regions": {
       "UTC": "UTC",
@@ -381,23 +341,14 @@
       "Africa": "非洲",
       "Oceania": "大洋洲"
     },
-    "timeFormat": "時間格式",
     "use12Hour": "使用 12 小時制（AM/PM）",
-    "use12HourDescription": "在 12 小時制和 24 小時制之間切換",
     "dateFormat": "日期格式",
-    "dateFormatDescription": "選擇整個應用中日期的顯示方式",
-    "selectDateFormat": "選擇日期格式",
     "isoFormat": "ISO 8601（YYYY-MM-DD）",
     "usFormat": "美國格式（MM/DD/YYYY）",
     "euFormat": "歐洲格式（DD/MM/YYYY）",
     "relativeFormat": "相對（例如：「2 小時前」）",
     "preview": "預覽",
-    "previewDescription": "日期和時間將以此方式在應用中顯示",
-    "savePreferences": "儲存偏好",
-    "toasts": {
-      "success": "日期和時間偏好已儲存",
-      "error": "儲存日期和時間偏好失敗"
-    }
+    "previewDescription": "日期和時間將以此方式在應用中顯示"
   },
   "statistics": {
     "cardTitle": "統計",
@@ -431,7 +382,6 @@
       "confirmBefore": "qui 將刪除 {{name}} 在 {{date}} 之前的歷史。如果記錄在該日期之前開始，首次記錄之前的位元組也會刪除，「自…起記錄」會改為該日期。此操作無法復原。",
       "sqliteSpace": "資料庫檔案大小不變。SQLite 會將可用空間重新用於新的歷史。",
       "postgresSpace": "刪除所有實例的全部歷史會立即將空間歸還給磁碟。其他刪除之後，Postgres 會將可用空間重新用於新的歷史。",
-      "cancel": "取消",
       "confirm": "刪除",
       "deleted": "歷史已刪除",
       "failed": "刪除歷史失敗",
@@ -443,7 +393,6 @@
         "manualDocs": "手動壓縮檔案"
       }
     },
-    "loadFailed": "無法載入統計設定",
     "toasts": {
       "saved": "統計設定已儲存",
       "saveFailed": "無法儲存統計設定"
@@ -456,7 +405,6 @@
     },
     "browserIntegration": {
       "title": "瀏覽器整合",
-      "description": "配置瀏覽器處理磁力連結的方式",
       "registerDescription": "將 qui 註冊為瀏覽器的磁力連結處理程式。這允許您直接在 qui 中開啟磁力連結。",
       "registerButton": "註冊為處理程式",
       "toasts": {
@@ -466,11 +414,9 @@
     }
   },
   "logs": {
-    "title": "日誌",
     "description": "檢視即時日誌並配置日誌設定",
-    "settingsSrOnly": "開啟日誌設定",
     "configuration": {
-      "title": "配置",
+      "title": "日誌設定",
       "description": "調整日誌級別、輸出路徑和輪轉設定。",
       "level": "日誌級別",
       "levelPlaceholder": "選擇日誌級別",
@@ -478,12 +424,13 @@
       "pathPlaceholder": "留空則僅輸出到 stdout",
       "maxSize": "最大大小（MB）",
       "maxBackups": "最大備份數",
-      "saving": "儲存中...",
-      "saveSettings": "儲存設定"
+      "saveSettings": "儲存設定",
+      "lockedByEnv": "由環境變數設定",
+      "lockedByEmptyEnv": "由空的環境變數設定",
+      "configFile": "設定檔"
     },
     "viewer": {
       "connected": "已連線",
-      "disconnected": "已斷開",
       "searchPlaceholder": "搜尋日誌...",
       "allLevels": "所有級別",
       "all": "全部",
@@ -493,21 +440,28 @@
       "mutedMessages": "已靜音訊息",
       "clearAll": "清除全部",
       "clear": "清除",
-      "autoScroll": "自動捲動",
       "noEntriesMatch": "沒有條目匹配目前篩選條件",
       "waiting": "等待日誌條目...",
       "showing": "顯示 {{shown}} / {{total}} 條（最多 {{max}} 條，{{mode}}）",
       "maxLive": "即時最大值",
       "maxPaused": "暫停時最大值",
       "oldestEntriesDropped": "· 最早的條目已丟棄",
-      "muteSimilarEntries": "靜音類似條目"
+      "muteSimilarEntries": "靜音類似條目",
+      "title": "即時日誌",
+      "description": "qui 寫入新條目時會立即顯示。",
+      "pause": "暫停",
+      "follow": "跟隨",
+      "connecting": "正在連線…",
+      "reconnecting": "連線已中斷。正在重新連線…",
+      "levels": "級別",
+      "unmute": "取消靜音：{{message}}"
     },
     "entryDialog": {
       "title": "日誌條目",
       "rawLine": "原始日誌行",
       "copyRaw": "複製原始內容",
       "copyJson": "複製 JSON",
-      "close": "關閉"
+      "mute": "靜音類似條目"
     },
     "toasts": {
       "settingsUpdated": "日誌設定已更新",
@@ -518,10 +472,17 @@
     },
     "files": {
       "title": "日誌檔案",
-      "downloadSrOnly": "下載 {{filename}}",
       "toasts": {
         "downloadFailed": "下載 {{filename}} 失敗"
-      }
+      },
+      "description": "目前的日誌檔案及其輪替副本。",
+      "emptyTitle": "沒有日誌檔案",
+      "emptyDescription": "設定日誌檔案路徑，即可將日誌儲存到磁碟。",
+      "download": "下載"
+    },
+    "validation": {
+      "maxSize": "請輸入 1 或更大的數",
+      "maxBackups": "請輸入 0 或更大的數"
     }
   },
   "themes": {
@@ -635,13 +596,11 @@
       "actions": {
         "addLicense": "新增授權",
         "remove": "移除",
-        "removing": "移除中...",
         "getPremium": "取得授權",
         "reactivate": "重新啟用授權",
         "activating": "啟用中...",
         "copyLicenseKey": "複製授權金鑰",
         "activate": "啟用授權",
-        "validating": "驗證中...",
         "openDodoCheckout": "開啟 DodoPayments 結帳",
         "openLicensePortal": "開啟授權門戶"
       },
@@ -773,60 +732,38 @@
     }
   },
   "arrInstances": {
-    "addButton": "新增 ARR 實例",
+    "addButton": "新增實例",
     "addDialog": {
-      "title": "新增 ARR 實例",
-      "description": "配置一個 Sonarr 或 Radarr 實例，用於 cross-seed 搜尋時的 ID 查詢。"
+      "title": "新建實例",
+      "description": "cross-seed 用來查詢 ID 的 Sonarr 或 Radarr 伺服器。"
     },
     "editDialog": {
-      "title": "編輯 ARR 實例"
+      "title": "編輯實例"
     },
     "deleteDialog": {
-      "title": "刪除 ARR 實例？",
-      "description": "確定要刪除「{{name}}」嗎？此操作無法復原。"
+      "title": "刪除實例？",
+      "description": "qui 將不再使用 {{name}} 查詢 ID。此操作無法復原。"
     },
-    "badges": {
-      "enabled": "已啟用",
-      "disabled": "已停用",
-      "connected": "已連線",
-      "failed": "失敗"
-    },
-    "loading": "正在載入 ARR 實例...",
-    "loadFailed": "載入 ARR 實例失敗",
-    "empty": "尚未配置 ARR 實例。新增一個 Sonarr 或 Radarr 實例以啟用基於 ID 的 cross-seed 搜尋。",
-    "created": "建立於 {{date}}",
-    "sonarrInstances": "Sonarr 實例",
-    "radarrInstances": "Radarr 實例",
     "unknownError": "未知錯誤",
     "actions": {
       "testConnection": "測試連線",
-      "testing": "測試中...",
-      "cancel": "取消",
       "delete": "刪除",
-      "create": "建立",
-      "update": "更新",
-      "saving": "儲存中..."
+      "save": "儲存"
     },
     "form": {
-      "type": "類型 *",
-      "selectType": "選擇類型",
-      "name": "名稱 *",
+      "type": "類型",
+      "name": "名稱",
       "namePlaceholder": "我的 {{type}}",
-      "baseUrl": "基礎 URL *",
-      "baseUrlDescription": "您的 {{type}} 實例的基礎 URL",
-      "apiKey": "API 金鑰 *",
-      "apiKeyOptional": "API 金鑰（留空以保留目前值）",
+      "baseUrl": "基礎 URL",
+      "apiKey": "API 金鑰",
       "apiKeyPlaceholder": "輸入 API 金鑰",
       "apiKeyPlaceholderEdit": "••••••••",
       "apiKeyDescription": "在 {{type}} 的 Settings > General 中可找到",
       "basicAuth": "基本認證",
       "basicAuthDescription": "對反向代理後的 ARR 使用 HTTP 基本認證。",
-      "basicUsername": "基本認證使用者名稱",
-      "basicUsernamePlaceholder": "使用者名稱",
-      "basicPassword": "基本認證密碼",
-      "basicPasswordPlaceholder": "密碼",
-      "basicPasswordPlaceholderEdit": "<redacted>",
-      "basicPasswordKeep": "保留 <redacted> 以保持現有密碼。",
+      "basicUsername": "使用者名稱",
+      "basicPassword": "密碼",
+      "basicPasswordKeep": "保持不變即可保留目前密碼。",
       "priority": "優先順序",
       "priorityDescription": "優先順序較高的實例將優先查詢",
       "timeoutSeconds": "逾時時間（秒）",
@@ -836,7 +773,8 @@
         "radarr": "Radarr（電影）",
         "sonarrShort": "Sonarr",
         "radarrShort": "Radarr"
-      }
+      },
+      "apiKeyKeep": "留空以保留目前金鑰。"
     },
     "validation": {
       "nameRequired": "名稱為必填項",
@@ -848,11 +786,6 @@
       "basicPasswordRequiredSubmit": "基本認證密碼為必填項",
       "basicPasswordKeepOrEnter": "請輸入新的基本認證密碼或保留現有密碼"
     },
-    "ariaLabels": {
-      "testConnection": "測試 {{name}} 的連線",
-      "edit": "編輯 {{name}}",
-      "delete": "刪除 {{name}}"
-    },
     "toasts": {
       "created": "ARR 實例建立成功",
       "createFailed": "建立 ARR 實例失敗：{{error}}",
@@ -863,7 +796,14 @@
       "connectionSuccess": "連線成功",
       "connectionFailed": "連線失敗：{{error}}",
       "testFailed": "測試連線失敗：{{error}}"
-    }
+    },
+    "status": {
+      "connected": "已連線",
+      "failed": "測試失敗"
+    },
+    "tested": "上次測試：{{date}}",
+    "emptyTitle": "尚無 Sonarr 或 Radarr",
+    "emptyDescription": "新增一個，讓 cross-seed 可以依 ID 搜尋。"
   },
   "indexers": {
     "title": "Torznab 索引器",
@@ -872,7 +812,6 @@
     "deleteAllIndexers": "刪除所有索引器",
     "deleteAllDescription": "確定要刪除全部 {{count}} 個索引器嗎？此操作無法復原。",
     "toast": {
-      "loadFailed": "載入索引器失敗",
       "deletedSuccess": "索引器已刪除",
       "deleteFailed": "刪除索引器失敗",
       "deleteAllSuccess": "已刪除全部 {{count}} 個索引器",
@@ -884,7 +823,8 @@
       "testAllPartial": "{{success}} 個透過，{{failed}} 個失敗",
       "failedIndexers": "失敗的索引器：{{names}}",
       "capsSynced": "已從後端同步功能資訊",
-      "failedToSyncCaps": "同步功能資訊失敗"
+      "failedToSyncCaps": "同步功能資訊失敗",
+      "testFailed": "連線測試失敗"
     },
     "priorityLabels": {
       "interactive": "互動式",
@@ -911,8 +851,10 @@
       "summary": "{{enabled}} 個已啟用，{{capabilities}} 個有功能資訊",
       "description": "管理由 Jackett、Prowlarr 或原生 Tracker 端點驅動的 Torznab 索引器",
       "deleteAll": "刪除全部",
-      "discover": "發現",
-      "addSingle": "新增單個"
+      "addMenu": {
+        "discover": "在 Jackett 或 Prowlarr 中探索",
+        "manual": "透過 URL 新增一個"
+      }
     },
     "dialog": {
       "addTitle": "新增索引器",
@@ -954,10 +896,7 @@
         "native": "原生 Torznab"
       },
       "buttons": {
-        "save": "儲存",
-        "add": "新增",
-        "saving": "儲存中...",
-        "cancel": "取消"
+        "save": "儲存"
       },
       "toast": {
         "createdSuccess": "索引器建立成功",
@@ -969,6 +908,15 @@
         "basicUsernameRequired": "基本認證使用者名稱為必填項",
         "basicPasswordRequired": "基本認證密碼為必填項",
         "basicPasswordRequiredOrKeep": "基本認證密碼為必填項（或保留 <redacted>）"
+      },
+      "validation": {
+        "nameRequired": "請輸入名稱。",
+        "baseUrlRequired": "請輸入基礎 URL。",
+        "baseUrlInvalid": "請輸入完整的 URL，例如 {{example}}。",
+        "indexerIdRequired": "請輸入 Prowlarr 索引器 ID。",
+        "apiKeyRequired": "請輸入 API 金鑰。",
+        "priorityInvalid": "請輸入 0 或更大的整數。",
+        "timeoutInvalid": "請輸入 5 到 120 之間的整數。"
       }
     },
     "autodiscovery": {
@@ -993,11 +941,8 @@
         "indexerUrl": "Prowlarr 預設為 http://localhost:9696，Jackett 預設為 http://localhost:9117。"
       },
       "buttons": {
-        "cancel": "取消",
         "discover": "發現",
-        "discovering": "發現中...",
         "back": "返回",
-        "importing": "匯入中...",
         "import": "匯入 {{count}} 個索引器",
         "importPlural": "匯入 {{count}} 個索引器",
         "selectAll": "全選",
@@ -1007,13 +952,11 @@
       "noIndexersFound": "未找到索引器",
       "willUpdate": "將更新",
       "typeLabel": "類型：",
-      "backendLabel": "後端：",
-      "notConfigured": "（未配置）",
+      "notConfigured": "未配置",
       "unknownError": "未知錯誤",
       "toast": {
         "urlRequired": "索引器 URL 為必填項",
         "basicAuthRequired": "基本認證需要使用者名稱和密碼",
-        "urlRequiredBeforeImport": "請在匯入前提供索引器 URL",
         "discoveredWithExisting": "找到 {{total}} 個索引器（{{existing}} 個已存在）",
         "discovered": "找到 {{count}} 個索引器",
         "discoverFailed": "發現索引器失敗：{{error}}",
@@ -1038,44 +981,32 @@
       "backend": "後端",
       "priority": "優先順序",
       "status": "狀態",
-      "testStatus": "測試狀態",
       "capabilities": "功能",
-      "timeout": "逾時",
-      "actions": "操作",
-      "enabled": "已啟用",
-      "disabled": "已停用",
       "working": "正常",
       "failed": "失敗",
       "untested": "未測試",
       "testAll": "全部測試",
-      "filters": "篩選",
       "clearFilters": "清除篩選",
       "showingCount": "顯示 {{shown}} / {{total}} 個索引器",
-      "loading": "載入中...",
-      "noIndexers": "尚未配置索引器。新增一個以開始使用。",
       "noMatch": "沒有索引器匹配目前篩選條件",
       "noCapabilities": "無功能資訊",
-      "sync": "同步",
-      "collapse": "摺疊",
       "filterStatus": "狀態",
       "filterTestStatus": "測試狀態",
       "filterBackend": "後端",
       "filterAll": "全部",
-      "filterEnabledOnly": "僅已啟用",
-      "filterDisabledOnly": "僅已停用",
-      "filterWorkingOnly": "僅正常",
-      "filterFailedOnly": "僅失敗",
-      "filterUntestedOnly": "僅未測試",
       "filterJackett": "Jackett",
       "filterProwlarr": "Prowlarr",
       "filterNative": "原生",
       "tooltipTest": "測試連線",
       "tooltipSyncCaps": "同步功能",
-      "tooltipEdit": "編輯",
       "tooltipDelete": "刪除",
-      "tooltipSyncCapsFromBackend": "從後端同步功能資訊",
-      "capability": "功能：{{name}}",
-      "clickToShowAllCapabilities": "點選顯示全部 {{count}} 項功能"
+      "sortBy": "排序方式",
+      "sortAscending": "升冪",
+      "sortDescending": "降冪",
+      "sortAndFilter": "排序和篩選",
+      "order": "順序",
+      "filterEnabled": "已啟用",
+      "filterDisabled": "已停用"
     },
     "activity": {
       "title": "排程器活動",
@@ -1085,16 +1016,13 @@
       "noActiveTasks": "沒有活動任務或速率限制",
       "andMore": "...還有 {{count}} 個",
       "workersStatus": "{{used}}/{{total}} 個工作執行緒",
-      "runningCount": "{{count}} 個執行中",
-      "queuedCount": "{{count}} 個排隊中",
-      "cooldownCount": "{{count}} 個冷卻中",
       "ready": "就緒",
-      "left": "剩餘 {{time}}"
+      "left": "剩餘 {{time}}",
+      "description": "正在執行、在佇列中等待或等待速率限制結束的搜尋。"
     },
     "searchHistory": {
       "title": "搜尋歷史",
       "searches": "{{count}} 次搜尋",
-      "searchesWithErrors": "{{count}} 次搜尋，{{errors}} 個錯誤",
       "noSearchesYet": "暫無搜尋記錄",
       "successful": "{{count}} 次成功",
       "failed": "{{count}} 次失敗",
@@ -1109,16 +1037,28 @@
         "added": "已新增 {{count}} 個",
         "error": "錯誤",
         "searchParameters": "搜尋參數",
-        "mode": "模式：",
-        "type": "類型：",
+        "mode": "模式",
+        "type": "類型",
         "job": "任務 {{id}}",
         "statusSuccess": "成功",
         "statusFailed": "失敗",
         "statusSkipped": "已跳過",
         "statusRateLimited": "速率受限",
         "season": "季",
-        "episode": "集"
-      }
+        "episode": "集",
+        "query": "查詢",
+        "finished": "完成時間"
+      },
+      "description": "qui 最近傳送到索引器的搜尋。",
+      "showAll": "顯示全部（{{count}}）",
+      "showFewer": "收合"
+    },
+    "list": {
+      "testing": "測試中",
+      "priority": "優先順序 {{priority}}",
+      "emptyTitle": "還沒有索引器",
+      "emptyDescription": "從 Jackett 或 Prowlarr 中探索，或手動新增一個。",
+      "capabilities_other": "{{count}} 項功能"
     }
   },
   "gazelle": {
@@ -1142,33 +1082,26 @@
     "configTitle": "快取配置",
     "configDescription": "調整搜尋結果的快取時長。",
     "cacheTTL": "快取 TTL（分鐘）",
-    "saving": "儲存中...",
     "saveTTL": "儲存",
     "ttlHelper": "最低 {{min}} 分鐘。值越高，索引器負載越低。",
     "entries": "條目",
     "hitCount": "命中次數",
     "approxSize": "大致大小",
-    "ttl": "TTL",
     "newestEntry": "最新條目",
     "lastUsed": "最後使用",
     "enabled": "已啟用",
     "disabled": "已停用",
-    "ttlValue": "{{minutes}} 分鐘",
-    "timestamps": {
-      "justNow": "剛剛",
-      "ago": "{{duration}}前",
-      "inFuture": "{{duration}}後"
-    },
     "toasts": {
       "ttlUpdated": "快取 TTL 已更新為 {{minutes}} 分鐘",
-      "ttlUpdateFailed": "更新快取 TTL 失敗",
+      "ttlUpdateFailed": "更新快取 TTL 失敗"
+    },
+    "validation": {
       "invalidNumber": "請輸入有效的數字",
       "ttlMinimum": "TTL 至少為 {{min}} 分鐘"
-    }
+    },
+    "status": "狀態"
   },
   "application": {
-    "loading": "載入中...",
-    "loadFailed": "載入應用程式資訊失敗",
     "build": {
       "title": "構建",
       "description": "版本和構建詳情。",
@@ -1178,8 +1111,6 @@
       "buildDate": "構建日期",
       "updateStatus": "更新狀態",
       "statuses": {
-        "unknown": "未知",
-        "unknownDetail": "無法確定更新狀態",
         "disabled": "已停用",
         "disabledDetail": "更新檢查已停用",
         "devBuild": "開發版本",
@@ -1258,15 +1189,13 @@
       "title": "執行時",
       "description": "伺服器執行時資訊。",
       "uptime": "執行時間",
-      "runtime": "執行時"
+      "runtime": "執行時",
+      "bindAddress": "繫結位址"
     },
     "auth": {
       "title": "認證",
       "description": "認證配置。",
       "currentSessionAuth": "目前工作階段",
-      "unknown": "未知",
-      "loading": "載入中...",
-      "unavailable": "不可用",
       "yes": "是",
       "no": "否",
       "oidcEnabled": "OIDC 已啟用",
@@ -1277,25 +1206,20 @@
       "title": "儲存",
       "description": "資料庫和檔案系統路徑。",
       "database": "資料庫",
-      "bind": "繫結位址",
       "configDir": "配置目錄",
       "dataDir": "資料目錄"
     }
   },
   "trackerCustomizations": {
     "cardTitle": "Tracker 自訂",
-    "cardDescription": "重新命名 Tracker，並將同一 Tracker 的多個網域合併為一個項目。qui 會在所有顯示該 Tracker 的地方使用顯示名稱。",
+    "cardDescription": "重新命名 Tracker，並將同一 Tracker 的多個網域合併為一個項目。",
     "loading": "正在載入 Tracker…",
-    "empty": "尚無 Tracker。實例中有種子後，Tracker 會顯示在這裡。",
-    "importTooltip": "匯入自訂配置",
-    "exportTooltip": "匯出自訂配置",
     "mergedFrom": "合併自：{{domains}}",
     "original": "原始：{{domain}}",
     "mergeTooltip": "將選取的 Tracker 合併到此分組",
     "mergeIntoGroup": "合併到分組",
     "addToMerge": "新增到合併",
     "rename": "重新命名",
-    "edit": "編輯",
     "delete": "刪除",
     "customizeDialog": {
       "editTitle": "編輯 Tracker 名稱",
@@ -1310,8 +1234,6 @@
       "selectedTrackers": "已選 Tracker",
       "primary": "主要",
       "removeDomain": "移除 {{domain}}",
-      "cancel": "取消",
-      "saving": "儲存中……",
       "save": "儲存",
       "renameAction": "重新命名",
       "mergeAction": "合併"
@@ -1331,7 +1253,6 @@
       "conflictsWith": "與以下條目衝突：{{name}}",
       "skip": "跳過",
       "overwrite": "覆蓋",
-      "cancel": "取消",
       "importing": "匯入中……",
       "import": "匯入"
     },
@@ -1346,6 +1267,18 @@
       "importedAndSkipped": "已匯入 {{imported}} 項，跳過 {{skipped}} 項",
       "importedCount_other": "已匯入 {{count}} 項自訂配置",
       "noCustomizationsImported": "未匯入任何自訂配置"
+    },
+    "cardHelp": "qui 會在所有顯示該 Tracker 的地方使用顯示名稱。",
+    "emptyTitle": "尚無 Tracker",
+    "emptyDescription": "實例中有種子後，Tracker 會顯示在這裡。",
+    "importButton": "匯入",
+    "exportButton": "匯出",
+    "selectionHint": "選擇 Tracker 以重新命名或合併。",
+    "selectedCount_other": "已選擇 {{count}} 個",
+    "clearSelection": "清除選擇",
+    "deleteDialog": {
+      "title": "刪除自訂？",
+      "description": "{{name}} 的 Tracker 將重新顯示其原始網域。此操作無法復原。"
     }
   }
 }

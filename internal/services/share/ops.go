@@ -9,8 +9,6 @@ import (
 	"net/netip"
 	"slices"
 
-	"github.com/rs/zerolog/log"
-
 	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
@@ -85,11 +83,10 @@ func (s *Service) Unlock(ctx context.Context, id int64) error {
 	case !sh.FirstDownloaderOnly:
 		return refuse("The Share lets every downloader in already.")
 	}
+	s.holderMu.Lock()
+	defer s.holderMu.Unlock()
 	if err := s.deps.Store.SetHolder(ctx, id, netip.Addr{}); err != nil {
 		return err
-	}
-	if err := s.refresh(ctx); err != nil {
-		log.Error().Err(err).Msg("share: cannot update the Share tracker")
 	}
 	s.tracker.Unlock(id)
 	return nil

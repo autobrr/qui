@@ -3,20 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Badge } from "@/components/ui/badge"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle
-} from "@/components/ui/dialog"
+import { ChevronDown, CircleAlert, CircleCheck, CircleX, Clock, type LucideIcon } from "lucide-react"
+import { useState } from "react"
+import { useTranslation } from "react-i18next"
+
+import { Facts, type Fact } from "@/components/kit/Facts"
+import { ResourceList, type ResourceRow } from "@/components/kit/ResourceList"
+import { Section } from "@/components/kit/Section"
+import { Button } from "@/components/ui/button"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useSearchHistory } from "@/hooks/useSearchHistory"
 import { formatRelativeTime, formatTimeHMS } from "@/lib/dateTimeUtils"
+import { cn } from "@/lib/utils"
 import type { SearchHistoryEntry } from "@/types"
-import { AlertCircle, CheckCircle2, ChevronDown, Clock, History, Loader2, Plus, XCircle } from "lucide-react"
-import { type ReactNode, useState } from "react"
-import { useTranslation } from "react-i18next"
 
 // Torznab standard category mappings, from Prowlarr's NewznabStandardCategory.
 const CATEGORY_MAP: Record<string, string> = {
@@ -158,302 +157,131 @@ function transformParams(params: Record<string, string>, t: (key: string) => str
   return badges
 }
 
+// The list shows the latest searches first, and the rest on request.
+const SHOWN = 10
+
+const STATUS_ICON: Record<SearchHistoryEntry["status"], { icon: LucideIcon; className: string }> = {
+  success: { icon: CircleCheck, className: "text-emerald-500" },
+  error: { icon: CircleX, className: "text-destructive" },
+  rate_limited: { icon: CircleAlert, className: "text-amber-500" },
+  skipped: { icon: Clock, className: "text-muted-foreground" },
+}
+
+const STATUS_LABEL_KEY: Record<SearchHistoryEntry["status"], string> = {
+  success: "indexers.searchHistory.detail.statusSuccess",
+  error: "indexers.searchHistory.detail.statusFailed",
+  rate_limited: "indexers.searchHistory.detail.statusRateLimited",
+  skipped: "indexers.searchHistory.detail.statusSkipped",
+}
+
+const formatDuration = (ms: number, digits: number) => ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(digits)}s`
+
+interface EntryLabels {
+  status: string
+  priority: string
+  /** An RSS search has no content type, and "unknown" says nothing. */
+  contentType?: string
+  /** The torrents that the search added for cross-seed. */
+  added: number
+}
+
+/** The latest searches that qui sent to the indexers. A row opens to show the details of its search. */
 export function SearchHistoryPanel() {
   const { t } = useTranslation("settings")
-  const [isOpen, setIsOpen] = useState(true)
-  const [selectedEntry, setSelectedEntry] = useState<SearchHistoryEntry | null>(null)
+  // The stream sends the activity events that refresh the history, so it needs no polling.
+  useActivityStream(true)
+  const query = useSearchHistory({ limit: 50, enabled: true, refetchInterval: false })
+  const [showAll, setShowAll] = useState(false)
 
-  // Keep the shared SSE stream open while the panel is open so qui server
-  // activity events invalidate the ["searchHistory"] query (event-driven, no polling).
-  useActivityStream(isOpen)
+  const entries = query.data?.entries ?? []
+  const shown = showAll ? entries : entries.slice(0, SHOWN)
+  const successCount = entries.filter((entry) => entry.status === "success").length
+  const errorCount = entries.filter((entry) => entry.status === "error" || entry.status === "rate_limited").length
+  const summary = [
+    t("indexers.searchHistory.searches", { count: query.data?.total ?? 0 }),
+    t("indexers.searchHistory.successful", { count: successCount }),
+    errorCount > 0 && t("indexers.searchHistory.failed", { count: errorCount }),
+    query.data?.source && t("indexers.searchHistory.source", { source: query.data.source }),
+  ].filter(Boolean).join(" · ")
 
-  const { data, isLoading } = useSearchHistory({
-    limit: 50,
-    enabled: true,
-    refetchInterval: false,
-  })
-
-  const entries = data?.entries ?? []
-  const total = data?.total ?? 0
-
-  const successCount = entries.filter(e => e.status === "success").length
-  const errorCount = entries.filter(e => e.status === "error" || e.status === "rate_limited").length
-
-  return (
-    <>
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
-          <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
-            <div className="flex items-center gap-2">
-              <History className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{t("indexers.searchHistory.title")}</span>
-              {isLoading ? (
-                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-              ) : total > 0 ? (
-                <Badge variant="secondary" className="text-xs">
-                  {errorCount > 0 ? t("indexers.searchHistory.searchesWithErrors", { count: total, errors: errorCount }) : t("indexers.searchHistory.searches", { count: total })}
-                </Badge>
-              ) : (
-                <span className="text-xs text-muted-foreground">{t("indexers.searchHistory.noSearchesYet")}</span>
-              )}
-            </div>
-            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
-          </CollapsibleTrigger>
-
-          <CollapsibleContent>
-            <div className="px-4 pb-3 space-y-3">
-              {/* Summary stats */}
-              {entries.length > 0 && (
-                <div className="flex items-center gap-4 text-xs text-muted-foreground border-b pb-2">
-                  <span className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-primary" />
-                    {t("indexers.searchHistory.successful", { count: successCount })}
-                  </span>
-                  {errorCount > 0 && (
-                    <span className="flex items-center gap-1">
-                      <XCircle className="h-3 w-3 text-destructive" />
-                      {t("indexers.searchHistory.failed", { count: errorCount })}
-                    </span>
-                  )}
-                  {data?.source && (
-                    <span className="ml-auto">
-                      {t("indexers.searchHistory.source", { source: data.source })}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* History entries */}
-              {entries.length > 0 && (
-                <div className="space-y-1 max-h-80 overflow-y-auto">
-                  {entries.map((entry) => (
-                    <HistoryRow
-                      key={entry.id}
-                      entry={entry}
-                      onClick={() => setSelectedEntry(entry)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
-
-      <SearchDetailDialog
-        entry={selectedEntry}
-        open={!!selectedEntry}
-        onClose={() => setSelectedEntry(null)}
-      />
-    </>
-  )
-}
-
-interface HistoryRowProps {
-  entry: SearchHistoryEntry
-  onClick: () => void
-}
-
-function HistoryRow({ entry, onClick }: HistoryRowProps) {
-  const { t } = useTranslation("settings")
-  const statusIcons: Record<string, ReactNode> = {
-    success: <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />,
-    error: <XCircle className="h-3 w-3 text-destructive shrink-0" />,
-    skipped: <Clock className="h-3 w-3 text-muted-foreground shrink-0" />,
-    rate_limited: <AlertCircle className="h-3 w-3 text-destructive shrink-0" />,
+  const row = (entry: SearchHistoryEntry): ResourceRow => {
+    const status = STATUS_ICON[entry.status] ?? STATUS_ICON.error
+    const labels: EntryLabels = {
+      status: t(STATUS_LABEL_KEY[entry.status] ?? STATUS_LABEL_KEY.error),
+      priority: t([`indexers.priorityLabels.${entry.priority}`, "common:status.unknown"]),
+      contentType: entry.contentType && entry.contentType !== "unknown"
+        ? t([`indexers.contentTypeLabels.${entry.contentType}`, "common:status.unknown"])
+        : undefined,
+      added: entry.outcome === "added" ? entry.addedCount || 1 : 0,
+    }
+    return {
+      title: entry.indexerName,
+      icon: <status.icon className={cn("size-4", status.className)} />,
+      meta: [
+        entry.query && `"${entry.query}"`,
+        entry.status === "success" ? t("indexers.searchHistory.results", { count: entry.resultCount }) : labels.status,
+        labels.added > 0 && <span className="font-medium text-primary">{t("indexers.searchHistory.detail.added", { count: labels.added })}</span>,
+        entry.status !== "success" && entry.errorMessage,
+        labels.contentType,
+        labels.priority,
+        formatDuration(entry.durationMs, 1),
+        formatRelativeTime(new Date(entry.completedAt)),
+      ].filter(Boolean),
+      expand: <HistoryDetail entry={entry} labels={labels} />,
+    }
   }
 
-  const durationStr = entry.durationMs < 1000? `${entry.durationMs}ms`: `${(entry.durationMs / 1000).toFixed(1)}s`
-
-  // Hide "unknown" content type - it's noise for RSS searches
-  const showContentType = entry.contentType && entry.contentType !== "unknown"
-
   return (
-    <div
-      className="flex flex-col gap-1.5 p-2 rounded bg-muted/30 text-sm hover:bg-muted/50 cursor-pointer transition-colors md:flex-row md:items-center md:justify-between md:gap-2"
-      onClick={onClick}
+    <Section
+      title={t("indexers.searchHistory.title")}
+      description={t("indexers.searchHistory.description")}
+      footer={entries.length > 0 ? summary : undefined}
+      queries={[query]}
     >
-      <div className="flex items-center gap-2 min-w-0 flex-1">
-        {statusIcons[entry.status] ?? statusIcons.error}
-        <span className="truncate font-medium">{entry.indexerName}</span>
-        {entry.query && (
-          <span className="truncate text-muted-foreground text-xs">
-            "{entry.query}"
-          </span>
-        )}
-        {showContentType && (
-          <Badge variant="outline" className="text-xs shrink-0">
-            {entry.contentType ? t(`indexers.contentTypeLabels.${entry.contentType}`, entry.contentType) : entry.contentType}
-          </Badge>
-        )}
-        {/* Cross-seed outcome badge - only show successful adds */}
-        {entry.outcome === "added" && (
-          <Badge className="text-xs shrink-0 gap-0.5 bg-primary/10 text-primary border-primary/30 hover:bg-primary/15">
-            <Plus className="h-2.5 w-2.5" />
-            {entry.addedCount || 1}
-          </Badge>
+      <div className="space-y-2">
+        <ResourceList
+          label={t("indexers.searchHistory.title")}
+          items={shown}
+          itemKey={(entry) => entry.id}
+          row={row}
+          empty={{ title: t("indexers.searchHistory.noSearchesYet") }}
+        />
+        {entries.length > SHOWN && (
+          <Button variant="ghost" size="sm" className="w-full text-muted-foreground max-sm:h-10" onClick={() => setShowAll(!showAll)}>
+            {showAll ? t("indexers.searchHistory.showFewer") : t("indexers.searchHistory.showAll", { count: entries.length })}
+            <ChevronDown className={cn("transition-transform", showAll && "rotate-180")} />
+          </Button>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-2 shrink-0 pl-5 md:pl-0">
-        {entry.status === "success" && (
-          <span className={`text-xs ${entry.resultCount > 0 ? "text-primary" : "text-muted-foreground"}`}>
-            {t("indexers.searchHistory.results", { count: entry.resultCount })}
-          </span>
-        )}
-        {entry.status === "error" && entry.errorMessage && (
-          <span className="text-xs text-destructive truncate max-w-32" title={entry.errorMessage}>
-            {entry.errorMessage}
-          </span>
-        )}
-        <span className="text-xs text-muted-foreground">
-          {entry.priority ? t(`indexers.priorityLabels.${entry.priority}`, entry.priority) : entry.priority}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {durationStr}
-        </span>
-        <span className="text-xs text-muted-foreground ml-auto md:ml-0">
-          {formatRelativeTime(new Date(entry.completedAt))}
-        </span>
-      </div>
-    </div>
+    </Section>
   )
 }
 
-interface SearchDetailDialogProps {
-  entry: SearchHistoryEntry | null
-  open: boolean
-  onClose: () => void
-}
-
-function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
+/** Every fact of one search, with the parameters that qui sent. */
+function HistoryDetail({ entry, labels }: { entry: SearchHistoryEntry; labels: EntryLabels }) {
   const { t } = useTranslation("settings")
-  if (!entry) return null
+  const params = entry.params ? transformParams(entry.params, t) : []
+  const facts: (Fact | false | undefined)[] = [
+    { label: t("indexers.table.status"), value: labels.status },
+    entry.query ? { label: t("indexers.searchHistory.detail.query"), value: entry.query } : undefined,
+    entry.releaseName ? { label: t("indexers.searchHistory.detail.release"), value: entry.releaseName, mono: true, copy: entry.releaseName } : undefined,
+    { label: t("indexers.searchHistory.detail.results"), value: entry.resultCount },
+    labels.added > 0 && { label: t("indexers.searchHistory.detail.crossSeed"), value: t("indexers.searchHistory.detail.added", { count: labels.added }) },
+    entry.errorMessage ? { label: t("indexers.searchHistory.detail.error"), value: <span className="text-destructive">{entry.errorMessage}</span> } : undefined,
+    params.length > 0 && {
+      label: t("indexers.searchHistory.detail.searchParameters"),
+      value: params.map((param) => param.value ? `${param.label}: ${param.value}` : param.label).join(" · "),
+    },
+    entry.searchMode ? { label: t("indexers.searchHistory.detail.mode"), value: entry.searchMode, mono: true } : undefined,
+    labels.contentType ? { label: t("indexers.searchHistory.detail.type"), value: labels.contentType } : undefined,
+    { label: t("indexers.searchHistory.detail.priority"), value: labels.priority },
+    { label: t("indexers.searchHistory.detail.duration"), value: formatDuration(entry.durationMs, 2) },
+    {
+      label: t("indexers.searchHistory.detail.finished"),
+      value: formatTimeHMS(new Date(entry.completedAt)),
+      hint: t("indexers.searchHistory.detail.job", { id: entry.jobId }),
+    },
+  ]
 
-  const statusLabels: Record<string, string> = {
-    success: t("indexers.searchHistory.detail.statusSuccess"),
-    error: t("indexers.searchHistory.detail.statusFailed"),
-    skipped: t("indexers.searchHistory.detail.statusSkipped"),
-    rate_limited: t("indexers.searchHistory.detail.statusRateLimited"),
-  }
-
-  const isSuccess = entry.status === "success"
-  const isError = entry.status === "error" || entry.status === "rate_limited"
-
-  const durationStr = entry.durationMs < 1000? `${entry.durationMs}ms`: `${(entry.durationMs / 1000).toFixed(2)}s`
-
-  // Transform params into semantic badges
-  const paramBadges = entry.params ? transformParams(entry.params, t) : []
-
-  return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="!max-w-2xl gap-0 p-0 overflow-hidden">
-        {/* Header */}
-        <div className="px-5 pt-5">
-          <div className="flex items-start justify-between gap-3 pr-8">
-            <div className="space-y-1 min-w-0">
-              <DialogTitle className="text-base font-semibold truncate">
-                {entry.indexerName}
-              </DialogTitle>
-            </div>
-            <Badge
-              variant={isSuccess ? "default" : isError ? "destructive" : "secondary"}
-              className="shrink-0"
-            >
-              {statusLabels[entry.status] ?? entry.status}
-            </Badge>
-          </div>
-        </div>
-
-        <div className="px-5 py-4 space-y-4">
-          {/* Release Name - Hero Section */}
-          {entry.releaseName && (
-            <div className="rounded-lg border border-border bg-muted/40 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
-                {t("indexers.searchHistory.detail.release")}
-              </div>
-              <div className="font-mono text-[13px] leading-relaxed break-all">
-                {entry.releaseName}
-              </div>
-            </div>
-          )}
-
-          {/* Stats Row */}
-          <div className="flex items-center gap-6 text-sm">
-            <div>
-              <span className="text-muted-foreground">{t("indexers.searchHistory.detail.results")} </span>
-              <span className={entry.resultCount > 0 ? "font-semibold text-primary" : "text-muted-foreground"}>
-                {entry.resultCount}
-              </span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">{t("indexers.searchHistory.detail.duration")} </span>
-              <span className="font-medium">{durationStr}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">{t("indexers.searchHistory.detail.priority")} </span>
-              <span className="font-medium">{entry.priority ? t(`indexers.priorityLabels.${entry.priority}`, entry.priority) : entry.priority}</span>
-            </div>
-            {/* Cross-seed outcome - only show successful adds */}
-            {entry.outcome === "added" && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground">{t("indexers.searchHistory.detail.crossSeed")} </span>
-                <Badge className="bg-primary/10 text-primary border-primary/30">
-                  {t("indexers.searchHistory.detail.added", { count: entry.addedCount || 1 })}
-                </Badge>
-              </div>
-            )}
-          </div>
-
-          {/* Error Message */}
-          {entry.errorMessage && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-destructive/80 mb-1">
-                {t("indexers.searchHistory.detail.error")}
-              </div>
-              <div className="text-sm text-destructive break-all">
-                {entry.errorMessage}
-              </div>
-            </div>
-          )}
-
-          {/* Request Parameters */}
-          {paramBadges.length > 0 && (
-            <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
-                {t("indexers.searchHistory.detail.searchParameters")}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {paramBadges.map((badge, i) => (
-                  <Badge key={i} variant="outline" className="text-xs font-normal">
-                    {badge.value ? `${badge.label}: ${badge.value}` : badge.label}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer - Technical Details */}
-        <div className="px-5 py-3 bg-muted/30 border-t border-border/50">
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <div className="flex items-center gap-4">
-              {entry.searchMode && (
-                <span>
-                  {t("indexers.searchHistory.detail.mode")} <span className="text-foreground/70">{entry.searchMode}</span>
-                </span>
-              )}
-              {entry.contentType && entry.contentType !== "unknown" && (
-                <span>
-                  {t("indexers.searchHistory.detail.type")} <span className="text-foreground/70">{t(`indexers.contentTypeLabels.${entry.contentType}`, entry.contentType)}</span>
-                </span>
-              )}
-            </div>
-            <div className="font-mono text-[10px] text-muted-foreground/60">
-              {formatTimeHMS(new Date(entry.completedAt))} · {t("indexers.searchHistory.detail.job", { id: entry.jobId })}
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
+  return <Facts items={facts.filter((fact): fact is Fact => Boolean(fact))} />
 }

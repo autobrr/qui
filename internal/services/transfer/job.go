@@ -213,7 +213,9 @@ func (j *job) prepare(ctx context.Context) error {
 	var known bool
 	if j.blind {
 		// pass reserves what each Transfer torrent still needs after its check.
-		_, known, err = j.freeSpace(ctx)
+		var read space
+		read, err = j.freeSpace(ctx)
+		known = read.known
 	} else {
 		known, err = j.reserve(ctx, need)
 	}
@@ -262,17 +264,31 @@ func (j *job) openRoot(ctx context.Context, resumed bool) error {
 	return nil
 }
 
+// space is a read of the free space on the target. freed is what the runs
+// gave back on the target before the read.
+type space struct {
+	free, freed int64
+	known       bool
+}
+
 // freeSpace is not known on a blind target before qBittorrent 5.3, which
 // reports it only at its default save path.
-func (j *job) freeSpace(ctx context.Context) (free int64, known bool, err error) {
+func (j *job) freeSpace(ctx context.Context) (space, error) {
+	read := space{freed: j.svc.freedOn(j.target.ID), known: true}
 	if !j.blind {
 		stat, err := j.dstFiles.Statfs(ctx, j.rootDir)
 		if err != nil {
-			return 0, false, temporary("qui cannot read the free space on %s: %w", j.target.Name, targetError{err})
+			return space{}, temporary("qui cannot read the free space on %s: %w", j.target.Name, targetError{err})
 		}
-		return stat.BytesAvailable, true, nil
+		read.free = stat.BytesAvailable
+		return read, nil
 	}
-	return j.svc.clientFreeSpace(ctx, j.target, j.rootPaths, j.rootDir)
+	free, known, err := j.svc.clientFreeSpace(ctx, j.target, j.rootPaths, j.rootDir)
+	if err != nil || !known {
+		return space{}, err
+	}
+	read.free = free
+	return read, nil
 }
 
 // clientFreeSpace reads the free space at dir on target as its qBittorrent
@@ -379,25 +395,25 @@ func (j *job) need() int64 {
 // reserve reserves bytes of the free space on the target for the run. It
 // reserves nothing, and reports false, when the free space is not known.
 func (j *job) reserve(ctx context.Context, bytes int64) (bool, error) {
-	free, known, err := j.freeSpace(ctx)
-	if err != nil || !known {
-		return known, err
+	read, err := j.freeSpace(ctx)
+	if err != nil || !read.known {
+		return read.known, err
 	}
-	return true, j.claim(bytes, free)
+	return true, j.claim(bytes, read)
 }
 
-// claim reserves bytes of free, the free space that qui read on the target.
-// A disk without the bytes fails the Transfer. When only what the other
-// running Transfers to the target reserved stands in the way, the Transfer
-// fails for a retry, because the shortage ends with them.
-func (j *job) claim(bytes, free int64) error {
-	left := free - j.reserved
+// claim reserves bytes of the free space that qui read on the target. A disk
+// without the bytes fails the Transfer. When only the other Transfers to the
+// target stand in the way, with what they reserved or wrote since the read,
+// the Transfer fails for a retry, because the shortage ends with them.
+func (j *job) claim(bytes int64, read space) error {
+	left := read.free - j.reserved
 	if left < bytes {
 		return permanent("Not enough free space on %s: not enough free space on the target: the Transfer needs %s, and %s is free",
 			j.target.Name, formatBytes(bytes), formatBytes(max(left, 0)))
 	}
-	if others, ok := j.svc.reserve(j.target.ID, bytes, free, j.reserved); !ok {
-		return temporary("Not enough free space on %s for now: the Transfer needs %s, and %s is free, but other Transfers to %s that run now set aside %s.",
+	if others, ok := j.svc.reserve(j.target.ID, bytes, read, j.reserved); !ok {
+		return temporary("Not enough free space on %s for now: the Transfer needs %s, and %s is free, but other Transfers to %s take %s of it.",
 			j.target.Name, formatBytes(bytes), formatBytes(left), j.target.Name, formatBytes(others))
 	}
 	j.reserved += bytes

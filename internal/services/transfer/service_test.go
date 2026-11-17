@@ -77,6 +77,8 @@ type disk struct {
 	// damage flips the byte at an offset of the file with this final name.
 	damage  map[string]int64
 	onWrite func(name string)
+	// onStatfs runs at each read of the free space, before it answers.
+	onStatfs func()
 	// failRemove fails the removal of each name below the root that it
 	// reports.
 	failRemove func(name string) bool
@@ -104,6 +106,9 @@ func (d *disk) log() ([]diskWrite, map[string]int) {
 }
 
 func (d *disk) Statfs(ctx context.Context, path string) (*fsops.StatfsResult, error) {
+	if d.onStatfs != nil {
+		d.onStatfs()
+	}
 	if d.free > 0 {
 		return &fsops.StatfsResult{BytesAvailable: d.free, BytesTotal: d.free}, nil
 	}
@@ -623,6 +628,11 @@ func TestTransferRefuses(t *testing.T) {
 			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01E00.mkv", "Show.S01E02.mkv", "Show.S01E01.mkv")
 			return r.request(s)
 		}, reason: showName + "/Show.S01E01.mkv has the original name of another file of " + showName + "."},
+		// regression: #4231
+		{name: "a source that moved a file to the original name of another in other case", setup: func(r *rig, s show) transfer.Request {
+			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01E00.mkv", "Show.S01E02.mkv", "show.s01e01.mkv")
+			return r.request(s)
+		}, reason: showName + "/show.s01e01.mkv has the original name of another file of " + showName + "."},
 		// regression: #4231
 		{name: "a source without a common folder that moved a file to the original name of another", setup: func(r *rig, s show) transfer.Request {
 			for _, rename := range [][2]string{{"Show.S01E01.mkv", "Show.S01E02.mkv"}, {"Show.S01E02.mkv", "Extras/Show.S01E02.mkv"}} {

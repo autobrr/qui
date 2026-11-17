@@ -358,5 +358,12 @@
   },
   "labels": {
     "path": "Caminho"
+  },
+  "kit": {
+    "loadFailed": "Não foi possível carregar esta seção.",
+    "retry": "Tentar novamente",
+    "edit": "Editar",
+    "moreActions": "Mais ações",
+    "enabled": "Ativado"
   }
 }

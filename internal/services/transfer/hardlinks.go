@@ -67,7 +67,9 @@ func (j *job) linkCopies(ctx context.Context) error {
 			}
 		}
 		name := j.tempName(f.rel)
-		j.retake(ctx, name)
+		if err := j.retake(ctx, name); err != nil {
+			return err
+		}
 		err := j.root.Link(ctx, j.tempOf(ctx, orig), name)
 		if err == nil {
 			f.linksCopy = true
