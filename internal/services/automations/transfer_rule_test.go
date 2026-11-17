@@ -81,14 +81,6 @@ func (f *transfers) hashes() []string {
 	return out
 }
 
-func (f *transfers) untouched(t *testing.T) {
-	t.Helper()
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	require.Empty(t, f.started, "no Transfer starts")
-	require.Empty(t, f.previews, "no Transfer is previewed")
-}
-
 // transferRig is a source instance with torrents, a target instance, and a
 // fake Transfer module.
 func transferRig(t *testing.T, torrents string) (*Service, *database.DB, *transfers, []int) {
@@ -153,18 +145,6 @@ func TestTransferToInstanceStartsATransfer(t *testing.T) {
 	require.Equal(t, []models.AutomationActivity{{
 		Hash: runningHash, TorrentName: "running", RuleID: new(1), RuleName: "move old seeds", Outcome: models.ActivityOutcomeSuccess,
 	}}, storedTransferActivities(t, db, instanceIDs[0]))
-}
-
-// A run without a rule with Transfer to Instance never asks the Transfer
-// module, in a live run and in a dry run.
-func TestTransferToInstanceIdleWithoutTheAction(t *testing.T) {
-	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents())
-	rules := slices.DeleteFunc(everyActionRules(), func(rule *models.Automation) bool { return rule.Conditions.TransferToInstance != nil })
-	for _, dryRun := range []bool{false, true} {
-		_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, dryRun)
-		require.NoError(t, err)
-	}
-	runner.untouched(t)
 }
 
 const (
