@@ -412,6 +412,17 @@ describe("LibraryTab schedule controls", () => {
     expect(await screen.findByText("scan.schedule.scheduledRunActive")).toBeTruthy()
     expect(screen.getByRole("button", { name: "automation.cancel" })).toBeTruthy()
   })
+
+  it.each([
+    { name: "a manual run", run: { kind: "manual" }, shown: true },
+    { name: "a capped scheduled run", run: { kind: "scheduled", searchLimit: 400 }, shown: false },
+  ])("shows a completion estimate for $name: $shown", async ({ run, shown }) => {
+    mocks.searchStatus = { running: true, run: { ...runRecord([]), ...run, status: "running", totalTorrents: 1000, processed: 10, intervalSeconds: 60 } }
+    renderTab()
+
+    await screen.findByText("scan.status")
+    expect(screen.queryByText("scan.estCompletion") !== null).toBe(shown)
+  })
 })
 
 function runRecord(results: unknown[]) {

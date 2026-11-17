@@ -444,7 +444,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
   }
 
   const estimatedCompletionInfo = useMemo(() => {
-    if (!activeSearchRun) {
+    if (!activeSearchRun || (activeSearchRun.searchLimit ?? 0) > 0) {
       return null
     }
     const total = activeSearchRun.totalTorrents ?? 0
