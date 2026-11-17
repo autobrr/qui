@@ -2212,7 +2212,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     required
                     placeholder={t("preferences.workflowDialog.namePlaceholder")}
                     autoComplete="off"
-                    data-1p-ignore
                   />
                 </div>
                 <div className="flex items-center gap-2 rounded-md border px-3 py-2">

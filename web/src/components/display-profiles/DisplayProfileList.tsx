@@ -24,6 +24,7 @@ interface DisplayProfileListProps {
   rowsDisabled?: boolean
 }
 
+// Not a ResourceList: a tap on a row here picks the profile, where a tap on a ResourceList row opens the item.
 /** The profiles in rows of 56 px. While only Default exists, a dashed tile below it opens the New profile dialog. */
 export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit, rowsDisabled = false }: DisplayProfileListProps) {
   const { t } = useTranslation("torrents")

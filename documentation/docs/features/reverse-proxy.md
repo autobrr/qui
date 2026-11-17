@@ -18,14 +18,14 @@ qui keeps a shared session with each qBittorrent instance and proxies requests f
 ### 1. Create a client API key
 
 1. Open qui in your browser.
-2. Go to **Settings → Client Proxy**.
-3. Click **Create Client API Key**.
+2. Go to **Settings → Client proxy**.
+3. Click **Create key**.
 4. Enter a name for the client (for example, "Sonarr").
 5. Select the qBittorrent instance that you want to proxy.
-6. Click **Create Client API Key**.
+6. Click **Create key**.
 7. Copy the generated proxy URL now. qui shows it only once.
 
-The **Client Proxy** page lists every key with its client name, instance, creation date, and last-used date.
+The **Client proxy** page lists every key with its client name, instance, host, and last-used date.
 
 ### 2. Configure your external application
 

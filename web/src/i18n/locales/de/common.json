@@ -358,5 +358,12 @@
   },
   "labels": {
     "path": "Pfad"
+  },
+  "kit": {
+    "loadFailed": "Dieser Abschnitt konnte nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "edit": "Bearbeiten",
+    "moreActions": "Weitere Aktionen",
+    "enabled": "Aktiviert"
   }
 }

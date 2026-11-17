@@ -47,7 +47,7 @@ Right-click a magnet or torrent link to add it to your qBittorrent instances:
 - [Chrome Extension](https://chromewebstore.google.com/detail/kbjnjgihepmcoilegnghgpmijbecoili)
 - [Firefox Add-on](https://addons.mozilla.org/en-US/firefox/addon/qui/)
 
-To register qui as your browser handler for magnet links, open **Settings → Security** and click **Register as Handler**. The button shows only when you open qui over HTTPS or on localhost, in a browser that supports protocol handlers.
+To register qui as your browser handler for magnet links, open **Settings → Security** and click **Register as handler**. The button shows only when you open qui over HTTPS or on localhost, in a browser that supports protocol handlers.
 
 ## Languages
 

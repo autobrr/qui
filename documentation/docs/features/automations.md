@@ -149,7 +149,7 @@ A torrent without metadata, such as a new magnet link, has no Private value. It 
 
 **Tracker** matches every tracker the torrent announces to, including trackers that do not work. qui ignores the DHT, PeX, and LSD pseudo-trackers.
 
-If you configured [Tracker Customizations](./tracker-customizations.md) (**Settings** → **Tracker Customizations**), the condition can also match the display name in addition to the raw URL or domain. A merged tracker group matches by its group name.
+If you configured [Tracker Customizations](./tracker-customizations.md) (**Settings** → **Tracker customizations**), the condition can also match the display name in addition to the raw URL or domain. A merged tracker group matches by its group name.
 
 On qBittorrent versions before 5.1, qui cannot read the full tracker list. **Tracker** then sees only the one tracker in the qBittorrent tracker field. That is the last tracker that answered, also when that tracker is down now. If no tracker answered yet, the field is empty. When qui finds no tracker at all, positive operators such as **is** and **contains** match nothing, and negative operators such as **is not** match every torrent.
 
@@ -748,7 +748,7 @@ If multiple rules match the same torrent with Auto Management actions, the **las
 
 ### External Program
 
-When torrents match the automation rule, run a configured external program. This action uses the programs from **Settings → External Programs**.
+When torrents match the automation rule, run a configured external program. This action uses the programs from **Settings → External programs**.
 
 | Field | Description |
 | --- | --- |
@@ -762,7 +762,7 @@ When torrents match the automation rule, run a configured external program. This
 - qui logs activity with the rule name, torrent details, and success or failure status.
 
 :::note
-To appear in the automation dropdown, the program must be enabled in **Settings → External Programs**.
+To appear in the automation dropdown, the program must be enabled in **Settings → External programs**.
 :::
 
 :::note

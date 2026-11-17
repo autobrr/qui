@@ -76,10 +76,11 @@ describe("SameColumnsSwitch", () => {
   it("names the instance that turning it on copies, and the instances that share one setup once it is on", () => {
     recordColumnSetupInstance(1)
     render(<SameColumnsSwitch profileId="default" instances={instances} />)
-    const help = () => screen.getByTestId("same-columns-help").textContent
+    const toggle = screen.getByRole("switch", { name: "Same columns on every instance" })
+    const help = () => document.getElementById(toggle.getAttribute("aria-describedby")!)?.textContent
     expect(help()).toBe("Each instance keeps its own. Turning this on gives every instance the seedbox columns.")
 
-    act(() => fireEvent.click(screen.getByRole("switch", { name: "Same columns on every instance" })))
+    act(() => fireEvent.click(toggle))
 
     expect(help()).toBe("One Column setup for seedbox, home, and the Unified view.")
   })

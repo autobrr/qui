@@ -436,6 +436,78 @@ describe("TorrentCardsMobile Copy groups", () => {
 
 })
 
+describe("TorrentCardsMobile swipe actions", () => {
+  beforeEach(() => {
+    // jsdom has no pointer capture.
+    Element.prototype.setPointerCapture = vi.fn()
+  })
+
+  const swipeLeft = (card: HTMLElement) => {
+    const touch = { pointerId: 1, pointerType: "touch", isPrimary: true, clientY: 10 }
+    fireEvent.pointerDown(card, { ...touch, clientX: 300 })
+    fireEvent.pointerMove(card, { ...touch, clientX: 280 })
+    fireEvent.pointerMove(card, { ...touch, clientX: 100 })
+    fireEvent.pointerUp(card, { ...touch, clientX: 100 })
+  }
+  const openCard = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-swipe-open]")
+  const tapAction = (container: HTMLElement, name: string) => {
+    const action = within(openCard(container)!).getByRole("button", { name })
+    fireEvent.pointerDown(action, { pointerId: 2, pointerType: "touch", isPrimary: true })
+    fireEvent.pointerUp(action, { pointerId: 2, pointerType: "touch", isPrimary: true })
+    fireEvent.click(action)
+    const target = picks[0].target
+    return target?.kind === "ticks" ? target.hashes : undefined
+  }
+
+  it("reaches only the swiped card with Delete, selects nothing, and keeps the card open for the dialog", () => {
+    const { container } = renderCards(flatRows(3))
+
+    swipeLeft(cardOf(container, "Release 1"))
+
+    expect(tapAction(container, "managementBar.delete")).toEqual(["hash-1"])
+    expect(picks.map(({ pick }) => pick)).toEqual([{ action: "delete" }])
+    expect(tickedCards(container)).toEqual([])
+    expect(openCard(container)?.querySelector("h3")?.textContent).toBe("Release 1")
+  })
+
+  it("resumes a stopped torrent, pauses a running one, and closes the card", () => {
+    const { container } = renderCards([makeTorrent({ hash: "hash-stopped", name: "Stopped Release", state: "stoppedUP" }), makeTorrent({ hash: "hash-running", name: "Running Release", state: "uploading" })])
+
+    swipeLeft(cardOf(container, "Stopped Release"))
+    expect(tapAction(container, "managementBar.resume")).toEqual(["hash-stopped"])
+    expect(openCard(container)).toBeNull()
+
+    picks.length = 0
+    swipeLeft(cardOf(container, "Running Release"))
+    expect(tapAction(container, "managementBar.pause")).toEqual(["hash-running"])
+    expect(picks.map(({ pick }) => pick)).toEqual([{ action: "pause" }])
+  })
+
+  it("closes the open card on a tap on another card, and opens no details", () => {
+    const onTorrentSelect = vi.fn()
+    const { container } = renderCards(flatRows(3), { onTorrentSelect })
+    swipeLeft(cardOf(container, "Release 1"))
+
+    const other = cardOf(container, "Release 2")
+    fireEvent.pointerDown(other, { pointerId: 2, pointerType: "touch", isPrimary: true })
+    fireEvent.click(other)
+
+    expect(openCard(container)).toBeNull()
+    expect(onTorrentSelect).not.toHaveBeenCalled()
+  })
+
+  it("ignores a swipe while torrents are selected, also after the selection ends", () => {
+    const { container } = renderCards(flatRows(3))
+    longPress(cardOf(container, "Release 0"))
+
+    swipeLeft(cardOf(container, "Release 1"))
+    fireEvent.click(cardOf(container, "Release 0"))
+
+    expect(tickedCards(container)).toEqual([])
+    expect(openCard(container)).toBeNull()
+  })
+})
+
 describe("TorrentCardsMobile Compact card", () => {
   // 2026-01-01 12:30 UTC and 2026-01-02 08:15 UTC. Now is 2026-01-02 10:15 UTC.
   const ADDED_ON = 1767270600

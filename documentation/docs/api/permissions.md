@@ -7,7 +7,7 @@ description: Give each qui API key only the areas, levels, and instances that it
 
 # API key permissions
 
-Each API key holds a list of Permissions and an optional Instance limit. You set both in **Settings → API Keys** when you create a key. To change them later, click the edit button on the key. An edit applies on the next request of the key, and the key itself does not change.
+Each API key holds a list of Permissions and an optional Instance limit. You set both in **Settings → API keys** when you create a key. To change them later, click the edit button on the key. An edit applies on the next request of the key, and the key itself does not change.
 
 A key must hold at least one Permission. `POST /api/api-keys` returns `400` to a request with no Permission list.
 

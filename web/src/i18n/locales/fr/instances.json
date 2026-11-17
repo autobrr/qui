@@ -7,24 +7,12 @@
       "disconnected": "Déconnecté"
     },
     "tooltips": {
-      "disableInstance": "Désactiver l'instance",
-      "enableInstance": "Activer l'instance",
       "moveUp": "Monter",
       "moveDown": "Descendre"
     },
     "actions": {
-      "edit": "Edit",
       "testConnection": "Tester la connexion",
       "delete": "Supprimer"
-    },
-    "labels": {
-      "username": "Nom d'utilisateur :",
-      "basicAuth": "Auth Basic :",
-      "tlsVerification": "Vérification TLS :",
-      "tlsSkipped": "Ignorée",
-      "tlsStrict": "Stricte",
-      "testingConnection": "Test de connexion...",
-      "fileAccess": "Accès aux fichiers :"
     },
     "deleteDialog": {
       "title": "Supprimer l'instance",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "Instance désactivée",
-      "testDisabledDescription": "Activez l'instance avant de tester la connexion.",
       "testSuccessTitle": "Test de connexion réussi",
       "testSuccessDescription": "Connexion réussie à l'instance qBittorrent",
       "testFailedTitle": "Échec du test de connexion",
@@ -55,7 +42,13 @@
     "passwordRequired": "Mot de passe requis",
     "decryptionDescription": "Impossible de déchiffrer le mot de passe sauvegardé. Cela arrive généralement lorsque le secret de session a changé.",
     "reenterPassword": "Ré-entrez le mot de passe",
-    "recentErrors": "Erreurs récentes ({{count}})"
+    "recentErrors": "Erreurs récentes ({{count}})",
+    "errorTypes": {
+      "connection": "Connexion",
+      "authentication": "Authentification",
+      "ban": "Bannissement",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "Le nom de l'instance est requis",
-      "basicAuthPasswordRequired": "Le mot de passe basic auth est requis lorsque l'authentification basic est activée"
+      "basicAuthPasswordRequired": "Le mot de passe basic auth est requis lorsque l'authentification basic est activée",
+      "usernameRequired": "Le nom d'utilisateur est requis",
+      "passwordRequired": "Le mot de passe est requis",
+      "apiKeyRequired": "La clé API est requise"
     },
     "buttons": {
-      "saving": "Enregistrement...",
       "updateInstance": "Mettre à jour l'instance",
-      "addInstance": "Ajouter une instance",
-      "cancel": "Annuler"
+      "addInstance": "Ajouter une instance"
     },
     "toast": {
-      "missingCredentialsTitle": "Identifiants manquants",
       "instanceUpdatedTitle": "Instance mise à jour",
       "instanceUpdatedDescription": "Instance mise à jour avec succès. Test de connexion en arrière-plan...",
-      "updateFailedTitle": "Échec de la mise à jour",
       "updateFailedDescription": "Échec de la mise à jour de l'instance",
       "instanceCreatedTitle": "Instance créée",
       "instanceCreatedDescription": "Instance créée avec succès. Test de connexion en arrière-plan...",
-      "createFailedTitle": "Échec de la création",
       "createFailedDescription": "Échec de la création de l'instance"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "Nom d'utilisateur et mot de passe",
       "apiKey": "Clé API"
     },
-    "sshAfterSave": "L'accès SSH aux fichiers de l'instance se configure dans les paramètres de l'instance après l'enregistrement."
+    "sshAfterSave": "L'accès SSH aux fichiers de l'instance se configure dans les paramètres de l'instance après l'enregistrement.",
+    "addTitle": "Ajouter une instance",
+    "addDescription": "Configurer une nouvelle instance qBittorrent",
+    "editTitle": "Modifier l'instance"
   },
   "settingsButton": {
     "tooltip": "Paramètres de l'instance"
@@ -2109,10 +2103,9 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Via SSH",
-    "none": "Aucun",
-    "localFull": "L'application lit et écrit les fichiers de cette instance sur cette machine.",
+    "local": "Fichiers locaux",
+    "remote": "Fichiers via SSH",
+    "none": "Pas d'accès aux fichiers",
     "limits": {
       "noIdentity": "Pas d'identité des fichiers : l'application ne sait pas reconnaître deux chemins menant au même fichier. L'analyse d'orphelins ne peut pas supprimer ici, et une cible de lien physique existante bloque un ajout par lien physique.",
       "noReflinks": "Pas de reflinks sur une instance distante.",
@@ -2123,5 +2116,12 @@
     "label": "Supprimer aussi son historique de transfert",
     "description": "Sans cette option, qui garde l'historique sous le nom de l'instance.",
     "failed": "L'instance est supprimée, mais qui n'a pas pu supprimer tout son historique. Consultez Paramètres > Statistiques et supprimez le reste."
+  },
+  "list": {
+    "label": "Gérer les instances",
+    "emptyTitle": "Aucune instance configurée pour le moment",
+    "emptyDescription": "Ajoutez un client qBittorrent pour que qui gère ses torrents.",
+    "tlsSkipped": "Vérification TLS désactivée",
+    "reorderFailed": "Impossible de réorganiser les instances"
   }
 }

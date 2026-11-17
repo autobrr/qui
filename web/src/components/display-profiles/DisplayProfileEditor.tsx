@@ -8,16 +8,7 @@ import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from "rea
 import { flushSync } from "react-dom"
 import { useTranslation } from "react-i18next"
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { VIEW_MODE_SETTINGS } from "@/hooks/usePersistedCompactViewState"
@@ -123,23 +114,14 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
         <div className="px-4 py-3"><SameColumnsSwitch profileId={profile.id} instances={instances ?? []} /></div>
         <div className="px-4 py-3"><OwnSortAndFiltersSetting profile={profile} /></div>
       </div>
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="[overflow-wrap:anywhere]">{t("displayProfiles.settings.deleteTitle", { name: profile.name })}</AlertDialogTitle>
-            <AlertDialogDescription>{t("displayProfiles.settings.deleteDescription", { defaultName: profiles[0].name })}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common:actions.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteProfile(profile.id)}
-            >
-              {t("displayProfiles.settings.deleteConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={t("displayProfiles.settings.deleteTitle", { name: profile.name })}
+        description={t("displayProfiles.settings.deleteDescription", { defaultName: profiles[0].name })}
+        confirmLabel={t("displayProfiles.settings.deleteConfirm")}
+        onConfirm={() => deleteProfile(profile.id)}
+      />
     </section>
   )
 }

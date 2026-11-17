@@ -120,6 +120,8 @@ A view stores the sidebar filter selection only. It does not include search text
 
 The arrow keys replace the selection with the focused row, the same as a plain click. When the details panel is open, it follows the arrow keys. If you type in an input field or open a dialog, hotkeys are inactive.
 
+On phones, swipe a card to the left to show two buttons for that torrent: **Pause** or **Resume**, and **Delete**. **Delete** opens the delete dialog. To hide the buttons, swipe the card to the right, or tap anywhere outside the buttons. A card does not swipe while torrents are selected.
+
 ## Table columns
 
 **Toggle columns** in the table toolbar shows or hides columns. Drag the handle next to a column in that menu to change its position, or drag a column header directly.

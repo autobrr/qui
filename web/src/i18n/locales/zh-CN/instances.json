@@ -7,24 +7,12 @@
       "disconnected": "已断开"
     },
     "tooltips": {
-      "disableInstance": "禁用实例",
-      "enableInstance": "启用实例",
       "moveUp": "上移",
       "moveDown": "下移"
     },
     "actions": {
-      "edit": "编辑",
       "testConnection": "测试连接",
       "delete": "删除"
-    },
-    "labels": {
-      "username": "用户名：",
-      "basicAuth": "基本认证：",
-      "tlsVerification": "TLS 验证：",
-      "tlsSkipped": "已跳过",
-      "tlsStrict": "严格",
-      "testingConnection": "正在测试连接...",
-      "fileAccess": "文件访问："
     },
     "deleteDialog": {
       "title": "删除实例",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "实例已禁用",
-      "testDisabledDescription": "请先启用实例，再测试连接。",
       "testSuccessTitle": "连接测试成功",
       "testSuccessDescription": "已成功连接到 qBittorrent 实例",
       "testFailedTitle": "连接测试失败",
@@ -55,7 +42,13 @@
     "passwordRequired": "需要密码",
     "decryptionDescription": "无法解密已保存的密码。这通常是因为会话密钥已更改。",
     "reenterPassword": "重新输入密码",
-    "recentErrors": "近期错误（{{count}}）"
+    "recentErrors": "近期错误（{{count}}）",
+    "errorTypes": {
+      "connection": "连接",
+      "authentication": "身份验证",
+      "ban": "封禁",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "实例名称为必填项",
-      "basicAuthPasswordRequired": "启用基本认证时，基本认证密码为必填项"
+      "basicAuthPasswordRequired": "启用基本认证时，基本认证密码为必填项",
+      "usernameRequired": "必须填写用户名",
+      "passwordRequired": "必须填写密码",
+      "apiKeyRequired": "必须填写 API 密钥"
     },
     "buttons": {
-      "saving": "保存中...",
       "updateInstance": "更新实例",
-      "addInstance": "添加实例",
-      "cancel": "取消"
+      "addInstance": "添加实例"
     },
     "toast": {
-      "missingCredentialsTitle": "缺少凭据",
       "instanceUpdatedTitle": "实例已更新",
       "instanceUpdatedDescription": "实例更新成功。正在后台测试连接...",
-      "updateFailedTitle": "更新失败",
       "updateFailedDescription": "无法更新实例",
       "instanceCreatedTitle": "实例已创建",
       "instanceCreatedDescription": "实例创建成功。正在后台测试连接...",
-      "createFailedTitle": "创建失败",
       "createFailedDescription": "无法创建实例"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "用户名和密码",
       "apiKey": "API 密钥"
     },
-    "sshAfterSave": "保存后，可在实例设置中配置通过 SSH 访问该实例的文件。"
+    "sshAfterSave": "保存后，可在实例设置中配置通过 SSH 访问该实例的文件。",
+    "addTitle": "添加实例",
+    "addDescription": "配置一个新的 qBittorrent 实例",
+    "editTitle": "编辑实例"
   },
   "settingsButton": {
     "tooltip": "实例设置"
@@ -2079,10 +2073,9 @@
     }
   },
   "access": {
-    "local": "本地",
-    "remote": "通过 SSH",
-    "none": "无",
-    "localFull": "qui 在本机读写此实例的文件。",
+    "local": "本地文件",
+    "remote": "通过 SSH 访问文件",
+    "none": "无文件访问",
     "limits": {
       "noIdentity": "无文件标识：qui 无法判断两个路径是否指向同一文件。孤立项目扫描在此无法删除，且已存在的硬链接目标会阻止硬链接添加。",
       "noReflinks": "远程实例不支持引用链接。",
@@ -2093,5 +2086,12 @@
     "label": "同时删除其传输历史",
     "description": "不勾选时，qui 会以该实例的名称保留历史。",
     "failed": "实例已删除，但 qui 未能删除其全部历史。请在设置 > 统计中查看并删除其余部分。"
+  },
+  "list": {
+    "label": "实例",
+    "emptyTitle": "尚未配置任何实例",
+    "emptyDescription": "添加一个 qBittorrent 客户端，让 qui 管理它的种子。",
+    "tlsSkipped": "已关闭 TLS 验证",
+    "reorderFailed": "重新排序实例失败"
   }
 }

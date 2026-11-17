@@ -358,5 +358,12 @@
   },
   "labels": {
     "path": "Percorso"
+  },
+  "kit": {
+    "loadFailed": "Impossibile caricare questa sezione.",
+    "retry": "Riprova",
+    "edit": "Modifica",
+    "moreActions": "Altre azioni",
+    "enabled": "Abilitato"
   }
 }
