@@ -25,10 +25,12 @@ import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useSwipeToClose } from "@/hooks/useSwipeToClose"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
+import { useTorrentListEscape } from "@/hooks/useTorrentListEscape"
 import { api } from "@/lib/api"
 import { isAllInstancesScope, normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
-import { selectionScope } from "@/lib/torrent-selection"
+import { navigateWithSearch } from "@/lib/router-search"
+import { hasSelection, selectionScope } from "@/lib/torrent-selection"
 import { cn } from "@/lib/utils"
 import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts } from "@/types"
 import { useNavigate, useSearch } from "@tanstack/react-router"
@@ -57,7 +59,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const { viewMode } = usePersistedCompactViewState("desktop")
-  const { dispatch: dispatchSelection } = useTorrentSelectionContext()
+  const { selection, dispatch: dispatchSelection } = useTorrentSelectionContext()
   const routeSearch = useSearch({ strict: false }) as { q?: string }
 
   const { instances } = useInstances()
@@ -454,25 +456,19 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }
   }, [detailsPanelReady, detailsPanelRef, selectedTorrent, isMobile])
 
-  // Unified Escape handler: close panel and clear selection atomically
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return
-      if (e.defaultPrevented) return
-
-      // Skip if a dialog is open (dialogs handle their own Escape)
-      if (document.querySelector("[role=\"dialog\"]")) return
-
-      e.preventDefault()
-
-      // Close panel and clear selection in one action
-      setSelectedTorrent(null)
-      dispatchSelection({ type: "clear" })
-    }
-
-    window.addEventListener("keydown", handleEscape)
-    return () => window.removeEventListener("keydown", handleEscape)
+  const clearListSelection = useCallback(() => {
+    setSelectedTorrent(null)
+    dispatchSelection({ type: "clear" })
   }, [dispatchSelection])
+  const clearListSearch = useCallback(() => {
+    navigateWithSearch({ navigate, search: { ...routeSearch, q: undefined }, replace: true })
+  }, [navigate, routeSearch])
+  useTorrentListEscape({
+    hasSelection: selectedTorrent !== null || hasSelection(selection),
+    hasSearch: Boolean(routeSearch?.q),
+    clearSelection: clearListSelection,
+    clearSearch: clearListSearch,
+  })
 
   // Close the mobile filters sheet when viewport switches to desktop layout
   useEffect(() => {
