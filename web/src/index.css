@@ -253,6 +253,15 @@
     padding-right: env(safe-area-inset-right);
   }
 
+  /* iOS 26.1+ Home Screen web apps fade the content below the status bar; keep the header out of it (autobrr/qui#2520). */
+  @media (display-mode: standalone) {
+    @supports (-webkit-touch-callout: none) {
+      body {
+        padding-top: calc(env(safe-area-inset-top) + min(env(safe-area-inset-top), 20px));
+      }
+    }
+  }
+
   /* Apply font families from theme */
   .font-sans {
     font-family: var(--font-sans);
