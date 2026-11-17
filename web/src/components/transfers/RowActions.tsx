@@ -73,14 +73,14 @@ export function RowActions({ actions, describedBy }: RowActionsProps) {
           <Fragment key={action.label}>
             {index === firstDestructive && index > 0 && <DropdownMenuSeparator />}
             <DropdownMenuItem
-              asChild={action.href !== undefined}
+              asChild={linkOf(action) !== undefined}
               variant={action.destructive ? "destructive" : "default"}
               disabled={action.pending || action.disabled}
               onSelect={action.onSelect}
               className="pointer-coarse:py-2.5"
             >
-              {action.href !== undefined ? (
-                <a href={action.href} download>
+              {linkOf(action) !== undefined ? (
+                <a href={linkOf(action)} download>
                   <ActionIcon action={action} />
                   {action.label}
                 </a>
@@ -106,10 +106,11 @@ interface ActionButtonProps extends ComponentProps<typeof Button> {
 /** A tooltip trigger passes its own props and handlers, so the button takes them on. */
 function ActionButton({ action, describedBy, className, onClick, ...props }: ActionButtonProps) {
   const classes = cn("text-muted-foreground hover:text-foreground", action.destructive && "hover:text-destructive", className)
-  if (action.href !== undefined) {
+  const href = linkOf(action)
+  if (href !== undefined) {
     return (
       <Button {...props} onClick={onClick} asChild variant="ghost" size="icon" className={classes}>
-        <a href={action.href} download aria-label={action.label} aria-describedby={describedBy}>
+        <a href={href} download aria-label={action.label} aria-describedby={describedBy}>
           <ActionIcon action={action} />
         </a>
       </Button>
@@ -132,6 +133,11 @@ function ActionButton({ action, describedBy, className, onClick, ...props }: Act
       <ActionIcon action={action} />
     </Button>
   )
+}
+
+/** The file that the action downloads, or undefined while the action takes no press or downloads nothing. */
+function linkOf(action: RowAction): string | undefined {
+  return action.pending || action.disabled ? undefined : action.href
 }
 
 function ActionIcon({ action }: { action: RowAction }) {
