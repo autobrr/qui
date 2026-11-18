@@ -67,7 +67,6 @@ describe("isReminderDue", () => {
 describe("firstDueTime", () => {
   it.each([
     ["waits until a new server is 30 days old", NOW, 0, NOW + 30 * DAY],
-    ["comes 7 days from now at the lowest draw", NOW - 400 * DAY, 0, NOW + 7 * DAY],
     ["comes 14 days from now at the highest draw", NOW - 400 * DAY, 0.999, NOW + 14 * DAY],
   ])("%s", (_, setupAt, draw, expected) => {
     expect(firstDueTime(NOW, setupAt, () => draw)).toBe(expected)

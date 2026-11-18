@@ -83,6 +83,7 @@ describe("SupportDialog", () => {
     expect(screen.queryByText("support.plans.license $9.99")).toBeNull()
   })
 
+  // regression: #4276
   it("keeps the theme license checkout closed until the license list loads", () => {
     licenses.data = undefined
     const { rerender } = render(<SupportDialog open onOpenChange={() => {}} />)
@@ -116,6 +117,7 @@ describe("SupportDialog", () => {
 
     expect(activation.mutate.mock.calls[0][0]).toBe("KEY-1")
 
+    // regression: #4276
     activation.isPending = true
     rerender(<SupportDialog open onOpenChange={() => {}} />)
 
