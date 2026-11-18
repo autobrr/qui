@@ -163,7 +163,9 @@ function SupportBody() {
 
   // As in Settings, a server with a stored theme license gets no offer to buy the license again, also when the license is not valid.
   const licensed = hasPremiumAccess || Boolean(themeLicense)
-  const supporterPlan = DODO_SUPPORTER_PLANS.find((plan) => plan.id === planId)
+  // The license plan can go away after the user picks it, when the license list loads. The first yearly plan then takes its place.
+  const selectedId = licensed && planId === LICENSE_PLAN ? DODO_SUPPORTER_PLANS[0].id : planId
+  const supporterPlan = DODO_SUPPORTER_PLANS.find((plan) => plan.id === selectedId)
   const releaseDays = import.meta.env.VITE_RELEASE_DAYS ?? []
 
   const row = (id: string, title: string, note: string, tag?: string) => (
@@ -171,7 +173,7 @@ function SupportBody() {
       key={id}
       className={cn(
         "flex min-h-[3.25rem] cursor-pointer items-center gap-3 border-b px-3.5 py-1.5 last:border-b-0 sm:min-h-0 sm:py-2",
-        id === planId ? "bg-accent/60" : "hover:bg-muted/40"
+        id === selectedId ? "bg-accent/60" : "hover:bg-muted/40"
       )}
     >
       <RadioGroupItem value={id} />
@@ -212,7 +214,7 @@ function SupportBody() {
 
       {releaseDays.length > 0 && <ReleaseMap days={releaseDays} />}
 
-      <RadioGroup value={planId} onValueChange={setPlanId} className="gap-0 overflow-hidden rounded-md border">
+      <RadioGroup value={selectedId} onValueChange={setPlanId} className="gap-0 overflow-hidden rounded-md border">
         {DODO_SUPPORTER_PLANS.map((plan) => row(
           plan.id,
           t("support.plans.yearly", { price: plan.price }),
@@ -254,6 +256,8 @@ function SupportBody() {
             {t("support.addKey")}
           </button>
         </p>
+        {/* The notice above has this action for a key that is not valid. A key in another state, such as offline, gets it here. */}
+        {supporterKey && supporterKey.status !== "invalid" && <p>{removeKey}</p>}
       </div>
     </div>
   )

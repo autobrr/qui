@@ -75,10 +75,13 @@ export function LicenseManager({
   const showPurchase = !hasPremiumAccess && !hasInvalidLicense && !isOfflineLicense
   let accessTitle = t("themes.license.status.unlockTitle")
   let accessDescription = t("themes.license.status.unlockDescription")
-  if (hasPremiumAccess) {
+  if (hasPremiumAccess && supporterKey && primaryLicense?.status !== "active") {
+    // With no active theme license, the access comes from the supporter key.
+    accessTitle = t("themes.license.status.supporterTitle")
+    accessDescription = t("themes.license.status.supporterDescription")
+  } else if (hasPremiumAccess) {
     accessTitle = t("themes.license.status.activeTitle")
-    // With no valid theme license, the access comes from the supporter key.
-    accessDescription = supporterKey && (!primaryLicense || hasInvalidLicense) ? t("themes.license.status.supporterDescription") : t("themes.license.status.activeDescription")
+    accessDescription = t("themes.license.status.activeDescription")
   } else if (isOfflineLicense) {
     accessTitle = t("themes.license.status.offlineTitle")
     accessDescription = t("themes.license.status.offlineDescription")

@@ -542,6 +542,7 @@
         "unlockDescription": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
         "activeTitle": "授權已啟用",
         "activeDescription": "您可以使用所有目前和未來的主題",
+        "supporterTitle": "主題已解鎖",
         "supporterDescription": "您的支援會解鎖所有目前和未來的主題，並包含一份終身主題授權。若要在支援結束後保留這些主題，請新增授權門戶中的授權金鑰。",
         "supportEndedDescription": "您的支援包含一份終身主題授權。請在授權門戶中找到它的金鑰，並在此處新增。",
         "activationRequiredTitle": "需要啟用授權",

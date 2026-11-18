@@ -548,6 +548,7 @@
         "unlockDescription": "Prix libre (min 9.99$) • Licence à vie • Tous les thèmes",
         "activeTitle": "Licence active",
         "activeDescription": "Vous avez accès à tous les thèmes actuels et futurs",
+        "supporterTitle": "Thèmes débloqués",
         "supporterDescription": "Votre soutien débloque tous les thèmes actuels et futurs. Il inclut une licence des thèmes à vie. Pour garder les thèmes après la fin de votre soutien, ajoutez la clé de licence du portail des licences.",
         "supportEndedDescription": "Votre soutien incluait une licence des thèmes à vie. Retrouvez sa clé sur le portail des licences, puis ajoutez-la ici.",
         "activationRequiredTitle": "Activation de licence requise",

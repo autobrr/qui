@@ -69,6 +69,17 @@ describe("SupportDialog", () => {
     expect(screen.queryByText("support.plans.license $9.99")).toBeNull()
   })
 
+  it("goes back to a yearly plan when the picked theme license goes away", () => {
+    const { rerender } = render(<SupportDialog open onOpenChange={() => {}} />)
+    fireEvent.click(screen.getByText("support.plans.license $9.99"))
+
+    // The license list loads with a stored license.
+    licenses.data = [{ licenseKey: "KEY-1", status: "invalid", productName: "premium-access" }]
+    rerender(<SupportDialog open onOpenChange={() => {}} />)
+
+    expect(checkoutHref()).toBe(DODO_SUPPORTER_PLANS[0].url)
+  })
+
   it("asks for the supporter key after the checkout opens, and activates the key", () => {
     render(<SupportDialog open onOpenChange={() => {}} />)
 
@@ -98,6 +109,14 @@ describe("SupportDialog", () => {
 
     expect(screen.getByText("support.checkout")).not.toBeNull()
     expect(screen.getByText("support.supporter.manage").closest("a")?.getAttribute("href")).toBe(DODO_CUSTOMER_PORTAL_URL)
+    fireEvent.click(screen.getByText("support.removeKey"))
+    expect(deletion.mutate).toHaveBeenCalledWith("KEY-1")
+  })
+
+  it("lets the user remove a supporter key that is offline", () => {
+    licenses.data = [{ licenseKey: "KEY-1", status: "offline", productName: "supporter" }]
+    render(<SupportDialog open onOpenChange={() => {}} />)
+
     fireEvent.click(screen.getByText("support.removeKey"))
     expect(deletion.mutate).toHaveBeenCalledWith("KEY-1")
   })

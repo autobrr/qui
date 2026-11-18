@@ -548,6 +548,7 @@
         "unlockDescription": "Pay what you want (min $9.99) • Lifetime license • All themes",
         "activeTitle": "License Active",
         "activeDescription": "You have access to all current and future themes",
+        "supporterTitle": "Themes unlocked",
         "supporterDescription": "Your support unlocks all current and future themes. It includes a theme license for life. To keep the themes after your support ends, add the license key from the license portal.",
         "supportEndedDescription": "Your support included a theme license for life. Find its key in the license portal, and add it here.",
         "activationRequiredTitle": "License Activation Required",
