@@ -151,6 +151,7 @@
     "place": "Fichiers placés",
     "add": "Ajout à la cible",
     "added": "Ajouté à la cible",
+    "rename": "Renommage des fichiers sur la cible",
     "after": "Source traitée",
     "removeFromSource": "Retrait de la source",
     "cleanUp": "Nettoyage",

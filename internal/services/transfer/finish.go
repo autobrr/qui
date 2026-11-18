@@ -204,7 +204,8 @@ func (j *job) place(ctx context.Context) error {
 }
 
 // addMembers adds each member that the target or its Cross-seed instance
-// does not have yet, and waits for the check of each routed member.
+// does not have yet, and waits for the check of each routed member. Then it
+// turns Automatic Torrent Management on.
 func (j *job) addMembers(ctx context.Context) error {
 	var representative *part
 	for _, p := range j.parts {
@@ -231,15 +232,12 @@ func (j *job) addMembers(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return j.manage(ctx)
 }
 
 // addOnTarget adds the member on the target when the target does not have it
-// yet, and leaves it complete there: at the file names of the source, and on
-// the management mode of its placement.
+// yet, and leaves it complete there, at the file names of the source.
 func (j *job) addOnTarget(ctx context.Context, p *part) error {
-	// A member from an earlier run, or one that needed a rename, can miss
-	// its files on the target.
 	complete := false
 	if !j.added(p) {
 		var err error
@@ -247,17 +245,18 @@ func (j *job) addOnTarget(ctx context.Context, p *part) error {
 			return err
 		}
 	}
-	renamed, err := j.rename(ctx, p)
-	if err != nil {
+	if err := j.rename(ctx, p); err != nil {
 		return err
 	}
-	if !complete || renamed {
-		if err := j.check(ctx, p); err != nil {
-			return err
-		}
-	}
-	if p.Placement.AutoTMM {
-		return j.manage(ctx, p)
+	switch {
+	case j.reachedFor(stepRename, p.Hash):
+		// Seed mode takes a file that a rename moved on trust, in this run
+		// and in each later one. Only a check of the bytes proves it.
+		j.logf("%s checks the files of %s after their rename.", j.target.Name, j.the(p, "the"))
+		return j.recheck(ctx, p)
+	case !complete:
+		// A member from an earlier run can miss its files on the target.
+		return j.check(ctx, p)
 	}
 	return nil
 }
@@ -378,22 +377,25 @@ func (j *job) add(ctx context.Context, p *part) (complete bool, err error) {
 	return res.Outcome == torrentadd.Verified, nil
 }
 
-// check makes sure that the target shows the member complete. A member that
-// had other file names at its add missed its files there, so the target
-// checks them at their names. The member stays stopped.
+// check makes sure that the target shows the member complete, and has the
+// target check its files when it does not.
 func (j *job) check(ctx context.Context, p *part) error {
-	cfg := j.svc.deps.Config
-	req := torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: 1, PollInterval: cfg.PollInterval}
-	res := j.svc.adder.Confirm(ctx, req)
-	if res.Outcome == torrentadd.Verified {
+	req := torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: 1, PollInterval: j.svc.deps.Config.PollInterval}
+	if res := j.svc.adder.Confirm(ctx, req); res.Outcome == torrentadd.Verified {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	j.logf("%s does not show %s complete after the add, so it checks the files.", j.target.Name, j.the(p, "the"))
-	req.Polls = cfg.CheckPolls
-	res = j.svc.adder.Recheck(ctx, req)
+	return j.recheck(ctx, p)
+}
+
+// recheck has the target check the files of the member, and fails when a
+// piece does not pass. The member stays stopped.
+func (j *job) recheck(ctx context.Context, p *part) error {
+	cfg := j.svc.deps.Config
+	res := j.svc.adder.Recheck(ctx, torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: cfg.CheckPolls, PollInterval: cfg.PollInterval})
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -403,14 +405,24 @@ func (j *job) check(ctx context.Context, p *part) error {
 	return nil
 }
 
-// manage turns Automatic Torrent Management on for the member. The add put
-// the member on manual management at the folder of its files, so that the
-// target found them there. A target that saves the category elsewhere by now
-// moves the files itself.
-func (j *job) manage(ctx context.Context, p *part) error {
-	err := j.svc.deps.Sync.SetAutoTMM(qbittorrent.WithPostAddBulkActionRetry(ctx), j.target.ID, []string{p.Hash}, true)
+// manage turns Automatic Torrent Management on for the members that the
+// target manages. Each add put its member on manual management at the folder
+// of its files, so that the target found them there. A target that saves the
+// category elsewhere by now moves the files itself, so this comes after the
+// last add, in one request: the members move together.
+func (j *job) manage(ctx context.Context) error {
+	var hashes []string
+	for _, p := range j.parts {
+		if p.Placement.AutoTMM {
+			hashes = append(hashes, p.Hash)
+		}
+	}
+	if len(hashes) == 0 {
+		return nil
+	}
+	err := j.svc.deps.Sync.SetAutoTMM(qbittorrent.WithPostAddBulkActionRetry(ctx), j.target.ID, hashes, true)
 	if err != nil {
-		return temporary("qui cannot turn on Automatic Torrent Management for %s on %s: %v", j.the(p, "the"), j.target.Name, err)
+		return temporary("qui cannot turn on Automatic Torrent Management for %s on %s: %v", j.torrents("the"), j.target.Name, err)
 	}
 	return nil
 }
@@ -533,45 +545,60 @@ func commonRoot(names []string) string {
 // on the source. A file at an old name is a conflict: qBittorrent would move
 // it over the copy. qBittorrent lists a new name some time after it takes
 // the rename, and refuses a second rename from the old name, so qui sends
-// each rename once and then waits for the names. It reports whether it sent
-// a rename.
-func (j *job) rename(ctx context.Context, p *part) (sent bool, err error) {
+// each rename once and then waits for the names. It records that it sends
+// renames for the member before the first one.
+func (j *job) rename(ctx context.Context, p *part) error {
 	ctx = qbittorrent.WithPostAddBulkActionRetry(ctx)
 	want := names(p.plan)
+	sent := false
 	for poll := range j.svc.deps.Config.Polls {
 		// The first list after the renames comes at once.
 		if poll > 1 {
 			if err := j.pause(ctx, poll); err != nil {
-				return sent, err
+				return err
 			}
 		}
 		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.target.ID, p.Hash)
 		if err != nil || files == nil || len(*files) != len(want) {
-			return sent, temporary("qui cannot read the files of the torrent on %s: %v", j.target.Name, err)
+			return temporary("qui cannot read the files of the torrent on %s: %v", j.target.Name, err)
 		}
 		listed := slices.SortedFunc(slices.Values(*files), func(a, b qbt.TorrentFile) int { return cmp.Compare(a.Index, b.Index) })
 		if slices.EqualFunc(listed, want, func(f qbt.TorrentFile, name string) bool { return f.Name == name }) {
-			return sent, nil
+			return nil
 		}
 		if sent {
 			continue
 		}
-		for i, f := range listed {
-			if f.Name == want[i] {
-				continue
-			}
-			if !j.blind {
-				if err := j.noFileAtOldName(ctx, path.Join(p.dir, f.Name), path.Join(p.dir, want[i])); err != nil {
-					return sent, err
-				}
-			}
-			if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
-				return sent, temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)
-			}
+		if err := j.sendRenames(ctx, p, listed, want); err != nil {
+			return err
 		}
 		sent = true
 	}
-	return sent, temporary("The file names of the torrent on %s differ from the source.", j.target.Name)
+	return temporary("The file names of the torrent on %s differ from the source.", j.target.Name)
+}
+
+// sendRenames sends a rename for each file of the member that the target
+// lists at another name than want.
+func (j *job) sendRenames(ctx context.Context, p *part, listed []qbt.TorrentFile, want []string) error {
+	if !j.reachedFor(stepRename, p.Hash) {
+		if err := j.stepWith(ctx, StateFinishing, stepRename, p.Hash); err != nil {
+			return err
+		}
+	}
+	for i, f := range listed {
+		if f.Name == want[i] {
+			continue
+		}
+		if !j.blind {
+			if err := j.noFileAtOldName(ctx, path.Join(p.dir, f.Name), path.Join(p.dir, want[i])); err != nil {
+				return err
+			}
+		}
+		if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
+			return temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)
+		}
+	}
+	return nil
 }
 
 // noFileAtOldName fails when a file is at the old name of a rename on the

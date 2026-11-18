@@ -139,6 +139,7 @@
     "place": "파일 배치 완료",
     "add": "대상에 추가 중",
     "added": "대상에 추가 완료",
+    "rename": "대상에서 파일 이름 변경 중",
     "after": "원본 처리 완료",
     "removeFromSource": "원본에서 제거 중",
     "cleanUp": "정리 중",

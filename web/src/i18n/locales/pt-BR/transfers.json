@@ -151,6 +151,7 @@
     "place": "Colocou os arquivos",
     "add": "Adicionando ao destino",
     "added": "Adicionado ao destino",
+    "rename": "Renomeando os arquivos no destino",
     "after": "Tratou a origem",
     "removeFromSource": "Removendo da origem",
     "cleanUp": "Limpando",

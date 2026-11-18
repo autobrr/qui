@@ -53,6 +53,7 @@ const stepKeys: Record<string, string> = {
   "place": "place",
   "add": "add",
   "added": "added",
+  "rename": "rename",
   "after": "after",
   "remove from source": "removeFromSource",
   "clean up": "cleanUp",

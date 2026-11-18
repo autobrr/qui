@@ -138,8 +138,6 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 			Placement:        placement,
 		}
 		m.Placement.SavePath = td.Join(placement.SavePath, td.FromSlash(d.ToSlash(rel)))
-		// The target manages a torrent only at the folder of its category.
-		m.Placement.AutoTMM = placement.AutoTMM && m.Placement.SavePath == placement.SavePath
 		lands := target
 		if crossSeed != nil && src != representative {
 			lands = crossSeed
@@ -155,6 +153,17 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 			}
 		}
 		members = append(members, m)
+	}
+	// The target manages a torrent only at the folder of its category, and it
+	// moves the torrent when that folder changes. A member in a folder below
+	// would then lose the files that it shares, so the target manages each
+	// of its members or none.
+	if slices.ContainsFunc(members, func(m Member) bool {
+		return m.TargetInstanceID == target.ID && m.Placement.SavePath != placement.SavePath
+	}) {
+		for i := range members {
+			members[i].Placement.AutoTMM = false
+		}
 	}
 	return members, nil
 }

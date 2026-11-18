@@ -4,6 +4,7 @@
 package transfer_test
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,7 +80,7 @@ func TestTransferChecksATorrentThatItRenamed(t *testing.T) {
 			require.True(t, r.seeding(r.target.ID, hash), "the target seeds the torrent")
 			require.Equal(t, 1, r.dst.Writes("torrents/renameFile"))
 			require.Equal(t, 1, r.dst.Writes("torrents/recheck"))
-			require.Contains(t, logOf(record), "homelab does not show the torrent complete after the add, so it checks the files.")
+			require.Contains(t, logOf(record), "homelab checks the files of the torrent after their rename.")
 		})
 	}
 }
@@ -126,4 +127,65 @@ func TestTransferFailsWhenTheCheckAfterTheRenameFails(t *testing.T) {
 	require.True(t, r.src.Has(hash), "the source keeps the torrent")
 	require.Equal(t, map[string]string{"Pilot.mkv": string(data)}, tree(t, r.srcDir))
 	require.Less(t, r.dst.Syncs(), 20, "the wait ends when the check ends")
+}
+
+// seedMovedFolder seeds a torrent of one file whose folder on the source has
+// another name than the folder that the target makes for it at the add. So
+// the target has to rename the file. It puts another file of the same size
+// at the name of the add on the target, as a second torrent there has it.
+func (r *rig) seedMovedFolder(data []byte) string {
+	r.t.Helper()
+	hash := r.seedOneFile(data, "Subfolder", "Show.S01E01/"+episode)
+	require.NoError(r.t, r.sync.RenameTorrentFile(r.t.Context(), r.source.ID, hash, "Show.S01E01/"+episode, "Show/"+episode))
+	other := numbered("XXX", len(data))
+	write(r.t, filepath.Join(r.dstDir, "Show.S01E01"), map[string][]byte{episode: other})
+	return hash
+}
+
+// On a target without file access, qui does not see a file of another
+// torrent at the name that the add gives the file. The target shows the
+// torrent complete on trust, and the rename moves that file over the copy.
+// Only a check of the bytes finds this, so the target checks each torrent
+// that qui renamed. The Transfer fails, and the source keeps the torrent.
+// regression: #4242
+func TestTransferFailsWhenARenameMovesAnotherFileOverTheCopy(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	data := numbered("E01", 40)
+	hash := r.seedMovedFolder(data)
+
+	record := r.run(transfer.Request{SourceInstanceID: r.source.ID, Hash: hash, TargetInstanceID: r.target.ID})
+
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, transfer.FailureTemporary, record.FailureClass)
+	require.Equal(t, "The check of the torrent on homelab did not pass: qBittorrent shows stoppedDL", record.FailureReason)
+	require.True(t, r.src.Has(hash), "the source keeps the torrent")
+	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
+}
+
+// A retry also checks the bytes of a torrent that an earlier run renamed,
+// when the target did not take the check of that run.
+// regression: #4242
+func TestRetryChecksATorrentThatAnEarlierRunRenamed(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	data := numbered("E01", 40)
+	hash := r.seedMovedFolder(data)
+	r.dst.OnWrite = func(endpoint string) {
+		if endpoint == "torrents/recheck" {
+			r.dst.Reject = http.StatusInternalServerError
+		}
+	}
+	failed := r.run(transfer.Request{SourceInstanceID: r.source.ID, Hash: hash, TargetInstanceID: r.target.ID})
+	require.Equal(t, transfer.FailureTemporary, failed.FailureClass, failed.FailureReason)
+	r.dst.OnWrite, r.dst.Reject = nil, 0
+
+	_, err := r.svc.Retry(t.Context(), failed.ID)
+	require.NoError(t, err)
+	r.svc.Wait()
+
+	record := r.get(failed.ID)
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, "The check of the torrent on homelab did not pass: qBittorrent shows stoppedDL", record.FailureReason)
+	require.True(t, r.src.Has(hash), "the source keeps the torrent")
 }

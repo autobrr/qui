@@ -151,6 +151,7 @@
     "place": "Placed the files",
     "add": "Adding to the target",
     "added": "Added to the target",
+    "rename": "Renaming the files on the target",
     "after": "Handled the source",
     "removeFromSource": "Removing from the source",
     "cleanUp": "Cleaning up",

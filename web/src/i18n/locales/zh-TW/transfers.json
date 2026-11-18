@@ -139,6 +139,7 @@
     "place": "已放置檔案",
     "add": "正在新增到目標",
     "added": "已新增到目標",
+    "rename": "正在重新命名目標上的檔案",
     "after": "已處理來源",
     "removeFromSource": "正在從來源移除",
     "cleanUp": "正在清理",

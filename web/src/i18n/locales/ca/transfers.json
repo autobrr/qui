@@ -151,6 +151,7 @@
     "place": "Fitxers col·locats",
     "add": "Afegint a la destinació",
     "added": "Afegit a la destinació",
+    "rename": "Canviant el nom dels fitxers a la destinació",
     "after": "Origen gestionat",
     "removeFromSource": "Eliminant de l'origen",
     "cleanUp": "Netejant",

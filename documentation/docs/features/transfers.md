@@ -31,7 +31,7 @@ The dialog and the action have the same fields:
 | Field | Description |
 | --- | --- |
 | **Target instance** | The instance that gets the torrent. It cannot be the source. |
-| **Save path** | The folder on the target. qui keeps the folders of the torrent and its cross-seeds below it. If you leave it empty, qui uses the save path that the target uses for the category. If you also leave the category empty, qui uses the default save path of the target. If you leave the save path empty and Automatic Torrent Management is the default mode of the target, qui turns it on for the torrent. A cross-seed in a folder below that save path stays on manual management. The action accepts the [save path templates](./automations.md#save-path-templates) of Export to Instance. |
+| **Save path** | The folder on the target. qui keeps the folders of the torrent and its cross-seeds below it. If you leave it empty, qui uses the save path that the target uses for the category. If you also leave the category empty, qui uses the default save path of the target. If you leave the save path empty and Automatic Torrent Management is the default mode of the target, qui turns it on for the torrent. If a cross-seed is in a folder below that save path, each torrent of the Transfer stays on manual management. The action accepts the [save path templates](./automations.md#save-path-templates) of Export to Instance. |
 | **Category** | The category on the target. |
 | **Tags** | The tags on the target. |
 | **After the Transfer** | What qui does with the torrent on the source when the target seeds it. See [After the Transfer](#after-the-transfer). |
