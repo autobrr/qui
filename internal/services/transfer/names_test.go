@@ -185,6 +185,27 @@ func TestTransferWaitsForTheCheckOfATargetWithASlowRefresh(t *testing.T) {
 	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
 }
 
+// On a target whose status refresh is slower than the whole wait for the
+// check, every poll can read the state from before the recheck: complete on
+// trust. Such a state is no passed check, so the Transfer fails and the
+// source keeps the torrent and its files.
+// regression: #4242
+func TestTransferKeepsTheSourceWhenTheWaitForTheCheckRunsOut(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.dst.RefreshInterval, r.dst.StaleSyncs = 1000, 100
+	r.connect()
+	data := numbered("E01", 40)
+	hash := r.seedMovedFolder(data)
+
+	record := r.run(transfer.Request{SourceInstanceID: r.source.ID, Hash: hash, TargetInstanceID: r.target.ID,
+		Options: transfer.Options{After: transfer.AfterRemoveWithFiles, LeaveStopped: true}})
+
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, "The check of the torrent on homelab did not pass: qBittorrent showed no result of the check within 20ms", record.FailureReason)
+	require.True(t, r.src.Has(hash), "the source keeps the torrent")
+	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
+}
+
 // A retry also checks the bytes of a torrent that an earlier run renamed,
 // when the target did not take the check of that run.
 // regression: #4242

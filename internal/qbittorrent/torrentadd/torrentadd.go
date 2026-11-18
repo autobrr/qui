@@ -117,6 +117,9 @@ const (
 	Errored
 	// Cancelled: ctx ended during the polls.
 	Cancelled
+	// CheckNotSeen: the polls after a recheck ran out while the state could
+	// still be the one from before it.
+	CheckNotSeen
 )
 
 // Result is the outcome of an add. Torrent is what the last poll read, nil
@@ -305,13 +308,19 @@ func (a *Adder) ConfirmRecheck(ctx context.Context, req Request) Result {
 	if err != nil {
 		return Result{Failure: PollFailed, Err: err}
 	}
-	checking := false
-	return a.confirm(ctx, req, func(poll int, res Result) bool {
+	checking, accepted := false, false
+	res := a.confirm(ctx, req, func(poll int, res Result) bool {
 		checking = checking || res.Outcome == Checking
 		// A state that is not a check can be the one from before the
 		// recheck, also a complete one.
-		return (checking || poll >= stale) && res.final(Settings{StopWhenFilesChecked: true})
+		accepted = (checking || poll >= stale) && res.final(Settings{StopWhenFilesChecked: true})
+		return accepted
 	})
+	if res.Outcome == Verified && !accepted {
+		return Result{Failure: CheckNotSeen, Torrent: res.Torrent,
+			Err: fmt.Errorf("qBittorrent showed no result of the check within %s", time.Duration(req.Polls)*req.PollInterval)}
+	}
+	return res
 }
 
 // confirm polls until final says that the result of a poll, counted from 0,
