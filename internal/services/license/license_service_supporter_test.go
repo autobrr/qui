@@ -126,3 +126,32 @@ func TestInvalidSupporterKeyRecoversWhenDodoAcceptsItAgain(t *testing.T) {
 		})
 	}
 }
+
+func TestActivateStoresTheProductOfAKeyThatIsAlreadyStored(t *testing.T) {
+	ctx := t.Context()
+	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-supporter"))
+	stored := time.Now().Add(-2 * time.Hour)
+	// A build that did not know the supporter products stored each key as premium access.
+	require.NoError(t, repo.StoreLicense(ctx, &models.ProductLicense{
+		LicenseKey:     "KEY-1",
+		ProductName:    ProductNamePremium,
+		Status:         models.LicenseStatusInvalid,
+		ActivatedAt:    stored,
+		LastValidated:  stored,
+		Provider:       models.LicenseProviderDodo,
+		DodoInstanceID: "lki_1",
+		Username:       "tester",
+		CreatedAt:      stored,
+		UpdatedAt:      stored,
+	}))
+	service := NewLicenseService(repo, dodoAnswering(map[string]string{
+		"/licenses/activate": `{"id":"lki_2","product":{"product_id":"` + supporterProductIDs[0] + `","name":"qui"}}`,
+	}), t.TempDir())
+
+	_, err := service.ActivateAndStoreLicense(ctx, "KEY-1", "tester")
+	require.NoError(t, err)
+
+	isSupporter, err := service.IsSupporter(ctx)
+	require.NoError(t, err)
+	assert.True(t, isSupporter)
+}

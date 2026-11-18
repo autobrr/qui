@@ -23,8 +23,10 @@ const (
 	ProductNameSupporter = "supporter"
 )
 
-// The Dodo products of the yearly support, in live mode and in test mode.
+// The Dodo products of the yearly support: the two live products, then the two of test mode.
 var supporterProductIDs = []string{
+	"pdt_0NsEXpOuhHMsJwbdagrM9",
+	"pdt_0NsEXpSFgcjPNVB6CI98V",
 	"pdt_0NsEI8EDAVegKwxDz8SVP",
 	"pdt_0NsEI8I0tAjVO2lZ7cVv2",
 }

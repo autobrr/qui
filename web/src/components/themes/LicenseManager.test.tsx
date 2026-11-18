@@ -90,6 +90,18 @@ describe("LicenseManager", () => {
     expect(screen.queryByText("themes.license.actions.remove")).toBeNull()
   })
 
+  it("says that the support unlocks the themes when the stored theme license is not valid", () => {
+    licenses.data = [
+      { licenseKey: "TEST-KEY-0000", status: "invalid", productName: "premium" },
+      { licenseKey: "TEST-KEY-0001", status: "active", productName: "supporter" },
+    ]
+    premiumAccess.hasPremiumAccess = true
+    render(<LicenseManager />)
+
+    expect(screen.getByText("themes.license.status.supporterDescription")).not.toBeNull()
+    expect(screen.queryByText("themes.license.status.activeDescription")).toBeNull()
+  })
+
   it("tells a past supporter where the theme license key is", () => {
     licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "invalid", productName: "supporter" }]
     render(<LicenseManager />)

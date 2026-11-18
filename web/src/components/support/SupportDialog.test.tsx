@@ -62,6 +62,13 @@ describe("SupportDialog", () => {
     expect(checkoutHref()).toBe(DODO_SUPPORTER_PLANS[0].url)
   })
 
+  it("does not offer the theme license to a server whose stored license is not valid", () => {
+    licenses.data = [{ licenseKey: "KEY-1", status: "invalid", productName: "premium-access" }]
+    render(<SupportDialog open onOpenChange={() => {}} />)
+
+    expect(screen.queryByText("support.plans.license $9.99")).toBeNull()
+  })
+
   it("asks for the supporter key after the checkout opens, and activates the key", () => {
     render(<SupportDialog open onOpenChange={() => {}} />)
 
@@ -85,11 +92,12 @@ describe("SupportDialog", () => {
     expect(deletion.mutate).toHaveBeenCalledWith("KEY-1")
   })
 
-  it("lets a past supporter remove the key that is not valid", () => {
+  it("lets a supporter with a key that is not valid fix the payment or remove the key", () => {
     licenses.data = [{ licenseKey: "KEY-1", status: "invalid", productName: "supporter" }]
     render(<SupportDialog open onOpenChange={() => {}} />)
 
     expect(screen.getByText("support.checkout")).not.toBeNull()
+    expect(screen.getByText("support.supporter.manage").closest("a")?.getAttribute("href")).toBe(DODO_CUSTOMER_PORTAL_URL)
     fireEvent.click(screen.getByText("support.removeKey"))
     expect(deletion.mutate).toHaveBeenCalledWith("KEY-1")
   })

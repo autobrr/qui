@@ -12,8 +12,8 @@ export const LICENSE_PORTAL_URL = "https://licenses.getqui.com"
 
 // The yearly support. Each product issues a supporter key. internal/services/license lists the same product ids.
 export const DODO_SUPPORTER_PLANS = [
-  { id: "24", price: "$24", monthlyPrice: "$2", url: "https://test.checkout.dodopayments.com/buy/pdt_0NsEI8EDAVegKwxDz8SVP?quantity=1" },
-  { id: "48", price: "$48", monthlyPrice: "$4", url: "https://test.checkout.dodopayments.com/buy/pdt_0NsEI8I0tAjVO2lZ7cVv2?quantity=1" },
+  { id: "24", price: "$24", monthlyPrice: "$2", url: "https://checkout.dodopayments.com/buy/pdt_0NsEXpOuhHMsJwbdagrM9?quantity=1" },
+  { id: "48", price: "$48", monthlyPrice: "$4", url: "https://checkout.dodopayments.com/buy/pdt_0NsEXpSFgcjPNVB6CI98V?quantity=1" },
 ] as const
 /** The product name of a supporter key in the license list. A theme license has another name. */
 export const SUPPORTER_PRODUCT_NAME = "supporter"

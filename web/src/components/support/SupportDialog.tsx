@@ -118,6 +118,7 @@ function SupportBody() {
   const [planId, setPlanId] = useState<string>(DODO_SUPPORTER_PLANS[0].id)
 
   const supporterKey = licenses?.find((license) => license.productName === SUPPORTER_PRODUCT_NAME)
+  const themeLicense = licenses?.find((license) => license.productName !== SUPPORTER_PRODUCT_NAME)
   const removeKey = supporterKey && (
     <button
       type="button"
@@ -160,7 +161,8 @@ function SupportBody() {
     )
   }
 
-  const licensed = hasPremiumAccess
+  // As in Settings, a server with a stored theme license gets no offer to buy the license again, also when the license is not valid.
+  const licensed = hasPremiumAccess || Boolean(themeLicense)
   const supporterPlan = DODO_SUPPORTER_PLANS.find((plan) => plan.id === planId)
   const releaseDays = import.meta.env.VITE_RELEASE_DAYS ?? []
 
@@ -193,9 +195,18 @@ function SupportBody() {
           </p>
         )}
         {supporterKey?.status === "invalid" && (
-          <p className="rounded-md border px-3 py-2 text-xs leading-5 text-muted-foreground max-sm:text-[13px]">
-            <Trans ns="common" i18nKey="support.ended" components={{ portal: <LicensePortalLink /> }} /> {removeKey}
-          </p>
+          <div className="space-y-1.5 rounded-md border px-3 py-2 text-xs leading-5 text-muted-foreground max-sm:text-[13px]">
+            <p>
+              <Trans ns="common" i18nKey="support.ended" components={{ portal: <LicensePortalLink /> }} />
+            </p>
+            {/* A payment that failed makes the key invalid too, and the customer portal is where the user fixes it. */}
+            <p className="flex flex-wrap gap-x-4">
+              <a href={DODO_CUSTOMER_PORTAL_URL} target="_blank" rel="noopener noreferrer" className={LINK}>
+                {t("support.supporter.manage")}
+              </a>
+              {removeKey}
+            </p>
+          </div>
         )}
       </div>
 

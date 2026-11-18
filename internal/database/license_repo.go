@@ -292,12 +292,13 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 
 	query := `
 		UPDATE licenses
-		SET provider = ?, dodo_instance_id = ?,
+		SET product_name = ?, provider = ?, dodo_instance_id = ?,
 		    activated_at = ?, expires_at = ?, last_validated = ?, updated_at = ?, status = ?
 		WHERE id = ?
 	`
 
 	_, err = tx.ExecContext(ctx, query,
+		license.ProductName,
 		stringToNullString(license.Provider),
 		stringToNullString(license.DodoInstanceID),
 		license.ActivatedAt,

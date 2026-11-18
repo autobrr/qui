@@ -77,7 +77,8 @@ export function LicenseManager({
   let accessDescription = t("themes.license.status.unlockDescription")
   if (hasPremiumAccess) {
     accessTitle = t("themes.license.status.activeTitle")
-    accessDescription = supporterKey && !primaryLicense ? t("themes.license.status.supporterDescription") : t("themes.license.status.activeDescription")
+    // With no valid theme license, the access comes from the supporter key.
+    accessDescription = supporterKey && (!primaryLicense || hasInvalidLicense) ? t("themes.license.status.supporterDescription") : t("themes.license.status.activeDescription")
   } else if (isOfflineLicense) {
     accessTitle = t("themes.license.status.offlineTitle")
     accessDescription = t("themes.license.status.offlineDescription")
