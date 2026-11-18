@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -41,6 +42,7 @@ type Service struct {
 	licenseRepo *database.LicenseRepo
 	dodoClient  *dodo.Client
 	configDir   string
+	setupAt     atomic.Pointer[time.Time]
 }
 
 // NewLicenseService creates a new license service
@@ -258,9 +260,17 @@ func (s *Service) IsSupporter(ctx context.Context) (bool, error) {
 	return s.licenseRepo.IsSupporter(ctx)
 }
 
-// ServerSetupTime returns when this server first ran.
+// ServerSetupTime returns when this server first ran. The time does not change, so one read of the database serves each later call.
 func (s *Service) ServerSetupTime(ctx context.Context) (time.Time, error) {
-	return s.licenseRepo.ServerSetupTime(ctx)
+	if setupAt := s.setupAt.Load(); setupAt != nil {
+		return *setupAt, nil
+	}
+	setupAt, err := s.licenseRepo.ServerSetupTime(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	s.setupAt.Store(&setupAt)
+	return setupAt, nil
 }
 
 // RefreshAllLicenses validates all stored licenses against the Dodo API
