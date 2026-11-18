@@ -205,8 +205,8 @@ func validateWebhookCheckRequest(req *WebhookCheckRequest) error {
 	return nil
 }
 
-// nearMissDebugLimit is how many near misses of one webhook check DEBUG
-// shows. TRACE shows the rest.
+// nearMissDebugLimit is stated in
+// documentation/docs/features/cross-seed/troubleshooting.md.
 const nearMissDebugLimit = 5
 
 // CheckWebhook checks if a release announced by autobrr can be cross-seeded with existing torrents.

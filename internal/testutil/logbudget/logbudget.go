@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"bytes"
 	"cmp"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"slices"
 	"sync"
@@ -64,7 +65,8 @@ func Count(t testing.TB, fn func()) Lines {
 			Level   string `json:"level"`
 			Message string `json:"message"`
 		}
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+		// zerolog repeats a key when an event sets a field of its logger again.
+		if err := json.Unmarshal(scanner.Bytes(), &entry, jsontext.AllowDuplicateNames(true)); err != nil {
 			t.Fatalf("logbudget: read log line %q: %v", scanner.Text(), err)
 		}
 		lines[Line{Level: entry.Level, Message: entry.Message}]++
@@ -77,7 +79,8 @@ func Count(t testing.TB, fn func()) Lines {
 
 // AssertFlat fails for each message at DEBUG or above that large writes more
 // often than small. Run the same work on a small and a large library: a line
-// that grows with the library belongs at TRACE.
+// that grows with the library belongs at TRACE. Make the small library bigger
+// than each cap on DEBUG lines, or a capped line looks like growth.
 func AssertFlat(t testing.TB, small, large Lines) {
 	t.Helper()
 	var grown []Line
