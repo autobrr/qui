@@ -74,6 +74,9 @@ const SYNCED_KEYS = new Set<string>([
   "qui-statistics-series-colors",
   "qui-statistics-period",
   "qui-dashboard-chart-view",
+  "qui-support-shortcut-hidden",
+  "qui-support-reminder-off",
+  "qui-support-reminder-due",
 ])
 const SYNCED_PREFIXES = [
   "qui-cross-seed-blocklist-",

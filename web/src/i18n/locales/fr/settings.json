@@ -1136,6 +1136,16 @@
         "lastChecked": "Dernière vérification {{date}}"
       }
     },
+    "support": {
+      "description": "qui est gratuit. Les mécènes et les licences des thèmes paient le travail sur qui.",
+      "open": "Comment soutenir qui",
+      "openSupporter": "Votre soutien",
+      "shortcut": "Afficher le raccourci de soutien",
+      "shortcutHelp": "Le cœur dans l'en-tête, et « Soutenir qui » dans le menu sur un téléphone.",
+      "reminder": "Me le rappeler une fois par an",
+      "reminderDescription": "Un rappel par an, jamais plus. Désactivé tant que le raccourci de soutien est masqué.",
+      "reminderSupporter": "qui n'envoie pas de rappel à un mécène."
+    },
     "restart": {
       "button": "Redémarrer",
       "confirmTitle": "Redémarrer qui ?",

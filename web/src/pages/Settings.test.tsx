@@ -10,6 +10,7 @@ import { HttpResponse, http } from "msw"
 import { useState } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import { server } from "@/test/msw/server"
@@ -43,7 +44,7 @@ it("opens update guidance from a menu link when application-info fails", async (
   const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory({ initialEntries: ["/settings"] }) })
   render(
     <RouterContextProvider router={router}>
-      <QueryClientProvider client={client}><Page /></QueryClientProvider>
+      <QueryClientProvider client={client}><TooltipProvider><Page /></TooltipProvider></QueryClientProvider>
     </RouterContextProvider>
   )
 

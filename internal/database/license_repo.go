@@ -149,6 +149,13 @@ func (r *LicenseRepo) IsSupporter(ctx context.Context) (bool, error) {
 	`)
 }
 
+// ServerSetupTime returns when this server first ran: the time of its first database migration.
+func (r *LicenseRepo) ServerSetupTime(ctx context.Context) (time.Time, error) {
+	var setupAt time.Time
+	err := r.db.QueryRowContext(ctx, "SELECT applied_at FROM migrations ORDER BY applied_at LIMIT 1").Scan(&setupAt)
+	return setupAt, err
+}
+
 func (r *LicenseRepo) hasActiveLicense(ctx context.Context, query string) (bool, error) {
 	var count int
 	err := r.db.QueryRowContext(ctx, query, models.LicenseStatusActive, time.Now().UTC()).Scan(&count)

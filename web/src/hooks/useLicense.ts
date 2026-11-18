@@ -84,6 +84,7 @@ export const useHasPremiumAccess = () => {
   return {
     hasPremiumAccess: data?.hasPremiumAccess ?? false,
     isSupporter: data?.isSupporter ?? false,
+    setupAt: data?.setupAt,
     isLoading,
     isError,
   }

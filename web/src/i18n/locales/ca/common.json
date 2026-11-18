@@ -413,6 +413,24 @@
       "thanks": "Gràcies. El teu suport paga el temps i les eines que es dediquen a qui.",
       "detail": "Tens la insígnia Mecenes a qui i el rol de mecenes a Discord. El teu suport també desbloqueja els temes prèmium i inclou una llicència dels temes de per vida. Troba la clau de llicència al <portal>portal de llicències</portal>.",
       "manage": "Gestiona o cancel·la el suport"
+    },
+    "reminder": {
+      "title_one": "{{count}} dia de qui en aquest servidor",
+      "title_other": "{{count}} dies de qui en aquest servidor",
+      "tooltip": "Comptat en aquest servidor i mai enviat. qui ho demana un cop l'any.",
+      "subtitle": "Fes costat a qui. qui ho demana un cop l'any.",
+      "notNow": "Ara no",
+      "serverDays_one": "Aquest servidor fa {{count}} dia que executa qui. qui ho compta en aquest servidor i no ho envia mai.",
+      "serverDays_other": "Aquest servidor fa {{count}} dies que executa qui. qui ho compta en aquest servidor i no ho envia mai.",
+      "notNowToast": "qui ho tornarà a demanar d'aquí a un any",
+      "dontAskAgain": "No ho tornis a demanar",
+      "offToast": "qui no ho tornarà a demanar",
+      "offToastDescription": "La drecera de suport es manté. Torna a activar el recordatori a Configuració, a Aplicació.",
+      "undo": "Desfés",
+      "hiddenToast": "La drecera de suport està amagada",
+      "hiddenToastDescription": "qui no ho tornarà a demanar. Recupera la drecera a Configuració, a Aplicació.",
+      "notForYou": "No és per a tu? <reminder>Desactiva el recordatori anual</reminder> o <heart>amaga el cor</heart>. La configuració els recupera tots dos.",
+      "notForYouHeart": "No és per a tu? <heart>Amaga el cor</heart>. La configuració el recupera."
     }
   },
   "labels": {

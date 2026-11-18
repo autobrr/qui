@@ -413,6 +413,24 @@
       "thanks": "Grazie. Il tuo sostegno paga il tempo e gli strumenti che servono a qui.",
       "detail": "Hai il badge Sostenitore in qui e il ruolo di sostenitore su Discord. Il tuo sostegno sblocca anche i temi premium e include una licenza dei temi a vita. Trova la chiave di licenza nel <portal>portale delle licenze</portal>.",
       "manage": "Gestisci o annulla il sostegno"
+    },
+    "reminder": {
+      "title_one": "{{count}} giorno di qui su questo server",
+      "title_other": "{{count}} giorni di qui su questo server",
+      "tooltip": "Contati su questo server e mai inviati. qui lo chiede una volta all'anno.",
+      "subtitle": "Sostieni qui. qui lo chiede una volta all'anno.",
+      "notNow": "Non ora",
+      "serverDays_one": "Questo server usa qui da {{count}} giorno. qui lo conta su questo server e non lo invia mai.",
+      "serverDays_other": "Questo server usa qui da {{count}} giorni. qui lo conta su questo server e non lo invia mai.",
+      "notNowToast": "qui lo chiederà di nuovo tra un anno",
+      "dontAskAgain": "Non chiedere più",
+      "offToast": "qui non lo chiederà più",
+      "offToastDescription": "La scorciatoia per il sostegno resta. Riattiva il promemoria in Impostazioni, sotto Applicazione.",
+      "undo": "Annulla",
+      "hiddenToast": "La scorciatoia per il sostegno è nascosta",
+      "hiddenToastDescription": "qui non lo chiederà più. Ripristina la scorciatoia in Impostazioni, sotto Applicazione.",
+      "notForYou": "Non fa per te? <reminder>Disattiva il promemoria annuale</reminder> o <heart>nascondi il cuore</heart>. Le impostazioni li ripristinano entrambi.",
+      "notForYouHeart": "Non fa per te? <heart>Nascondi il cuore</heart>. Le impostazioni lo ripristinano."
     }
   },
   "labels": {

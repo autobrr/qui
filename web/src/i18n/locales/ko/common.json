@@ -404,6 +404,22 @@
       "thanks": "감사합니다. 여러분의 후원은 qui에 들어가는 시간과 도구 비용으로 쓰입니다.",
       "detail": "qui의 후원자 배지와 Discord의 후원자 역할을 받으셨습니다. 후원으로 프리미엄 테마도 잠금 해제되며, 평생 사용할 수 있는 테마 라이선스가 포함됩니다. <portal>라이선스 포털</portal>에서 라이선스 키를 찾을 수 있습니다.",
       "manage": "후원 관리 또는 취소"
+    },
+    "reminder": {
+      "title_other": "이 서버에서 qui를 사용한 지 {{count}}일",
+      "tooltip": "이 서버에서만 계산하며 외부로 보내지 않습니다. qui는 1년에 한 번 묻습니다.",
+      "subtitle": "qui 후원하기. qui는 1년에 한 번 묻습니다.",
+      "notNow": "나중에",
+      "serverDays_other": "이 서버는 {{count}}일 동안 qui를 실행했습니다. qui는 이 값을 이 서버에서 계산하며 외부로 보내지 않습니다.",
+      "notNowToast": "qui가 1년 뒤에 다시 묻습니다",
+      "dontAskAgain": "다시 묻지 않기",
+      "offToast": "qui가 더 이상 묻지 않습니다",
+      "offToastDescription": "후원 바로가기는 그대로 남습니다. 설정의 애플리케이션에서 알림을 다시 켤 수 있습니다.",
+      "undo": "실행 취소",
+      "hiddenToast": "후원 바로가기를 숨겼습니다",
+      "hiddenToastDescription": "qui가 더 이상 묻지 않습니다. 설정의 애플리케이션에서 바로가기를 다시 표시할 수 있습니다.",
+      "notForYou": "관심 없으신가요? <reminder>연간 알림 끄기</reminder> 또는 <heart>하트 숨기기</heart>. 설정에서 둘 다 되돌릴 수 있습니다.",
+      "notForYouHeart": "관심 없으신가요? <heart>하트 숨기기</heart>. 설정에서 되돌릴 수 있습니다."
     }
   },
   "labels": {

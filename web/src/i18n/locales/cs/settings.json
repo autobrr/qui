@@ -1145,6 +1145,16 @@
         "lastChecked": "Poslední kontrola {{date}}"
       }
     },
+    "support": {
+      "description": "qui je zdarma. Práci na něm platí podporovatelé a licence k motivům.",
+      "open": "Jak podpořit qui",
+      "openSupporter": "Vaše podpora",
+      "shortcut": "Zobrazit zkratku pro podporu",
+      "shortcutHelp": "Srdce v záhlaví a „Podpořit qui“ v nabídce na telefonu.",
+      "reminder": "Připomenout jednou za rok",
+      "reminderDescription": "Jedna připomínka za rok, nikdy víc. Vypnuto, dokud je zkratka pro podporu skrytá.",
+      "reminderSupporter": "qui podporovatelům nepřipomíná."
+    },
     "restart": {
       "button": "Restartovat",
       "confirmTitle": "Restartovat qui?",

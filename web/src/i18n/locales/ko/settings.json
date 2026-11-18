@@ -1127,6 +1127,16 @@
         "lastChecked": "마지막 확인 {{date}}"
       }
     },
+    "support": {
+      "description": "qui는 무료입니다. 후원자와 테마 라이선스가 qui 작업 비용을 냅니다.",
+      "open": "qui 후원 방법",
+      "openSupporter": "내 후원",
+      "shortcut": "후원 바로가기 표시",
+      "shortcutHelp": "헤더의 하트와 휴대폰 메뉴의 'qui 후원하기'입니다.",
+      "reminder": "1년에 한 번 알림",
+      "reminderDescription": "1년에 한 번만 알립니다. 후원 바로가기를 숨기면 꺼집니다.",
+      "reminderSupporter": "qui는 후원자에게 알리지 않습니다."
+    },
     "restart": {
       "button": "재시작",
       "confirmTitle": "qui를 재시작할까요?",

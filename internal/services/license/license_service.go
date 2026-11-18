@@ -258,6 +258,11 @@ func (s *Service) IsSupporter(ctx context.Context) (bool, error) {
 	return s.licenseRepo.IsSupporter(ctx)
 }
 
+// ServerSetupTime returns when this server first ran.
+func (s *Service) ServerSetupTime(ctx context.Context) (time.Time, error) {
+	return s.licenseRepo.ServerSetupTime(ctx)
+}
+
 // RefreshAllLicenses validates all stored licenses against the Dodo API
 func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	licenses, err := s.licenseRepo.GetAllLicenses(ctx)

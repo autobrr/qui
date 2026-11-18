@@ -12,13 +12,16 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useActivateLicense, useDeleteLicense, useHasPremiumAccess, useLicenseDetails } from "@/hooks/useLicense"
 import { useIsPhone } from "@/hooks/useMediaQuery"
+import { isDemo } from "@/lib/demo"
 import { DODO_CUSTOMER_PORTAL_URL, DODO_SUPPORTER_PLANS, SUPPORTER_PRODUCT_NAME, THEME_LICENSE_MIN_PRICE } from "@/lib/dodo-constants"
 import { themeLicenseCheckoutUrl } from "@/lib/license-checkout"
 import { RELEASE_MAP_DAYS } from "@/lib/release-days"
 import { cn } from "@/lib/utils"
 import { ArrowUpRight, Check, Heart, X } from "lucide-react"
-import { useId, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react"
 import { Trans, useTranslation } from "react-i18next"
+import { setSupportOpen, useSupportOpen } from "./open"
+import { answerReminder, hideShortcut, turnOffReminder, useSupportReminder } from "./reminder"
 
 type SupportDialogProps = {
   open: boolean
@@ -34,6 +37,11 @@ const PHONE_BOTTOM = "pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
 function focusContent(event: Event) {
   event.preventDefault()
   if (event.target instanceof HTMLElement) event.target.focus()
+}
+
+/** The one support dialog of the app. openSupport opens it from any place. */
+export function SupportDialogRoot() {
+  return <SupportDialog open={useSupportOpen()} onOpenChange={setSupportOpen} />
 }
 
 /** A dialog on a wide screen, and a bottom sheet on a phone. */
@@ -57,7 +65,7 @@ export function SupportDialog({ open, onOpenChange }: SupportDialogProps) {
             </button>
           </DrawerClose>
           <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-5">
-            <SupportBody />
+            <SupportBody onClose={() => onOpenChange(false)} />
           </div>
         </DrawerContent>
       </Drawer>
@@ -73,7 +81,7 @@ export function SupportDialog({ open, onOpenChange }: SupportDialogProps) {
       >
         <DialogTitle className="sr-only">{t("support.title")}</DialogTitle>
         <DialogDescription className="sr-only">{t("support.description")}</DialogDescription>
-        <SupportBody />
+        <SupportBody onClose={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )
@@ -108,14 +116,22 @@ function ReleaseMap({ days }: { days: number[] }) {
   )
 }
 
-function SupportBody() {
+function SupportBody({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation("common")
   const isPhone = useIsPhone()
   const { hasPremiumAccess, isSupporter } = useHasPremiumAccess()
+  const reminder = useSupportReminder()
+  // The body mounts on each open. The count stays for this open, also after the answer below ends the reminder.
+  const [reminderDays] = useState(reminder.due ? reminder.days : null)
   const { data: licenses } = useLicenseDetails()
   const deleteLicense = useDeleteLicense()
   const [addingKey, setAddingKey] = useState(false)
   const [planId, setPlanId] = useState<string>(DODO_SUPPORTER_PLANS[0].id)
+
+  // An open of the dialog while the reminder is due answers the reminder for a year.
+  useEffect(() => {
+    if (reminder.due) answerReminder()
+  }, [reminder.due])
 
   const supporterKey = licenses?.find((license) => license.productName === SUPPORTER_PRODUCT_NAME)
   const themeLicense = licenses?.find((license) => license.productName !== SUPPORTER_PRODUCT_NAME)
@@ -189,6 +205,9 @@ function SupportBody() {
     <div className="flex flex-col gap-4">
       <div className="space-y-2">
         <Heading>{t("support.heading")}</Heading>
+        {reminderDays !== null && (
+          <p className="text-xs leading-5 text-muted-foreground">{t("support.reminder.serverDays", { count: reminderDays })}</p>
+        )}
         <p className="text-sm leading-5 text-muted-foreground sm:leading-6">{t("support.intro")}</p>
         {licensed && (
           <p className="flex items-start gap-2 text-sm leading-5 sm:leading-6">
@@ -232,7 +251,8 @@ function SupportBody() {
       <div className={cn("space-y-2", isPhone && "sticky bottom-0 order-last -mx-5 border-t bg-background px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]")}>
         <Button className="h-12 w-full justify-between px-4 aria-disabled:pointer-events-none aria-disabled:opacity-50 sm:h-11" asChild>
           {supporterPlan ? (
-            <a href={supporterPlan.url} target="_blank" rel="noopener noreferrer" onClick={() => setAddingKey(true)}>
+            // The demo has no server that can take a key.
+            <a href={supporterPlan.url} target="_blank" rel="noopener noreferrer" onClick={isDemo ? undefined : () => setAddingKey(true)}>
               <span className="font-medium">{t("support.checkout")}</span>
               <span className="tabular-nums opacity-90">{t("support.plans.yearly", { price: supporterPlan.price })}</span>
             </a>
@@ -251,14 +271,38 @@ function SupportBody() {
 
       <div className="space-y-2.5 text-xs leading-5 text-muted-foreground max-sm:space-y-3 max-sm:text-[13px]">
         <p>{supporterPlan ? t("support.perks.yearly") : t("support.perks.license")}</p>
-        <p>
-          {t("support.existing")}{" "}
-          <button type="button" className={LINK} onClick={() => setAddingKey(true)}>
-            {t("support.addKey")}
-          </button>
-        </p>
+        {!isDemo && (
+          <p>
+            {t("support.existing")}{" "}
+            <button type="button" className={LINK} onClick={() => setAddingKey(true)}>
+              {t("support.addKey")}
+            </button>
+          </p>
+        )}
         {/* The notice above has this action for a key that is not valid. A key in another state, such as offline, gets it here. */}
         {supporterKey && supporterKey.status !== "invalid" && <p>{removeKey}</p>}
+        {/* Settings, where both come back, is not in the demo. */}
+        {!isDemo && reminder.settled && !reminder.shortcutHidden && (
+          <p>
+            <Trans
+              ns="common"
+              i18nKey={reminder.reminderOff ? "support.reminder.notForYouHeart" : "support.reminder.notForYou"}
+              components={{
+                reminder: <button type="button" className={LINK} onClick={() => turnOffReminder(t)} />,
+                heart: (
+                  <button
+                    type="button"
+                    className={LINK}
+                    onClick={() => {
+                      onClose()
+                      hideShortcut(t)
+                    }}
+                  />
+                ),
+              }}
+            />
+          </p>
+        )}
       </div>
     </div>
   )

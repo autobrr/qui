@@ -422,6 +422,26 @@
       "thanks": "Děkujeme. Vaše podpora platí čas a nástroje, které se do qui vkládají.",
       "detail": "Máte v qui odznak Podporovatel a na Discordu roli podporovatele. Vaše podpora také odemyká prémiové motivy a zahrnuje doživotní licenci k motivům. Licenční klíč najdete v <portal>licenčním portálu</portal>.",
       "manage": "Spravovat nebo zrušit podporu"
+    },
+    "reminder": {
+      "title_one": "{{count}} den s qui na tomto serveru",
+      "title_few": "{{count}} dny s qui na tomto serveru",
+      "title_other": "{{count}} dní s qui na tomto serveru",
+      "tooltip": "Počítá se na tomto serveru a nikdy se neodesílá. qui se ptá jednou za rok.",
+      "subtitle": "Podpořit qui. qui se ptá jednou za rok.",
+      "notNow": "Teď ne",
+      "serverDays_one": "Tento server používá qui {{count}} den. qui to počítá na tomto serveru a nikdy to neodesílá.",
+      "serverDays_few": "Tento server používá qui {{count}} dny. qui to počítá na tomto serveru a nikdy to neodesílá.",
+      "serverDays_other": "Tento server používá qui {{count}} dní. qui to počítá na tomto serveru a nikdy to neodesílá.",
+      "notNowToast": "qui se znovu zeptá za rok",
+      "dontAskAgain": "Už se neptat",
+      "offToast": "qui se už nezeptá",
+      "offToastDescription": "Zkratka pro podporu zůstává. Připomínku znovu zapnete v Nastavení, v části Aplikace.",
+      "undo": "Zpět",
+      "hiddenToast": "Zkratka pro podporu je skrytá",
+      "hiddenToastDescription": "qui se už nezeptá. Zkratku vrátíte v Nastavení, v části Aplikace.",
+      "notForYou": "Není to pro vás? <reminder>Vypněte roční připomínku</reminder>, nebo <heart>skryjte srdce</heart>. V Nastavení obojí vrátíte.",
+      "notForYouHeart": "Není to pro vás? <heart>Skryjte srdce</heart>. V Nastavení ho vrátíte."
     }
   },
   "labels": {

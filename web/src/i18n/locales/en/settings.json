@@ -1136,6 +1136,16 @@
         "lastChecked": "Last checked {{date}}"
       }
     },
+    "support": {
+      "description": "qui is free. Supporters and theme licenses pay for the work on it.",
+      "open": "Ways to support qui",
+      "openSupporter": "Your support",
+      "shortcut": "Show the support shortcut",
+      "shortcutHelp": "The heart in the header, and Support qui in the menu on a phone.",
+      "reminder": "Remind me once a year",
+      "reminderDescription": "One reminder a year, never more. Off while the support shortcut is hidden.",
+      "reminderSupporter": "qui does not remind a supporter."
+    },
     "restart": {
       "button": "Restart",
       "confirmTitle": "Restart qui?",

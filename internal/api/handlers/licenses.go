@@ -59,8 +59,9 @@ type ValidateLicenseResponse struct {
 
 // PremiumAccessResponse represents the response for premium access status
 type PremiumAccessResponse struct {
-	HasPremiumAccess bool `json:"hasPremiumAccess"`
-	IsSupporter      bool `json:"isSupporter"`
+	HasPremiumAccess bool      `json:"hasPremiumAccess"`
+	IsSupporter      bool      `json:"isSupporter"`
+	SetupAt          time.Time `json:"setupAt"`
 }
 
 // LicenseInfo represents basic license information for UI display
@@ -222,9 +223,19 @@ func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	setupAt, err := h.licenseService.ServerSetupTime(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read the server setup time")
+		RespondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "Failed to read the server setup time",
+		})
+		return
+	}
+
 	RespondJSON(w, http.StatusOK, PremiumAccessResponse{
 		HasPremiumAccess: hasPremium,
 		IsSupporter:      isSupporter,
+		SetupAt:          setupAt.UTC(),
 	})
 }
 

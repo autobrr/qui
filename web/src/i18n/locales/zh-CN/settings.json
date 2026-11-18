@@ -1127,6 +1127,16 @@
         "lastChecked": "上次检查 {{date}}"
       }
     },
+    "support": {
+      "description": "qui 是免费的。赞助者和主题许可证支付 qui 的开发工作。",
+      "open": "支持 qui 的方式",
+      "openSupporter": "您的支持",
+      "shortcut": "显示支持快捷方式",
+      "shortcutHelp": "页眉中的爱心，以及手机菜单中的“支持 qui”。",
+      "reminder": "每年提醒一次",
+      "reminderDescription": "每年只提醒一次。隐藏支持快捷方式时关闭。",
+      "reminderSupporter": "qui 不会提醒赞助者。"
+    },
     "restart": {
       "button": "重启",
       "confirmTitle": "重启 qui？",

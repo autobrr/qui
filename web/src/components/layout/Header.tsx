@@ -36,7 +36,6 @@ import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { SupportButton } from "@/components/support/SupportButton"
-import { SupportDialog } from "@/components/support/SupportDialog"
 import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import {
@@ -252,7 +251,6 @@ export function Header({
 
   const isGlobSearch = !!searchValue && /[*?]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
-  const [showSupport, setShowSupport] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastFilterToggleRef = useRef(0)
 
@@ -691,7 +689,7 @@ export function Header({
 
 
       <div className={cn("grid grid-cols-[auto_auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none", smInnerHeight)}>
-        <SupportButton onClick={() => setShowSupport(true)} />
+        <SupportButton />
         <ThemeToggle />
         <div className={cn(
           "transition-all duration-300 ease-out overflow-hidden",
@@ -975,7 +973,6 @@ export function Header({
         )
       })()}
 
-      <SupportDialog open={showSupport} onOpenChange={setShowSupport} />
       <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </header>
   )

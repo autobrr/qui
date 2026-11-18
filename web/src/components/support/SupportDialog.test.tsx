@@ -22,9 +22,19 @@ vi.mock("@/hooks/useLicense", () => ({
 
 vi.mock("@/hooks/useMediaQuery", () => ({ useIsPhone: () => false }))
 
+const reminder = vi.hoisted(() => ({ due: false, days: 0, settled: true, isSupporter: false, shortcutHidden: false, reminderOff: false }))
+const answerReminder = vi.hoisted(() => vi.fn())
+vi.mock("@/components/support/reminder", () => ({
+  answerReminder,
+  hideShortcut: vi.fn(),
+  turnOffReminder: vi.fn(),
+  useSupportReminder: () => reminder,
+}))
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { price?: string }) => (options?.price ? `${key} ${options.price}` : key),
+    t: (key: string, options?: { price?: string; count?: number }) =>
+      options?.price ? `${key} ${options.price}` : options?.count !== undefined ? `${key} ${options.count}` : key,
   }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
 }))
@@ -41,6 +51,7 @@ afterEach(() => {
   access.isSupporter = false
   licenses.data = []
   activation.isPending = false
+  reminder.due = false
 })
 
 describe("SupportDialog", () => {
@@ -140,5 +151,19 @@ describe("SupportDialog", () => {
 
     fireEvent.click(screen.getByText("support.removeKey"))
     expect(deletion.mutate).toHaveBeenCalledWith("KEY-1")
+  })
+
+  it("answers a due reminder on open, and keeps the day count for that open", () => {
+    reminder.due = true
+    reminder.days = 412
+    const { rerender } = render(<SupportDialog open onOpenChange={() => {}} />)
+
+    expect(answerReminder).toHaveBeenCalledTimes(1)
+
+    // The answer ends the reminder.
+    reminder.due = false
+    rerender(<SupportDialog open onOpenChange={() => {}} />)
+
+    expect(screen.getByText("support.reminder.serverDays 412")).not.toBeNull()
   })
 })

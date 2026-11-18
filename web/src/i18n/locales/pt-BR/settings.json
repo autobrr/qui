@@ -1136,6 +1136,16 @@
         "lastChecked": "Última verificação: {{date}}"
       }
     },
+    "support": {
+      "description": "O qui é gratuito. Apoiadores e licenças dos temas pagam o trabalho nele.",
+      "open": "Formas de apoiar o qui",
+      "openSupporter": "Seu apoio",
+      "shortcut": "Mostrar o atalho de apoio",
+      "shortcutHelp": "O coração no cabeçalho e “Apoiar o qui” no menu do celular.",
+      "reminder": "Lembrar uma vez por ano",
+      "reminderDescription": "Um lembrete por ano, nunca mais. Desativado enquanto o atalho de apoio está oculto.",
+      "reminderSupporter": "O qui não envia lembretes a apoiadores."
+    },
     "restart": {
       "button": "Reiniciar",
       "confirmTitle": "Reiniciar o qui?",

@@ -6,7 +6,8 @@
 import { openCommandPalette } from "@/components/command-palette/open"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
-import { SupportDialog } from "@/components/support/SupportDialog"
+import { openSupport } from "@/components/support/open"
+import { useSupportShortcutHidden } from "@/components/support/reminder"
 import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -146,7 +147,7 @@ export function MobileFooterNav() {
   useBuiltinThemes()
   const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
-  const [showSupport, setShowSupport] = useState(false)
+  const supportShortcutHidden = useSupportShortcutHidden()
   const { isSupporter } = useHasPremiumAccess()
   const appVersion = getAppVersion()
 
@@ -573,10 +574,12 @@ export function MobileFooterNav() {
               <Palette className="h-4 w-4" />
               {t("nav.appearance")}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowSupport(true)}>
-              <Heart className="h-4 w-4 fill-current text-red-500" />
-              {isSupporter ? t("support.supporter.title") : t("support.title")}
-            </DropdownMenuItem>
+            {!supportShortcutHidden && (
+              <DropdownMenuItem onClick={openSupport}>
+                <Heart className="h-4 w-4 fill-current text-red-500" />
+                {isSupporter ? t("support.supporter.title") : t("support.title")}
+              </DropdownMenuItem>
+            )}
 
             <DropdownMenuSeparator />
 
@@ -642,8 +645,6 @@ export function MobileFooterNav() {
       </div>
 
       {/* Theme selection dialog */}
-      <SupportDialog open={showSupport} onOpenChange={setShowSupport} />
-
       <Dialog open={showThemeDialog} onOpenChange={setShowThemeDialog}>
         {/* Only the theme list scrolls: the mode rows above it and the link below it stay in view.
             A screen under 35rem tall has no room for that, so there the whole dialog scrolls. */}

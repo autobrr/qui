@@ -10,15 +10,25 @@ import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { cn } from "@/lib/utils"
 import { Check, Heart } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { openSupport } from "./open"
+import { ReminderPill } from "./SupportReminder"
+import { useSupportReminder } from "./reminder"
 
-// From this width, the header has room for the word beside the heart of a supporter.
+// From this width, the header has room for the word beside the heart of a supporter, and for the reminder pill.
 const WORD_QUERY = "(min-width: 1280px)"
 
-/** The heart in the header. For a supporter it carries the word "Supporter", or a check where the header is narrow. */
-export function SupportButton({ onClick }: { onClick: () => void }) {
+/**
+ * The heart in the header. For a supporter it carries the word "Supporter", or a check where the header is narrow.
+ * Where the header is wide, it grows into the yearly reminder while the reminder is due.
+ */
+export function SupportButton() {
   const { t } = useTranslation("common")
   const { isSupporter } = useHasPremiumAccess()
+  const reminder = useSupportReminder()
   const wide = useMediaQuery(WORD_QUERY)
+  if (reminder.shortcutHidden) return null
+  if (reminder.due && wide) return <ReminderPill days={reminder.days} />
+
   const worded = isSupporter && wide
   const label = isSupporter ? t("support.supporter.title") : t("support.title")
 
@@ -49,7 +59,7 @@ export function SupportButton({ onClick }: { onClick: () => void }) {
           size={worded ? "sm" : "icon"}
           className={cn("hover:bg-muted transition-colors", worded && "h-9 rounded-full px-1 hover:bg-transparent")}
           aria-label={label}
-          onClick={onClick}
+          onClick={openSupport}
         >
           {mark}
         </Button>

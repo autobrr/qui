@@ -1127,6 +1127,16 @@
         "lastChecked": "上次檢查 {{date}}"
       }
     },
+    "support": {
+      "description": "qui 是免費的。贊助者和主題授權支付 qui 的開發工作。",
+      "open": "支援 qui 的方式",
+      "openSupporter": "您的支援",
+      "shortcut": "顯示支援捷徑",
+      "shortcutHelp": "頁首中的愛心，以及手機選單中的「支援 qui」。",
+      "reminder": "每年提醒一次",
+      "reminderDescription": "每年只提醒一次。隱藏支援捷徑時關閉。",
+      "reminderSupporter": "qui 不會提醒贊助者。"
+    },
     "restart": {
       "button": "重新啟動",
       "confirmTitle": "重新啟動 qui？",

@@ -1136,6 +1136,16 @@
         "lastChecked": "Zuletzt geprüft {{date}}"
       }
     },
+    "support": {
+      "description": "qui ist kostenlos. Supporter und Design-Lizenzen bezahlen die Arbeit daran.",
+      "open": "Wege, qui zu unterstützen",
+      "openSupporter": "Deine Unterstützung",
+      "shortcut": "Verknüpfung zum Unterstützen anzeigen",
+      "shortcutHelp": "Das Herz in der Kopfzeile und „qui unterstützen“ im Menü auf dem Handy.",
+      "reminder": "Einmal im Jahr erinnern",
+      "reminderDescription": "Eine Erinnerung im Jahr, nie mehr. Aus, solange die Verknüpfung zum Unterstützen ausgeblendet ist.",
+      "reminderSupporter": "qui erinnert Supporter nicht."
+    },
     "restart": {
       "button": "Neu starten",
       "confirmTitle": "qui neu starten?",

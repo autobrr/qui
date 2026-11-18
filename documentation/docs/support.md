@@ -42,6 +42,22 @@ To keep the premium themes after your support ends, add the license key in **Set
 1. Open the [customer portal](https://customer.dodopayments.com/login/bus_0NWnkOye8uJm3odwDQQIO) of Dodo Payments. After you add your supporter key, the heart icon in qui also has this link, as **Manage or cancel your support**.
 2. Sign in with the email address of your payment.
 
+### The yearly reminder
+
+qui asks for support one time per year at most. On a wide screen, the reminder is a small item beside the heart in the header. On a narrow screen or a phone, it is a row above the page. It does not open a dialog, and it does not stop your work.
+
+The first reminder comes 7 to 14 days after you update qui, and not before the server is 30 days old. After you answer it, the next reminder comes one year later. qui does not show the reminder in these conditions:
+
+- The server has a supporter key.
+- An update banner or a system notice shows.
+- You hid the heart, or you turned the reminder off.
+
+The reminder shows how many days qui ran on this server. qui counts the days from its first database migration. The count stays on your server, and qui does not send it anywhere.
+
+To stop the reminder, click **Don't ask again** in the message that shows after **Not now**. You can also go to **Settings → Application → Support qui** and turn off **Remind me once a year**.
+
+To hide the heart, click **hide the heart** at the end of the support dialog. You can also turn off **Show the support shortcut** in the same section of Settings. This also hides **Support qui** in the menu on a phone, and it stops the reminder. To open the support dialog while the heart is hidden, click **Ways to support qui** in that section. These settings apply to all browsers that use this qui server.
+
 ## Theme license
 
 Buy a theme license from **Settings → Themes** in your qui instance. The purchase is pay what you want, with a $9.99 minimum, and the license is lifetime. The checkout page shows your license key.

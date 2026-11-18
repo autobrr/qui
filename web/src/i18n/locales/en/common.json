@@ -413,6 +413,24 @@
       "thanks": "Thank you. Your support pays for the time and the tools that go into qui.",
       "detail": "You have the Supporter badge in qui and the supporter role in Discord. Your support also unlocks the premium themes, and it includes a theme license for life. Find the license key in the <portal>license portal</portal>.",
       "manage": "Manage or cancel your support"
+    },
+    "reminder": {
+      "title_one": "{{count}} day of qui on this server",
+      "title_other": "{{count}} days of qui on this server",
+      "tooltip": "Counted on this server and never sent. qui asks once a year.",
+      "subtitle": "Support qui. qui asks once a year.",
+      "notNow": "Not now",
+      "serverDays_one": "This server has run qui for {{count}} day. qui counts that on this server and never sends it.",
+      "serverDays_other": "This server has run qui for {{count}} days. qui counts that on this server and never sends it.",
+      "notNowToast": "qui asks again in a year",
+      "dontAskAgain": "Don't ask again",
+      "offToast": "qui will not ask again",
+      "offToastDescription": "The support shortcut stays. Turn the reminder back on in Settings, under Application.",
+      "undo": "Undo",
+      "hiddenToast": "The support shortcut is hidden",
+      "hiddenToastDescription": "qui will not ask again. Bring the shortcut back in Settings, under Application.",
+      "notForYou": "Not for you? <reminder>Turn off the yearly reminder</reminder>, or <heart>hide the heart</heart>. Settings brings both back.",
+      "notForYouHeart": "Not for you? <heart>Hide the heart</heart>. Settings brings it back."
     }
   },
   "labels": {

@@ -404,6 +404,22 @@
       "thanks": "謝謝。您的支援用於支付投入 qui 的時間與工具。",
       "detail": "您擁有 qui 中的贊助者徽章與 Discord 中的贊助者身分組。您的支援也會解鎖進階主題，並包含一份終身主題授權。請在<portal>授權門戶</portal>中找到授權金鑰。",
       "manage": "管理或取消支援"
+    },
+    "reminder": {
+      "title_other": "qui 已在此伺服器上執行 {{count}} 天",
+      "tooltip": "僅在此伺服器上計算，從不傳送。qui 每年只詢問一次。",
+      "subtitle": "支援 qui。qui 每年只詢問一次。",
+      "notNow": "以後再說",
+      "serverDays_other": "此伺服器已執行 qui {{count}} 天。qui 只在此伺服器上計算這個數字，從不傳送。",
+      "notNowToast": "qui 將在一年後再次詢問",
+      "dontAskAgain": "不再詢問",
+      "offToast": "qui 不會再詢問",
+      "offToastDescription": "支援捷徑會保留。可在設定的應用頁中重新開啟提醒。",
+      "undo": "復原",
+      "hiddenToast": "支援捷徑已隱藏",
+      "hiddenToastDescription": "qui 不會再詢問。可在設定的應用頁中恢復捷徑。",
+      "notForYou": "不感興趣？<reminder>關閉年度提醒</reminder>，或<heart>隱藏愛心</heart>。可在設定中恢復兩者。",
+      "notForYouHeart": "不感興趣？<heart>隱藏愛心</heart>。可在設定中恢復。"
     }
   },
   "labels": {

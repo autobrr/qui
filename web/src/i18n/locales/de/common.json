@@ -413,6 +413,24 @@
       "thanks": "Danke. Deine Unterstützung bezahlt die Zeit und die Werkzeuge, die in qui stecken.",
       "detail": "Du hast das Supporter-Abzeichen in qui und die Supporter-Rolle in Discord. Deine Unterstützung schaltet auch die Premium-Designs frei und enthält eine lebenslange Design-Lizenz. Den Lizenzschlüssel findest du im <portal>Lizenzportal</portal>.",
       "manage": "Unterstützung verwalten oder kündigen"
+    },
+    "reminder": {
+      "title_one": "{{count}} Tag qui auf diesem Server",
+      "title_other": "{{count}} Tage qui auf diesem Server",
+      "tooltip": "Auf diesem Server gezählt und nie gesendet. qui fragt einmal im Jahr.",
+      "subtitle": "qui unterstützen. qui fragt einmal im Jahr.",
+      "notNow": "Nicht jetzt",
+      "serverDays_one": "Dieser Server nutzt qui seit {{count}} Tag. qui zählt das auf diesem Server und sendet es nie.",
+      "serverDays_other": "Dieser Server nutzt qui seit {{count}} Tagen. qui zählt das auf diesem Server und sendet es nie.",
+      "notNowToast": "qui fragt in einem Jahr wieder",
+      "dontAskAgain": "Nicht mehr fragen",
+      "offToast": "qui fragt nicht mehr",
+      "offToastDescription": "Die Verknüpfung zum Unterstützen bleibt. Schalte die Erinnerung unter Einstellungen, Anwendung wieder ein.",
+      "undo": "Rückgängig",
+      "hiddenToast": "Die Verknüpfung zum Unterstützen ist ausgeblendet",
+      "hiddenToastDescription": "qui fragt nicht mehr. Hole die Verknüpfung unter Einstellungen, Anwendung zurück.",
+      "notForYou": "Nichts für dich? <reminder>Schalte die jährliche Erinnerung aus</reminder> oder <heart>blende das Herz aus</heart>. Die Einstellungen bringen beides zurück.",
+      "notForYouHeart": "Nichts für dich? <heart>Blende das Herz aus</heart>. Die Einstellungen bringen es zurück."
     }
   },
   "labels": {
