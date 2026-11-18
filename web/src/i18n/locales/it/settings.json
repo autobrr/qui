@@ -548,6 +548,9 @@
         "unlockDescription": "Paga quanto vuoi (min $9.99) • Licenza a vita • Tutti i temi",
         "activeTitle": "Licenza attiva",
         "activeDescription": "Hai accesso a tutti i temi attuali e futuri",
+        "supporterTitle": "Temi sbloccati",
+        "supporterDescription": "Il tuo sostegno sblocca tutti i temi attuali e futuri. Include una licenza dei temi a vita. Per mantenere i temi dopo la fine del sostegno, aggiungi la chiave di licenza dal portale delle licenze.",
+        "supportEndedDescription": "Il tuo sostegno includeva una licenza dei temi a vita. Trova la sua chiave nel portale delle licenze e aggiungila qui.",
         "activationRequiredTitle": "Attivazione della licenza richiesta",
         "activationRequiredDescription": "La tua licenza deve essere attivata su questa macchina",
         "offlineTitle": "Servizio licenze non raggiungibile",
@@ -660,6 +663,7 @@
       "failedCopyVerify": "Copia del comando di verifica non riuscita",
       "toasts": {
         "activationSuccessPremium": "Licenza attivata! Grazie!",
+        "activationSuccessSupporter": "Chiave da sostenitore aggiunta. Grazie!",
         "paymentCompleted": "Pagamento completato. Aggiungi la tua chiave di licenza per terminare la configurazione.",
         "paymentNotCompleted": "Il pagamento non è stato completato correttamente.",
         "returnedFromCheckout": "Tornato dal checkout. Aggiungi la tua chiave di licenza quando sei pronto.",
@@ -1131,6 +1135,16 @@
         "notCheckedYet": "Non ancora verificato",
         "lastChecked": "Ultimo controllo {{date}}"
       }
+    },
+    "support": {
+      "description": "qui è gratuito. I sostenitori e le licenze dei temi pagano il lavoro su qui.",
+      "open": "Modi per sostenere qui",
+      "openSupporter": "Il tuo sostegno",
+      "shortcut": "Mostra la scorciatoia per il sostegno",
+      "shortcutHelp": "Il cuore nell'intestazione e «Sostieni qui» nel menu su un telefono.",
+      "reminder": "Ricordamelo una volta all'anno",
+      "reminderDescription": "Un promemoria all'anno, mai di più. Disattivato finché la scorciatoia per il sostegno è nascosta.",
+      "reminderSupporter": "qui non invia promemoria a un sostenitore."
     },
     "restart": {
       "button": "Riavvia",

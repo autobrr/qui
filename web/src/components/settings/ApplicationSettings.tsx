@@ -13,6 +13,7 @@ import { Section } from "@/components/kit/Section"
 import { InstallUpdateButton } from "@/components/settings/InstallUpdateButton"
 import { RestartButton } from "@/components/settings/RestartButton"
 import { RestartOverlay } from "@/components/settings/RestartOverlay"
+import { SupportSettings } from "@/components/support/SupportSettings"
 import { Button } from "@/components/ui/button"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useSelfUpdate } from "@/hooks/useSelfUpdate"
@@ -33,7 +34,7 @@ function formatSessionAuth(user: User | undefined): string {
   return username ? `${method} (${username})` : method
 }
 
-/** The Application tab: the build of qui and its updates, the runtime, the sign-in setup, and the storage paths. */
+/** The Application tab: the build of qui and its updates, the support shortcut, the runtime, the sign-in setup, and the storage paths. */
 export function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: boolean; onUpdateOpened: () => void }) {
   const { t } = useTranslation("settings")
   const { formatISOTimestamp, formatTimestamp } = useDateTimeFormatters()
@@ -141,6 +142,8 @@ export function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdat
       >
         <Facts items={buildFacts()} />
       </Section>
+
+      <SupportSettings />
 
       {info && (
         <>

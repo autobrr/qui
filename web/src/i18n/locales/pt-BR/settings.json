@@ -548,6 +548,9 @@
         "unlockDescription": "Pague o que quiser (mínimo $9.99) • Licença vitalícia • Todos os temas",
         "activeTitle": "Licença Ativa",
         "activeDescription": "Você tem acesso a todos os temas atuais e futuros",
+        "supporterTitle": "Temas desbloqueados",
+        "supporterDescription": "Seu apoio desbloqueia todos os temas atuais e futuros. Ele inclui uma licença dos temas vitalícia. Para manter os temas depois que o apoio terminar, adicione a chave de licença do portal de licenças.",
+        "supportEndedDescription": "Seu apoio incluía uma licença dos temas vitalícia. Encontre a chave dela no portal de licenças e adicione-a aqui.",
         "activationRequiredTitle": "Ativação de Licença Necessária",
         "activationRequiredDescription": "Sua licença precisa ser ativada nesta máquina",
         "offlineTitle": "Serviço de licenças inacessível",
@@ -660,6 +663,7 @@
       "failedCopyVerify": "Falha ao copiar comando de verificação",
       "toasts": {
         "activationSuccessPremium": "Licença ativada! Obrigado!",
+        "activationSuccessSupporter": "Chave de apoiador adicionada. Obrigado!",
         "paymentCompleted": "Pagamento concluído. Adicione sua chave de licença para finalizar a configuração.",
         "paymentNotCompleted": "Pagamento não concluído com sucesso.",
         "returnedFromCheckout": "Retornou do checkout. Adicione sua chave de licença quando estiver pronto.",
@@ -1131,6 +1135,16 @@
         "notCheckedYet": "Não verificado ainda",
         "lastChecked": "Última verificação: {{date}}"
       }
+    },
+    "support": {
+      "description": "O qui é gratuito. Apoiadores e licenças dos temas pagam o trabalho nele.",
+      "open": "Formas de apoiar o qui",
+      "openSupporter": "Seu apoio",
+      "shortcut": "Mostrar o atalho de apoio",
+      "shortcutHelp": "O coração no cabeçalho e “Apoiar o qui” no menu do celular.",
+      "reminder": "Lembrar uma vez por ano",
+      "reminderDescription": "Um lembrete por ano, nunca mais. Desativado enquanto o atalho de apoio está oculto.",
+      "reminderSupporter": "O qui não envia lembretes a apoiadores."
     },
     "restart": {
       "button": "Reiniciar",

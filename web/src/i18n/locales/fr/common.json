@@ -371,12 +371,67 @@
   },
   "support": {
     "title": "Soutenir qui",
-    "description": "Vous avez déjà les thèmes et vous voulez aider davantage ? Tout dans qui est déjà à vous. Un abonnement ne débloque aucune fonctionnalité, il finance le temps consacré à leur développement.",
-    "perkPrefix": "Les mécènes obtiennent le rôle",
-    "perkSuffix": "sur Discord et notre éternelle gratitude.",
-    "yearly": "{{price}} / an",
-    "monthly": "{{price}} / mois",
-    "notLicense": "La licence des thèmes fait l'objet d'un achat unique distinct."
+    "description": "Les façons de soutenir qui, et leurs prix.",
+    "heading": "Aidez à maintenir qui",
+    "intro": "qui est gratuit et fonctionne de la même façon, que vous payiez ou non. Le soutien paie le temps et les outils consacrés à qui.",
+    "licensed": "Merci pour votre licence des thèmes.",
+    "releases_one": "qui a publié {{count}} version au cours des 12 derniers mois.",
+    "releases_other": "qui a publié {{count}} versions au cours des 12 derniers mois.",
+    "releaseMap": "Les 52 dernières semaines, un carré par jour. Un carré lumineux est un jour avec une nouvelle version.",
+    "releaseDay": "Un jour avec une nouvelle version",
+    "plans": {
+      "yearly": "{{price}} par an",
+      "yearlyNote": "{{price}} par mois, payé à l'année",
+      "yearlyNoteWithLicense": "{{price}} par mois, payé à l'année. Licence des thèmes incluse.",
+      "license": "Licence des thèmes, dès {{price}}",
+      "licenseNote": "Tous les thèmes premium actuels et futurs, à vie",
+      "onePayment": "paiement unique"
+    },
+    "checkout": "Passer au paiement",
+    "fromPrice": "dès {{price}}",
+    "terms": {
+      "yearly": "Vous payez {{price}} aujourd'hui, puis {{price}} chaque année jusqu'à votre résiliation.",
+      "license": "Un paiement unique de {{price}} ou plus, montant choisi au paiement. Sans abonnement."
+    },
+    "perks": {
+      "yearly": "Les mécènes obtiennent le badge Mécène dans qui et le rôle de mécène sur Discord. Après le paiement, ajoutez votre clé de mécène à ce serveur.",
+      "license": "La licence débloque les thèmes premium. Après le paiement, ajoutez votre clé de licence à ce serveur."
+    },
+    "existing": "Déjà mécène ?",
+    "addKey": "Ajouter votre clé de mécène",
+    "key": {
+      "help": "Votre clé de mécène figure sur la page de paiement et dans l'e-mail contenant votre reçu.",
+      "label": "Clé de mécène",
+      "submit": "Ajouter la clé",
+      "back": "Retour"
+    },
+    "ended": "La clé de mécène de ce serveur n'est plus valide. qui la vérifie à nouveau chaque jour. Si votre soutien a pris fin, vous gardez votre licence des thèmes. Retrouvez sa clé sur le <portal>portail des licences</portal>, puis ajoutez-la dans Paramètres, sous Thèmes.",
+    "removeKey": "Retirer la clé de mécène de ce serveur",
+    "supporter": {
+      "badge": "Mécène",
+      "title": "Vous soutenez qui",
+      "thanks": "Merci. Votre soutien paie le temps et les outils consacrés à qui.",
+      "detail": "Vous avez le badge Mécène dans qui et le rôle de mécène sur Discord. Votre soutien débloque aussi les thèmes premium et inclut une licence des thèmes à vie. Retrouvez la clé de licence sur le <portal>portail des licences</portal>.",
+      "manage": "Gérer ou résilier votre soutien"
+    },
+    "reminder": {
+      "title_one": "{{count}} jour de qui sur ce serveur",
+      "title_other": "{{count}} jours de qui sur ce serveur",
+      "tooltip": "Compté sur ce serveur et jamais envoyé. qui demande une fois par an.",
+      "subtitle": "Soutenir qui. qui demande une fois par an.",
+      "notNow": "Pas maintenant",
+      "serverDays_one": "Ce serveur fait tourner qui depuis {{count}} jour. qui compte cela sur ce serveur et ne l'envoie jamais.",
+      "serverDays_other": "Ce serveur fait tourner qui depuis {{count}} jours. qui compte cela sur ce serveur et ne l'envoie jamais.",
+      "notNowToast": "qui redemandera dans un an",
+      "dontAskAgain": "Ne plus demander",
+      "offToast": "qui ne demandera plus",
+      "offToastDescription": "Le raccourci de soutien reste. Réactivez le rappel dans Paramètres, sous Application.",
+      "undo": "Annuler",
+      "hiddenToast": "Le raccourci de soutien est masqué",
+      "hiddenToastDescription": "qui ne demandera plus. Réaffichez le raccourci dans Paramètres, sous Application.",
+      "notForYou": "Pas pour vous ? <reminder>Désactivez le rappel annuel</reminder> ou <heart>masquez le cœur</heart>. Les paramètres permettent de rétablir les deux.",
+      "notForYouHeart": "Pas pour vous ? <heart>Masquez le cœur</heart>. Les paramètres permettent de le rétablir."
+    }
   },
   "labels": {
     "path": "Chemin"

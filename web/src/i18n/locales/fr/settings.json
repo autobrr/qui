@@ -548,6 +548,9 @@
         "unlockDescription": "Prix libre (min 9.99$) • Licence à vie • Tous les thèmes",
         "activeTitle": "Licence active",
         "activeDescription": "Vous avez accès à tous les thèmes actuels et futurs",
+        "supporterTitle": "Thèmes débloqués",
+        "supporterDescription": "Votre soutien débloque tous les thèmes actuels et futurs. Il inclut une licence des thèmes à vie. Pour garder les thèmes après la fin de votre soutien, ajoutez la clé de licence du portail des licences.",
+        "supportEndedDescription": "Votre soutien incluait une licence des thèmes à vie. Retrouvez sa clé sur le portail des licences, puis ajoutez-la ici.",
         "activationRequiredTitle": "Activation de licence requise",
         "activationRequiredDescription": "Votre licence doit être activée sur cette machine",
         "offlineTitle": "Service de licences injoignable",
@@ -660,6 +663,7 @@
       "failedCopyVerify": "Échec de la copie",
       "toasts": {
         "activationSuccessPremium": "Licence activée ! Merci !",
+        "activationSuccessSupporter": "Clé de mécène ajoutée. Merci !",
         "paymentCompleted": "Paiement validé. Ajoutez votre clé de licence pour terminer.",
         "paymentNotCompleted": "Le paiement n'a pas abouti.",
         "returnedFromCheckout": "Retour du paiement. Ajoutez votre clé de licence dès que vous êtes prêt.",
@@ -1131,6 +1135,16 @@
         "notCheckedYet": "Pas encore vérifié",
         "lastChecked": "Dernière vérification {{date}}"
       }
+    },
+    "support": {
+      "description": "qui est gratuit. Les mécènes et les licences des thèmes paient le travail sur qui.",
+      "open": "Comment soutenir qui",
+      "openSupporter": "Votre soutien",
+      "shortcut": "Afficher le raccourci de soutien",
+      "shortcutHelp": "Le cœur dans l'en-tête, et « Soutenir qui » dans le menu sur un téléphone.",
+      "reminder": "Me le rappeler une fois par an",
+      "reminderDescription": "Un rappel par an, jamais plus. Désactivé tant que le raccourci de soutien est masqué.",
+      "reminderSupporter": "qui n'envoie pas de rappel à un mécène."
     },
     "restart": {
       "button": "Redémarrer",
