@@ -4,8 +4,10 @@
 package automations
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -29,6 +31,8 @@ type transfers struct {
 	previews []transfer.Request
 	// startErr is the answer of Start and Preview, by infohash.
 	startErr map[string]error
+	// previewErr is the answer of Preview alone, by infohash.
+	previewErr map[string]error
 	// preview is the answer of Preview, by infohash. Without one, Preview
 	// answers a Transfer of the torrent alone of 10 bytes, the way of the
 	// request or "sftp".
@@ -57,7 +61,7 @@ func (f *transfers) Preview(_ context.Context, req transfer.Request) (*transfer.
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.previews = append(f.previews, req)
-	if err := f.startErr[req.Hash]; err != nil {
+	if err := cmp.Or(f.startErr[req.Hash], f.previewErr[req.Hash]); err != nil {
 		return nil, err
 	}
 	if preview, ok := f.preview[req.Hash]; ok {
@@ -207,10 +211,12 @@ func TestTransferToInstanceWaitsForAnExportToAnotherInstance(t *testing.T) {
 		exported      string
 		toTheSameSide bool
 		started       []string
+		// asked counts the questions to the module about what a Transfer takes along.
+		asked int
 	}{
 		{name: "the Export is still to do", exported: `{}`, started: []string{}},
 		{name: "the other instance has the torrent", exported: snapshotTorrent, started: []string{runningHash}},
-		{name: "the Export goes to the target of the Transfer", exported: `{}`, toTheSameSide: true, started: []string{runningHash}},
+		{name: "the Export goes to the target of the Transfer", exported: `{}`, toTheSameSide: true, started: []string{runningHash}, asked: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, _, instanceIDs := newStubService(t, nil, newStubQbt(t, snapshotTorrent), newStubQbt(t, tc.exported), newStubQbt(t, `{}`))
@@ -227,6 +233,56 @@ func TestTransferToInstanceWaitsForAnExportToAnotherInstance(t *testing.T) {
 			_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, []*models.Automation{rule}, false)
 			require.NoError(t, err)
 
+			require.Equal(t, tc.started, runner.hashes())
+			require.Len(t, runner.previews, tc.asked)
+		})
+	}
+}
+
+// A Transfer takes the cross-seeds of its torrent along. It waits, in a dry run
+// too, while the Export of another rule still has to bring one of them to
+// another instance.
+// regression: #4242
+func TestTransferToInstanceWaitsForTheExportOfACrossSeed(t *testing.T) {
+	crossSeed := `{"` + stoppedHash + `":{"name":"stopped","state":"stoppedUP","progress":1,"size":10}}`
+	for _, tc := range []struct {
+		name     string
+		exported string
+		alone    bool
+		refused  bool
+		// listed counts the activities of the Transfer in the dry run.
+		listed  int
+		started []string
+	}{
+		{name: "the Export of the cross-seed is still to do", exported: `{}`, started: []string{}},
+		{name: "the other instance has the cross-seed", exported: crossSeed, listed: 1, started: []string{runningHash}},
+		{name: "the Transfer takes no cross-seed along", exported: `{}`, alone: true, listed: 1, started: []string{runningHash}},
+		{name: "the module does not say what the Transfer takes along", exported: `{}`, refused: true, listed: 1, started: []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, instanceIDs := newStubService(t, nil, newStubQbt(t, everyActionTorrents()), newStubQbt(t, tc.exported), newStubQbt(t, `{}`))
+			runner := &transfers{}
+			if !tc.alone {
+				runner.preview = map[string]*transfer.Preview{runningHash: {Way: transfer.WaySFTP, Bytes: 10,
+					Members: []transfer.Member{{Hash: runningHash}, {Hash: stoppedHash}}}}
+			}
+			if tc.refused {
+				runner.previewErr = map[string]error{runningHash: errors.New("no answer")}
+			}
+			svc.SetTransferRunner(runner)
+			svc.SetExportRunner(exportsEnd{})
+			rules := []*models.Automation{
+				transferRule(1, instanceIDs[2], models.TransferToInstanceAction{SavePath: "/archive", Condition: nameIs("running")}),
+				{ID: 2, Name: "export the cross-seed", TrackerPattern: "*", Enabled: true, SortOrder: 2, Conditions: &models.ActionConditions{
+					ExportToInstance: &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: instanceIDs[1], SavePath: "/exported", Condition: nameIs("stopped")}}},
+			}
+
+			planned, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, true)
+			require.NoError(t, err)
+			require.Len(t, transferActivities(t, svc, instanceIDs[0], planned), tc.listed)
+
+			_, err = svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, false)
+			require.NoError(t, err)
 			require.Equal(t, tc.started, runner.hashes())
 		})
 	}

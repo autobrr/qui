@@ -46,6 +46,9 @@ type pendingTransfer struct {
 	savePath      string
 	rule          ruleRef
 	failureReason string
+	// exportsToDo holds, by hash, the target instance of each Export of the
+	// run that still has to bring its torrent there.
+	exportsToDo map[string]int
 }
 
 func (s *Service) now() time.Time {
@@ -111,16 +114,47 @@ func transfersAfterMoves(transfers []pendingTransfer, moved map[string]ruleRef) 
 // still has to bring that torrent to another instance. The Transfer can remove
 // the torrent from the source before the Export reads it. A later run starts it.
 func transfersAfterExports(transfers []pendingTransfer, exports []pendingExportToInstance) []pendingTransfer {
-	exportTargets := make(map[string]int, len(exports))
+	toDo := make(map[string]int, len(exports))
 	for _, export := range exports {
 		if export.mark != exportAlreadyOnTarget {
-			exportTargets[export.hash] = export.action.TargetInstanceID
+			toDo[export.hash] = export.action.TargetInstanceID
 		}
 	}
-	return slices.DeleteFunc(transfers, func(pending pendingTransfer) bool {
-		target, waits := exportTargets[pending.hash]
-		return waits && target != pending.action.TargetInstanceID
+	ready := transfers[:0]
+	for _, pending := range transfers {
+		pending.exportsToDo = toDo
+		if !pending.takesExport([]transfer.Member{{Hash: pending.hash}}) {
+			ready = append(ready, pending)
+		}
+	}
+	return ready
+}
+
+// takesExport reports whether one of the members is a torrent that an Export
+// still has to bring to an instance other than the target of the Transfer.
+func (p pendingTransfer) takesExport(members []transfer.Member) bool {
+	return slices.ContainsFunc(members, func(member transfer.Member) bool {
+		target, waits := p.exportsToDo[strings.ToLower(member.Hash)]
+		return waits && target != p.action.TargetInstanceID
 	})
+}
+
+// start starts the Transfer. It waits when the Transfer takes a cross-seed
+// along that an Export still has to bring to another instance. Only the
+// module knows which torrents a Transfer takes along, so the run asks it
+// first, and a refusal of that question is the refusal of the start.
+func (s *Service) start(ctx context.Context, instanceID int, pending pendingTransfer) (waits bool, err error) {
+	if len(pending.exportsToDo) > 0 {
+		preview, err := s.transferRunner.Preview(ctx, pending.request(instanceID))
+		if err != nil {
+			return false, err
+		}
+		if pending.takesExport(preview.Members) {
+			return true, nil
+		}
+	}
+	_, err = s.transferRunner.Start(ctx, pending.request(instanceID))
+	return false, err
 }
 
 func (p pendingTransfer) request(instanceID int) transfer.Request {
@@ -154,8 +188,8 @@ func (s *Service) startTransfers(ctx context.Context, instanceID int, transfers 
 	for i, pending := range transfers {
 		reason := pending.failureReason
 		if reason == "" {
-			_, err := s.transferRunner.Start(ctx, pending.request(instanceID))
-			if quiet(err) {
+			waits, err := s.start(ctx, instanceID, pending)
+			if waits || quiet(err) {
 				continue
 			}
 			if err != nil && ctx.Err() != nil {
@@ -234,6 +268,9 @@ func (s *Service) recordDryRunTransfers(ctx context.Context, r *stepRun, transfe
 			if err != nil {
 				reason = err.Error()
 			}
+		}
+		if preview != nil && pending.takesExport(preview.Members) {
+			continue
 		}
 		item := buildRunItemFromHash(pending.hash, r.torrentByHash, r.scope)
 		if reason != "" {
