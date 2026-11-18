@@ -302,6 +302,46 @@ func TestTransferToInstanceAsksAgainAnHourAfterARefusal(t *testing.T) {
 }
 
 // regression: #4242
+// A rule matches both torrents of a set that reads one copy of the files
+// through hardlinks. A Transfer torrent leaves the second torrent on the
+// source, and the module refuses its Transfer with ErrStays. The rule records
+// nothing for it and sets no hold, and a dry run lists one Transfer of the set.
+func TestTransferToInstancePassesASetOfHardlinkedCrossSeedsOnce(t *testing.T) {
+	svc, db, runner, instanceIDs := transferRig(t, everyActionTorrents())
+	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
+	runner.startErr = map[string]error{stoppedHash: transfer.ErrStays}
+
+	for range 2 {
+		_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, false)
+		require.NoError(t, err)
+	}
+	require.Equal(t, 2, count(runner.hashes(), stoppedHash), "the next run asks again")
+	stored := storedTransferActivities(t, db, instanceIDs[0])
+	require.Len(t, stored, 4, "each run records the two Transfers that start")
+	for _, activity := range stored {
+		require.NotEqual(t, stoppedHash, activity.Hash)
+		require.Equal(t, models.ActivityOutcomeSuccess, activity.Outcome)
+	}
+
+	runner.startErr = nil
+	runner.preview = map[string]*transfer.Preview{
+		runningHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: runningHash}}, Stay: []string{stoppedHash}},
+		stoppedHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: stoppedHash}}, Stay: []string{runningHash}},
+	}
+	activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, true)
+	require.NoError(t, err)
+	listed := 0
+	for _, view := range transferActivities(t, svc, instanceIDs[0], activities) {
+		var details struct{ Way string }
+		require.NoError(t, json.Unmarshal([]byte(view.Details), &details))
+		if details.Way == string(transfer.WayBitTorrent) {
+			listed += len(view.Items)
+		}
+	}
+	require.Equal(t, 1, listed, "the dry run lists one Transfer torrent for the set")
+}
+
+// regression: #4242
 // When qBittorrent moves a torrent of the group, the module refuses the
 // Transfer with ErrMoving. The rule records nothing and sets no hold, so the
 // next run asks again. A dry run lists nothing for it.

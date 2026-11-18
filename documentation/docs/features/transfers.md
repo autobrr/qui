@@ -24,7 +24,7 @@ To move only a torrent whose files are already on the target, use [Export to Ins
 You can start a Transfer in two ways:
 
 - In the torrent list, right-click one torrent and click **Transfer to instance…**. On a phone, press and hold one torrent to select it. Then tap **More** in the bar at the bottom, and tap **Transfer to instance…**. The dialog shows a summary before the start: the torrents of the group, their size, the way that qui uses, and the free space on the target. If the target has less free space than the Transfer needs, a warning shows next to **Start Transfer**. A warning also shows there if qui cannot see the files on the target.
-- In an automation, add the action **Transfer to Instance**. Each torrent that matches the rule starts one Transfer. A dry run lists the Transfers that the rule starts in a live run. See [Automations](./automations.md#transfer-to-instance).
+- In an automation, add the action **Transfer to Instance**. Each torrent that matches the rule starts one Transfer. A [Transfer torrent](#transfer-torrent) has one exception, for cross-seeds on hardlinks. A dry run lists the Transfers that the rule starts in a live run. See [Automations](./automations.md#transfer-to-instance).
 
 The dialog and the action have the same fields:
 
@@ -76,6 +76,10 @@ The target connects to the [public peer address](./instance-settings.md#public-p
 If an instance uses the default "TCP and μTP" peer connection protocol of qBittorrent, the Transfers page shows a hint. In qui's tests, "TCP only" was about three times faster. qui does not change this setting.
 
 A Transfer torrent cannot make hardlinks on the target. Thus only the torrent that you selected moves, with the torrents that read its files at the same path. A cross-seed that reads the files through hardlinks stays on the source and continues to seed. The summary and the log of the Transfer show how many cross-seeds stay. qui also keeps the files of the moved torrent on the source, because the cross-seeds use the same data. These files use no more disk space.
+
+An automation can match each cross-seed of such a set. The rule then starts a Transfer for one of them. It skips the others while that Transfer is not complete, and while the target has a torrent of the set. The activity log of the rule does not show the torrents that the rule skips.
+
+With **Keep seeding on the source**, the files go to the target one time. With the other two values of **After the Transfer**, the moved torrent leaves the source. The next run of the rule then moves the next cross-seed of the set.
 
 To move these cross-seeds too, give qui file access to the target, on qui's own disk or over SSH. You can also cross-seed again on the target.
 

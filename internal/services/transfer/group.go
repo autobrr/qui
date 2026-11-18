@@ -40,15 +40,15 @@ type RouteReader interface {
 // groupOf returns the Shared-file group of first on its instance, first
 // first, each member read fresh and checked like first. A Transfer torrent
 // makes no hardlinks on the target: with that way, a torrent that reads the
-// files through hardlinks stays out of the group, and stay counts these
-// torrents.
-func (s *Service) groupOf(ctx context.Context, instanceID int, first *source, way Way) (group []*source, stay int, err error) {
+// files through hardlinks stays out of the group, and stay holds the hashes
+// of these torrents.
+func (s *Service) groupOf(ctx context.Context, instanceID int, first *source, way Way) (group []*source, stay []string, err error) {
 	group = []*source{first}
 	seen := map[string]bool{strings.ToLower(first.torrent.Hash): true}
 	for frontier := []string{first.torrent.Hash}; len(frontier) > 0; {
 		res, err := s.deps.Groups.FindDeleteMatches(ctx, map[int][]string{instanceID: frontier})
 		if err != nil {
-			return nil, 0, fmt.Errorf("find the torrents that share the files: %w", err)
+			return nil, nil, fmt.Errorf("find the torrents that share the files: %w", err)
 		}
 		frontier = nil
 		for _, m := range res.Matches {
@@ -58,18 +58,18 @@ func (s *Service) groupOf(ctx context.Context, instanceID int, first *source, wa
 			}
 			seen[hash] = true
 			if m.MatchType == matchHardlink && way == WayBitTorrent {
-				stay++
+				stay = append(stay, hash)
 				continue
 			}
 			member, err := s.readSource(ctx, instanceID, hash)
 			if err != nil {
-				return nil, 0, err
+				return nil, nil, err
 			}
 			if member == nil {
 				continue
 			}
 			if err := member.movable(); err != nil {
-				return nil, 0, refuse("%s shares the files of this torrent: %w", m.Name, err)
+				return nil, nil, refuse("%s shares the files of this torrent: %w", m.Name, err)
 			}
 			group = append(group, member)
 			frontier = append(frontier, hash)

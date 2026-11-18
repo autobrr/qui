@@ -65,8 +65,9 @@ const (
 type planned struct {
 	record *Record
 	group  []*source
-	// stay counts the cross-seeds on hardlinks that stay on the source.
-	stay int
+	// stay holds the hashes of the cross-seeds on hardlinks that stay on the
+	// source.
+	stay []string
 }
 
 // check runs the entry checks and plans the Transfer.
@@ -125,7 +126,7 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	for _, member := range group[1:] {
 		others = append(others, member.torrent.Hash)
 	}
-	if err := s.waitsForUser(ctx, req, others...); err != nil {
+	if err := s.ruleStops(ctx, req, stay, others); err != nil {
 		return nil, err
 	}
 
@@ -166,8 +167,8 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 		startedBy = StartedByUser
 	}
 	var logged []LogLine
-	if stay > 0 {
-		logged = []LogLine{{At: s.deps.Now(), Message: stayLine(stay, source, target)}}
+	if len(stay) > 0 {
+		logged = []LogLine{{At: s.deps.Now(), Message: stayLine(len(stay), source, target)}}
 	}
 	return &planned{stay: stay, group: group, record: &Record{
 		Kind:             KindTransfer,
@@ -185,6 +186,39 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 		Members:          members,
 		Size:             src.torrent.Size,
 	}}, nil
+}
+
+// ruleStops returns why a rule does not start this Transfer: ErrStays or
+// ErrWaitsForUser. A Transfer that the user starts gets no error.
+func (s *Service) ruleStops(ctx context.Context, req Request, stay, others []string) error {
+	if req.StartedBy != StartedByRule {
+		return nil
+	}
+	if err := s.alreadyPasses(ctx, req.SourceInstanceID, req.TargetInstanceID, stay); err != nil {
+		return err
+	}
+	return s.waitsForUser(ctx, req, others...)
+}
+
+// alreadyPasses returns ErrStays when a Transfer holds one of stay, the
+// cross-seeds on hardlinks that this Transfer leaves on the source, or the
+// target has one. A rule matches each cross-seed of such a set, and a Transfer
+// torrent passes the same files for each Transfer that starts.
+func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, stay []string) error {
+	if len(stay) == 0 {
+		return nil
+	}
+	if slices.ContainsFunc(stay, func(hash string) bool { return s.deps.Store.IsClaimed(sourceID, hash) }) {
+		return ErrStays
+	}
+	_, onTarget, err := s.deps.Sync.HasTorrentByAnyHash(ctx, targetID, stay)
+	if err != nil {
+		return fmt.Errorf("read the torrents of instance %d: %w", targetID, err)
+	}
+	if onTarget {
+		return ErrStays
+	}
+	return nil
 }
 
 // waitsForUser returns ErrWaitsForUser for a Transfer that a rule starts when

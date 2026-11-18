@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -56,6 +57,46 @@ func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	var whileHeld error
 	r.startOnWrite(s, func(int64) { _, whileHeld = r.svc.Preview(t.Context(), r.request(s)) })
 	require.ErrorIs(t, whileHeld, transfer.ErrClaimed)
+}
+
+// regression: #4242
+// A rule matches each cross-seed of a set that reads one copy of the files
+// through hardlinks, and a Transfer torrent passes these files for each
+// Transfer that starts. So a rule starts no Transfer of a torrent while a
+// Transfer holds a cross-seed of the set, and while the target has one. The
+// user can still start it.
+func TestARulePassesTheFilesOfHardlinkedCrossSeedsOnce(t *testing.T) {
+	r := newRigOn(t, onDisk, noAccess)
+	r.connect()
+	r.src.Unreachable, r.dst.Unreachable = true, true
+	s := newShow(t, showName)
+	r.seed(s)
+	_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+	byRule := r.request(s)
+	byRule.StartedBy, byRule.RuleID = transfer.StartedByRule, new(7)
+	byRule.Options.After = transfer.AfterKeepSeeding
+	crossSeed := byRule
+	crossSeed.Hash = crossSeedHash
+
+	first := r.run(byRule)
+	require.Equal(t, transfer.FailureTemporary, first.FailureClass)
+	require.False(t, r.dst.Has(s.hash))
+	_, err := r.svc.Start(t.Context(), crossSeed)
+	require.ErrorIs(t, err, transfer.ErrStays, "a Transfer holds the first torrent of the set")
+
+	r.src.Unreachable, r.dst.Unreachable = false, false
+	r.setClock(clock.Add(time.Hour))
+	r.svc.Wake()
+	r.svc.Wait()
+	require.Equal(t, transfer.StateDone, r.get(first.ID).State)
+	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+	_, err = r.svc.Start(t.Context(), crossSeed)
+	require.ErrorIs(t, err, transfer.ErrStays, "the target has the first torrent of the set")
+
+	crossSeed.StartedBy, crossSeed.RuleID = transfer.StartedByUser, nil
+	preview, err := r.svc.Preview(t.Context(), crossSeed)
+	require.NoError(t, err)
+	require.Equal(t, []string{s.hash}, preview.Stay)
 }
 
 // regression: #4242

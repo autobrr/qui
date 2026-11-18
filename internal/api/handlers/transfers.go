@@ -355,7 +355,7 @@ func (h *TransfersHandler) Summary(w http.ResponseWriter, r *http.Request) {
 	}
 	res := transferSummaryResponse{Way: summary.Way, Bytes: summary.Bytes, Members: make([]transferMember, len(summary.Members)),
 		Free: summary.Free, FreeKnown: summary.FreeKnown, NoFileAccess: summary.NoFileAccess,
-		StayOnSource: summary.Stay, Hints: summary.Hints}
+		StayOnSource: len(summary.Stay), Hints: summary.Hints}
 	if res.Hints == nil {
 		res.Hints = []transfer.Hint{}
 	}

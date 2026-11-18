@@ -121,10 +121,12 @@ func (p pendingTransfer) request(instanceID int) transfer.Request {
 
 // quiet reports whether the module turned the Transfer down for a reason
 // that needs no activity: another Transfer holds the torrent, the last one
-// failed for good and waits for the user, or qBittorrent moves a torrent of
-// the group, which the next run asks about again.
+// failed for good and waits for the user, a cross-seed on hardlinks passes or
+// passed the same files, or qBittorrent moves a torrent of the group, which
+// the next run asks about again.
 func quiet(err error) bool {
-	return errors.Is(err, transfer.ErrClaimed) || errors.Is(err, transfer.ErrWaitsForUser) || errors.Is(err, transfer.ErrMoving)
+	return errors.Is(err, transfer.ErrClaimed) || errors.Is(err, transfer.ErrWaitsForUser) ||
+		errors.Is(err, transfer.ErrStays) || errors.Is(err, transfer.ErrMoving)
 }
 
 // startTransfers starts the planned Transfers and records each start and each
@@ -190,7 +192,8 @@ type transferDetails struct {
 // recordDryRunTransfers asks the module for each planned Transfer, as Start
 // would, and records the Transfers that a live run starts, by target and way,
 // each torrent with the size of its Transfer. A torrent that an earlier
-// Transfer takes along shows once.
+// Transfer takes along shows once, and a cross-seed on hardlinks that an
+// earlier Transfer leaves on the source does not show.
 func (s *Service) recordDryRunTransfers(ctx context.Context, r *stepRun, transfers []pendingTransfer) {
 	type group struct {
 		target int
@@ -228,6 +231,9 @@ func (s *Service) recordDryRunTransfers(ctx context.Context, r *stepRun, transfe
 		}
 		for _, member := range preview.Members {
 			taken[strings.ToLower(member.Hash)] = true
+		}
+		for _, hash := range preview.Stay {
+			taken[hash] = true
 		}
 		item.Size = new(preview.Bytes)
 		key := group{pending.action.TargetInstanceID, preview.Way}

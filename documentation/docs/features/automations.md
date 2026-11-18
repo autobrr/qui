@@ -789,6 +789,7 @@ The fields are **Target instance**, **Save path**, **Category**, **Tags**, **Aft
 - You cannot combine it with Delete. In one run, a Delete action of another rule wins over the Transfer, and a Move action makes the Transfer wait.
 - A dry run lists the Transfers that the rule starts in a live run. It does not start them.
 - Each Transfer shows on the **Transfers** page. The activity log of the rule shows when the Transfer started.
+- With a [Transfer torrent](./transfers.md#transfer-torrent), the rule starts one Transfer for a set of cross-seeds that read the same files through hardlinks. It skips the other torrents of the set.
 
 ### Export to Instance
 

@@ -290,9 +290,10 @@ type Preview struct {
 	// two members read at one path once.
 	Bytes   int64
 	Members []Member
-	// Stay counts the cross-seeds that stay on the source: they read the
-	// files through hardlinks, and a Transfer torrent makes no hardlinks.
-	Stay int
+	// Stay holds the hashes of the cross-seeds that stay on the source: they
+	// read the files through hardlinks, and a Transfer torrent makes no
+	// hardlinks.
+	Stay []string
 }
 
 // Preview runs the checks of Start, with its refusals, and records and claims

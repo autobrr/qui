@@ -30,6 +30,10 @@ var (
 	// ErrWaitsForUser is the refusal of a rule to transfer a torrent whose
 	// last Transfer failed permanently: the failure waits for the user.
 	ErrWaitsForUser = errors.New("the last Transfer of this torrent failed and waits for the user")
+	// ErrStays is the refusal of a rule to pass the files of a torrent by a
+	// Transfer torrent again: a cross-seed that reads them through hardlinks
+	// is in a Transfer or on the target.
+	ErrStays = errors.New("a cross-seed that reads the same files through hardlinks is in a Transfer or on the target")
 	// ErrNotFound: no Transfer has the id.
 	ErrNotFound = errors.New("no Transfer has this id")
 	// ErrNotFinished refuses to remove a Transfer that holds its torrents.
