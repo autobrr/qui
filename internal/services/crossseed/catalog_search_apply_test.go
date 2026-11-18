@@ -243,6 +243,15 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 
 // regression: #4181
 func TestCatalogSearchApply(t *testing.T) {
+	t.Run("artwork larger than audio", func(t *testing.T) {
+		piece := sha1.Sum([]byte(strings.Repeat("a", 30) + strings.Repeat("b", 70)))
+		torrent := func(flag string) []byte {
+			data, err := bencode.Marshal(map[string]any{"announce": "https://tracker.example.invalid/announce", "info": map[string]any{"name": "Mira Calder - Illustrated Album (2001) [FLAC]", "source": flag, "piece length": int64(16384), "pieces": string(piece[:]), "files": []map[string]any{{"length": int64(30), "path": []string{"01 - Still Water.flac"}}, {"length": int64(70), "path": []string{"cover.png"}}}}})
+			require.NoError(t, err)
+			return data
+		}
+		catalogReplay(t, torrent("RED"), torrent("OPS"), "orpheus.network", "regular", false)
+	})
 	for _, pair := range []struct{ source, target string }{
 		{"Mira Calder - Morning Is Near (1992) [FLAC]", "Mira Calder - Morning Is Near (1992) [FLAC]"},
 		{"Mira Calder - Beneath Quiet Skies - 2001 [WEB 2011 FLAC 24-96] - HDtracks", "Mira Calder - Beneath Quiet Skies (2002) HDTracks 2011 [FLAC 24-96]"},

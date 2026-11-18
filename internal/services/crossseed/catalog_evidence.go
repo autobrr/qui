@@ -118,7 +118,7 @@ func catalogFileFamily(files qbt.TorrentFiles) rls.Type {
 			books += file.Size
 		}
 	}
-	if audio > 0 && audio >= total-audio {
+	if audio > 0 {
 		return rls.Music
 	}
 	if books > 0 && books >= total-books && audio == 0 {
