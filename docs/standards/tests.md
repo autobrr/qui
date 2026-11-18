@@ -5,7 +5,7 @@
 - A row that shows the bug or the new behavior must fail against the code before the change. A row that expects no output can pass for the wrong reason, so the table also needs a case that does produce output.
 - If a helper returns a value that the caller writes as a durable decision, for example a cooldown stamp or a delete, test the caller expression that writes it. A test of the helper alone does not cover that expression.
 - To test a qBittorrent timeout or cancellation path, put a `&Client{Client: qbt.NewClient(...)}` into `pool.clients` that points at an `httptest` server whose handler waits on `<-r.Context().Done()`. `pool_test.go` has examples. Do not use `NewClientWithTimeout`, because it logs in at once on a detached `context.Background()`. To find a cancellation, use `isContextStopped`, not `errors.Is`. The go-qbittorrent retry wrapper flattens the error, so `errors.Is` does not find `context.Canceled`.
-- A change to a log level, a message text, or a constant needs no test. The reviewer reads the change in the diff.
+- A change to a log level, a message text, or a constant needs no test. The reviewer reads the change in the diff. The exception is the log budget test that `docs/standards/logging.md` asks for.
 - Do not add a test that does only one of these things:
   - It repeats a type or a constant.
   - It checks that a mock got a call, and checks nothing about the result.
