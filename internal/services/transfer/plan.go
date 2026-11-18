@@ -139,14 +139,30 @@ func groupFiles(parts []*part) (files []*groupFile, byRel map[string]*groupFile,
 	return files, byRel, nil
 }
 
-// addLayout is the content layout of the add on the target: the target
-// makes the folder of the .torrent, unless the files on the source share no
-// folder.
+// addLayout is the content layout of the add on the target, the one that
+// gives the files the names that they have on the source: the names of the
+// .torrent, the files of a folder torrent without its folder, or the one
+// file in the folder that the layout "Create subfolder" made for it on the
+// source. Names that no layout gives get a rename after the add.
 func addLayout(info *metainfo.Info, plan []file) qbt.ContentLayout {
-	if info.IsDir() && commonRoot(names(plan)) == "" {
+	switch {
+	case info.IsDir() && commonRoot(names(plan)) == "":
 		return qbt.ContentLayoutSubfolderNone
+	case !info.IsDir() && inOwnFolder(info.BestName(), names(plan)):
+		return qbt.ContentLayoutSubfolderCreate
 	}
 	return qbt.ContentLayoutOriginal
+}
+
+// inOwnFolder reports whether the one file of a torrent is on the source in
+// a folder that qBittorrent can make for it: the name of the file without
+// an extension. qBittorrent decides what the extension is.
+func inOwnFolder(file string, listed []string) bool {
+	if len(listed) != 1 {
+		return false
+	}
+	folder, name, nested := strings.Cut(listed[0], "/")
+	return nested && name == file && (file == folder || strings.HasPrefix(file, folder+"."))
 }
 
 // takenName returns the source name of a file that the .torrent gives

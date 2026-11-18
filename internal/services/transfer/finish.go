@@ -211,13 +211,23 @@ func (j *job) addMembers(ctx context.Context) error {
 		if p.TargetInstanceID != j.target.ID {
 			continue
 		}
+		// A member from an earlier run, or one that needed a rename, can
+		// miss its files on the target.
+		complete := false
 		if !j.added(p) {
-			if err := j.add(ctx, p); err != nil {
+			var err error
+			if complete, err = j.add(ctx, p); err != nil {
 				return err
 			}
 		}
-		if err := j.rename(ctx, p); err != nil {
+		renamed, err := j.rename(ctx, p)
+		if err != nil {
 			return err
+		}
+		if !complete || renamed {
+			if err := j.check(ctx, p); err != nil {
+				return err
+			}
 		}
 		if representative == nil {
 			representative = p
@@ -315,10 +325,12 @@ func (j *job) sameFile(ctx context.Context, a, b string) (bool, error) {
 // add adds the member on the target, stopped and in seed mode. qui records
 // that the target did not have it before the add, and that the target took
 // it after the answer. Without an answer, a torrent on the target may be
-// qui's or the user's.
-func (j *job) add(ctx context.Context, p *part) error {
+// qui's or the user's. It reports whether the target shows the member
+// complete: the target misses the files of a member whose names no layout
+// gives, until the rename and the check after it.
+func (j *job) add(ctx context.Context, p *part) (complete bool, err error) {
 	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash); err != nil {
-		return err
+		return false, err
 	}
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.Add(ctx, torrentadd.Request{
@@ -340,15 +352,40 @@ func (j *job) add(ctx context.Context, p *part) error {
 	})
 	if res.Failure == torrentadd.AddRefused {
 		if onTarget, err := j.svc.has(ctx, j.target.ID, p.Hash); err == nil && onTarget {
-			return j.ownershipUnknown(p)
+			return false, j.ownershipUnknown(p)
 		}
-		return temporary("%s did not take %s: %s", j.target.Name, j.the(p, "the"), describe(res))
+		return false, temporary("%s did not take %s: %s", j.target.Name, j.the(p, "the"), describe(res))
 	}
 	if err := j.stepWith(ctx, StateFinishing, stepAdded, p.Hash); err != nil {
+		return false, err
+	}
+	if res.Outcome != torrentadd.Verified && res.Failure != torrentadd.MissingFiles {
+		return false, temporary("%s did not take %s: %s", j.target.Name, j.the(p, "the"), describe(res))
+	}
+	return res.Outcome == torrentadd.Verified, nil
+}
+
+// check makes sure that the target shows the member complete. A member that
+// had other file names at its add missed its files there, so the target
+// checks them at their names. The member stays stopped.
+func (j *job) check(ctx context.Context, p *part) error {
+	cfg := j.svc.deps.Config
+	req := torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: 1, PollInterval: cfg.PollInterval}
+	res := j.svc.adder.Confirm(ctx, req)
+	if res.Outcome == torrentadd.Verified {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	j.logf("%s does not show %s complete after the add, so it checks the files.", j.target.Name, j.the(p, "the"))
+	req.Polls = cfg.CheckPolls
+	res = j.svc.adder.Recheck(ctx, req)
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if res.Outcome != torrentadd.Verified {
-		return temporary("%s did not take %s: %s", j.target.Name, j.the(p, "the"), describe(res))
+		return temporary("The check of %s on %s did not pass: %s", j.the(p, "the"), j.target.Name, describe(res))
 	}
 	return nil
 }
@@ -417,7 +454,7 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 // finds every piece of the member, also when a stop came during the wait.
 func (j *job) crossSeedChecked(ctx context.Context, p *part) error {
 	cfg := j.svc.deps.Config
-	res := j.svc.adder.Confirm(ctx, torrentadd.Request{
+	res := j.svc.adder.ConfirmRecheck(ctx, torrentadd.Request{
 		InstanceID:   j.crossSeed.ID,
 		Hash:         p.Hash,
 		Polls:        cfg.CheckPolls,
@@ -469,36 +506,47 @@ func commonRoot(names []string) string {
 
 // rename gives each file of the member on the target the name that it has
 // on the source. A file at an old name is a conflict: qBittorrent would move
-// it over the copy.
-func (j *job) rename(ctx context.Context, p *part) error {
+// it over the copy. qBittorrent lists a new name some time after it takes
+// the rename, and refuses a second rename from the old name, so qui sends
+// each rename once and then waits for the names. It reports whether it sent
+// a rename.
+func (j *job) rename(ctx context.Context, p *part) (sent bool, err error) {
 	ctx = qbittorrent.WithPostAddBulkActionRetry(ctx)
 	want := names(p.plan)
-	for range 2 {
+	for poll := range j.svc.deps.Config.Polls {
+		// The first list after the renames comes at once.
+		if poll > 1 {
+			if err := j.pause(ctx, poll); err != nil {
+				return sent, err
+			}
+		}
 		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.target.ID, p.Hash)
 		if err != nil || files == nil || len(*files) != len(want) {
-			return temporary("qui cannot read the files of the torrent on %s: %v", j.target.Name, err)
+			return sent, temporary("qui cannot read the files of the torrent on %s: %v", j.target.Name, err)
 		}
 		listed := slices.SortedFunc(slices.Values(*files), func(a, b qbt.TorrentFile) int { return cmp.Compare(a.Index, b.Index) })
-		renamed := false
+		if slices.EqualFunc(listed, want, func(f qbt.TorrentFile, name string) bool { return f.Name == name }) {
+			return sent, nil
+		}
+		if sent {
+			continue
+		}
 		for i, f := range listed {
 			if f.Name == want[i] {
 				continue
 			}
 			if !j.blind {
 				if err := j.noFileAtOldName(ctx, path.Join(p.dir, f.Name), path.Join(p.dir, want[i])); err != nil {
-					return err
+					return sent, err
 				}
 			}
 			if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
-				return temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)
+				return sent, temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)
 			}
-			renamed = true
 		}
-		if !renamed {
-			return nil
-		}
+		sent = true
 	}
-	return temporary("The file names of the torrent on %s differ from the source.", j.target.Name)
+	return sent, temporary("The file names of the torrent on %s differ from the source.", j.target.Name)
 }
 
 // noFileAtOldName fails when a file is at the old name of a rename on the

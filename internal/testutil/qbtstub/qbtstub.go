@@ -79,6 +79,10 @@ type Torrent struct {
 
 	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
+	// staleNames are the file names from before the last renames, which the
+	// next staleLists torrents/files answers still give.
+	staleNames []string
+	staleLists int
 	// add is set for a torrent that came in through torrents/add.
 	add *added
 }
@@ -149,6 +153,10 @@ type Server struct {
 	// ListAfterSyncs is how many syncs leave out a torrent after its add, as
 	// qBittorrent lists a new torrent only once libtorrent added it.
 	ListAfterSyncs int
+	// StaleFileLists is how many torrents/files answers after a rename
+	// still give the names from before it, as qBittorrent lists a new name
+	// only once libtorrent renamed the file.
+	StaleFileLists int
 	// HashCheck makes a check of an added torrent hash each piece against
 	// its .torrent. Without it, a file passes when its size is right.
 	HashCheck bool
@@ -476,6 +484,10 @@ func (s *Server) fileNames(t *Torrent) []string {
 
 func (s *Server) apiFiles(t *Torrent) []map[string]any {
 	names := s.fileNames(t)
+	if t.staleLists > 0 {
+		t.staleLists--
+		names = t.staleNames
+	}
 	out := make([]map[string]any, 0, len(names))
 	for i, name := range names {
 		size, priority := int64(1), 1

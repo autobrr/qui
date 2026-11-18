@@ -91,6 +91,8 @@ qui does not remove anything from the source before it proves the copy on the ta
 
 With a Transfer torrent, qBittorrent on the target checks each piece that it downloads.
 
+If you renamed a file of the torrent on the source, qui gives the file the same name on the target. qBittorrent on the target then checks the files again. The Transfer continues only when every piece passes.
+
 Files that are already on the target, for example from rclone, are a head start. qui checks them and copies only the files that are missing. If a file on the target has the same name but other content, the Transfer stops and names the file. qui does not overwrite it, because another torrent or your library can use it. qui judges a file only by the pieces that are fully inside the file.
 
 If qui cannot see the files on the target, the summary warns that a file with other content at the same path can be replaced.

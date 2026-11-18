@@ -130,10 +130,17 @@ type Result struct {
 // final reports whether more polls cannot change the result. With the stop
 // condition "files checked", a stopped torrent has ended its check.
 func (r Result) final(s Settings) bool {
-	if s.StopWhenFilesChecked && r.Torrent != nil && r.Outcome == Accepted && stopped(r.Torrent.State) {
+	if s.StopWhenFilesChecked && r.checkedAndStopped() {
 		return true
 	}
 	return r.Outcome == Verified || r.Failure == MissingFiles || r.Failure == Errored
+}
+
+// checkedAndStopped reports whether the torrent is stopped and incomplete,
+// as it is after a check that found pieces missing, when qBittorrent stops
+// the torrent at the end of the check.
+func (r Result) checkedAndStopped() bool {
+	return r.Torrent != nil && r.Outcome == Accepted && stopped(r.Torrent.State)
 }
 
 func stopped(state qbt.TorrentState) bool {
@@ -249,6 +256,39 @@ func (s Settings) options() map[string]string {
 // Confirm polls fresh syncs until the torrent is verified or failed, or the
 // polls run out, as Add does after its add. req.Torrent is not used.
 func (a *Adder) Confirm(ctx context.Context, req Request) Result {
+	return a.confirm(ctx, req, func(_ int, res Result) bool { return res.final(req.Settings) })
+}
+
+// staleStatePolls is how many polls after a recheck can still read the
+// state from before it. qBittorrent recomputes the state that it reports
+// only at its next refresh, 1.5 seconds later by default.
+const staleStatePolls = 3
+
+// Recheck checks the files of a stopped torrent, and waits for the check as
+// ConfirmRecheck does. The torrent stays stopped.
+func (a *Adder) Recheck(ctx context.Context, req Request) Result {
+	if err := a.sync.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), req.InstanceID, []string{req.Hash}, "recheck"); err != nil {
+		return Result{Failure: AfterAddFailed, Err: err}
+	}
+	return a.ConfirmRecheck(ctx, req)
+}
+
+// ConfirmRecheck polls fresh syncs until the recheck that a stopped torrent
+// just got ends, or the polls run out. Verified says that the check found
+// every piece. Of req, it uses InstanceID, Hash, Polls, and PollInterval.
+func (a *Adder) ConfirmRecheck(ctx context.Context, req Request) Result {
+	checking := false
+	return a.confirm(ctx, req, func(poll int, res Result) bool {
+		checking = checking || res.Outcome == Checking
+		// A state that is not a check can be the one from before the
+		// recheck, also a complete one.
+		return (checking || poll >= staleStatePolls) && res.final(Settings{StopWhenFilesChecked: true})
+	})
+}
+
+// confirm polls until final says that the result of a poll, counted from 0,
+// cannot change.
+func (a *Adder) confirm(ctx context.Context, req Request, final func(poll int, res Result) bool) Result {
 	owner, err := a.sync.GetSyncOwner(ctx, req.InstanceID)
 	if err != nil {
 		return Result{Failure: PollFailed, Err: fmt.Errorf("unable to get sync manager: %w", err)}
@@ -263,7 +303,7 @@ func (a *Adder) Confirm(ctx context.Context, req Request) Result {
 			}
 		}
 		res = a.poll(ctx, owner, req)
-		if res.final(req.Settings) {
+		if final(poll, res) {
 			return res
 		}
 	}

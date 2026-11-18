@@ -58,11 +58,17 @@ func NewContentTorrent(t *testing.T, name string, pieceLength int64, files ...Co
 // and running at savePath, with the files that the test wrote there. It
 // returns the infohash.
 func (s *Server) Seed(data []byte, savePath string) string {
+	return s.SeedWithLayout(data, savePath, "")
+}
+
+// SeedWithLayout is Seed with a content layout of qBittorrent, such as
+// "Subfolder" for the layout "Create subfolder".
+func (s *Server) SeedWithLayout(data []byte, savePath, layout string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t, ok := parseTorrent(data)
 	require.True(s.t, ok, "not a torrent")
-	params := map[string]string{"savepath": savePath, "seedMode": "true"}
+	params := map[string]string{"savepath": savePath, "seedMode": "true", "contentLayout": layout}
 	s.place(t, func(key string) string { return params[key] })
 	s.torrents[t.Hash] = t
 	return t.Hash
@@ -163,7 +169,9 @@ func (s *Server) export(w http.ResponseWriter, param func(string) string) {
 }
 
 // renameFile answers torrents/renameFile as libtorrent does: the file moves
-// on disk when it is there, and otherwise only its name changes.
+// on disk when it is there, and otherwise only its name changes. A torrent
+// that misses files still misses them after the rename, until a start or a
+// recheck.
 func (s *Server) renameFile(w http.ResponseWriter, param func(string) string) {
 	t, ok := s.torrents[strings.ToLower(param("hash"))]
 	if !ok {
@@ -179,6 +187,10 @@ func (s *Server) renameFile(w http.ResponseWriter, param func(string) string) {
 	}
 	from := s.diskFiles(t)[index]
 	save := s.anchor(t)
+	if t.staleLists == 0 {
+		t.staleNames = slices.Clone(names)
+	}
+	t.staleLists = s.StaleFileLists
 	names[index] = newPath
 	t.Layout, t.Files = NoRootFolder, names
 	to := filepath.Join(onHost(save), filepath.FromSlash(newPath))
