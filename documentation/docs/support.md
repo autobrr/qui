@@ -41,6 +41,7 @@ To keep the premium themes after your support ends, add the license key in **Set
 
 1. Open the [customer portal](https://customer.dodopayments.com/login/bus_0NWnkOye8uJm3odwDQQIO) of Dodo Payments. After you add your supporter key, the heart icon in qui also has this link, as **Manage or cancel your support**.
 2. Sign in with the email address of your payment.
+3. In the portal, change your plan, or cancel your support.
 
 ### The yearly reminder
 
