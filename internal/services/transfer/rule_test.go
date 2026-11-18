@@ -79,7 +79,7 @@ func TestARulePassesTheFilesOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	for name := range s.files {
 		require.NoError(t, os.Link(filepath.Join(r.srcDir, showName, name), filepath.Join(links, name)))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(links, "Show.nfo"), nfo, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(links, "Show.nfo"), nfo, 0o600))
 	withNFO, crossSeedHash := qbtstub.NewContentTorrent(t, showName, 32,
 		qbtstub.ContentFile{Path: "Show.S01E01.mkv", Data: s.files["Show.S01E01.mkv"]},
 		qbtstub.ContentFile{Path: "Show.S01E02.mkv", Data: s.files["Show.S01E02.mkv"]},
@@ -126,7 +126,7 @@ func TestARuleMovesACrossSeedThatHasOtherFiles(t *testing.T) {
 	for name := range pack.files {
 		require.NoError(t, os.Link(filepath.Join(r.srcDir, showName, name), filepath.Join(links, name)))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(links, "Show.S01E03.mkv"), third, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(links, "Show.S01E03.mkv"), third, 0o600))
 	longer, longerHash := qbtstub.NewContentTorrent(t, showName, 32,
 		qbtstub.ContentFile{Path: "Show.S01E01.mkv", Data: pack.files["Show.S01E01.mkv"]},
 		qbtstub.ContentFile{Path: "Show.S01E02.mkv", Data: pack.files["Show.S01E02.mkv"]},
