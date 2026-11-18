@@ -182,7 +182,7 @@ func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 	}
 	for _, removal := range removals {
 		t.Run(removal.name, func(t *testing.T) {
-			r := newRig(t, func(c *transfer.Config) { c.WakeInterval = time.Millisecond })
+			r := newRig(t)
 			ctx := t.Context()
 			syncNow := func(instanceID int) {
 				t.Helper()
@@ -211,6 +211,10 @@ func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 			for i, h := range helpers {
 				ids = append(ids, r.endedWithHelper(fmt.Sprintf("aaa%d", i), transfer.StateCancelled, h.instanceID, h.hash))
 			}
+			// qui wakes each millisecond only now: a wake runs a row that has
+			// not ended yet.
+			r.deps.Config.WakeInterval = time.Millisecond
+			r.restart()
 
 			removal.remove(r, ids)
 			for _, id := range ids {
