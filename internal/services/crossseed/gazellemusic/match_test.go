@@ -7,7 +7,72 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"golang.org/x/time/rate"
 )
+
+// regression: #4219
+func TestFindMatchBroadFilenameFallback(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		count      int
+		firstExact bool
+		wantMatch  bool
+		wantBrowse int32
+	}{
+		{"20 unrelated results stop", 20, false, false, 1},
+		{"21 unrelated results try another filename", 21, false, true, 2},
+		{"21 results with an exact total stop", 21, true, true, 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var browseCalls, metadataCalls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Query().Get("action") {
+				case "browse":
+					browseCalls.Add(1)
+					results := make([]string, tt.count)
+					for i := range results {
+						results[i] = fmt.Sprintf(`{"torrentId":%d,"size":1000}`, 100+i)
+					}
+					if tt.firstExact {
+						results[len(results)-1] = `{"torrentId":7,"size":300}`
+					} else if r.URL.Query().Get("filelist") == "02 - Brief" {
+						results = []string{`{"torrentId":7,"size":300}`}
+					}
+					_, _ = fmt.Fprintf(w, `{"status":"success","response":{"results":[{"groupId":3,"groupName":"Synthetic Album","torrents":[%s]}]}}`, strings.Join(results, ","))
+				case "torrent":
+					metadataCalls.Add(1)
+					if r.URL.Query().Get("id") != "7" {
+						t.Errorf("metadata fetched for an unequal-total result: %s", r.URL.RawQuery)
+					}
+					_, _ = w.Write([]byte(`{"status":"success","response":{"torrent":{"id":7,"size":300,"infoHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}`))
+				default:
+					t.Errorf("unexpected request: %s", r.URL.RawQuery)
+				}
+			}))
+			t.Cleanup(server.Close)
+			client, err := NewClient("orpheus.network", server.URL, "key")
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.limiter = rate.NewLimiter(rate.Inf, 1)
+			match, err := FindMatch(t.Context(), client, nil, map[string]int64{"Album/01 - A distinctive longer song.flac": 100, "Album/02 - Brief.flac": 200}, 300)
+			if err != nil || (match != nil) != tt.wantMatch {
+				t.Fatalf("match=%+v err=%v, wantMatch=%v", match, err, tt.wantMatch)
+			}
+			if match != nil && (match.TorrentID != 7 || match.Kind != MatchSize || match.TargetHash != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+				t.Fatalf("unexpected match: %+v", match)
+			}
+			var wantMetadata int32
+			if tt.wantMatch {
+				wantMetadata = 1
+			}
+			if browseCalls.Load() != tt.wantBrowse || metadataCalls.Load() != wantMetadata {
+				t.Fatalf("browse=%d metadata=%d, want browse=%d match=%v", browseCalls.Load(), metadataCalls.Load(), tt.wantBrowse, tt.wantMatch)
+			}
+		})
+	}
+}
 
 // regression: #4181
 func TestFindMatchSelectedIdentity(t *testing.T) {

@@ -23,6 +23,8 @@ import (
 
 type MatchKind string
 
+const maxSearchResults = 20
+
 const (
 	MatchHash     MatchKind = "hash"
 	MatchSize     MatchKind = "size"
@@ -88,6 +90,9 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 				}
 				return match, nil
 			}
+		}
+		if len(results) > maxSearchResults {
+			continue
 		}
 		if isMusicFile(fname) {
 			break
