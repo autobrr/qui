@@ -48,7 +48,7 @@ export function StateDetail({ row }: { row: TransferRow }) {
     ]
     return (
       // In its own column, the block has one width, so the column does not change with the speed and the time left.
-      <div className="mt-1.5 w-full max-w-48 space-y-1 @lg:w-52 @lg:max-w-none">
+      <div className="mt-1.5 w-full max-w-48 space-y-1 @lg:w-48">
         <Progress value={percent} aria-label={t("columns.progress")} className="h-1.5" />
         <div className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">{facts.join(" · ")}</div>
       </div>

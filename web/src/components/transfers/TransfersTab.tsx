@@ -202,7 +202,7 @@ export function TransfersTab() {
                     <TableHead className="w-full">{t("columns.torrent")}</TableHead>
                     <TableHead className="hidden text-right @xl:table-cell">{t("columns.size")}</TableHead>
                     {/* The column has the width of a row with progress, so it keeps its width when a Transfer starts or ends. */}
-                    <TableHead className="hidden @lg:table-cell @lg:min-w-56">{t("columns.state")}</TableHead>
+                    <TableHead className="hidden @lg:table-cell @lg:min-w-52">{t("columns.state")}</TableHead>
                     <TableHead className="hidden @2xl:table-cell">{t("columns.started")}</TableHead>
                     {/* The header row takes no hover color, so its pinned cell takes none. */}
                     <TableHead pinEnd className="pr-6 max-sm:pr-4 [tr:hover>&]:bg-card"><span className="sr-only">{t("columns.actions")}</span></TableHead>
