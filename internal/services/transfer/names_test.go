@@ -163,6 +163,28 @@ func TestTransferFailsWhenARenameMovesAnotherFileOverTheCopy(t *testing.T) {
 	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
 }
 
+// A target with a slow status refresh reports the state from before the
+// recheck for longer: complete on trust. qui waits two refresh intervals of
+// the target before it takes a state that no poll saw in a check. So the
+// source keeps the torrent, also with Leave stopped, which needs no start of
+// the torrent on the target.
+// regression: #4242
+func TestTransferWaitsForTheCheckOfATargetWithASlowRefresh(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.dst.RefreshInterval, r.dst.StaleSyncs = 4, 6
+	r.connect()
+	data := numbered("E01", 40)
+	hash := r.seedMovedFolder(data)
+
+	record := r.run(transfer.Request{SourceInstanceID: r.source.ID, Hash: hash, TargetInstanceID: r.target.ID,
+		Options: transfer.Options{After: transfer.AfterRemoveWithFiles, LeaveStopped: true}})
+
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, "The check of the torrent on homelab did not pass: qBittorrent shows stoppedDL", record.FailureReason)
+	require.True(t, r.src.Has(hash), "the source keeps the torrent")
+	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
+}
+
 // A retry also checks the bytes of a torrent that an earlier run renamed,
 // when the target did not take the check of that run.
 // regression: #4242

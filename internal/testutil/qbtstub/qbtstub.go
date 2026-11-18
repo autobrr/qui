@@ -7,6 +7,7 @@
 package qbtstub
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io"
@@ -124,6 +125,11 @@ type Server struct {
 	// AutoManagement reports auto_tmm_enabled turned on: the default
 	// torrent management mode is Automatic.
 	AutoManagement bool
+	// RefreshInterval is reported as the refresh_interval preference, in
+	// milliseconds, 1 without a value. StaleSyncs is how many syncs after a
+	// recheck still report the state from before it, 1 without a value.
+	RefreshInterval int
+	StaleSyncs      int
 	// Platform, when set, makes app/buildInfo answer with this build
 	// platform. Without it the endpoint answers 404.
 	Platform string
@@ -665,7 +671,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": downloadPath,
 			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "auto_tmm_enabled": s.AutoManagement, "torrent_changed_tmm_enabled": true,
 			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs, "listen_port": s.ListenPort,
-			"bittorrent_protocol": s.BittorrentProtocol})
+			"bittorrent_protocol": s.BittorrentProtocol, "refresh_interval": cmp.Or(s.RefreshInterval, 1)})
 	case "sync/maindata":
 		s.syncs++
 		if ch, ok := s.synced[s.syncs]; ok {

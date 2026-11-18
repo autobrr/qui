@@ -6,6 +6,7 @@
 package torrentadd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -259,10 +260,27 @@ func (a *Adder) Confirm(ctx context.Context, req Request) Result {
 	return a.confirm(ctx, req, func(_ int, res Result) bool { return res.final(req.Settings) })
 }
 
-// staleStatePolls is how many polls after a recheck can still read the
-// state from before it. qBittorrent recomputes the state that it reports
-// only at its next refresh, 1.5 seconds later by default.
-const staleStatePolls = 3
+// staleRefreshes is how many status refreshes of qBittorrent can still report
+// the state from before a recheck. qBittorrent recomputes the state that it
+// reports only at a refresh, and a refresh that began before the recheck can
+// end after it.
+const staleRefreshes = 2
+
+// defaultRefreshInterval is the status refresh interval of qBittorrent in
+// milliseconds, for a qBittorrent that does not report its own.
+const defaultRefreshInterval = 1500
+
+// stalePolls is how many polls of req after a recheck can still read the
+// state from before it. The count follows the status refresh interval of the
+// instance, which the user can set far above the default.
+func (a *Adder) stalePolls(ctx context.Context, req Request) (int, error) {
+	prefs, err := a.sync.GetAppPreferences(ctx, req.InstanceID)
+	if err != nil {
+		return 0, fmt.Errorf("read the status refresh interval: %w", err)
+	}
+	refresh := time.Duration(cmp.Or(prefs.RefreshInterval, defaultRefreshInterval)) * time.Millisecond
+	return int(staleRefreshes*refresh/req.PollInterval) + 1, nil
+}
 
 // Recheck checks the files of a stopped torrent, and waits for the check as
 // ConfirmRecheck does. The torrent stays stopped.
@@ -277,12 +295,16 @@ func (a *Adder) Recheck(ctx context.Context, req Request) Result {
 // just got ends, or the polls run out. Verified says that the check found
 // every piece. Of req, it uses InstanceID, Hash, Polls, and PollInterval.
 func (a *Adder) ConfirmRecheck(ctx context.Context, req Request) Result {
+	stale, err := a.stalePolls(ctx, req)
+	if err != nil {
+		return Result{Failure: PollFailed, Err: err}
+	}
 	checking := false
 	return a.confirm(ctx, req, func(poll int, res Result) bool {
 		checking = checking || res.Outcome == Checking
 		// A state that is not a check can be the one from before the
 		// recheck, also a complete one.
-		return (checking || poll >= staleStatePolls) && res.final(Settings{StopWhenFilesChecked: true})
+		return (checking || poll >= stale) && res.final(Settings{StopWhenFilesChecked: true})
 	})
 }
 

@@ -5,6 +5,7 @@ package qbtstub
 
 import (
 	"bytes"
+	"cmp"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -317,8 +318,9 @@ func (s *Server) start(t *Torrent, forced bool) {
 }
 
 // recheck answers torrents/recheck, which ends seed mode. A stopped torrent
-// stays stopped after the check. The next sync still reports the state from
-// before the recheck, as qBittorrent does until its next refresh.
+// stays stopped after the check. The next sync, or the next StaleSyncs syncs,
+// still report the state from before the recheck, as qBittorrent does until
+// its next refresh.
 func (s *Server) recheck(t *Torrent) {
 	a := t.add
 	if a == nil {
@@ -326,7 +328,7 @@ func (s *Server) recheck(t *Torrent) {
 	}
 	if !a.checking {
 		a.staleState, a.staleProgress = a.row()
-		a.staleRows = 1
+		a.staleRows = cmp.Or(s.StaleSyncs, 1)
 	}
 	a.seedMode, a.missing = false, false
 	s.startCheck(t)
