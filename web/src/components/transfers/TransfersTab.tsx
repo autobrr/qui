@@ -154,11 +154,11 @@ export function TransfersTab() {
     if (pageTick === true) clearSelection()
     else setSelection({ kind: "rows", ids: new Set(rows.map(row => row.id)) })
   }
-  // A whole chip offers no Retry, so a retry always names its rows. The picked rows that the step does not fit stay
-  // out of the request, and the message counts them as skipped.
+  // A whole chip offers no Retry, so a retry always names its rows. The picked rows that the step does not fit, or
+  // whose own step still waits for its answer, stay out of the request, and the message counts them as skipped.
   const runBulk = (action: TransferBulkAction) => {
     if (selection.kind === "filter" && action !== "retry") return bulk.mutateAsync({ request: { action, filter }, unfit: 0 })
-    const ids = fittingIds(action, picked)
+    const ids = fittingIds(action, picked.filter(row => runningStep(row.id) === null))
     return bulk.mutateAsync({ request: { action, ids }, unfit: picked.length - ids.length })
   }
   const pickAction = (action: TransferBulkAction) => {

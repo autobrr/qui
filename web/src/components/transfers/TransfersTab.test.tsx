@@ -429,6 +429,34 @@ describe("the Transfers tab", () => {
     expect(requests.filter(r => r.endsWith("/retry"))).toEqual([])
   })
 
+  // regression: #4242
+  it("leaves a row whose own Retry waits for its answer out of a bulk Retry", async () => {
+    let answer: () => void = () => {}
+    const answered = new Promise<void>(resolve => { answer = resolve })
+    server.use(http.post("*/api/transfers/:id/retry", async ({ params }) => {
+      requests.push(`POST /api/transfers/${params.id}/retry`)
+      await answered
+      return HttpResponse.json({ id: 10 }, { status: 202 })
+    }))
+    answerBulk({ done: 1, skipped: 0, failed: 0, reasons: [] })
+    renderTab()
+    const retry = within(await rowOf("Film.2019.2160p-ABC")).getByRole<HTMLButtonElement>("button", { name: "Retry" })
+    fireEvent.click(retry)
+    await waitFor(() => expect(retry.disabled).toBe(true))
+    await tick("Film.2019.2160p-ABC")
+    await tick("Doc.2018.720p-QRS")
+
+    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Retry" }))
+    await waitFor(() => expect(requests.filter(r => r.startsWith("POST /api/transfers/bulk"))).toHaveLength(1))
+    expect(requests.filter(r => r.startsWith("POST"))).toEqual([
+      "POST /api/transfers/2/retry",
+      "POST /api/transfers/bulk {\"action\":\"retry\",\"ids\":[4]}",
+    ])
+    answer()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("1 row runs again.", { description: "1 row stays as it was: the action does not apply to it." }))
+  })
+
   it("picks every row behind the chip, on every page, and sends the chip in place of the ids", async () => {
     const long = { active: 0, waiting: 120, finished: 0, failed: 0 }
     server.use(http.get("*/api/transfers", ({ request }) => {
