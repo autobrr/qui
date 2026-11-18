@@ -108,6 +108,11 @@ func wants(t *Torrent) bool {
 	return !a.stopped && a.checked && !a.checking && a.progress < 1
 }
 
+// allTimeLateSyncs is how many syncs after a download report the downloaded
+// count from before it. A client that polls once a second reads that count a
+// few times.
+const allTimeLateSyncs = 4
+
 // pass writes each wanted file of the torrent to of s that differs from the
 // file of the seeding torrent from of the stub seeder, as a download does, and
 // completes the torrent. A seeder that misses a file sends nothing.
@@ -133,6 +138,7 @@ func (s *Server) pass(seeder *Server, from, to *Torrent) {
 			assert.NoError(s.t, err)
 		}
 		to.add.downloaded += int64(len(data[i]))
+		to.add.allTimeLate = allTimeLateSyncs
 		from.Uploaded += int64(len(data[i]))
 		s.FreeSpace = max(s.FreeSpace-int64(len(data[i])), 0)
 	}

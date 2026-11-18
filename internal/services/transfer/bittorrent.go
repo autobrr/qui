@@ -171,7 +171,12 @@ func (j *job) pass(ctx context.Context, p *part, base int64) error {
 		return err
 	}
 	p.passed = true
-	return j.stepWith(ctx, StateCopying, stepTorrentDone, strconv.FormatInt(torrent.Downloaded, 10))
+	// qBittorrent counts the bytes of a session as they arrive, and adds
+	// them to its count of all sessions about once a second. So that count
+	// misses the last bytes when the download ends, and the count of the
+	// session misses the bytes from before a restart of the client.
+	got := max(torrent.Downloaded, torrent.DownloadedSession)
+	return j.stepWith(ctx, StateCopying, stepTorrentDone, strconv.FormatInt(got, 10))
 }
 
 // blindFreeSpace reads the free space on a target without file access

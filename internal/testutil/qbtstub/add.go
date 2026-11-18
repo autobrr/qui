@@ -74,6 +74,12 @@ type added struct {
 	staleProgress float64
 	// downloaded is the bytes that the torrent got from its peers.
 	downloaded int64
+	// allTime is the count of all sessions, which qBittorrent reports as
+	// downloaded. qBittorrent adds the bytes of a session to it about once a
+	// second, so it is late when a download ends: allTimeLate counts the
+	// syncs that still report the count from before the last bytes.
+	allTime     int64
+	allTimeLate int
 }
 
 // add answers torrents/add for uploaded .torrent files, as qBittorrent 5

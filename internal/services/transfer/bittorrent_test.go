@@ -538,6 +538,7 @@ func TestTransferTorrentRetries(t *testing.T) {
 		source func(s show) map[string]string
 	}{
 		// regression: #4231
+		// regression: #4242
 		{name: "nothing on the target", before: func(*rig, show) {},
 			source: func(show) map[string]string { return map[string]string{} }},
 		// regression: #4231

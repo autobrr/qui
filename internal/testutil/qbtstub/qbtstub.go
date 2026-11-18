@@ -711,7 +711,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				for _, n := range t.add.sizes {
 					size += n
 				}
-				row["size"], row["downloaded"], row["amount_left"] = size, t.add.downloaded, t.add.amountLeft()
+				row["size"], row["amount_left"] = size, t.add.amountLeft()
+				if t.add.allTimeLate > 0 {
+					t.add.allTimeLate--
+				} else {
+					t.add.allTime = t.add.downloaded
+				}
+				row["downloaded"], row["downloaded_session"] = t.add.allTime, t.add.downloaded
 			}
 			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
 				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata
