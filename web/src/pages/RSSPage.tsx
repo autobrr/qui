@@ -1561,13 +1561,13 @@ function RulePreviewSheet({ instanceId, ruleName, open, onOpenChange }: RulePrev
           <SheetTitle>{t("rulePreview.title")}</SheetTitle>
           <SheetDescription>{t("rulePreview.description", { ruleName })}</SheetDescription>
         </SheetHeader>
-        <div className="mt-4">
+        <div className="mt-4 flex min-h-0 flex-1 flex-col pb-[max(1rem,env(safe-area-inset-bottom))]">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : matchingArticles && Object.keys(matchingArticles).length > 0 ? (
-            <ScrollArea className="h-[calc(100vh-200px-var(--app-inset-top)-var(--app-fade-gap))]">
+            <ScrollArea className="min-h-0 flex-1">
               <div className="space-y-4">
                 {Object.entries(matchingArticles).map(([feedUrl, articles]) => (
                   <div key={feedUrl}>
