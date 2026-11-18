@@ -257,7 +257,9 @@ qui shows a preference only where qBittorrent uses it:
 - The write-through disk I/O write mode needs libtorrent 2.0.6 or later. The I2P length variance needs libtorrent 2.0.12 or later. Multiple connections from one peer ID need libtorrent 2.0.13 or later. The STUN server for WebTorrent needs libtorrent 2.1 or later.
 - qui does not show the memory working set limit on Linux or macOS. qui shows Mark-of-the-Web only on macOS and Windows. qBittorrent before 5.0 does not report its platform, so qui shows both there.
 
-The refresh interval, the application instance name, the confirmation of a torrent recheck, the Python executable path, and the lookup of peer host names change only the qBittorrent WebUI or desktop app. qui does not show them.
+The application instance name, the confirmation of a torrent recheck, the Python executable path, and the lookup of peer host names change only the qBittorrent WebUI or desktop app. qui does not show them.
+
+qui does not show the refresh interval. A [Transfer](./transfers.md) reads the refresh interval of the target instance. For two refresh intervals after a recheck, qBittorrent can report the state from before the recheck. In that time, the Transfer accepts a result only if it saw the check run.
 
 #### Network binding
 
