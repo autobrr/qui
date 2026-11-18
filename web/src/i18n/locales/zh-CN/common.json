@@ -373,7 +373,8 @@
     "notLicense": "主题许可证是单独的一次性购买。"
   },
   "labels": {
-    "path": "路径"
+    "path": "路径",
+    "beta": "测试版"
   },
   "kit": {
     "loadFailed": "此部分加载失败。",

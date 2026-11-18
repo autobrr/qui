@@ -391,7 +391,8 @@
     "notLicense": "Licence k motivům je samostatný jednorázový nákup."
   },
   "labels": {
-    "path": "Cesta"
+    "path": "Cesta",
+    "beta": "Beta"
   },
   "kit": {
     "loadFailed": "Tuto sekci se nepodařilo načíst.",

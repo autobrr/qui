@@ -382,7 +382,8 @@
     "notLicense": "La llicència dels temes és una compra única a part."
   },
   "labels": {
-    "path": "Camí"
+    "path": "Camí",
+    "beta": "Beta"
   },
   "kit": {
     "loadFailed": "Aquesta secció no s'ha pogut carregar.",

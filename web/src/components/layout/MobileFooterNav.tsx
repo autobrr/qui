@@ -6,6 +6,7 @@
 import { openCommandPalette } from "@/components/command-palette/open"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
+import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -522,6 +523,7 @@ export function MobileFooterNav() {
                   >
                     <ArrowRightLeft className="h-4 w-4" />
                     {t("nav.transfers")}
+                    <BetaBadge />
                     {transferQueue > 0 && (
                       <Badge variant="default" className="ml-auto" aria-label={t("nav.transfersQueued", { count: transferQueue })}>
                         {transferQueue}

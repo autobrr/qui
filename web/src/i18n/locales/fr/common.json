@@ -382,7 +382,8 @@
     "notLicense": "La licence des thèmes fait l'objet d'un achat unique distinct."
   },
   "labels": {
-    "path": "Chemin"
+    "path": "Chemin",
+    "beta": "Bêta"
   },
   "kit": {
     "loadFailed": "Cette section n'a pas pu être chargée.",

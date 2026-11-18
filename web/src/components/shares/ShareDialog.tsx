@@ -7,6 +7,7 @@ import { ShareOptionFields } from "@/components/shares/ShareOptionFields"
 import { useIncognitoDisplay } from "@/components/transfers/use-incognito-display"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { APIError } from "@/lib/api"
@@ -55,7 +56,7 @@ export function ShareDialog({ open, onOpenChange, instanceId, torrents }: ShareD
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{t("dialog.title")}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">{t("dialog.title")}<BetaBadge /></DialogTitle>
           <DialogDescription>{t("dialog.description", { count: torrents.length, name: torrents[0] ? display.name(torrents[0]) : "" })}</DialogDescription>
         </DialogHeader>
         {settingsQuery.isPending && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}

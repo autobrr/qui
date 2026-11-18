@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { NAV_ITEMS } from "@/components/layout/navigation"
+import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
@@ -147,6 +148,7 @@ export function Sidebar() {
               >
                 <Icon className="h-4 w-4" />
                 {t(item.titleKey)}
+                {item.id === "transfers" && <BetaBadge />}
                 {item.id === "transfers" && transferQueue > 0 && (
                   <span
                     className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-xs text-primary-foreground"

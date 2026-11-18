@@ -382,7 +382,8 @@
     "notLicense": "Die Design-Lizenz ist ein separater einmaliger Kauf."
   },
   "labels": {
-    "path": "Pfad"
+    "path": "Pfad",
+    "beta": "Beta"
   },
   "kit": {
     "loadFailed": "Dieser Abschnitt konnte nicht geladen werden.",

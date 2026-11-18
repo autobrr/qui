@@ -382,7 +382,8 @@
     "notLicense": "A licença dos temas é uma compra única à parte."
   },
   "labels": {
-    "path": "Caminho"
+    "path": "Caminho",
+    "beta": "Beta"
   },
   "kit": {
     "loadFailed": "Não foi possível carregar esta seção.",

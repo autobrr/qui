@@ -5,6 +5,7 @@
 
 import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { SharesTab } from "@/components/shares/SharesTab"
+import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { DEFAULT_TRANSFERS_TAB, TRANSFERS_NAV_GROUPS, type TransfersTab as TransfersSection } from "@/components/transfers/tabs"
 import { TransfersTab } from "@/components/transfers/TransfersTab"
 import { useTranslation } from "react-i18next"
@@ -25,6 +26,7 @@ export function TransfersPage({ activeTab, onTabChange }: TransfersPageProps) {
     <SectionedPage
       title={t("page.title")}
       description={t("page.description")}
+      badge={<BetaBadge />}
       groups={navGroups}
       section={activeTab}
       defaultSection={DEFAULT_TRANSFERS_TAB}

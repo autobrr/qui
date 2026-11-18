@@ -382,7 +382,8 @@
     "notLicense": "The theme license is a separate one-time purchase."
   },
   "labels": {
-    "path": "Path"
+    "path": "Path",
+    "beta": "Beta"
   },
   "kit": {
     "loadFailed": "This section did not load.",

@@ -373,7 +373,8 @@
     "notLicense": "主題授權是單獨的一次性購買。"
   },
   "labels": {
-    "path": "路徑"
+    "path": "路徑",
+    "beta": "測試版"
   },
   "kit": {
     "loadFailed": "此區塊載入失敗。",
