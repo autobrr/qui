@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
 // regression: #4242
@@ -63,15 +66,25 @@ func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 // A rule matches each cross-seed of a set that reads one copy of the files
 // through hardlinks, and a Transfer torrent passes these files for each
 // Transfer that starts. So a rule starts no Transfer of a torrent while a
-// Transfer holds a cross-seed of the set, and while the target has one. The
-// user can still start it.
+// Transfer holds a cross-seed of the set, and while the target has one. An
+// .nfo of its own keeps a cross-seed in the set. The user can still start it.
 func TestARulePassesTheFilesOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	r := newRigOn(t, onDisk, noAccess)
 	r.connect()
 	r.src.Unreachable, r.dst.Unreachable = true, true
 	s := newShow(t, showName)
 	r.seed(s)
-	_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+	links, nfo := filepath.Join(r.srcDir, "links", showName), []byte("another tracker")
+	require.NoError(t, os.MkdirAll(links, 0o755))
+	for name := range s.files {
+		require.NoError(t, os.Link(filepath.Join(r.srcDir, showName, name), filepath.Join(links, name)))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(links, "Show.nfo"), nfo, 0o644))
+	withNFO, crossSeedHash := qbtstub.NewContentTorrent(t, showName, 32,
+		qbtstub.ContentFile{Path: "Show.S01E01.mkv", Data: s.files["Show.S01E01.mkv"]},
+		qbtstub.ContentFile{Path: "Show.S01E02.mkv", Data: s.files["Show.S01E02.mkv"]},
+		qbtstub.ContentFile{Path: "Show.nfo", Data: nfo})
+	r.src.Seed(withNFO, r.srcPath("links"))
 	byRule := r.request(s)
 	byRule.StartedBy, byRule.RuleID = transfer.StartedByRule, new(7)
 	byRule.Options.After = transfer.AfterKeepSeeding
@@ -96,7 +109,41 @@ func TestARulePassesTheFilesOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	crossSeed.StartedBy, crossSeed.RuleID = transfer.StartedByUser, nil
 	preview, err := r.svc.Preview(t.Context(), crossSeed)
 	require.NoError(t, err)
-	require.Equal(t, []string{s.hash}, preview.Stay)
+	require.Equal(t, 1, preview.Stay)
+}
+
+// regression: #4242
+// A longer pack reads the files of a pack through hardlinks and has one more
+// episode. The two do not have the same files, so a rule starts the Transfer
+// of the longer pack while the target has the other one.
+func TestARuleMovesACrossSeedThatHasOtherFiles(t *testing.T) {
+	r := newRigOn(t, onDisk, noAccess)
+	r.connect()
+	pack := newShow(t, showName)
+	r.seed(pack)
+	links, third := filepath.Join(r.srcDir, "links", showName), []byte("the third episode of the show")
+	require.NoError(t, os.MkdirAll(links, 0o755))
+	for name := range pack.files {
+		require.NoError(t, os.Link(filepath.Join(r.srcDir, showName, name), filepath.Join(links, name)))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(links, "Show.S01E03.mkv"), third, 0o644))
+	longer, longerHash := qbtstub.NewContentTorrent(t, showName, 32,
+		qbtstub.ContentFile{Path: "Show.S01E01.mkv", Data: pack.files["Show.S01E01.mkv"]},
+		qbtstub.ContentFile{Path: "Show.S01E02.mkv", Data: pack.files["Show.S01E02.mkv"]},
+		qbtstub.ContentFile{Path: "Show.S01E03.mkv", Data: third})
+	r.src.Seed(longer, r.srcPath("links"))
+	byRule := r.request(pack)
+	byRule.StartedBy, byRule.RuleID = transfer.StartedByRule, new(7)
+	byRule.Options.After = transfer.AfterKeepSeeding
+
+	record := r.run(byRule)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+
+	byRule.Hash = longerHash
+	preview, err := r.svc.Preview(t.Context(), byRule)
+	require.NoError(t, err)
+	require.Equal(t, 1, preview.Stay, "the pack on the target is a cross-seed on hardlinks")
+	require.Empty(t, preview.Versions)
 }
 
 // regression: #4242

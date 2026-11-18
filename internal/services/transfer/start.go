@@ -68,6 +68,9 @@ type planned struct {
 	// stay holds the hashes of the cross-seeds on hardlinks that stay on the
 	// source.
 	stay []string
+	// versions holds those of stay that have the same files as the torrent
+	// of the request. Only a Transfer that a rule starts has them.
+	versions []string
 }
 
 // check runs the entry checks and plans the Transfer.
@@ -126,7 +129,8 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	for _, member := range group[1:] {
 		others = append(others, member.torrent.Hash)
 	}
-	if err := s.ruleStops(ctx, req, stay, others); err != nil {
+	versions, err := s.ruleChecks(ctx, req, source, src, stay, others)
+	if err != nil {
 		return nil, err
 	}
 
@@ -170,7 +174,7 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	if len(stay) > 0 {
 		logged = []LogLine{{At: s.deps.Now(), Message: stayLine(len(stay), source, target)}}
 	}
-	return &planned{stay: stay, group: group, record: &Record{
+	return &planned{stay: stay, versions: versions, group: group, record: &Record{
 		Kind:             KindTransfer,
 		Way:              way,
 		State:            StateWaiting,
@@ -188,30 +192,35 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	}}, nil
 }
 
-// ruleStops returns why a rule does not start this Transfer: ErrStays or
-// ErrWaitsForUser. A Transfer that the user starts gets no error.
-func (s *Service) ruleStops(ctx context.Context, req Request, stay, others []string) error {
+// ruleChecks runs the checks that only a Transfer of a rule gets, and returns
+// ErrStays or ErrWaitsForUser when the rule must not start it. versions holds
+// the torrents of stay that have the same files as first.
+func (s *Service) ruleChecks(ctx context.Context, req Request, source *models.Instance, first *source, stay, others []string) (versions []string, err error) {
 	if req.StartedBy != StartedByRule {
-		return nil
+		return nil, nil
 	}
-	if err := s.alreadyPasses(ctx, req.SourceInstanceID, req.TargetInstanceID, stay); err != nil {
-		return err
+	if versions, err = s.versionsOf(ctx, source, first, stay); err != nil {
+		return nil, err
 	}
-	return s.waitsForUser(ctx, req, others...)
+	if err := s.alreadyPasses(ctx, req.SourceInstanceID, req.TargetInstanceID, versions); err != nil {
+		return nil, err
+	}
+	return versions, s.waitsForUser(ctx, req, others...)
 }
 
-// alreadyPasses returns ErrStays when a Transfer holds one of stay, the
-// cross-seeds on hardlinks that this Transfer leaves on the source, or the
-// target has one. A rule matches each cross-seed of such a set, and a Transfer
-// torrent passes the same files for each Transfer that starts.
-func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, stay []string) error {
-	if len(stay) == 0 {
+// alreadyPasses returns ErrStays when a Transfer holds one of versions, the
+// cross-seeds on hardlinks that have the same files and that this Transfer
+// leaves on the source, or the target has one. A rule matches each torrent of
+// such a set, and a Transfer torrent passes the same files for each Transfer
+// that starts.
+func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, versions []string) error {
+	if len(versions) == 0 {
 		return nil
 	}
-	if slices.ContainsFunc(stay, func(hash string) bool { return s.deps.Store.IsClaimed(sourceID, hash) }) {
+	if slices.ContainsFunc(versions, func(hash string) bool { return s.deps.Store.IsClaimed(sourceID, hash) }) {
 		return ErrStays
 	}
-	_, onTarget, err := s.deps.Sync.HasTorrentByAnyHash(ctx, targetID, stay)
+	_, onTarget, err := s.deps.Sync.HasTorrentByAnyHash(ctx, targetID, versions)
 	if err != nil {
 		return fmt.Errorf("read the torrents of instance %d: %w", targetID, err)
 	}

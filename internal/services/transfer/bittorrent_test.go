@@ -608,7 +608,7 @@ func TestTransferTorrentLeavesAHardlinkedCrossSeed(t *testing.T) {
 
 			summary, err := r.svc.Summary(t.Context(), req)
 			require.NoError(t, err)
-			require.Len(t, summary.Stay, 1)
+			require.Equal(t, 1, summary.Stay)
 			require.Len(t, summary.Members, 1)
 
 			record := r.run(req)

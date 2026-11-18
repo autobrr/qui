@@ -77,9 +77,9 @@ If an instance uses the default "TCP and μTP" peer connection protocol of qBitt
 
 A Transfer torrent cannot make hardlinks on the target. Thus only the torrent that you selected moves, with the torrents that read its files at the same path. A cross-seed that reads the files through hardlinks stays on the source and continues to seed. The summary and the log of the Transfer show how many cross-seeds stay. qui also keeps the files of the moved torrent on the source, because the cross-seeds use the same data. These files use no more disk space.
 
-An automation can match each cross-seed of such a set. The rule then starts a Transfer for one of them. It skips the others while that Transfer is not complete, and while the target has a torrent of the set. The activity log of the rule does not show the torrents that the rule skips.
+An automation can match several cross-seeds that have the same files through hardlinks. The rule then starts a Transfer for one of them. It skips the others while that Transfer is not complete, and while the target has one of them. A file such as an .nfo or a subtitle does not make two cross-seeds different. A cross-seed that has one more video file, for example a longer season pack, gets a Transfer of its own. The activity log of the rule does not show the torrents that the rule skips.
 
-With **Keep seeding on the source**, the files go to the target one time. With the other two values of **After the Transfer**, the moved torrent leaves the source. The next run of the rule then moves the next cross-seed of the set.
+With **Keep seeding on the source**, the files go to the target one time. With the other two values of **After the Transfer**, the moved torrent leaves the source. The next run of the rule then moves the next of these cross-seeds.
 
 To move these cross-seeds too, give qui file access to the target, on qui's own disk or over SSH. You can also cross-seed again on the target.
 

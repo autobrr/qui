@@ -290,10 +290,13 @@ type Preview struct {
 	// two members read at one path once.
 	Bytes   int64
 	Members []Member
-	// Stay holds the hashes of the cross-seeds that stay on the source: they
-	// read the files through hardlinks, and a Transfer torrent makes no
-	// hardlinks.
-	Stay []string
+	// Stay counts the cross-seeds that stay on the source: they read the
+	// files through hardlinks, and a Transfer torrent makes no hardlinks.
+	Stay int
+	// Versions holds the hashes of those that have the same files as the
+	// torrent of the request, for a request of a rule. The rule starts no
+	// Transfer of them while this one runs.
+	Versions []string
 }
 
 // Preview runs the checks of Start, with its refusals, and records and claims
@@ -313,7 +316,8 @@ func (s *Service) Preview(ctx context.Context, req Request) (*Preview, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read the files of instance %d: %w", record.SourceInstanceID, err)
 	}
-	return &Preview{Way: record.Way, Bytes: groupBytes(files.Paths(), plan.group), Members: record.Members, Stay: plan.stay}, nil
+	return &Preview{Way: record.Way, Bytes: groupBytes(files.Paths(), plan.group), Members: record.Members,
+		Stay: len(plan.stay), Versions: plan.versions}, nil
 }
 
 func (s *Service) enqueue(r *Record) {

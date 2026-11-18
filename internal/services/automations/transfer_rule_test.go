@@ -325,8 +325,8 @@ func TestTransferToInstancePassesASetOfHardlinkedCrossSeedsOnce(t *testing.T) {
 
 	runner.startErr = nil
 	runner.preview = map[string]*transfer.Preview{
-		runningHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: runningHash}}, Stay: []string{stoppedHash}},
-		stoppedHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: stoppedHash}}, Stay: []string{runningHash}},
+		runningHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: runningHash}}, Stay: 1, Versions: []string{stoppedHash}},
+		stoppedHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: stoppedHash}}, Stay: 1, Versions: []string{runningHash}},
 	}
 	activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, true)
 	require.NoError(t, err)
