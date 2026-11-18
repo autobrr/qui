@@ -24,13 +24,14 @@ import (
 // regression: #4181
 func TestCatalogApplyObligations(t *testing.T) {
 	for _, tt := range []struct {
-		name      string
-		listing   string
-		wantCheck bool
-		kind      gazellemusic.MatchKind
-		mutate    func(*catalogReplaySync, *CrossSeedRequest)
-		wantAdd   bool
-		wantErr   string
+		name        string
+		listing     string
+		wantCheck   bool
+		failedCheck bool
+		kind        gazellemusic.MatchKind
+		mutate      func(*catalogReplaySync, *CrossSeedRequest)
+		wantAdd     bool
+		wantErr     string
 	}{
 		{name: "full size evidence", kind: gazellemusic.MatchSize, wantAdd: true},
 		{name: "exact files ignore listing group", listing: "Artist-Album-FLAC-2024-SECOND", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
@@ -47,6 +48,7 @@ func TestCatalogApplyObligations(t *testing.T) {
 		{name: "hash exact path exemption", kind: gazellemusic.MatchHash, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "renames honor skip recheck", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "renames require check", kind: gazellemusic.MatchSize, wantCheck: true, wantAdd: true},
+		{name: "renames failed check protects reused files", kind: gazellemusic.MatchSize, wantCheck: true, failedCheck: true, wantAdd: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			name := "Mira Calder - Morning Is Near (1992) [FLAC]"
@@ -102,6 +104,14 @@ func TestCatalogApplyObligations(t *testing.T) {
 				require.Contains(t, sync.bulkActions, "recheck:"+meta.HashV1)
 				pending := <-svc.settler.queue
 				pending.addedAt = time.Now().Add(-time.Minute)
+				if tt.failedCheck {
+					checking := qbt.Torrent{Hash: meta.HashV1, State: qbt.TorrentStateCheckingDl}
+					require.True(t, svc.settler.processPendingRecheckResume(t.Context(), 1, meta.HashV1, pending, checking))
+					partial := qbt.Torrent{Hash: meta.HashV1, State: qbt.TorrentStatePausedDl, Progress: 0.99, AmountLeft: 1, Completed: 109}
+					require.False(t, svc.settler.processPendingRecheckResume(t.Context(), 1, meta.HashV1, pending, partial))
+					require.NotContains(t, svc.settler.sync.(*settleScript).actions, "resume:"+meta.HashV1)
+					return
+				}
 				full := qbt.Torrent{Hash: meta.HashV1, State: qbt.TorrentStatePausedUp, Progress: 1}
 				svc.settler.processPendingRecheckResume(t.Context(), 1, meta.HashV1, pending, full)
 				svc.settler.processPendingRecheckResume(t.Context(), 1, meta.HashV1, pending, full)

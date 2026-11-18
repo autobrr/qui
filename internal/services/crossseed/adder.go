@@ -242,7 +242,7 @@ func (f AddFacts) Verdict() AddVerdict {
 	case dirScanPendingTree:
 		// Download missing files lets the tree fetch its Pending files, also for a disc layout.
 		v.gate = GateAfterRecheck
-	case disc || linkRecheck || f.DirScan:
+	case disc || linkRecheck || f.DirScan || (f.MappedFiles && !f.LinkTree && !f.ReflinkAdd):
 		v.gate = GateComplete
 	default:
 		v.gate = GateBudget
