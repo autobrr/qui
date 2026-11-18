@@ -1054,3 +1054,39 @@ func TestUnlockIsRefused(t *testing.T) {
 	err = r.svc.Unlock(t.Context(), outside.ID)
 	require.EqualError(t, err, "Unlock needs qui's own tracker. With an outside tracker, every downloader gets the address.")
 }
+
+// qBittorrent drops a peer from its list when that peer has every piece, so
+// the list never shows a complete peer.
+// regression: #4242
+func TestAShareOnAnOutsideTrackerEndsWhenTheClientSentEveryByte(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		peers []qbt.TorrentPeer
+		ends  bool
+	}{
+		{name: "the downloader left the peer list", ends: true},
+		{name: "another peer still downloads", peers: []qbt.TorrentPeer{{IP: "198.51.100.9", Port: 6881, Progress: 0.4}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			r.useOutsideTracker()
+			sh := r.start(share.Request{})
+			r.stub.Edit(sh.HelperHash, func(t *qbtstub.Torrent) {
+				t.Uploaded = 66
+				t.Peers = []qbt.TorrentPeer{{IP: "198.51.100.7", Port: 6881, Progress: 0.9}}
+			})
+			r.check()
+			require.Equal(t, share.StateActive, r.get(sh.ID).State)
+
+			r.stub.Edit(sh.HelperHash, func(t *qbtstub.Torrent) { t.Uploaded, t.Peers = 70, tc.peers })
+			r.check()
+
+			if !tc.ends {
+				require.Equal(t, share.StateActive, r.get(sh.ID).State)
+				return
+			}
+			r.requireEnded(sh.ID, "downloaded", "The recipient has the files.")
+			require.Equal(t, int64(70), r.get(sh.ID).Downloaded)
+		})
+	}
+}

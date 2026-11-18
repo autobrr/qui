@@ -199,7 +199,10 @@ func (s *Service) endReason(ctx context.Context, sh *Share, view *clientView) st
 
 // readPeers keeps the connected peers and the uploaded bytes of the Share
 // torrent of a Share on an outside tracker, as best effort, and reports
-// whether a peer has every piece.
+// whether a peer has every piece. qBittorrent drops a peer from its list
+// when that peer has every piece, so the list shows no complete peer: a
+// download counts as complete when the client sent as many bytes as the
+// torrent has and no peer in the list still downloads.
 func (s *Service) readPeers(ctx context.Context, sh *Share, helper *qbt.Torrent) bool {
 	peers, err := s.deps.Sync.GetTorrentPeers(ctx, sh.InstanceID, sh.HelperHash)
 	s.mu.Lock()
@@ -213,13 +216,17 @@ func (s *Service) readPeers(ctx context.Context, sh *Share, helper *qbt.Torrent)
 		log.Debug().Err(err).Int64("share", sh.ID).Msg("share: cannot read the peers of the Share torrent")
 		return false
 	}
-	complete := false
+	complete, downloading := false, false
 	now := s.deps.Now().UTC()
 	for _, p := range peers.Peers {
 		address := net.JoinHostPort(p.IP, strconv.Itoa(p.Port))
 		l.peers[address] = Peer{Address: address, Progress: p.Progress, SeenAt: now}
 		l.downloaded = max(l.downloaded, int64(p.Progress*float64(l.size)))
 		complete = complete || p.Progress >= 1
+		downloading = downloading || p.Progress < 1
+	}
+	if l.uploaded >= l.size && !downloading {
+		complete, l.downloaded = true, l.size
 	}
 	return complete
 }

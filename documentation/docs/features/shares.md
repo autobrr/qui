@@ -170,7 +170,7 @@ Your client and your friend's client must both be able to reach the tracker. The
 With an outside tracker, qui does not see the announces. Thus:
 
 - The list of addresses on the Shares tab shows the peers that your client sees.
-- The end at the first complete download reads the peers of your client and the bytes that it sent. This is best effort. If the Share does not end after the download, click **Stop**.
+- qui cannot see when a download completes. For **End at the first complete download**, qui reads the bytes that your client sent and its list of peers every 30 seconds. The Share ends when your client sent as many bytes as the torrent has and no peer in the list still downloads. This is best effort. If two clients each download a part of the files, the Share can end before one of them has every file. If the Share does not end after the download, click **Stop**.
 - **Only the first downloader** is not available.
 
 The outside tracker sees the IP address of your client and of your friend's client.
