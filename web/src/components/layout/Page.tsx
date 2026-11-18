@@ -34,8 +34,8 @@ interface PageProps {
 export function Page({ title, description, badge, controls, fill = false, back, children }: PageProps) {
   return (
     // Below lg, AppLayout pads main for the bottom nav, so the page adds no bottom padding of its own.
-    // The top bar of AppLayout is 4rem high.
-    <div className={cn("p-4 lg:p-6", fill && "flex h-[calc(100vh-4rem)] flex-col overflow-hidden")}>
+    // With fill, the page is as high as the content box of main, which AppLayout sizes to the screen.
+    <div className={cn("p-4 lg:p-6", fill && "flex h-full flex-col overflow-hidden")}>
       <div className="mb-6 flex shrink-0 flex-wrap items-start gap-x-4 gap-y-3">
         <div className="min-w-0 flex-auto space-y-1">
           {back && (
