@@ -85,10 +85,12 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 	// The fixture reaches the per-torrent paths: every episode is a near miss,
 	// every batch and movie is read from its files, and the warm check reads
 	// the files from the cache.
+	for _, large := range []logbudget.Lines{largeCold, largeWarm} {
+		require.GreaterOrEqual(t, large.Message("[CROSSSEED-SEARCH] File has explicit episode markers, using file for TV detection"), 1000)
+		require.GreaterOrEqual(t, large.Message("[CROSSSEED-SEARCH] Using largest file for content type detection"), 1000)
+	}
 	require.Equal(t, 1000, largeWarm.Message("Webhook check: rejected near miss"))
 	require.Equal(t, nearMissDebugLimit, largeWarm[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}])
-	require.GreaterOrEqual(t, largeWarm.Message("[CROSSSEED-SEARCH] File has explicit episode markers, using file for TV detection"), 1000)
-	require.GreaterOrEqual(t, largeWarm.Message("[CROSSSEED-SEARCH] Using largest file for content type detection"), 1000)
 	require.GreaterOrEqual(t, largeWarm.Message("Using cached torrent files"), 2000)
 
 	logbudget.AssertFlat(t, smallCold, largeCold)
