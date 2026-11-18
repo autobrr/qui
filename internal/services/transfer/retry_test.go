@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -442,4 +443,46 @@ func TestRetryKeepsTheCategoryOfTheTarget(t *testing.T) {
 	})
 	require.True(t, r.src.Has(s.hash), "the source keeps seeding")
 	require.Equal(t, transfer.StateCancelled, r.get(failed.ID).State, "the cancelled row stays")
+}
+
+// A Retry of a Transfer whose request named no save path names none either.
+// The new Transfer goes to the folder that the target has for the category by
+// then, also for a group that stays on manual management.
+// regression: #4242
+func TestRetryUsesTheFolderOfTheCategoryAgain(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		automatic bool
+	}{
+		{name: "the target adds on manual management"},
+		{name: "the target adds on automatic management", automatic: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			r.dst.AutoManagement = tc.automatic
+			r.dst.AddCategory("archive", filepath.Join(r.dstDir, "full"))
+			pack := newPack(t)
+			r.seed(pack)
+			episode, episodeHash := singleFileTorrent(t, episode2, pack.files[episode2])
+			r.src.Seed(episode, r.srcPath(showName))
+			r.dst.Reject = http.StatusInternalServerError
+			failed := r.run(transfer.Request{
+				SourceInstanceID: r.source.ID, Hash: episodeHash, TargetInstanceID: r.target.ID,
+				Placement: transfer.Placement{Category: "archive"},
+			})
+			require.NoError(t, r.svc.Cancel(t.Context(), failed.ID))
+			r.svc.Wait()
+			require.Equal(t, transfer.StateCancelled, r.get(failed.ID).State)
+			r.dst.Reject = 0
+			r.dst.AddCategory("archive", filepath.Join(r.dstDir, "roomy"))
+
+			id, err := r.svc.Retry(t.Context(), failed.ID)
+			require.NoError(t, err)
+			r.svc.Wait()
+
+			record := r.get(id)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, contents(pack, path.Join("roomy", showName)), tree(t, r.dstDir))
+		})
+	}
 }

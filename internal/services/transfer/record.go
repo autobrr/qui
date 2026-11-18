@@ -179,6 +179,10 @@ type Placement struct {
 	Category      string
 	Tags          []string
 	ContentLayout string
+	// SavePathOfTarget is true when the request named no save path, so that
+	// SavePath is the folder that the target has for the category. Start
+	// sets it, and a Retry then names no save path either.
+	SavePathOfTarget bool
 	// AutoTMM is true when the target manages the save path of the member:
 	// the request named no save path, and Automatic Torrent Management is
 	// the default mode of the target. Start sets it.

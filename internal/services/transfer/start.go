@@ -131,11 +131,12 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 
 	placement := req.Placement
 	placement.ContentLayout, placement.AutoTMM = "", false
+	placement.SavePathOfTarget = placement.SavePath == ""
 	targetFiles, err := s.deps.Files.GetBackend(ctx, target.ID)
 	if err != nil {
 		return nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
 	}
-	if placement.SavePath == "" {
+	if placement.SavePathOfTarget {
 		if placement.SavePath, placement.AutoTMM, err = s.categorySavePath(ctx, target, targetFiles, placement.Category); err != nil {
 			return nil, err
 		}

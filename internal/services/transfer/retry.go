@@ -101,8 +101,9 @@ func (s *Service) groupPlacement(ctx context.Context, record *Record) (Placement
 		return m.TargetInstanceID == record.TargetInstanceID
 	}))].Placement
 	placement := Placement{Category: onTarget.Category, Tags: onTarget.Tags}
-	// The request named no save path when the target manages a member.
-	if !slices.ContainsFunc(record.Members, func(m Member) bool { return m.Placement.AutoTMM }) {
+	// A request that named no save path names none again, so the new
+	// Transfer goes to the folder that the target has for the category by then.
+	if !record.Members[0].Placement.SavePathOfTarget {
 		placement.SavePath = topFolder(pathsOf(target, targetFiles, saves[0]), saves)
 	}
 	return placement, nil
