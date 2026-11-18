@@ -8,8 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 const access = vi.hoisted(() => ({ hasPremiumAccess: false, isSupporter: false }))
 const licenses = vi.hoisted(() => ({
-  data: [] as Array<{ licenseKey: string; status: string; productName: string }>,
-  isPending: false,
+  data: [] as Array<{ licenseKey: string; status: string; productName: string }> | undefined,
 }))
 const activation = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }))
 const deletion = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }))
@@ -41,7 +40,7 @@ afterEach(() => {
   access.hasPremiumAccess = false
   access.isSupporter = false
   licenses.data = []
-  licenses.isPending = false
+  activation.isPending = false
 })
 
 describe("SupportDialog", () => {
@@ -74,13 +73,13 @@ describe("SupportDialog", () => {
   })
 
   it("keeps the theme license checkout closed until the license list loads", () => {
-    licenses.isPending = true
+    licenses.data = undefined
     const { rerender } = render(<SupportDialog open onOpenChange={() => {}} />)
     fireEvent.click(screen.getByText("support.plans.license $9.99"))
 
     expect(checkoutHref()).toBeNull()
 
-    licenses.isPending = false
+    licenses.data = []
     rerender(<SupportDialog open onOpenChange={() => {}} />)
 
     expect(checkoutHref()).toContain("redirect_url=")
@@ -98,13 +97,18 @@ describe("SupportDialog", () => {
   })
 
   it("asks for the supporter key after the checkout opens, and activates the key", () => {
-    render(<SupportDialog open onOpenChange={() => {}} />)
+    const { rerender } = render(<SupportDialog open onOpenChange={() => {}} />)
 
     fireEvent.click(screen.getByText("support.checkout"))
     fireEvent.change(screen.getByLabelText("support.key.label"), { target: { value: "  KEY-1  " } })
     fireEvent.click(screen.getByText("support.key.submit"))
 
     expect(activation.mutate.mock.calls[0][0]).toBe("KEY-1")
+
+    activation.isPending = true
+    rerender(<SupportDialog open onOpenChange={() => {}} />)
+
+    expect(screen.getByText("support.key.back").closest("button")?.disabled).toBe(true)
   })
 
   it("thanks a supporter, and offers no plan", () => {

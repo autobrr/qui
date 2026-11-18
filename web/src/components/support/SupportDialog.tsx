@@ -112,7 +112,7 @@ function SupportBody() {
   const { t } = useTranslation("common")
   const isPhone = useIsPhone()
   const { hasPremiumAccess, isSupporter } = useHasPremiumAccess()
-  const { data: licenses, isPending: licensesPending } = useLicenseDetails()
+  const { data: licenses } = useLicenseDetails()
   const deleteLicense = useDeleteLicense()
   const [addingKey, setAddingKey] = useState(false)
   const [planId, setPlanId] = useState<string>(DODO_SUPPORTER_PLANS[0].id)
@@ -237,8 +237,8 @@ function SupportBody() {
               <span className="tabular-nums opacity-90">{t("support.plans.yearly", { price: supporterPlan.price })}</span>
             </a>
           ) : (
-            // Until the license list loads, the server can have a stored theme license that the dialog does not know.
-            <a href={licensesPending ? undefined : themeLicenseCheckoutUrl()} aria-disabled={licensesPending || undefined}>
+            // Without the license list, the server can have a stored theme license that the dialog does not know.
+            <a href={licenses ? themeLicenseCheckoutUrl() : undefined} aria-disabled={!licenses || undefined}>
               <span className="font-medium">{t("support.checkout")}</span>
               <span className="tabular-nums opacity-90">{t("support.fromPrice", { price: THEME_LICENSE_MIN_PRICE })}</span>
             </a>
@@ -291,7 +291,7 @@ function SupporterKeyForm({ onDone }: { onDone: () => void }) {
         {activateLicense.isError && <LicenseError error={activateLicense.error} className="text-xs" />}
       </div>
       <div className="flex gap-2">
-        <Button type="button" variant="outline" className="h-11 flex-1 sm:h-10" onClick={onDone}>
+        <Button type="button" variant="outline" className="h-11 flex-1 sm:h-10" disabled={activateLicense.isPending} onClick={onDone}>
           {t("support.key.back")}
         </Button>
         <Button type="submit" className="h-11 flex-1 sm:h-10" disabled={!key.trim() || activateLicense.isPending}>
