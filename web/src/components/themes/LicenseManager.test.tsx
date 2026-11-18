@@ -18,7 +18,7 @@ const licenses = vi.hoisted(() => ({
 }))
 const invalidLicenses = licenses.data
 const deleteLicense = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }))
-const premiumAccess = vi.hoisted(() => ({ hasPremiumAccess: false, isLoading: false }))
+const premiumAccess = vi.hoisted(() => ({ hasPremiumAccess: false, isSupporter: false, isLoading: false }))
 const formatters = vi.hoisted(() => ({ formatDate: () => "" }))
 
 vi.mock("@/hooks/useLicense", () => ({
@@ -48,6 +48,7 @@ afterEach(() => {
   activation.isError = false
   licenses.data = invalidLicenses
   premiumAccess.hasPremiumAccess = false
+  premiumAccess.isSupporter = false
 })
 
 describe("LicenseManager", () => {
@@ -83,6 +84,7 @@ describe("LicenseManager", () => {
   it("lets a supporter add the theme license, and does not show the supporter key as one", () => {
     licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "active", productName: "supporter" }]
     premiumAccess.hasPremiumAccess = true
+    premiumAccess.isSupporter = true
     render(<LicenseManager />)
 
     expect(screen.getByText("themes.license.status.supporterTitle")).not.toBeNull()
@@ -97,6 +99,7 @@ describe("LicenseManager", () => {
       { licenseKey: "TEST-KEY-0001", status: "active", productName: "supporter" },
     ]
     premiumAccess.hasPremiumAccess = true
+    premiumAccess.isSupporter = true
     render(<LicenseManager />)
 
     expect(screen.getByText("themes.license.status.supporterTitle")).not.toBeNull()
@@ -110,10 +113,23 @@ describe("LicenseManager", () => {
       { licenseKey: "TEST-KEY-0001", status: "active", productName: "supporter" },
     ]
     premiumAccess.hasPremiumAccess = true
+    premiumAccess.isSupporter = true
     render(<LicenseManager />)
 
     expect(screen.getByText("themes.license.status.activeTitle")).not.toBeNull()
     expect(screen.getByText("themes.license.status.activeDescription")).not.toBeNull()
+  })
+
+  it("credits an older theme license, not support that ended, when the newest theme license is offline", () => {
+    licenses.data = [
+      { licenseKey: "TEST-KEY-0000", status: "offline", productName: "premium" },
+      { licenseKey: "TEST-KEY-0001", status: "invalid", productName: "supporter" },
+    ]
+    premiumAccess.hasPremiumAccess = true
+    render(<LicenseManager />)
+
+    expect(screen.getByText("themes.license.status.activeTitle")).not.toBeNull()
+    expect(screen.queryByText("themes.license.status.supporterTitle")).toBeNull()
   })
 
   it("tells a past supporter where the theme license key is", () => {

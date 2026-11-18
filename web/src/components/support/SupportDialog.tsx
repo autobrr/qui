@@ -112,7 +112,7 @@ function SupportBody() {
   const { t } = useTranslation("common")
   const isPhone = useIsPhone()
   const { hasPremiumAccess, isSupporter } = useHasPremiumAccess()
-  const { data: licenses } = useLicenseDetails()
+  const { data: licenses, isPending: licensesPending } = useLicenseDetails()
   const deleteLicense = useDeleteLicense()
   const [addingKey, setAddingKey] = useState(false)
   const [planId, setPlanId] = useState<string>(DODO_SUPPORTER_PLANS[0].id)
@@ -230,14 +230,15 @@ function SupportBody() {
 
       {/* On a phone, the checkout button stays in view under the text that scrolls. */}
       <div className={cn("space-y-2", isPhone && "sticky bottom-0 order-last -mx-5 border-t bg-background px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]")}>
-        <Button className="h-12 w-full justify-between px-4 sm:h-11" asChild>
+        <Button className="h-12 w-full justify-between px-4 aria-disabled:pointer-events-none aria-disabled:opacity-50 sm:h-11" asChild>
           {supporterPlan ? (
             <a href={supporterPlan.url} target="_blank" rel="noopener noreferrer" onClick={() => setAddingKey(true)}>
               <span className="font-medium">{t("support.checkout")}</span>
               <span className="tabular-nums opacity-90">{t("support.plans.yearly", { price: supporterPlan.price })}</span>
             </a>
           ) : (
-            <a href={themeLicenseCheckoutUrl()}>
+            // Until the license list loads, the server can have a stored theme license that the dialog does not know.
+            <a href={licensesPending ? undefined : themeLicenseCheckoutUrl()} aria-disabled={licensesPending || undefined}>
               <span className="font-medium">{t("support.checkout")}</span>
               <span className="tabular-nums opacity-90">{t("support.fromPrice", { price: THEME_LICENSE_MIN_PRICE })}</span>
             </a>

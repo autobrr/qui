@@ -7,7 +7,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const access = vi.hoisted(() => ({ hasPremiumAccess: false, isSupporter: false }))
-const licenses = vi.hoisted(() => ({ data: [] as Array<{ licenseKey: string; status: string; productName: string }> }))
+const licenses = vi.hoisted(() => ({
+  data: [] as Array<{ licenseKey: string; status: string; productName: string }>,
+  isPending: false,
+}))
 const activation = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }))
 const deletion = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }))
 
@@ -38,6 +41,7 @@ afterEach(() => {
   access.hasPremiumAccess = false
   access.isSupporter = false
   licenses.data = []
+  licenses.isPending = false
 })
 
 describe("SupportDialog", () => {
@@ -67,6 +71,19 @@ describe("SupportDialog", () => {
     render(<SupportDialog open onOpenChange={() => {}} />)
 
     expect(screen.queryByText("support.plans.license $9.99")).toBeNull()
+  })
+
+  it("keeps the theme license checkout closed until the license list loads", () => {
+    licenses.isPending = true
+    const { rerender } = render(<SupportDialog open onOpenChange={() => {}} />)
+    fireEvent.click(screen.getByText("support.plans.license $9.99"))
+
+    expect(checkoutHref()).toBeNull()
+
+    licenses.isPending = false
+    rerender(<SupportDialog open onOpenChange={() => {}} />)
+
+    expect(checkoutHref()).toContain("redirect_url=")
   })
 
   it("goes back to a yearly plan when the picked theme license goes away", () => {

@@ -51,7 +51,7 @@ export function LicenseManager({
   const { formatDate } = useDateTimeFormatters()
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
 
-  const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
+  const { hasPremiumAccess, isSupporter, isLoading } = useHasPremiumAccess()
   const { data: licenses } = useLicenseDetails()
   const activateLicense = useActivateLicense()
   const deleteLicense = useDeleteLicense()
@@ -75,7 +75,7 @@ export function LicenseManager({
   const showPurchase = !hasPremiumAccess && !hasInvalidLicense && !isOfflineLicense
   let accessTitle = t("themes.license.status.unlockTitle")
   let accessDescription = t("themes.license.status.unlockDescription")
-  if (hasPremiumAccess && supporterKey && primaryLicense?.status !== "active") {
+  if (isSupporter && primaryLicense?.status !== "active") {
     // With no active theme license, the access comes from the supporter key.
     accessTitle = t("themes.license.status.supporterTitle")
     accessDescription = t("themes.license.status.supporterDescription")
