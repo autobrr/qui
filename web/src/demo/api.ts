@@ -108,6 +108,7 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/filter-views", () => json([]))
   on("GET", "/tracker-icons", () => json({}))
   on("GET", "/license/licensed", () => json({ licensed: false }))
+  on("GET", "/license/licenses", () => json([]))
   on("GET", "/version", () => json({ version: "demo", updateAvailable: false, selfUpdate: false, selfUpdateUnavailableReason: "development", restart: false }))
   on("GET", "/version/latest", () => json(null))
   on("GET", "/system-notices", () => json([]))

@@ -548,6 +548,8 @@
         "unlockDescription": "Zahle, was du möchtest (min. 9,99 $) • Lebenslange Lizenz • Alle Designs",
         "activeTitle": "Lizenz aktiv",
         "activeDescription": "Du hast Zugriff auf alle aktuellen und zukünftigen Designs",
+        "supporterDescription": "Deine Unterstützung schaltet alle aktuellen und zukünftigen Designs frei. Sie enthält eine lebenslange Design-Lizenz. Damit du die Designs auch nach dem Ende deiner Unterstützung behältst, füge den Lizenzschlüssel aus dem Lizenzportal hinzu.",
+        "supportEndedDescription": "Deine Unterstützung enthielt eine lebenslange Design-Lizenz. Ihren Schlüssel findest du im Lizenzportal. Füge ihn hier hinzu.",
         "activationRequiredTitle": "Lizenzaktivierung erforderlich",
         "activationRequiredDescription": "Deine Lizenz muss auf diesem Gerät aktiviert werden",
         "offlineTitle": "Lizenzdienst nicht erreichbar",
@@ -660,6 +662,7 @@
       "failedCopyVerify": "Verifizierungsbefehl konnte nicht kopiert werden",
       "toasts": {
         "activationSuccessPremium": "Lizenz aktiviert! Vielen Dank!",
+        "activationSuccessSupporter": "Supporter-Schlüssel hinzugefügt. Vielen Dank!",
         "paymentCompleted": "Zahlung abgeschlossen. Füge deinen Lizenzschlüssel hinzu, um die Einrichtung abzuschließen.",
         "paymentNotCompleted": "Die Zahlung wurde nicht erfolgreich abgeschlossen.",
         "returnedFromCheckout": "Vom Checkout zurückgekehrt. Füge deinen Lizenzschlüssel hinzu, sobald du bereit bist.",

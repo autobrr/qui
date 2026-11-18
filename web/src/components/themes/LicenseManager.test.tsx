@@ -47,6 +47,7 @@ afterEach(() => {
   activation.isPending = false
   activation.isError = false
   licenses.data = invalidLicenses
+  premiumAccess.hasPremiumAccess = false
 })
 
 describe("LicenseManager", () => {
@@ -77,6 +78,25 @@ describe("LicenseManager", () => {
     expect(screen.queryByText("themes.license.actions.reactivate")).toBeNull()
     expect(screen.queryByText("themes.license.actions.addLicense")).toBeNull()
     expect(screen.queryByText("themes.license.actions.getPremium")).toBeNull()
+  })
+
+  it("lets a supporter add the theme license, and does not show the supporter key as one", () => {
+    licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "active", productName: "supporter" }]
+    premiumAccess.hasPremiumAccess = true
+    render(<LicenseManager />)
+
+    expect(screen.getByText("themes.license.status.supporterDescription")).not.toBeNull()
+    expect(screen.getByText("themes.license.actions.addLicense")).not.toBeNull()
+    expect(screen.queryByText("themes.license.actions.remove")).toBeNull()
+  })
+
+  it("tells a past supporter where the theme license key is", () => {
+    licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "invalid", productName: "supporter" }]
+    render(<LicenseManager />)
+
+    expect(screen.getByText("themes.license.status.supportEndedDescription")).not.toBeNull()
+    expect(screen.queryByText("themes.license.actions.reactivate")).toBeNull()
+    expect(screen.getByText("themes.license.actions.getPremium")).not.toBeNull()
   })
 
   it.each([

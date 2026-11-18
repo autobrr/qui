@@ -542,6 +542,8 @@
         "unlockDescription": "随心付费（最低 $9.99）· 终身许可证 · 所有主题",
         "activeTitle": "许可证已激活",
         "activeDescription": "您可以使用所有当前和未来的主题",
+        "supporterDescription": "您的支持会解锁所有当前和未来的主题，并包含一份终身主题许可证。如需在支持结束后保留这些主题，请添加许可证门户中的许可证密钥。",
+        "supportEndedDescription": "您的支持包含一份终身主题许可证。请在许可证门户中找到它的密钥，并在此处添加。",
         "activationRequiredTitle": "需要激活许可证",
         "activationRequiredDescription": "您的许可证需要在此设备上激活",
         "offlineTitle": "无法连接许可证服务",
@@ -654,6 +656,7 @@
       "failedCopyVerify": "复制验证命令失败",
       "toasts": {
         "activationSuccessPremium": "许可证已激活！感谢您的支持！",
+        "activationSuccessSupporter": "赞助者密钥已添加。感谢您！",
         "paymentCompleted": "支付完成。请添加您的许可证密钥以完成设置。",
         "paymentNotCompleted": "支付未成功完成。",
         "returnedFromCheckout": "已从结账返回。准备好后请添加您的许可证密钥。",

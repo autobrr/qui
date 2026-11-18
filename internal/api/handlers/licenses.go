@@ -60,6 +60,7 @@ type ValidateLicenseResponse struct {
 // PremiumAccessResponse represents the response for premium access status
 type PremiumAccessResponse struct {
 	HasPremiumAccess bool `json:"hasPremiumAccess"`
+	IsSupporter      bool `json:"isSupporter"`
 }
 
 // LicenseInfo represents basic license information for UI display
@@ -212,8 +213,18 @@ func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	isSupporter, err := h.licenseService.IsSupporter(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to check supporter status")
+		RespondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "Failed to check supporter status",
+		})
+		return
+	}
+
 	RespondJSON(w, http.StatusOK, PremiumAccessResponse{
 		HasPremiumAccess: hasPremium,
+		IsSupporter:      isSupporter,
 	})
 }
 

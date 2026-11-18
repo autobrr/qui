@@ -542,6 +542,8 @@
         "unlockDescription": "원하는 만큼 지불(최소 $9.99) • 평생 라이선스 • 모든 테마",
         "activeTitle": "라이선스 활성화됨",
         "activeDescription": "현재 및 향후 모든 테마에 접근할 수 있습니다",
+        "supporterDescription": "후원으로 현재 및 향후 모든 테마가 잠금 해제됩니다. 평생 사용할 수 있는 테마 라이선스가 포함됩니다. 후원이 끝난 뒤에도 테마를 유지하려면 라이선스 포털에서 라이선스 키를 받아 추가하세요.",
+        "supportEndedDescription": "후원에 평생 사용할 수 있는 테마 라이선스가 포함되어 있었습니다. 라이선스 포털에서 키를 찾아 여기에 추가하세요.",
         "activationRequiredTitle": "라이선스 활성화 필요",
         "activationRequiredDescription": "이 컴퓨터에서 라이선스를 활성화해야 합니다",
         "offlineTitle": "라이선스 서비스에 연결할 수 없음",
@@ -654,6 +656,7 @@
       "failedCopyVerify": "확인 명령을 복사하지 못했습니다",
       "toasts": {
         "activationSuccessPremium": "라이선스가 활성화되었습니다! 감사합니다!",
+        "activationSuccessSupporter": "후원자 키가 추가되었습니다. 감사합니다!",
         "paymentCompleted": "결제가 완료되었습니다. 설정을 완료하려면 라이선스 키를 추가하세요.",
         "paymentNotCompleted": "결제가 성공적으로 완료되지 않았습니다.",
         "returnedFromCheckout": "결제에서 돌아왔습니다. 준비되면 라이선스 키를 추가하세요.",

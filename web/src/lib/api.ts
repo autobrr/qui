@@ -2394,6 +2394,7 @@ class ApiClient {
   // License endpoints
   async activateLicense(licenseKey: string): Promise<{
     valid: boolean
+    productName?: string
     expiresAt?: string
     message?: string
     error?: string
@@ -2404,7 +2405,7 @@ class ApiClient {
     })
   }
 
-  async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean }> {
+  async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean; isSupporter: boolean }> {
     return this.request("/license/licensed")
   }
 

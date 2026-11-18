@@ -548,6 +548,8 @@
         "unlockDescription": "Paga el que vulguis (mín. 9,99 $) • Llicència vitalícia • Tots els temes",
         "activeTitle": "Llicència activa",
         "activeDescription": "Tens accés a tots els temes actuals i futurs",
+        "supporterDescription": "El teu suport desbloqueja tots els temes actuals i futurs. Inclou una llicència dels temes de per vida. Per conservar els temes quan acabi el suport, afegeix la clau de llicència del portal de llicències.",
+        "supportEndedDescription": "El teu suport incloïa una llicència dels temes de per vida. Troba'n la clau al portal de llicències i afegeix-la aquí.",
         "activationRequiredTitle": "Cal activar la llicència",
         "activationRequiredDescription": "La teva llicència s'ha d'activar en aquesta màquina",
         "offlineTitle": "Servei de llicències inaccessible",
@@ -660,6 +662,7 @@
       "failedCopyVerify": "No s'ha pogut copiar l'ordre de verificació",
       "toasts": {
         "activationSuccessPremium": "S'ha activat la llicència. Gràcies!",
+        "activationSuccessSupporter": "S'ha afegit la clau de mecenes. Gràcies!",
         "paymentCompleted": "S'ha completat el pagament. Afegeix la clau de llicència per acabar la configuració.",
         "paymentNotCompleted": "El pagament no s'ha completat correctament.",
         "returnedFromCheckout": "Has tornat de la pàgina de pagament. Afegeix la clau de llicència quan vulguis.",

@@ -17,7 +17,7 @@ import {
   useHasPremiumAccess,
   useLicenseDetails
 } from "@/hooks/useLicense"
-import { withBasePath } from "@/lib/base-url"
+import { themeLicenseCheckoutUrl } from "@/lib/license-checkout"
 import { getLicenseErrorKey } from "@/lib/license-errors"
 import { QUI_DISCORD_URL, SUPPORT_CRYPTOCURRENCY_URL } from "@/lib/support-constants"
 import { copyTextToClipboard } from "@/lib/utils"
@@ -26,7 +26,7 @@ import { AlertTriangle, Bitcoin, Copy, ExternalLink, Heart, Key, RefreshCw, Spar
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { DODO_CHECKOUT_URL, LICENSE_PORTAL_URL } from "@/lib/dodo-constants"
+import { LICENSE_PORTAL_URL, SUPPORTER_PRODUCT_NAME } from "@/lib/dodo-constants"
 import { LicenseError, LicensePortalLink } from "./LicenseError"
 
 // Helper function to mask license keys for display
@@ -41,17 +41,6 @@ type LicenseManagerProps = {
   checkoutStatus?: "success"
   checkoutPaymentStatus?: string
   onCheckoutConsumed?: () => void
-}
-
-function buildCheckoutUrlWithReturn(returnUrl: string): string {
-  try {
-    const checkoutUrl = new URL(DODO_CHECKOUT_URL)
-    checkoutUrl.searchParams.set("redirect_url", returnUrl)
-    return checkoutUrl.toString()
-  } catch {
-    const separator = DODO_CHECKOUT_URL.includes("?") ? "&" : "?"
-    return `${DODO_CHECKOUT_URL}${separator}redirect_url=${encodeURIComponent(returnUrl)}`
-  }
 }
 
 export function LicenseManager({
@@ -75,7 +64,9 @@ export function LicenseManager({
     }
     setShowAddLicense(open)
   }, [activationFailed, resetActivation])
-  const primaryLicense = licenses?.[0]
+  // The support dialog shows the supporter key. This card shows the theme license.
+  const primaryLicense = licenses?.find((license) => license.productName !== SUPPORTER_PRODUCT_NAME)
+  const supporterKey = licenses?.find((license) => license.productName === SUPPORTER_PRODUCT_NAME)
   const hasStoredLicense = Boolean(primaryLicense)
 
   // An offline license comes back without user action when the license server answers, so it needs no re-activation.
@@ -86,24 +77,22 @@ export function LicenseManager({
   let accessDescription = t("themes.license.status.unlockDescription")
   if (hasPremiumAccess) {
     accessTitle = t("themes.license.status.activeTitle")
-    accessDescription = t("themes.license.status.activeDescription")
+    accessDescription = supporterKey && !primaryLicense ? t("themes.license.status.supporterDescription") : t("themes.license.status.activeDescription")
   } else if (isOfflineLicense) {
     accessTitle = t("themes.license.status.offlineTitle")
     accessDescription = t("themes.license.status.offlineDescription")
   } else if (hasInvalidLicense) {
     accessTitle = t("themes.license.status.activationRequiredTitle")
     accessDescription = t("themes.license.status.activationRequiredDescription")
+  } else if (supporterKey) {
+    accessDescription = t("themes.license.status.supportEndedDescription")
   }
   const statusLabels: Record<string, string> = {
     invalid: t("themes.license.details.statusLabels.invalid"),
     offline: t("themes.license.details.statusLabels.offline"),
   }
   const canAddLicense = !hasStoredLicense || hasInvalidLicense
-  const checkoutUrl = useMemo(() => {
-    const returnPath = withBasePath("settings?tab=themes&checkout=success")
-    const returnUrl = new URL(returnPath, window.location.origin).toString()
-    return buildCheckoutUrlWithReturn(returnUrl)
-  }, [])
+  const checkoutUrl = useMemo(themeLicenseCheckoutUrl, [])
   const openAddLicenseDialog = useCallback(() => {
     setShowPaymentDialog(false)
     setAddLicenseOpen(true)

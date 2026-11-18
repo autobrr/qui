@@ -6,6 +6,7 @@
 import { openCommandPalette } from "@/components/command-palette/open"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
+import { SupportDialog } from "@/components/support/SupportDialog"
 import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -34,6 +35,7 @@ import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import { useHasPremiumAccess } from "@/hooks/useLicense"
 import type { Theme } from "@/config/themes"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
@@ -74,6 +76,7 @@ import {
   FileText,
   GitBranch,
   HardDrive,
+  Heart,
   Home,
   ListChecks,
   Loader2,
@@ -143,6 +146,8 @@ export function MobileFooterNav() {
   useBuiltinThemes()
   const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
+  const [showSupport, setShowSupport] = useState(false)
+  const { isSupporter } = useHasPremiumAccess()
   const appVersion = getAppVersion()
 
   const { data: instances, isPending: isLoadingInstances } = useQuery({
@@ -568,6 +573,10 @@ export function MobileFooterNav() {
               <Palette className="h-4 w-4" />
               {t("nav.appearance")}
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowSupport(true)}>
+              <Heart className="h-4 w-4 fill-current text-red-500" />
+              {isSupporter ? t("support.supporter.title") : t("support.title")}
+            </DropdownMenuItem>
 
             <DropdownMenuSeparator />
 
@@ -633,6 +642,8 @@ export function MobileFooterNav() {
       </div>
 
       {/* Theme selection dialog */}
+      <SupportDialog open={showSupport} onOpenChange={setShowSupport} />
+
       <Dialog open={showThemeDialog} onOpenChange={setShowThemeDialog}>
         {/* Only the theme list scrolls: the mode rows above it and the link below it stay in view.
             A screen under 35rem tall has no room for that, so there the whole dialog scrolls. */}

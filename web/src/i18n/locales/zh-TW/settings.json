@@ -542,6 +542,8 @@
         "unlockDescription": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
         "activeTitle": "授權已啟用",
         "activeDescription": "您可以使用所有目前和未來的主題",
+        "supporterDescription": "您的支援會解鎖所有目前和未來的主題，並包含一份終身主題授權。若要在支援結束後保留這些主題，請新增授權門戶中的授權金鑰。",
+        "supportEndedDescription": "您的支援包含一份終身主題授權。請在授權門戶中找到它的金鑰，並在此處新增。",
         "activationRequiredTitle": "需要啟用授權",
         "activationRequiredDescription": "您的授權需要在此裝置上啟用",
         "offlineTitle": "無法連線至授權服務",
@@ -654,6 +656,7 @@
       "failedCopyVerify": "複製驗證命令失敗",
       "toasts": {
         "activationSuccessPremium": "授權已啟用！感謝您的支援！",
+        "activationSuccessSupporter": "贊助者金鑰已新增。感謝您！",
         "paymentCompleted": "支付完成。請新增您的授權金鑰以完成設定。",
         "paymentNotCompleted": "支付未成功完成。",
         "returnedFromCheckout": "已從結帳返回。準備好後請新增您的授權金鑰。",

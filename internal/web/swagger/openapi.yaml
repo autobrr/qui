@@ -4258,7 +4258,7 @@ paths:
       tags:
         - Licenses
       summary: Check premium access
-      description: Check if any active licenses grant premium access
+      description: Check if any active licenses grant premium access, and if a supporter key is valid
       security:
         - SessionAuth: []
       responses:
@@ -4271,6 +4271,9 @@ paths:
                 properties:
                   hasPremiumAccess:
                     type: boolean
+                  isSupporter:
+                    type: boolean
+                    description: A supporter key on this server is valid
 
   /api/license/licenses:
     get:

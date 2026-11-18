@@ -363,12 +363,48 @@
   },
   "support": {
     "title": "支援 qui",
-    "description": "已經有主題了，還想再出一份力？qui 的一切已經屬於您。訂閱不會解鎖功能，它資助的是開發這些功能所投入的時間。",
-    "perkPrefix": "贊助者可在 Discord 獲得",
-    "perkSuffix": "身分組，以及我們永遠的感謝。",
-    "yearly": "{{price}} / 年",
-    "monthly": "{{price}} / 月",
-    "notLicense": "主題授權是單獨的一次性購買。"
+    "description": "支援 qui 的方式及其價格。",
+    "heading": "協助 qui 持續維護",
+    "intro": "qui 是免費的，無論您是否付費，功能都完全相同。支援款項用於支付投入 qui 的時間與工具。",
+    "licensed": "感謝您購買主題授權。",
+    "releases_other": "qui 在過去 12 個月發布了 {{count}} 個版本。",
+    "releaseMap": "過去 52 週，每天一個方塊。亮色方塊代表當天有新版本發布。",
+    "releaseDay": "有新版本發布的日子",
+    "plans": {
+      "yearly": "每年 {{price}}",
+      "yearlyNote": "每月 {{price}}，按年付款",
+      "yearlyNoteWithLicense": "每月 {{price}}，按年付款。包含主題授權。",
+      "license": "主題授權，{{price}} 起",
+      "licenseNote": "所有目前和未來的進階主題，終身有效",
+      "onePayment": "一次付清"
+    },
+    "checkout": "前往結帳",
+    "fromPrice": "{{price}} 起",
+    "terms": {
+      "yearly": "您今天支付 {{price}}，之後每年支付 {{price}}，直到您取消為止。",
+      "license": "一次支付 {{price}} 或以上，金額於結帳時設定。非訂閱制。"
+    },
+    "perks": {
+      "yearly": "贊助者可在 qui 中獲得贊助者徽章，並在 Discord 獲得贊助者身分組。結帳後，請將您的贊助者金鑰新增到此伺服器。",
+      "license": "授權可解鎖進階主題。結帳後，請將您的授權金鑰新增到此伺服器。"
+    },
+    "existing": "已經是贊助者？",
+    "addKey": "新增贊助者金鑰",
+    "key": {
+      "help": "您的贊助者金鑰會顯示在結帳頁面上，也在附有收據的電子郵件中。",
+      "label": "贊助者金鑰",
+      "submit": "新增金鑰",
+      "back": "返回"
+    },
+    "ended": "此伺服器上的贊助者金鑰已失效。qui 每天都會重新檢查。如果您的支援已結束，您的主題授權仍會保留。請在<portal>授權門戶</portal>中找到它的金鑰，然後在設定的主題頁中新增。",
+    "removeKey": "從此伺服器移除贊助者金鑰",
+    "supporter": {
+      "badge": "贊助者",
+      "title": "您正在支援 qui",
+      "thanks": "謝謝。您的支援用於支付投入 qui 的時間與工具。",
+      "detail": "您擁有 qui 中的贊助者徽章與 Discord 中的贊助者身分組。您的支援也會解鎖進階主題，並包含一份終身主題授權。請在<portal>授權門戶</portal>中找到授權金鑰。",
+      "manage": "管理或取消支援"
+    }
   },
   "labels": {
     "path": "路徑"

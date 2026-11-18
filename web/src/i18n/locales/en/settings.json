@@ -548,6 +548,8 @@
         "unlockDescription": "Pay what you want (min $9.99) • Lifetime license • All themes",
         "activeTitle": "License Active",
         "activeDescription": "You have access to all current and future themes",
+        "supporterDescription": "Your support unlocks all current and future themes. It includes a theme license for life. To keep the themes after your support ends, add the license key from the license portal.",
+        "supportEndedDescription": "Your support included a theme license for life. Find its key in the license portal, and add it here.",
         "activationRequiredTitle": "License Activation Required",
         "activationRequiredDescription": "Your license needs to be activated on this machine",
         "offlineTitle": "License Service Unreachable",
@@ -660,6 +662,7 @@
       "failedCopyVerify": "Failed to copy verification command",
       "toasts": {
         "activationSuccessPremium": "License activated! Thank you!",
+        "activationSuccessSupporter": "Supporter key added. Thank you!",
         "paymentCompleted": "Payment completed. Add your license key to finish setup.",
         "paymentNotCompleted": "Payment did not complete successfully.",
         "returnedFromCheckout": "Returned from checkout. Add your license key when ready.",

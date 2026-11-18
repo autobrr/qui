@@ -127,16 +127,29 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 	return licenses, nil
 }
 
-// HasPremiumAccess checks if the user has purchased premium access (one-time unlock)
+// HasPremiumAccess reports whether a valid license unlocks the premium themes: a theme license, or a supporter key.
 func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
-	query := `
+	return r.hasActiveLicense(ctx, `
 		SELECT COUNT(*)
 		FROM licenses
-		WHERE product_name = 'premium-access'
+		WHERE product_name IN ('premium-access', 'supporter')
 		AND status = ?
 		AND (expires_at IS NULL OR expires_at > ?)
-	`
+	`)
+}
 
+// IsSupporter reports whether a supporter key is valid.
+func (r *LicenseRepo) IsSupporter(ctx context.Context) (bool, error) {
+	return r.hasActiveLicense(ctx, `
+		SELECT COUNT(*)
+		FROM licenses
+		WHERE product_name = 'supporter'
+		AND status = ?
+		AND (expires_at IS NULL OR expires_at > ?)
+	`)
+}
+
+func (r *LicenseRepo) hasActiveLicense(ctx context.Context, query string) (bool, error) {
 	var count int
 	err := r.db.QueryRowContext(ctx, query, models.LicenseStatusActive, time.Now().UTC()).Scan(&count)
 	if err != nil {

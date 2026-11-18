@@ -371,12 +371,49 @@
   },
   "support": {
     "title": "Sostieni qui",
-    "description": "Hai già i temi e vuoi dare una mano in più? Tutto in qui è già tuo. Un abbonamento non sblocca funzionalità, finanzia il tempo dedicato a svilupparle.",
-    "perkPrefix": "I sostenitori ottengono il ruolo",
-    "perkSuffix": "su Discord e la nostra eterna gratitudine.",
-    "yearly": "{{price}} / anno",
-    "monthly": "{{price}} / mese",
-    "notLicense": "La licenza dei temi è un acquisto unico separato."
+    "description": "I modi per sostenere qui e i loro prezzi.",
+    "heading": "Aiuta a mantenere qui",
+    "intro": "qui è gratuito e funziona allo stesso modo, che tu paghi o no. Il sostegno paga il tempo e gli strumenti che servono a qui.",
+    "licensed": "Grazie per la tua licenza dei temi.",
+    "releases_one": "qui ha pubblicato {{count}} versione negli ultimi 12 mesi.",
+    "releases_other": "qui ha pubblicato {{count}} versioni negli ultimi 12 mesi.",
+    "releaseMap": "Le ultime 52 settimane, un quadrato per ogni giorno. Un quadrato luminoso è un giorno con una nuova versione.",
+    "releaseDay": "Un giorno con una nuova versione",
+    "plans": {
+      "yearly": "{{price}} all'anno",
+      "yearlyNote": "{{price}} al mese, pagati annualmente",
+      "yearlyNoteWithLicense": "{{price}} al mese, pagati annualmente. Include la licenza dei temi.",
+      "license": "Licenza dei temi, da {{price}}",
+      "licenseNote": "Tutti i temi premium attuali e futuri, a vita",
+      "onePayment": "pagamento unico"
+    },
+    "checkout": "Procedi al pagamento",
+    "fromPrice": "da {{price}}",
+    "terms": {
+      "yearly": "Paghi {{price}} oggi, poi {{price}} ogni anno finché non annulli.",
+      "license": "Un pagamento unico di {{price}} o più, importo scelto al pagamento. Nessun abbonamento."
+    },
+    "perks": {
+      "yearly": "I sostenitori ricevono il badge Sostenitore in qui e il ruolo di sostenitore su Discord. Dopo il pagamento, aggiungi la tua chiave da sostenitore a questo server.",
+      "license": "La licenza sblocca i temi premium. Dopo il pagamento, aggiungi la tua chiave di licenza a questo server."
+    },
+    "existing": "Sei già un sostenitore?",
+    "addKey": "Aggiungi la chiave da sostenitore",
+    "key": {
+      "help": "La tua chiave da sostenitore si trova nella pagina di pagamento e nell'email con la ricevuta.",
+      "label": "Chiave da sostenitore",
+      "submit": "Aggiungi chiave",
+      "back": "Indietro"
+    },
+    "ended": "La chiave da sostenitore su questo server non è più valida. qui la ricontrolla ogni giorno. Se il tuo sostegno è terminato, la licenza dei temi resta tua. Trova la sua chiave nel <portal>portale delle licenze</portal> e aggiungila in Impostazioni, sotto Temi.",
+    "removeKey": "Rimuovi la chiave da sostenitore da questo server",
+    "supporter": {
+      "badge": "Sostenitore",
+      "title": "Stai sostenendo qui",
+      "thanks": "Grazie. Il tuo sostegno paga il tempo e gli strumenti che servono a qui.",
+      "detail": "Hai il badge Sostenitore in qui e il ruolo di sostenitore su Discord. Il tuo sostegno sblocca anche i temi premium e include una licenza dei temi a vita. Trova la chiave di licenza nel <portal>portale delle licenze</portal>.",
+      "manage": "Gestisci o annulla il sostegno"
+    }
   },
   "labels": {
     "path": "Percorso"

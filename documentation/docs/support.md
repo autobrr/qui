@@ -2,7 +2,7 @@
 sidebar_position: 100
 title: Support qui development
 sidebar_label: Support Development
-description: Donation and subscription options that fund qui development.
+description: Yearly support, the theme license, and donation options that fund qui development.
 ---
 
 import CopyAddress from '@site/src/components/CopyAddress';
@@ -11,11 +11,37 @@ import CopyAddress from '@site/src/components/CopyAddress';
 
 Volunteers develop and maintain qui. Your support funds continued work on the project.
 
-## Supporter subscription
+## Yearly support
 
-Subscribe for $5 per month or $50 per year through Dodo Payments. Click the heart icon in the qui header to open the subscription dialog. The subscription unlocks no features. It funds qui development. Supporters get the `qui-patron` role on [Discord](https://discord.autobrr.com/qui).
+Support qui for $24 or $48 per year through Dodo Payments. To see the plans, click the heart icon in the qui header. On a phone, open the menu and tap **Support qui**.
 
-The subscription never issues a license key. The theme license is a separate one-time purchase.
+qui works the same if you pay or not. Yearly support pays for the time and the tools that go into qui. Supporters get these things:
+
+- The **Supporter** badge beside the heart in qui.
+- The `qui-patron` role on [Discord](https://discord.autobrr.com/qui).
+- A [theme license](#theme-license) for life.
+
+### Add your supporter key
+
+After checkout, Dodo Payments shows your supporter key and sends it to your email address.
+
+1. Click the heart icon in qui.
+2. Click **Add your supporter key**.
+3. Enter the key, and click **Add key**.
+
+The supporter key is valid while your support continues. During that time, it also unlocks the premium themes.
+
+### The theme license of a supporter
+
+Yearly support includes a theme license. The license has its own key, and that key does not expire. Within one hour of your payment, the key shows in the [license portal](https://licenses.getqui.com/). Sign in with the email address of your payment.
+
+To keep the premium themes after your support ends, add the license key in **Settings → Themes**. See [License Management](./licenses.md).
+
+### Change or cancel your support
+
+1. Click the heart icon in qui.
+2. Click **Manage or cancel your support**. The customer portal of Dodo Payments opens.
+3. Sign in with the email address of your payment.
 
 ## Theme license
 
@@ -26,7 +52,7 @@ A license also unlocks the community themes, which qui ships built in, and [cust
 
 ## Donations
 
-To give beyond subscriptions and theme purchases, use one of these donation options.
+To give beyond yearly support and theme purchases, use one of these donation options.
 
 - **soup**
   - [Patreon](https://www.patreon.com/c/s0up4200)
