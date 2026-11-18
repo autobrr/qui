@@ -196,6 +196,51 @@ func TestTransferToInstanceLosesToDeleteAndWaitsForAMove(t *testing.T) {
 	}
 }
 
+// A Transfer can remove the torrent from the source before a queued Export to
+// another instance reads it. So the Transfer waits for a later run while that
+// instance does not have the torrent. An Export to the target of the Transfer
+// holds nothing back.
+// regression: #4242
+func TestTransferToInstanceWaitsForAnExportToAnotherInstance(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		exported      string
+		toTheSameSide bool
+		started       []string
+	}{
+		{name: "the Export is still to do", exported: `{}`, started: []string{}},
+		{name: "the other instance has the torrent", exported: snapshotTorrent, started: []string{runningHash}},
+		{name: "the Export goes to the target of the Transfer", exported: `{}`, toTheSameSide: true, started: []string{runningHash}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, instanceIDs := newStubService(t, nil, newStubQbt(t, snapshotTorrent), newStubQbt(t, tc.exported), newStubQbt(t, `{}`))
+			runner := &transfers{}
+			svc.SetTransferRunner(runner)
+			svc.SetExportRunner(exportsEnd{})
+			transferTarget := instanceIDs[2]
+			if tc.toTheSameSide {
+				transferTarget = instanceIDs[1]
+			}
+			rule := transferRule(1, transferTarget, models.TransferToInstanceAction{SavePath: "/archive"})
+			rule.Conditions.ExportToInstance = &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: instanceIDs[1], SavePath: "/exported"}
+
+			_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, []*models.Automation{rule}, false)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.started, runner.hashes())
+		})
+	}
+}
+
+// exportsEnd ends each Export run at once, with no result.
+type exportsEnd struct{}
+
+func (exportsEnd) Export(context.Context, transfer.ExportRequest) (int64, <-chan transfer.ExportResult, error) {
+	done := make(chan transfer.ExportResult)
+	close(done)
+	return 1, done, nil
+}
+
 // A dry run lists the Transfers that a live run starts, by target and way,
 // each with its size. A torrent that the Transfer of another torrent takes
 // along, as a cross-seed, shows once.

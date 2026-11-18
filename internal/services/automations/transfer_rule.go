@@ -8,6 +8,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -104,6 +105,22 @@ func transfersAfterMoves(transfers []pendingTransfer, moved map[string]ruleRef) 
 		ready = append(ready, pending)
 	}
 	return ready
+}
+
+// transfersAfterExports holds back the Transfer of a torrent while an Export
+// still has to bring that torrent to another instance. The Transfer can remove
+// the torrent from the source before the Export reads it. A later run starts it.
+func transfersAfterExports(transfers []pendingTransfer, exports []pendingExportToInstance) []pendingTransfer {
+	exportTargets := make(map[string]int, len(exports))
+	for _, export := range exports {
+		if export.mark != exportAlreadyOnTarget {
+			exportTargets[export.hash] = export.action.TargetInstanceID
+		}
+	}
+	return slices.DeleteFunc(transfers, func(pending pendingTransfer) bool {
+		target, waits := exportTargets[pending.hash]
+		return waits && target != pending.action.TargetInstanceID
+	})
 }
 
 func (p pendingTransfer) request(instanceID int) transfer.Request {

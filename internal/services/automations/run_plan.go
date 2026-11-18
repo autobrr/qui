@@ -317,9 +317,9 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 	}
 	plan.category = s.planCategories(ctx, in, categoryTriggers)
 	plan.move = s.planMoves(ctx, in, moveTriggers)
+	plan.transfers = transfersAfterExports(transfersAfterMoves(plan.transfers, plan.move.rules), plan.exports)
 	var waitingExports []pendingExportToInstance
 	plan.exports, waitingExports = exportsAfterMoves(plan.exports, plan.move.rules)
-	plan.transfers = transfersAfterMoves(plan.transfers, plan.move.rules)
 	// The module takes the whole Shared-file group at the first Start. The
 	// Transfer of the last rule goes first, as one torrent follows the last
 	// rule that matches it.
