@@ -127,16 +127,36 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 	return licenses, nil
 }
 
-// HasPremiumAccess checks if the user has purchased premium access (one-time unlock)
+// HasPremiumAccess reports whether a valid license unlocks the premium themes: a theme license, or a supporter key.
 func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
-	query := `
+	return r.hasActiveLicense(ctx, `
 		SELECT COUNT(*)
 		FROM licenses
-		WHERE product_name = 'premium-access'
+		WHERE product_name IN ('premium-access', 'supporter')
 		AND status = ?
 		AND (expires_at IS NULL OR expires_at > ?)
-	`
+	`)
+}
 
+// IsSupporter reports whether a supporter key is valid.
+func (r *LicenseRepo) IsSupporter(ctx context.Context) (bool, error) {
+	return r.hasActiveLicense(ctx, `
+		SELECT COUNT(*)
+		FROM licenses
+		WHERE product_name = 'supporter'
+		AND status = ?
+		AND (expires_at IS NULL OR expires_at > ?)
+	`)
+}
+
+// ServerSetupTime returns when this server first ran: the time of its first database migration.
+func (r *LicenseRepo) ServerSetupTime(ctx context.Context) (time.Time, error) {
+	var setupAt time.Time
+	err := r.db.QueryRowContext(ctx, "SELECT applied_at FROM migrations ORDER BY applied_at LIMIT 1").Scan(&setupAt)
+	return setupAt, err
+}
+
+func (r *LicenseRepo) hasActiveLicense(ctx context.Context, query string) (bool, error) {
 	var count int
 	err := r.db.QueryRowContext(ctx, query, models.LicenseStatusActive, time.Now().UTC()).Scan(&count)
 	if err != nil {
@@ -279,12 +299,13 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 
 	query := `
 		UPDATE licenses
-		SET provider = ?, dodo_instance_id = ?,
+		SET product_name = ?, provider = ?, dodo_instance_id = ?,
 		    activated_at = ?, expires_at = ?, last_validated = ?, updated_at = ?, status = ?
 		WHERE id = ?
 	`
 
 	_, err = tx.ExecContext(ctx, query,
+		license.ProductName,
 		stringToNullString(license.Provider),
 		stringToNullString(license.DodoInstanceID),
 		license.ActivatedAt,

@@ -4,7 +4,7 @@
  */
 
 import { api } from "@/lib/api"
-import { LICENSE_PORTAL_URL } from "@/lib/dodo-constants"
+import { LICENSE_PORTAL_URL, SUPPORTER_PRODUCT_NAME } from "@/lib/dodo-constants"
 import { getLicenseErrorKey } from "@/lib/license-errors.ts"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
@@ -34,8 +34,7 @@ export const useActivateLicense = () => {
     mutationFn: (licenseKey: string) => api.activateLicense(licenseKey),
     onSuccess: (data) => {
       if (data.valid) {
-        const message = t("themes.license.toasts.activationSuccessPremium")
-        toast.success(message)
+        toast.success(t(data.productName === SUPPORTER_PRODUCT_NAME ? "themes.license.toasts.activationSuccessSupporter" : "themes.license.toasts.activationSuccessPremium"))
         // Invalidate license queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["licenses"] })
         queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
@@ -84,6 +83,8 @@ export const useHasPremiumAccess = () => {
 
   return {
     hasPremiumAccess: data?.hasPremiumAccess ?? false,
+    isSupporter: data?.isSupporter ?? false,
+    setupAt: data?.setupAt,
     isLoading,
     isError,
   }
