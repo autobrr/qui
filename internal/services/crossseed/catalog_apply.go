@@ -76,15 +76,23 @@ func catalogAlignment(plan *crossSeedAddPlan, visible qbt.TorrentFiles) (Alignme
 		byIndex[file.Index] = file
 	}
 	var alignment AlignmentPlan
+	sourceRoot, targetRoot := detectCommonRoot(visible), detectCommonRoot(plan.files)
+	rootOnly := sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot
 	for _, pair := range plan.filePairs {
 		expected := plan.sourceFiles[pair.sourceIndex]
 		file, ok := byIndex[expected.Index]
 		if !ok || file.Size != expected.Size || file.Name != pair.sourcePath {
 			return AlignmentPlan{}, errors.New("added file identity changed")
 		}
+		if rootOnly && adjustPathForRootRename(pair.candidatePath, targetRoot, sourceRoot) != file.Name {
+			rootOnly = false
+		}
 		if file.Name != pair.candidatePath {
 			alignment.Files = append(alignment.Files, FileRename{OldPath: file.Name, NewPath: pair.candidatePath})
 		}
+	}
+	if rootOnly {
+		return AlignmentPlan{FolderFrom: sourceRoot, FolderTo: targetRoot}, nil
 	}
 	return alignment, nil
 }

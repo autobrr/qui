@@ -47,6 +47,50 @@ func TestCatalogPlacementKeepsValidatedEdges(t *testing.T) {
 	require.ElementsMatch(t, []FileRename{{OldPath: "Incoming/new.flac", NewPath: "Existing/old.flac"}, {OldPath: "Incoming/exact.flac", NewPath: "Existing/exact.flac"}}, alignment.Files)
 }
 
+// regression: #4219
+func TestCatalogRootOnlyAlignment(t *testing.T) {
+	left := qbt.TorrentFiles{{Index: 0, Name: "Incoming/CD1/01.flac", Size: 100}, {Index: 1, Name: "Incoming/CD2/01.flac", Size: 100}}
+	right := qbt.TorrentFiles{{Index: 0, Name: "Existing/CD1/01.flac", Size: 100}, {Index: 1, Name: "Existing/CD2/01.flac", Size: 100}}
+	pairs, err := completeCatalogPairing(left, right, "Incoming", "Existing")
+	require.NoError(t, err)
+	plan := &crossSeedAddPlan{sourceFiles: left, files: right, filePairs: pairs}
+	alignment, err := catalogAlignment(plan, left)
+	require.NoError(t, err)
+	require.Equal(t, AlignmentPlan{FolderFrom: "Incoming", FolderTo: "Existing"}, alignment)
+	changed := slices.Clone(left)
+	changed[1].Name = "Incoming/changed.flac"
+	_, err = catalogAlignment(plan, changed)
+	require.Error(t, err, "folder optimization must retain added-file identity validation")
+}
+
+// regression: #4219
+func TestCatalogMixedRootAlignment(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		right qbt.TorrentFiles
+	}{
+		{"swapped names", qbt.TorrentFiles{{Name: "Existing/A.flac", Size: 200}, {Name: "Existing/B.flac", Size: 100}}},
+		{"one-way dependency", qbt.TorrentFiles{{Name: "Existing/B.flac", Size: 100}, {Name: "Existing/C.flac", Size: 200}}},
+		{"file and directory", qbt.TorrentFiles{{Name: "Existing/B.flac/track.flac", Size: 100}, {Name: "Existing/C.flac", Size: 200}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			left := qbt.TorrentFiles{{Index: 0, Name: "Incoming/A.flac", Size: 100}, {Index: 1, Name: "Incoming/B.flac", Size: 200}}
+			pairs, err := completeCatalogPairing(left, tt.right, "Incoming", "Existing")
+			require.NoError(t, err)
+			alignment, err := catalogAlignment(&crossSeedAddPlan{sourceFiles: left, files: tt.right, filePairs: pairs}, left)
+			require.NoError(t, err)
+			fake := &alignerFake{hash: alignerHash, files: slices.Clone(left)}
+			aligner := NewAligner(fake)
+			aligner.verifyWait, aligner.retryDelay = 0, 0
+			require.True(t, aligner.Align(t.Context(), 1, alignerHash, alignment))
+			for _, pair := range pairs {
+				require.Equal(t, pair.candidatePath, fake.files[pair.sourceIndex].Name)
+			}
+			require.Empty(t, alignment.FolderFrom, "mixed plans must not stage file renames under occupied incoming paths")
+		})
+	}
+}
+
 // regression: #4181
 func TestCatalogPairing(t *testing.T) {
 	for _, tt := range []struct {

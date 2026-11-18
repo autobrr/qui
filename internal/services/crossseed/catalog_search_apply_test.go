@@ -67,6 +67,17 @@ func (m *catalogReplaySync) RenameTorrentFile(ctx context.Context, id int, hash,
 	return m.renameOnlySyncManager.RenameTorrentFile(ctx, id, hash, oldPath, newPath)
 }
 
+func (m *catalogReplaySync) RenameTorrentFolder(_ context.Context, _ int, hash, oldPath, newPath string) error {
+	m.bulkActions = append(m.bulkActions, "rename:"+oldPath+"->"+newPath)
+	for i := range m.files[hash] {
+		file := &m.files[hash][i]
+		if suffix, ok := strings.CutPrefix(file.Name, oldPath+"/"); ok {
+			file.Name = newPath + "/" + suffix
+		}
+	}
+	return nil
+}
+
 type catalogReplayBackend struct {
 	*local.Backend
 	plan *hardlinktree.TreePlan
