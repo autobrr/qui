@@ -166,6 +166,7 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	if !slices.Contains([]After{AfterRemoveWithFiles, AfterKeepFiles, AfterKeepSeeding}, options.After) {
 		return nil, refuse("Unknown choice for after the transfer: %q.", options.After)
 	}
+	leaveFilesToSource(members, way, options.After)
 	startedBy := req.StartedBy
 	if startedBy == "" {
 		startedBy = StartedByUser
@@ -190,6 +191,19 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 		Members:          members,
 		Size:             src.torrent.Size,
 	}}, nil
+}
+
+// leaveFilesToSource keeps the members of a Transfer with no copy on manual
+// management when the source keeps seeding. The target reads the files of the
+// source then. A target that manages the torrent moves them when the folder
+// of its category changes, and the source would lose them.
+func leaveFilesToSource(members []Member, way Way, after After) {
+	if way != WayNone || after != AfterKeepSeeding {
+		return
+	}
+	for i := range members {
+		members[i].Placement.AutoTMM = false
+	}
 }
 
 // ruleChecks runs the checks that only a Transfer of a rule gets, and returns

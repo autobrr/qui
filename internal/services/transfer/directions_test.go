@@ -164,6 +164,45 @@ func TestTransferWithNoCopy(t *testing.T) {
 	require.False(t, r.src.Has(s.hash))
 }
 
+// With no copy, the target reads the files of the source. A target that
+// manages the torrent moves them when the folder of its category changes, and
+// a source that keeps seeding would lose them. So the torrent stays on manual
+// management on the target while the source seeds it.
+// regression: #4242
+func TestTransferWithNoCopyLeavesTheFilesToASourceThatKeepsSeeding(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		after transfer.After
+		moved bool
+	}{
+		{name: "the source keeps seeding", after: transfer.AfterKeepSeeding},
+		{name: "the source gives the torrent up", after: transfer.AfterKeepFiles, moved: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, onDisk, onDisk)
+			r.dst.AutoManagement = true
+			r.dst.AddCategory("tv", r.srcDir)
+			s := newShow(t, showName)
+			r.seed(s)
+			req := r.request(s)
+			req.Placement.Category = "tv"
+			req.Options.After = tc.after
+
+			record := r.run(req)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, transfer.WayNone, record.Way)
+			require.NoError(t, r.sync.EditCategory(t.Context(), r.target.ID, "tv", r.dstDir))
+
+			stays, leaves := r.srcDir, r.dstDir
+			if tc.moved {
+				stays, leaves = r.dstDir, r.srcDir
+			}
+			require.Equal(t, contents(s, showName), tree(t, stays))
+			require.Empty(t, tree(t, leaves))
+		})
+	}
+}
+
 // A target that cannot confirm a flush has no Proven pieces. After a stop, a
 // check on the target finds the pieces that the partial files hold, and qui
 // copies only the pieces that failed that check. With qBittorrent's setting
