@@ -130,13 +130,13 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	}
 
 	placement := req.Placement
-	placement.ContentLayout = ""
+	placement.ContentLayout, placement.AutoTMM = "", false
 	targetFiles, err := s.deps.Files.GetBackend(ctx, target.ID)
 	if err != nil {
 		return nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
 	}
 	if placement.SavePath == "" {
-		if placement.SavePath, err = s.categorySavePath(ctx, target, targetFiles, placement.Category); err != nil {
+		if placement.SavePath, placement.AutoTMM, err = s.categorySavePath(ctx, target, targetFiles, placement.Category); err != nil {
 			return nil, err
 		}
 	}
@@ -258,20 +258,21 @@ func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 
 // categorySavePath is the folder where the qBittorrent of target saves a
 // torrent of category under automatic management, and its default save path
-// for no category.
-func (s *Service) categorySavePath(ctx context.Context, target *models.Instance, files fsops.Backend, category string) (string, error) {
+// for no category. It also reports whether automatic management is the mode
+// that target gives a new torrent.
+func (s *Service) categorySavePath(ctx context.Context, target *models.Instance, files fsops.Backend, category string) (folder string, automatic bool, err error) {
 	prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
 	if err != nil {
-		return "", fmt.Errorf("read the default save path of %s: %w", target.Name, err)
+		return "", false, fmt.Errorf("read the default save path of %s: %w", target.Name, err)
 	}
 	if category == "" {
-		return prefs.SavePath, nil
+		return prefs.SavePath, prefs.AutoTmmEnabled, nil
 	}
-	folder, err := s.deps.Sync.CategorySaveFolder(ctx, pathsOf(target, files, prefs.SavePath), target.ID, &prefs, category)
+	folder, err = s.deps.Sync.CategorySaveFolder(ctx, pathsOf(target, files, prefs.SavePath), target.ID, &prefs, category)
 	if err != nil {
-		return "", fmt.Errorf("read the save path of category %q on %s: %w", category, target.Name, err)
+		return "", false, fmt.Errorf("read the save path of category %q on %s: %w", category, target.Name, err)
 	}
-	return folder, nil
+	return folder, prefs.AutoTmmEnabled, nil
 }
 
 // pathsOf is the path dialect of the save paths of inst: the dialect of its

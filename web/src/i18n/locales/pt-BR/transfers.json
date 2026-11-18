@@ -163,7 +163,7 @@
     "targetPlaceholder": "Selecione uma instância",
     "noTargets": "Adicione outra instância para transferir torrents para ela.",
     "savePath": "Caminho de salvamento",
-    "savePathHelp": "A pasta no destino. O qui mantém abaixo dela as pastas do torrent e dos seus cross-seeds. Vazio usa o caminho de salvamento da categoria no destino, ou o caminho de salvamento padrão do destino quando não há categoria.",
+    "savePathHelp": "A pasta no destino. O qui mantém abaixo dela as pastas do torrent e dos seus cross-seeds. Vazio usa o caminho de salvamento da categoria no destino, ou o caminho de salvamento padrão do destino quando não há categoria. Com o caminho vazio, o torrent também recebe o Gerenciamento Automático de Torrents, quando esse é o modo padrão do destino.",
     "savePathPlaceholder": "Caminho de salvamento padrão do destino",
     "savePathPlaceholderCategory": "Caminho de salvamento da categoria",
     "category": "Categoria",
@@ -189,6 +189,8 @@
   "dialog": {
     "title": "Transferir para outra instância",
     "verified": "O qui verifica cada peça no destino antes de alterar a origem.",
+    "warningsMore": "Mostrar os avisos completos",
+    "warningsLess": "Mostrar uma linha de cada aviso",
     "start": "Iniciar transferência",
     "starting": "Iniciando…",
     "started": "A transferência de {{name}} aguarda a sua vez.",

@@ -121,6 +121,9 @@ type Server struct {
 	DownloadPathOff bool
 	// SubcategoriesOff reports use_subcategories turned off.
 	SubcategoriesOff bool
+	// AutoManagement reports auto_tmm_enabled turned on: the default
+	// torrent management mode is Automatic.
+	AutoManagement bool
 	// Platform, when set, makes app/buildInfo answer with this build
 	// platform. Without it the endpoint answers 404.
 	Platform string
@@ -544,8 +547,12 @@ func (s *Server) FinishMoves() {
 }
 
 func (s *Server) relocate(from, to *Torrent) {
-	old := s.diskFiles(from)
-	for i, f := range s.diskFiles(to) {
+	old, files := s.diskFiles(from), s.diskFiles(to)
+	// qBittorrent starts no move to the folder where the content is.
+	if slices.Equal(old, files) {
+		return
+	}
+	for i, f := range files {
 		assert.NoError(s.t, os.MkdirAll(filepath.Dir(f), 0o755))
 		assert.NoError(s.t, os.Rename(old[i], f))
 	}
@@ -656,7 +663,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			downloadPath = join(s.savePath, "incomplete")
 		}
 		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": downloadPath,
-			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "torrent_changed_tmm_enabled": true,
+			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "auto_tmm_enabled": s.AutoManagement, "torrent_changed_tmm_enabled": true,
 			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs, "listen_port": s.ListenPort,
 			"bittorrent_protocol": s.BittorrentProtocol})
 	case "sync/maindata":

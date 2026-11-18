@@ -43,8 +43,9 @@ vi.mock("@/components/torrents/TorrentDialogs", async (importOriginal) => {
 vi.mock("@/components/transfers/TransferDialog", async () => {
   const { createElement } = await import("react")
   return {
-    TransferDialog: (p: { open: boolean; sourceInstanceId: number; hash: string; name: string }) => p.open ? createElement("div", { role: "dialog" },
-      createElement("h2", null, "transfer"), createElement("p", null, JSON.stringify([p.sourceInstanceId, p.hash, p.name]))) : null,
+    TransferDialog: (p: { open: boolean; sourceInstanceId: number; hash: string; name: string; onStarted: () => void }) => p.open ? createElement("div", { role: "dialog" },
+      createElement("h2", null, "transfer"), createElement("p", null, JSON.stringify([p.sourceInstanceId, p.hash, p.name])),
+      createElement("button", { onClick: p.onStarted }, "started")) : null,
   }
 })
 vi.mock("@/components/shares/ShareDialog", async () => {
@@ -992,6 +993,17 @@ describe("bulk action module - dialogs with values", () => {
 
     act(() => result.current.pick({ action: "transfer" }))
     expect(dialogValues("transfer")).toBe(JSON.stringify([3, "a", "Some.Linux.ISO"]))
+  })
+
+  // regression: #4242
+  it("clears the selection when a Transfer starts, so a phone leaves its selection mode", () => {
+    const { result } = renderModule({ actionTarget: ticks("a") })
+    act(() => result.current.dispatchSelection({ type: "tick", keys: ["a"], checked: true }))
+
+    act(() => result.current.pick({ action: "transfer" }))
+    act(() => clickButton("started"))
+
+    expect(hasSelection(result.current.selection)).toBe(false)
   })
 
   it("opens the Share dialog with each torrent of the Action target on the instance of the page", () => {

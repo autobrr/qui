@@ -655,6 +655,51 @@ func TestTransferPutsATorrentAtTheSavePathOfItsCategory(t *testing.T) {
 	}
 }
 
+// A Transfer with no save path leaves the torrent on Automatic Torrent
+// Management when that is the default mode of the target, as qBittorrent
+// does for a torrent that a user adds there. A save path in the request
+// keeps the torrent on manual management.
+// regression: #4242
+func TestTransferLeavesATorrentOnAutomaticManagement(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		automatic bool
+		category  string
+		savePath  string
+		folder    string
+		managed   bool
+	}{
+		{name: "the target manages a category", automatic: true, category: "archive", folder: "sorted", managed: true},
+		{name: "the target manages no category", automatic: true, managed: true},
+		{name: "the request names a save path", automatic: true, category: "archive", savePath: "picked", folder: "picked"},
+		{name: "the target adds on manual management", category: "archive", folder: "sorted"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			r.dst.AutoManagement = tc.automatic
+			r.dst.AddCategory("archive", filepath.Join(r.dstDir, "sorted"))
+			s := newShow(t, showName)
+			r.seed(s)
+			req := r.request(s)
+			req.Placement = transfer.Placement{Category: tc.category}
+			if tc.savePath != "" {
+				req.Placement.SavePath = filepath.Join(r.dstDir, tc.savePath)
+			}
+
+			record := r.run(req)
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, contents(s, path.Join(tc.folder, showName)), tree(t, r.dstDir))
+			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			require.NoError(t, err)
+			require.Len(t, landed, 1)
+			require.Equal(t, tc.managed, landed[0].AutoManaged)
+			require.Equal(t, filepath.Join(r.dstDir, tc.folder), landed[0].SavePath)
+			require.True(t, r.seeding(r.target.ID, s.hash), "the target seeds the torrent")
+		})
+	}
+}
+
 // Each entry check refuses with its reason, and records no Transfer.
 func TestTransferRefuses(t *testing.T) {
 	for _, tc := range []struct {

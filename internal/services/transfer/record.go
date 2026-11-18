@@ -179,6 +179,10 @@ type Placement struct {
 	Category      string
 	Tags          []string
 	ContentLayout string
+	// AutoTMM is true when the target manages the save path of the member:
+	// the request named no save path, and Automatic Torrent Management is
+	// the default mode of the target. Start sets it.
+	AutoTMM bool
 	// Endpoint is where qui reached the Cross-seed instance at the start, for
 	// a member that lands there, and zero for a member on the target.
 	Endpoint fsops.Endpoint

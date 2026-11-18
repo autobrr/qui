@@ -163,7 +163,7 @@
     "targetPlaceholder": "Seleziona un'istanza",
     "noTargets": "Aggiungi un'altra istanza per trasferirvi i torrent.",
     "savePath": "Percorso di salvataggio",
-    "savePathHelp": "La cartella sulla destinazione. qui mantiene al suo interno le cartelle del torrent e dei suoi cross-seed. Se vuoto, usa il percorso di salvataggio della categoria sulla destinazione, o il percorso di salvataggio predefinito della destinazione se non c'è una categoria.",
+    "savePathHelp": "La cartella sulla destinazione. qui mantiene al suo interno le cartelle del torrent e dei suoi cross-seed. Se vuoto, usa il percorso di salvataggio della categoria sulla destinazione, o il percorso di salvataggio predefinito della destinazione se non c'è una categoria. Con il percorso vuoto, il torrent riceve anche la Gestione automatica dei torrent, se è la modalità predefinita della destinazione.",
     "savePathPlaceholder": "Percorso di salvataggio predefinito della destinazione",
     "savePathPlaceholderCategory": "Percorso di salvataggio della categoria",
     "category": "Categoria",
@@ -189,6 +189,8 @@
   "dialog": {
     "title": "Trasferisci su un'altra istanza",
     "verified": "qui verifica ogni pezzo sulla destinazione prima di modificare la sorgente.",
+    "warningsMore": "Mostra gli avvisi per intero",
+    "warningsLess": "Mostra una riga per ogni avviso",
     "start": "Avvia il trasferimento",
     "starting": "Avvio…",
     "started": "Il trasferimento di {{name}} attende il suo turno.",

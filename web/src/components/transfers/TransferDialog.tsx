@@ -13,7 +13,7 @@ import { transfersApi, type TransferRequest, type TransferSummary } from "@/lib/
 import { cn, formatBytes } from "@/lib/utils"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, ChevronDown, Info, Loader2, ShieldCheck } from "lucide-react"
-import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react"
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { TransferForm } from "./TransferForm"
@@ -25,6 +25,8 @@ import { useInstanceName } from "./use-instance-name"
 interface TransferDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** The Transfer of this dialog started. The list clears its selection, as it does after a delete. */
+  onStarted: () => void
   sourceInstanceId: number
   hash: string
   name: string
@@ -33,8 +35,14 @@ interface TransferDialogProps {
 /** Below Tailwind's lg width, the summary sits below the form, out of view, so its figures sit next to Start. */
 const STACKED_QUERY = "(max-width: 1023px)"
 
+/** Below Tailwind's sm width, the footer is a column, and each line of it takes a line from the form. */
+const PHONE_QUERY = "(max-width: 639px)"
+
+/** The fade at the lower edge of a scroll area that has more below. */
+const fadeBelow = "[mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]"
+
 /** The Transfer dialog: the fields of the Transfer, and the summary of what Start does. */
-export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, name }: TransferDialogProps) {
+export function TransferDialog({ open, onOpenChange, onStarted, sourceInstanceId, hash, name }: TransferDialogProps) {
   const { t } = useTranslation("transfers")
   const display = useIncognitoDisplay()
   const instanceName = useInstanceName()
@@ -68,6 +76,7 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
   // The answer of a start closes only the dialog that sent it. A dialog that the user closed before the answer is
   // gone, and the close would hit the dialog that the user opened next.
   const closeAfterStart = () => {
+    onStarted()
     onOpenChange(false)
     setValue(emptyTransferForm)
   }
@@ -103,7 +112,7 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
           <DialogDescription className="line-clamp-2 [overflow-wrap:anywhere]" title={shownName}>{shownName}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+        <ScrollBody>
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
             <TransferForm value={value} onChange={setValue} targets={targets} />
             {stacked ? (
@@ -114,13 +123,13 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
               </div>
             )}
           </div>
-        </div>
+        </ScrollBody>
 
         <div className="flex flex-shrink-0 flex-col gap-3 border-t bg-background px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:px-6">
           <div className="min-w-0 flex-1 space-y-1.5">
             {stacked && <SummaryLine state={state} />}
             <div className={cn("space-y-1 transition-opacity", state.kind === "summary" && !state.current && "opacity-50")}>
-              {warnings.length > 0 ? warnings.map(warning => <Note key={warning} tone="warning">{warning}</Note>) : (
+              {warnings.length > 0 ? <Warnings warnings={warnings} /> : (
                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                   <ShieldCheck className="mt-px size-3.5 shrink-0" aria-hidden />
                   <span>{t("dialog.verified")}</span>
@@ -139,6 +148,13 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
       </DialogContent>
     </Dialog>
   )
+}
+
+/** The scroll area of the dialog. On a phone the form is longer than the dialog, so a fade shows that a field sits below. */
+function ScrollBody({ children }: { children: ReactNode }) {
+  const body = useRef<HTMLDivElement>(null)
+  const more = useMoreBelow(body, null)
+  return <div ref={body} className={cn("min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6", more && fadeBelow)}>{children}</div>
 }
 
 type SummaryState =
@@ -215,7 +231,7 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
         className={cn(
           "min-h-0 flex-1 overflow-y-auto border-t px-4 py-3 text-sm transition-opacity",
           dim,
-          more && "[mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]"
+          more && fadeBelow
         )}
       >
         {state.kind === "pickTarget" && <p className="text-muted-foreground">{t("summary.pickTarget")}</p>}
@@ -362,6 +378,8 @@ function useMoreBelow(ref: RefObject<HTMLElement | null>, content: unknown): boo
     measure()
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure)
     observer?.observe(element)
+    // The content can grow while the element keeps its size.
+    if (element.firstElementChild) observer?.observe(element.firstElementChild)
     element.addEventListener("scroll", measure, { passive: true })
     return () => {
       observer?.disconnect()
@@ -371,12 +389,41 @@ function useMoreBelow(ref: RefObject<HTMLElement | null>, content: unknown): boo
   return more
 }
 
-function Note({ tone, children }: { tone?: "warning"; children: string }) {
+/**
+ * The warnings next to Start. On a phone each warning takes one line until a tap opens them, so the footer leaves
+ * the form its room.
+ */
+function Warnings({ warnings }: { warnings: string[] }) {
+  const { t } = useTranslation("transfers")
+  const phone = useMediaQuery(PHONE_QUERY)
+  const [open, setOpen] = useState(false)
+  const listId = useId()
+  const notes = warnings.map(warning => <Note key={warning} tone="warning" oneLine={phone && !open}>{warning}</Note>)
+  if (!phone) return <>{notes}</>
+  return (
+    <div className="relative flex items-start gap-2">
+      <div id={listId} className="min-w-0 flex-1 space-y-1">{notes}</div>
+      {/* The button covers the warnings, so a tap on a warning opens them too. */}
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-label={t(open ? "dialog.warningsLess" : "dialog.warningsMore")}
+        onClick={() => setOpen(!open)}
+        className={cn("shrink-0 after:absolute after:-inset-y-2 after:inset-x-0", warningTone)}
+      >
+        <ChevronDown aria-hidden className={cn("size-4 transition-transform", open && "rotate-180")} />
+      </button>
+    </div>
+  )
+}
+
+function Note({ tone, oneLine, children }: { tone?: "warning"; oneLine?: boolean; children: string }) {
   if (tone === "warning") {
     return (
       <p role="alert" className={cn("flex gap-1.5 text-xs", warningTone)}>
         <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
-        <span>{children}</span>
+        <span className={cn("min-w-0", oneLine && "truncate")}>{children}</span>
       </p>
     )
   }

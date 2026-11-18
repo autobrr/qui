@@ -138,12 +138,14 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 			Placement:        placement,
 		}
 		m.Placement.SavePath = td.Join(placement.SavePath, td.FromSlash(d.ToSlash(rel)))
+		// The target manages a torrent only at the folder of its category.
+		m.Placement.AutoTMM = placement.AutoTMM && m.Placement.SavePath == placement.SavePath
 		lands := target
 		if crossSeed != nil && src != representative {
 			lands = crossSeed
 			m.TargetInstanceID = crossSeed.ID
 			m.Placement.Endpoint = fsops.EndpointOf(crossSeed)
-			m.Placement.Category, m.Placement.Tags = "", nil
+			m.Placement.Category, m.Placement.Tags, m.Placement.AutoTMM = "", nil, false
 		}
 		if i > 0 || lands != target {
 			if onTarget, err := s.has(ctx, lands.ID, m.Hash); err != nil {

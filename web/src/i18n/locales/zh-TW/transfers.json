@@ -151,7 +151,7 @@
     "targetPlaceholder": "選擇實例",
     "noTargets": "新增另一個實例後才能將種子傳輸過去。",
     "savePath": "儲存路徑",
-    "savePathHelp": "目標上的資料夾。qui 會在其下保留種子及其輔種的資料夾結構。留空則使用目標上該分類的儲存路徑，未設定分類時則使用目標的預設儲存路徑。",
+    "savePathHelp": "目標上的資料夾。qui 會在其下保留種子及其輔種的資料夾結構。留空則使用目標上該分類的儲存路徑，未設定分類時則使用目標的預設儲存路徑。儲存路徑留空時，如果自動種子管理是目標的預設模式，種子也會啟用自動種子管理。",
     "savePathPlaceholder": "目標的預設儲存路徑",
     "savePathPlaceholderCategory": "分類的儲存路徑",
     "category": "分類",
@@ -177,6 +177,8 @@
   "dialog": {
     "title": "傳輸到另一個實例",
     "verified": "qui 會在變更來源之前檢查目標上的每個區塊。",
+    "warningsMore": "顯示完整警告",
+    "warningsLess": "每則警告只顯示一行",
     "start": "開始傳輸",
     "starting": "正在開始…",
     "started": "{{name}} 的傳輸正在排隊等候。",

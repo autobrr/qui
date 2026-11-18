@@ -211,23 +211,8 @@ func (j *job) addMembers(ctx context.Context) error {
 		if p.TargetInstanceID != j.target.ID {
 			continue
 		}
-		// A member from an earlier run, or one that needed a rename, can
-		// miss its files on the target.
-		complete := false
-		if !j.added(p) {
-			var err error
-			if complete, err = j.add(ctx, p); err != nil {
-				return err
-			}
-		}
-		renamed, err := j.rename(ctx, p)
-		if err != nil {
+		if err := j.addOnTarget(ctx, p); err != nil {
 			return err
-		}
-		if !complete || renamed {
-			if err := j.check(ctx, p); err != nil {
-				return err
-			}
 		}
 		if representative == nil {
 			representative = p
@@ -245,6 +230,34 @@ func (j *job) addMembers(ctx context.Context) error {
 		if err := j.crossSeedChecked(ctx, p); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// addOnTarget adds the member on the target when the target does not have it
+// yet, and leaves it complete there: at the file names of the source, and on
+// the management mode of its placement.
+func (j *job) addOnTarget(ctx context.Context, p *part) error {
+	// A member from an earlier run, or one that needed a rename, can miss
+	// its files on the target.
+	complete := false
+	if !j.added(p) {
+		var err error
+		if complete, err = j.add(ctx, p); err != nil {
+			return err
+		}
+	}
+	renamed, err := j.rename(ctx, p)
+	if err != nil {
+		return err
+	}
+	if !complete || renamed {
+		if err := j.check(ctx, p); err != nil {
+			return err
+		}
+	}
+	if p.Placement.AutoTMM {
+		return j.manage(ctx, p)
 	}
 	return nil
 }
@@ -386,6 +399,18 @@ func (j *job) check(ctx context.Context, p *part) error {
 	}
 	if res.Outcome != torrentadd.Verified {
 		return temporary("The check of %s on %s did not pass: %s", j.the(p, "the"), j.target.Name, describe(res))
+	}
+	return nil
+}
+
+// manage turns Automatic Torrent Management on for the member. The add put
+// the member on manual management at the folder of its files, so that the
+// target found them there. A target that saves the category elsewhere by now
+// moves the files itself.
+func (j *job) manage(ctx context.Context, p *part) error {
+	err := j.svc.deps.Sync.SetAutoTMM(qbittorrent.WithPostAddBulkActionRetry(ctx), j.target.ID, []string{p.Hash}, true)
+	if err != nil {
+		return temporary("qui cannot turn on Automatic Torrent Management for %s on %s: %v", j.the(p, "the"), j.target.Name, err)
 	}
 	return nil
 }

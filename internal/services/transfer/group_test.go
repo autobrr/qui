@@ -418,6 +418,29 @@ func TestTransferMovesAMixedGroupWholeToTheTarget(t *testing.T) {
 	require.Empty(t, tree(t, r.srcDir))
 }
 
+// In a group, the target manages only a torrent at the folder of the
+// category. A torrent in a folder below stays on manual management, so the
+// target does not move it out of that folder.
+// regression: #4242
+func TestTransferLeavesATorrentBelowTheCategoryFolderOnManualManagement(t *testing.T) {
+	r := newRig(t)
+	r.dst.AutoManagement = true
+	pack := newPack(t)
+	r.seed(pack)
+	episode, episodeHash := singleFileTorrent(t, episode2, pack.files[episode2])
+	r.src.Seed(episode, r.srcPath(showName))
+
+	record := r.run(transfer.Request{SourceInstanceID: r.source.ID, Hash: episodeHash, TargetInstanceID: r.target.ID})
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(pack, showName), tree(t, r.dstDir))
+	managed := map[string]bool{}
+	for _, hash := range []string{pack.hash, episodeHash} {
+		r.dst.Edit(hash, func(landed *qbtstub.Torrent) { managed[hash] = landed.AutoTMM })
+	}
+	require.Equal(t, map[string]bool{pack.hash: true, episodeHash: false}, managed)
+}
+
 // seedHardlinkedCrossSeed seeds a cross-seed of s on the source that reads
 // hardlinks to the files of s in the folder links.
 func (r *rig) seedHardlinkedCrossSeed(s show) (links, hash string) {

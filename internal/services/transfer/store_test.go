@@ -170,7 +170,7 @@ func TestRecordKeepsEveryFieldPostgresIntegration(t *testing.T) {
 				Name:             "Name aaaa",
 				SourceSavePath:   "/src",
 				TargetInstanceID: 3,
-				Placement:        transfer.Placement{SavePath: "/dst", Category: "tv", Tags: []string{"moved"}, ContentLayout: "Original"},
+				Placement:        transfer.Placement{SavePath: "/dst", Category: "tv", Tags: []string{"moved"}, ContentLayout: "Original", AutoTMM: true},
 				ProvenPieces:     []byte{0b1010_0000},
 			}},
 			FlushState:    transfer.FlushConfirmed,

@@ -477,6 +477,7 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
         <TransferDialog
           open
           onOpenChange={close}
+          onStarted={() => dispatchSelection({ type: "clear" })}
           sourceInstanceId={(singleTorrent as CrossInstanceTorrent).instanceId ?? instanceId}
           hash={singleTorrent.hash}
           name={singleTorrent.name}

@@ -163,7 +163,7 @@
     "targetPlaceholder": "Instanz auswählen",
     "noTargets": "Füge eine weitere Instanz hinzu, um Torrents dorthin zu übertragen.",
     "savePath": "Speicherpfad",
-    "savePathHelp": "Der Ordner auf dem Ziel. qui behält die Ordner des Torrents und seiner Cross-Seeds darunter bei. Leer nutzt den Speicherpfad der Kategorie auf dem Ziel, ohne Kategorie den Standard-Speicherpfad des Ziels.",
+    "savePathHelp": "Der Ordner auf dem Ziel. qui behält die Ordner des Torrents und seiner Cross-Seeds darunter bei. Leer nutzt den Speicherpfad der Kategorie auf dem Ziel, ohne Kategorie den Standard-Speicherpfad des Ziels. Bei leerem Speicherpfad erhält der Torrent außerdem die Automatische Torrent-Verwaltung, wenn sie auf dem Ziel der Standardmodus ist.",
     "savePathPlaceholder": "Standard-Speicherpfad des Ziels",
     "savePathPlaceholderCategory": "Speicherpfad der Kategorie",
     "category": "Kategorie",
@@ -189,6 +189,8 @@
   "dialog": {
     "title": "Auf eine andere Instanz übertragen",
     "verified": "qui prüft jedes Piece auf dem Ziel, bevor es die Quelle ändert.",
+    "warningsMore": "Warnungen vollständig anzeigen",
+    "warningsLess": "Eine Zeile je Warnung anzeigen",
     "start": "Transfer starten",
     "starting": "Wird gestartet…",
     "started": "Der Transfer von {{name}} wartet, bis er an der Reihe ist.",

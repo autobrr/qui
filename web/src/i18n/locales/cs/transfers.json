@@ -175,7 +175,7 @@
     "targetPlaceholder": "Vyberte instanci",
     "noTargets": "Přidejte další instanci, abyste do ní mohli přenášet torrenty.",
     "savePath": "Cesta uložení",
-    "savePathHelp": "Složka v cíli. qui pod ní zachová složky torrentu a jeho křížových sdílení. Prázdné pole použije cestu uložení kategorie v cíli, nebo výchozí cestu uložení cíle, když není nastavena žádná kategorie.",
+    "savePathHelp": "Složka v cíli. qui pod ní zachová složky torrentu a jeho křížových sdílení. Prázdné pole použije cestu uložení kategorie v cíli, nebo výchozí cestu uložení cíle, když není nastavena žádná kategorie. S prázdnou cestou torrent navíc dostane Automatickou správu torrentů, pokud je to výchozí režim cíle.",
     "savePathPlaceholder": "Výchozí cesta uložení cíle",
     "savePathPlaceholderCategory": "Cesta uložení kategorie",
     "category": "Kategorie",
@@ -201,6 +201,8 @@
   "dialog": {
     "title": "Přenést do jiné instance",
     "verified": "qui zkontroluje v cíli každý kus, než změní zdroj.",
+    "warningsMore": "Zobrazit celá varování",
+    "warningsLess": "Zobrazit jeden řádek každého varování",
     "start": "Spustit přenos",
     "starting": "Spouštění…",
     "started": "Přenos {{name}} čeká, až na něj přijde řada.",

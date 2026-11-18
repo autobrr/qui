@@ -402,12 +402,13 @@ func TestCancelLeavesAnExportRunThatRecordsItsEnd(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
 }
 
-// Retry keeps the category and tags of the torrent on the target, also when
-// the torrent of the request went to the Cross-seed instance. A cancelled
-// Transfer starts again as a new Transfer by the user, with the same choices,
-// and the old row stays.
+// Retry keeps the category, the tags, and the management mode of the torrent
+// on the target, also when the torrent of the request went to the Cross-seed
+// instance. A cancelled Transfer starts again as a new Transfer by the user,
+// with the same choices, and the old row stays.
 func TestRetryKeepsTheCategoryOfTheTarget(t *testing.T) {
 	r := newRig(t)
+	r.dst.AutoManagement = true
 	cs := r.withCrossSeedInstance()
 	cs.refuse = "no_match"
 	s := newShow(t, showName)
@@ -436,6 +437,9 @@ func TestRetryKeepsTheCategoryOfTheTarget(t *testing.T) {
 	require.Equal(t, transfer.AfterKeepSeeding, record.Options.After)
 	require.True(t, record.Options.LeaveStopped)
 	require.Equal(t, "tv", r.dst.LastParams("torrents/add").Get("category"))
+	r.dst.Edit(crossSeedHash, func(landed *qbtstub.Torrent) {
+		require.True(t, landed.AutoTMM, "the target manages the torrent as before the retry")
+	})
 	require.True(t, r.src.Has(s.hash), "the source keeps seeding")
 	require.Equal(t, transfer.StateCancelled, r.get(failed.ID).State, "the cancelled row stays")
 }

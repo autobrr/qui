@@ -151,7 +151,7 @@
     "targetPlaceholder": "选择实例",
     "noTargets": "添加另一个实例后才能将种子传输过去。",
     "savePath": "保存路径",
-    "savePathHelp": "目标上的文件夹。qui 会在其下保留种子及其辅种的文件夹结构。留空则使用目标上该分类的保存路径，未设置分类时则使用目标的默认保存路径。",
+    "savePathHelp": "目标上的文件夹。qui 会在其下保留种子及其辅种的文件夹结构。留空则使用目标上该分类的保存路径，未设置分类时则使用目标的默认保存路径。保存路径留空时，如果自动种子管理是目标的默认模式，种子也会启用自动种子管理。",
     "savePathPlaceholder": "目标的默认保存路径",
     "savePathPlaceholderCategory": "分类的保存路径",
     "category": "分类",
@@ -177,6 +177,8 @@
   "dialog": {
     "title": "传输到另一个实例",
     "verified": "qui 会在更改来源之前校验目标上的每个分块。",
+    "warningsMore": "显示完整警告",
+    "warningsLess": "每条警告只显示一行",
     "start": "开始传输",
     "starting": "正在开始…",
     "started": "{{name}} 的传输正在排队等待。",

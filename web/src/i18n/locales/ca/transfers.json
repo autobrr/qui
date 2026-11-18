@@ -163,7 +163,7 @@
     "targetPlaceholder": "Selecciona una instància",
     "noTargets": "Afegeix una altra instància per transferir-hi torrents.",
     "savePath": "Camí de desada",
-    "savePathHelp": "La carpeta a la destinació. qui hi manté a sota les carpetes del torrent i dels seus cross-seeds. Si és buit, fa servir el camí de desada de la categoria a la destinació, o el camí de desada predeterminat de la destinació si no hi ha cap categoria.",
+    "savePathHelp": "La carpeta a la destinació. qui hi manté a sota les carpetes del torrent i dels seus cross-seeds. Si és buit, fa servir el camí de desada de la categoria a la destinació, o el camí de desada predeterminat de la destinació si no hi ha cap categoria. Amb el camí buit, el torrent també rep la Gestió automàtica dels torrents, si és el mode predeterminat de la destinació.",
     "savePathPlaceholder": "Camí de desada predeterminat de la destinació",
     "savePathPlaceholderCategory": "Camí de desada de la categoria",
     "category": "Categoria",
@@ -189,6 +189,8 @@
   "dialog": {
     "title": "Transfereix a una altra instància",
     "verified": "qui comprova cada peça a la destinació abans de canviar l'origen.",
+    "warningsMore": "Mostra els avisos sencers",
+    "warningsLess": "Mostra una línia de cada avís",
     "start": "Inicia la transferència",
     "starting": "S'està iniciant…",
     "started": "La transferència de {{name}} espera el seu torn.",

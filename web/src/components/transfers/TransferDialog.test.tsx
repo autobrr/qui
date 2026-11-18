@@ -76,13 +76,16 @@ afterEach(() => {
 
 const newQueryClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
+/** The list clears its selection on this call. */
+const onStarted = vi.fn()
+
 function renderDialog(queryClient = newQueryClient()) {
   const onOpenChange = vi.fn()
   render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Profiler id="dialog" onRender={() => { commits++ }}>
-          <TransferDialog open onOpenChange={onOpenChange} sourceInstanceId={1} hash="aaaa" name="Show.S01.1080p-GRP" />
+          <TransferDialog open onOpenChange={onOpenChange} onStarted={onStarted} sourceInstanceId={1} hash="aaaa" name="Show.S01.1080p-GRP" />
         </Profiler>
       </TooltipProvider>
     </QueryClientProvider>
@@ -151,6 +154,7 @@ describe("the Transfer dialog", () => {
     })
     expect(starts[0]).toEqual(summaries.at(-1))
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(onStarted).toHaveBeenCalledOnce()
     expect(toast.success).toHaveBeenCalledWith("The Transfer of Show.S01.1080p-GRP waits for its turn.")
   })
 
@@ -265,6 +269,34 @@ describe("the Transfer dialog", () => {
   })
 
   // regression: #4242
+  // regression: #4242
+  it("shows one line of each warning on a phone until a tap opens them, and shows them in full on a wide screen", async () => {
+    summary = { ...summary, noFileAccess: true }
+    const text = "qui cannot see the files on homelab, so a file with other content at the same path can be replaced."
+    renderDialog()
+    await pickTarget("homelab")
+    expect((await screen.findByText(text)).className).not.toContain("truncate")
+    expect(screen.queryByRole("button", { name: "Show the full warnings" })).toBeNull()
+    cleanup()
+
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.startsWith("(max-width:"), media: query, addEventListener: () => {}, removeEventListener: () => {},
+    }))
+    try {
+      renderDialog()
+      await pickTarget("homelab")
+      const warning = await screen.findByText(text)
+      const toggle = screen.getByRole("button", { name: "Show the full warnings" })
+      expect(toggle.getAttribute("aria-expanded")).toBe("false")
+      expect(warning.className).toContain("truncate")
+      fireEvent.click(toggle)
+      expect(screen.getByRole("button", { name: "Show one line of each warning" }).getAttribute("aria-expanded")).toBe("true")
+      expect(warning.className).not.toContain("truncate")
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it("keeps the same figures in place before, while, and after a summary loads", async () => {
     let answer: () => void = () => {}
     server.use(http.post("*/api/transfers/summary", async ({ request }) => {
@@ -387,6 +419,7 @@ describe("the Transfer dialog", () => {
     answer()
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("The Transfer of Show.S01.1080p-GRP waits for its turn."))
     expect(onOpenChange).not.toHaveBeenCalled()
+    expect(onStarted).not.toHaveBeenCalled()
   })
 
   // regression: #4242
