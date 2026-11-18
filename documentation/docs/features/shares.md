@@ -78,11 +78,39 @@ Ended Shares stay in the list for 30 days.
 
 ## Set up the Share tracker
 
-The Share tracker lets your friend's client find your client. Open **Settings → Shares** and select one of two trackers.
+The Share tracker lets your friend's client find your client. Open **Settings → Shares** and select one of two trackers:
+
+- **qui's own tracker**: use it when you can open one port of the qui host to the internet. You need a port forward on your router, or a reverse proxy.
+- **An outside tracker**: use it when you cannot open a port of the qui host. qui then sees no announces, so a Share gives you less control.
 
 ### qui's own tracker
 
-qui's own tracker is off until you set a port and a public address. Use it when the internet can reach qui.
+qui's own tracker is off until you set a port and a public address. Read these facts before you set it up:
+
+- The tracker has its own port. This port is not the port of the qui web interface, which is `7476` by default. The tracker listens on each network address of the qui host.
+- qui opens the port only while a Share runs. A port test shows a closed port while no Share runs.
+- Your own qBittorrent client announces to the public address too. Your friend's client gets your address only after that announce. Thus, your qBittorrent client must be able to open the public address.
+
+To set up the tracker:
+
+1. Select a port that no other program uses, for example `7477`.
+2. If qui runs in Docker, publish the port. Add the port to `ports` of the qui service, and create the container again:
+
+   ```yaml
+   ports:
+     - "7476:7476"
+     - "7477:7477"
+   ```
+
+3. Let the internet reach the port. Do one of these:
+   - Forward the TCP port on your router to the qui host. The public address is then `http://<your public IP address or host name>:7477`.
+   - Put a reverse proxy in front of the port. The public address is then the URL of the proxy, for example `https://share.example.com`. See [Behind a reverse proxy](#behind-a-reverse-proxy).
+4. Open **Settings → Shares** and select **qui's own tracker**.
+5. Enter the port in **Port** and the URL in **Public address**.
+6. If you use a reverse proxy, enter its address in **Trusted proxies**.
+7. Click **Save**. If another program uses the port, qui shows `Another program uses port <port>. Pick another port.`
+8. Make sure that other clients can connect to your qBittorrent client. See [The address of your client](#the-address-of-your-client).
+9. Test the tracker. See [Test the tracker](#test-the-tracker).
 
 | Field | Description |
 | --- | --- |
@@ -90,25 +118,79 @@ qui's own tracker is off until you set a port and a public address. Use it when 
 | **Public address** | The URL at which the internet reaches this port, for example `https://share.example.com`. |
 | **Trusted proxies** | The addresses or CIDR ranges of your reverse proxies, one for each line. |
 
-The tracker uses plain HTTP. For HTTPS, put a reverse proxy in front of the port. The tracker reads the client address from `X-Forwarded-For` only when the request comes from a trusted proxy.
-
 The `.torrent` of each Share contains the public address. Thus, a change of the public address waits until each Share on qui's tracker ends.
 
 The tracker answers only for active Shares, and only to a client that has the `.torrent` of the Share. Any other request gets a `404`. The tracker is not an open tracker, and it does not show the login page of qui. It tells each client to announce every 5 minutes, and answers 30 announces each minute from one address. It gives IPv4 and IPv6 addresses.
 
-The tracker gives your friend the public peer address of your client. If qBittorrent runs in Docker or behind NAT, set the [public peer address](./instance-settings.md#public-peer-address) of the instance.
+#### Behind a reverse proxy
+
+The tracker uses plain HTTP. For HTTPS, put a reverse proxy in front of the port. The proxy must send each request to the tracker port and keep the path, which starts with `/announce/`. If the public address has a path of its own, the proxy must remove that path.
+
+This Caddy configuration sends `https://share.example.com` to a tracker on port `7477` of the same host. Caddy adds the `X-Forwarded-For` header.
+
+```text
+share.example.com {
+	reverse_proxy 127.0.0.1:7477
+}
+```
+
+In **Trusted proxies**, enter the address from which the proxy connects to qui. For a proxy on the qui host, this is `127.0.0.1`. For a proxy in Docker, this is the address of the proxy container or the range of the Docker network. The tracker reads the client address from `X-Forwarded-For` only when the request comes from a trusted proxy.
+
+Without a trusted proxy, the tracker sees each client at the address of the proxy. Then **Only the first downloader** gives the lock to the proxy, so each client that comes through the proxy gets your address. The limit of 30 announces each minute then counts all clients together.
+
+#### The address of your client
+
+The tracker gives your friend the public peer address of your client, and your friend's client connects to that address. If qBittorrent runs in Docker or behind NAT, set the [public peer address](./instance-settings.md#public-peer-address) of the instance. Also forward the listen port of qBittorrent on your router.
+
+If qui does not know the address, it does not start the Share. It shows `qui does not know the public peer address of <instance>. Set it in the settings of the instance.`
+
+#### Test the tracker
+
+1. Start a Share of a small torrent. The tracker port is closed while no Share runs.
+2. Open the public address in a browser on a network outside your own, for example on a phone with mobile data. An error page with the code `404` shows that the tracker answers. If the browser cannot connect, the port forward or the reverse proxy is wrong.
+3. In qBittorrent, find the Share torrent by its tag `qui-share`, and open its **Trackers** tab. The status **Working** shows that your client can announce.
+4. Send the `.torrent` to your friend. After your friend's client announces, the **Shares** tab shows its address.
 
 ### An outside tracker
 
-Use an outside tracker when the internet cannot reach qui. Enter an `http`, `https`, or `udp` announce URL in **Tracker URL**. When you save the outside tracker, qui's own tracker stops listening.
+Use an outside tracker when the internet cannot reach qui. The tracker must accept a torrent that it does not know. A public open tracker does, and so does a tracker that you run. A private tracker refuses the Share torrent, because the Share torrent has a new infohash.
+
+:::warning
+Do not enter the announce URL of a private tracker. qui puts the URL in the `.torrent` that you send to your friend, with each key or passkey that the URL contains.
+:::
+
+To set up an outside tracker:
+
+1. Open **Settings → Shares** and select **An outside tracker**.
+2. Enter an `http`, `https`, or `udp` announce URL in **Tracker URL**, for example `udp://tracker.example.org:1337/announce`.
+3. Click **Save**. qui's own tracker stops listening.
+
+Your client and your friend's client must both be able to reach the tracker. The Share torrent is private, so the clients find each other only through the tracker. The tracker gives your friend the address from which your client announced. qui does not use the public peer address of the instance here. Your friend's client connects to the listen port of qBittorrent, so forward that port on your router.
 
 With an outside tracker, qui does not see the announces. Thus:
 
 - The list of addresses on the Shares tab shows the peers that your client sees.
-- The end at the first complete download reads the peers of your client and the bytes that it sent. This is best effort.
+- The end at the first complete download reads the peers of your client and the bytes that it sent. This is best effort. If the Share does not end after the download, click **Stop**.
 - **Only the first downloader** is not available.
 
 The outside tracker sees the IP address of your client and of your friend's client.
+
+### If the download does not start
+
+A client announces again only every 5 minutes. After each fix, use **Force reannounce** in the client, or wait 5 minutes.
+
+| What you see | Cause | What to do |
+| --- | --- | --- |
+| qui shows `Set a tracker in Settings → Shares` | No tracker is set. | Set up one of the two trackers. |
+| qui shows `qui does not know the public peer address` | The instance has no public peer address, and qBittorrent reports no external address or uses a random listen port. | Set the [public peer address](./instance-settings.md#public-peer-address) of the instance. |
+| Your friend's client shows a tracker error, such as a timeout or a refused connection | The public address does not reach the tracker port. | [Test the tracker](#test-the-tracker). |
+| Your friend's client shows the tracker error `404` | The Share ended, or the `.torrent` is from another Share. | Start a new Share and send its `.torrent`. |
+| The tracker works in your friend's client, but the client finds no peer | Your own client did not announce. | Open the **Trackers** tab of the Share torrent in qBittorrent. If the status is not **Working**, your client cannot open the public address. |
+| The tracker works, the client finds no peer, and **Only the first downloader** is on | Another address holds the lock, for example the old address of your friend. | Click **Unlock** on the Shares tab. |
+| Your friend's client finds your client, but the download stays at 0% | Your friend's client cannot connect to your client. | Make sure that the public peer address is correct, and forward the listen port of qBittorrent. |
+| Your friend's client shows `this Share has as many peers as it takes` | The Share has its number of recipient clients. | Increase **Peers for each Share**. |
+
+Some routers do not let a device in your network open the public address of the router. Then your own client cannot announce to qui's tracker. Let the host name of the public address point to the reverse proxy inside your network, or use an outside tracker.
 
 ### Limits
 
