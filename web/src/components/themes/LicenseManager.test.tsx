@@ -93,9 +93,9 @@ describe("LicenseManager", () => {
     expect(screen.queryByText("themes.license.actions.remove")).toBeNull()
   })
 
-  it.each(["invalid", "offline"])("says that the support unlocks the themes when the stored theme license is %s", (status) => {
+  it("says that the support unlocks the themes when the stored theme license is not active", () => {
     licenses.data = [
-      { licenseKey: "TEST-KEY-0000", status, productName: "premium" },
+      { licenseKey: "TEST-KEY-0000", status: "invalid", productName: "premium" },
       { licenseKey: "TEST-KEY-0001", status: "active", productName: "supporter" },
     ]
     premiumAccess.hasPremiumAccess = true
@@ -130,6 +130,15 @@ describe("LicenseManager", () => {
 
     expect(screen.getByText("themes.license.status.activeTitle")).not.toBeNull()
     expect(screen.queryByText("themes.license.status.supporterTitle")).toBeNull()
+  })
+
+  it("explains a supporter key that is offline, and offers no purchase", () => {
+    licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "offline", productName: "supporter" }]
+    render(<LicenseManager />)
+
+    expect(screen.getByText("themes.license.status.offlineTitle")).not.toBeNull()
+    expect(screen.queryByText("themes.license.status.supportEndedDescription")).toBeNull()
+    expect(screen.queryByText("themes.license.actions.getPremium")).toBeNull()
   })
 
   it("tells a past supporter where the theme license key is", () => {

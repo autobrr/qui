@@ -70,7 +70,7 @@ export function LicenseManager({
   const hasStoredLicense = Boolean(primaryLicense)
 
   // An offline license comes back without user action when the license server answers, so it needs no re-activation.
-  const isOfflineLicense = primaryLicense?.status === "offline"
+  const isOfflineLicense = (primaryLicense ?? supporterKey)?.status === "offline"
   const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" && !isOfflineLicense : false
   const showPurchase = !hasPremiumAccess && !hasInvalidLicense && !isOfflineLicense
   let accessTitle = t("themes.license.status.unlockTitle")
