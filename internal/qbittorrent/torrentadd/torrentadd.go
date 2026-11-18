@@ -272,9 +272,15 @@ const defaultRefreshInterval = 1500
 
 // stalePolls is how many polls of req after a recheck can still read the
 // state from before it. The count follows the status refresh interval of the
-// instance, which the user can set far above the default.
+// instance, which the user can set far above the default. It reads the
+// interval from qBittorrent, not from the cache of the preferences, which can
+// hold a lower one.
 func (a *Adder) stalePolls(ctx context.Context, req Request) (int, error) {
-	prefs, err := a.sync.GetAppPreferences(ctx, req.InstanceID)
+	client, err := a.sync.GetClient(ctx, req.InstanceID)
+	if err != nil {
+		return 0, fmt.Errorf("read the status refresh interval: %w", err)
+	}
+	prefs, err := client.GetAppPreferencesCtx(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("read the status refresh interval: %w", err)
 	}

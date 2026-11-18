@@ -282,6 +282,14 @@ func (s *Server) SetDefaultSavePath(p string) {
 	s.savePath = p
 }
 
+// SetRefreshInterval changes the refresh_interval preference, in
+// milliseconds, as an edit in qBittorrent's own WebUI does.
+func (s *Server) SetRefreshInterval(ms int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.RefreshInterval = ms
+}
+
 // DefaultSavePath returns the reported default save path.
 func (s *Server) DefaultSavePath() string {
 	s.mu.Lock()

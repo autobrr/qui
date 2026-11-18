@@ -53,6 +53,7 @@ type rig struct {
 	stub       *qbtstub.Server
 	dir        string
 	instanceID int
+	sync       *qbittorrent.SyncManager
 	adder      *torrentadd.Adder
 }
 
@@ -73,7 +74,8 @@ func newRig(t *testing.T, webAPI string) *rig {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = clientPool.Close() })
 
-	return &rig{stub: stub, dir: dir, instanceID: instance.ID, adder: torrentadd.New(qbittorrent.NewSyncManager(clientPool, nil))}
+	sync := qbittorrent.NewSyncManager(clientPool, nil)
+	return &rig{stub: stub, dir: dir, instanceID: instance.ID, sync: sync, adder: torrentadd.New(sync)}
 }
 
 func (r *rig) add(t *testing.T, torrent sample, settings torrentadd.Settings) torrentadd.Result {
@@ -274,4 +276,27 @@ func TestAddEndsWhenTheCheckStopsTheTorrent(t *testing.T) {
 	require.Equal(t, torrentadd.Accepted, res.Outcome, "failure %d: %v", res.Failure, res.Err)
 	require.Equal(t, "stoppedDL", string(res.Torrent.State))
 	require.Less(t, r.stub.Syncs(), 10)
+}
+
+// The user can raise the status refresh interval in qBittorrent while qui
+// holds the old one in its cache of the preferences. The wait after a recheck
+// reads the interval fresh, so it does not take the complete state from
+// before the recheck as the result of the check.
+// regression: #4242
+func TestRecheckReadsTheRefreshIntervalFromQBittorrent(t *testing.T) {
+	r := newRig(t, "2.16.2")
+	r.stub.CheckSyncs, r.stub.StaleSyncs = 1, 3
+	writeSample(t, r.dir)
+	torrent := newSample(t)
+	res := r.add(t, torrent, torrentadd.Settings{Stopped: new(true), SeedMode: true})
+	require.Equal(t, torrentadd.Verified, res.Outcome, "failure %d: %v", res.Failure, res.Err)
+	_, err := r.sync.GetAppPreferences(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	r.stub.SetRefreshInterval(40)
+	require.NoError(t, os.RemoveAll(filepath.Join(r.dir, "Sample.Show.S01-GRP")))
+
+	res = r.adder.Recheck(t.Context(), torrentadd.Request{InstanceID: r.instanceID, Hash: torrent.hash, Polls: 10, PollInterval: 10 * time.Millisecond})
+
+	require.Equal(t, torrentadd.Accepted, res.Outcome, "failure %d: %v", res.Failure, res.Err)
+	require.Equal(t, "stoppedDL", string(res.Torrent.State))
 }
