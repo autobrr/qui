@@ -2405,7 +2405,7 @@ class ApiClient {
     })
   }
 
-  async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean; isSupporter: boolean; setupAt: string }> {
+  async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean; isSupporter: boolean; setupAt?: string }> {
     return this.request("/license/licensed")
   }
 
