@@ -2556,7 +2556,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.grouping.title")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger asChild openOnTap>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3307,7 +3307,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     </Label>
                                     <TooltipProvider delayDuration={150}>
                                       <Tooltip>
-                                        <TooltipTrigger asChild>
+                                        <TooltipTrigger asChild openOnTap>
                                           <button
                                             type="button"
                                             className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3468,7 +3468,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </Label>
                             <TooltipProvider delayDuration={150}>
                               <Tooltip>
-                                <TooltipTrigger asChild>
+                                <TooltipTrigger asChild openOnTap>
                                   <button
                                     type="button"
                                     className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3797,7 +3797,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
                                       // A checked box stays clickable, so a workflow whose instance lost the option can clear it.
                                       disabled={!hasTrustedIdentity && !formState.exprIncludeHardlinks}
-                                      className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
+                                      className="h-3.5 w-3.5 rounded border-border disabled:pointer-events-none disabled:opacity-50"
                                     />
                                     <span className={!hasTrustedIdentity ? "opacity-50" : ""}>
                                       {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
@@ -3830,7 +3830,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.freeSpace.title")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger asChild openOnTap>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3949,7 +3949,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <Label className="text-xs">{t("preferences.workflowDialog.category.skipIfCrossSeedExists")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger asChild openOnTap>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -4109,7 +4109,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   {deleteUsesFreeSpace && (
                     <TooltipProvider delayDuration={150}>
                       <Tooltip>
-                        <TooltipTrigger asChild>
+                        <TooltipTrigger asChild openOnTap>
                           <button
                             type="button"
                             className="inline-flex items-center text-muted-foreground hover:text-foreground"
