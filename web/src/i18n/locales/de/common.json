@@ -374,12 +374,67 @@
   },
   "support": {
     "title": "qui unterstützen",
-    "description": "Hast du schon Designs und möchtest weiter helfen? Alles in qui gehört dir bereits. Ein Abo schaltet keine Funktionen frei, es finanziert die Zeit, die in ihre Entwicklung fließt.",
-    "perkPrefix": "Patrons erhalten die Rolle",
-    "perkSuffix": "in Discord und unsere ewige Dankbarkeit.",
-    "yearly": "{{price}} / Jahr",
-    "monthly": "{{price}} / Monat",
-    "notLicense": "Die Design-Lizenz ist ein separater einmaliger Kauf."
+    "description": "Die Wege, qui zu unterstützen, und ihre Preise.",
+    "heading": "Hilf mit, qui zu pflegen",
+    "intro": "qui ist kostenlos und funktioniert gleich, ob du zahlst oder nicht. Die Unterstützung bezahlt die Zeit und die Werkzeuge, die in qui stecken.",
+    "licensed": "Danke für deine Design-Lizenz.",
+    "releases_one": "qui hat in den letzten 12 Monaten {{count}} Version veröffentlicht.",
+    "releases_other": "qui hat in den letzten 12 Monaten {{count}} Versionen veröffentlicht.",
+    "releaseMap": "Die letzten 52 Wochen, ein Quadrat pro Tag. Ein helles Quadrat ist ein Tag mit einer neuen Version.",
+    "releaseDay": "Ein Tag mit einer neuen Version",
+    "plans": {
+      "yearly": "{{price}} pro Jahr",
+      "yearlyNote": "{{price}} pro Monat, jährlich bezahlt",
+      "yearlyNoteWithLicense": "{{price}} pro Monat, jährlich bezahlt. Inklusive Design-Lizenz.",
+      "license": "Design-Lizenz, ab {{price}}",
+      "licenseNote": "Alle aktuellen und zukünftigen Premium-Designs, lebenslang",
+      "onePayment": "einmalige Zahlung"
+    },
+    "checkout": "Weiter zum Checkout",
+    "fromPrice": "ab {{price}}",
+    "terms": {
+      "yearly": "Du zahlst heute {{price}} und danach jedes Jahr {{price}}, bis du kündigst.",
+      "license": "Eine Zahlung von {{price}} oder mehr, den Betrag legst du im Checkout fest. Kein Abo."
+    },
+    "perks": {
+      "yearly": "Supporter erhalten das Supporter-Abzeichen in qui und die Supporter-Rolle in Discord. Füge nach dem Checkout deinen Supporter-Schlüssel zu diesem Server hinzu.",
+      "license": "Die Lizenz schaltet die Premium-Designs frei. Füge nach dem Checkout deinen Lizenzschlüssel zu diesem Server hinzu."
+    },
+    "existing": "Schon Supporter?",
+    "addKey": "Supporter-Schlüssel hinzufügen",
+    "key": {
+      "help": "Dein Supporter-Schlüssel steht auf der Checkout-Seite und in der E-Mail mit deiner Quittung.",
+      "label": "Supporter-Schlüssel",
+      "submit": "Schlüssel hinzufügen",
+      "back": "Zurück"
+    },
+    "ended": "Der Supporter-Schlüssel auf diesem Server ist nicht mehr gültig. qui prüft ihn jeden Tag erneut. Wenn deine Unterstützung beendet ist, bleibt deine Design-Lizenz erhalten. Ihren Schlüssel findest du im <portal>Lizenzportal</portal>. Füge ihn unter Einstellungen, Designs hinzu.",
+    "removeKey": "Supporter-Schlüssel von diesem Server entfernen",
+    "supporter": {
+      "badge": "Supporter",
+      "title": "Du unterstützt qui",
+      "thanks": "Danke. Deine Unterstützung bezahlt die Zeit und die Werkzeuge, die in qui stecken.",
+      "detail": "Du hast das Supporter-Abzeichen in qui und die Supporter-Rolle in Discord. Deine Unterstützung schaltet auch die Premium-Designs frei und enthält eine lebenslange Design-Lizenz. Den Lizenzschlüssel findest du im <portal>Lizenzportal</portal>.",
+      "manage": "Unterstützung verwalten oder kündigen"
+    },
+    "reminder": {
+      "title_one": "{{count}} Tag qui auf diesem Server",
+      "title_other": "{{count}} Tage qui auf diesem Server",
+      "tooltip": "Auf diesem Server gezählt und nie gesendet. qui fragt einmal im Jahr.",
+      "subtitle": "qui unterstützen. qui fragt einmal im Jahr.",
+      "notNow": "Nicht jetzt",
+      "serverDays_one": "Dieser Server nutzt qui seit {{count}} Tag. qui zählt das auf diesem Server und sendet es nie.",
+      "serverDays_other": "Dieser Server nutzt qui seit {{count}} Tagen. qui zählt das auf diesem Server und sendet es nie.",
+      "notNowToast": "qui fragt in einem Jahr wieder",
+      "dontAskAgain": "Nicht mehr fragen",
+      "offToast": "qui fragt nicht mehr",
+      "offToastDescription": "Die Verknüpfung zum Unterstützen bleibt. Schalte die Erinnerung unter Einstellungen, Anwendung wieder ein.",
+      "undo": "Rückgängig",
+      "hiddenToast": "Die Verknüpfung zum Unterstützen ist ausgeblendet",
+      "hiddenToastDescription": "qui fragt nicht mehr. Hole die Verknüpfung unter Einstellungen, Anwendung zurück.",
+      "notForYou": "Nichts für dich? <reminder>Schalte die jährliche Erinnerung aus</reminder> oder <heart>blende das Herz aus</heart>. Die Einstellungen bringen beides zurück.",
+      "notForYouHeart": "Nichts für dich? <heart>Blende das Herz aus</heart>. Die Einstellungen bringen es zurück."
+    }
   },
   "labels": {
     "path": "Pfad",

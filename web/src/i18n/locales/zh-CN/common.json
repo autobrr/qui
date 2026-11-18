@@ -365,12 +365,64 @@
   },
   "support": {
     "title": "支持 qui",
-    "description": "已经有主题了，还想再出一份力？qui 的一切已经属于你。订阅不会解锁功能，它资助的是开发这些功能所投入的时间。",
-    "perkPrefix": "赞助者可在 Discord 获得",
-    "perkSuffix": "身份组，以及我们永远的感谢。",
-    "yearly": "{{price}} / 年",
-    "monthly": "{{price}} / 月",
-    "notLicense": "主题许可证是单独的一次性购买。"
+    "description": "支持 qui 的方式及其价格。",
+    "heading": "帮助 qui 持续维护",
+    "intro": "qui 是免费的，无论您是否付费，功能都完全相同。支持款项用于支付投入 qui 的时间和工具。",
+    "licensed": "感谢您购买主题许可证。",
+    "releases_other": "qui 在过去 12 个月发布了 {{count}} 个版本。",
+    "releaseMap": "过去 52 周，每天一个方块。亮色方块表示当天有新版本发布。",
+    "releaseDay": "有新版本发布的日子",
+    "plans": {
+      "yearly": "每年 {{price}}",
+      "yearlyNote": "每月 {{price}}，按年支付",
+      "yearlyNoteWithLicense": "每月 {{price}}，按年支付。包含主题许可证。",
+      "license": "主题许可证，{{price}} 起",
+      "licenseNote": "所有当前和未来的高级主题，终身有效",
+      "onePayment": "一次性付款"
+    },
+    "checkout": "前往结账",
+    "fromPrice": "{{price}} 起",
+    "terms": {
+      "yearly": "您今天支付 {{price}}，之后每年支付 {{price}}，直到您取消。",
+      "license": "一次性支付 {{price}} 或更多，金额在结账时设定。不是订阅。"
+    },
+    "perks": {
+      "yearly": "赞助者可在 qui 中获得赞助者徽章，并在 Discord 获得赞助者身份组。结账后，请将您的赞助者密钥添加到此服务器。",
+      "license": "许可证可解锁高级主题。结账后，请将您的许可证密钥添加到此服务器。"
+    },
+    "existing": "已经是赞助者？",
+    "addKey": "添加赞助者密钥",
+    "key": {
+      "help": "您的赞助者密钥显示在结账页面上，也在附有收据的邮件中。",
+      "label": "赞助者密钥",
+      "submit": "添加密钥",
+      "back": "返回"
+    },
+    "ended": "此服务器上的赞助者密钥已失效。qui 每天都会重新检查它。如果您的支持已结束，您的主题许可证仍然保留。请在<portal>许可证门户</portal>中找到它的密钥，然后在设置的主题页中添加。",
+    "removeKey": "从此服务器移除赞助者密钥",
+    "supporter": {
+      "badge": "赞助者",
+      "title": "您正在支持 qui",
+      "thanks": "谢谢。您的支持用于支付投入 qui 的时间和工具。",
+      "detail": "您拥有 qui 中的赞助者徽章和 Discord 中的赞助者身份组。您的支持还会解锁高级主题，并包含一份终身主题许可证。请在<portal>许可证门户</portal>中找到许可证密钥。",
+      "manage": "管理或取消支持"
+    },
+    "reminder": {
+      "title_other": "qui 已在此服务器上运行 {{count}} 天",
+      "tooltip": "仅在此服务器上计算，从不发送。qui 每年只询问一次。",
+      "subtitle": "支持 qui。qui 每年只询问一次。",
+      "notNow": "以后再说",
+      "serverDays_other": "此服务器已运行 qui {{count}} 天。qui 只在此服务器上计算这个数字，从不发送。",
+      "notNowToast": "qui 将在一年后再次询问",
+      "dontAskAgain": "不再询问",
+      "offToast": "qui 不会再询问",
+      "offToastDescription": "支持快捷方式会保留。可在设置的应用页中重新开启提醒。",
+      "undo": "撤销",
+      "hiddenToast": "支持快捷方式已隐藏",
+      "hiddenToastDescription": "qui 不会再询问。可在设置的应用页中恢复快捷方式。",
+      "notForYou": "不感兴趣？<reminder>关闭年度提醒</reminder>，或<heart>隐藏爱心</heart>。可在设置中恢复两者。",
+      "notForYouHeart": "不感兴趣？<heart>隐藏爱心</heart>。可在设置中恢复。"
+    }
   },
   "labels": {
     "path": "路径",

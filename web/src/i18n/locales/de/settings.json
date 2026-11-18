@@ -549,6 +549,9 @@
         "unlockDescription": "Zahle, was du möchtest (min. 9,99 $) • Lebenslange Lizenz • Alle Designs",
         "activeTitle": "Lizenz aktiv",
         "activeDescription": "Du hast Zugriff auf alle aktuellen und zukünftigen Designs",
+        "supporterTitle": "Designs freigeschaltet",
+        "supporterDescription": "Deine Unterstützung schaltet alle aktuellen und zukünftigen Designs frei. Sie enthält eine lebenslange Design-Lizenz. Damit du die Designs auch nach dem Ende deiner Unterstützung behältst, füge den Lizenzschlüssel aus dem Lizenzportal hinzu.",
+        "supportEndedDescription": "Deine Unterstützung enthielt eine lebenslange Design-Lizenz. Ihren Schlüssel findest du im Lizenzportal. Füge ihn hier hinzu.",
         "activationRequiredTitle": "Lizenzaktivierung erforderlich",
         "activationRequiredDescription": "Deine Lizenz muss auf diesem Gerät aktiviert werden",
         "offlineTitle": "Lizenzdienst nicht erreichbar",
@@ -661,6 +664,7 @@
       "failedCopyVerify": "Verifizierungsbefehl konnte nicht kopiert werden",
       "toasts": {
         "activationSuccessPremium": "Lizenz aktiviert! Vielen Dank!",
+        "activationSuccessSupporter": "Supporter-Schlüssel hinzugefügt. Vielen Dank!",
         "paymentCompleted": "Zahlung abgeschlossen. Füge deinen Lizenzschlüssel hinzu, um die Einrichtung abzuschließen.",
         "paymentNotCompleted": "Die Zahlung wurde nicht erfolgreich abgeschlossen.",
         "returnedFromCheckout": "Vom Checkout zurückgekehrt. Füge deinen Lizenzschlüssel hinzu, sobald du bereit bist.",
@@ -1132,6 +1136,16 @@
         "notCheckedYet": "Noch nicht geprüft",
         "lastChecked": "Zuletzt geprüft {{date}}"
       }
+    },
+    "support": {
+      "description": "qui ist kostenlos. Supporter und Design-Lizenzen bezahlen die Arbeit daran.",
+      "open": "Wege, qui zu unterstützen",
+      "openSupporter": "Deine Unterstützung",
+      "shortcut": "Verknüpfung zum Unterstützen anzeigen",
+      "shortcutHelp": "Das Herz in der Kopfzeile und „qui unterstützen“ im Menü auf dem Handy.",
+      "reminder": "Einmal im Jahr erinnern",
+      "reminderDescription": "Eine Erinnerung im Jahr, nie mehr. Aus, solange die Verknüpfung zum Unterstützen ausgeblendet ist.",
+      "reminderSupporter": "qui erinnert Supporter nicht."
     },
     "restart": {
       "button": "Neu starten",

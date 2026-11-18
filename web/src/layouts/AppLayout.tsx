@@ -8,6 +8,8 @@ import { CommandPalette } from "@/components/command-palette/CommandPalette"
 import { MobileFooterNav } from "@/components/layout/MobileFooterNav"
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
+import { SupportDialogRoot } from "@/components/support/SupportDialog"
+import { ReminderBar } from "@/components/support/SupportReminder"
 import { LayoutRouteProvider, useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { usePersistedSidebarState } from "@/hooks/usePersistedSidebarState"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
@@ -68,6 +70,7 @@ function AppLayoutContent() {
             </TooltipContent>
           </Tooltip>
         </Header>
+        <ReminderBar />
         <main className={cn(
           "flex-1 overflow-y-auto",
           isInstanceRoute ? "max-md:pt-(--app-fade-gap)" : "max-md:pt-[max(0px,var(--app-fade-gap)_-_0.5rem)]",
@@ -83,6 +86,7 @@ function AppLayoutContent() {
       <MobileFooterNav />
 
       <CommandPalette />
+      <SupportDialogRoot />
     </div>
   )
 }

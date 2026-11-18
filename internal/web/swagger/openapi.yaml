@@ -4262,7 +4262,7 @@ paths:
       tags:
         - Licenses
       summary: Check premium access
-      description: Check if any active licenses grant premium access
+      description: Check if any active licenses grant premium access, and if a supporter key is valid
       security:
         - SessionAuth: []
       responses:
@@ -4275,6 +4275,13 @@ paths:
                 properties:
                   hasPremiumAccess:
                     type: boolean
+                  isSupporter:
+                    type: boolean
+                    description: A supporter key on this server is valid
+                  setupAt:
+                    type: string
+                    format: date-time
+                    description: The time of the first database migration on this server. The web app counts the days of qui on this server from it.
 
   /api/license/licenses:
     get:

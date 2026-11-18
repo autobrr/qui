@@ -543,6 +543,9 @@
         "unlockDescription": "원하는 만큼 지불(최소 $9.99) • 평생 라이선스 • 모든 테마",
         "activeTitle": "라이선스 활성화됨",
         "activeDescription": "현재 및 향후 모든 테마에 접근할 수 있습니다",
+        "supporterTitle": "테마 잠금 해제됨",
+        "supporterDescription": "후원으로 현재 및 향후 모든 테마가 잠금 해제됩니다. 평생 사용할 수 있는 테마 라이선스가 포함됩니다. 후원이 끝난 뒤에도 테마를 유지하려면 라이선스 포털에서 라이선스 키를 받아 추가하세요.",
+        "supportEndedDescription": "후원에 평생 사용할 수 있는 테마 라이선스가 포함되어 있었습니다. 라이선스 포털에서 키를 찾아 여기에 추가하세요.",
         "activationRequiredTitle": "라이선스 활성화 필요",
         "activationRequiredDescription": "이 컴퓨터에서 라이선스를 활성화해야 합니다",
         "offlineTitle": "라이선스 서비스에 연결할 수 없음",
@@ -655,6 +658,7 @@
       "failedCopyVerify": "확인 명령을 복사하지 못했습니다",
       "toasts": {
         "activationSuccessPremium": "라이선스가 활성화되었습니다! 감사합니다!",
+        "activationSuccessSupporter": "후원자 키가 추가되었습니다. 감사합니다!",
         "paymentCompleted": "결제가 완료되었습니다. 설정을 완료하려면 라이선스 키를 추가하세요.",
         "paymentNotCompleted": "결제가 성공적으로 완료되지 않았습니다.",
         "returnedFromCheckout": "결제에서 돌아왔습니다. 준비되면 라이선스 키를 추가하세요.",
@@ -1123,6 +1127,16 @@
         "notCheckedYet": "아직 확인되지 않음",
         "lastChecked": "마지막 확인 {{date}}"
       }
+    },
+    "support": {
+      "description": "qui는 무료입니다. 후원자와 테마 라이선스가 qui 작업 비용을 냅니다.",
+      "open": "qui 후원 방법",
+      "openSupporter": "내 후원",
+      "shortcut": "후원 바로가기 표시",
+      "shortcutHelp": "헤더의 하트와 휴대폰 메뉴의 'qui 후원하기'입니다.",
+      "reminder": "1년에 한 번 알림",
+      "reminderDescription": "1년에 한 번만 알립니다. 후원 바로가기를 숨기면 꺼집니다.",
+      "reminderSupporter": "qui는 후원자에게 알리지 않습니다."
     },
     "restart": {
       "button": "재시작",

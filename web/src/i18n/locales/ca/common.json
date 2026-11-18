@@ -374,12 +374,67 @@
   },
   "support": {
     "title": "Fes costat a qui",
-    "description": "Ja tens els temes i vols fer-hi encara més un cop de mà? Tot el que hi ha a qui ja és teu. Una subscripció no desbloqueja funcions: finança el temps que es dedica a construir-les.",
-    "perkPrefix": "Els mecenes reben el rol",
-    "perkSuffix": "a Discord i el nostre agraïment etern.",
-    "yearly": "{{price}} / any",
-    "monthly": "{{price}} / mes",
-    "notLicense": "La llicència dels temes és una compra única a part."
+    "description": "Les maneres de donar suport a qui i els seus preus.",
+    "heading": "Ajuda a mantenir qui",
+    "intro": "qui és gratuït i funciona igual tant si pagues com si no. El suport paga el temps i les eines que s'hi dediquen.",
+    "licensed": "Gràcies per la teva llicència dels temes.",
+    "releases_one": "qui ha publicat {{count}} versió en els darrers 12 mesos.",
+    "releases_other": "qui ha publicat {{count}} versions en els darrers 12 mesos.",
+    "releaseMap": "Les darreres 52 setmanes, un quadrat per a cada dia. Un quadrat brillant és un dia amb una versió nova.",
+    "releaseDay": "Un dia amb una versió nova",
+    "plans": {
+      "yearly": "{{price}} l'any",
+      "yearlyNote": "{{price}} al mes, pagament anual",
+      "yearlyNoteWithLicense": "{{price}} al mes, pagament anual. Inclou la llicència dels temes.",
+      "license": "Llicència dels temes, des de {{price}}",
+      "licenseNote": "Tots els temes prèmium actuals i futurs, de per vida",
+      "onePayment": "un sol pagament"
+    },
+    "checkout": "Continua al pagament",
+    "fromPrice": "des de {{price}}",
+    "terms": {
+      "yearly": "Pagues {{price}} avui i després {{price}} cada any fins que cancel·lis.",
+      "license": "Un sol pagament de {{price}} o més, que tries en pagar. Sense subscripció."
+    },
+    "perks": {
+      "yearly": "Els mecenes reben la insígnia Mecenes a qui i el rol de mecenes a Discord. Després del pagament, afegeix la teva clau de mecenes a aquest servidor.",
+      "license": "La llicència desbloqueja els temes prèmium. Després del pagament, afegeix la teva clau de llicència a aquest servidor."
+    },
+    "existing": "Ja ets mecenes?",
+    "addKey": "Afegeix la clau de mecenes",
+    "key": {
+      "help": "La clau de mecenes és a la pàgina de pagament i al correu amb el rebut.",
+      "label": "Clau de mecenes",
+      "submit": "Afegeix la clau",
+      "back": "Enrere"
+    },
+    "ended": "La clau de mecenes d'aquest servidor ja no és vàlida. qui la torna a comprovar cada dia. Si el teu suport ha acabat, conserves la llicència dels temes. Troba'n la clau al <portal>portal de llicències</portal> i afegeix-la a Configuració, a Temes.",
+    "removeKey": "Elimina la clau de mecenes d'aquest servidor",
+    "supporter": {
+      "badge": "Mecenes",
+      "title": "Fas costat a qui",
+      "thanks": "Gràcies. El teu suport paga el temps i les eines que es dediquen a qui.",
+      "detail": "Tens la insígnia Mecenes a qui i el rol de mecenes a Discord. El teu suport també desbloqueja els temes prèmium i inclou una llicència dels temes de per vida. Troba la clau de llicència al <portal>portal de llicències</portal>.",
+      "manage": "Gestiona o cancel·la el suport"
+    },
+    "reminder": {
+      "title_one": "{{count}} dia de qui en aquest servidor",
+      "title_other": "{{count}} dies de qui en aquest servidor",
+      "tooltip": "Comptat en aquest servidor i mai enviat. qui ho demana un cop l'any.",
+      "subtitle": "Fes costat a qui. qui ho demana un cop l'any.",
+      "notNow": "Ara no",
+      "serverDays_one": "Aquest servidor fa {{count}} dia que executa qui. qui ho compta en aquest servidor i no ho envia mai.",
+      "serverDays_other": "Aquest servidor fa {{count}} dies que executa qui. qui ho compta en aquest servidor i no ho envia mai.",
+      "notNowToast": "qui ho tornarà a demanar d'aquí a un any",
+      "dontAskAgain": "No ho tornis a demanar",
+      "offToast": "qui no ho tornarà a demanar",
+      "offToastDescription": "La drecera de suport es manté. Torna a activar el recordatori a Configuració, a Aplicació.",
+      "undo": "Desfés",
+      "hiddenToast": "La drecera de suport està amagada",
+      "hiddenToastDescription": "qui no ho tornarà a demanar. Recupera la drecera a Configuració, a Aplicació.",
+      "notForYou": "No és per a tu? <reminder>Desactiva el recordatori anual</reminder> o <heart>amaga el cor</heart>. La configuració els recupera tots dos.",
+      "notForYouHeart": "No és per a tu? <heart>Amaga el cor</heart>. La configuració el recupera."
+    }
   },
   "labels": {
     "path": "Camí",
