@@ -58,7 +58,8 @@ export function SharesTab() {
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-full pl-6 max-sm:pl-4">{t("transfers:columns.torrent")}</TableHead>
                 <TableHead className="hidden @lg:table-cell">{t("transfers:columns.state")}</TableHead>
-                <TableHead pinEnd className="pr-6 max-sm:pr-4"><span className="sr-only">{t("transfers:columns.actions")}</span></TableHead>
+                {/* The header row takes no hover color, so its pinned cell takes none. */}
+                <TableHead pinEnd className="pr-6 max-sm:pr-4 [tr:hover>&]:bg-card"><span className="sr-only">{t("transfers:columns.actions")}</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
