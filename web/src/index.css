@@ -243,12 +243,30 @@
     overflow: hidden;
   }
 
+  /* Full-height layouts subtract both, because #root clips what extends below the screen. */
+  :root {
+    --app-inset-top: env(safe-area-inset-top);
+    --app-fade-gap: 0px;
+  }
+
+  /* iOS 26.1+ Home Screen web apps fade the content below the status bar (autobrr/qui#2520); the top inset can be 0 there, so the gap is fixed. */
+  @media (display-mode: standalone) {
+    @supports (-webkit-touch-callout: none) {
+      :root {
+        --app-fade-gap: 20px;
+      }
+    }
+  }
+
   body {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
     font-family: var(--font-sans);
-    /* Handle safe areas for iOS devices (except bottom - handled by MobileFooterNav) */
-    padding-top: env(safe-area-inset-top);
+  }
+
+  /* The safe-area space is on #root, not on body: an open dialog or menu locks scrolling, and the lock sets the padding of body to 0. MobileFooterNav handles the bottom. */
+  #root {
+    padding-top: var(--app-inset-top);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }

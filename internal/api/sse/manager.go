@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"maps"
 	"math/rand/v2"
-	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -31,6 +30,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 const (
@@ -1466,7 +1466,7 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 	if _, err := message.WriteTo(w); err != nil {
 		m.eventsDropped.Add(1)
 		event := log.Error()
-		if isClientDisconnect(err) {
+		if httphelpers.IsClientDisconnect(err) {
 			event = log.Debug()
 		}
 		event.Err(err).Str("type", payload.Type).Msg("Failed to write SSE payload")
@@ -1476,7 +1476,7 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 	if err := flushSession(w); err != nil {
 		m.eventsDropped.Add(1)
 		event := log.Error()
-		if isClientDisconnect(err) {
+		if httphelpers.IsClientDisconnect(err) {
 			event = log.Debug()
 		}
 		event.Err(err).Str("type", payload.Type).Msg("Failed to flush SSE payload")
@@ -1484,25 +1484,6 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 	}
 	m.eventsPublished.Add(1)
 	return true
-}
-
-// isClientDisconnect reports whether err is an expected client-side SSE socket
-// close rather than an internal server write failure.
-func isClientDisconnect(err error) bool {
-	if err == nil {
-		return false
-	}
-	if isContextStopped(err) || errors.Is(err, net.ErrClosed) {
-		return true
-	}
-
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "connection reset") ||
-		strings.Contains(msg, "broken pipe") ||
-		strings.Contains(msg, "use of closed network connection") ||
-		strings.Contains(msg, "forcibly closed by the remote host") ||
-		strings.Contains(msg, "connection was aborted") ||
-		strings.Contains(msg, "wsasend:")
 }
 
 // isContextStopped reports caller-side cancellation and deadline expiry, including retry-wrapped errors.

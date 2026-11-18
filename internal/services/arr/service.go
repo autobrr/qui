@@ -159,7 +159,7 @@ func (s *Service) enabledInstancesForContent(ctx context.Context, title string, 
 	}
 
 	if len(instances) == 0 {
-		log.Debug().
+		log.Trace().
 			Str("title", title).
 			Str("contentType", string(contentType)).
 			Str("arrType", string(arrType)).
