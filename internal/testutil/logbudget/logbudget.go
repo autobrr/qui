@@ -80,7 +80,8 @@ func Count(t testing.TB, fn func()) Lines {
 // AssertFlat fails for each message at DEBUG or above that large writes more
 // often than small. Run the same work on a small and a large library: a line
 // that grows with the library belongs at TRACE. Make the small library bigger
-// than each cap on DEBUG lines, or a capped line looks like growth.
+// than each cap on DEBUG lines, or a capped line looks like growth. AssertFlat
+// compares message text, so put a count in a field, not in the message.
 func AssertFlat(t testing.TB, small, large Lines) {
 	t.Helper()
 	var grown []Line
