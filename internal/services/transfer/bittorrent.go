@@ -324,7 +324,7 @@ func (j *job) download(ctx context.Context, hash string, base, size int64) (*qbt
 		if err := j.pause(ctx, poll); err != nil {
 			return nil, err
 		}
-		torrent, err := j.helperOn(ctx, j.target, hash)
+		torrent, err := j.helperOn(ctx, j.target, hash, poll < eagerPolls || idle+1 >= cfg.PeerPolls)
 		switch {
 		case err != nil:
 			return nil, err
@@ -352,7 +352,7 @@ func (j *job) await(ctx context.Context, inst *models.Instance, hash string, pol
 			return nil, false, err
 		}
 		var err error
-		if torrent, err = j.helperOn(ctx, inst, hash); err != nil {
+		if torrent, err = j.helperOn(ctx, inst, hash, poll < eagerPolls || poll == polls-1); err != nil {
 			return nil, false, err
 		}
 		if torrent != nil && done(torrent) {
@@ -362,8 +362,13 @@ func (j *job) await(ctx context.Context, inst *models.Instance, hash string, pol
 	return torrent, false, nil
 }
 
-func (j *job) helperOn(ctx context.Context, inst *models.Instance, hash string) (*qbt.Torrent, error) {
-	torrent, err := j.svc.torrent(ctx, inst.ID, hash)
+// eagerPolls is how many polls of a wait read a fresh sync, so that a short
+// wait ends as fast as qBittorrent allows. The poll that can end a wait
+// without success is fresh too.
+const eagerPolls = 5
+
+func (j *job) helperOn(ctx context.Context, inst *models.Instance, hash string, fresh bool) (*qbt.Torrent, error) {
+	torrent, err := j.svc.read(ctx, inst.ID, hash, fresh)
 	switch {
 	case err != nil:
 		return nil, temporary("qui cannot read the Transfer torrent on %s: %v", inst.Name, err)
