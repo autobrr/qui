@@ -1567,7 +1567,7 @@ function RulePreviewSheet({ instanceId, ruleName, open, onOpenChange }: RulePrev
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : matchingArticles && Object.keys(matchingArticles).length > 0 ? (
-            <ScrollArea className="h-[calc(100vh-200px)]">
+            <ScrollArea className="h-[calc(100vh-200px-var(--app-inset-top)-var(--app-fade-gap))]">
               <div className="space-y-4">
                 {Object.entries(matchingArticles).map(([feedUrl, articles]) => (
                   <div key={feedUrl}>
