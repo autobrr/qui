@@ -32,6 +32,7 @@ function AppLayoutContent() {
 
   return (
     // Where no top bar shows (the classes of Header and SpreadsheetRibbonTabs), the fade gap goes inside main instead, so it scrolls away with the page.
+    // Off an instance route, each page has 1rem of top padding of its own, so main adds a smaller part of the gap.
     <div className={cn("flex h-[calc(100dvh-var(--app-inset-top))] bg-background md:pt-(--app-fade-gap)", !topBarShowsSideways && "sideways:pt-0")}>
       {/* Desktop Sidebar - Collapsible */}
       <div className={cn(
@@ -68,8 +69,9 @@ function AppLayoutContent() {
           </Tooltip>
         </Header>
         <main className={cn(
-          "flex-1 overflow-y-auto max-md:pt-(--app-fade-gap)",
-          !topBarShowsSideways && "sideways:pt-(--app-fade-gap)",
+          "flex-1 overflow-y-auto",
+          isInstanceRoute ? "max-md:pt-(--app-fade-gap)" : "max-md:pt-[max(0px,var(--app-fade-gap)_-_0.5rem)]",
+          !topBarShowsSideways && "sideways:pt-[max(0px,var(--app-fade-gap)_-_0.5rem)]",
           isFooterVisible ? "pb-[calc(4rem+env(safe-area-inset-bottom))]" : "pb-0",
           "lg:pb-0"
         )}>
