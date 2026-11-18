@@ -3,10 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { act, cleanup, renderHook } from "@testing-library/react"
 import type { TFunction } from "i18next"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { _resetClientSettingsForTests, readRaw } from "@/lib/client-settings"
+import {
+  _resetClientSettingsForTests,
+  applyServerSettings,
+  markClientSettingsUnavailable,
+  readRaw,
+  seedAndMarkReady
+} from "@/lib/client-settings"
 import {
   firstDueTime,
   hideShortcut,
@@ -15,11 +22,20 @@ import {
   REMINDER_DUE_KEY,
   REMINDER_OFF_KEY,
   SHORTCUT_HIDDEN_KEY,
+  useSupportReminder,
   type ReminderInputs
 } from "./reminder"
 
-const toast = vi.hoisted(() => vi.fn())
+const { toast, premium, notices, latestVersion } = vi.hoisted(() => ({
+  toast: vi.fn(),
+  premium: { isSupporter: false, setupAt: "2025-01-01T00:00:00Z" },
+  notices: [],
+  latestVersion: { data: undefined },
+}))
 vi.mock("sonner", () => ({ toast }))
+vi.mock("@/hooks/useLicense", () => ({ useHasPremiumAccess: () => premium }))
+vi.mock("@/hooks/useSystemNotices", () => ({ useSystemNotices: () => notices }))
+vi.mock("@tanstack/react-query", () => ({ useQuery: () => latestVersion }))
 
 const DAY = 24 * 60 * 60 * 1000
 const NOW = Date.UTC(2026, 10, 18, 12)
@@ -70,6 +86,38 @@ describe("firstDueTime", () => {
     ["comes 14 days from now at the highest draw", NOW - 400 * DAY, 0.999, NOW + 14 * DAY],
   ])("%s", (_, setupAt, draw, expected) => {
     expect(firstDueTime(NOW, setupAt, () => draw)).toBe(expected)
+  })
+})
+
+describe("useSupportReminder", () => {
+  afterEach(() => {
+    cleanup()
+    // Clears the push timer that the snapshot starts.
+    _resetClientSettingsForTests()
+  })
+
+  // regression: #4276
+  it("keeps the due time of the server when the first read of the server failed", () => {
+    markClientSettingsUnavailable()
+    renderHook(() => useSupportReminder())
+    expect(readRaw(REMINDER_DUE_KEY)).toBeNull()
+
+    const answered = String(NOW + 365 * DAY)
+    act(() => {
+      applyServerSettings({ [REMINDER_DUE_KEY]: answered })
+      seedAndMarkReady({ [REMINDER_DUE_KEY]: answered })
+    })
+    expect(readRaw(REMINDER_DUE_KEY)).toBe(answered)
+  })
+
+  it("stores the first due time after the first read of the server", () => {
+    renderHook(() => useSupportReminder())
+    expect(readRaw(REMINDER_DUE_KEY)).toBeNull()
+
+    act(() => seedAndMarkReady({}))
+    const dueAt = Number(readRaw(REMINDER_DUE_KEY))
+    expect(dueAt).toBeGreaterThanOrEqual(NOW + 7 * DAY)
+    expect(dueAt).toBeLessThanOrEqual(NOW + 14 * DAY)
   })
 })
 

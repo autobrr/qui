@@ -15,6 +15,7 @@ import {
   parseJsonBoolean,
   readClientSetting,
   useClientSetting,
+  useClientSettingsLoaded,
   useClientSettingsSettled,
   writeClientSetting
 } from "@/lib/client-settings"
@@ -68,9 +69,10 @@ export function useSupportShortcutHidden(): boolean {
   return useClientSetting(SHORTCUT_HIDDEN_KEY, FLAG)[0]
 }
 
-/** The state of the yearly reminder. The first call after the client settings settle stores the first due time. */
+/** The state of the yearly reminder. The first call after the first read of the server stores the first due time. */
 export function useSupportReminder() {
   const settled = useClientSettingsSettled()
+  const loaded = useClientSettingsLoaded()
   const shortcutHidden = useSupportShortcutHidden()
   const [reminderOff] = useClientSetting(REMINDER_OFF_KEY, FLAG)
   const [dueAt] = useClientSetting(REMINDER_DUE_KEY, DUE_TIME)
@@ -81,10 +83,11 @@ export function useSupportReminder() {
   const setupAt = setupTime ? Date.parse(setupTime) : null
 
   useEffect(() => {
+    // Not on a failed read of the server: the queued time would later replace the due time on the server.
     // Read again: each component that uses the hook runs this effect, and the first one stores the time.
-    if (isDemo || !settled || setupAt === null || readClientSetting(REMINDER_DUE_KEY, DUE_TIME) !== null) return
+    if (isDemo || !loaded || setupAt === null || readClientSetting(REMINDER_DUE_KEY, DUE_TIME) !== null) return
     writeClientSetting(REMINDER_DUE_KEY, firstDueTime(Date.now(), setupAt))
-  }, [settled, setupAt])
+  }, [loaded, setupAt])
 
   const now = Date.now()
   const due = !isDemo && settled && isReminderDue({
