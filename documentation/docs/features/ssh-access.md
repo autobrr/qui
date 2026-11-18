@@ -124,6 +124,7 @@ qui tests again each time that it connects, and the tier follows the result. In 
 | Automations: Has Missing Files condition | Yes | Yes | Yes |
 | Automations: Hardlink Scope conditions, hardlink grouping, and **Include hardlinked copies** | Yes | No | No |
 | Detection of hardlinked cross-seeds in the delete dialog | Yes | No | No |
+| [Transfer](./transfers.md#cross-seeds-on-hardlinks): cross-seeds on hardlinks move with the torrent | Yes | No | No |
 | Content file download, MediaInfo, and BDInfo | Yes | No | No |
 | Cross-seed ID fallback from MKV tags | Yes | No | No |
 

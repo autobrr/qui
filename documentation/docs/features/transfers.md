@@ -9,7 +9,7 @@ description: "Transfer to Instance moves a torrent, its cross-seeds, and their f
 
 A Transfer moves a torrent and its files from one qBittorrent instance to another instance in qui. For example, you can move a torrent from a seedbox to a home server after 90 days. qui copies the files that the target does not have, checks every piece against the `.torrent`, and adds the torrent on the target. Then qui removes the torrent from the source, or keeps it, as you select.
 
-A Transfer also moves each torrent on the source instance that reads the same files, for example a cross-seed. With a [Transfer torrent](#transfer-torrent), a cross-seed that reads the files through hardlinks stays on the source. The source is the instance that has the torrent now. The target is the instance that gets it.
+A Transfer also moves each torrent on the source instance that reads the same files, for example a cross-seed. A cross-seed that reads the files through hardlinks stays on the source in two cases. The first is a [Transfer torrent](#transfer-torrent). The second is a source whose files qui reaches [over SSH](#cross-seeds-on-hardlinks). The source is the instance that has the torrent now. The target is the instance that gets it.
 
 To move only a torrent whose files are already on the target, use [Export to Instance](./automations.md#export-to-instance).
 
@@ -67,6 +67,18 @@ qui reads the files from the source and writes them on the target. A big file go
 
 qui writes each new file under a temporary name, and renames it when the file is complete. qui does not replace a file that is already on the target.
 
+#### Cross-seeds on hardlinks
+
+If the files of the source are on qui's own disk, qui finds the cross-seeds that read the files through hardlinks. They move in the same Transfer. qui copies each file one time and links the other names to that copy on the target. If the target cannot make a hardlink, the file gets a copy of its own.
+
+qui finds hardlinks only on its own disk. If qui reaches the files of the source over SSH, a cross-seed on hardlinks is not part of the Transfer:
+
+- The summary of the dialog and the log of the Transfer do not count it.
+- It stays on the source and continues to seed.
+- With **Remove the torrent and its files from the source**, qui removes only the files of the moved torrent. The data stays on the source while one of these cross-seeds uses it.
+
+To move such a cross-seed, start a Transfer for it. If its files have the same names and the same save path as files that are already on the target, qui copies nothing. If the names are different, the target gets a full copy of the data for each cross-seed.
+
 ### Transfer torrent
 
 A Transfer torrent is a temporary private copy of the torrent, with a new infohash and the same pieces. The trackers of the real torrent do not see it. The source client seeds it from its files, and the target client downloads it. qui removes the Transfer torrent from both clients at the end.
@@ -75,7 +87,7 @@ The target connects to the [public peer address](./instance-settings.md#public-p
 
 If an instance uses the default "TCP and μTP" peer connection protocol of qBittorrent, the Transfers page shows a hint. In qui's tests, "TCP only" was about three times faster. qui does not change this setting.
 
-A Transfer torrent cannot make hardlinks on the target. Thus only the torrent that you selected moves, with the torrents that read its files at the same path. A cross-seed that reads the files through hardlinks stays on the source and continues to seed. The summary and the log of the Transfer show how many cross-seeds stay. qui also keeps the files of the moved torrent on the source, because the cross-seeds use the same data. These files use no more disk space.
+A Transfer torrent cannot make hardlinks on the target. Thus only the torrent that you selected moves, with the torrents that read its files at the same path. A cross-seed that reads the files through hardlinks stays on the source and continues to seed. If the files of the source are on qui's own disk, the summary and the log of the Transfer show how many cross-seeds stay. qui also keeps the files of the moved torrent on the source, because the cross-seeds use the same data. These files use no more disk space.
 
 An automation can match several cross-seeds that have the same files through hardlinks. The rule then starts a Transfer for one of them. It skips the others while that Transfer is not complete, and while the target has one of them. A file such as an .nfo or a subtitle does not make two cross-seeds different. A cross-seed that has one more video file, for example a longer season pack, gets a Transfer of its own. The activity log of the rule does not show the torrents that the rule skips.
 
