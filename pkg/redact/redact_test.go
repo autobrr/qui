@@ -512,3 +512,23 @@ func TestSecrets(t *testing.T) {
 
 	assert.Equal(t, "cfg dump: <<REDACTED>>|pw=REDACTED|REDACTED;abc stays;hunter2 stays", got)
 }
+
+// regression: #4288
+func TestSecretsRemovesTheJSONEscapedForm(t *testing.T) {
+	tests := []struct {
+		name   string
+		secret string
+		input  string
+		want   string
+	}{
+		{"quote in a log line", `abc"defghi`, `{"level":"warn","detail":"login failed: abc\"defghi"}`, `{"level":"warn","detail":"login failed: REDACTED"}`},
+		{"backslash in a log line", `pass\word`, `{"error":"bad pass\\word"}`, `{"error":"bad REDACTED"}`},
+		{"HTML escape of encoding/json", `pa<ss>word`, `{"body":"pa\u003css\u003eword"}`, `{"body":"REDACTED"}`},
+		{"short secret stays", `ab"cd`, `{"detail":"ab\"cd"}`, `{"detail":"ab\"cd"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, Secrets(tt.input, []string{tt.secret}))
+		})
+	}
+}

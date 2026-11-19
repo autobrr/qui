@@ -6,6 +6,8 @@ package redact
 
 import (
 	"cmp"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"net/url"
 	"regexp"
@@ -214,7 +216,8 @@ func Text(s string) string {
 const minSecretLength = 6
 
 // Secrets replaces each exact occurrence of each given secret in s with
-// REDACTED, wherever it appears. It skips secrets shorter than 6 characters.
+// REDACTED, wherever it appears, also as a JSON string writes it. It skips
+// secrets shorter than 6 characters.
 func Secrets(s string, secrets []string) string {
 	if s == "" {
 		return s
@@ -233,6 +236,7 @@ func SecretsReplacer(secrets []string) *strings.Replacer {
 	for _, secret := range secrets {
 		if utf8.RuneCountInString(secret) >= minSecretLength {
 			values = append(values, secret)
+			values = append(values, jsonEscapedForms(secret)...)
 		}
 	}
 	if len(values) == 0 {
@@ -249,6 +253,23 @@ func SecretsReplacer(secrets []string) *strings.Replacer {
 		pairs = append(pairs, value, "REDACTED")
 	}
 	return strings.NewReplacer(pairs...)
+}
+
+// jsonEscapedForms returns how a JSON string writes secret, when that differs
+// from secret: a log line of zerolog escapes a quote or a backslash, and
+// encoding/json also escapes <, > and &.
+func jsonEscapedForms(secret string) []string {
+	var forms []string
+	for _, escapeHTML := range []bool{false, true} {
+		quoted, err := json.Marshal(secret, jsontext.EscapeForHTML(escapeHTML))
+		if err != nil {
+			return nil // invalid UTF-8, which a JSON string does not hold as is
+		}
+		if form := string(quoted[1 : len(quoted)-1]); form != secret {
+			forms = append(forms, form)
+		}
+	}
+	return forms
 }
 
 // regexRedact redacts sensitive query params, userinfo passwords, and proxy
