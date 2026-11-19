@@ -26,6 +26,7 @@ Repo rules for AI agents working on qui.
 - When you write or review code, follow the rules for its area in `CODING_STANDARDS.md`. Before changing cross-module data flow, service boundaries, API routing, or long-lived architecture, read `docs/architecture.md`.
 - Before you plan, edit, spec, or review a change to `web/`, i18n, React components, or frontend tests, read `web/AGENTS.md`. Before you change a locale file or a translation, also read `web/src/i18n/AGENTS.md`.
 - Before you change the database schema or a migration, read `internal/database/AGENTS.md`. Migration rules live there.
+- Before you plan or split a feature that merges in more than one pull request, read `docs/standards/experimental-features.md`.
 - Before you add or change a built-in theme, read `internal/themes/AGENTS.md`.
 - Read `docs/linting.md` when lint output is unclear or needs a policy judgment, and before you run a `make` lint target other than `precommit`, run `scripts/ratchet`, edit its allowlist, or move Go code into a new file.
 - Before you act on a Dependabot alert, or edit the Docker, compose, or release files at the repo root, read `docs/agents/maintenance.md`.

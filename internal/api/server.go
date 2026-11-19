@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
@@ -61,11 +62,12 @@ import (
 )
 
 type Server struct {
-	server  *http.Server
-	logger  zerolog.Logger
-	config  *config.AppConfig
-	version string
-	started time.Time
+	server       *http.Server
+	logger       zerolog.Logger
+	config       *config.AppConfig
+	experimental *experimental.Features
+	version      string
+	started      time.Time
 
 	authService                      *auth.Service
 	sessionManager                   *scs.SessionManager
@@ -128,6 +130,7 @@ type Server struct {
 
 type Dependencies struct {
 	Config                           *config.AppConfig
+	Experimental                     *experimental.Features
 	Version                          string
 	AuthService                      *auth.Service
 	SessionManager                   *scs.SessionManager
@@ -216,6 +219,7 @@ func NewServer(deps *Dependencies) *Server {
 		},
 		logger:                           log.Logger.With().Str("module", "api").Logger(),
 		config:                           deps.Config,
+		experimental:                     deps.Experimental,
 		version:                          deps.Version,
 		started:                          time.Now().UTC(),
 		authService:                      deps.AuthService,
@@ -446,7 +450,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService, s.version, s.updateAvailability)
 	systemHandler := handlers.NewSystemHandler(s.updateAvailability, s.restarter, s.selfUpdater)
-	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
+	applicationHandler := handlers.NewApplicationHandler(s.config, s.experimental, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)

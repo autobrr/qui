@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dodo"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	remotebackend "github.com/autobrr/qui/internal/fsops/remote"
@@ -579,6 +580,7 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Invalid OIDC allowed user configuration")
 	}
 	config.WarnIfOIDCAllowedUserUnset(cfg.Config)
+	experimentalFeatures := experimental.New(cfg.Config.ExperimentalFeatures)
 
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
 	if err != nil {
@@ -1007,6 +1009,7 @@ func (app *Application) runServer() {
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
 		Config:                           cfg,
+		Experimental:                     experimentalFeatures,
 		Version:                          buildinfo.Version,
 		AuthService:                      authService,
 		SessionManager:                   sessionManager,
