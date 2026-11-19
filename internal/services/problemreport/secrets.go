@@ -208,11 +208,18 @@ func (s StoreSecrets) notificationSecrets(ctx context.Context, c *secretCollecto
 	return nil
 }
 
+// hostCredentialSchemes are the notification URL schemes whose host is a
+// credential and not a server: the Notifiarr API key, the Pushover user key,
+// the Pushbullet token, the IFTTT webhook key and the WeCom webhook key.
+var hostCredentialSchemes = map[string]bool{
+	"notifiarr": true, "notifiarrapi": true, "pushover": true, "pushbullet": true, "ifttt": true, "wecom": true,
+}
+
 // notificationURLSecrets returns a notification URL and each part of it
-// that the settings page masks, because a text can hold one part alone: the
+// that can hold a credential, because a text can hold one part alone: the
 // user name and the password, which hold the token of a discord:// or a
-// telegram:// URL, each path segment, and the host of a Notifiarr URL, which
-// is its API key.
+// telegram:// URL, each path segment, and the host of a URL whose scheme is
+// in hostCredentialSchemes.
 func notificationURLSecrets(raw string) []string {
 	secrets := []string{raw}
 	parsed, err := url.Parse(strings.TrimSpace(raw))
@@ -223,7 +230,7 @@ func notificationURLSecrets(raw string) []string {
 		password, _ := parsed.User.Password()
 		secrets = append(secrets, parsed.User.Username(), password)
 	}
-	if parsed.Scheme == "notifiarr" || parsed.Scheme == "notifiarrapi" {
+	if hostCredentialSchemes[parsed.Scheme] {
 		secrets = append(secrets, parsed.Host)
 	}
 	return append(secrets, strings.Split(parsed.Path, "/")...)

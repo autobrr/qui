@@ -46,7 +46,7 @@ const (
 	reportREDKey       = "red-key-0123456789abcdef"
 	reportWebhookToken = "webhook-token-0123456789abcdef"
 	reportGotifyToken  = "gotify-token-0123456789"
-	reportNotifiarrKey = "notifiarr-key-0123456789"
+	reportPushoverUser = "pushover-user-0123456789"
 	reportSubmission   = "0b7c1a52-6f43-4d6e-9c7e-2f8a1d3b4c5e"
 )
 
@@ -120,7 +120,7 @@ func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 	for _, target := range []string{
 		"discord://" + reportWebhookToken + "@123456789012345678",
 		"gotify://gotify.example.invalid/" + reportGotifyToken,
-		"notifiarr://" + reportNotifiarrKey,
+		"pushover://shoutrrr:pushover-app-token-0123456789@" + reportPushoverUser + "/",
 	} {
 		_, err = deps.NotificationTargetStore.Create(t.Context(), &models.NotificationTargetCreate{Name: target, URL: target, Enabled: true})
 		require.NoError(t, err)
@@ -332,7 +332,7 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 		"\nThe files sit on " + reportSSHHost + " for " + reportSSHUser + " with this key:\n" + rig.sshKey +
 		"\nRED/OPS is off, its key was " + reportREDKey +
 		// regression: #4288
-		"\nMy notification tokens are " + reportWebhookToken + ", " + reportGotifyToken + " and " + reportNotifiarrKey
+		"\nMy notification tokens are " + reportWebhookToken + ", " + reportGotifyToken + " and " + reportPushoverUser
 	status, answer := rig.send(menuReport(text, facts, "warnings", facts.Logs.Warnings), nil)
 	require.Equal(t, http.StatusCreated, status, answer)
 	assert.Equal(t, "received", answer["status"])
@@ -348,7 +348,7 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 		// regression: #4288
 		reportSSHHost, reportSSHUser, strings.TrimSpace(rig.sshKey), reportREDKey,
 		// regression: #4288
-		reportWebhookToken, reportGotifyToken, reportNotifiarrKey} {
+		reportWebhookToken, reportGotifyToken, reportPushoverUser} {
 		assert.NotContains(t, raw, private)
 	}
 	assert.Contains(t, raw, "connect to qbittorrent refused", "a host name with no dot stays")
