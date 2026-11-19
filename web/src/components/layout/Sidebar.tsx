@@ -158,9 +158,11 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
   const fadeClassName = "transition-opacity duration-200 motion-reduce:transition-none"
   const labelClassName = cn(fadeClassName, iconOnly && "opacity-0")
   // The text of a row keeps the width that it has in the full sidebar, so that it does not move while it fades.
-  const rowLabelClassName = (fullWidthClassName: string) => cn("flex min-w-0 flex-1 items-center gap-3", labelClassName, iconOnly && [fullWidthClassName, "shrink-0"])
+  const rowLabelClassName = (fullWidthClassName: string) => cn("flex min-w-0 flex-1 items-center gap-3 whitespace-nowrap", labelClassName, iconOnly && [fullWidthClassName, "shrink-0"])
   // For two marks that have the same place: one goes before the other comes.
   const swapClassName = (shown: boolean) => cn("transition-opacity duration-100 motion-reduce:transition-none", shown ? "delay-100" : "opacity-0")
+  // The icon of an instance and its initials: one shrinks and fades while the other grows in its place, so the row always shows a mark.
+  const morphClassName = (shown: boolean) => cn("transition-[opacity,scale] duration-200 ease-out motion-reduce:transition-none", !shown && "scale-50 opacity-0")
   const cornerDotClassName = cn("absolute left-[31px] top-1 h-1.5 w-1.5 rounded-full", fadeClassName, !iconOnly && "opacity-0")
   const languageItems = supportedLanguages.map((lng) => (
     <DropdownMenuItem
@@ -329,8 +331,8 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
                   className={cn(rowClassName, iconOnly && iconOnlyRowClassName, rowStateClassName(isActive))}
                 >
                   <span className="relative h-4 w-4 flex-shrink-0">
-                    <HardDrive className={cn("h-4 w-4", swapClassName(!iconOnly || !initials))} />
-                    <span className={cn("absolute inset-0 flex items-center justify-center text-[11px] font-semibold", swapClassName(iconOnly))} aria-hidden="true">{initials}</span>
+                    <HardDrive className={cn("h-4 w-4", morphClassName(!iconOnly || !initials))} />
+                    <span className={cn("absolute inset-0 flex items-center justify-center text-[11px] font-semibold", morphClassName(iconOnly && Boolean(initials)))} aria-hidden="true">{initials}</span>
                   </span>
                   <span className={rowLabelClassName("min-w-44")}>
                     <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
@@ -398,7 +400,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
 
         {/* The row is the same in both modes, so nothing above it moves. */}
         <div className={cn("relative flex items-center justify-between pl-3", iconOnly && "w-58")}>
-          <div className={cn("flex flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none", swapClassName(!iconOnly), iconOnly && "whitespace-nowrap")}>
+          <div className={cn("flex flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none whitespace-nowrap", swapClassName(!iconOnly))}>
             <span className="font-medium text-sidebar-foreground/50">{t("sidebar.version", { version: appVersion })}</span>
             <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />
