@@ -585,7 +585,7 @@ describe("DashboardOverview instances", () => {
     expect(within(sheet).getByRole("switch").getAttribute("aria-checked")).toBe("true")
   })
 
-  it("changes the alternative speed limits with one click on the rabbit of a desktop row, and opens no detail band", async () => {
+  it("changes the alternative speed limits with one click on the turtle of a desktop row, and opens no detail band", async () => {
     desktop = true
     renderOverview([stats(1), stats(2, { altSpeedEnabled: true })])
     const table = await screen.findByRole("table", { name: "instances.title" })
@@ -598,7 +598,7 @@ describe("DashboardOverview instances", () => {
     expect(openHosts(table)).toEqual([])
   })
 
-  it("shows the rabbit again on a desktop row when qBittorrent rejects the change", async () => {
+  it("shows the limits as off again on a desktop row when qBittorrent rejects the change", async () => {
     desktop = true
     toggleFails = true
     renderOverview([stats(1)])

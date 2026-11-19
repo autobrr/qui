@@ -37,7 +37,7 @@ Each instance has one line. The line shows the name, the upload speed, the downl
 
 An offline instance shows the cause in place of the numbers. A status icon next to the name tells you that the numbers are not live. See [Live updates](#live-updates).
 
-On a wide screen, the name of an online instance is a link to its torrent list. The button next to the name turns the alternative speed limits of the instance on or off with one click. A rabbit shows that the limits are off. An orange turtle shows that the limits are on. qui does not ask for a confirmation. An instance that is not online has no link and no button.
+On a wide screen, the name of an online instance is a link to its torrent list. The button next to the name turns the alternative speed limits of the instance on or off with one click. The button shows a turtle. A gray turtle shows that the limits are off. A red turtle shows that the limits are on. qui does not ask for a confirmation. An instance that is not online has no link and no button.
 
 ### Details of an instance
 

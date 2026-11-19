@@ -39,7 +39,7 @@ import { cn, formatBytes, formatBytesOrFallback, formatDuration } from "@/lib/ut
 import type { TransferHistoryBytes } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { AlertCircle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Database, Plus, Rabbit, RefreshCcw, Turtle } from "lucide-react"
+import { AlertCircle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Database, Plus, RefreshCcw, Turtle } from "lucide-react"
 import { useState, type KeyboardEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -209,7 +209,7 @@ function InstanceLines({ statsData, layerOf, onOpen }: { statsData: DashboardIns
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="truncate font-medium">{d.instance.name}</span>
                   <DataStatus d={d} />
-                  {d.altSpeedEnabled && <Turtle className="size-3.5 shrink-0 text-orange-500" aria-label={t("details.altSpeedOn")} />}
+                  {d.altSpeedEnabled && <Turtle className="size-3.5 shrink-0 text-destructive" aria-label={t("details.altSpeedOn")} />}
                   {health === "ok" && <span className="ml-auto shrink-0"><IssueCounts issues={instanceIssues(d)} links={false} /></span>}
                 </span>
                 {health === "ok" ? (
@@ -539,7 +539,6 @@ function useAltSpeed(d: DashboardInstanceStats) {
 function AltSpeedButton({ d }: { d: DashboardInstanceStats }) {
   const { t } = useTranslation("dashboard")
   const { enabled, isPending, toggle } = useAltSpeed(d)
-  const Icon = enabled ? Turtle : Rabbit
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -552,9 +551,9 @@ function AltSpeedButton({ d }: { d: DashboardInstanceStats }) {
             event.stopPropagation()
             toggle()
           }}
-          className={cn("size-7 shrink-0", enabled ? "text-orange-500 hover:text-orange-500" : "text-muted-foreground")}
+          className={cn("size-7 shrink-0", enabled ? "bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive" : "text-muted-foreground")}
         >
-          <Icon className="size-4" />
+          <Turtle className="size-4" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{enabled ? t("details.altSpeedOn") : t("instances.altSpeedOff")}</TooltipContent>
