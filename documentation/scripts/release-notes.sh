@@ -8,10 +8,16 @@ tag=$1
 repo=autobrr/qui
 blog_dir="$(dirname "$0")/../blog"
 
-IFS=$'\t' read -r date prerelease < <(
-	gh release view "$tag" -R "$repo" --json publishedAt,isPrerelease \
-		--jq '[.publishedAt[:10], .isPrerelease] | @tsv'
+# A draft has no publish date, so isDraft comes first: read drops an empty
+# first field.
+IFS=$'\t' read -r draft date prerelease < <(
+	gh release view "$tag" -R "$repo" --json isDraft,publishedAt,isPrerelease \
+		--jq '[.isDraft, .publishedAt[:10], .isPrerelease] | @tsv'
 )
+if [[ $draft == true ]]; then
+	echo "$tag is a draft. Publish it first, so that the page gets the final Highlights." >&2
+	exit 1
+fi
 if [[ $prerelease == true ]]; then
 	echo "skip $tag: prerelease"
 	exit 0
@@ -27,8 +33,8 @@ out="$blog_dir/$date-$tag.md"
 		tr -d '\r' |
 		# Drop the GoReleaser footer (Docker images, Discord link).
 		sed '/^## Docker images/,$d' |
-		# GoReleaser writes "## Changelog" at the top, and the Release job adds
-		# Highlights below it. Move the heading to the first change list instead.
+		# GoReleaser writes "## Changelog" at the top, and the Highlights go
+		# below it. Move the heading to the first change list instead.
 		awk '
 			/^## Changelog$/ { next }
 			!moved && /^### (Breaking Changes|New Features|Bug Fixes|Other Changes)$/ { print "## Changelog\n"; moved = 1 }
