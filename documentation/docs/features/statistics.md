@@ -36,7 +36,7 @@ A day starts at midnight in the timezone of your browser.
 
 On a phone, the periods are in a list at the top of the page. To set a custom range, tap the calendar button next to the list.
 
-The page shows each full date in the date format that you select in **Settings → Time & language**. Examples are the days of a custom range, "Recording since", and the best day. If you select the relative format, the page shows the dates in the ISO format. The short labels below the bars of a chart do not change. On a phone, the label of a custom range also keeps its short form.
+The page shows each full date in the date format that you select in **Settings → Time & language**. Examples are the days of a custom range, "Recording since", and the best day. If you select the relative format, the page shows these dates in the ISO format. The time of each delete in **Deleted torrents** stays relative to now. The short labels below the bars of a chart do not change. On a phone, the label of a custom range also keeps its short form.
 
 The page opens on the last preset period that it showed. This includes a period that a link opened, for example the **Statistics** link of the Dashboard. qui keeps this period on the server, so it applies in each browser and on each device. qui does not keep a custom range. After a custom range, the page opens on the last preset period that it showed.
 
