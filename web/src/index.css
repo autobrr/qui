@@ -57,6 +57,8 @@
 @custom-variant dark (&:is(.dark *));
 /* A phone turned sideways, as useIsPhone in hooks/useMediaQuery.ts reads it. */
 @custom-variant sideways (@media (pointer: coarse) and (max-height: 499px) and (max-width: 1023px));
+/* A window too short for the compact rows of the sidebar. */
+@custom-variant short (@media (max-height: 760px));
 
 :root {
   --background: oklch(1 0 0);

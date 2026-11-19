@@ -49,6 +49,8 @@ import {
 import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
+const rowClassName = "flex items-center gap-3 rounded-md px-3 py-1.5 text-sm font-medium short:py-1 short:text-[13px]/5"
+
 export function Sidebar() {
   const { t, i18n } = useTranslation("common")
   const location = useLocation()
@@ -121,7 +123,7 @@ export function Sidebar() {
 
   return (
     <div {...themeArea("app-sidebar")} className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
-      <div className="p-6">
+      <div className="px-6 py-3 short:py-2">
         <h2 className="flex items-center text-lg font-semibold text-sidebar-foreground">
           {isDemo ? (
             <a href="/" target="_top" className="flex items-center gap-2 hover:opacity-80">{brand}</a>
@@ -130,7 +132,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-1 min-h-0 flex-col overflow-y-auto px-3">
-        <div className="space-y-1">
+        <div className="space-y-0.5 short:space-y-px">
           {!isDemo && NAV_ITEMS.map((item) => {
             const Icon = item.icon
             const isActive = item.isActive? item.isActive(location.pathname, location.search): location.pathname === item.href
@@ -142,7 +144,7 @@ export function Sidebar() {
                 params={item.params}
                 search={item.search}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+                  rowClassName,
                   isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:transition-colors hover:duration-200 hover:ease-out"
                 )}
               >
@@ -165,7 +167,7 @@ export function Sidebar() {
               key={link.href}
               href={link.href}
               target="_top"
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className={cn(rowClassName, "text-sidebar-foreground transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground")}
             >
               <link.icon className="h-4 w-4" />
               {t(link.labelKey)}
@@ -173,12 +175,12 @@ export function Sidebar() {
           ))}
         </div>
 
-        <Separator className="my-4" />
+        <Separator className="my-2 short:my-1.5" />
 
         <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
           {t("sidebar.instances")}
         </p>
-        <div className="mt-1 space-y-1 pr-1">
+        <div className="mt-1 min-h-24 space-y-0.5 overflow-y-auto pr-1 short:space-y-px">
           {hasMultipleActiveInstances && (
             <>
               <UnifiedScopeDropdownSection
@@ -190,7 +192,7 @@ export function Sidebar() {
                 scopeKeyPrefix="sidebar-scope"
                 variant="sidebar"
               />
-              <Separator className="my-2" />
+              <Separator className="my-1" />
             </>
           )}
           {activeInstances.map((instance) => {
@@ -206,7 +208,7 @@ export function Sidebar() {
                 to="/instances/$instanceId"
                 params={{ instanceId: instance.id.toString() }}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+                  rowClassName,
                   isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:transition-colors hover:duration-200 hover:ease-out"
                 )}
               >
@@ -267,27 +269,16 @@ export function Sidebar() {
           )}
         </div>
 
-        <div className="mt-auto space-y-3 pt-3">
+        <div className="mt-auto space-y-3 pt-2 empty:hidden">
           <SystemNoticeList />
           <UpdateBanner />
-
-          {!isDemo && (
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={() => logout()}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              {t("sidebar.logout")}
-            </Button>
-          )}
         </div>
       </nav>
 
-      <div className="flex-shrink-0 p-3">
-        <Separator className="mx-3 mb-3" />
+      <div className="flex-shrink-0 px-3 pt-1.5 pb-2">
+        <Separator className="mb-1.5" />
 
-        <div className="flex items-center justify-between px-3 pb-3">
+        <div className="flex items-center justify-between pl-3">
           <div className="flex flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none">
             <span className="font-medium text-sidebar-foreground/50">{t("sidebar.version", { version: appVersion })}</span>
             <div className="flex items-center gap-1">
@@ -341,6 +332,24 @@ export function Sidebar() {
                 <Code className="h-3.5 w-3.5" />
               </a>
             </Button>
+            {!isDemo && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
+                    onClick={() => logout()}
+                    aria-label={t("sidebar.logout")}
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {t("sidebar.logout")}
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
       </div>
