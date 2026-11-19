@@ -720,8 +720,8 @@ describe("DashboardOverview pointed layer", () => {
     renderOverview([stats(1), stats(2)])
     const { chart, x } = await chartOfTwoLayers()
 
-    // A browser sends a mouse move for a tap. With no download, the 2 GiB of upload reach from 200 up to 6.
-    fireEvent.mouseMove(chart, { clientX: x, clientY: 150 })
+    // With no download, the 2 GiB of upload reach from 200 up to 6.
+    fireEvent.click(chart, { clientX: x, clientY: 150 })
     const lines = within(screen.getByRole("list", { name: "instances.title" })).getAllByRole("listitem")
     expect(lines.map(line => line.querySelector("[data-pointed]") !== null)).toEqual([true, false])
   })

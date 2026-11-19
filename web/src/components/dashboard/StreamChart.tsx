@@ -101,6 +101,7 @@ export function StreamChart({ layers, kind, gaps, slots = 0, label, className, p
     const at = bars ? Math.floor(across * length) : across * (points - 1) - (points - length)
     return layerAt(layers, half, at, (Math.abs(y - zero) / reach) * peak)
   }
+  const point = onPoint && ((event: MouseEvent<SVGSVGElement>) => onPoint(layerUnder(event)))
 
   return (
     <div className={cn("relative", gapBars.length > 0 && "pt-4")}>
@@ -110,7 +111,8 @@ export function StreamChart({ layers, kind, gaps, slots = 0, label, className, p
         className={cn("block w-full", className)}
         role="img"
         aria-label={label}
-        onMouseMove={onPoint && (event => onPoint(layerUnder(event)))}
+        onMouseMove={point}
+        onClick={point}
         onMouseLeave={onPoint && (() => onPoint(undefined))}
       >
         {layers.map((layer, index) => (
