@@ -314,7 +314,7 @@ export function Header({ sidebarIconOnly = false }: HeaderProps) {
             <DropdownMenuTrigger asChild>
               <button
                 className={cn(
-                  "group flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-all duration-300 hover:opacity-90 rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "group flex items-center gap-2 text-xl font-semibold transition-all duration-300 hover:opacity-90 rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   "lg:hidden", // Hidden on desktop by default
                   showTitleOnDesktop && "lg:flex", // Visible on desktop when the sidebar shows only icons
                   !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes

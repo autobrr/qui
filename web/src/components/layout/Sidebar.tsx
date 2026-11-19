@@ -27,6 +27,7 @@ import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useTransferQueue } from "@/hooks/useTransferQueue"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useTheme } from "@/hooks/useTheme"
@@ -176,11 +177,13 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
   ))
   const iconOnlyToggleLabel = iconOnly ? t("sidebar.expandSidebar") : t("sidebar.collapseToIcons")
   const IconOnlyToggleIcon = iconOnly ? PanelLeftOpen : PanelLeftClose
+  // The top row has the height of the header, so the button is level with the title beside it.
+  const { viewMode } = usePersistedCompactViewState("desktop")
 
   return (
     <div {...themeArea("app-sidebar")} className="flex h-full w-full flex-col border-r bg-sidebar border-sidebar-border">
       {/* The button stays at the right edge of the part that shows. At the icon-only width the brand has no room left, and the button is in the icon column. */}
-      <div className="flex items-center py-3 pl-6 pr-[18px] short:py-2">
+      <div className={cn("flex flex-shrink-0 items-center pl-6 pr-[18px]", viewMode === "dense" ? "h-12" : "h-16")}>
         <h2 inert={iconOnly} className={cn("flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-lg font-semibold text-sidebar-foreground", labelClassName)}>
           {isDemo ? (
             <a href="/" target="_top" className="flex items-center gap-2 hover:opacity-80">{brand}</a>
