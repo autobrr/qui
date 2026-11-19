@@ -17,7 +17,6 @@
     "liveDownloading": "Baixant: {{downloading}} · Queden: {{size}}",
     "peakHour": "Hora amb més activitat: {{size}}",
     "peakSpeed": "Màxim: {{speed}}",
-    "hourTitle": "{{time}}: {{uploaded}} pujats, {{downloaded}} baixats",
     "dayLabel": "Pujada i baixada de totes les instàncies en cadascuna de les últimes 24 hores",
     "liveLabel": "Velocitat de pujada i baixada de totes les instàncies en els últims 3 minuts",
     "liveStart": "fa 3 min",

@@ -17,7 +17,6 @@
     "liveDownloading": "In download: {{downloading}} · Rimanenti: {{size}}",
     "peakHour": "Ora più intensa: {{size}}",
     "peakSpeed": "Picco: {{speed}}",
-    "hourTitle": "{{time}}: {{uploaded}} caricati, {{downloaded}} scaricati",
     "dayLabel": "Upload e download di tutte le istanze in ciascuna delle ultime 24 ore",
     "liveLabel": "Velocità di upload e download di tutte le istanze negli ultimi 3 minuti",
     "liveStart": "3 min fa",

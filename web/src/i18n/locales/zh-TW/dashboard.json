@@ -17,7 +17,6 @@
     "liveDownloading": "下載中：{{downloading}} · 剩餘：{{size}}",
     "peakHour": "最忙時段：{{size}}",
     "peakSpeed": "峰值：{{speed}}",
-    "hourTitle": "{{time}}：上傳 {{uploaded}}，下載 {{downloaded}}",
     "dayLabel": "所有實例在過去 24 小時內每小時的上傳和下載",
     "liveLabel": "所有實例在過去 3 分鐘內的上傳和下載速度",
     "liveStart": "3 分鐘前",

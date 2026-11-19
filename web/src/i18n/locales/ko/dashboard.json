@@ -17,7 +17,6 @@
     "liveDownloading": "다운로드 중: {{downloading}} · 남은 크기: {{size}}",
     "peakHour": "가장 바쁜 시간: {{size}}",
     "peakSpeed": "최고: {{speed}}",
-    "hourTitle": "{{time}}: 업로드 {{uploaded}}, 다운로드 {{downloaded}}",
     "dayLabel": "최근 24시간 동안 시간별 모든 인스턴스의 업로드 및 다운로드",
     "liveLabel": "최근 3분 동안 모든 인스턴스의 업로드 및 다운로드 속도",
     "liveStart": "3분 전",

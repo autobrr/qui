@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { usePointedLayer, usePointLayer } from "@/components/dashboard/pointed-layer"
 import { StreamChart } from "@/components/dashboard/StreamChart"
 import { SizeCalculatingMark } from "@/components/dashboard/UniqueSize"
 import { Button } from "@/components/ui/button"
@@ -114,11 +115,14 @@ function IssueCounts({ issues, links }: { issues: InstanceIssue[]; links: boolea
   )
 }
 
+/** The mark of the layer of an instance. data-pointed also marks the line that holds it. */
 function Swatch({ d, layer }: { d: DashboardInstanceStats; layer: number }) {
+  const pointed = usePointedLayer() === layer
   const health = instanceHealth(d)
-  if (health === "offline") return <span className="size-2.5 shrink-0 rounded-full bg-destructive" />
-  if (health === "loading") return <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-muted-foreground/50" />
-  return <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: layerColor(layer) }} />
+  const mark = pointed || undefined
+  if (health === "offline") return <span data-pointed={mark} className="size-2.5 shrink-0 rounded-full bg-destructive" />
+  if (health === "loading") return <span data-pointed={mark} className="size-2.5 shrink-0 animate-pulse rounded-full bg-muted-foreground/50" />
+  return <span data-pointed={mark} className="size-2.5 shrink-0 rounded-[3px]" style={{ background: pointed ? "var(--primary)" : layerColor(layer) }} />
 }
 
 /** A mark next to the name when the numbers of the instance are not live. */
@@ -202,7 +206,7 @@ function InstanceLines({ statsData, layerOf, onOpen }: { statsData: DashboardIns
         const up = d.stats?.totalUploadSpeed ?? 0
         const down = d.stats?.totalDownloadSpeed ?? 0
         return (
-          <li key={d.instance.id} className="border-b border-border/60">
+          <li key={d.instance.id} className="border-b border-border/60 has-data-pointed:bg-muted/50">
             <button type="button" disabled={health === "loading"} onClick={() => onOpen(d.instance.id)} className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left active:bg-muted/50">
               <Swatch d={d} layer={layerOf.get(d.instance.id) ?? OTHER_LAYER} />
               <span className="min-w-0 flex-1">
@@ -237,6 +241,7 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded }: InstanceListPr
   const count = useCount()
   const [unit] = useSpeedUnits()
   const offlineText = useOfflineText()
+  const point = usePointLayer()
   const columns = days ? 6 : 5
   const [openIds, setOpenIds] = useDashboardOpenInstances()
   // The rows take no click until the saved rows are read, so the read does not replace a click.
@@ -294,7 +299,11 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded }: InstanceListPr
               tabIndex={canOpen ? 0 : undefined}
               onClick={() => canOpen && onToggle(id)}
               onKeyDown={onKeyDown}
-              className={cn("h-11 tabular-nums", canOpen && "cursor-pointer")}
+              onMouseEnter={() => point(layer)}
+              onMouseLeave={() => point(undefined)}
+              onFocus={() => point(layer)}
+              onBlur={() => point(undefined)}
+              className={cn("h-11 tabular-nums has-data-pointed:bg-muted/50", canOpen && "cursor-pointer")}
             >
               <TableCell className="max-w-[16rem] pl-6">
                 <span className="flex min-w-0 items-center gap-2.5">

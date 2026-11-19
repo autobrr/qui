@@ -259,6 +259,29 @@ export function slotTotals(layers: ChartLayer[], half: "up" | "down"): number[] 
   return Array.from({ length }, (_, index) => layers.reduce((sum, layer) => sum + (layer[half][index] ?? 0), 0))
 }
 
+/**
+ * Returns the layer that holds a value of the stack of one half. at is a slot, or a place between two slots of an area
+ * chart, where each layer runs in a straight line from slot to slot. A layer with a hole in a slot holds no value there.
+ */
+export function layerAt(layers: ChartLayer[], half: "up" | "down", at: number, value: number): number | undefined {
+  const left = Math.floor(at)
+  const right = Math.ceil(at)
+  const share = at - left
+  let leftSum = 0
+  let rightSum = 0
+  for (const layer of layers) {
+    const leftValue = layer[half][left] ?? null
+    const rightValue = layer[half][right] ?? null
+    const bottom = leftSum + (rightSum - leftSum) * share
+    leftSum += leftValue ?? 0
+    rightSum += rightValue ?? 0
+    if (leftValue !== null && rightValue !== null && value > bottom && value <= leftSum + (rightSum - leftSum) * share) {
+      return layer.layer
+    }
+  }
+  return undefined
+}
+
 /** The highest total of each half of the layers. */
 export function layerPeaks(layers: ChartLayer[]): { up: number; down: number } {
   return { up: Math.max(0, ...slotTotals(layers, "up")), down: Math.max(0, ...slotTotals(layers, "down")) }

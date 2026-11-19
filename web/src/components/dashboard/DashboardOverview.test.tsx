@@ -225,8 +225,7 @@ describe("DashboardOverview, 24 h", () => {
 
     await screen.findByText("statistics:partial")
     expect(screen.getAllByTestId("gap-mark")).toHaveLength(1)
-    const gapTitles = [...document.querySelectorAll("rect > title")].map(title => title.textContent ?? "").filter(title => title.includes("statistics:chart.gap"))
-    expect(gapTitles).toHaveLength(1)
+    expect(screen.getByText("chart.gapLabel duration=30m")).toBeTruthy()
   })
 
   // regression: #4141
@@ -236,8 +235,8 @@ describe("DashboardOverview, 24 h", () => {
     renderOverview([stats(1)])
 
     await screen.findByRole("region", { name: "trackers.title" })
-    const times = [...document.querySelectorAll("rect > title")].map(title => /time=(\S+)/.exec(title.textContent ?? "")?.[1])
-    expect(times.length).toBeGreaterThan(0)
+    const times = screen.getAllByText(/^\d{2}:\d{2}$/).map(time => time.textContent)
+    expect(times).toHaveLength(3)
     expect(times.every(time => time?.endsWith(":30"))).toBe(true)
   })
 
@@ -248,7 +247,7 @@ describe("DashboardOverview, 24 h", () => {
     renderOverview([stats(1)])
 
     await screen.findByRole("region", { name: "trackers.title" })
-    expect(document.querySelectorAll("rect > title").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/^\d{2}:\d{2}$/)).toHaveLength(3)
   })
 
   it("has no partial label and no gap mark for a full day without a gap", async () => {
@@ -655,6 +654,76 @@ describe("DashboardOverview instances", () => {
     expect(readClientSetting("qui-filters-global", filters)).toEqual({ status: ["unregistered"], excludeStatus: [] })
     pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
     expect(readClientSetting("qui-filters-global", filters)).toBeNull()
+  })
+})
+
+describe("DashboardOverview pointed layer", () => {
+  // The layers of the chart that show as pointed and as faded.
+  function marks() {
+    const layers = screen.getAllByTestId("chart-layer")
+    const withMark = (mark: string) => layers.filter(layer => layer.hasAttribute(mark)).map(layer => layer.getAttribute("data-layer"))
+    return { pointed: withMark("data-pointed"), faded: withMark("data-faded") }
+  }
+
+  // The chart of two instances that each uploaded 1 GiB in the hour that started 2 hours ago, and the x of that hour.
+  async function chartOfTwoLayers() {
+    const chart = await screen.findByRole("img", { name: "stream.dayLabel" })
+    await vi.waitFor(() => expect(screen.getAllByTestId("chart-layer")).toHaveLength(2))
+    // jsdom has no layout. The chart gets the size of its viewBox, so that a pointer position is a viewBox position.
+    chart.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 200 }) as DOMRect
+    // The chart has 24 hours, and the last one is the hour of now.
+    return { chart, x: ((24 - 1 - 2 + 0.5) / 24) * 600 }
+  }
+
+  it("marks the layer of a desktop row and fades the other layer while the pointer or the keyboard focus is on the row", async () => {
+    desktop = true
+    answer = () => [hourRow("a.test", 2, GiB, 0)]
+    renderOverview([stats(1), stats(2)])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+    await chartOfTwoLayers()
+    const row = rowOf(table, "instance 2")
+
+    fireEvent.mouseEnter(row)
+    expect(marks()).toEqual({ pointed: ["1"], faded: ["0"] })
+    fireEvent.mouseLeave(row)
+    expect(marks()).toEqual({ pointed: [], faded: [] })
+    fireEvent.focus(row)
+    expect(marks()).toEqual({ pointed: ["1"], faded: ["0"] })
+    fireEvent.blur(row)
+    expect(marks()).toEqual({ pointed: [], faded: [] })
+  })
+
+  it("marks the layer under the pointer in the chart and the row of its instance, for upload and for download", async () => {
+    desktop = true
+    answer = id => [hourRow("a.test", 2, GiB, id === 2 ? GiB : 0)]
+    renderOverview([stats(1), stats(2)])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+    const { chart, x } = await chartOfTwoLayers()
+    const pointAt = (y: number) => {
+      fireEvent.mouseMove(chart, { clientX: x, clientY: y })
+      return { ...marks(), rows: ["instance 1", "instance 2"].filter(name => rowOf(table, name).querySelector("[data-pointed]")) }
+    }
+
+    // The zero line is at 120. The 2 GiB of upload reach up to 6, and the 1 GiB of download of instance 2 reaches down to 194.
+    expect(pointAt(100)).toEqual({ pointed: ["0"], faded: ["1"], rows: ["instance 1"] })
+    expect(pointAt(30)).toEqual({ pointed: ["1"], faded: ["0"], rows: ["instance 2"] })
+    expect(pointAt(2)).toEqual({ pointed: [], faded: [], rows: [] })
+    expect(pointAt(150)).toEqual({ pointed: ["1"], faded: ["0"], rows: ["instance 2"] })
+    expect(pointAt(197)).toEqual({ pointed: [], faded: [], rows: [] })
+    fireEvent.mouseMove(chart, { clientX: x, clientY: 150 })
+    fireEvent.mouseLeave(chart)
+    expect(marks()).toEqual({ pointed: [], faded: [] })
+  })
+
+  it("marks the line of the instance on a phone for a tap on its layer", async () => {
+    answer = () => [hourRow("a.test", 2, GiB, 0)]
+    renderOverview([stats(1), stats(2)])
+    const { chart, x } = await chartOfTwoLayers()
+
+    // A browser sends a mouse move for a tap. With no download, the 2 GiB of upload reach from 200 up to 6.
+    fireEvent.mouseMove(chart, { clientX: x, clientY: 150 })
+    const lines = within(screen.getByRole("list", { name: "instances.title" })).getAllByRole("listitem")
+    expect(lines.map(line => line.querySelector("[data-pointed]") !== null)).toEqual([true, false])
   })
 })
 

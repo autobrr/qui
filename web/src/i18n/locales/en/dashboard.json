@@ -17,7 +17,6 @@
     "liveDownloading": "Downloading: {{downloading}} · Left: {{size}}",
     "peakHour": "Busiest hour: {{size}}",
     "peakSpeed": "Peak: {{speed}}",
-    "hourTitle": "{{time}}: {{uploaded}} up, {{downloaded}} down",
     "dayLabel": "Upload and download of all instances in each of the last 24 hours",
     "liveLabel": "Upload and download speed of all instances in the last 3 minutes",
     "liveStart": "3 min ago",

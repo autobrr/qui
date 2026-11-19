@@ -17,7 +17,6 @@
     "liveDownloading": "Stahování: {{downloading}} · Zbývá: {{size}}",
     "peakHour": "Nejvytíženější hodina: {{size}}",
     "peakSpeed": "Špička: {{speed}}",
-    "hourTitle": "{{time}}: odesláno {{uploaded}}, staženo {{downloaded}}",
     "dayLabel": "Odesílání a stahování všech instancí v každé z posledních 24 hodin",
     "liveLabel": "Rychlost odesílání a stahování všech instancí za poslední 3 minuty",
     "liveStart": "před 3 min",

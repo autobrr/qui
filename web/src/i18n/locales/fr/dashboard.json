@@ -17,7 +17,6 @@
     "liveDownloading": "En téléchargement : {{downloading}} · Restant : {{size}}",
     "peakHour": "Heure la plus chargée : {{size}}",
     "peakSpeed": "Pic : {{speed}}",
-    "hourTitle": "{{time}} : {{uploaded}} envoyés, {{downloaded}} reçus",
     "dayLabel": "Envoi et réception de toutes les instances pour chacune des 24 dernières heures",
     "liveLabel": "Vitesse d'envoi et de réception de toutes les instances sur les 3 dernières minutes",
     "liveStart": "il y a 3 min",

@@ -15,6 +15,10 @@ The page has a chart at the top, a list of the instances below it, and the large
 
 The chart shows the upload above the zero line and the download below it, for all instances together. If the chart has no download, the upload uses the whole height of the chart. The chart counts the instances as the Statistics page counts **All instances**, so it also counts a disabled or removed instance that moved data in the last 24 hours. Each of the first five active instances in the instance order has its own layer, in a shade of the text color of the theme. The other instances share one layer.
 
+The instance list is a table of rows on a wide screen and a list of lines on a phone. When the pointer is on an instance row, the chart draws its layer in the primary color of the theme, and the other layers fade. The same happens while a row has the keyboard focus. When the pointer is on a chart layer, the chart draws that layer in the primary color, and the other layers fade. The instance list also marks the instance row for that layer, or the instance line on a phone. On a touch screen, a tap on a layer does the same as the pointer.
+
+For the layer that instances share, the instance list marks each of its instances, also when the pointer is on only one of them. If an instance has no data in the chart, all layers fade, and the chart does not draw any layer in the primary color. The chart and the instance list work this way in both chart views, **24 h** and **Live**.
+
 The switch above the chart has two views:
 
 | View | Content |
