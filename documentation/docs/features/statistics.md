@@ -36,6 +36,8 @@ A day starts at midnight in the timezone of your browser.
 
 On a phone, the periods are in a list at the top of the page. To set a custom range, tap the calendar button next to the list.
 
+The page shows each full date in the date format that you select in **Settings → Time & language**. Examples are the days of a custom range, "Recording since", and the best day. If you select the relative format, the page shows these dates in the ISO format. The time of each delete in **Deleted torrents** stays relative to now. The short labels below the bars of a chart do not change. On a phone, the label of a custom range also keeps its short form.
+
 The page opens on the last preset period that it showed. This includes a period that a link opened, for example the **Statistics** link of the Dashboard. qui keeps this period on the server, so it applies in each browser and on each device. qui does not keep a custom range. After a custom range, the page opens on the last preset period that it showed.
 
 While the page stays open and in view, it moves a period that ends now forward each 5 minutes and loads the new transfer. qui writes the transfer each 5 minutes. A custom range does not move.
@@ -78,6 +80,8 @@ The year view has these parts:
 - **Weekends**: the share of the upload of the period that moved on a Saturday or a Sunday.
 - The upload of each month, as bars that stack by tracker. The colors and the gray series Other are the same as in the chart.
 
+The cells of the calendar are larger on a wider screen. On a wide screen, **Best day**, **Best month**, and **Weekends** are at the right of the calendar. On a screen that is wider still, the bars of the months are at the right of the calendar, and those three values are below the calendar.
+
 The best day, the best month, and the weekend share count the whole period, also the days before the 53 weeks of the calendar. In a period that qui folded, a day is a UTC day. See [Keep daily detail for](#keep-daily-detail-for).
 
 ## Table
@@ -85,6 +89,10 @@ The best day, the best month, and the weekend share count the whole period, also
 The table below the chart shows the numbers of the period for each tracker, each category, or each value of a release attribute. Use the **Group by** switch above the table to select **Tracker**, **Category**, **Release group**, **Resolution**, **Source**, or **Content type**. On a phone, **Group by** is a list.
 
 qui starts to load a grouping when you hold the pointer on its button, or when you open the list on a phone. Thus, the rows are often ready when you select the grouping. While the rows of the new grouping load, the table shows the rows of the last grouping, dimmed.
+
+The table shows 10 rows first. Click **Show more** to see 10 more rows, and **Show fewer** to go back to 10 rows. On a phone, tap **Show all** to see each row. The Total row always includes all rows.
+
+To sort the table, click a column header. The sort applies to all rows. It also sorts the rows that the table does not show. A number column starts with its highest value, and the name column starts at A. Click the same header again to reverse the order. A row that has no value in the column stays below the other rows. The table opens with the highest Uploaded value first, and qui does not keep your sort. On a phone, you cannot sort the table.
 
 ### By tracker
 
@@ -126,7 +134,7 @@ To answer, qui reads the bytes of each torrent in the period. For a year, this c
 
 Click or tap a row to open its detail below that row. Click or tap the row again to close it. One row is open at a time.
 
-On a narrow screen, such as a phone, the table has one column. Each row shows the upload next to the name, and Downloaded and Ratio below the name. The detail of the row then also shows Buffer, and for a tracker Torrents, Size, and Seeded. On a phone, the table shows 10 rows first. Tap **Show all** to see each row, and **Show fewer** to go back to 10 rows.
+On a narrow screen, such as a phone, the table has one column. Each row shows the upload next to the name, and Downloaded and Ratio below the name. The detail of the row then also shows Buffer, and for a tracker Torrents, Size, and Seeded.
 
 The detail shows:
 
@@ -145,12 +153,12 @@ For All time, the rows, the share, and the upload from cross-seeds include the B
 
 ## Top torrents
 
-The table below the table of trackers shows the ten torrents with the most upload in the period. It includes each selected instance. Each row has these columns:
+The table below the table of trackers shows the ten torrents with the most upload in the period. On a very wide screen, such as an ultrawide monitor, the two tables are side by side. The table includes each selected instance. Each row has these columns:
 
 | Column | Content |
 |--------|---------|
 | Torrent | The name of the torrent. The mark "Deleted" shows that the torrent is not in qBittorrent now. The mark "Cross-seed" shows that the torrent completed with less than 1% of its size downloaded |
-| Tracker | The tracker that the torrent has now |
+| Tracker | The tracker that the torrent has now. If the page shows two or more instances, the name of the instance follows the tracker |
 | Uploaded | The upload of the torrent in the period |
 | Downloaded | The download of the torrent in the period |
 | Ratio | Uploaded divided by Downloaded |
@@ -212,7 +220,7 @@ The buttons above the table select **All**, **Automations**, **You**, or **Other
 
 After the first list loads, qui also loads the first rows of the other buttons, so a switch shows its rows at once. While the rows of a button load, the table keeps the last rows, dimmed. If a switch makes the list shorter, the table keeps its height until that space is below the screen. Thus, the buttons stay where you clicked them.
 
-The table shows 50 rows first. Click **Show more** to see 50 more rows. On a phone, the table shows 5 rows first, and **Show more** shows 10 more rows. **Show fewer** goes back to 5 rows.
+The table shows 10 rows on each page. The line below the table gives the rows of the page and the number of deletes, for example "11–20 of 134". The arrow buttons at the right go to the previous page and the next page. If a page has fewer than 10 rows, the table keeps its height, as it does after a switch. On a phone, the table has no pages. It shows 5 rows first, and **Show more** shows 10 more rows. **Show fewer** goes back to 5 rows.
 
 On a narrow screen, such as a phone, the table hides some columns. It shows the time below the final upload. It shows the tracker, the cause, the final ratio, and the seeding time below the name. On a phone, a row whose name or cause is cut shows an arrow. Tap the row to see the whole name and the whole cause, and tap it again to cut them again. A row that shows its name and cause in full has no arrow.
 

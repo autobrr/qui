@@ -96,8 +96,8 @@ export function GroupChart({ bars, unit, color }: GroupChartProps) {
             )
           }}
         />
-        <Bar dataKey="uploaded" stackId="group" fill="var(--color-uploaded)" radius={[2, 2, 0, 0]} maxBarSize={24} isAnimationActive={false} />
-        <Bar dataKey="downloaded" stackId="group" fill="var(--color-downloaded)" fillOpacity={0.5} radius={[0, 0, 2, 2]} maxBarSize={24} isAnimationActive={false} />
+        <Bar dataKey="uploaded" stackId="group" fill="var(--color-uploaded)" radius={[2, 2, 0, 0]} maxBarSize={64} isAnimationActive={false} />
+        <Bar dataKey="downloaded" stackId="group" fill="var(--color-downloaded)" fillOpacity={0.5} radius={[0, 0, 2, 2]} maxBarSize={64} isAnimationActive={false} />
       </BarChart>
     </ChartContainer>
   )
