@@ -34,6 +34,11 @@
     "issues": "Issues",
     "noIssues": "None",
     "loading": "Loading",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "altSpeedOff": "Alternative speed limits are off",
+    "altSpeedTurnOn": "Turn on alternative speed limits",
+    "altSpeedTurnOff": "Turn off alternative speed limits",
     "streamStatus": {
       "cached": "Showing cached dashboard snapshot while refreshing",
       "fallback": "Refreshing dashboard stats",
@@ -67,10 +72,15 @@
     "peers": "Peers",
     "uptime": "Uptime",
     "version": "qBittorrent",
+    "libtorrent": "libtorrent",
     "connection": "Connection",
     "externalAddresses": "External addresses",
     "unknown": "Unknown",
-    "day": "Last 24 h: {{uploaded}} uploaded, {{downloaded}} downloaded",
+    "last24h": "Last 24 h",
+    "allTime": "All time",
+    "uploaded": "Uploaded",
+    "downloaded": "Downloaded",
+    "ratio": "ratio {{ratio}}",
     "uploadSpeed": "Upload speed",
     "downloadSpeed": "Download speed",
     "chartLabel": "Upload and download of {{name}} in each of the last 24 hours",
@@ -85,15 +95,6 @@
     "firewalled": "Firewalled",
     "disconnected": "Disconnected",
     "other": "Other"
-  },
-  "altSpeedDialog": {
-    "enableTitle": "Enable Alternative Speed Limits?",
-    "disableTitle": "Disable Alternative Speed Limits?",
-    "enableDescription": "This will enable alternative speed limits for {{name}}, which will reduce transfer speeds based on your configured limits.",
-    "disableDescription": "This will disable alternative speed limits for {{name}} and return to normal speed limits.",
-    "enable": "Enable",
-    "disable": "Disable",
-    "cancel": "Cancel"
   },
   "trackers": {
     "title": "Top trackers, last 24 h",
@@ -115,7 +116,11 @@
     "torrents": "Torrents",
     "totalSize": "Total size",
     "seedingSize": "Seeding size",
-    "instances": "Connected instances"
+    "instances": "Connected instances",
+    "allTime": "All time",
+    "uploaded": "Uploaded",
+    "downloaded": "Downloaded",
+    "ratio": "Ratio"
   },
   "uniqueSize": {
     "calculating": "calculating",

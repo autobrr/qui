@@ -34,6 +34,11 @@
     "issues": "Problèmes",
     "noIssues": "Aucun",
     "loading": "Chargement",
+    "expandAll": "Tout développer",
+    "collapseAll": "Tout réduire",
+    "altSpeedOff": "Les limites de vitesse alternatives sont inactives",
+    "altSpeedTurnOn": "Activer les limites de vitesse alternatives",
+    "altSpeedTurnOff": "Désactiver les limites de vitesse alternatives",
     "streamStatus": {
       "cached": "Affichage d'un instantané du tableau de bord en cache pendant l'actualisation",
       "fallback": "Actualisation des statistiques du tableau de bord",
@@ -67,10 +72,15 @@
     "peers": "Pairs",
     "uptime": "Disponibilité",
     "version": "qBittorrent",
+    "libtorrent": "libtorrent",
     "connection": "Connexion",
     "externalAddresses": "Adresses externes",
     "unknown": "Inconnu",
-    "day": "24 dernières heures : {{uploaded}} envoyés, {{downloaded}} reçus",
+    "last24h": "Dernières 24 h",
+    "allTime": "Depuis le début",
+    "uploaded": "Envoyé",
+    "downloaded": "Reçu",
+    "ratio": "ratio {{ratio}}",
     "uploadSpeed": "Vitesse d'envoi",
     "downloadSpeed": "Vitesse de téléchargement",
     "chartLabel": "Envoi et réception de {{name}} pour chacune des 24 dernières heures",
@@ -85,15 +95,6 @@
     "firewalled": "Derrière un pare-feu",
     "disconnected": "Déconnecté",
     "other": "Autre"
-  },
-  "altSpeedDialog": {
-    "enableTitle": "Activer les limites de vitesse alternatives ?",
-    "disableTitle": "Désactiver les limites de vitesse alternatives ?",
-    "enableDescription": "Ceci activera les limites de vitesse alternatives pour {{name}}, ce qui réduira les vitesses de transfert selon vos limites configurées.",
-    "disableDescription": "Ceci désactivera les limites de vitesse alternatives pour {{name}} et reviendra aux limites de vitesse normales.",
-    "enable": "Activer",
-    "disable": "Désactiver",
-    "cancel": "Annuler"
   },
   "trackers": {
     "title": "Meilleurs trackers, 24 dernières heures",
@@ -115,7 +116,11 @@
     "torrents": "Torrents",
     "totalSize": "Taille totale",
     "seedingSize": "Taille en partage",
-    "instances": "Instances connectées"
+    "instances": "Instances connectées",
+    "allTime": "Depuis le début",
+    "uploaded": "Envoyé",
+    "downloaded": "Reçu",
+    "ratio": "Ratio"
   },
   "uniqueSize": {
     "calculating": "calcul en cours",

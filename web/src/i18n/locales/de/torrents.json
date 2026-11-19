@@ -1743,7 +1743,7 @@
     "settings": {
       "title": "Anzeigeprofile",
       "holds": "Enthält: Spalten · Zeilendichte · Seitenleisten · Filterbereiche · Kategoriebäume · Leere Filter",
-      "holdsHelp": "Ein Profil enthält, wie die Torrent-Liste aussieht: welche Spalten sichtbar sind, ihre Reihenfolge und Breite, die Dehnung der Namensspalte, die Zeilendichte, die offenen Seitenleisten und Filterbereiche, die eingeklappten Kategoriebäume und ob leere Filter angezeigt werden. Jeder Browser nutzt ein Profil, und nur dieser Browser merkt sich die Wahl. Ein Browser, der nie eines gewählt hat, und ein privates Fenster nutzen Default. Alle anderen Einstellungen teilen sich alle Profile.",
+      "holdsHelp": "Ein Profil enthält, wie die Torrent-Liste aussieht: welche Spalten sichtbar sind, ihre Reihenfolge und Breite, die Dehnung der Namensspalte, die Zeilendichte, die offenen Seitenleisten und Filterbereiche, die eingeklappten Kategoriebäume und ob leere Filter angezeigt werden. Es enthält auch, welche Instanzzeilen des Dashboards geöffnet sind. Jeder Browser nutzt ein Profil, und nur dieser Browser merkt sich die Wahl. Ein Browser, der nie eines gewählt hat, und ein privates Fenster nutzen Default. Alle anderen Einstellungen teilen sich alle Profile.",
       "thisBrowser": "Dieser Browser",
       "use": "In diesem Browser verwenden",
       "makeProfile": "Ein Profil für einen Laptop oder ein Smartphone erstellen",

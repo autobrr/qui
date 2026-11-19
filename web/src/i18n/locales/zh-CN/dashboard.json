@@ -34,6 +34,11 @@
     "issues": "问题",
     "noIssues": "无",
     "loading": "加载中",
+    "expandAll": "全部展开",
+    "collapseAll": "全部收起",
+    "altSpeedOff": "备用速度限制已关闭",
+    "altSpeedTurnOn": "开启备用速度限制",
+    "altSpeedTurnOff": "关闭备用速度限制",
     "streamStatus": {
       "cached": "刷新时显示缓存的仪表盘快照",
       "fallback": "正在刷新仪表盘统计信息",
@@ -63,10 +68,15 @@
     "peers": "节点",
     "uptime": "运行时间",
     "version": "qBittorrent",
+    "libtorrent": "libtorrent",
     "connection": "连接",
     "externalAddresses": "外部地址",
     "unknown": "未知",
-    "day": "过去 24 小时：上传 {{uploaded}}，下载 {{downloaded}}",
+    "last24h": "过去 24 小时",
+    "allTime": "全部时间",
+    "uploaded": "已上传",
+    "downloaded": "已下载",
+    "ratio": "分享率 {{ratio}}",
     "uploadSpeed": "上传速度",
     "downloadSpeed": "下载速度",
     "chartLabel": "{{name}} 在过去 24 小时内每小时的上传和下载",
@@ -81,15 +91,6 @@
     "firewalled": "受防火墙限制",
     "disconnected": "已断开",
     "other": "其他"
-  },
-  "altSpeedDialog": {
-    "enableTitle": "启用备用速度限制？",
-    "disableTitle": "禁用备用速度限制？",
-    "enableDescription": "这将为 {{name}} 启用备用速度限制，传输速度将根据您配置的限制值降低。",
-    "disableDescription": "这将为 {{name}} 禁用备用速度限制，并恢复到正常速度限制。",
-    "enable": "启用",
-    "disable": "禁用",
-    "cancel": "取消"
   },
   "trackers": {
     "title": "热门 Tracker（过去 24 小时）",
@@ -111,7 +112,11 @@
     "torrents": "种子",
     "totalSize": "总大小",
     "seedingSize": "做种大小",
-    "instances": "已连接实例"
+    "instances": "已连接实例",
+    "allTime": "全部时间",
+    "uploaded": "已上传",
+    "downloaded": "已下载",
+    "ratio": "分享率"
   },
   "uniqueSize": {
     "calculating": "计算中",

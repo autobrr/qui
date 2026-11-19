@@ -110,6 +110,15 @@ function renderOverview(statsData: DashboardInstanceStats[]) {
   return { ...view, router }
 }
 
+function rowOf(table: HTMLElement, name: string): HTMLElement {
+  return within(table).getByText(name).closest("tr")!
+}
+
+// The host of each open detail band, in the order of the rows.
+function openHosts(table: HTMLElement): string[] {
+  return within(table).queryAllByTestId("fact-host").map(fact => fact.textContent ?? "")
+}
+
 // The two calls that useClientSettingsSync makes for the first server snapshot.
 function loadServerSnapshot(settings: Record<string, string> = {}) {
   act(() => {
@@ -466,18 +475,84 @@ describe("DashboardOverview instances", () => {
     expect(within(sheet).getByText("details.openTorrents").closest("a")?.getAttribute("href")).toBe("/instances/2")
   })
 
-  it("opens one detail band at a time on desktop and keeps the columns of the table", async () => {
+  it("keeps each detail band open on desktop until a click on its row, and keeps the columns of the table", async () => {
     desktop = true
     answer = () => [hourRow("a.test", 2, GiB, 0)]
     renderOverview([stats(1), stats(2)])
     const table = await screen.findByRole("table", { name: "instances.title" })
     await within(table).findByText("instances.uploaded24h")
 
-    fireEvent.click(within(table).getByText("instance 1"))
-    expect(within(table).getAllByTestId("fact-host").map(fact => fact.textContent)).toEqual(["http://qbit-1.example.test:8080details.host"])
-    fireEvent.click(within(table).getByText("instance 2"))
-    expect(within(table).getAllByTestId("fact-host").map(fact => fact.textContent)).toEqual(["http://qbit-2.example.test:8080details.host"])
+    fireEvent.click(rowOf(table, "instance 1"))
+    expect(openHosts(table)).toEqual(["http://qbit-1.example.test:8080details.host"])
+    fireEvent.click(rowOf(table, "instance 2"))
+    expect(openHosts(table)).toEqual(["http://qbit-1.example.test:8080details.host", "http://qbit-2.example.test:8080details.host"])
+    fireEvent.click(rowOf(table, "instance 1"))
+    expect(openHosts(table)).toEqual(["http://qbit-2.example.test:8080details.host"])
     expect(within(table).getAllByRole("columnheader")).toHaveLength(6)
+  })
+
+  it("opens the rows on desktop that the Display settings hold, and saves a row that the user opens", async () => {
+    desktop = true
+    loadServerSnapshot({ "qui-dashboard-open-instances": JSON.stringify([2]) })
+    renderOverview([stats(1), stats(2)])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+    expect(openHosts(table)).toEqual(["http://qbit-2.example.test:8080details.host"])
+
+    fireEvent.click(rowOf(table, "instance 1"))
+    expect(readRaw("qui-dashboard-open-instances")).toBe(JSON.stringify([2, 1]))
+  })
+
+  it("takes no click on a desktop row before the saved rows are read, so that the read does not close the row again", async () => {
+    _resetClientSettingsForTests()
+    desktop = true
+    renderOverview([stats(1), stats(2)])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+
+    fireEvent.click(rowOf(table, "instance 1"))
+    expect(openHosts(table)).toEqual([])
+    expect(within(table).getByRole("button", { name: "instances.expandAll" }).hasAttribute("disabled")).toBe(true)
+
+    loadServerSnapshot({ "qui-dashboard-open-instances": JSON.stringify([2]) })
+    expect(openHosts(table)).toEqual(["http://qbit-2.example.test:8080details.host"])
+  })
+
+  it("opens each row and closes each row with the button in the header of the desktop table", async () => {
+    desktop = true
+    renderOverview([stats(1), stats(2)])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+
+    fireEvent.click(within(table).getByRole("button", { name: "instances.expandAll" }))
+    expect(openHosts(table)).toHaveLength(2)
+    fireEvent.click(within(table).getByRole("button", { name: "instances.collapseAll" }))
+    expect(openHosts(table)).toEqual([])
+  })
+
+  it("links the name of a desktop row to the torrent list of the instance, and a click on it opens no detail band", async () => {
+    desktop = true
+    renderOverview([stats(1)])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+    const name = within(table).getByText("instance 1")
+
+    expect(name.closest("a")?.getAttribute("href")).toBe("/instances/1")
+    fireEvent.click(name)
+    expect(openHosts(table)).toEqual([])
+  })
+
+  it("shows the transfer of the last 24 hours and of all time in an open desktop row", async () => {
+    desktop = true
+    answer = () => [hourRow("a.test", 2, 3 * GiB, GiB)]
+    renderOverview([stats(1, {}, {}, { alltime_ul: 10 * GiB, alltime_dl: 4 * GiB }), stats(2)])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+    await within(table).findByText("instances.uploaded24h")
+    fireEvent.click(within(table).getByRole("button", { name: "instances.expandAll" }))
+
+    const [day, , emptyDay] = within(table).getAllByTestId("totals-day")
+    expect(day.textContent).toBe(`details.last24hdetails.uploaded${formatBytes(3 * GiB)}details.downloaded${formatBytes(GiB)}details.ratio ratio=3.00`)
+    expect(within(table).getAllByTestId("totals-all-time").map(row => row.textContent)).toEqual([
+      `details.allTimedetails.uploaded${formatBytes(10 * GiB)}details.downloaded${formatBytes(4 * GiB)}details.ratio ratio=2.50`,
+      "details.allTimedetails.uploaded0 Bdetails.downloaded0 Bdetails.ratio ratio=–",
+    ])
+    expect(emptyDay).toBeUndefined()
   })
 
   // regression: #4141
@@ -500,16 +575,39 @@ describe("DashboardOverview instances", () => {
     expect(screen.getByText("details.openSettings").closest("a")?.getAttribute("href")).toBe("/settings?tab=instances")
   })
 
-  it("changes the alternative speed limits only after the confirmation", async () => {
+  it("changes the alternative speed limits with one tap on the switch of the bottom sheet", async () => {
     renderOverview([stats(1)])
     fireEvent.click(within(screen.getByRole("list", { name: "instances.title" })).getByText("instance 1"))
     const sheet = await screen.findByRole("dialog")
 
     fireEvent.click(within(sheet).getByRole("switch"))
-    const confirm = await screen.findByRole("alertdialog")
-    expect(toggles).toEqual([])
-    fireEvent.click(within(confirm).getByText("altSpeedDialog.enable"))
     await vi.waitFor(() => expect(toggles).toEqual([1]))
+    expect(within(sheet).getByRole("switch").getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("changes the alternative speed limits with one click on the rabbit of a desktop row, and opens no detail band", async () => {
+    desktop = true
+    renderOverview([stats(1), stats(2, { altSpeedEnabled: true })])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+    expect(within(table).getAllByRole("button", { name: "instances.altSpeedTurnOff" })).toHaveLength(1)
+
+    fireEvent.click(within(table).getByRole("button", { name: "instances.altSpeedTurnOn" }))
+    await vi.waitFor(() => expect(toggles).toEqual([1]))
+    // The answer of qBittorrent shows before the stream brings the new value.
+    await vi.waitFor(() => expect(within(table).getAllByRole("button", { name: "instances.altSpeedTurnOff" })).toHaveLength(2))
+    expect(openHosts(table)).toEqual([])
+  })
+
+  it("shows the rabbit again on a desktop row when qBittorrent rejects the change", async () => {
+    desktop = true
+    toggleFails = true
+    renderOverview([stats(1)])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+
+    fireEvent.click(within(table).getByRole("button", { name: "instances.altSpeedTurnOn" }))
+    await vi.waitFor(() => expect(mocks.toastError).toHaveBeenCalledTimes(1))
+    expect(within(table).getByRole("button", { name: "instances.altSpeedTurnOn" })).toBeTruthy()
+    expect(within(table).queryByRole("button", { name: "instances.altSpeedTurnOff" })).toBeNull()
   })
 
   // regression: #4141
@@ -520,7 +618,6 @@ describe("DashboardOverview instances", () => {
     const sheet = await screen.findByRole("dialog")
 
     fireEvent.click(within(sheet).getByRole("switch"))
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByText("altSpeedDialog.enable"))
     await vi.waitFor(() => expect(mocks.toastError).toHaveBeenCalledTimes(1))
     expect(String(mocks.toastError.mock.calls[0][0])).toMatch(/^common:errors\.altSpeedToggle message=/)
   })
@@ -534,7 +631,6 @@ describe("DashboardOverview instances", () => {
     const sheet = await screen.findByRole("dialog")
 
     fireEvent.click(within(sheet).getByRole("switch"))
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByText("altSpeedDialog.enable"))
     await vi.waitFor(() => expect(mocks.toastError).toHaveBeenCalledTimes(1))
     expect(mocks.toastError.mock.calls[0][0]).toBe("common:errors.altSpeedToggleHidden")
   })
@@ -575,6 +671,15 @@ describe("DashboardOverview library", () => {
     renderOverview([stats(1), stats(2)])
     expect(screen.getByTestId("library-total").textContent).toBe(`${formatBytes(160 * GiB)}library.totalSize`)
     expect(screen.getByTestId("library-seeding").textContent).toBe(`${formatBytes(140 * GiB)}library.seedingSize`)
+  })
+
+  it("adds up the all-time transfer of the instances, and shows no ratio when nothing was downloaded", () => {
+    renderOverview([stats(1, {}, {}, { alltime_ul: 9 * GiB, alltime_dl: 2 * GiB }), stats(2, {}, {}, { alltime_ul: 3 * GiB, alltime_dl: 2 * GiB })])
+    expect(screen.getByTestId("library-all-time").textContent).toBe(`library.allTime${formatBytes(12 * GiB)}library.uploaded${formatBytes(4 * GiB)}library.downloaded3.00library.ratio`)
+    cleanup()
+
+    renderOverview([stats(1)])
+    expect(screen.getByTestId("library-all-time").textContent).toBe("library.allTime0 Blibrary.uploaded0 Blibrary.downloaded–library.ratio")
   })
 })
 

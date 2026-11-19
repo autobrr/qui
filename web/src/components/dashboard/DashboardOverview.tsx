@@ -196,36 +196,36 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   return (
     <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start">
       <Card {...themeArea("dashboard-card")} className="order-1 gap-0 overflow-hidden py-0 xl:order-none xl:col-start-1 xl:row-start-1">
-        <div className="flex items-end justify-between gap-3 px-4 pb-2 pt-4 lg:px-6">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1 text-3xl font-semibold tabular-nums tracking-tight lg:text-4xl" aria-label={t("stream.uploadSpeed")}>
-              <ArrowUp className="size-6 shrink-0 text-muted-foreground" aria-hidden="true" />{formatSpeedWithUnit(totalUp, unit)}
+        <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-4 lg:px-6">
+          <div className="flex min-w-0 flex-wrap items-end gap-x-10 gap-y-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1 text-3xl font-semibold tabular-nums tracking-tight lg:text-4xl" aria-label={t("stream.uploadSpeed")}>
+                <ArrowUp className="size-6 shrink-0 text-muted-foreground" aria-hidden="true" />{formatSpeedWithUnit(totalUp, unit)}
+              </div>
+              <div className="line-clamp-2 min-h-4 text-xs text-muted-foreground lg:line-clamp-1">
+                <span data-testid="upload-caption">{upCaption}</span>{peakUp && <> · <span>{peakUp}</span></>}
+              </div>
             </div>
-            <div className="line-clamp-2 min-h-4 text-xs text-muted-foreground lg:line-clamp-1" data-testid="upload-caption">{upCaption}</div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1 text-xl font-semibold tabular-nums tracking-tight lg:text-2xl" aria-label={t("stream.downloadSpeed")}>
+                <ArrowDown className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />{formatSpeedWithUnit(totalDown, unit)}
+              </div>
+              <div className="line-clamp-2 min-h-4 text-xs text-muted-foreground lg:line-clamp-1">
+                <span data-testid="download-caption">{downCaption}</span>{peakDown && <> · <span>{peakDown}</span></>}
+              </div>
+            </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5 text-[11px] text-muted-foreground tabular-nums">
+          <div className="flex shrink-0 items-center gap-2">
+            {range === "day" && dayData?.partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-[10px] text-yellow-600 dark:text-yellow-500">{t("statistics:partial")}</Badge>}
             {controls}
-            <span className="flex items-center gap-1.5">
-              {range === "day" && dayData?.partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-[10px] text-yellow-600 dark:text-yellow-500">{t("statistics:partial")}</Badge>}
-              {peakUp}
-            </span>
           </div>
         </div>
         {chart}
         {axis && (
-          <div className="flex justify-between px-4 pt-1 text-[10px] text-muted-foreground tabular-nums lg:px-6">
+          <div className="flex justify-between px-4 pb-3 pt-1 text-[10px] text-muted-foreground tabular-nums lg:px-6">
             {axis.map((label, index) => <span key={index}>{label}</span>)}
           </div>
         )}
-        <div className="flex items-start justify-between gap-3 px-4 pb-4 pt-2 lg:px-6">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1 text-xl font-semibold tabular-nums tracking-tight lg:text-2xl" aria-label={t("stream.downloadSpeed")}>
-              <ArrowDown className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />{formatSpeedWithUnit(totalDown, unit)}
-            </div>
-            <div className="truncate text-xs text-muted-foreground" data-testid="download-caption">{downCaption}</div>
-          </div>
-          <div className="shrink-0 text-right text-[11px] text-muted-foreground tabular-nums">{peakDown}</div>
-        </div>
       </Card>
 
       <div className="contents xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:block xl:space-y-6">

@@ -5,25 +5,18 @@
 
 import { StreamChart } from "@/components/dashboard/StreamChart"
 import { SizeCalculatingMark } from "@/components/dashboard/UniqueSize"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDashboardOpenInstances } from "@/hooks/useDashboardOpenInstances"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
-import { writeClientSetting } from "@/lib/client-settings"
+import { useClientSettingsSettled, writeClientSetting } from "@/lib/client-settings"
 import {
+  allTimeTransfer,
   connectionStatusOf,
   instanceHealth,
   instanceIssues,
@@ -41,11 +34,12 @@ import { resolveDashboardDataStatusKind, resolveDashboardSizes } from "@/lib/das
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
+import { formatRatio } from "@/lib/statistics"
 import { cn, formatBytes, formatBytesOrFallback, formatDuration } from "@/lib/utils"
 import type { TransferHistoryBytes } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { AlertCircle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Database, Plus, RefreshCcw, Turtle } from "lucide-react"
+import { AlertCircle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Database, Plus, Rabbit, RefreshCcw, Turtle } from "lucide-react"
 import { useState, type KeyboardEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -180,18 +174,17 @@ function Speed({ value, unit, direction }: { value: number; unit: SpeedUnit; dir
 
 export function InstanceList({ statsData, layerOf, days, dayUploaded }: InstanceListProps) {
   const desktop = useMediaQuery("(min-width: 1024px)")
-  const [openId, setOpenId] = useState<number | null>(null)
-  const open = statsData.find(d => d.instance.id === openId)
-  const toggle = (id: number) => setOpenId(current => current === id ? null : id)
+  const [sheetId, setSheetId] = useState<number | null>(null)
+  const sheet = statsData.find(d => d.instance.id === sheetId)
 
   if (desktop) {
-    return <InstanceTable statsData={statsData} layerOf={layerOf} days={days} dayUploaded={dayUploaded} openId={openId} onToggle={toggle} />
+    return <InstanceTable statsData={statsData} layerOf={layerOf} days={days} dayUploaded={dayUploaded} />
   }
   return (
     <>
-      <InstanceLines statsData={statsData} layerOf={layerOf} onOpen={setOpenId} />
-      <Drawer open={open !== undefined} onOpenChange={isOpen => !isOpen && setOpenId(null)}>
-        {open && <InstanceSheet d={open} layer={layerOf.get(open.instance.id) ?? OTHER_LAYER} day={days?.get(open.instance.id)} hasHistory={days !== undefined} onClose={() => setOpenId(null)} />}
+      <InstanceLines statsData={statsData} layerOf={layerOf} onOpen={setSheetId} />
+      <Drawer open={sheet !== undefined} onOpenChange={isOpen => !isOpen && setSheetId(null)}>
+        {sheet && <InstanceSheet d={sheet} layer={layerOf.get(sheet.instance.id) ?? OTHER_LAYER} day={days?.get(sheet.instance.id)} hasHistory={days !== undefined} onClose={() => setSheetId(null)} />}
       </Drawer>
     </>
   )
@@ -239,23 +232,38 @@ function InstanceLines({ statsData, layerOf, onOpen }: { statsData: DashboardIns
   )
 }
 
-interface InstanceTableProps extends InstanceListProps {
-  openId: number | null
-  onToggle: (id: number) => void
-}
-
-function InstanceTable({ statsData, layerOf, days, dayUploaded, openId, onToggle }: InstanceTableProps) {
+function InstanceTable({ statsData, layerOf, days, dayUploaded }: InstanceListProps) {
   const { t } = useTranslation("dashboard")
   const count = useCount()
   const [unit] = useSpeedUnits()
   const offlineText = useOfflineText()
   const columns = days ? 6 : 5
+  const [openIds, setOpenIds] = useDashboardOpenInstances()
+  // The rows take no click until the saved rows are read, so the read does not replace a click.
+  const settled = useClientSettingsSettled()
+  const ids = statsData.map(d => d.instance.id)
+  const allOpen = ids.length > 0 && ids.every(id => openIds.includes(id))
+  const onToggle = (id: number) => setOpenIds(open => open.includes(id) ? open.filter(other => other !== id) : [...open.filter(other => ids.includes(other)), id])
+  const AllIcon = allOpen ? ChevronsDownUp : ChevronsUpDown
+  const allLabel = allOpen ? t("instances.collapseAll") : t("instances.expandAll")
 
   return (
     <Table aria-label={t("instances.title")}>
       <TableHeader>
         <TableRow className="text-xs hover:bg-transparent">
-          <TableHead className="pl-6">{t("instances.instance")}</TableHead>
+          <TableHead className="pl-6">
+            <span className="flex items-center gap-1">
+              {t("instances.instance")}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" aria-label={allLabel} disabled={!settled} onClick={() => setOpenIds(allOpen ? [] : ids)}>
+                    <AllIcon className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{allLabel}</TooltipContent>
+              </Tooltip>
+            </span>
+          </TableHead>
           {days && <TableHead>{t("instances.uploaded24h")}</TableHead>}
           <TableHead className="text-right">{t("instances.upload")}</TableHead>
           <TableHead className="text-right">{t("instances.download")}</TableHead>
@@ -268,10 +276,10 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded, openId, onToggle
           const id = d.instance.id
           const layer = layerOf.get(id) ?? OTHER_LAYER
           const health = instanceHealth(d)
-          const isOpen = openId === id
+          const canOpen = settled && health !== "loading"
+          const isOpen = canOpen && openIds.includes(id)
           const day = days?.get(id)
           const issues = instanceIssues(d)
-          const canOpen = health !== "loading"
           const onKeyDown = (event: KeyboardEvent) => {
             if (canOpen && event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
               event.preventDefault()
@@ -291,9 +299,13 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded, openId, onToggle
               <TableCell className="max-w-[16rem] pl-6">
                 <span className="flex min-w-0 items-center gap-2.5">
                   <Swatch d={d} layer={layer} />
-                  <span className="truncate font-medium">{d.instance.name}</span>
+                  {health === "ok" ? (
+                    <Link to="/instances/$instanceId" params={{ instanceId: String(id) }} onClick={event => event.stopPropagation()} className="truncate font-medium underline-offset-4 hover:underline">
+                      {d.instance.name}
+                    </Link>
+                  ) : <span className="truncate font-medium">{d.instance.name}</span>}
                   <DataStatus d={d} />
-                  {d.altSpeedEnabled && <Turtle className="size-3.5 shrink-0 text-orange-500" aria-label={t("details.altSpeedOn")} />}
+                  {health === "ok" && <AltSpeedButton d={d} />}
                   {canOpen && <ChevronDown className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", isOpen && "rotate-180")} />}
                 </span>
               </TableCell>
@@ -302,7 +314,7 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded, openId, onToggle
                   {days && (
                     <TableCell className="w-[30%]">
                       <span className="flex items-center gap-3">
-                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted [tr[data-state=selected]_&]:bg-foreground/10">
                           <span className="block h-full rounded-full" style={{ width: `${dayUploaded ? ((day?.uploaded ?? 0) / dayUploaded) * 100 : 0}%`, background: layerColor(layer) }} />
                         </span>
                         <span className="w-20 whitespace-nowrap text-right text-muted-foreground">{formatBytes(day?.uploaded ?? 0)}</span>
@@ -351,39 +363,60 @@ function OfflineDetails({ d, onClose }: { d: DashboardInstanceStats; onClose?: (
   )
 }
 
+/**
+ * The details of an open row. A wide band shows the speeds, the chart and the facts in one line. A narrower band shows
+ * the facts below the speeds and the chart.
+ */
 function DetailBand({ d, layer, day, hasHistory }: { d: DashboardInstanceStats; layer: number; day?: InstanceDay; hasHistory: boolean }) {
   const { t } = useTranslation("dashboard")
   return (
-    <div className="grid gap-x-10 gap-y-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <div className="min-w-0 space-y-2">
-        <DetailSpeeds d={d} />
-        {hasHistory && (
-          <>
+    <div className="@container">
+      <div className="grid grid-cols-[18rem_minmax(0,1fr)] gap-x-10 gap-y-4 @[74rem]:grid-cols-[18rem_minmax(14rem,1fr)_36.5rem] @[100rem]:grid-cols-[18rem_minmax(14rem,1fr)_59rem]">
+        <div className="min-w-0 space-y-2">
+          <DetailSpeeds d={d} />
+          <TransferTotals d={d} day={day} hasHistory={hasHistory} />
+        </div>
+        <div className="min-w-0">
+          {hasHistory && (
             <StreamChart
               layers={day ? [{ ...day.hours, layer }] : []}
               kind="bars"
               label={t("details.chartLabel", { name: d.instance.name })}
-              className="h-32"
+              className="h-20 @[74rem]:h-36 @[100rem]:h-24"
             />
-            <DaySummary day={day} />
-          </>
-        )}
-      </div>
-      <div className="min-w-0 space-y-4">
-        <DetailIssues d={d} />
-        <DetailFacts d={d} />
-        <DetailActions d={d} />
+          )}
+        </div>
+        <div className="col-span-2 min-w-0 space-y-4 @[74rem]:col-span-1">
+          <DetailIssues d={d} />
+          <DetailFacts d={d} />
+        </div>
       </div>
     </div>
   )
 }
 
-function DaySummary({ day }: { day?: InstanceDay }) {
+/** The upload, the download and the ratio of the last 24 hours, when the page shows history, and of all time. */
+function TransferTotals({ d, day, hasHistory }: { d: DashboardInstanceStats; day?: InstanceDay; hasHistory: boolean }) {
   const { t } = useTranslation("dashboard")
+  const rows = [
+    ...(hasHistory ? [{ key: "day", label: t("details.last24h"), uploaded: day?.uploaded ?? 0, downloaded: day?.downloaded ?? 0 }] : []),
+    { key: "all-time", label: t("details.allTime"), ...allTimeTransfer([d]) },
+  ]
   return (
-    <p className="text-xs text-muted-foreground tabular-nums">
-      {t("details.day", { uploaded: formatBytes(day?.uploaded ?? 0), downloaded: formatBytes(day?.downloaded ?? 0) })}
-    </p>
+    <dl className="grid grid-cols-[auto_auto_auto_1fr] gap-x-3 gap-y-1 text-xs tabular-nums">
+      {rows.map(row => (
+        <div key={row.key} data-testid={`totals-${row.key}`} className="contents">
+          <dt className="text-muted-foreground">{row.label}</dt>
+          <dd className="flex items-center gap-0.5 whitespace-nowrap">
+            <ArrowUp className="size-3 text-muted-foreground" aria-hidden="true" /><span className="sr-only">{t("details.uploaded")}</span>{formatBytes(row.uploaded)}
+          </dd>
+          <dd className="flex items-center gap-0.5 whitespace-nowrap">
+            <ArrowDown className="size-3 text-muted-foreground" aria-hidden="true" /><span className="sr-only">{t("details.downloaded")}</span>{formatBytes(row.downloaded)}
+          </dd>
+          <dd className="whitespace-nowrap text-muted-foreground">{t("details.ratio", { ratio: formatRatio(row) ?? "–" })}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 
@@ -443,12 +476,13 @@ function DetailFacts({ d }: { d: DashboardInstanceStats }) {
     { key: "peers", label: t("details.peers"), value: count(d.serverState?.total_peer_connections) },
     { key: "uptime", label: t("details.uptime"), value: uptime !== undefined ? formatDuration(uptime) : unknown },
     { key: "version", label: t("details.version"), value: version || unknown },
+    { key: "libtorrent", label: t("details.libtorrent"), value: appInfo?.buildInfo?.libtorrent || unknown },
     { key: "connection", label: t("details.connection"), value: connection ? t([`connection.${connection}`, "connection.other"]) : unknown },
     { key: "addresses", label: t("details.externalAddresses"), value: addresses ? (incognito ? MASK : addresses) : unknown, wide: true },
   ]
 
   return (
-    <dl className="grid grid-cols-3 gap-x-4 gap-y-3 lg:grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))]">
+    <dl className="grid grid-cols-3 gap-x-4 gap-y-3 lg:grid-cols-5 @[100rem]:grid-cols-8">
       {facts.map(fact => (
         <div key={fact.key} data-testid={`fact-${fact.key}`} className={cn("min-w-0", fact.wide && "col-span-2")}>
           <dd className="truncate text-sm font-medium tabular-nums">{fact.value}</dd>
@@ -477,43 +511,66 @@ function DetailActions({ d, onClose }: { d: DashboardInstanceStats; onClose?: ()
   )
 }
 
-function AltSpeedSwitch({ d }: { d: DashboardInstanceStats }) {
+function useAltSpeed(d: DashboardInstanceStats) {
   const { t } = useTranslation("dashboard")
-  const [confirming, setConfirming] = useState(false)
   const [incognito] = useIncognitoMode()
   const queryClient = useQueryClient()
-  const { mutate: toggle, isPending } = useMutation({
+  // The stream brings the new value a moment after the answer of the toggle.
+  const [answer, setAnswer] = useState<boolean>()
+  if (answer !== undefined && answer === d.altSpeedEnabled) setAnswer(undefined)
+  const enabled = answer ?? d.altSpeedEnabled
+  const { mutate, isPending } = useMutation({
     mutationFn: () => api.toggleAlternativeSpeedLimits(d.instance.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["torrents-list", d.instance.id] }),
+    onMutate: () => setAnswer(!enabled),
+    onSuccess: result => {
+      setAnswer(result.enabled)
+      return queryClient.invalidateQueries({ queryKey: ["torrents-list", d.instance.id] })
+    },
     // The error text can hold the host or its IP address, so incognito mode leaves it out.
-    onError: (error: Error) => toast.error(incognito ? t("common:errors.altSpeedToggleHidden") : t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) })),
+    onError: (error: Error) => {
+      setAnswer(undefined)
+      toast.error(incognito ? t("common:errors.altSpeedToggleHidden") : t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) }))
+    },
   })
-  const enabled = d.altSpeedEnabled
-  const id = `alt-speed-${d.instance.id}`
+  return { enabled, isPending, toggle: () => mutate() }
+}
 
+/** Turns the alternative speed limits of the instance on or off with one click. */
+function AltSpeedButton({ d }: { d: DashboardInstanceStats }) {
+  const { t } = useTranslation("dashboard")
+  const { enabled, isPending, toggle } = useAltSpeed(d)
+  const Icon = enabled ? Turtle : Rabbit
   return (
-    <>
-      <label htmlFor={id} className="flex min-h-9 items-center gap-2 text-sm">
-        {t("details.altSpeed")}
-        <Switch id={id} checked={enabled} disabled={isPending} onCheckedChange={() => setConfirming(true)} />
-      </label>
-      <AlertDialog open={confirming} onOpenChange={setConfirming}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{enabled ? t("altSpeedDialog.disableTitle") : t("altSpeedDialog.enableTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {enabled ? t("altSpeedDialog.disableDescription", { name: d.instance.name }) : t("altSpeedDialog.enableDescription", { name: d.instance.name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("altSpeedDialog.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => toggle()}>
-              {enabled ? t("altSpeedDialog.disable") : t("altSpeedDialog.enable")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={enabled ? t("instances.altSpeedTurnOff") : t("instances.altSpeedTurnOn")}
+          disabled={isPending}
+          onClick={event => {
+            event.stopPropagation()
+            toggle()
+          }}
+          className={cn("size-7 shrink-0", enabled ? "text-orange-500 hover:text-orange-500" : "text-muted-foreground")}
+        >
+          <Icon className="size-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{enabled ? t("details.altSpeedOn") : t("instances.altSpeedOff")}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function AltSpeedSwitch({ d }: { d: DashboardInstanceStats }) {
+  const { t } = useTranslation("dashboard")
+  const { enabled, isPending, toggle } = useAltSpeed(d)
+  const id = `alt-speed-${d.instance.id}`
+  return (
+    <label htmlFor={id} className="flex min-h-9 items-center gap-2 text-sm">
+      {t("details.altSpeed")}
+      <Switch id={id} checked={enabled} disabled={isPending} onCheckedChange={toggle} />
+    </label>
   )
 }
 
@@ -534,7 +591,7 @@ function InstanceSheet({ d, layer, day, hasHistory, onClose }: { d: DashboardIns
           <>
             <div className="space-y-1.5">
               <DetailSpeeds d={d} />
-              {hasHistory && <DaySummary day={day} />}
+              <TransferTotals d={d} day={day} hasHistory={hasHistory} />
             </div>
             <DetailIssues d={d} />
             <DetailFacts d={d} />

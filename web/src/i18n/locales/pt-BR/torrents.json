@@ -1743,7 +1743,7 @@
     "settings": {
       "title": "Perfis de exibição",
       "holds": "Guarda: colunas · densidade das linhas · barras laterais · seções de filtros · árvores de categorias · filtros vazios",
-      "holdsHelp": "Um perfil guarda a aparência da lista de torrents: quais colunas aparecem, sua ordem e largura, o esticamento da coluna Nome, a densidade das linhas, as barras laterais e seções de filtros abertas, as árvores de categorias recolhidas e se os filtros vazios aparecem. Cada navegador usa um perfil, e só esse navegador lembra a escolha. Um navegador que nunca escolheu um, e uma janela privada, usam Default. Todos os perfis compartilham as outras configurações.",
+      "holdsHelp": "Um perfil guarda a aparência da lista de torrents: quais colunas aparecem, sua ordem e largura, o esticamento da coluna Nome, a densidade das linhas, as barras laterais e seções de filtros abertas, as árvores de categorias recolhidas e se os filtros vazios aparecem. Também guarda quais linhas de instâncias do Painel estão abertas. Cada navegador usa um perfil, e só esse navegador lembra a escolha. Um navegador que nunca escolheu um, e uma janela privada, usam Default. Todos os perfis compartilham as outras configurações.",
       "thisBrowser": "Este navegador",
       "use": "Usar neste navegador",
       "makeProfile": "Criar um perfil para um notebook ou celular",

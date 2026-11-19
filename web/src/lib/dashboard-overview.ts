@@ -96,6 +96,14 @@ export function freeShare(d: DashboardInstanceStats): number | undefined {
   return total > 0 ? free / total : undefined
 }
 
+/** The upload and the download that qBittorrent counted since its first start, for the instances together. */
+export function allTimeTransfer(statsData: DashboardInstanceStats[]): { uploaded: number; downloaded: number } {
+  return {
+    uploaded: statsData.reduce((sum, d) => sum + (d.serverState?.alltime_ul ?? 0), 0),
+    downloaded: statsData.reduce((sum, d) => sum + (d.serverState?.alltime_dl ?? 0), 0),
+  }
+}
+
 // A disk is almost full below this share of free space.
 const LOW_DISK_SHARE = 0.05
 
