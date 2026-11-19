@@ -451,6 +451,71 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
+		// regression: #4289
+		// A KG listing puts the year, the country, and the file name after the title.
+		name:          "listing with the year, the country, and the file name in brackets",
+		source:        "Quiet.Harbour.1987.DVDRip.x264-GRP.mkv",
+		candidate:     "Quiet Harbour 1987 France [Quiet.Harbour.1987.DVDRip.x264-GRP.mkv]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #4289
+		name:          "folder against a listing with an AKA title and the folder name in brackets",
+		source:        "Still.Waters.1957",
+		candidate:     "Still Waters AKA Tikhie Vody 1957 USSR [Still.Waters.1957]",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #4289
+		name:          "groupless file against a listing with the file name in brackets",
+		source:        "Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv",
+		candidate:     "Kein - Ein Wienerfilm 1997 Austria [Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #4289
+		name:          "groupless file against a listing with a download name without a year",
+		source:        "Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv",
+		candidate:     "Kein - Ein Wienerfilm 1997 Austria [Kein.Ein.Wienerfilm]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #4289
+		name:          "listing of a film with the same title and another year",
+		source:        "Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv",
+		candidate:     "Kein - Ein Wienerfilm 2004 Austria [Kein.Ein.Wienerfilm]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
+		// regression: #4289
+		name:          "listing of another film with an AKA title and the file name in brackets",
+		source:        "Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv",
+		candidate:     "Ein Floh AKA Fleas Do Not 1997 Denmark [Ein.Floh.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
+		// regression: #4289
+		// A bracket tag without a year or a season is no release name.
+		name:          "another show with the same trailing bracket tag",
+		source:        "[GRP] Kaiju Squad - 05 [1080p][Multi-Subs]",
+		candidate:     "[GRP] Monster Unit - 05 [1080p][Multi-Subs]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
 		name:           "slash title",
 		source:         "Kaiju.Squad.Zero.S02E05.1080p.WEB.H264-GRP",
 		candidate:      "Kaiju/Squad Zero S02E05 1080p WEB H264-GRP",
