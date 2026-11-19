@@ -80,7 +80,7 @@ The year view has these parts:
 - **Weekends**: the share of the upload of the period that moved on a Saturday or a Sunday.
 - The upload of each month, as bars that stack by tracker. The colors and the gray series Other are the same as in the chart.
 
-The cells of the calendar are larger on a wider screen. On a wide screen, **Best day**, **Best month**, and **Weekends** are at the right of the calendar.
+The cells of the calendar are larger on a wider screen. On a wide screen, **Best day**, **Best month**, and **Weekends** are at the right of the calendar. On a screen that is wider still, the bars of the months are at the right of the calendar, and those three values are below the calendar.
 
 The best day, the best month, and the weekend share count the whole period, also the days before the 53 weeks of the calendar. In a period that qui folded, a day is a UTC day. See [Keep daily detail for](#keep-daily-detail-for).
 
