@@ -106,7 +106,7 @@ The preview at the top of the picker shows the icon in the collapsed sidebar and
 | **Letters** | Up to 2 characters in the collapsed sidebar, and the drive icon everywhere else. |
 | An icon from the list | The icon everywhere. The list has 56 icons in 7 groups (Servers, Hardware, Places, Media, Nature, Symbols, Objects). |
 
-If qui cannot connect to an instance, its icon turns red. There is no separate status dot.
+If qui cannot connect to an instance, its icon turns red in the sidebar, in instance menus, on Dashboard rows, and in the instance list. The rows under **Instance icons** always show the color that you picked.
 
 qui saves your icon choices on the qui server with your user settings, so each browser that you sign in from shows the same icons. The icons do not change qBittorrent.
 

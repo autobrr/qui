@@ -8,7 +8,7 @@ import type { CSSProperties } from "react"
 import { useClientSetting } from "@/lib/client-settings"
 import { instanceInitials } from "@/lib/instances"
 
-// The hue of each color. The theme sets the lightness and the chroma, see .instance-mark-color in index.css.
+// The hue of each color. The theme sets the lightness and the chroma, see .text-instance-mark in index.css.
 // No hue sits near red, because a red mark means that the instance has a problem.
 export const INSTANCE_MARK_HUES = {
   sky: 237,
@@ -81,5 +81,5 @@ export function autoLettersFor(instances: readonly { id: number; name: string; i
 /** The class and style that give a mark its color. Pair the class with bg-current for a swatch. */
 export function instanceMarkColorProps(color: InstanceMarkColor | null): { className?: string; style?: CSSProperties } {
   if (!color) return {}
-  return { className: "instance-mark-color", style: { "--mark-hue": INSTANCE_MARK_HUES[color] } as CSSProperties }
+  return { className: "text-instance-mark", style: { "--mark-hue": INSTANCE_MARK_HUES[color] } as CSSProperties }
 }

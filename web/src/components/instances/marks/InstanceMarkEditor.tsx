@@ -116,7 +116,8 @@ function LettersField({ id, value, placeholder, active, colorProps, onLetters, o
         else setComposing(event.target.value)
       }}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.nativeEvent.isComposing) onDone()
+        // Safari reports the Return that confirms input-method text with keyCode 229 and isComposing false.
+        if (event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229) onDone()
       }}
       // The field takes no third letter, so a new pair starts from selected text.
       onFocus={(event) => event.currentTarget.select()}
@@ -178,6 +179,8 @@ function InstanceMarkPickerBody({ mark, autoLetters, automaticRef, onChange, onD
   const usesLetters = selectedIcon === -1 && mark.letters !== ""
   const automatic = selectedIcon === -1 && mark.letters === ""
   const colorProps = instanceMarkColorProps(mark.color)
+  // The Tab stop of the icon grid follows the focus, so Tab leaves the grid from the icon that an arrow key reached.
+  const [iconTabStop, setIconTabStop] = useState<number | null>(null)
 
   return (
     <div className="flex flex-col gap-3">
@@ -293,11 +296,15 @@ function InstanceMarkPickerBody({ mark, autoLetters, automaticRef, onChange, onD
                       type="button"
                       data-index={index}
                       data-current={pressed || undefined}
-                      tabIndex={index === Math.max(selectedIcon, 0) ? 0 : -1}
+                      tabIndex={index === (iconTabStop ?? Math.max(selectedIcon, 0)) ? 0 : -1}
                       aria-label={label}
                       aria-pressed={pressed}
                       title={label}
-                      onClick={() => onChange({ ...mark, icon: entry.name, letters: "" })}
+                      onFocus={() => setIconTabStop(index)}
+                      onClick={() => {
+                        setIconTabStop(index)
+                        onChange({ ...mark, icon: entry.name, letters: "" })
+                      }}
                       className={cn("grid h-7 w-full place-items-center rounded-md max-sm:h-11", optionClassName, pressed && pressedClassName)}
                     >
                       <entry.Icon className={cn("size-[18px]", pressed && colorProps.className)} style={pressed ? colorProps.style : undefined} />
