@@ -180,4 +180,4 @@ Sort and filters are these preferences:
 
 By default, every profile shares them. Thus, a filter that you set on one screen also shows on a screen with a different profile. To give a profile its own sort and filters, open the profile in **Settings → Display profiles** and turn on **Own sort and filters**. The profile starts with a copy of the shared values, so nothing changes at that moment. After that, a change in this profile does not reach the other profiles, and a change in the other profiles does not reach this one. Default always shares its sort and filters, so it has no switch.
 
-If you turn the switch off, qui deletes the own sort and filters of the profile. The profile then uses the shared values again. qui does not ask for confirmation. The help line under the switch tells you this before you turn it off.
+If you turn the switch off, qui deletes the own sort and filters of the profile. The profile then uses the shared values again. qui does not ask for a confirmation. The help line under the switch tells you this before you turn it off.
