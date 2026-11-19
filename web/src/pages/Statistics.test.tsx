@@ -962,6 +962,8 @@ describe("Statistics", () => {
     const names = within(table).getAllByRole("button").map(button => button.textContent)
     expect(names).toEqual(["Alpha", "CharlietopTorrents.crossSeed", "BravotopTorrents.deleted"])
     expect(cells(table, "Alpha").slice(1)).toEqual(["a.test · Seedbox", "3 KiB", "0 B", "∞", "1 KiB"])
+    // The cell cuts a long tracker and instance name, and the title shows all of it.
+    expect(within(table).getAllByTitle("a.test · Seedbox").length).toBeGreaterThan(0)
     const asked = requests.filter(request => request.groupBy === "torrent")
     expect(asked.map(request => [request.instanceId, request.bucket, request.limit, request.group])).toEqual([[1, "total", "10", null], [2, "total", "10", null]])
   })

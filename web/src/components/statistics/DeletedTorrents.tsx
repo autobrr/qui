@@ -326,7 +326,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                           <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
                           <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @4xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
                         </TableCell>
-                        <TableCell className="hidden max-w-64 truncate align-top text-muted-foreground @4xl:table-cell">{tracker}</TableCell>
+                        <TableCell className="hidden max-w-64 truncate align-top text-muted-foreground @4xl:table-cell" title={tracker}>{tracker}</TableCell>
                         <TableCell className="hidden max-w-64 align-top @2xl:table-cell">{cause}</TableCell>
                         <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @4xl:pr-2">
                           {formatBytes(event.uploaded)}

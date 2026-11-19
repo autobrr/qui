@@ -151,6 +151,7 @@ describe("DeletedTorrents", () => {
     expect(trigger("deletes.filters.other").textContent).toBe("deletes.filters.other2")
     expect(screen.getAllByText("· Remove old").length).toBeGreaterThan(0)
     expect(screen.getAllByText("· sonarr key").length).toBeGreaterThan(0)
+    expect(screen.getAllByTitle("group:Aurora · Seedbox").length).toBeGreaterThan(0)
 
     fireEvent.mouseDown(trigger("deletes.filters.automation"), { button: 0 })
     await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.0-GRP", "Built.Name.2.0-GRP"]))
