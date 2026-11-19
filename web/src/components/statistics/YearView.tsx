@@ -42,33 +42,35 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 })
 
   return (
-    <div className="@container/year space-y-6 sm:space-y-8" data-chart={CHART_ID}>
+    <div className="@container/year" data-chart={CHART_ID}>
       <ChartStyle id={CHART_ID} config={config} />
-      {/* A wide card puts the three numbers next to the calendar, which grows to its largest cells first. */}
-      <div className="grid grid-cols-1 gap-6 sm:gap-8 @[68rem]/year:grid-cols-[minmax(0,auto)_minmax(14rem,1fr)] @[68rem]/year:items-center">
-        <Calendar days={days} />
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 @[68rem]/year:grid-cols-1 @[68rem]/year:gap-4 @[134rem]/year:grid-cols-3 @[134rem]/year:gap-6">
-          <YearFact
-            label={t("yearView.bestDay")}
-            value={summary.bestDay && formatBytes(summary.bestDay.uploaded)}
-            detail={summary.bestDay && formatStart(summary.bestDay.start, "day")}
-          />
-          <YearFact
-            label={t("yearView.bestMonth")}
-            value={summary.bestMonth && formatStart(summary.bestMonth.start, "month")}
-            detail={summary.bestMonth && formatBytes(summary.bestMonth.uploaded)}
-          />
-          <YearFact
-            className="col-span-2 sm:col-span-1"
-            label={t("yearView.weekends")}
-            value={summary.weekendShare === undefined ? undefined : formatPercent.format(summary.weekendShare)}
-            detail={t("yearView.weekendsDetail")}
-          />
-        </dl>
-      </div>
-      <div>
-        <div className="mb-2 text-xs font-medium">{t("yearView.months")}</div>
-        <TransferChart bars={months} groups={groups} metric="uploaded" unit="day" displayName={displayName} />
+      {/* A wide card puts the three numbers next to the calendar. A wider card puts them below it, and the months next to both. */}
+      <div className="space-y-6 sm:space-y-8 @[96rem]/year:grid @[96rem]/year:grid-cols-[minmax(0,auto)_minmax(36rem,1fr)] @[96rem]/year:items-center @[96rem]/year:gap-x-10 @[96rem]/year:space-y-0">
+        <div className="grid grid-cols-1 gap-6 sm:gap-8 @[68rem]/year:grid-cols-[minmax(0,auto)_minmax(14rem,1fr)] @[68rem]/year:items-center @[96rem]/year:grid-cols-1">
+          <Calendar days={days} />
+          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 @[68rem]/year:grid-cols-1 @[68rem]/year:gap-4 @[96rem]/year:grid-cols-3 @[96rem]/year:gap-6">
+            <YearFact
+              label={t("yearView.bestDay")}
+              value={summary.bestDay && formatBytes(summary.bestDay.uploaded)}
+              detail={summary.bestDay && formatStart(summary.bestDay.start, "day")}
+            />
+            <YearFact
+              label={t("yearView.bestMonth")}
+              value={summary.bestMonth && formatStart(summary.bestMonth.start, "month")}
+              detail={summary.bestMonth && formatBytes(summary.bestMonth.uploaded)}
+            />
+            <YearFact
+              className="col-span-2 sm:col-span-1"
+              label={t("yearView.weekends")}
+              value={summary.weekendShare === undefined ? undefined : formatPercent.format(summary.weekendShare)}
+              detail={t("yearView.weekendsDetail")}
+            />
+          </dl>
+        </div>
+        <div>
+          <div className="mb-2 text-xs font-medium">{t("yearView.months")}</div>
+          <TransferChart bars={months} groups={groups} metric="uploaded" unit="day" displayName={displayName} />
+        </div>
       </div>
     </div>
   )
@@ -170,7 +172,7 @@ function YearFact({ label, value, detail, className }: { label: string; value?: 
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 text-lg font-semibold tabular-nums sm:truncate sm:text-xl" title={value}>{value ?? "–"}</dd>
       {/* In the one column next to the calendar, a long detail goes to a second line. */}
-      {detail && <dd className="truncate text-sm text-muted-foreground @[68rem]/year:whitespace-normal @[134rem]/year:whitespace-nowrap" title={detail}>{detail}</dd>}
+      {detail && <dd className="truncate text-sm text-muted-foreground @[68rem]/year:whitespace-normal" title={detail}>{detail}</dd>}
     </div>
   )
 }
