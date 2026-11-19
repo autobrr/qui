@@ -44,6 +44,9 @@ const (
 	reportSSHUser      = "remoteshell"
 	reportSSHHost      = "storage.example.invalid"
 	reportREDKey       = "red-key-0123456789abcdef"
+	reportWebhookToken = "webhook-token-0123456789abcdef"
+	reportGotifyToken  = "gotify-token-0123456789"
+	reportNotifiarrKey = "notifiarr-key-0123456789"
 	reportSubmission   = "0b7c1a52-6f43-4d6e-9c7e-2f8a1d3b4c5e"
 )
 
@@ -114,6 +117,14 @@ func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 	require.NoError(t, err)
 	_, err = crossSeed.UpsertSettings(t.Context(), &models.CrossSeedAutomationSettings{GazelleEnabled: false, RedactedAPIKey: reportREDKey})
 	require.NoError(t, err)
+	for _, target := range []string{
+		"discord://" + reportWebhookToken + "@123456789012345678",
+		"gotify://gotify.example.invalid/" + reportGotifyToken,
+		"notifiarr://" + reportNotifiarrKey,
+	} {
+		_, err = deps.NotificationTargetStore.Create(t.Context(), &models.NotificationTargetCreate{Name: target, URL: target, Enabled: true})
+		require.NoError(t, err)
+	}
 
 	featureNames := []string{string(experimental.ProblemReports)}
 	if opts.experimentalOff {
@@ -319,7 +330,9 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 		"\nqui reaches " + rig.stub.URL + " as " + reportInstanceUser + ", and http://localhost/ answers, and so does localhost." +
 		// regression: #4288
 		"\nThe files sit on " + reportSSHHost + " for " + reportSSHUser + " with this key:\n" + rig.sshKey +
-		"\nRED/OPS is off, its key was " + reportREDKey
+		"\nRED/OPS is off, its key was " + reportREDKey +
+		// regression: #4288
+		"\nMy notification tokens are " + reportWebhookToken + ", " + reportGotifyToken + " and " + reportNotifiarrKey
 	status, answer := rig.send(menuReport(text, facts, "warnings", facts.Logs.Warnings), nil)
 	require.Equal(t, http.StatusCreated, status, answer)
 	assert.Equal(t, "received", answer["status"])
@@ -333,7 +346,9 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 	raw := string(request.Report)
 	for _, private := range []string{reportPasskey, rig.apiKey, reportInstanceUser, reportBasicUser, stubHost, "127.0.0.1", reportIndexerKey,
 		// regression: #4288
-		reportSSHHost, reportSSHUser, strings.TrimSpace(rig.sshKey), reportREDKey} {
+		reportSSHHost, reportSSHUser, strings.TrimSpace(rig.sshKey), reportREDKey,
+		// regression: #4288
+		reportWebhookToken, reportGotifyToken, reportNotifiarrKey} {
 		assert.NotContains(t, raw, private)
 	}
 	assert.Contains(t, raw, "connect to qbittorrent refused", "a host name with no dot stays")

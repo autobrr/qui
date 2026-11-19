@@ -203,9 +203,30 @@ func (s StoreSecrets) notificationSecrets(ctx context.Context, c *secretCollecto
 		return fmt.Errorf("list notification targets: %w", err)
 	}
 	for _, target := range targets {
-		c.add(target.URL)
+		c.add(notificationURLSecrets(target.URL)...)
 	}
 	return nil
+}
+
+// notificationURLSecrets returns a notification URL and each part of it
+// that the settings page masks, because a text can hold one part alone: the
+// user name and the password, which hold the token of a discord:// or a
+// telegram:// URL, each path segment, and the host of a Notifiarr URL, which
+// is its API key.
+func notificationURLSecrets(raw string) []string {
+	secrets := []string{raw}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return secrets
+	}
+	if parsed.User != nil {
+		password, _ := parsed.User.Password()
+		secrets = append(secrets, parsed.User.Username(), password)
+	}
+	if parsed.Scheme == "notifiarr" || parsed.Scheme == "notifiarrapi" {
+		secrets = append(secrets, parsed.Host)
+	}
+	return append(secrets, strings.Split(parsed.Path, "/")...)
 }
 
 // instanceAddress returns the forms of an instance address that a text can
