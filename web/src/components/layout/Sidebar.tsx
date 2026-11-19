@@ -180,7 +180,7 @@ export function Sidebar() {
         <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
           {t("sidebar.instances")}
         </p>
-        <div className="mt-1 min-h-24 space-y-0.5 overflow-y-auto pr-1 short:space-y-px">
+        <div className={cn("mt-1 space-y-0.5 overflow-y-auto pr-1 short:space-y-px", hasMultipleActiveInstances ? "min-h-24" : "shrink-0")}>
           {hasMultipleActiveInstances && (
             <>
               <UnifiedScopeDropdownSection
