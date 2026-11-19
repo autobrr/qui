@@ -43,7 +43,7 @@ const CHECKBOX_TAP = "relative pointer-coarse:after:absolute pointer-coarse:afte
 type RowStep = "retry" | "cancel" | "remove"
 
 /** The Transfers section of the Transfers page: the Transfers and the Export runs, newest first. */
-export function TransfersTab() {
+export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: number }) {
   const { t, i18n } = useTranslation("transfers")
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<TransferFilter>("all")
@@ -60,7 +60,7 @@ export function TransfersTab() {
   const [asking, setAsking] = useState<{ action: "cancel" | "remove"; open: boolean; count: number } | null>(null)
 
   const list = useQuery({
-    ...transferListQuery(filter, page),
+    ...transferListQuery(filter, page, pageSize),
     placeholderData: keepPreviousData,
     // Progress and speed move while a Transfer runs.
     refetchInterval: 3000,
@@ -127,7 +127,7 @@ export function TransfersTab() {
   const formatCount = useMemo(() => new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language), [i18n.resolvedLanguage, i18n.language])
   const countOf = (chip: TransferFilter) => counts && (chip === "all" ? counts.active + counts.waiting + counts.finished + counts.failed : counts[chip])
   const total = countOf(filter) ?? 0
-  const pageCount = Math.max(1, Math.ceil(total / transferPageSize))
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
   // When rows end or go away, the page can lie past the last page. The list then shows the last page.
   if (counts && page >= pageCount) setPage(pageCount - 1)
   const clearSelection = () => {
@@ -245,8 +245,8 @@ export function TransfersTab() {
             <nav aria-label={t("list.pages")} className="flex items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground tabular-nums">
                 {t("list.range", {
-                  from: formatCount.format(page * transferPageSize + 1),
-                  to: formatCount.format(Math.min((page + 1) * transferPageSize, total)),
+                  from: formatCount.format(page * pageSize + 1),
+                  to: formatCount.format(Math.min((page + 1) * pageSize, total)),
                   total: formatCount.format(total),
                 })}
               </p>

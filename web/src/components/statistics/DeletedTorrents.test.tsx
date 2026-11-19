@@ -46,6 +46,9 @@ let deletesOf: Map<number, TransferHistoryDeleteEvent[]>
 let requests: DeletesRequest[]
 // While set, the route waits for it before it answers.
 let hold: Promise<void> | undefined
+// The client of the rendered table. A test ends only after its requests answered, as a request that is still on its way
+// reaches the route of the next test.
+let client: QueryClient | undefined
 
 function event(instanceId: number, index: number, time: number, kind: TransferHistoryCauseKind, name?: string): TransferHistoryDeleteEvent {
   return {
@@ -67,6 +70,7 @@ function instance(instanceId: number, name: string): TransferHistoryInstance {
 
 function renderTable(instances: TransferHistoryInstance[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client = queryClient
   const table = (to: number) => (
     <QueryClientProvider client={queryClient}>
       <DeletedTorrents scope="30d" instances={instances} period={{ from: new Date(0), to: new Date(to) }} displayGroup={group => `group:${group}`} />
@@ -124,7 +128,9 @@ beforeEach(() => {
   }))
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await vi.waitFor(() => expect(client?.isFetching() ?? 0).toBe(0))
+  client = undefined
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -433,7 +439,8 @@ describe("DeletedTorrents", () => {
     const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
 
     fireEvent.mouseDown(trigger("deletes.filters.user"), { button: 0 })
-    await vi.waitFor(() => expect(trigger("deletes.filters.user").getAttribute("aria-selected")).toBe("true"))
+    // The rows of the other filter show. Until they load, the earlier rows stay and keep their count.
+    await vi.waitFor(() => expect(document.querySelector("table")!.closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("false"))
     fireEvent.mouseDown(trigger("deletes.filters.all"), { button: 0 })
 
     await vi.waitFor(() => expect(trigger("deletes.filters.all").getAttribute("aria-selected")).toBe("true"))

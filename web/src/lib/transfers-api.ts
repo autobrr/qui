@@ -146,17 +146,17 @@ export interface TransferSummary {
 export const transferPageSize = 50
 
 /** The query of one page of the Transfers list. The Transfers page and the badge of the sidebar share it. */
-export const transferListQuery = (filter: TransferFilter, page: number) => ({
-  queryKey: ["transfers", "list", filter, page],
-  queryFn: () => transfersApi.list(filter, page),
+export const transferListQuery = (filter: TransferFilter, page: number, pageSize = transferPageSize) => ({
+  queryKey: ["transfers", "list", filter, page, pageSize],
+  queryFn: () => transfersApi.list(filter, page, pageSize),
 })
 
 const json = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) })
 
 export const transfersApi = {
   /** One page of the rows behind filter, the newest first. Page 0 is the first page. */
-  list: (filter: TransferFilter, page: number) => {
-    const query = new URLSearchParams({ limit: String(transferPageSize), offset: String(page * transferPageSize) })
+  list: (filter: TransferFilter, page: number, pageSize = transferPageSize) => {
+    const query = new URLSearchParams({ limit: String(pageSize), offset: String(page * pageSize) })
     if (filter !== "all") query.set("filter", filter)
     return apiRequest<TransferList>(`/transfers?${query}`)
   },

@@ -15,7 +15,7 @@ vi.mock("@/lib/shares-api", async (importOriginal) => ({
 
 import { useTransferQueue } from "@/hooks/useTransferQueue"
 import { listShares, type Share } from "@/lib/shares-api"
-import { transfersApi, type TransferList } from "@/lib/transfers-api"
+import { transferPageSize, transfersApi, type TransferList } from "@/lib/transfers-api"
 
 afterEach(() => {
   cleanup()
@@ -37,5 +37,5 @@ it("counts the Transfers that run or wait, and the Shares that have not ended", 
   expect(result.current).toBe(0)
 
   await waitFor(() => expect(result.current).toBe(8))
-  expect(transfersApi.list).toHaveBeenCalledWith("active", 0)
+  expect(transfersApi.list).toHaveBeenCalledWith("active", 0, transferPageSize)
 })
