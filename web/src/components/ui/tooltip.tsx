@@ -44,13 +44,16 @@ type TooltipProps = React.ComponentProps<typeof TooltipPrimitive.Root> & {
 const Tooltip = ({ children, disabled = false, ...props }: TooltipProps) => {
   const isTouchDevice = useIsTouchDevice()
   const [open, setOpen] = React.useState(props.defaultOpen ?? false)
-  if (disabled && open) {
-    setOpen(false)
-  }
 
   // Track if the tooltip was opened via click (for touch devices)
   const openedViaClickRef = React.useRef(false)
   const lastPointerTypeRef = React.useRef<string | null>(null)
+
+  if (disabled && open) {
+    openedViaClickRef.current = false
+    lastPointerTypeRef.current = null
+    setOpen(false)
+  }
 
   const handleOpenChange = React.useCallback((nextOpen: boolean) => {
     if (disabled && nextOpen) {

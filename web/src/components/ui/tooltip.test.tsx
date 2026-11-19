@@ -90,6 +90,26 @@ describe("Tooltip with disabled", () => {
     rerender(tree(false))
     expect(tooltipShown()).toBe(false)
   })
+
+  // regression: #4286
+  it("keeps the touch guard after disabled closes a tapped tooltip", () => {
+    const tree = (disabled: boolean) => (
+      <TooltipProvider>
+        <Tooltip disabled={disabled}>
+          <TooltipTrigger asChild><span tabIndex={0}>12 GiB</span></TooltipTrigger>
+          <TooltipContent>Tooltip text</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+    const { rerender } = render(tree(false))
+    tap(screen.getByText("12 GiB"))
+    rerender(tree(true))
+    rerender(tree(false))
+
+    // A sheet that focuses the trigger must not open the tooltip on a touch device.
+    fireEvent.focus(screen.getByText("12 GiB"))
+    expect(tooltipShown()).toBe(false)
+  })
 })
 
 describe("TooltipTrigger on a touch device", () => {
