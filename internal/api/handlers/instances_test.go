@@ -52,6 +52,7 @@ func TestGetInstanceCapabilitiesPreservesBackoffMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil, nil)
+	t.Cleanup(handler.connectionTests.Wait)
 	router := chi.NewRouter()
 	router.Get("/api/instances/{instanceID}/capabilities", handler.GetInstanceCapabilities)
 
@@ -110,6 +111,7 @@ func TestUpdateInstanceClearsConnectionBackoff(t *testing.T) {
 	require.NoError(t, err)
 
 	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil, nil)
+	t.Cleanup(handler.connectionTests.Wait)
 	router := chi.NewRouter()
 	router.Put("/api/instances/{instanceID}", handler.UpdateInstance)
 	update := func(host string) {
@@ -167,6 +169,7 @@ func TestUpdateInstanceKeepsThePublicPeerAddress(t *testing.T) {
 	require.NoError(t, err)
 
 	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, internalqbittorrent.NewSyncManager(clientPool, nil), nil, nil, nil)
+	t.Cleanup(handler.connectionTests.Wait)
 	router := chi.NewRouter()
 	router.Get("/api/instances", handler.ListInstances)
 	router.Put("/api/instances/{instanceID}", handler.UpdateInstance)

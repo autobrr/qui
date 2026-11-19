@@ -97,6 +97,9 @@ type Service struct {
 	indexerOutcomes *IndexerOutcomeStore
 
 	activityPublisher activity.Publisher
+	// background tracks the cache touches and cleanups that outlive their call.
+	// A test waits for them before it closes the database.
+	background sync.WaitGroup
 }
 
 // ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
@@ -1256,11 +1259,11 @@ func (s *Service) fetchCacheEntry(ctx context.Context, sig *searchCacheSignature
 	if entry == nil || len(coverage) == 0 {
 		return nil, nil, false
 	}
-	go func(entryID int64) { //nolint:gosec // G118: cache touch must outlive the lookup, bounded by its own timeout
+	s.background.Go(func() { //nolint:gosec // G118: cache touch must outlive the lookup, bounded by its own timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		s.searchCache.Touch(ctx, entryID)
-	}(entry.ID)
+		s.searchCache.Touch(ctx, entry.ID)
+	})
 	complete := len(coverage) == len(requestedIndexerIDs)
 	return entry, coverage, complete
 }
@@ -1534,7 +1537,7 @@ func (s *Service) maybeScheduleSearchCacheCleanup() {
 	s.nextSearchCacheCleanup = time.Now().Add(searchCacheCleanupInterval)
 	s.searchCacheCleanupMu.Unlock()
 
-	go func() {
+	s.background.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -1543,7 +1546,7 @@ func (s *Service) maybeScheduleSearchCacheCleanup() {
 		} else if deleted > 0 {
 			log.Debug().Int64("deleted", deleted).Msg("Cleaned up expired torznab search cache entries")
 		}
-	}()
+	})
 }
 
 func (s *Service) maybeScheduleTorrentCacheCleanup() {
@@ -1559,7 +1562,7 @@ func (s *Service) maybeScheduleTorrentCacheCleanup() {
 	s.nextTorrentCacheCleanup = time.Now().Add(torrentCacheCleanupInterval)
 	s.torrentCacheCleanupMu.Unlock()
 
-	go func() {
+	s.background.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -1568,7 +1571,7 @@ func (s *Service) maybeScheduleTorrentCacheCleanup() {
 		} else if deleted > 0 {
 			log.Debug().Int64("deleted", deleted).Msg("Cleaned up torznab torrent cache entries")
 		}
-	}()
+	})
 }
 
 func (s *Service) maybeScheduleLatencyCleanup() {
@@ -1584,7 +1587,7 @@ func (s *Service) maybeScheduleLatencyCleanup() {
 	s.nextLatencyCleanup = time.Now().Add(latencyCleanupInterval)
 	s.latencyCleanupMu.Unlock()
 
-	go func() {
+	s.background.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -1593,7 +1596,7 @@ func (s *Service) maybeScheduleLatencyCleanup() {
 		} else if deleted > 0 {
 			log.Debug().Int64("deleted", deleted).Msg("Cleaned up torznab indexer latency records")
 		}
-	}()
+	})
 }
 
 // InvalidateSearchCache clears cached searches referencing the provided indexers.
