@@ -41,7 +41,7 @@ import type { TransferHistoryBytes } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { AlertCircle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Database, Plus, RefreshCcw, Turtle } from "lucide-react"
-import { useState, type KeyboardEvent, type ReactNode } from "react"
+import { memo, useState, type KeyboardEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -314,7 +314,7 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded }: InstanceListPr
                     </Link>
                   ) : <span className="truncate font-medium">{d.instance.name}</span>}
                   <DataStatus d={d} />
-                  {health === "ok" && <AltSpeedButton d={d} />}
+                  {health === "ok" && <AltSpeedButton instanceId={id} altSpeedEnabled={d.altSpeedEnabled} />}
                   {canOpen && <ChevronDown className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", isOpen && "rotate-180")} />}
                 </span>
               </TableCell>
@@ -507,7 +507,7 @@ function DetailActions({ d, onClose }: { d: DashboardInstanceStats; onClose?: ()
   const instanceId = String(d.instance.id)
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <AltSpeedSwitch d={d} />
+      <AltSpeedSwitch instanceId={d.instance.id} altSpeedEnabled={d.altSpeedEnabled} />
       <span className="flex flex-1 justify-end gap-2 max-lg:w-full">
         <Button asChild variant="secondary" size="sm" className="max-lg:h-11" onClick={onClose}>
           <Link to="/instances/$instanceId" params={{ instanceId }} search={{ modal: "add-torrent" }}><Plus />{t("details.addTorrent")}</Link>
@@ -520,20 +520,22 @@ function DetailActions({ d, onClose }: { d: DashboardInstanceStats; onClose?: ()
   )
 }
 
-function useAltSpeed(d: DashboardInstanceStats) {
+type AltSpeedProps = { instanceId: number; altSpeedEnabled: boolean }
+
+function useAltSpeed({ instanceId, altSpeedEnabled }: AltSpeedProps) {
   const { t } = useTranslation("dashboard")
   const [incognito] = useIncognitoMode()
   const queryClient = useQueryClient()
   // The stream brings the new value a moment after the answer of the toggle.
   const [answer, setAnswer] = useState<boolean>()
-  if (answer !== undefined && answer === d.altSpeedEnabled) setAnswer(undefined)
-  const enabled = answer ?? d.altSpeedEnabled
+  if (answer !== undefined && answer === altSpeedEnabled) setAnswer(undefined)
+  const enabled = answer ?? altSpeedEnabled
   const { mutate, isPending } = useMutation({
-    mutationFn: () => api.toggleAlternativeSpeedLimits(d.instance.id),
+    mutationFn: () => api.toggleAlternativeSpeedLimits(instanceId),
     onMutate: () => setAnswer(!enabled),
     onSuccess: result => {
       setAnswer(result.enabled)
-      return queryClient.invalidateQueries({ queryKey: ["torrents-list", d.instance.id] })
+      return queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
     },
     // The error text can hold the host or its IP address, so incognito mode leaves it out.
     onError: (error: Error) => {
@@ -544,10 +546,13 @@ function useAltSpeed(d: DashboardInstanceStats) {
   return { enabled, isPending, toggle: () => mutate() }
 }
 
-/** Turns the alternative speed limits of the instance on or off with one click. */
-function AltSpeedButton({ d }: { d: DashboardInstanceStats }) {
+/**
+ * Turns the alternative speed limits of the instance on or off with one click.
+ * The stream renders each row several times each second. The props are plain values, so memo skips the button until one changes.
+ */
+const AltSpeedButton = memo(function AltSpeedButton(props: AltSpeedProps) {
   const { t } = useTranslation("dashboard")
-  const { enabled, isPending, toggle } = useAltSpeed(d)
+  const { enabled, isPending, toggle } = useAltSpeed(props)
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -568,12 +573,12 @@ function AltSpeedButton({ d }: { d: DashboardInstanceStats }) {
       <TooltipContent>{enabled ? t("details.altSpeedOn") : t("instances.altSpeedOff")}</TooltipContent>
     </Tooltip>
   )
-}
+})
 
-function AltSpeedSwitch({ d }: { d: DashboardInstanceStats }) {
+function AltSpeedSwitch(props: AltSpeedProps) {
   const { t } = useTranslation("dashboard")
-  const { enabled, isPending, toggle } = useAltSpeed(d)
-  const id = `alt-speed-${d.instance.id}`
+  const { enabled, isPending, toggle } = useAltSpeed(props)
+  const id = `alt-speed-${props.instanceId}`
   return (
     <label htmlFor={id} className="flex min-h-9 items-center gap-2 text-sm">
       {t("details.altSpeed")}
