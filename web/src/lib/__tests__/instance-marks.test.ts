@@ -33,8 +33,8 @@ describe("parseInstanceMark", () => {
     expect(parseInstanceMark(JSON.stringify({ icon: "cat", color: "teal", letters: "" }))).toEqual({ icon: "cat", color: "teal", letters: "" })
   })
 
-  it("drops a color that the palette does not have", () => {
-    expect(parseInstanceMark(JSON.stringify({ icon: null, color: "rose", letters: "nas" })).color).toBeNull()
+  it.each(["rose", "constructor"])("drops a color that the palette does not have: %s", (color) => {
+    expect(parseInstanceMark(JSON.stringify({ icon: null, color, letters: "nas" })).color).toBeNull()
   })
 
   it("normalizes stored letters and drops an empty icon", () => {

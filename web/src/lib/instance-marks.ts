@@ -59,7 +59,7 @@ export function parseInstanceMark(raw: string): InstanceMark {
   const { icon, color, letters } = value as Record<string, unknown>
   return {
     icon: typeof icon === "string" && icon !== "" ? icon : null,
-    color: typeof color === "string" && color in INSTANCE_MARK_HUES ? color as InstanceMarkColor : null,
+    color: typeof color === "string" && Object.hasOwn(INSTANCE_MARK_HUES, color) ? color as InstanceMarkColor : null,
     letters: typeof letters === "string" ? normalizeInstanceMarkLetters(letters) : "",
   }
 }
