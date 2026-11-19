@@ -92,10 +92,7 @@ function ProblemReportForm({ onSent }: { onSent: () => void }) {
       },
       failedRequests: [],
     }),
-    onSuccess: () => {
-      toast.success(t("problemReports.sent"))
-      onSent()
-    },
+    onSuccess: () => toast.success(t("problemReports.sent")),
   })
 
   const facts = factsQuery.data
@@ -131,7 +128,7 @@ function ProblemReportForm({ onSent }: { onSent: () => void }) {
       )}
 
       <DialogFooter>
-        <Button disabled={!canSend} onClick={() => facts && sendMutation.mutate(facts)}>
+        <Button disabled={!canSend} onClick={() => facts && sendMutation.mutate(facts, { onSuccess: onSent })}>
           {sendMutation.isPending ? t("problemReports.sending") : t("problemReports.send")}
         </Button>
       </DialogFooter>

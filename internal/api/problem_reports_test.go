@@ -32,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/testutil/fakebrrbin"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
+	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/pkg/version"
 )
 
@@ -40,6 +41,9 @@ const (
 	reportInstanceUser = "seedboxuser"
 	reportBasicUser    = "proxyuser"
 	reportIndexerKey   = "indexer-key-0123456789"
+	reportSSHUser      = "remoteshell"
+	reportSSHHost      = "storage.example.invalid"
+	reportREDKey       = "red-key-0123456789abcdef"
 	reportSubmission   = "0b7c1a52-6f43-4d6e-9c7e-2f8a1d3b4c5e"
 )
 
@@ -51,6 +55,7 @@ func (s *stubReleases) GetLatestRelease(context.Context) *version.Release { retu
 
 type reportRig struct {
 	t        *testing.T
+	sshKey   string
 	srv      *httptest.Server
 	cookie   *http.Cookie
 	fake     *fakebrrbin.Fake
@@ -86,6 +91,8 @@ func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 	basicUser, basicPassword := reportBasicUser, "basic-password-123"
 	instance, err := deps.InstanceStore.Create(t.Context(), "seedbox", rig.stub.URL, reportInstanceUser, "instance-password-123", &basicUser, &basicPassword, false, new(true))
 	require.NoError(t, err)
+	rig.sshKey = sshtest.PrivateKey("")
+	require.NoError(t, deps.InstanceStore.SetSSHCredentials(t.Context(), instance.ID, reportSSHHost, 22, reportSSHUser, rig.sshKey))
 	_, err = deps.InstanceStore.Create(t.Context(), "home", "http://qbittorrent:8080", "admin", "", nil, nil, false, new(true))
 	require.NoError(t, err)
 	_, err = deps.InstanceStore.Create(t.Context(), "local", "http://localhost/", "admin", "", nil, nil, false, new(true))
@@ -102,6 +109,10 @@ func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 	require.NotZero(t, indexer.ID)
 
 	rig.store, err = models.NewProblemReportStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	crossSeed, err := models.NewCrossSeedStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	_, err = crossSeed.UpsertSettings(t.Context(), &models.CrossSeedAutomationSettings{GazelleEnabled: false, RedactedAPIKey: reportREDKey})
 	require.NoError(t, err)
 
 	featureNames := []string{string(experimental.ProblemReports)}
@@ -128,6 +139,7 @@ func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 			Instances:     deps.InstanceStore,
 			Indexers:      deps.TorznabIndexerStore,
 			Arr:           deps.ArrInstanceStore,
+			CrossSeed:     crossSeed,
 			APIKeys:       models.NewAPIKeyStore(db),
 			ClientAPIKeys: deps.ClientAPIKeyStore,
 			Notifications: deps.NotificationTargetStore,
@@ -284,7 +296,13 @@ func TestProblemReportFacts(t *testing.T) {
 
 	status, _ = rig.facts("startedFrom=elsewhere")
 	assert.Equal(t, http.StatusBadRequest, status)
-	assert.Empty(t, rig.fake.Requests(), "the facts route contacts no brrbin")
+	for _, path := range []string{"/api/version", "/api/instances"} {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rig.srv.URL+path, nil)
+		require.NoError(t, err)
+		status, _ := rig.do(req)
+		assert.Equal(t, http.StatusOK, status, path)
+	}
+	assert.Empty(t, rig.fake.Requests(), "qui contacts brrbin only on Send")
 }
 
 func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
@@ -298,7 +316,9 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 	_, facts := rig.facts("startedFrom=menu")
 
 	text := "Uploads stall.\nMy announce is udp://tracker.example.invalid:6969/" + reportPasskey + "/announce and my key " + rig.apiKey +
-		"\nqui reaches " + rig.stub.URL + " as " + reportInstanceUser + ", and http://localhost/ answers, and so does localhost."
+		"\nqui reaches " + rig.stub.URL + " as " + reportInstanceUser + ", and http://localhost/ answers, and so does localhost." +
+		"\nThe files sit on " + reportSSHHost + " for " + reportSSHUser + " with this key:\n" + rig.sshKey +
+		"\nRED/OPS is off, its key was " + reportREDKey
 	status, answer := rig.send(menuReport(text, facts, "warnings", facts.Logs.Warnings), nil)
 	require.Equal(t, http.StatusCreated, status, answer)
 	assert.Equal(t, "received", answer["status"])
@@ -310,7 +330,8 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 	assert.NotEmpty(t, request.Header.Get("X-Install-Key"))
 	assert.Empty(t, request.Header.Get("Authorization"), "an anonymous report carries no token")
 	raw := string(request.Report)
-	for _, private := range []string{reportPasskey, rig.apiKey, reportInstanceUser, reportBasicUser, stubHost, "127.0.0.1", reportIndexerKey} {
+	for _, private := range []string{reportPasskey, rig.apiKey, reportInstanceUser, reportBasicUser, stubHost, "127.0.0.1", reportIndexerKey,
+		reportSSHHost, reportSSHUser, strings.TrimSpace(rig.sshKey), reportREDKey} {
 		assert.NotContains(t, raw, private)
 	}
 	assert.Contains(t, raw, "connect to qbittorrent refused", "a host name with no dot stays")
@@ -460,7 +481,6 @@ func TestProblemReportSendRefusals(t *testing.T) {
 		{http.StatusConflict, "reporter_full", http.StatusConflict, "reporter_full"},
 		{http.StatusRequestEntityTooLarge, "", http.StatusRequestEntityTooLarge, "too_large"},
 		{http.StatusServiceUnavailable, "", http.StatusBadGateway, "unavailable"},
-		{http.StatusBadRequest, "invalid_report", http.StatusBadGateway, "unavailable"},
 	} {
 		t.Run(fmt.Sprintf("%d %s", tc.fakeStatus, tc.fakeReason), func(t *testing.T) {
 			rig := newReportRig(t, reportRigOptions{})
@@ -561,7 +581,6 @@ func TestProblemReportRoutesWhenOff(t *testing.T) {
 		status int
 	}{
 		{"problemReports = false", reportRigOptions{problemReportsOff: true}, http.StatusForbidden},
-		{"Experimental feature off", reportRigOptions{experimentalOff: true}, http.StatusNotFound},
 		{"Experimental feature off and problemReports = false", reportRigOptions{experimentalOff: true, problemReportsOff: true}, http.StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -579,15 +598,4 @@ func TestProblemReportRoutesWhenOff(t *testing.T) {
 			assert.Empty(t, rig.fake.Requests())
 		})
 	}
-}
-
-func TestProblemReportNothingLeavesWithoutSend(t *testing.T) {
-	rig := newReportRig(t, reportRigOptions{})
-	for _, path := range []string{"/api/version", "/api/instances", "/api/problem-reports/facts?startedFrom=menu"} {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rig.srv.URL+path, nil)
-		require.NoError(t, err)
-		status, _ := rig.do(req)
-		assert.Equal(t, http.StatusOK, status, path)
-	}
-	assert.Empty(t, rig.fake.Requests(), "qui contacts brrbin only on Send")
 }

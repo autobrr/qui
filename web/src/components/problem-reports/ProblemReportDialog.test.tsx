@@ -161,6 +161,31 @@ describe("ProblemReportDialog", () => {
     expect(report.failedRequests).toEqual([])
   })
 
+  it("keeps a newer report open when an earlier Send succeeds after its dialog closed", async () => {
+    serveInfo({ experimentalFeatures: ["problemReports"], problemReports: true })
+    let answer: (response: Response) => void = () => {}
+    server.use(http.post("*/api/problem-reports", () => new Promise<Response>((resolve) => { answer = resolve })))
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(first.sendButton)
+    await waitFor(() => expect(first.sendButton.disabled).toBe(true))
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+
+    const second = await openDialog()
+    fireEvent.change(second.textField, { target: { value: "Another problem" } })
+    answer(HttpResponse.json(
+      { id: "r1", submissionId: "s1", title: "Torrents vanish", sentAt: "2026-11-19T09:00:00Z", status: "received", text: "Torrents vanish" },
+      { status: 201 }
+    ))
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Report sent"))
+    expect(screen.queryByRole("dialog")).not.toBeNull()
+    expect(second.textField.value).toBe("Another problem")
+  })
+
   it("shows the message for a refusal, keeps the text, and retries with the same submission id", async () => {
     serveInfo({ experimentalFeatures: ["problemReports"], problemReports: true })
     const submissionIds: string[] = []

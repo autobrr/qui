@@ -98,6 +98,9 @@ func (s StoreSecrets) instanceSecrets(ctx context.Context, c *secretCollector) e
 		if instance.BasicUsername != nil {
 			c.add(*instance.BasicUsername)
 		}
+		c.decrypted(s.Instances.GetDecryptedSSHKey(instance))
+		c.add(instanceAddress(instance.SSHHost)...)
+		c.add(instance.SSHUsername)
 	}
 	return nil
 }
@@ -136,7 +139,7 @@ func (s StoreSecrets) crossSeedSecrets(ctx context.Context, c *secretCollector) 
 	if s.CrossSeed == nil {
 		return nil
 	}
-	keys, err := s.CrossSeed.GetDecryptedGazelleAPIKeys(ctx)
+	keys, err := s.CrossSeed.GetStoredGazelleAPIKeys(ctx)
 	if err != nil {
 		return fmt.Errorf("read RED/OPS keys: %w", err)
 	}

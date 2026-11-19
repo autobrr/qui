@@ -144,7 +144,8 @@ func NewService(baseURL string, client *http.Client, store *models.ProblemReport
 }
 
 // Facts returns the facts for a starting point, with every text part
-// cleaned. It contacts no outside service.
+// cleaned. It sends nothing to brrbin. For a search it reads the torrent from
+// qBittorrent, as the manual search does.
 func (s *Service) Facts(ctx context.Context, req FactsRequest) (*Facts, error) {
 	switch req.StartedFrom {
 	case StartedFromMenu, StartedFromNotice:
