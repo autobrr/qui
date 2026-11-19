@@ -30,6 +30,7 @@ import (
 
 const mediaIDWiringSourceHash = "14a238e56ab06fed600c38d5068998d95e9338c2"
 
+// regression: #3306
 // TestTagIDPrimaryMixedModeWithTitleRescue drives the full search flow against
 // two recording Torznab servers: one with an imdbid capability, one without.
 // With no arr ID available, the primary search must run ID-first from the
@@ -160,13 +161,15 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 	for _, p := range idCapableRequests {
 		if p.Get("imdbid") != "" {
 			require.Empty(t, p.Get("q"), "an ID query must not carry a title query")
+			require.Empty(t, p.Get("year"), "an ID query must not carry a year")
 			idQueries++
 		} else {
 			require.NotEmpty(t, p.Get("q"))
 			titleQueries++
 		}
 	}
-	require.Positive(t, idQueries, "ID-capable indexer must search by ID")
+	require.Equal(t, 1, idQueries,
+		"the ID-capable indexer searches by ID once: its query carries no year, so the yearless retry skips it")
 	require.Equal(t, 1, titleQueries,
 		"the title rescue must send exactly one title query to the ID-queried indexer")
 
@@ -174,9 +177,11 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 		require.Empty(t, p.Get("imdbid"), "title-only indexer must never receive an ID param")
 	}
 
-	// The rescue adds exactly one extra request, and only to the ID-queried
-	// indexer. Equal counts here mean the title-only indexer got a re-run of
-	// its already-searched title query: the waste this test pins.
-	require.Len(t, idCapableRequests, len(titleOnlyRequests)+1,
+	// The title-only indexer searches by title with the year, then once more
+	// without it in the yearless retry. A third request would be a re-run of
+	// its already-searched title query in the rescue: the waste this test pins.
+	require.Len(t, titleOnlyRequests, 2,
 		"the title rescue must reach only the ID-queried indexer")
+	require.Equal(t, "1997", titleOnlyRequests[0].Get("year"))
+	require.Empty(t, titleOnlyRequests[1].Get("year"))
 }
