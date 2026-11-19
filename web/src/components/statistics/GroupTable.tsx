@@ -10,6 +10,7 @@ import { TorrentMarks } from "@/components/statistics/TopTorrents"
 import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SortIcon } from "@/components/ui/sort-icon"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TorrentName } from "@/components/ui/torrent-name"
@@ -18,6 +19,7 @@ import { useTopTorrents, useTorrentName } from "@/hooks/useTopTorrents"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+import { formatCalendarDay } from "@/lib/dateTimeUtils"
 import {
   BROWSER_TIME_ZONE,
   barBytes,
@@ -47,9 +49,43 @@ import { useTranslation } from "react-i18next"
 
 const CHART_ID = "statistics-table"
 
-const PHONE_ROWS = 10
+// The number of rows that the table shows at first, and that Show more adds on a desktop.
+const FIRST_ROWS = 10
 
 type Live = NonNullable<GroupTotals["live"]>
+
+type SortColumn = "group" | "uploaded" | "downloaded" | "ratio" | "buffer" | "torrents" | "size" | "seeded"
+
+interface Sort {
+  column: SortColumn
+  descending: boolean
+}
+
+const FIRST_SORT: Sort = { column: "uploaded", descending: true }
+
+// Only the table by Tracker group has these columns.
+const LIVE_COLUMNS: SortColumn[] = ["torrents", "size", "seeded"]
+
+/** The number that a column sorts a row by. A row that shows no value in the column has none, and sorts last. */
+function sortNumber(row: GroupTotals, column: Exclude<SortColumn, "group">): number | undefined {
+  switch (column) {
+    case "uploaded":
+      return row.uploaded
+    case "downloaded":
+      return row.downloaded
+    case "ratio":
+      if (row.downloaded > 0) return row.uploaded / row.downloaded
+      return row.uploaded > 0 ? Infinity : undefined
+    case "buffer":
+      return row.uploaded === 0 && row.downloaded === 0 ? undefined : row.uploaded - row.downloaded
+    case "torrents":
+      return row.live?.torrents ?? 0
+    case "size":
+      return row.live?.size ?? 0
+    case "seeded":
+      return row.live && row.live.size > 0 ? row.live.uploaded / row.live.size : undefined
+  }
+}
 
 interface GroupTableProps {
   grouping: TableGrouping
@@ -64,7 +100,7 @@ interface GroupTableProps {
   since?: Date
   // The period choice and the instance selection, so that the detail band keeps its chart only for the same series.
   series: string
-  // The period choice with the days of a custom range, and the instance selection. A new one shows ten rows on a phone again.
+  // The period choice with the days of a custom range, and the instance selection. A new one shows ten rows again.
   listScope: string
   instances: TransferHistoryInstance[]
   // The Tracker groups that have a series color in the chart, in series order.
@@ -76,14 +112,17 @@ interface GroupTableProps {
 
 /**
  * The table of the period by Tracker group, category, or release attribute. A click on a row opens its detail band below
- * it. A narrow table shows each row as a line with the upload, and the other numbers below the name.
+ * it. A narrow table shows each row as a line with the upload, and the other numbers below the name. The table shows
+ * ten rows at first. Show more adds ten rows on a desktop, and Show all shows each row on a phone. On a desktop, a click
+ * on a column header sorts all rows by that column, and a second click turns the order. A phone has no sort.
  */
 export function GroupTable({ listScope, grouping, onGroupingChange, rows, error, liveLoaded, liveError, period, since, series, instances, seriesGroups, displayName, onPrefetch }: GroupTableProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const narrow = useIsPhone()
   const [open, setOpen] = useState<string>()
-  const [allRowsOf, setAllRowsOf] = useState<string>()
+  const [more, setMore] = useState<{ key: string; rows: number }>()
+  const [pickedSort, setPickedSort] = useState(FIRST_SORT)
   const withBaseline = !period.from
 
   // Only a switch of the grouping keeps the old rows, so that the table never shows the numbers of another period or selection.
@@ -97,9 +136,9 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
   const shownRows = rows ?? last?.rows
   const shownGrouping = rows ? grouping : last?.grouping ?? grouping
   const shownLimitKey = rows ? limitKey : last?.limitKey ?? limitKey
-  // Show all ends with the rows that it opened, so a return to an earlier choice shows ten rows again.
-  if (allRowsOf !== undefined && allRowsOf !== shownLimitKey) {
-    setAllRowsOf(undefined)
+  // More rows end with the rows that they opened, so a return to an earlier choice shows ten rows again.
+  if (more !== undefined && more.key !== shownLimitKey) {
+    setMore(undefined)
   }
   const stale = !rows && last !== undefined
   const tracker = shownGrouping === "tracker"
@@ -150,8 +189,32 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
     onGroupingChange(value as TableGrouping)
   }
 
-  const allRows = !narrow || allRowsOf === shownLimitKey
-  const visible = shownRows && !allRows ? shownRows.slice(0, PHONE_ROWS) : shownRows
+  const sort = narrow || (!tracker && LIVE_COLUMNS.includes(pickedSort.column)) ? FIRST_SORT : pickedSort
+  const sorted = useMemo(() => {
+    if (!shownRows) return undefined
+    const turn = sort.descending ? -1 : 1
+    const column = sort.column
+    if (column === "group") {
+      const collator = new Intl.Collator(locale, { numeric: true, sensitivity: "base" })
+      return [...shownRows].sort((a, b) => turn * collator.compare(displayName(a.group, shownGrouping), displayName(b.group, shownGrouping)))
+    }
+    return [...shownRows].sort((a, b) => {
+      const x = sortNumber(a, column)
+      const y = sortNumber(b, column)
+      if (x === y) return 0
+      if (x === undefined) return 1
+      if (y === undefined) return -1
+      return x < y ? -turn : turn
+    })
+  }, [shownRows, sort, locale, displayName, shownGrouping])
+  // A number column shows its highest value first, and the name column starts at A.
+  const sortBy = (column: SortColumn) => setPickedSort({ column, descending: sort.column === column ? !sort.descending : column !== "group" })
+  const head = (column: SortColumn, label: string, className?: string) => narrow
+    ? <TableHead className={className}>{label}</TableHead>
+    : <SortHead column={column} sort={sort} onSort={sortBy} className={className}>{label}</SortHead>
+
+  const limit = more?.key === shownLimitKey ? more.rows : FIRST_ROWS
+  const visible = sorted?.slice(0, limit)
 
   return (
     <>
@@ -200,20 +263,22 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-full pl-4 @max-xl:pr-4 sm:pl-6">
-                    <div className="flex items-center justify-between gap-2">
-                      <span>{groupingLabel(shownGrouping)}</span>
-                      <span className="@xl:hidden">{t("table.columns.uploaded")}</span>
-                    </div>
-                  </TableHead>
-                  <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.uploaded")}</TableHead>
-                  <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.downloaded")}</TableHead>
-                  <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.ratio")}</TableHead>
-                  <TableHead className={cn("hidden pr-6 text-right @xl:table-cell", tracker && "@4xl:pr-2")}>{t("table.columns.buffer")}</TableHead>
+                  {narrow ? (
+                    <TableHead className="w-full pl-4 @max-xl:pr-4 sm:pl-6">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{groupingLabel(shownGrouping)}</span>
+                        <span className="@xl:hidden">{t("table.columns.uploaded")}</span>
+                      </div>
+                    </TableHead>
+                  ) : head("group", groupingLabel(shownGrouping), "w-full pl-6")}
+                  {head("uploaded", t("table.columns.uploaded"), "hidden text-right @xl:table-cell")}
+                  {head("downloaded", t("table.columns.downloaded"), "hidden text-right @xl:table-cell")}
+                  {head("ratio", t("table.columns.ratio"), "hidden text-right @xl:table-cell")}
+                  {head("buffer", t("table.columns.buffer"), cn("hidden pr-6 text-right @xl:table-cell", tracker && "@4xl:pr-2"))}
                   {tracker && <>
-                    <TableHead className="hidden text-right @4xl:table-cell">{t("table.columns.torrents")}</TableHead>
-                    <TableHead className="hidden text-right @4xl:table-cell">{t("table.columns.size")}</TableHead>
-                    <TableHead className="hidden pr-6 text-right @4xl:table-cell">{t("table.columns.seeded")}</TableHead>
+                    {head("torrents", t("table.columns.torrents"), "hidden text-right @4xl:table-cell")}
+                    {head("size", t("table.columns.size"), "hidden text-right @4xl:table-cell")}
+                    {head("seeded", t("table.columns.seeded"), "hidden pr-6 text-right @4xl:table-cell")}
                   </>}
                 </TableRow>
               </TableHeader>
@@ -282,8 +347,14 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
                 </TableFooter>
               )}
             </Table>
-            {narrow && shownRows.length > PHONE_ROWS && (
-              <RowLimit shown={visible.length} total={shownRows.length} all={allRows} onAllChange={all => setAllRowsOf(all ? shownLimitKey : undefined)} />
+            {shownRows.length > FIRST_ROWS && (
+              <RowLimit
+                shown={visible.length}
+                total={shownRows.length}
+                onMore={!narrow && visible.length < shownRows.length ? () => setMore({ key: shownLimitKey, rows: limit + FIRST_ROWS }) : undefined}
+                onAll={narrow && visible.length < shownRows.length ? () => setMore({ key: shownLimitKey, rows: Infinity }) : undefined}
+                onFewer={limit > FIRST_ROWS ? () => setMore(undefined) : undefined}
+              />
             )}
           </div>
         )}
@@ -294,6 +365,28 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
         </div>
       </div>
     </>
+  )
+}
+
+interface SortHeadProps {
+  column: SortColumn
+  sort: Sort
+  onSort: (column: SortColumn) => void
+  className?: string
+  children: ReactNode
+}
+
+/** A column header that sorts the table by its column. The arrow shows on the column of the sort, and on the header under the pointer. */
+function SortHead({ column, sort, onSort, className, children }: SortHeadProps) {
+  const sorted = sort.column === column ? (sort.descending ? "desc" : "asc") : false
+  return (
+    <TableHead className={className} aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined}>
+      <button type="button" className="group/sort inline-flex items-center gap-1 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" onClick={() => onSort(column)}>
+        {column !== "group" && <span className={cn(!sorted && "opacity-0 group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100")}><SortIcon sorted={sorted} /></span>}
+        {children}
+        {column === "group" && <span className={cn(!sorted && "opacity-0 group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100")}><SortIcon sorted={sorted} /></span>}
+      </button>
+    </TableHead>
   )
 }
 
@@ -335,7 +428,8 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
   const colors = useSeriesColors()
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const hour12 = usePersistedDateTimePreferences().preferences.timeFormat === "12h"
+  const { preferences } = usePersistedDateTimePreferences()
+  const hour12 = preferences.timeFormat === "12h"
   // qui stores the category totals and the bytes of each torrent for each UTC day, so only a Tracker group has hours.
   const unit: ChartUnit = grouping === "tracker" ? period.unit : "day"
   const transfer = useTransferHistoryRows(instances, {
@@ -377,7 +471,7 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
   const recordedBars = bars && recordedUnits(bars, since, unit, grouping !== "tracker", shownBars?.to)
 
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 })
-  const formatStart = (start: number, width: BarWidth) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
+  const formatStart = (start: number, width: BarWidth) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12 }) : formatCalendarDay(new Date(start), preferences)
 
   return (
     <div className="sticky left-0 w-[100cqw] space-y-4 border-l-2 bg-muted/30 px-4 py-5 whitespace-normal [overflow-wrap:anywhere] sm:px-6" style={{ borderLeftColor: seriesIndex >= 0 ? `var(--color-s${seriesIndex})` : "var(--border)" }}>

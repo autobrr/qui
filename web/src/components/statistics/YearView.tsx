@@ -6,7 +6,9 @@
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
+import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
+import { formatCalendarDay } from "@/lib/dateTimeUtils"
 import { calendarDays, daysSinceMonday, formatGapLength, monthBars, yearSummary, type CalendarDay, type StatisticsBar } from "@/lib/statistics"
 import { cn, formatBytes } from "@/lib/utils"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -40,27 +42,30 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 })
 
   return (
-    <div className="space-y-6 sm:space-y-8" data-chart={CHART_ID}>
+    <div className="@container/year space-y-6 sm:space-y-8" data-chart={CHART_ID}>
       <ChartStyle id={CHART_ID} config={config} />
-      <Calendar days={days} />
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6">
-        <YearFact
-          label={t("yearView.bestDay")}
-          value={summary.bestDay && formatBytes(summary.bestDay.uploaded)}
-          detail={summary.bestDay && formatStart(summary.bestDay.start, "day")}
-        />
-        <YearFact
-          label={t("yearView.bestMonth")}
-          value={summary.bestMonth && formatStart(summary.bestMonth.start, "month")}
-          detail={summary.bestMonth && formatBytes(summary.bestMonth.uploaded)}
-        />
-        <YearFact
-          className="col-span-2 sm:col-span-1"
-          label={t("yearView.weekends")}
-          value={summary.weekendShare === undefined ? undefined : formatPercent.format(summary.weekendShare)}
-          detail={t("yearView.weekendsDetail")}
-        />
-      </dl>
+      {/* A wide card puts the three numbers next to the calendar, which grows to its largest cells first. */}
+      <div className="grid grid-cols-1 gap-6 sm:gap-8 @[68rem]/year:grid-cols-[minmax(0,auto)_minmax(14rem,1fr)] @[68rem]/year:items-center">
+        <Calendar days={days} />
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 @[68rem]/year:grid-cols-1 @[68rem]/year:gap-4 @[134rem]/year:grid-cols-3 @[134rem]/year:gap-6">
+          <YearFact
+            label={t("yearView.bestDay")}
+            value={summary.bestDay && formatBytes(summary.bestDay.uploaded)}
+            detail={summary.bestDay && formatStart(summary.bestDay.start, "day")}
+          />
+          <YearFact
+            label={t("yearView.bestMonth")}
+            value={summary.bestMonth && formatStart(summary.bestMonth.start, "month")}
+            detail={summary.bestMonth && formatBytes(summary.bestMonth.uploaded)}
+          />
+          <YearFact
+            className="col-span-2 sm:col-span-1"
+            label={t("yearView.weekends")}
+            value={summary.weekendShare === undefined ? undefined : formatPercent.format(summary.weekendShare)}
+            detail={t("yearView.weekendsDetail")}
+          />
+        </dl>
+      </div>
       <div>
         <div className="mb-2 text-xs font-medium">{t("yearView.months")}</div>
         <TransferChart bars={months} groups={groups} metric="uploaded" unit="day" displayName={displayName} />
@@ -72,6 +77,7 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
 function Calendar({ days }: { days: CalendarDay[] }) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
+  const { preferences } = usePersistedDateTimePreferences()
   const scroller = useRef<HTMLDivElement>(null)
   // The start of the day that the pointer is on, or that the user tapped last.
   const [shown, setShown] = useState<number>()
@@ -100,13 +106,12 @@ function Calendar({ days }: { days: CalendarDay[] }) {
   }, [days])
 
   const labels = useMemo(() => {
-    const format = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short", year: "numeric" })
     return new Map(days.map(day => {
-      const date = format.format(day.start)
+      const date = formatCalendarDay(new Date(day.start), preferences, "short")
       const text = day.uploaded === undefined ? t("yearView.dayNotRecorded", { date }) : t("yearView.day", { date, uploaded: formatBytes(day.uploaded) })
       return [day.start, day.gapSeconds > 0 ? t("yearView.dayGap", { day: text, gap: t("chart.gap", { duration: formatGapLength(day.gapSeconds, locale) }) }) : text]
     }))
-  }, [days, locale, t])
+  }, [days, locale, preferences, t])
 
   return (
     <div>
@@ -120,12 +125,14 @@ function Calendar({ days }: { days: CalendarDay[] }) {
         </span>
       </div>
       <div ref={scroller} className="overflow-x-auto pb-1">
-        <ol className="flex w-max gap-[3px]" aria-label={t("yearView.calendar")} onMouseLeave={() => setShown(undefined)}>
+        {/* The cells grow with the card. The padding at the end holds the hit area of the last column, so that a calendar that fits does not scroll. */}
+        <ol className="grid w-full min-w-min auto-cols-[minmax(0.75rem,1.125rem)] grid-flow-col gap-[3px] pe-0.5" aria-label={t("yearView.calendar")} onMouseLeave={() => setShown(undefined)}>
           {weeks.map((week, index) => {
             const first = week.find(day => day && new Date(day.start).getDate() === 1)
             return (
-              <li key={index} className="flex flex-col gap-[3px]">
-                <span className="h-4 text-[10px] leading-4 whitespace-nowrap text-muted-foreground" aria-hidden>
+              <li key={index} className="flex min-w-0 flex-col gap-[3px]">
+                {/* The name of a month is wider than its column. In the last columns it ends at the column, so that it stays in the calendar. */}
+                <span className={cn("flex h-4 text-[10px] leading-4 whitespace-nowrap text-muted-foreground", index >= weeks.length - 2 && "justify-end")} aria-hidden>
                   {first && new Date(first.start).toLocaleDateString(locale, { month: "short" })}
                 </span>
                 <ol className="contents">
@@ -139,14 +146,14 @@ function Calendar({ days }: { days: CalendarDay[] }) {
                       onClick={() => setShown(day.start)}
                       className={cn(
                         // The hit area covers the gaps around the cell, so that each tap in the calendar lands on a day.
-                        "relative size-3 rounded-[3px] after:absolute after:-inset-[1.5px]",
+                        "relative aspect-square w-full rounded-[3px] after:absolute after:-inset-[1.5px]",
                         day.uploaded === undefined ? "border border-dashed border-border" : !day.uploaded && "bg-muted",
                         day.gapSeconds > 0 && "ring-1 ring-yellow-500",
                         shown === day.start && "outline outline-1 outline-foreground"
                       )}
                       style={day.uploaded ? { background: HEAT[thresholds.filter(threshold => day.uploaded! > threshold).length] } : undefined}
                     />
-                  ) : <li key={`empty-${slot}`} className="size-3" aria-hidden />)}
+                  ) : <li key={`empty-${slot}`} className="aspect-square w-full" aria-hidden />)}
                 </ol>
               </li>
             )
@@ -162,7 +169,8 @@ function YearFact({ label, value, detail, className }: { label: string; value?: 
     <div className={cn("min-w-0 border-l-2 pl-3", className)} style={{ borderLeftColor: "var(--color-heat)" }}>
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 text-lg font-semibold tabular-nums sm:truncate sm:text-xl" title={value}>{value ?? "–"}</dd>
-      {detail && <dd className="truncate text-sm text-muted-foreground" title={detail}>{detail}</dd>}
+      {/* In the one column next to the calendar, a long detail goes to a second line. */}
+      {detail && <dd className="truncate text-sm text-muted-foreground @[68rem]/year:whitespace-normal @[134rem]/year:whitespace-nowrap" title={detail}>{detail}</dd>}
     </div>
   )
 }

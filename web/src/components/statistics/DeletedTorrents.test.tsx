@@ -81,6 +81,19 @@ function shownNames(): string[] {
   return [...document.querySelectorAll("tbody tr td:nth-child(2) > span[title], tbody tr td:nth-child(2) > button > span[title], tbody tr td:nth-child(2) > div > span[title]")].map(node => node.getAttribute("title") ?? "")
 }
 
+// The names of ten deletes of an instance in a row, from the delete with the index first.
+function tenNames(instanceId: number, first: number): string[] {
+  return Array.from({ length: 10 }, (_, index) => `Built.Name.${instanceId}.${first + index}-GRP`)
+}
+
+function nextPage(): HTMLButtonElement {
+  return screen.getByLabelText<HTMLButtonElement>("table.nextPage")
+}
+
+function previousPage(): HTMLButtonElement {
+  return screen.getByLabelText<HTMLButtonElement>("table.previousPage")
+}
+
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
@@ -147,39 +160,90 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.2-GRP", "Built.Name.1.3-GRP"]))
   })
 
-  it("merges the pages of the instances with the newest first and loads the next page on request", async () => {
-    // Instance 2 has the newer deletes, so the first page of the table holds only them.
+  it("shows ten deletes for each page on a desktop, merges the instances with the newest first, and loads the next server page when a page needs it", async () => {
+    // Instance 2 has the newer deletes, so the first pages of the table hold only them.
     deletesOf.set(1, Array.from({ length: 40 }, (_, index) => event(1, index, 500_000 - index * 10, "user")))
     deletesOf.set(2, Array.from({ length: 70 }, (_, index) => event(2, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox"), instance(2, "Home")])
 
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(DELETES_PAGE))
-    expect(shownNames()).toEqual(Array.from({ length: DELETES_PAGE }, (_, index) => `Built.Name.2.${index}-GRP`))
-    expect(screen.getByText(`deletes.shown shown=${DELETES_PAGE} total=110`)).toBeTruthy()
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(2, 0)))
+    expect(screen.getByText("table.range from=1 to=10 total=110")).toBeTruthy()
+    expect(previousPage().disabled).toBe(true)
 
-    fireEvent.click(screen.getByText("deletes.more"))
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(2 * DELETES_PAGE))
-    const names = shownNames()
-    expect(names.slice(0, 70)).toEqual(Array.from({ length: 70 }, (_, index) => `Built.Name.2.${index}-GRP`))
-    expect(names.slice(70)).toEqual(Array.from({ length: 30 }, (_, index) => `Built.Name.1.${index}-GRP`))
+    // The first five pages come from the first server page of each instance.
+    for (const first of [10, 20, 30, 40]) {
+      fireEvent.click(nextPage())
+      expect(shownNames()).toEqual(tenNames(2, first))
+    }
+    expect(requests.filter(request => request.offset === DELETES_PAGE)).toHaveLength(0)
+
+    fireEvent.click(nextPage())
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(2, 50)))
     expect(requests.filter(request => request.offset === DELETES_PAGE).map(request => request.instanceId).sort()).toEqual([1, 2])
+    expect(screen.getByText("table.range from=51 to=60 total=110")).toBeTruthy()
 
-    fireEvent.click(screen.getByText("deletes.more"))
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(110))
-    expect(screen.queryByText("deletes.more")).toBeNull()
+    fireEvent.click(nextPage())
+    fireEvent.click(nextPage())
+    expect(shownNames()).toEqual(tenNames(1, 0))
+    fireEvent.click(previousPage())
+    expect(shownNames()).toEqual(tenNames(2, 60))
+
+    for (let step = 0; step < 4; step++) {
+      fireEvent.click(nextPage())
+    }
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 30)))
+    expect(screen.getByText("table.range from=101 to=110 total=110")).toBeTruthy()
+    expect(nextPage().disabled).toBe(true)
+  })
+
+  it("goes back to the first page on a desktop when the user picks another cause, and stays on it after a return to the first cause", async () => {
+    deletesOf.set(1, [
+      ...Array.from({ length: 15 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")),
+      ...Array.from({ length: 15 }, (_, index) => event(1, 100 + index, 500_000 - index * 10, "automation")),
+    ])
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 0)))
+    fireEvent.click(nextPage())
+    expect(screen.getByText("table.range from=11 to=20 total=30")).toBeTruthy()
+
+    fireEvent.mouseDown(screen.getByText("deletes.filters.automation").closest("button")!, { button: 0 })
+
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 100)))
+    expect(screen.getByText("table.range from=1 to=10 total=15")).toBeTruthy()
+
+    fireEvent.mouseDown(screen.getByText("deletes.filters.all").closest("button")!, { button: 0 })
+
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 0)))
+    expect(screen.getByText("table.range from=1 to=10 total=30")).toBeTruthy()
+  })
+
+  it("shows the count of a desktop list of one page without the page buttons", async () => {
+    deletesOf.set(1, Array.from({ length: 3 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(3))
+    expect(screen.getByText("table.range from=1 to=3 total=3")).toBeTruthy()
+    expect(screen.queryByLabelText("table.nextPage")).toBeNull()
   })
 
   // regression: #4132
   it("shows a delete once when a new delete moves it onto the next page", async () => {
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(DELETES_PAGE))
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 0)))
 
-    // Two new deletes before the next page push the last two rows of the first page onto the second page.
+    // Two new deletes before the next server page push the last two rows of the first server page onto the second one.
     deletesOf.set(1, [event(1, 100, 2_000_000, "user"), event(1, 101, 1_999_000, "user"), ...deletesOf.get(1)!])
-    fireEvent.click(screen.getByText("deletes.more"))
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
-    expect(new Set(shownNames()).size).toBe(60)
+    const names = shownNames()
+    for (const first of [10, 20, 30, 40]) {
+      fireEvent.click(nextPage())
+      expect(shownNames()).toEqual(tenNames(1, first))
+      names.push(...shownNames())
+    }
+    fireEvent.click(nextPage())
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 50)))
+    names.push(...shownNames())
+    expect(new Set(names).size).toBe(60)
   })
 
   // regression: #4132
@@ -213,14 +277,17 @@ describe("DeletedTorrents", () => {
       return undefined
     }))
     renderTable([instance(1, "Seedbox")])
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(DELETES_PAGE))
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 0)))
 
-    fireEvent.click(screen.getByText("deletes.more"))
+    for (let step = 0; step < 5; step++) {
+      fireEvent.click(nextPage())
+    }
     await vi.waitFor(() => expect(screen.getByText(/database is locked/)).toBeTruthy())
-    const button = screen.getByText("deletes.more").closest("button")!
-    await vi.waitFor(() => expect(button.disabled).toBe(false))
-    fireEvent.click(button)
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
+    // The table stays on the last page that it has the rows of.
+    expect(shownNames()).toEqual(tenNames(1, 40))
+    await vi.waitFor(() => expect(nextPage().disabled).toBe(false))
+    fireEvent.click(nextPage())
+    await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 50)))
   })
 
   // regression: #4179

@@ -14,6 +14,7 @@
   "customRange": {
     "from": "시작일",
     "to": "종료일",
+    "pick": "날짜 선택",
     "apply": "적용",
     "range": "{{from}} ~ {{to}}"
   },
@@ -140,6 +141,10 @@
     "seededValue": "{{value}}x",
     "total": "합계",
     "shown": "{{total}}개 중 {{shown}}개",
+    "range": "{{total}}개 중 {{from}}–{{to}}",
+    "previousPage": "이전 페이지",
+    "nextPage": "다음 페이지",
+    "showMore": "더 보기",
     "showAll": "모두 보기",
     "showFewer": "간략히 보기",
     "noCategory": "카테고리 없음",

@@ -154,6 +154,25 @@ function expandedRows(table: HTMLElement): string[] {
   return [...table.querySelectorAll("button[aria-expanded=true]")].map(wideText)
 }
 
+// A full date shows in the date format of the settings, which is ISO when nothing is saved.
+function isoDay(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+/** The names of the rows of the table, in the order of the table. */
+function rowNames(table: HTMLElement): string[] {
+  return [...table.querySelectorAll("tbody tr")].map(row => wideText(row.querySelector("td")!))
+}
+
+/** The header of a column of the table, which sorts the table on a click. */
+function columnHeader(table: HTMLElement, label: string): HTMLElement {
+  return within(table.querySelector("thead")!).getByText(label)
+}
+
+function sortOf(table: HTMLElement, label: string): string | null {
+  return columnHeader(table, label).closest("th")!.getAttribute("aria-sort")
+}
+
 async function expectFact(label: string, expected: string) {
   await vi.waitFor(() => {
     const value = screen.getByText(label).nextElementSibling
@@ -553,6 +572,33 @@ describe("Statistics", () => {
     expect((screen.getByText("customRange.apply") as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it("shows the days of a custom range in the date format of the settings on a desktop", async () => {
+    localStorage.setItem("qui-datetime-preferences", JSON.stringify({ dateFormat: "eu" }))
+    const year = new Date().getFullYear() - 1
+    renderPage()
+    fireEvent.click(await screen.findByText("periods.custom"))
+    expect(screen.getAllByText("customRange.pick")).toHaveLength(2)
+
+    fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: `${year}-02-03` } })
+    fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: `${year}-02-04` } })
+
+    expect(screen.getByText(`03/02/${year}`)).toBeTruthy()
+    expect(screen.getByText(`04/02/${year}`)).toBeTruthy()
+
+    fireEvent.click(screen.getByText("customRange.apply"))
+
+    expect(await screen.findByText(`customRange.range from=03/02/${year} to=04/02/${year}`)).toBeTruthy()
+  })
+
+  it("shows the first day of the recording in the date format of the settings", async () => {
+    localStorage.setItem("qui-datetime-preferences", JSON.stringify({ dateFormat: "us" }))
+    const since = new Date(statuses[0].firstRecordedAt!)
+    renderPage()
+
+    const day = `${String(since.getMonth() + 1).padStart(2, "0")}/${String(since.getDate()).padStart(2, "0")}/${since.getFullYear()}`
+    expect(await screen.findByText(`recordingSince date=${day}`)).toBeTruthy()
+  })
+
   it("shows the change against the period before only when qui recorded that period in full", async () => {
     const runningHour = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000).toISOString()
     answer = ({ bucket, to }) => {
@@ -689,6 +735,107 @@ describe("Statistics", () => {
     expect(within(table).queryByText("table.columns.torrents")).toBeNull()
   })
 
+  it("sorts each row of the table by the column of a clicked header on a desktop, before it cuts the table to ten rows, and turns the order on the next click", async () => {
+    // Row t1 uploaded the most. The downloads are in another order: t8 the most, then t3, and t1 nothing.
+    answer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "day"
+      ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, ((index * 5) % 12) * 1024, { width: "day" }))
+      : []
+    const names = (...rows: number[]) => rows.map(index => `t${index}.test`)
+    renderPage()
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(rowNames(table)).toEqual(names(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
+    expect(sortOf(table, "table.columns.uploaded")).toBe("descending")
+
+    fireEvent.click(columnHeader(table, "table.columns.downloaded"))
+
+    expect(rowNames(table)).toEqual(names(8, 3, 10, 5, 12, 7, 2, 9, 4, 11))
+    expect(sortOf(table, "table.columns.downloaded")).toBe("descending")
+    expect(sortOf(table, "table.columns.uploaded")).toBeNull()
+
+    fireEvent.click(columnHeader(table, "table.columns.downloaded"))
+
+    expect(rowNames(table)).toEqual(names(1, 6, 11, 4, 9, 2, 7, 12, 5, 10))
+    expect(sortOf(table, "table.columns.downloaded")).toBe("ascending")
+
+    // The name column starts at the first name, and puts t2 before t10.
+    fireEvent.click(columnHeader(table, "table.groupings.tracker"))
+
+    expect(rowNames(table)).toEqual(names(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+    expect(sortOf(table, "table.groupings.tracker")).toBe("ascending")
+
+    fireEvent.click(columnHeader(table, "table.groupings.tracker"))
+
+    expect(rowNames(table)).toEqual(names(12, 11, 10, 9, 8, 7, 6, 5, 4, 3))
+  })
+
+  it("keeps a row with no value in the column of the sort below the other rows, in both orders", async () => {
+    answer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "day" ? [row("a.test", 2048, 1024, { width: "day" }), row("b.test", 1024, 1024, { width: "day" })] : []
+    // A Tracker group with torrents and no transfer in the period has no ratio.
+    liveGroups = instanceId => instanceId === 1 ? [{ group: "idle.test", torrents: 1, size: 1024, uploaded: 0 }] : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(rowNames(table)).toEqual(["a.test", "b.test", "idle.test"]))
+    expect(cells(table, "idle.test")[3]).toBe("–")
+
+    fireEvent.click(columnHeader(table, "table.columns.ratio"))
+
+    expect(rowNames(table)).toEqual(["a.test", "b.test", "idle.test"])
+
+    fireEvent.click(columnHeader(table, "table.columns.ratio"))
+
+    expect(rowNames(table)).toEqual(["b.test", "a.test", "idle.test"])
+  })
+
+  it("sorts the table by the upload again when the next grouping has no column of the picked sort", async () => {
+    answer = ({ instanceId, bucket, groupBy }) => {
+      if (instanceId !== 1) {
+        return []
+      }
+      if (groupBy === "category") {
+        return bucket === "total" ? [row("tv", 2048, 0, { width: "total" }), row("movies", 1024, 0, { width: "total" })] : []
+      }
+      return bucket === "day" ? [row("a.test", 2048, 0, { width: "day" }), row("b.test", 1024, 0, { width: "day" })] : []
+    }
+    liveGroups = instanceId => instanceId === 1 ? [{ group: "a.test", torrents: 1, size: 1024, uploaded: 0 }, { group: "b.test", torrents: 5, size: 1024, uploaded: 0 }] : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(cells(table, "b.test")[5]).toBe("5"))
+    fireEvent.click(columnHeader(table, "table.columns.torrents"))
+    expect(rowNames(table)).toEqual(["b.test", "a.test"])
+
+    fireEvent.mouseDown(screen.getByText("table.groupings.category"), { button: 0 })
+
+    await vi.waitFor(() => expect(rowNames(screen.getByRole("table"))).toEqual(["tv", "movies"]))
+    expect(sortOf(screen.getByRole("table"), "table.columns.uploaded")).toBe("descending")
+  })
+
+  it("shows ten more rows of the table for each Show more on a desktop, and ten again after Show fewer", async () => {
+    answer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "day"
+      ? Array.from({ length: 25 }, (_, index) => row(`t${index + 1}.test`, (25 - index) * 1024, 0, { width: "day" }))
+      : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(rowNames(table)).toHaveLength(10))
+    expect(screen.getByText("table.shown shown=10 total=25")).toBeTruthy()
+    expect(screen.queryByText("table.showAll")).toBeNull()
+
+    fireEvent.click(screen.getByText("table.showMore"))
+
+    expect(rowNames(table)).toHaveLength(20)
+    expect(screen.getByText("table.shown shown=20 total=25")).toBeTruthy()
+
+    fireEvent.click(screen.getByText("table.showMore"))
+
+    expect(rowNames(table)).toHaveLength(25)
+    expect(screen.queryByText("table.showMore")).toBeNull()
+
+    Element.prototype.scrollIntoView = vi.fn()
+    fireEvent.click(screen.getByText("table.showFewer"))
+
+    expect(rowNames(table)).toHaveLength(10)
+    expect(screen.queryByText("table.showFewer")).toBeNull()
+  })
+
   it("shows a spinner while the query of a release attribute runs, then its rows with None for no value", async () => {
     let release = () => {}
     answer = ({ bucket, groupBy }) => groupBy === "resolution" && bucket === "total" ? [row("1080p", 1024, 0, { width: "total" }), row("", 512, 0, { width: "total" })] : []
@@ -741,7 +888,7 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(requests.some(request => request.group === "a.test" && request.bucket === "day" && request.groupBy === "tracker")).toBe(true))
     await expectFact("detail.share", "75% | detail.shareOf total=8 KiB")
     await expectFact("detail.crossSeed", "2 KiB | detail.crossSeedShare percent=33.3%")
-    await expectFact("detail.bestDay", `6 KiB | ${yesterday.toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" })}`)
+    await expectFact("detail.bestDay", `6 KiB | ${isoDay(yesterday)}`)
     // Both instances recorded the whole 30 days, so the average divides by each day of the period.
     await expectFact("detail.averageDay", "204.8 B | ")
     expect(screen.getByTestId("group-chart")).toBeTruthy()
@@ -814,7 +961,7 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(within(table).queryByText("Bravo")).toBeTruthy())
     const names = within(table).getAllByRole("button").map(button => button.textContent)
     expect(names).toEqual(["Alpha", "CharlietopTorrents.crossSeed", "BravotopTorrents.deleted"])
-    expect(cells(table, "Alpha").slice(1)).toEqual(["a.test", "3 KiB", "0 B", "∞", "1 KiB"])
+    expect(cells(table, "Alpha").slice(1)).toEqual(["a.test · Seedbox", "3 KiB", "0 B", "∞", "1 KiB"])
     const asked = requests.filter(request => request.groupBy === "torrent")
     expect(asked.map(request => [request.instanceId, request.bucket, request.limit, request.group])).toEqual([[1, "total", "10", null], [2, "total", "10", null]])
   })
@@ -1342,6 +1489,19 @@ describe("Statistics", () => {
     expect(scrollIntoView).toHaveBeenCalledOnce()
   })
 
+  it("gives the table no header that sorts it on a phone turned sideways, which shows the number columns", async () => {
+    stubPhone("sideways")
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 2048, 1024, { start: yesterday.toISOString(), width: "day" })] : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    await within(table).findByText("a.test")
+
+    expect(columnHeader(table, "table.columns.downloaded").closest("button")).toBeNull()
+    expect(within(table.querySelector("thead")!).queryAllByRole("button")).toEqual([])
+  })
+
   // regression: #4179
   it("keeps each row of the last grouping on a phone after Show all until the next grouping loads, then shows ten of it", async () => {
     stubPhone("upright")
@@ -1438,7 +1598,7 @@ describe("Statistics year view", () => {
     renderPage()
     fireEvent.mouseDown(await screen.findByText("periods.1y"), { button: 0 })
 
-    await expectRecord("yearView.bestDay", `600 KiB | ${other.toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" })}`)
+    await expectRecord("yearView.bestDay", `600 KiB | ${isoDay(other)}`)
     await expectRecord("yearView.bestMonth", `${other.toLocaleDateString("en", { month: "long", year: "numeric" })} | 600 KiB`)
     await expectRecord("yearView.weekends", "30% | yearView.weekendsDetail")
     expect(screen.getByTestId("chart").getAttribute("data-uploaded")).toBe(String(1000 * KiB))
@@ -1456,10 +1616,10 @@ describe("Statistics year view", () => {
     renderPage()
     fireEvent.mouseDown(await screen.findByText("periods.all"), { button: 0 })
 
-    await expectRecord("yearView.bestDay", `900 KiB | ${daysAgo(790).toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" })}`)
+    await expectRecord("yearView.bestDay", `900 KiB | ${isoDay(daysAgo(790))}`)
     const cells = calendarCells()
     expect(cells).toHaveLength(53 * 7)
-    const date = (day: Date) => day.toLocaleDateString("en", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+    const date = (day: Date) => `${day.toLocaleDateString("en", { weekday: "short" })}, ${isoDay(day)}`
     expect(cells[0].getAttribute("aria-label")).toBe(`yearView.day date=${date(daysAgo(370))} uploaded=0 B`)
     expect(cells[cells.length - 2].getAttribute("aria-label")).toBe(`yearView.day date=${date(daysAgo(1))} uploaded=100 KiB`)
     // The monthly bars cover the whole period.
