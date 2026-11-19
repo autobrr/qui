@@ -244,6 +244,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **MSI**: The Windows package that installs qui for one Windows account, with a Start Menu entry and an uninstall entry. Self-update keeps working after it. _Avoid_: Installer (that is the seedbox installer), setup.exe.
 - **App container**: A container that runs qui as its application, such as Docker, Podman, or a Kubernetes pod. The image owns the binary, so an update means a new image. A system container with its own init, such as Proxmox LXC, is not an App container. _Avoid_: Container (when the difference matters), Docker install.
 
+## Experimental features
+
+- **Experimental feature**: A feature that is merged before it is finished. It stays off unless the user puts its name in `experimentalFeatures`. The ticket that opens the feature to all users deletes the name. _Avoid_: feature flag, toggle, beta.
+
 ## Running on Windows
 
 - **Tray**: The icon qui shows in the Windows notification area while it runs in a user's logon session. It replaces the console window as the user's handle on a running qui. _Avoid_: Systray, tray app, GUI mode (the GUI is the web UI).

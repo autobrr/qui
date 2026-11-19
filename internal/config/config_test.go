@@ -1149,3 +1149,16 @@ func TestReloadReadsCurrentConfigFile(t *testing.T) {
 	assert.Equal(t, "abc-123", cfg.Config.OIDCAllowedSubject)
 	assert.Empty(t, cfg.Config.OIDCAllowedEmail)
 }
+
+func TestReloadKeepsExperimentalFeatures(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte("experimentalFeatures = [\"testAlpha\"]\n"), 0o600))
+	cfg, err := New(path, "test")
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(path, []byte("experimentalFeatures = [\"testBravo\"]\n"), 0o600))
+	cfg.reload()
+
+	assert.Equal(t, []string{"testAlpha"}, cfg.Config.ExperimentalFeatures)
+	assert.Equal(t, []string{"testAlpha"}, cfg.Config.Live().ExperimentalFeatures)
+}

@@ -86,6 +86,7 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	if err := c.loadAllowedHosts(); err != nil {
 		return nil, err
 	}
+	c.Config.ExperimentalFeatures = c.getNormalizedStringSlice("experimentalFeatures")
 	c.Config.Version = c.version
 
 	// Resolve data directory after config is unmarshaled
@@ -123,6 +124,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("baseUrl", "/")
 	c.viper.SetDefault("corsAllowedOrigins", []string{})
 	c.viper.SetDefault("allowedHosts", []string{})
+	c.viper.SetDefault("experimentalFeatures", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "DEBUG")
 	c.viper.SetDefault("logPath", "")
@@ -232,6 +234,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
 	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
 	c.viper.BindEnv("allowedHosts", envPrefix+"ALLOWED_HOSTS")
+	c.viper.BindEnv("experimentalFeatures", envPrefix+"EXPERIMENTAL_FEATURES")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("sessionCookieSecure", envPrefix+"SESSION_COOKIE_SECURE")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")

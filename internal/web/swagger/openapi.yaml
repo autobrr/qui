@@ -6770,6 +6770,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/VersionResponse'
 
+  /api/application/info:
+    get:
+      tags:
+        - System
+      summary: Get application information
+      description: Returns the build, runtime, network, authentication, and database facts of the running qui, and the Experimental features that are on.
+      responses:
+        '200':
+          description: Application information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationInfo'
+        '500':
+          description: The application configuration is not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/system-notices:
     get:
       tags:
@@ -10616,6 +10636,94 @@ components:
           format: date-time
           description: When the release was published
           example: "2025-09-23T10:30:00Z"
+
+    ApplicationInfo:
+      type: object
+      description: Facts about the running qui
+      required:
+        - version
+        - startedAt
+        - uptimeSeconds
+        - goVersion
+        - goOS
+        - goArch
+        - baseUrl
+        - host
+        - port
+        - configDir
+        - dataDir
+        - authMode
+        - oidcEnabled
+        - builtInLoginEnabled
+        - checkForUpdates
+        - database
+        - experimentalFeatures
+      properties:
+        version:
+          type: string
+          example: "v1.2.3"
+        commit:
+          type: string
+          description: The full commit hash of the build. Absent when the build has no commit.
+        commitShort:
+          type: string
+          description: The first 8 characters of the commit hash
+        buildDate:
+          type: string
+          description: The build date. Absent when the build has no date.
+        startedAt:
+          type: string
+          format: date-time
+          description: The time qui started, in UTC
+        uptimeSeconds:
+          type: integer
+          format: int64
+        goVersion:
+          type: string
+        goOS:
+          type: string
+        goArch:
+          type: string
+        baseUrl:
+          type: string
+          example: "/"
+        host:
+          type: string
+        port:
+          type: integer
+        configDir:
+          type: string
+        dataDir:
+          type: string
+        authMode:
+          type: string
+          enum: [builtin, oidc, disabled]
+        oidcEnabled:
+          type: boolean
+        builtInLoginEnabled:
+          type: boolean
+        oidcIssuerHost:
+          type: string
+          description: The host of the OIDC issuer. Absent when no issuer is set.
+        checkForUpdates:
+          type: boolean
+        database:
+          type: object
+          required:
+            - engine
+            - target
+          properties:
+            engine:
+              type: string
+              example: sqlite
+            target:
+              type: string
+              description: The SQLite file path, or the Postgres host and database name without credentials
+        experimentalFeatures:
+          type: array
+          description: The Experimental features that are on. Empty when none is on.
+          items:
+            type: string
 
     VersionResponse:
       type: object

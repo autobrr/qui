@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
@@ -98,7 +99,6 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/activity"}:           {},
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:           {},
 	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:              {},
-	{Method: http.MethodGet, Path: "/api/application/info"}:                                         {},
 	{Method: http.MethodGet, Path: "/api/tracker-customizations"}:                                   {},
 	{Method: http.MethodPost, Path: "/api/tracker-customizations"}:                                  {},
 	{Method: http.MethodPut, Path: "/api/tracker-customizations/{id}"}:                              {},
@@ -251,6 +251,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 				BaseURL: "/",
 			},
 		},
+		Experimental:              experimental.New(nil),
 		Version:                   "test",
 		AuthService:               authService,
 		SessionManager:            sessionManager,

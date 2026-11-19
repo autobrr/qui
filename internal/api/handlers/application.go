@@ -14,11 +14,13 @@ import (
 	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/experimental"
 )
 
 type ApplicationHandler struct {
-	appConfig *config.AppConfig
-	startedAt time.Time
+	appConfig    *config.AppConfig
+	experimental *experimental.Features
+	startedAt    time.Time
 }
 
 type ApplicationDatabaseInfo struct {
@@ -27,32 +29,34 @@ type ApplicationDatabaseInfo struct {
 }
 
 type ApplicationInfoResponse struct {
-	Version         string                  `json:"version"`
-	Commit          string                  `json:"commit,omitempty"`
-	CommitShort     string                  `json:"commitShort,omitempty"`
-	BuildDate       string                  `json:"buildDate,omitempty"`
-	StartedAt       string                  `json:"startedAt"`
-	UptimeSeconds   int64                   `json:"uptimeSeconds"`
-	GoVersion       string                  `json:"goVersion"`
-	GoOS            string                  `json:"goOS"`
-	GoArch          string                  `json:"goArch"`
-	BaseURL         string                  `json:"baseUrl"`
-	Host            string                  `json:"host"`
-	Port            int                     `json:"port"`
-	ConfigDir       string                  `json:"configDir"`
-	DataDir         string                  `json:"dataDir"`
-	AuthMode        string                  `json:"authMode"`
-	OIDCEnabled     bool                    `json:"oidcEnabled"`
-	BuiltInLogin    bool                    `json:"builtInLoginEnabled"`
-	OIDCIssuerHost  string                  `json:"oidcIssuerHost,omitempty"`
-	CheckForUpdates bool                    `json:"checkForUpdates"`
-	Database        ApplicationDatabaseInfo `json:"database"`
+	Version              string                  `json:"version"`
+	Commit               string                  `json:"commit,omitempty"`
+	CommitShort          string                  `json:"commitShort,omitempty"`
+	BuildDate            string                  `json:"buildDate,omitempty"`
+	StartedAt            string                  `json:"startedAt"`
+	UptimeSeconds        int64                   `json:"uptimeSeconds"`
+	GoVersion            string                  `json:"goVersion"`
+	GoOS                 string                  `json:"goOS"`
+	GoArch               string                  `json:"goArch"`
+	BaseURL              string                  `json:"baseUrl"`
+	Host                 string                  `json:"host"`
+	Port                 int                     `json:"port"`
+	ConfigDir            string                  `json:"configDir"`
+	DataDir              string                  `json:"dataDir"`
+	AuthMode             string                  `json:"authMode"`
+	OIDCEnabled          bool                    `json:"oidcEnabled"`
+	BuiltInLogin         bool                    `json:"builtInLoginEnabled"`
+	OIDCIssuerHost       string                  `json:"oidcIssuerHost,omitempty"`
+	CheckForUpdates      bool                    `json:"checkForUpdates"`
+	Database             ApplicationDatabaseInfo `json:"database"`
+	ExperimentalFeatures []string                `json:"experimentalFeatures"`
 }
 
-func NewApplicationHandler(appConfig *config.AppConfig, startedAt time.Time) *ApplicationHandler {
+func NewApplicationHandler(appConfig *config.AppConfig, experimentalFeatures *experimental.Features, startedAt time.Time) *ApplicationHandler {
 	return &ApplicationHandler{
-		appConfig: appConfig,
-		startedAt: startedAt,
+		appConfig:    appConfig,
+		experimental: experimentalFeatures,
+		startedAt:    startedAt,
 	}
 }
 
@@ -66,26 +70,27 @@ func (h *ApplicationHandler) GetInfo(w http.ResponseWriter, _ *http.Request) {
 	commit := strings.TrimSpace(buildinfo.Commit)
 
 	response := ApplicationInfoResponse{
-		Version:         strings.TrimSpace(buildinfo.Version),
-		Commit:          commit,
-		CommitShort:     shortCommit(commit),
-		BuildDate:       strings.TrimSpace(buildinfo.Date),
-		StartedAt:       h.startedAt.UTC().Format(time.RFC3339),
-		UptimeSeconds:   uptimeSeconds(h.startedAt),
-		GoVersion:       runtime.Version(),
-		GoOS:            runtime.GOOS,
-		GoArch:          runtime.GOARCH,
-		BaseURL:         cfg.BaseURL,
-		Host:            cfg.Host,
-		Port:            cfg.Port,
-		ConfigDir:       h.appConfig.GetConfigDir(),
-		DataDir:         h.appConfig.GetDataDir(),
-		AuthMode:        authMode(cfg),
-		OIDCEnabled:     cfg.OIDCEnabled,
-		BuiltInLogin:    !cfg.OIDCDisableBuiltInLogin,
-		OIDCIssuerHost:  oidcIssuerHost(cfg.OIDCIssuer),
-		CheckForUpdates: cfg.CheckForUpdates,
-		Database:        databaseInfo(cfg, h.appConfig),
+		Version:              strings.TrimSpace(buildinfo.Version),
+		Commit:               commit,
+		CommitShort:          shortCommit(commit),
+		BuildDate:            strings.TrimSpace(buildinfo.Date),
+		StartedAt:            h.startedAt.UTC().Format(time.RFC3339),
+		UptimeSeconds:        uptimeSeconds(h.startedAt),
+		GoVersion:            runtime.Version(),
+		GoOS:                 runtime.GOOS,
+		GoArch:               runtime.GOARCH,
+		BaseURL:              cfg.BaseURL,
+		Host:                 cfg.Host,
+		Port:                 cfg.Port,
+		ConfigDir:            h.appConfig.GetConfigDir(),
+		DataDir:              h.appConfig.GetDataDir(),
+		AuthMode:             authMode(cfg),
+		OIDCEnabled:          cfg.OIDCEnabled,
+		BuiltInLogin:         !cfg.OIDCDisableBuiltInLogin,
+		OIDCIssuerHost:       oidcIssuerHost(cfg.OIDCIssuer),
+		CheckForUpdates:      cfg.CheckForUpdates,
+		Database:             databaseInfo(cfg, h.appConfig),
+		ExperimentalFeatures: h.experimental.Names(),
 	}
 
 	RespondJSON(w, http.StatusOK, response)
