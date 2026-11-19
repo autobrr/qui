@@ -37,7 +37,7 @@ type gatherInput struct {
 // indexer IDs, whether any indexer answered any pass, and the primary-pass or
 // context error. Passes search on waitCtx.
 // Only ctx cancellation aborts a retry. A failed yearless retry marks the
-// response partial. A failed per-indexer retry removes its targets from coverage.
+// response partial. A failed retry removes its targets from coverage.
 func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*jackett.SearchResponse, []int, bool, error) {
 	req := in.req
 	resp, err := g.search(waitCtx, req)
@@ -56,49 +56,66 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	// A failed retry uncovers indexers that did answer, so coverage cannot
 	// tell whether Torznab ran at all.
 	answered := len(covered) > 0
-	yearlessRetryRan := false
 
 	// Retry without year when the first pass turned up nothing usable, whether
 	// it returned no hits at all or only hits that release and size filtering
 	// rejected. The year is the narrowest primary-query constraint, so it is
-	// the first fallback to drop. This pass stays gated on the whole search:
-	// dropping the year fires on nearly every movie and has low per-indexer
-	// value, unlike the targeted passes below.
-	if req.Year > 0 && !slices.ContainsFunc(results, g.usable) {
-		log.Debug().
-			Str("torrentName", in.torrentName).
-			Int("year", req.Year).
-			Msg("[CROSSSEED-SEARCH] Zero results with year filter; retrying without year")
-
-		retryReq := *req
-		retryReq.Year = 0
-		retryResp, retryErr := g.search(waitCtx, &retryReq)
-		if retryErr != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, nil, false, ctxErr
-			}
+	// the first fallback to drop, also on every later pass. This pass stays
+	// gated on the whole search: dropping the year fires on nearly every movie
+	// and has low per-indexer value, unlike the targeted passes below. An
+	// indexer that searched by ID got no year, so only the title indexers are
+	// searched again.
+	dropYear := req.Year > 0 && !slices.ContainsFunc(results, g.usable)
+	var idCap []int
+	if dropYear || in.tagSourcedIDs {
+		idCap = g.idCapIndexers(waitCtx, req)
+	}
+	if dropYear {
+		if targets := subtractInts(req.IndexerIDs, idCap); len(targets) > 0 {
 			log.Debug().
-				Err(retryErr).
 				Str("torrentName", in.torrentName).
-				Msg("[CROSSSEED-SEARCH] Yearless retry failed; continuing with primary results")
-			resp.Partial = true
-			covered = nil
-		} else if retryResp != nil {
-			// The retry is a tracked job of its own, so JobID and Cache come
-			// from it; the merged results keep both passes.
-			results = append(results, retryResp.Results...)
-			retryResp.Partial = resp.Partial || retryResp.Partial
-			resp = retryResp
-			covered = intersectInts(covered, retryResp.CoveredIndexerIDs)
-			answered = answered || len(retryResp.CoveredIndexerIDs) > 0
-			yearlessRetryRan = true
+				Int("year", req.Year).
+				Ints("indexerIDs", targets).
+				Msg("[CROSSSEED-SEARCH] Nothing usable with year filter; retrying title indexers without year")
+
+			retryReq := *req
+			retryReq.Year = 0
+			retryReq.IndexerIDs = targets
+			retryResp, retryErr := g.search(waitCtx, &retryReq)
+			if retryErr != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, nil, false, ctxErr
+				}
+				log.Debug().
+					Err(retryErr).
+					Str("torrentName", in.torrentName).
+					Ints("indexerIDs", targets).
+					Msg("[CROSSSEED-SEARCH] Yearless retry failed; continuing with primary results")
+				resp.Partial = true
+				covered = subtractInts(covered, targets)
+			} else if retryResp != nil {
+				// The retry is a tracked job of its own, so JobID and Cache come
+				// from it; the merged results keep both passes and the requested
+				// indexers stay those of the primary. An indexer outside a narrowed
+				// retry has a history row only under the primary job, so outcomes
+				// stay on that job.
+				results = append(results, retryResp.Results...)
+				retryResp.Partial = resp.Partial || retryResp.Partial
+				retryResp.RequestedIndexerIDs = resp.RequestedIndexerIDs
+				if len(targets) < len(req.IndexerIDs) {
+					retryResp.JobID = resp.JobID
+				}
+				resp = retryResp
+				covered = uncoverMissed(covered, targets, retryResp.CoveredIndexerIDs)
+				answered = answered || len(retryResp.CoveredIndexerIDs) > 0
+			}
 		}
 	}
 
 	// retry is a per-indexer retry: it re-queries only targets with query, as
 	// an internal continuation of the primary search. No history row of its
-	// own, IDs cleared so the title reaches ID-capable indexers, and the year
-	// the latest pass actually used. SkipCachePersist stays unset so repeated
+	// own, IDs cleared so the title reaches ID-capable indexers, and no year
+	// once the yearless gate dropped it. SkipCachePersist stays unset so repeated
 	// passes reuse the Torznab result cache instead of re-hitting indexers.
 	// Outcome reporting keys on indexer ID under the primary job. A failed
 	// pass drops its targets from the covered set.
@@ -120,7 +137,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 		if season != nil {
 			retryReq.Season = season
 		}
-		if yearlessRetryRan {
+		if dropYear {
 			retryReq.Year = 0
 		}
 		retryReq.SkipHistory = true
@@ -162,7 +179,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	// results. Indexers without ID caps already searched by title in the
 	// primary pass and are covered by the passes below.
 	if in.tagSourcedIDs {
-		targets := intersectInts(g.idCapIndexers(waitCtx, req), unsatisfied())
+		targets := intersectInts(idCap, unsatisfied())
 		if err := retry("title retry after tag-sourced IDs", targets, req.Query, nil); err != nil {
 			return nil, nil, false, err
 		}
