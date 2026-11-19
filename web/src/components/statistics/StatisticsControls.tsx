@@ -23,7 +23,7 @@ import { formatCalendarDay } from "@/lib/dateTimeUtils"
 import { PERIOD_PRESETS, type PeriodPreset } from "@/lib/statistics"
 import { cn } from "@/lib/utils"
 import { CalendarDays, CalendarRange, ChevronDown, Palette } from "lucide-react"
-import { useState, type ReactNode } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 export type PeriodChoice = PeriodPreset | "custom"
@@ -103,6 +103,8 @@ function DayField({ id, label, value, max, onChange }: DayFieldProps) {
   const { t } = useTranslation("statistics")
   const { preferences } = usePersistedDateTimePreferences()
   const day = parseDay(value)
+  // iOS Safari reports a tap as a mouse click, so the type comes from pointer down.
+  const press = useRef<string>(undefined)
 
   return (
     <div className="space-y-1.5">
@@ -119,8 +121,11 @@ function DayField({ id, label, value, max, onChange }: DayFieldProps) {
           onChange={event => onChange(event.target.value)}
           // Firefox opens its calendar only on a click on its own calendar button, and closes it again without preventDefault.
           // A touch keeps the picker of the device, because Safari on iOS has no showPicker for a date.
+          onPointerDown={event => {
+            press.current = event.pointerType
+          }}
           onClick={event => {
-            if ((event.nativeEvent as PointerEvent).pointerType === "mouse") {
+            if (press.current === "mouse") {
               event.preventDefault()
               event.currentTarget.showPicker()
             }
