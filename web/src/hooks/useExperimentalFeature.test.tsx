@@ -4,7 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -63,6 +63,18 @@ describe("useExperimentalFeature", () => {
 
     await waitFor(() => expect(queryClient.getQueryState(["application-info"])?.status).toBe("error"))
     expect(result.current).toBe(false)
+  })
+
+  it("answers off when a refetch fails after the application info named the feature", async () => {
+    getApplicationInfo.mockRejectedValue(new Error("Application info unavailable"))
+
+    const { queryClient, result } = mountHook(infoWithTestFeature)
+    expect(result.current).toBe(true)
+
+    await act(() => queryClient.refetchQueries({ queryKey: ["application-info"] }))
+
+    expect(queryClient.getQueryState(["application-info"])?.status).toBe("error")
+    await waitFor(() => expect(result.current).toBe(false))
   })
 
   it("answers off in the demo, even when the application info names the feature", () => {

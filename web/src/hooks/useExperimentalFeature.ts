@@ -11,11 +11,11 @@ import type { ExperimentalFeature } from "@/types"
 
 /** Answers whether the Experimental feature is on. It answers off while the application info loads, when it fails, and in the demo. */
 export function useExperimentalFeature(feature: ExperimentalFeature): boolean {
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ["application-info"],
     queryFn: () => api.getApplicationInfo(),
     staleTime: 30 * 1000,
     enabled: !isDemo,
   })
-  return !isDemo && (data?.experimentalFeatures.includes(feature) ?? false)
+  return !isDemo && !isError && (data?.experimentalFeatures.includes(feature) ?? false)
 }
