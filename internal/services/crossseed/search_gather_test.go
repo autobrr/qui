@@ -231,6 +231,24 @@ func TestGatherSearchResults(t *testing.T) {
 			// Indexers 1 and 2 have history rows only under the primary job.
 			wantJobID: 1,
 		},
+		{
+			name:  "narrowed yearless retry keeps its own job when the primary came from cache",
+			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2, 3}, IMDbID: "tt1", OmitQueryForIDs: true},
+			idCap: []int{1, 2},
+			replies: map[string]fakeReply{
+				// A primary served wholly from cache has no job.
+				replyKey("Movie", 2020, []int{1, 2, 3}): {results: []jackett.SearchResult{hit(1, junk)}, covered: []int{1, 2, 3}},
+				replyKey("Movie", 0, []int{3}):          {results: []jackett.SearchResult{hit(3, junk)}, covered: []int{3}, jobID: 2},
+			},
+			wantRequests: []wantRequest{
+				{query: "Movie", year: 2020, indexerIDs: []int{1, 2, 3}},
+				{query: "Movie", year: 0, indexerIDs: []int{3}},
+			},
+			wantCovered:  []int{1, 2, 3},
+			wantAnswered: true,
+			wantTitles:   []string{junk, junk},
+			wantJobID:    2,
+		},
 		// regression: #3306
 		{
 			name:  "every indexer searching by ID sends no yearless retry",

@@ -98,11 +98,12 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 				// from it; the merged results keep both passes and the requested
 				// indexers stay those of the primary. An indexer outside a narrowed
 				// retry has a history row only under the primary job, so outcomes
-				// stay on that job.
+				// stay on that job. A primary served from cache has no job, so the
+				// retry keeps its own.
 				results = append(results, retryResp.Results...)
 				retryResp.Partial = resp.Partial || retryResp.Partial
 				retryResp.RequestedIndexerIDs = resp.RequestedIndexerIDs
-				if len(targets) < len(req.IndexerIDs) {
+				if resp.JobID != 0 && len(targets) < len(req.IndexerIDs) {
 					retryResp.JobID = resp.JobID
 				}
 				resp = retryResp
