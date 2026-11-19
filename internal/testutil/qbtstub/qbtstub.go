@@ -282,6 +282,22 @@ func (s *Server) SetDefaultSavePath(p string) {
 	s.savePath = p
 }
 
+// SetOnAdd sets OnAdd under the lock of the stub. Use it when another
+// process sends the add: the race detector sees no order between a plain
+// assignment and the handler.
+func (s *Server) SetOnAdd(fn func(hash string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.OnAdd = fn
+}
+
+// SetOnWrite sets OnWrite under the lock of the stub, as SetOnAdd does.
+func (s *Server) SetOnWrite(fn func(endpoint string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.OnWrite = fn
+}
+
 // SetRefreshInterval changes the refresh_interval preference, in
 // milliseconds, as an edit in qBittorrent's own WebUI does.
 func (s *Server) SetRefreshInterval(ms int) {
