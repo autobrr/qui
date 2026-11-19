@@ -49,6 +49,7 @@ const (
 	reportPushoverUser = "pushover-user-0123456789"
 	reportPeerAddress  = "203.0.113.7:51413"
 	reportHookToken    = "Hk7pQ2xZ9mW4vB8n"
+	reportNtfyTopic    = "my-private-topic"
 	reportSubmission   = "0b7c1a52-6f43-4d6e-9c7e-2f8a1d3b4c5e"
 )
 
@@ -126,6 +127,7 @@ func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 		"gotify://gotify.example.invalid/" + reportGotifyToken,
 		"pushover://shoutrrr:pushover-app-token-0123456789@" + reportPushoverUser + "/",
 		"generic://hooks.example.invalid/webhooks/" + reportHookToken,
+		"ntfy://ntfy.example.invalid/" + reportNtfyTopic,
 	} {
 		_, err = deps.NotificationTargetStore.Create(t.Context(), &models.NotificationTargetCreate{Name: target, URL: target, Enabled: true})
 		require.NoError(t, err)
@@ -339,7 +341,7 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 		// regression: #4288
 		"\nMy notification tokens are " + reportWebhookToken + ", " + reportGotifyToken + " and " + reportPushoverUser +
 		// regression: #4288
-		"\nPeers reach me at " + reportPeerAddress + ", my webhooks use " + reportHookToken
+		"\nPeers reach me at " + reportPeerAddress + ", my webhooks use " + reportHookToken + " and ntfy topic " + reportNtfyTopic
 	status, answer := rig.send(menuReport(text, facts, "warnings", facts.Logs.Warnings), nil)
 	require.Equal(t, http.StatusCreated, status, answer)
 	assert.Equal(t, "received", answer["status"])
@@ -357,7 +359,7 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 		// regression: #4288
 		reportWebhookToken, reportGotifyToken, reportPushoverUser,
 		// regression: #4288
-		reportPeerAddress, "203.0.113.7", reportHookToken} {
+		reportPeerAddress, "203.0.113.7", reportHookToken, reportNtfyTopic} {
 		assert.NotContains(t, raw, private)
 	}
 	assert.Contains(t, raw, "connect to qbittorrent refused", "a host name with no dot stays")

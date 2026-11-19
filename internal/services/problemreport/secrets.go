@@ -219,8 +219,8 @@ var hostCredentialSchemes = map[string]bool{
 // notificationURLSecrets returns a notification URL and each part of it
 // that can hold a credential, because a text can hold one part alone: the
 // user name and the password, which hold the token of a discord:// or a
-// telegram:// URL, each path segment that is no plain word, and the host of
-// a URL whose scheme is in hostCredentialSchemes.
+// telegram:// URL, each path segment that is not in urlStructureWords, and
+// the host of a URL whose scheme is in hostCredentialSchemes.
 func notificationURLSecrets(raw string) []string {
 	secrets := []string{raw}
 	parsed, err := url.Parse(strings.TrimSpace(raw))
@@ -235,18 +235,18 @@ func notificationURLSecrets(raw string) []string {
 		secrets = append(secrets, parsed.Host)
 	}
 	for segment := range strings.SplitSeq(parsed.Path, "/") {
-		if !isPlainWord(segment) {
+		if !urlStructureWords[strings.ToLower(segment)] {
 			secrets = append(secrets, segment)
 		}
 	}
 	return secrets
 }
 
-// isPlainWord reports whether a URL path segment holds only lower-case
-// letters, dashes and underscores, such as webhooks. A token holds a digit or
-// an upper-case letter, and a plain word stays in the report text.
-func isPlainWord(segment string) bool {
-	return strings.Trim(segment, "abcdefghijklmnopqrstuvwxyz-_") == ""
+// urlStructureWords are the fixed path words of notification URLs. They
+// stay in the report text, so that a text that names them keeps its meaning.
+// Every other path segment can be a credential, such as an ntfy topic.
+var urlStructureWords = map[string]bool{
+	"webhook": true, "webhooks": true, "message": true, "messages": true, "services": true, "notify": true,
 }
 
 // instanceAddress returns the forms of an instance address that a text can
