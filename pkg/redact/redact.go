@@ -257,16 +257,18 @@ func SecretsReplacer(secrets []string) *strings.Replacer {
 
 // jsonEscapedForms returns how a JSON string writes secret, when that differs
 // from secret: a log line of zerolog escapes a quote or a backslash, and
-// encoding/json also escapes <, > and &.
+// encoding/json also escapes <, >, & and the line separators U+2028 and U+2029.
 func jsonEscapedForms(secret string) []string {
 	var forms []string
 	for _, escapeHTML := range []bool{false, true} {
-		quoted, err := json.Marshal(secret, jsontext.EscapeForHTML(escapeHTML))
-		if err != nil {
-			return nil // invalid UTF-8, which a JSON string does not hold as is
-		}
-		if form := string(quoted[1 : len(quoted)-1]); form != secret {
-			forms = append(forms, form)
+		for _, escapeJS := range []bool{false, true} {
+			quoted, err := json.Marshal(secret, jsontext.EscapeForHTML(escapeHTML), jsontext.EscapeForJS(escapeJS))
+			if err != nil {
+				return nil // invalid UTF-8, which a JSON string does not hold as is
+			}
+			if form := string(quoted[1 : len(quoted)-1]); form != secret {
+				forms = append(forms, form)
+			}
 		}
 	}
 	return forms
