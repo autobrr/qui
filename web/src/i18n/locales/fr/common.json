@@ -31,8 +31,8 @@
     "rssRunning": "RSS cross-seed en cours d'exécution",
     "rssEnabled": "RSS cross-seed activé",
     "scanRunning": "Analyse en cours",
-    "showSidebar": "Afficher la barre latérale",
-    "hideSidebar": "Masquer la barre latérale"
+    "collapseToIcons": "Réduire aux icônes",
+    "expandSidebar": "Développer la barre latérale"
   },
   "header": {
     "currentInstance": "Instance actuelle : {{name}}. Cliquez pour changer d'instance.",
@@ -64,11 +64,6 @@
     "smartSearchShortcut": "Appuyez sur {{shortcutKey}} pour aller à la recherche",
     "smartSearchPalette": "Appuyez sur {{shortcutKey}} pour ouvrir la palette de commandes",
     "torrentCreationTasksTitle": "Tâches de création de torrents",
-    "updateAvailable": "Mise à jour disponible",
-    "updateVersion": "Version {{version}}",
-    "rssRunning": "RSS cross-seed en cours d'exécution",
-    "rssEnabled": "RSS cross-seed activé",
-    "scanRunning": "Analyse en cours",
     "allScope": "TOUS",
     "unified": "Unifié"
   },

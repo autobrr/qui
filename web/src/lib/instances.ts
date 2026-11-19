@@ -64,3 +64,38 @@ export function encodeUnifiedInstanceIds(instanceIds: readonly number[]): string
   }
   return instanceIds.join(",")
 }
+
+/**
+ * Two characters for each instance, for a place too narrow for its name. A name that ends in a number shows it: the
+ * first letter and the digit ("qbit-us-2" reads Q2), or the last two digits ("qbit10" reads 10). Other names show the
+ * first letters of two words ("home-nas" reads HN), or the first two letters ("main" reads MA). A name gets the next
+ * candidate when an earlier name has the same characters, so "secondary" and "seedbox" read SE and SD.
+ */
+export function instanceInitials(names: readonly string[]): string[] {
+  const taken = new Set<string>()
+  return names.map((name) => {
+    // A word is a run of digits or a run of letters, so "qbit2" has two words. Each other character divides words.
+    const words = (name.toUpperCase().match(/\p{N}+|[\p{L}\p{M}]+/gu) ?? []).map(word => Array.from(word))
+    if (words.length === 0) {
+      return ""
+    }
+    const [[first, ...firstRest], ...later] = words
+    const last = later[later.length - 1] ?? []
+    const number = /^\p{N}/u.test(last[0] ?? "") ? Array.from(last.join("").replace(/^0+(?=.)/, "")) : []
+    const seconds = [
+      ...number.slice(0, 1),
+      ...later.map(word => word[0]),
+      ...later.flatMap(word => word.slice(1)),
+      ...firstRest,
+    ]
+    const candidates = [
+      ...(number.length > 1 ? [number.slice(-2).join("")] : []),
+      ...(seconds.length > 0 ? seconds.map(second => first + second) : [first]),
+      // The last resort, for a name that the earlier names have used up.
+      ...Array.from("123456789", digit => first + digit),
+    ]
+    const initials = candidates.find(candidate => !taken.has(candidate)) ?? candidates[0]
+    taken.add(initials)
+    return initials
+  })
+}

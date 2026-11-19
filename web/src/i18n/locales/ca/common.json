@@ -31,8 +31,8 @@
     "rssRunning": "RSS de cross-seed en execució",
     "rssEnabled": "RSS de cross-seed activat",
     "scanRunning": "Exploració en curs",
-    "showSidebar": "Mostra la barra lateral",
-    "hideSidebar": "Amaga la barra lateral"
+    "collapseToIcons": "Redueix a icones",
+    "expandSidebar": "Amplia la barra lateral"
   },
   "header": {
     "currentInstance": "Instància actual: {{name}}. Fes clic per canviar d'instància.",
@@ -64,11 +64,6 @@
     "smartSearchShortcut": "Prem {{shortcutKey}} per anar a la cerca",
     "smartSearchPalette": "Prem {{shortcutKey}} per obrir la paleta d'ordres",
     "torrentCreationTasksTitle": "Tasques de creació de torrents",
-    "updateAvailable": "Actualització disponible",
-    "updateVersion": "Versió {{version}}",
-    "rssRunning": "RSS de cross-seed en execució",
-    "rssEnabled": "RSS de cross-seed activat",
-    "scanRunning": "Exploració en curs",
     "allScope": "TOTES",
     "unified": "Unificat"
   },

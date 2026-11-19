@@ -30,8 +30,8 @@
     "rssRunning": "輔種 RSS 執行中",
     "rssEnabled": "輔種 RSS 已啟用",
     "scanRunning": "掃描執行中",
-    "showSidebar": "顯示側邊欄",
-    "hideSidebar": "隱藏側邊欄"
+    "collapseToIcons": "收合為圖示",
+    "expandSidebar": "展開側邊欄"
   },
   "header": {
     "currentInstance": "目前實例：{{name}}。點選切換實例。",
@@ -63,11 +63,6 @@
     "smartSearchShortcut": "按 {{shortcutKey}} 跳至搜尋框",
     "smartSearchPalette": "按 {{shortcutKey}} 開啟指令面板",
     "torrentCreationTasksTitle": "種子建立任務",
-    "updateAvailable": "有可用更新",
-    "updateVersion": "版本 {{version}}",
-    "rssRunning": "輔種 RSS 執行中",
-    "rssEnabled": "輔種 RSS 已啟用",
-    "scanRunning": "掃描執行中",
     "allScope": "全部",
     "unified": "統一檢視"
   },

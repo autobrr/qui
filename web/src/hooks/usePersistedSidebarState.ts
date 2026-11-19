@@ -5,9 +5,9 @@
 
 import { parseJsonBoolean, useClientSetting } from "@/lib/client-settings"
 
-export function usePersistedSidebarState(defaultCollapsed: boolean = false) {
-  return useClientSetting<boolean>("qui-sidebar-collapsed", {
-    defaultValue: defaultCollapsed,
+export function usePersistedSidebarIconOnly() {
+  return useClientSetting<boolean>("qui-sidebar-icon-only", {
+    defaultValue: false,
     parse: parseJsonBoolean,
   })
 }

@@ -62,6 +62,8 @@ export function UnifiedScopeDropdownSection({
   )
 
   const dropdownHeaderItemClassName = "cursor-pointer p-0"
+  // The sidebar mounts this row when it expands from icons, so its text fades in as the other labels of the sidebar do.
+  const sidebarTextEnterClassName = "animate-in fade-in-0 duration-200 motion-reduce:animate-none"
 
   const contentClassName = cn(
     "overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down",
@@ -82,12 +84,12 @@ export function UnifiedScopeDropdownSection({
               className={rowLinkClassName}
             >
               <HardDrive className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">{t("unifiedScope.unified")}</span>
+              <span className={cn("truncate", sidebarTextEnterClassName)}>{t("unifiedScope.unified")}</span>
             </Link>
             <CollapsibleTrigger asChild>
               <button
                 type="button"
-                className={triggerClassName}
+                className={cn(triggerClassName, sidebarTextEnterClassName)}
                 aria-label={isExpanded ? t("unifiedScope.collapseScope") : t("unifiedScope.expandScope")}
               >
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">

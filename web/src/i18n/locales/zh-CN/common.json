@@ -30,8 +30,8 @@
     "rssRunning": "辅种 RSS 运行中",
     "rssEnabled": "辅种 RSS 已启用",
     "scanRunning": "扫描运行中",
-    "showSidebar": "显示侧边栏",
-    "hideSidebar": "隐藏侧边栏"
+    "collapseToIcons": "收起为图标",
+    "expandSidebar": "展开侧边栏"
   },
   "header": {
     "currentInstance": "当前实例：{{name}}。点击切换实例。",
@@ -63,11 +63,6 @@
     "smartSearchShortcut": "按 {{shortcutKey}} 跳转到搜索框",
     "smartSearchPalette": "按 {{shortcutKey}} 打开命令面板",
     "torrentCreationTasksTitle": "种子创建任务",
-    "updateAvailable": "有可用更新",
-    "updateVersion": "版本 {{version}}",
-    "rssRunning": "辅种 RSS 运行中",
-    "rssEnabled": "辅种 RSS 已启用",
-    "scanRunning": "扫描运行中",
     "allScope": "全部",
     "unified": "统一视图"
   },

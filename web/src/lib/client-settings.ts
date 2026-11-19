@@ -59,7 +59,7 @@ const SYNCED_KEYS = new Set<string>([
   "qui-datetime-preferences",
   "qui-titlebar-speeds-enabled",
   "qui.language",
-  "qui-sidebar-collapsed",
+  "qui-sidebar-icon-only",
   FILTER_SIDEBAR_COLLAPSED_KEY,
   "qui-accordion",
   "qui-accordion-views-seeded",
@@ -117,7 +117,7 @@ const SETTING_GROUPS: Record<Exclude<SettingGroup, "shared">, { keys: readonly s
     keys: [
       TORRENT_VIEW_MODE_KEYS.mobile,
       TORRENT_VIEW_MODE_KEYS.desktop,
-      "qui-sidebar-collapsed",
+      "qui-sidebar-icon-only",
       FILTER_SIDEBAR_COLLAPSED_KEY,
       "qui-accordion",
       "qui-accordion-views-seeded",

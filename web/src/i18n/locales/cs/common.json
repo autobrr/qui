@@ -32,8 +32,8 @@
     "rssRunning": "RSS křížového sdílení běží",
     "rssEnabled": "RSS křížového sdílení je zapnuto",
     "scanRunning": "Scan běží",
-    "showSidebar": "Zobrazit postranní panel",
-    "hideSidebar": "Skrýt postranní panel"
+    "collapseToIcons": "Sbalit na ikony",
+    "expandSidebar": "Rozbalit postranní panel"
   },
   "header": {
     "currentInstance": "Aktuální instance: {{name}}. Klikněte pro přepnutí instance.",
@@ -65,11 +65,6 @@
     "smartSearchShortcut": "Stiskněte {{shortcutKey}} pro přechod do hledání",
     "smartSearchPalette": "Stiskněte {{shortcutKey}} pro otevření palety příkazů",
     "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
-    "updateAvailable": "Aktualizace dostupná",
-    "updateVersion": "Verze {{version}}",
-    "rssRunning": "RSS křížového sdílení běží",
-    "rssEnabled": "RSS křížového sdílení je zapnuto",
-    "scanRunning": "Scan běží",
     "allScope": "VŠE",
     "unified": "Unifikované"
   },
