@@ -1944,7 +1944,8 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		}
 
 		// Apply the Prowlarr query workaround after capability processing so that
-		// ID-driven searches which lose IDs can still restore the original query.
+		// ID-driven searches which lose IDs can still restore the original query,
+		// and so that a request which keeps an ID has no year left to move into q.
 		s.applyProwlarrWorkaround(idx, paramsMap, meta)
 
 		if opts.logSearchActivity {
@@ -2406,11 +2407,15 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
 
-	// Drop the category filter for an ID-driven search, but only while this indexer
-	// still has an ID to search by. applyCapabilitySpecificParams above prunes
-	// unsupported IDs and restores the title query; that fallback keeps its category.
-	if meta != nil && meta.omitCategoriesForIDs && hasTorznabIDParams(params) {
-		delete(params, "cat")
+	// While this indexer still has an ID to search by, the ID alone identifies the
+	// release: drop the year, which can differ by one between metadata providers, and
+	// the category filter of an ID-driven search. applyCapabilitySpecificParams above
+	// prunes unsupported IDs and restores the title query; that fallback keeps both.
+	if hasTorznabIDParams(params) {
+		delete(params, "year")
+		if meta != nil && meta.omitCategoriesForIDs {
+			delete(params, "cat")
+		}
 	}
 
 	// Debug log parameters after capability/category restrictions. Backend-specific
@@ -2479,9 +2484,11 @@ func indexerKeepsRequestIDParams(idx *models.TorznabIndexer, req *TorznabSearchR
 
 // IndexerIDsWithIDSearchCaps returns the subset of the request's indexers that
 // would search by one of its ID parameters instead of falling back to the
-// title query. Callers use it to target only ID-queried indexers when retrying
-// a mixed-mode search by title.
+// title query, and so receive no year. A request without IDs returns none.
 func (s *Service) IndexerIDsWithIDSearchCaps(ctx context.Context, req *TorznabSearchRequest) []int {
+	if req.IMDbID == "" && req.TVDbID == "" && req.TMDbID <= 0 && req.TVMazeID <= 0 {
+		return nil
+	}
 	detectedType := detectContentTypeFromCategories(req.Categories)
 	if detectedType == contentTypeUnknown {
 		detectedType = s.detectContentType(req)
@@ -2619,13 +2626,6 @@ func (s *Service) applyProwlarrWorkaround(idx *models.TorznabIndexer, params map
 
 	yearStr, exists := params["year"]
 	if !exists || yearStr == "" {
-		return
-	}
-
-	hasIDs := params["imdbid"] != "" || params["tvdbid"] != "" || params["tmdbid"] != "" || params["tvmazeid"] != ""
-	if hasIDs {
-		// For ID-driven searches we intentionally omit q; avoid injecting year-only queries.
-		delete(params, "year")
 		return
 	}
 

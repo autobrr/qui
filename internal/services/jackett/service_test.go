@@ -2044,21 +2044,6 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			description: "Prowlarr indexer should use year as query when original query is empty",
 		},
 		{
-			name:    "prowlarr with year parameter and ids present",
-			backend: models.TorznabBackendProwlarr,
-			inputParams: map[string]string{
-				"t":      "movie",
-				"year":   "1999",
-				"imdbid": "0133093",
-			},
-			expected: map[string]string{
-				"t":      "movie",
-				"imdbid": "0133093",
-				// year parameter should be removed
-			},
-			description: "Prowlarr indexer should drop year when doing ID-driven search",
-		},
-		{
 			name:    "jackett with year parameter",
 			backend: models.TorznabBackendJackett,
 			inputParams: map[string]string{
@@ -3196,6 +3181,61 @@ func TestSearchIndexersWithSchedulerDedupExcludedFromFailureThreshold(t *testing
 	}
 }
 
+// searchOutboundQuery runs req through Service.Search against a local Torznab
+// indexer built by newIndexer and returns the query parameters of the search
+// request it receives. A caps fetch gets an answer with no categories and no search
+// modes, so an indexer without stored metadata stays category-blind and caps-less.
+func searchOutboundQuery(t *testing.T, newIndexer func(baseURL string) *models.TorznabIndexer, req *TorznabSearchRequest) url.Values {
+	t.Helper()
+	outboundCh := make(chan url.Values, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		if query.Get("t") == "caps" {
+			w.Header().Set("Content-Type", "application/xml")
+			if _, writeErr := w.Write([]byte(`<caps><categories/></caps>`)); writeErr != nil {
+				t.Errorf("write caps response: %v", writeErr)
+			}
+			return
+		}
+		select {
+		case outboundCh <- query:
+		default:
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		if _, writeErr := w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`)); writeErr != nil {
+			t.Errorf("write RSS response: %v", writeErr)
+		}
+	}))
+	defer server.Close()
+
+	service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{newIndexer(server.URL)}})
+
+	done := make(chan error, 1)
+	req.OnAllComplete = func(_ *SearchResponse, err error) {
+		done <- err
+	}
+	if err := service.Search(t.Context(), req); err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("search completed with error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for search to complete")
+	}
+
+	select {
+	case outbound := <-outboundCh:
+		return outbound
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the outbound request")
+		return nil
+	}
+}
+
 // TestSearchIDDrivenMovieCategoryBehavior pins the outbound Torznab request for an
 // ID-driven movie search. An indexer that can search by IMDb ID must receive the ID
 // alone, without a query or a category filter that could hide a correctly matching
@@ -3232,78 +3272,31 @@ func TestSearchIDDrivenMovieCategoryBehavior(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			outboundCh := make(chan url.Values, 1)
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				query := r.URL.Query()
-				if query.Get("t") == "caps" {
-					// An indexer with no stored categories triggers a caps fetch first.
-					// Answer without categories so it stays category-blind.
-					w.Header().Set("Content-Type", "application/xml")
-					if _, writeErr := w.Write([]byte(`<caps><categories/></caps>`)); writeErr != nil {
-						t.Errorf("write caps response: %v", writeErr)
-					}
-					return
+			outbound := searchOutboundQuery(t, func(baseURL string) *models.TorznabIndexer {
+				indexer := &models.TorznabIndexer{
+					ID:             1,
+					Name:           "Synthetic Prowlarr Indexer",
+					BaseURL:        baseURL,
+					Backend:        models.TorznabBackendProwlarr,
+					IndexerID:      "7",
+					Enabled:        true,
+					TimeoutSeconds: 5,
+					Capabilities:   tt.capabilities,
+					Categories: []models.TorznabIndexerCategory{
+						{CategoryID: CategoryMovies},
+					},
 				}
-				select {
-				case outboundCh <- query:
-				default:
+				if tt.noStoredCats {
+					indexer.Categories = nil
 				}
-				w.Header().Set("Content-Type", "application/rss+xml")
-				if _, writeErr := w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`)); writeErr != nil {
-					t.Errorf("write RSS response: %v", writeErr)
-				}
-			}))
-			defer server.Close()
-
-			indexer := &models.TorznabIndexer{
-				ID:             1,
-				Name:           "Synthetic Prowlarr Indexer",
-				BaseURL:        server.URL,
-				Backend:        models.TorznabBackendProwlarr,
-				IndexerID:      "7",
-				Enabled:        true,
-				TimeoutSeconds: 5,
-				Capabilities:   tt.capabilities,
-				Categories: []models.TorznabIndexerCategory{
-					{CategoryID: CategoryMovies},
-				},
-			}
-			if tt.noStoredCats {
-				indexer.Categories = nil
-			}
-			service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{indexer}})
-
-			done := make(chan error, 1)
-			req := &TorznabSearchRequest{
+				return indexer
+			}, &TorznabSearchRequest{
 				Query:           "Synthetic Documentary",
 				Categories:      []int{CategoryMovies},
 				IMDbID:          "tt1234567",
 				OmitQueryForIDs: true,
 				IndexerIDs:      []int{1},
-				OnAllComplete: func(_ *SearchResponse, err error) {
-					done <- err
-				},
-			}
-
-			if err := service.Search(context.Background(), req); err != nil {
-				t.Fatalf("Search() error = %v", err)
-			}
-
-			select {
-			case err := <-done:
-				if err != nil {
-					t.Fatalf("search completed with error: %v", err)
-				}
-			case <-time.After(time.Second):
-				t.Fatal("timed out waiting for search to complete")
-			}
-
-			var outbound url.Values
-			select {
-			case outbound = <-outboundCh:
-			case <-time.After(time.Second):
-				t.Fatal("timed out waiting for the outbound request")
-			}
+			})
 
 			if got := outbound.Get("t"); got != "movie" {
 				t.Fatalf("t = %q, want movie", got)
@@ -3316,6 +3309,89 @@ func TestSearchIDDrivenMovieCategoryBehavior(t *testing.T) {
 			}
 			if got := outbound.Get("imdbid"); got != tt.wantIMDbID {
 				t.Fatalf("imdbid = %q, want %q", got, tt.wantIMDbID)
+			}
+		})
+	}
+}
+
+// regression: #3306
+// TestSearchIDDrivenMovieOmitsYear pins the year on the outbound Torznab request of a
+// movie search with an ID and a year. An indexer that still searches by ID receives no
+// year, on every backend. An indexer that falls back to the title keeps the year.
+func TestSearchIDDrivenMovieOmitsYear(t *testing.T) {
+	tests := []struct {
+		name         string
+		backend      models.TorznabBackend
+		capabilities []string
+		wantQuery    string
+		wantIMDbID   string
+		wantYear     string
+	}{
+		{
+			name:         "jackett ID-capable indexer gets the ID without the year",
+			backend:      models.TorznabBackendJackett,
+			capabilities: []string{"movie-search", "movie-search-imdbid"},
+			wantIMDbID:   "1234567",
+		},
+		{
+			name:         "native ID-capable indexer gets the ID without the year",
+			backend:      models.TorznabBackendNative,
+			capabilities: []string{"movie-search", "movie-search-imdbid"},
+			wantIMDbID:   "1234567",
+		},
+		{
+			name:         "prowlarr ID-capable indexer gets the ID without the year",
+			backend:      models.TorznabBackendProwlarr,
+			capabilities: []string{"movie-search", "movie-search-imdbid"},
+			wantIMDbID:   "1234567",
+		},
+		{
+			name:         "indexer without ID capability gets the title and the year",
+			backend:      models.TorznabBackendJackett,
+			capabilities: []string{"movie-search"},
+			wantQuery:    "Synthetic Documentary",
+			wantYear:     "2018",
+		},
+		{
+			name:       "indexer with unknown capabilities gets the ID without the year",
+			backend:    models.TorznabBackendJackett,
+			wantIMDbID: "1234567",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outbound := searchOutboundQuery(t, func(baseURL string) *models.TorznabIndexer {
+				return &models.TorznabIndexer{
+					ID:             1,
+					Name:           "Synthetic Indexer",
+					BaseURL:        baseURL,
+					Backend:        tt.backend,
+					IndexerID:      "7",
+					Enabled:        true,
+					TimeoutSeconds: 5,
+					Capabilities:   tt.capabilities,
+					Categories: []models.TorznabIndexerCategory{
+						{CategoryID: CategoryMovies},
+					},
+				}
+			}, &TorznabSearchRequest{
+				Query:           "Synthetic Documentary",
+				Categories:      []int{CategoryMovies},
+				IMDbID:          "tt1234567",
+				Year:            2018,
+				OmitQueryForIDs: true,
+				IndexerIDs:      []int{1},
+			})
+
+			if got := outbound.Get("imdbid"); got != tt.wantIMDbID {
+				t.Fatalf("imdbid = %q, want %q", got, tt.wantIMDbID)
+			}
+			if got := outbound.Get("q"); got != tt.wantQuery {
+				t.Fatalf("q = %q, want %q", got, tt.wantQuery)
+			}
+			if got := outbound.Get("year"); got != tt.wantYear {
+				t.Fatalf("year = %q, want %q", got, tt.wantYear)
 			}
 		})
 	}
