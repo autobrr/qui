@@ -4,11 +4,13 @@
  */
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { InstanceMarkIcon } from "@/components/instances/marks/InstanceMarkIcon"
 import { DropdownMenuCheckboxItem, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { ALL_INSTANCES_ID } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import type { InstanceResponse } from "@/types"
 import { Link } from "@tanstack/react-router"
-import { ChevronRight, HardDrive } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -83,7 +85,7 @@ export function UnifiedScopeDropdownSection({
               to="/instances"
               className={rowLinkClassName}
             >
-              <HardDrive className="h-4 w-4 flex-shrink-0" />
+              <InstanceMarkIcon instanceId={ALL_INSTANCES_ID} colored={!isAllInstancesRoute} />
               <span className={cn("truncate", sidebarTextEnterClassName)}>{t("unifiedScope.unified")}</span>
             </Link>
             <CollapsibleTrigger asChild>
@@ -111,7 +113,7 @@ export function UnifiedScopeDropdownSection({
                 to="/instances"
                 className={rowLinkClassName}
               >
-                <HardDrive className="h-4 w-4 flex-shrink-0" />
+                <InstanceMarkIcon instanceId={ALL_INSTANCES_ID} colored={!isAllInstancesRoute} />
                 <span className="truncate">{t("unifiedScope.unified")}</span>
               </Link>
             </DropdownMenuItem>
@@ -171,14 +173,10 @@ export function UnifiedScopeDropdownSection({
                       checked ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:bg-sidebar-accent focus-visible:text-sidebar-accent-foreground"
                     )}
                   >
-                    <span className="truncate">{instance.name}</span>
-                    <span
-                      className={cn(
-                        "h-2 w-2 rounded-full flex-shrink-0",
-                        instance.connected ? "bg-green-500" : "bg-red-500"
-                      )}
-                      aria-hidden="true"
-                    />
+                    <span className="flex min-w-0 items-center gap-2">
+                      <InstanceMarkIcon instanceId={instance.id} problem={!instance.connected} />
+                      <span className="truncate">{instance.name}</span>
+                    </span>
                   </button>
                 )
               })}
@@ -207,15 +205,9 @@ export function UnifiedScopeDropdownSection({
                     }}
                     className="cursor-pointer"
                   >
-                    <span className="flex w-full items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <InstanceMarkIcon instanceId={instance.id} problem={!instance.connected} />
                       <span className="truncate">{instance.name}</span>
-                      <span
-                        className={cn(
-                          "h-2 w-2 rounded-full flex-shrink-0",
-                          instance.connected ? "bg-green-500" : "bg-red-500"
-                        )}
-                        aria-hidden="true"
-                      />
                     </span>
                   </DropdownMenuCheckboxItem>
                 )

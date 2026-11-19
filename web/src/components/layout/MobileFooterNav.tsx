@@ -4,6 +4,7 @@
  */
 
 import { openCommandPalette } from "@/components/command-palette/open"
+import { InstanceMarkIcon } from "@/components/instances/marks/InstanceMarkIcon"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
 import { openSupport } from "@/components/support/open"
@@ -377,13 +378,14 @@ export function MobileFooterNav() {
                           params={{ instanceId: instance.id.toString() }}
                           className="flex items-center gap-2 min-w-0"
                         >
-                          <HardDrive className="h-4 w-4" />
+                          <InstanceMarkIcon instanceId={instance.id} problem={!instance.connected} />
                           <span
                             className="flex-1 min-w-0 truncate"
                             title={instance.name}
                           >
                             {instance.name}
                           </span>
+                          {!instance.connected && <span className="sr-only">{t("header.disconnected")}</span>}
                           <span className="flex items-center gap-1.5">
                             {hasRss && (
                               <Tooltip>
@@ -413,12 +415,6 @@ export function MobileFooterNav() {
                                 </TooltipContent>
                               </Tooltip>
                             )}
-                            <span
-                              className={cn(
-                                "h-2 w-2 rounded-full",
-                                instance.connected ? "bg-green-500" : "bg-red-500"
-                              )}
-                            />
                           </span>
                         </Link>
                       </DropdownMenuItem>

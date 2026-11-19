@@ -4,6 +4,7 @@
  */
 
 import { usePointedLayer, usePointLayer } from "@/components/dashboard/pointed-layer"
+import { InstanceMarkIcon } from "@/components/instances/marks/InstanceMarkIcon"
 import { StreamChart } from "@/components/dashboard/StreamChart"
 import { SizeCalculatingMark } from "@/components/dashboard/UniqueSize"
 import { Button } from "@/components/ui/button"
@@ -211,6 +212,7 @@ function InstanceLines({ statsData, layerOf, onOpen }: { statsData: DashboardIns
               <Swatch d={d} layer={layerOf.get(d.instance.id) ?? OTHER_LAYER} />
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-2">
+                  <InstanceMarkIcon instanceId={d.instance.id} />
                   <span className="truncate font-medium">{d.instance.name}</span>
                   <DataStatus d={d} />
                   {d.altSpeedEnabled && <Turtle className="size-3.5 shrink-0 text-destructive" aria-label={t("details.altSpeedOn")} />}
@@ -308,6 +310,7 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded }: InstanceListPr
               <TableCell className="max-w-[16rem] pl-6">
                 <span className="flex min-w-0 items-center gap-2.5">
                   <Swatch d={d} layer={layer} />
+                  <InstanceMarkIcon instanceId={id} />
                   {health === "ok" ? (
                     <Link to="/instances/$instanceId" params={{ instanceId: String(id) }} onClick={event => event.stopPropagation()} className="truncate font-medium underline-offset-4 hover:underline">
                       {d.instance.name}
@@ -595,6 +598,7 @@ function InstanceSheet({ d, layer, day, hasHistory, onClose }: { d: DashboardIns
       <DrawerHeader className="text-left">
         <DrawerTitle className="flex items-center gap-2 text-xl">
           <Swatch d={d} layer={layer} />
+          <InstanceMarkIcon instanceId={d.instance.id} className="size-5" />
           <span className="truncate">{d.instance.name}</span>
         </DrawerTitle>
         <DrawerDescription className="truncate">{incognito ? MASK : d.instance.host}</DrawerDescription>

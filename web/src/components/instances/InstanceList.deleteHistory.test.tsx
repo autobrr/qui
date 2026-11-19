@@ -59,7 +59,7 @@ async function removeInstance(tick: boolean) {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>
-        <InstanceList instances={[instance]} onEdit={() => {}} onAdd={() => {}} />
+        <InstanceList instances={[instance]} onEdit={() => {}} onChangeIcon={() => {}} onAdd={() => {}} />
       </TooltipProvider>
     </QueryClientProvider>
   )

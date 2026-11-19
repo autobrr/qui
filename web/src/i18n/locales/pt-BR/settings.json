@@ -56,6 +56,10 @@
     },
     "browserTab": {
       "title": "Aba do navegador"
+    },
+    "icons": {
+      "title": "Ícones das instâncias",
+      "description": "Escolha como as instâncias aparecem na barra lateral e nos menus."
     }
   },
   "integrations": {

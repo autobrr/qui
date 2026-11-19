@@ -56,6 +56,10 @@
     },
     "browserTab": {
       "title": "Pestanya del navegador"
+    },
+    "icons": {
+      "title": "Icones de les instàncies",
+      "description": "Tria com es mostren les instàncies a la barra lateral i als menús."
     }
   },
   "integrations": {

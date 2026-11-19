@@ -56,6 +56,10 @@
     },
     "browserTab": {
       "title": "Karta prohlížeče"
+    },
+    "icons": {
+      "title": "Ikony instancí",
+      "description": "Vyberte, jak se instance zobrazují v postranním panelu a v nabídkách."
     }
   },
   "integrations": {

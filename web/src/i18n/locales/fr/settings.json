@@ -56,6 +56,10 @@
     },
     "browserTab": {
       "title": "Onglet du navigateur"
+    },
+    "icons": {
+      "title": "Icônes des instances",
+      "description": "Choisissez comment les instances apparaissent dans la barre latérale et les menus."
     }
   },
   "integrations": {

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { findInstanceMarkIcon } from "@/components/instances/marks/instance-mark-icons"
+import { MarkGlyph } from "@/components/instances/marks/InstanceMarkIcon"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -36,7 +38,8 @@ import { api } from "@/lib/api"
 import { useClientSettingsSettled } from "@/lib/client-settings"
 import { getAppVersion } from "@/lib/build-info"
 import { demoLinks, isDemo } from "@/lib/demo"
-import { instanceInitials, normalizeUnifiedInstanceIds } from "@/lib/instances"
+import { useInstanceMark } from "@/lib/instance-marks"
+import { ALL_INSTANCES_ID, instanceInitials, normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn, collapseRowClassName } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
@@ -47,7 +50,6 @@ import {
   Code,
   Copyright,
   Globe,
-  HardDrive,
   Loader2,
   Ellipsis,
   LogOut,
@@ -72,6 +74,34 @@ function IconOnlyLabel({ show, label, children }: { show: boolean; label: ReactN
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side="right" className="max-w-64 break-words text-xs">{label}</TooltipContent>
     </Tooltip>
+  )
+}
+
+// For two marks that have the same place: one shrinks and fades while the other grows in its place, so the row always shows a mark.
+const morphClassName = (shown: boolean) => cn("transition-[opacity,scale] duration-200 ease-out motion-reduce:transition-none", !shown && "scale-50 opacity-0")
+
+interface SidebarMarkProps {
+  /** The id of the instance, or ALL_INSTANCES_ID for Unified. */
+  instanceId: number
+  /** The letters that a mark without letters of its own shows at the icon-only width. "" keeps the drive icon. */
+  autoLetters: string
+  iconOnly: boolean
+  isActive: boolean
+  problem?: boolean
+}
+
+/** The mark of a sidebar row. Letters show only at the icon-only width, and the full width shows the drive icon in their place. */
+function SidebarMark({ instanceId, autoLetters, iconOnly, isActive, problem }: SidebarMarkProps) {
+  const [mark] = useInstanceMark(instanceId)
+  const letters = findInstanceMarkIcon(mark.icon) ? "" : mark.letters || autoLetters
+  const showLetters = iconOnly && letters !== ""
+  return (
+    <span className="relative size-4 shrink-0">
+      <MarkGlyph mark={mark} problem={problem} colored={!isActive} className={morphClassName(!showLetters)} />
+      {letters && (
+        <MarkGlyph mark={mark} letters={letters} problem={problem} colored={!isActive} className={cn("absolute inset-0", morphClassName(showLetters))} />
+      )}
+    </span>
   )
 }
 
@@ -162,8 +192,6 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
   const rowLabelClassName = (fullWidthClassName: string) => cn("flex min-w-0 flex-1 items-center gap-3 whitespace-nowrap", labelClassName, iconOnly && [fullWidthClassName, "shrink-0"])
   // For two marks that have the same place: one goes before the other comes.
   const swapClassName = (shown: boolean) => cn("transition-opacity duration-100 motion-reduce:transition-none", shown ? "delay-100" : "opacity-0")
-  // The icon of an instance and its initials: one shrinks and fades while the other grows in its place, so the row always shows a mark.
-  const morphClassName = (shown: boolean) => cn("transition-[opacity,scale] duration-200 ease-out motion-reduce:transition-none", !shown && "scale-50 opacity-0")
   const cornerDotClassName = cn("absolute left-[31px] top-1 h-1.5 w-1.5 rounded-full", fadeClassName, !iconOnly && "opacity-0")
   const languageItems = supportedLanguages.map((lng) => (
     <DropdownMenuItem
@@ -287,7 +315,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
                   )}
                 >
                   <Link to="/instances" className={cn(rowClassName, iconOnlyRowClassName, rowStateClassName(isAllInstancesActive))}>
-                    <HardDrive className="h-4 w-4 flex-shrink-0" />
+                    <SidebarMark instanceId={ALL_INSTANCES_ID} autoLetters="" iconOnly isActive={isAllInstancesActive} />
                     <span className="opacity-0">{t("unifiedScope.unified")}</span>
                   </Link>
                 </IconOnlyLabel>
@@ -312,8 +340,6 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
             const hasRss = csState?.rssEnabled || csState?.rssRunning
             const hasSearch = csState?.searchRunning
 
-            const initials = activeInstanceInitials[index]
-            const statusColorClassName = instance.connected ? "bg-green-500" : "bg-red-500"
 
             return (
               <IconOnlyLabel
@@ -333,10 +359,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
                   params={{ instanceId: instance.id.toString() }}
                   className={cn(rowClassName, iconOnly && iconOnlyRowClassName, rowStateClassName(isActive))}
                 >
-                  <span className="relative h-4 w-4 flex-shrink-0">
-                    <HardDrive className={cn("h-4 w-4", morphClassName(!iconOnly || !initials))} />
-                    <span className={cn("absolute inset-0 flex items-center justify-center text-[11px] font-semibold", morphClassName(iconOnly && Boolean(initials)))} aria-hidden="true">{initials}</span>
-                  </span>
+                  <SidebarMark instanceId={instance.id} autoLetters={activeInstanceInitials[index]} iconOnly={iconOnly} isActive={isActive} problem={!instance.connected} />
                   <span className={rowLabelClassName("min-w-44")}>
                     <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
                     <span className="ml-auto flex items-center gap-1.5">
@@ -377,10 +400,8 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
                           </TooltipContent>
                         </Tooltip>
                       )}
-                      <span className={cn("h-2 w-2 flex-shrink-0 rounded-full", statusColorClassName)} />
                     </span>
                   </span>
-                  <span className={cn(cornerDotClassName, statusColorClassName)} />
                 </Link>
               </IconOnlyLabel>
             )
