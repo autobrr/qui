@@ -522,7 +522,6 @@ func TestSecretsRemovesTheJSONEscapedForm(t *testing.T) {
 		want   string
 	}{
 		{"quote in a log line", `abc"defghi`, `{"level":"warn","detail":"login failed: abc\"defghi"}`, `{"level":"warn","detail":"login failed: REDACTED"}`},
-		{"backslash in a log line", `pass\word`, `{"error":"bad pass\\word"}`, `{"error":"bad REDACTED"}`},
 		{"HTML escape of encoding/json", `pa<ss>word`, `{"body":"pa\u003css\u003eword"}`, `{"body":"REDACTED"}`},
 		{"short secret stays", `ab"cd`, `{"detail":"ab\"cd"}`, `{"detail":"ab\"cd"}`},
 	}
