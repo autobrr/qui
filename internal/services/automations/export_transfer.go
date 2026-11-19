@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
@@ -22,12 +21,10 @@ type exportRunner interface {
 	Export(ctx context.Context, req transfer.ExportRequest) (int64, <-chan transfer.ExportResult, error)
 }
 
-// SetExportRunner runs Export to Instance on the Transfer module while the
-// Export switch is on. Call it once at start-up.
-func (s *Service) SetExportRunner(runner exportRunner, switches rollout.Switches) {
-	if switches.ExportOnTransfer {
-		s.exportRunner = runner
-	}
+// SetExportRunner runs Export to Instance on the Transfer module. Call it
+// once at start-up.
+func (s *Service) SetExportRunner(runner exportRunner) {
+	s.exportRunner = runner
 }
 
 // exportOnTransfers runs one export as an Export run of the Transfer module,
@@ -49,6 +46,7 @@ func (s *Service) exportOnTransfers(ctx context.Context, sourceInstanceID int, e
 		TargetInstanceID: exec.action.TargetInstanceID,
 		Hash:             exec.hash,
 		Name:             exec.torrent.Name,
+		Size:             exec.torrent.Size,
 		Placement: transfer.Placement{SavePath: exec.resolvedSavePath, Category: exec.action.Category, Tags: exec.action.Tags,
 			ContentLayout: exec.action.ContentLayout},
 		Paused:       exec.action.Paused,
@@ -71,8 +69,7 @@ func (s *Service) exportOnTransfers(ctx context.Context, sourceInstanceID int, e
 	s.sendExportActivity(ctx, ch, exportActivity(sourceInstanceID, exec, cmp.Or(res.TrackerDomain, exec.trackerDomain), outcome, res.Failure))
 }
 
-// exportActivity is the activity of the old Export path for the end of an
-// export.
+// exportActivity is the activity of the end of an export.
 func exportActivity(sourceInstanceID int, exec pendingExportToInstance, trackerDomain, outcome, reason string) *models.AutomationActivity {
 	details, _ := json.Marshal(struct { //nolint:errchkjson // int and string fields cannot fail to encode
 		Count            int    `json:"count"`

@@ -66,6 +66,8 @@
     "externalPrograms": "외부 프로그램",
     "exportTorrent": "토렌트 내보내기",
     "exportTorrents": "토렌트 내보내기 ({{count}})",
+    "transferToInstance": "인스턴스로 전송…",
+    "shareWithSomeone": "다른 사람과 공유…",
     "copy": "복사...",
     "copyName": "이름 복사",
     "copyHash": "해시 복사",

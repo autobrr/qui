@@ -12,6 +12,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -118,6 +119,13 @@ func positive(v int64) float64 { return float64(max(v, 0)) }
 
 // ContentLayouts are the values of exportToInstance.contentLayout. An empty value keeps the target's default.
 var ContentLayouts = []string{"Original", "Subfolder", "NoSubfolder"}
+
+// TransferAfters are the values of transferToInstance.after. An empty value means 'removeWithFiles'.
+var TransferAfters = []string{string(transfer.AfterRemoveWithFiles), string(transfer.AfterKeepFiles), string(transfer.AfterKeepSeeding)}
+
+// TransferWays are the values of transferToInstance.way, the keys of
+// transfer.ForcedWays. An empty value means 'auto'.
+var TransferWays = []string{"auto", "copy", "bittorrent"}
 
 // TagModes are the values of tags[].mode.
 var TagModes = []string{models.TagModeFull, models.TagModeAdd, models.TagModeRemove}

@@ -1196,6 +1196,10 @@ paths:
                 fallbackToRegularMode:
                   type: boolean
                   description: Fall back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
+                publicPeerAddress:
+                  type: string
+                  example: 203.0.113.7:51413
+                  description: The host and port at which other BitTorrent clients reach this qBittorrent, for Transfers and Shares. Leave the field out to keep the stored value. An empty string clears it, and qui then works out the address from qBittorrent.
       responses:
         '200':
           description: Instance updated
@@ -6858,7 +6862,7 @@ paths:
         own disk or over SSH, or the two qBittorrents pass them by a Transfer torrent. Then qui checks every piece,
         adds the torrent to the target, and handles the source as the "after" field says. The route answers when the
         Transfer is recorded, before the copy starts. Transfers from the same source run one at a time, in the order
-        they started. Only a signed-in browser can use this route. The route is not available yet.
+        they started. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -6866,57 +6870,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - sourceInstanceId
-                - hash
-                - targetInstanceId
-              properties:
-                sourceInstanceId:
-                  type: integer
-                  description: The instance that has the torrent
-                hash:
-                  type: string
-                  description: The infohash of the torrent on the source
-                targetInstanceId:
-                  type: integer
-                  description: The instance that gets the torrent
-                savePath:
-                  type: string
-                  description: The save path on the target. Empty is the default save path of the target.
-                category:
-                  type: string
-                  description: The category of the torrent on the target
-                tags:
-                  type: array
-                  items:
-                    type: string
-                  description: The tags of the torrent on the target
-                after:
-                  type: string
-                  enum:
-                    - removeWithFiles
-                    - keepFiles
-                    - keepSeeding
-                  default: removeWithFiles
-                  description: >-
-                    What happens to the torrent on the source after the Transfer. removeWithFiles keeps a file that
-                    another torrent reads.
-                leaveStopped:
-                  type: boolean
-                  description: Keep the torrent stopped on the target
-                way:
-                  type: string
-                  enum:
-                    - auto
-                    - copy
-                    - bittorrent
-                  default: auto
-                  description: >-
-                    How the files move. auto lets qui pick: a copy through qui when qui reaches the files of a side on
-                    its own disk, and else a Transfer torrent between the two qBittorrents, which falls back to a copy
-                    over SSH when the clients do not connect. copy forces a copy through qui, which needs file access
-                    to both instances. bittorrent forces a Transfer torrent.
+              $ref: '#/components/schemas/TransferRequest'
       responses:
         '202':
           description: The Transfer is recorded and waits for its turn
@@ -6948,6 +6902,380 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - Transfers
+      summary: List Transfers
+      description: >-
+        Lists one page of the Transfers and Export to Instance runs behind a filter chip of the Transfers page, the
+        newest first, with the counts of every chip. Active is copying, checking, and finishing; Waiting is waiting; Finished
+        is done and cancelled; Failed is failed, also a failure that waits for its retry. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - active
+              - waiting
+              - finished
+              - failed
+          description: The filter chip. Without it the list has every row.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+          description: The most rows on the page.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: The number of rows before the page.
+      responses:
+        '200':
+          description: The rows and the counts of the chips
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - rows
+                  - counts
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransferRow'
+                  counts:
+                    type: object
+                    required:
+                      - active
+                      - waiting
+                      - finished
+                      - failed
+                    properties:
+                      active:
+                        type: integer
+                      waiting:
+                        type: integer
+                      finished:
+                        type: integer
+                      failed:
+                        type: integer
+        '400':
+          description: An unknown filter, or a limit or offset out of range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to list the Transfers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/transfers/bulk:
+    post:
+      tags:
+        - Transfers
+      summary: Retry, cancel, or remove many Transfers
+      description: >-
+        Retries, cancels, or removes the Transfers and Export to Instance runs of ids, or every row behind a filter chip
+        of the Transfers page. A retry takes ids only. qui acts on one row after the other, as the routes of one row do.
+        A row that the action does not fit counts as skipped, for example a cancel of a finished Transfer or a row that
+        is gone. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - action
+              properties:
+                action:
+                  type: string
+                  enum:
+                    - retry
+                    - cancel
+                    - remove
+                ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                  description: The rows to act on. The route reads them when no filter is set.
+                filter:
+                  type: string
+                  enum:
+                    - all
+                    - active
+                    - waiting
+                    - finished
+                    - failed
+                  description: Acts on every row behind this chip, in place of ids. A retry does not take a filter.
+      responses:
+        '200':
+          description: The counts of the rows
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - done
+                  - skipped
+                  - failed
+                  - reasons
+                properties:
+                  done:
+                    type: integer
+                    description: The rows that took the action
+                  skipped:
+                    type: integer
+                    description: The rows that the action does not fit
+                  failed:
+                    type: integer
+                    description: The rows where qui refused the action or an error stopped it
+                  reasons:
+                    type: array
+                    items:
+                      type: string
+                    description: Each reason of a refusal once, for example a target that runs an old qBittorrent
+        '400':
+          description: An unknown action or filter, a retry with a filter, or a body that is not JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to list the Transfers behind the filter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/transfers/summary:
+    post:
+      tags:
+        - Transfers
+      summary: Plan a Transfer
+      description: >-
+        Plans the Transfer of the Transfer dialog with the checks of a start, and records, claims, and starts nothing.
+        The answer names the torrents of the group, their size, the way, the free space on the target, and warnings.
+        Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '200':
+          description: The plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferSummary'
+        '400':
+          description: The body is invalid, it does not name the source, the torrent, and the target, or it names an unknown way
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: qui refuses the Transfer, or another Transfer holds the torrent. The message says why.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to plan the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/transfers/{transferID}:
+    get:
+      tags:
+        - Transfers
+      summary: Get a Transfer
+      description: Returns one Transfer or Export to Instance run with its steps, its log, and its torrents. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/transferID'
+      responses:
+        '200':
+          description: The Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferDetail'
+        '400':
+          description: Invalid Transfer ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to read the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Transfers
+      summary: Remove a finished Transfer
+      description: >-
+        Removes the row of a finished Transfer or Export to Instance run before the 30 days are over. qui keeps
+        protecting each helper torrent of the run until the synced torrent list of its connected instance shows that
+        the helper torrent is gone. qui checks at the removal, and then once an hour. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/transferID'
+      responses:
+        '204':
+          description: The row is removed
+        '400':
+          description: Invalid Transfer ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The Transfer has not ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to remove the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/transfers/{transferID}/retry:
+    post:
+      tags:
+        - Transfers
+      summary: Retry a Transfer
+      description: >-
+        Runs a failed or cancelled Transfer or Export to Instance run again. A Transfer that waits for its retry runs
+        at once as the same Transfer. Any other starts again as a new Transfer or Export run with the same target and
+        choices, and the old row stays. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/transferID'
+      responses:
+        '202':
+          description: The run is recorded and waits for its turn
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                    description: The ID of the run, the same ID for a Transfer that waited for its retry
+        '400':
+          description: Invalid Transfer ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The Transfer did not fail and was not cancelled, or qui refuses the new Transfer. The message says why.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to retry the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/transfers/{transferID}/cancel:
+    post:
+      tags:
+        - Transfers
+      summary: Cancel a Transfer
+      description: >-
+        Stops a Transfer or Export to Instance run and takes back what it did: qui removes the files that it wrote and
+        the torrents that it added, and starts the source again. The cleanup runs in the background. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/transferID'
+      responses:
+        '202':
+          description: The cancel runs
+        '400':
+          description: Invalid Transfer ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The Transfer has ended, or the removal from the source has started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to cancel the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 
   /api/shares:
     post:
@@ -6958,7 +7286,7 @@ paths:
         Starts one Share for each torrent. qui builds a Share torrent with the same pieces and a new infohash, and adds
         it to the client of the instance on the same files, forced and in seed mode. The recipient gets the .torrent of
         the Share. A Share needs qBittorrent 5.1 or newer, a tracker in the Share settings, and a complete torrent.
-        Only a signed-in browser can use this route. The route is not available yet.
+        Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -7025,7 +7353,6 @@ paths:
       summary: List the Shares
       description: >-
         Lists every Share, the newest first. An ended Share stays 30 days. Only a signed-in browser can use this route.
-        The route is not available yet.
       security:
         - SessionAuth: []
       responses:
@@ -7051,7 +7378,7 @@ paths:
       summary: Get the Share settings
       description: >-
         Returns the settings of Settings → Shares: qui's own tracker, the outside tracker URL, the limits, and the
-        defaults for a new Share. Only a signed-in browser can use this route. The route is not available yet.
+        defaults for a new Share. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       responses:
@@ -7073,7 +7400,7 @@ paths:
       summary: Save the Share settings
       description: >-
         Saves the settings of Settings → Shares and moves qui's own tracker to the new port. Only a signed-in browser
-        can use this route. The route is not available yet.
+        can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -7117,7 +7444,6 @@ paths:
       summary: Remove an ended Share
       description: >-
         Removes the row of an ended Share before the 30 days are over. Only a signed-in browser can use this route.
-        The route is not available yet.
       security:
         - SessionAuth: []
       parameters:
@@ -7157,8 +7483,7 @@ paths:
       summary: Stop a Share
       description: >-
         Ends an active Share. qui removes the Share torrent from the client and never deletes files. While the client
-        is offline, the Share stays "ending" and qui retries. Only a signed-in browser can use this route. The route is
-        not available yet.
+        is offline, the Share stays "ending" and qui retries. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -7192,7 +7517,7 @@ paths:
       summary: Unlock a Share
       description: >-
         Lets the next downloader of an active Share with "Only the first downloader" get the address of the client.
-        Only a signed-in browser can use this route. The route is not available yet.
+        Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -7232,7 +7557,7 @@ paths:
       summary: Download the .torrent of a Share
       description: >-
         Returns the .torrent for the recipient of a Share again. Anyone who has it can download until the Share ends.
-        Only a signed-in browser can use this route. The route is not available yet.
+        Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:
@@ -8375,6 +8700,15 @@ components:
         header. Other clients should use an API key.
 
   parameters:
+    transferID:
+      name: transferID
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      description: The ID of the Transfer or Export to Instance run
     shareID:
       name: shareID
       in: path
@@ -8445,6 +8779,313 @@ components:
         error:
           type: string
 
+    TransferRequest:
+      type: object
+      required:
+        - sourceInstanceId
+        - hash
+        - targetInstanceId
+      properties:
+        sourceInstanceId:
+          type: integer
+          description: The instance that has the torrent
+        hash:
+          type: string
+          description: The infohash of the torrent on the source
+        targetInstanceId:
+          type: integer
+          description: The instance that gets the torrent
+        savePath:
+          type: string
+          description: The save path on the target. Empty is the save path that the target uses for the category, or the default save path of the target when the category is empty too.
+        category:
+          type: string
+          description: The category of the torrent on the target
+        tags:
+          type: array
+          items:
+            type: string
+          description: The tags of the torrent on the target
+        after:
+          type: string
+          enum:
+            - removeWithFiles
+            - keepFiles
+            - keepSeeding
+          default: removeWithFiles
+          description: >-
+            What happens to the torrent on the source after the Transfer. removeWithFiles keeps a file that
+            another torrent reads.
+        leaveStopped:
+          type: boolean
+          description: Keep the torrent stopped on the target
+        way:
+          type: string
+          enum:
+            - auto
+            - copy
+            - bittorrent
+          default: auto
+          description: >-
+            How the files move. auto lets qui pick: a copy through qui when qui reaches the files of a side on
+            its own disk, and else a Transfer torrent between the two qBittorrents, which falls back to a copy
+            over SSH when the clients do not connect. copy forces a copy through qui, which needs file access
+            to both instances. bittorrent forces a Transfer torrent.
+    TransferHint:
+      type: object
+      required:
+        - kind
+        - instanceId
+      properties:
+        kind:
+          type: string
+          enum:
+            - tcpAndUtp
+          description: tcpAndUtp is a client on "TCP and μTP"; "TCP only" passed a Transfer torrent about three times faster.
+        instanceId:
+          type: integer
+    TransferMember:
+      type: object
+      required:
+        - hash
+        - name
+        - targetInstanceId
+        - savePath
+        - category
+        - tags
+      properties:
+        hash:
+          type: string
+        name:
+          type: string
+        targetInstanceId:
+          type: integer
+          description: The Transfer target, or the Cross-seed instance of the target
+        savePath:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+    TransferSummary:
+      type: object
+      required:
+        - way
+        - bytes
+        - members
+        - free
+        - freeKnown
+        - noFileAccess
+        - stayOnSource
+        - hints
+      properties:
+        way:
+          type: string
+          enum:
+            - sftp
+            - local
+            - none
+            - bittorrent
+        bytes:
+          type: integer
+          format: int64
+          description: The size of the files of the group
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransferMember'
+        free:
+          type: integer
+          format: int64
+          description: The free space at the target folder, when freeKnown
+        freeKnown:
+          type: boolean
+          description: False when qui cannot read the free space, as before qBittorrent 5.3 away from the default save path
+        noFileAccess:
+          type: boolean
+          description: qui cannot see the files on the target, so a file with other content at the same path can be replaced
+        stayOnSource:
+          type: integer
+          description: >-
+            The cross-seeds that stay on the source. They read the files through hardlinks, and a Transfer torrent
+            makes no hardlinks on the target
+        hints:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransferHint'
+    TransferRow:
+      type: object
+      required:
+        - id
+        - kind
+        - way
+        - state
+        - startedBy
+        - ruleId
+        - ruleName
+        - sourceInstanceId
+        - targetInstanceId
+        - hash
+        - name
+        - torrents
+        - size
+        - after
+        - leaveStopped
+        - retryAt
+        - failureClass
+        - failureReason
+        - createdAt
+        - finishedAt
+        - hints
+        - progress
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+          enum:
+            - transfer
+            - export
+        way:
+          type: string
+          enum:
+            - sftp
+            - local
+            - none
+            - bittorrent
+            - ""
+          description: Empty for an Export run, which copies nothing
+        state:
+          type: string
+          enum:
+            - waiting
+            - copying
+            - checking
+            - finishing
+            - done
+            - failed
+            - cancelled
+        startedBy:
+          type: string
+          enum:
+            - user
+            - rule
+        ruleId:
+          type: integer
+          nullable: true
+        ruleName:
+          type: string
+          description: The name of the rule that started the run, empty when no rule did or the rule is gone
+        sourceInstanceId:
+          type: integer
+        targetInstanceId:
+          type: integer
+        hash:
+          type: string
+          description: The torrent of the request
+        name:
+          type: string
+        torrents:
+          type: integer
+          description: The torrents of the Transfer, the torrent of the request with its cross-seeds
+        size:
+          type: integer
+          format: int64
+          description: The size of the torrent of the request at the start of the Transfer, in bytes
+        after:
+          type: string
+        leaveStopped:
+          type: boolean
+        retryAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When a failure that waits for its retry runs again
+        failureClass:
+          type: string
+          enum:
+            - ''
+            - temporary
+            - permanent
+        failureReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        hints:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransferHint'
+        progress:
+          type: object
+          nullable: true
+          description: The bytes that reached the target while the files pass, null at any other time
+          required:
+            - done
+            - total
+            - speed
+          properties:
+            done:
+              type: integer
+              format: int64
+            total:
+              type: integer
+              format: int64
+            speed:
+              type: integer
+              format: int64
+              description: Bytes a second over the last 10 seconds
+    TransferDetail:
+      allOf:
+        - $ref: '#/components/schemas/TransferRow'
+        - type: object
+          required:
+            - steps
+            - log
+            - members
+          properties:
+            steps:
+              type: array
+              items:
+                type: object
+                required:
+                  - name
+                  - at
+                  - detail
+                properties:
+                  name:
+                    type: string
+                  at:
+                    type: string
+                    format: date-time
+                  detail:
+                    type: string
+            log:
+              type: array
+              items:
+                type: object
+                required:
+                  - at
+                  - message
+                properties:
+                  at:
+                    type: string
+                    format: date-time
+                  message:
+                    type: string
+                  hint:
+                    $ref: '#/components/schemas/TransferHint'
+            members:
+              type: array
+              items:
+                $ref: '#/components/schemas/TransferMember'
     Share:
       type: object
       properties:
@@ -9081,6 +9722,13 @@ components:
           description: How qui reaches this instance's torrent data. `remote` requires SSH credentials and a confirmed host-key pin.
         capabilities:
           $ref: '#/components/schemas/FilesystemCapabilities'
+        publicPeerAddress:
+          type: string
+          description: The host and port that the user set for other BitTorrent clients to reach this qBittorrent. Empty when the user set none.
+        resolvedPublicPeerAddress:
+          type: string
+          example: 203.0.113.7:51413
+          description: The address that qui uses for Transfers and Shares. It is `publicPeerAddress` when set, or else the external address and the listen port that a connected qBittorrent reports. Empty when qui has no address, and in the answer of a create or an update.
 
 
     FilesystemCapabilities:

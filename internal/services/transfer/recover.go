@@ -39,6 +39,9 @@ const (
 	// the hash of the member.
 	stepAdd   = "add"
 	stepAdded = "added"
+	// stepRename comes before the first rename of a file of a member on the
+	// target. It holds the hash of the member.
+	stepRename = "rename"
 	// stepAfter holds the hashes of the members that ran on the source
 	// before qui stopped them, as JSON, and nothing when the source keeps
 	// seeding.

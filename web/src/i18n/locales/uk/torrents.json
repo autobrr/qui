@@ -69,6 +69,8 @@
     "externalPrograms": "Зовнішні програми",
     "exportTorrent": "Експорт торента",
     "exportTorrents": "Експорт торентів ({{count}})",
+    "transferToInstance": "Перенести до екземпляра…",
+    "shareWithSomeone": "Поділитися з кимось…",
     "copy": "Копіювати...",
     "copyName": "Копіювати назву",
     "copyHash": "Копіювати хеш",

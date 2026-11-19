@@ -5,6 +5,9 @@
     "search": "Cerca",
     "crossSeed": "Cross-Seed",
     "automations": "Automatitzacions",
+    "transfers": "Transferències",
+    "transfersQueued_one": "{{count}} element en curs o en espera",
+    "transfersQueued_other": "{{count}} elements en curs o en espera",
     "backups": "Còpies de seguretat",
     "rss": "RSS",
     "settings": "Configuració",
@@ -434,7 +437,8 @@
     }
   },
   "labels": {
-    "path": "Camí"
+    "path": "Camí",
+    "beta": "Beta"
   },
   "kit": {
     "loadFailed": "Aquesta secció no s'ha pogut carregar.",

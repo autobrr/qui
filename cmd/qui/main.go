@@ -37,7 +37,6 @@ import (
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
@@ -857,9 +856,6 @@ func (app *Application) runServer() {
 	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
 	dirScanService.SetTransfers(transfers)
 
-	// Nothing starts a Transfer or a Share while the switch for Transfers and
-	// Shares is off.
-	switches := rollout.Production()
 	peerAddresses := peeraddress.New(instanceStore, syncManager)
 	transferService := transfer.NewService(context.Background(), transfer.Deps{
 		Store:      transfers,
@@ -870,10 +866,11 @@ func (app *Application) runServer() {
 		Routes:     crossSeedRoutes,
 		CrossSeeds: crossSeedService,
 		Peers:      peerAddresses,
+		Notifier:   notificationService,
 		Config:     transfer.DefaultConfig(),
 	})
-	// Export to Instance stays on its old path while the Export switch is off.
-	automationService.SetExportRunner(transferService, switches)
+	automationService.SetExportRunner(transferService)
+	automationService.SetTransferRunner(transferService)
 	// qui's own Share tracker listens only while a Share on it is active.
 	shareService := share.NewService(share.Deps{
 		Store:           share.NewStore(db),
@@ -883,7 +880,6 @@ func (app *Application) runServer() {
 		Instances:       instanceStore,
 		Sync:            syncManager,
 		Peers:           peerAddresses,
-		Switches:        switches,
 		Config:          share.DefaultConfig(),
 	})
 	syncManager.SetTorrentChangeGuard(shareService)
@@ -1066,7 +1062,6 @@ func (app *Application) runServer() {
 		ArrService:                       arrService,
 		ActivityHub:                      activityHub,
 		ShareService:                     shareService,
-		Switches:                         switches,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.

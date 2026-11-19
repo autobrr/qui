@@ -114,6 +114,7 @@ func (j *job) checkOnTarget(ctx context.Context, p *part) ([]qbt.PieceState, err
 		Hash:       helper.InfoHash,
 		Settings: torrentadd.Settings{
 			SavePath:             p.Placement.SavePath,
+			Tags:                 []string{TransferHelperTag},
 			ContentLayout:        qbt.ContentLayout(helper.ContentLayout),
 			Stopped:              new(false),
 			Forced:               true,
@@ -203,19 +204,15 @@ func (j *job) place(ctx context.Context) error {
 }
 
 // addMembers adds each member that the target or its Cross-seed instance
-// does not have yet, and waits for the check of each routed member.
+// does not have yet, and waits for the check of each routed member. Then it
+// turns Automatic Torrent Management on.
 func (j *job) addMembers(ctx context.Context) error {
 	var representative *part
 	for _, p := range j.parts {
 		if p.TargetInstanceID != j.target.ID {
 			continue
 		}
-		if !j.added(p) {
-			if err := j.add(ctx, p); err != nil {
-				return err
-			}
-		}
-		if err := j.rename(ctx, p); err != nil {
+		if err := j.addOnTarget(ctx, p); err != nil {
 			return err
 		}
 		if representative == nil {
@@ -234,6 +231,32 @@ func (j *job) addMembers(ctx context.Context) error {
 		if err := j.crossSeedChecked(ctx, p); err != nil {
 			return err
 		}
+	}
+	return j.manage(ctx)
+}
+
+// addOnTarget adds the member on the target when the target does not have it
+// yet, and leaves it complete there, at the file names of the source.
+func (j *job) addOnTarget(ctx context.Context, p *part) error {
+	complete := false
+	if !j.added(p) {
+		var err error
+		if complete, err = j.add(ctx, p); err != nil {
+			return err
+		}
+	}
+	if err := j.rename(ctx, p); err != nil {
+		return err
+	}
+	switch {
+	case j.reachedFor(stepRename, p.Hash):
+		// Seed mode takes a file that a rename moved on trust, in this run
+		// and in each later one. Only a check of the bytes proves it.
+		j.logf("%s checks the files of %s after their rename.", j.target.Name, j.the(p, "the"))
+		return j.recheck(ctx, p)
+	case !complete:
+		// A member from an earlier run can miss its files on the target.
+		return j.check(ctx, p)
 	}
 	return nil
 }
@@ -314,10 +337,12 @@ func (j *job) sameFile(ctx context.Context, a, b string) (bool, error) {
 // add adds the member on the target, stopped and in seed mode. qui records
 // that the target did not have it before the add, and that the target took
 // it after the answer. Without an answer, a torrent on the target may be
-// qui's or the user's.
-func (j *job) add(ctx context.Context, p *part) error {
+// qui's or the user's. It reports whether the target shows the member
+// complete: the target misses the files of a member whose names no layout
+// gives, until the rename and the check after it.
+func (j *job) add(ctx context.Context, p *part) (complete bool, err error) {
 	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash); err != nil {
-		return err
+		return false, err
 	}
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.Add(ctx, torrentadd.Request{
@@ -339,15 +364,65 @@ func (j *job) add(ctx context.Context, p *part) error {
 	})
 	if res.Failure == torrentadd.AddRefused {
 		if onTarget, err := j.svc.has(ctx, j.target.ID, p.Hash); err == nil && onTarget {
-			return j.ownershipUnknown(p)
+			return false, j.ownershipUnknown(p)
 		}
-		return temporary("%s did not take %s: %s", j.target.Name, j.the(p, "the"), describe(res))
+		return false, temporary("%s did not take %s: %s", j.target.Name, j.the(p, "the"), describe(res))
 	}
 	if err := j.stepWith(ctx, StateFinishing, stepAdded, p.Hash); err != nil {
+		return false, err
+	}
+	if res.Outcome != torrentadd.Verified && res.Failure != torrentadd.MissingFiles {
+		return false, temporary("%s did not take %s: %s", j.target.Name, j.the(p, "the"), describe(res))
+	}
+	return res.Outcome == torrentadd.Verified, nil
+}
+
+// check makes sure that the target shows the member complete, and has the
+// target check its files when it does not.
+func (j *job) check(ctx context.Context, p *part) error {
+	req := torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: 1, PollInterval: j.svc.deps.Config.PollInterval}
+	if res := j.svc.adder.Confirm(ctx, req); res.Outcome == torrentadd.Verified {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	j.logf("%s does not show %s complete after the add, so it checks the files.", j.target.Name, j.the(p, "the"))
+	return j.recheck(ctx, p)
+}
+
+// recheck has the target check the files of the member, and fails when a
+// piece does not pass. The member stays stopped.
+func (j *job) recheck(ctx context.Context, p *part) error {
+	cfg := j.svc.deps.Config
+	res := j.svc.adder.Recheck(ctx, torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: cfg.CheckPolls, PollInterval: cfg.PollInterval})
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if res.Outcome != torrentadd.Verified {
-		return temporary("%s did not take %s: %s", j.target.Name, j.the(p, "the"), describe(res))
+		return temporary("The check of %s on %s did not pass: %s", j.the(p, "the"), j.target.Name, describe(res))
+	}
+	return nil
+}
+
+// manage turns Automatic Torrent Management on for the members that the
+// target manages. Each add put its member on manual management at the folder
+// of its files, so that the target found them there. A target that saves the
+// category elsewhere by now moves the files itself, so this comes after the
+// last add, in one request: the members move together.
+func (j *job) manage(ctx context.Context) error {
+	var hashes []string
+	for _, p := range j.parts {
+		if p.Placement.AutoTMM {
+			hashes = append(hashes, p.Hash)
+		}
+	}
+	if len(hashes) == 0 {
+		return nil
+	}
+	err := j.svc.deps.Sync.SetAutoTMM(qbittorrent.WithPostAddBulkActionRetry(ctx), j.target.ID, hashes, true)
+	if err != nil {
+		return temporary("qui cannot turn on Automatic Torrent Management for %s on %s: %v", j.torrents("the"), j.target.Name, err)
 	}
 	return nil
 }
@@ -416,7 +491,7 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 // finds every piece of the member, also when a stop came during the wait.
 func (j *job) crossSeedChecked(ctx context.Context, p *part) error {
 	cfg := j.svc.deps.Config
-	res := j.svc.adder.Confirm(ctx, torrentadd.Request{
+	res := j.svc.adder.ConfirmRecheck(ctx, torrentadd.Request{
 		InstanceID:   j.crossSeed.ID,
 		Hash:         p.Hash,
 		Polls:        cfg.CheckPolls,
@@ -468,36 +543,62 @@ func commonRoot(names []string) string {
 
 // rename gives each file of the member on the target the name that it has
 // on the source. A file at an old name is a conflict: qBittorrent would move
-// it over the copy.
+// it over the copy. qBittorrent lists a new name some time after it takes
+// the rename, and refuses a second rename from the old name, so qui sends
+// each rename once and then waits for the names. It records that it sends
+// renames for the member before the first one.
 func (j *job) rename(ctx context.Context, p *part) error {
 	ctx = qbittorrent.WithPostAddBulkActionRetry(ctx)
 	want := names(p.plan)
-	for range 2 {
+	sent := false
+	for poll := range j.svc.deps.Config.Polls {
+		// The first list after the renames comes at once.
+		if poll > 1 {
+			if err := j.pause(ctx, poll); err != nil {
+				return err
+			}
+		}
 		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.target.ID, p.Hash)
 		if err != nil || files == nil || len(*files) != len(want) {
 			return temporary("qui cannot read the files of the torrent on %s: %v", j.target.Name, err)
 		}
 		listed := slices.SortedFunc(slices.Values(*files), func(a, b qbt.TorrentFile) int { return cmp.Compare(a.Index, b.Index) })
-		renamed := false
-		for i, f := range listed {
-			if f.Name == want[i] {
-				continue
-			}
-			if !j.blind {
-				if err := j.noFileAtOldName(ctx, path.Join(p.dir, f.Name), path.Join(p.dir, want[i])); err != nil {
-					return err
-				}
-			}
-			if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
-				return temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)
-			}
-			renamed = true
-		}
-		if !renamed {
+		if slices.EqualFunc(listed, want, func(f qbt.TorrentFile, name string) bool { return f.Name == name }) {
 			return nil
 		}
+		if sent {
+			continue
+		}
+		if err := j.sendRenames(ctx, p, listed, want); err != nil {
+			return err
+		}
+		sent = true
 	}
 	return temporary("The file names of the torrent on %s differ from the source.", j.target.Name)
+}
+
+// sendRenames sends a rename for each file of the member that the target
+// lists at another name than want.
+func (j *job) sendRenames(ctx context.Context, p *part, listed []qbt.TorrentFile, want []string) error {
+	if !j.reachedFor(stepRename, p.Hash) {
+		if err := j.stepWith(ctx, StateFinishing, stepRename, p.Hash); err != nil {
+			return err
+		}
+	}
+	for i, f := range listed {
+		if f.Name == want[i] {
+			continue
+		}
+		if !j.blind {
+			if err := j.noFileAtOldName(ctx, path.Join(p.dir, f.Name), path.Join(p.dir, want[i])); err != nil {
+				return err
+			}
+		}
+		if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
+			return temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)
+		}
+	}
+	return nil
 }
 
 // noFileAtOldName fails when a file is at the old name of a rename on the

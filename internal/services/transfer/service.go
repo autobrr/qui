@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/peeraddress"
 )
 
@@ -93,6 +94,8 @@ type Deps struct {
 	// Peers gives the addresses at which the two clients of a Transfer
 	// torrent reach each other. Nil reads them with peeraddress.
 	Peers PeerAddresses
+	// Notifier gets the event of each end of a Transfer. Nil sends none.
+	Notifier notifications.Notifier
 	// Now is the clock of the steps and the log. Nil is time.Now.
 	Now    func() time.Time
 	Config Config
@@ -122,6 +125,15 @@ type Service struct {
 	reserved, freed map[int]int64
 	// exports holds a place for each Export run that runs.
 	exports chan struct{}
+	// purged is when qui last removed the rows that finished more than
+	// keepFinished ago.
+	purged time.Time
+	// rollingBack lets one rollback that Cancel starts run at a time, so
+	// that a cancel of many Transfers does not send all their cleanups to
+	// the instances at once. The rollback of a run that a cancel stopped
+	// does not wait for it: the next Transfers of its source wait for that
+	// rollback.
+	rollingBack sync.Mutex
 }
 
 // run is a Transfer that the Service holds.
@@ -131,6 +143,8 @@ type run struct {
 	cancelled bool
 	// committed is set once a cancel no longer rolls the Transfer back.
 	committed bool
+	// meter counts the bytes of a Transfer that runs.
+	meter *meter
 }
 
 // NewService returns a Service whose Transfers stop when ctx ends or at
@@ -157,6 +171,7 @@ func NewService(ctx context.Context, deps Deps) *Service {
 		freed:    map[int]int64{},
 		exports:  make(chan struct{}, exportsAtATime),
 	}
+	s.purge()                           //nolint:contextcheck // the Service runs on its own context, s.ctx
 	s.wake(true)                        //nolint:contextcheck // the Service runs on its own context, s.ctx
 	go s.tick(deps.Config.WakeInterval) //nolint:contextcheck // the Service runs on its own context, s.ctx
 	return s
@@ -175,6 +190,9 @@ func (s *Service) tick(interval time.Duration) {
 		case <-ticks:
 			if s.deps.Store.HasClaims() {
 				s.Wake()
+			}
+			if s.deps.Now().Sub(s.purged) >= purgeInterval {
+				s.purge()
 			}
 		}
 	}
@@ -253,15 +271,53 @@ func (s *Service) Start(ctx context.Context, req Request) (int64, error) {
 	if s.ctx.Err() != nil {
 		return 0, errShutdown
 	}
-	record, err := s.check(ctx, req)
+	plan, err := s.check(ctx, req)
 	if err != nil {
 		return 0, err
 	}
+	record := plan.record
 	if err := s.deps.Store.Create(ctx, record); err != nil {
 		return 0, err
 	}
 	s.enqueue(record) //nolint:contextcheck // the Transfer outlives the request and runs in the context of the Service
 	return record.ID, nil
+}
+
+// Preview is the Transfer that Start would start.
+type Preview struct {
+	Way Way
+	// Bytes is the size of the files of the Shared-file group, a file that
+	// two members read at one path once.
+	Bytes   int64
+	Members []Member
+	// Stay counts the cross-seeds that stay on the source: they read the
+	// files through hardlinks, and a Transfer torrent makes no hardlinks.
+	Stay int
+	// Versions holds the hashes of those that have the same files as the
+	// torrent of the request, for a request of a rule. The rule starts no
+	// Transfer of them while this one runs.
+	Versions []string
+}
+
+// Preview runs the checks of Start, with its refusals, and records and claims
+// nothing.
+func (s *Service) Preview(ctx context.Context, req Request) (*Preview, error) {
+	plan, err := s.check(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	record := plan.record
+	for _, m := range record.Members {
+		if s.deps.Store.IsClaimed(record.SourceInstanceID, m.Hash) {
+			return nil, fmt.Errorf("%w: %s on instance %d", ErrClaimed, m.Hash, record.SourceInstanceID)
+		}
+	}
+	files, err := s.deps.Files.GetBackend(ctx, record.SourceInstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("read the files of instance %d: %w", record.SourceInstanceID, err)
+	}
+	return &Preview{Way: record.Way, Bytes: groupBytes(files.Paths(), plan.group), Members: record.Members,
+		Stay: len(plan.stay), Versions: plan.versions}, nil
 }
 
 func (s *Service) enqueue(r *Record) {
@@ -294,10 +350,11 @@ func (s *Service) drain(sourceID int) {
 		}
 		id := queue[0]
 		ctx, cancel := context.WithCancel(s.ctx)
-		s.runs[id].cancel = cancel
+		m := &meter{now: s.deps.Now}
+		s.runs[id].cancel, s.runs[id].meter = cancel, m
 		s.mu.Unlock()
 
-		s.runOne(ctx, id)
+		s.runOne(ctx, id, m)
 		cancel()
 
 		s.mu.Lock()
@@ -314,7 +371,7 @@ func (s *Service) drain(sourceID int) {
 	}
 }
 
-func (s *Service) runOne(ctx context.Context, id int64) {
+func (s *Service) runOne(ctx context.Context, id int64, m *meter) {
 	record, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
@@ -324,8 +381,17 @@ func (s *Service) runOne(ctx context.Context, id int64) {
 		return
 	}
 	j := s.newJob(record)
+	j.meter = m
 	if j.reached(stepCleanUp) {
 		j.cleanUpAgain(ctx)
+		return
+	}
+	// A cancel with nothing to take back saves its state, and then ends the
+	// Transfer. A stop of qui between the two writes leaves only the end.
+	if record.State == StateCancelled {
+		if err := s.deps.Store.Finish(ctx, id, StateCancelled); err != nil {
+			log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot finish the Transfer")
+		}
 		return
 	}
 	err = j.run(ctx)
@@ -342,17 +408,14 @@ func (s *Service) runOne(ctx context.Context, id int64) {
 
 // Cancel stops a Transfer and takes back what it did: it removes the files
 // that qui wrote and the torrents that qui added, and starts the source
-// again. The cleanup runs in the background. Once the removal of the
-// torrent from the source started, Cancel returns ErrCancelTooLate.
+// again. The cleanup runs in the background. The cancel of a Transfer that
+// does not run is saved when Cancel returns, so a restart of qui keeps it.
+// Once the removal of the torrent from the source started, Cancel returns
+// ErrCancelTooLate, and once an Export run records its end, ErrFinished.
 func (s *Service) Cancel(ctx context.Context, id int64) error {
-	record, err := s.deps.Store.Get(ctx, id)
-	switch {
-	case err != nil:
+	record, err := s.current(ctx, id)
+	if err != nil {
 		return err
-	case !record.FinishedAt.IsZero():
-		return ErrFinished
-	case s.newJob(record).reached(stepRemoveFromSource):
-		return ErrCancelTooLate
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -360,9 +423,26 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 		return errShutdown
 	}
 	r, held := s.runs[id]
+	if !held {
+		// The run may have ended since the read above: it leaves s.runs only
+		// after it saved its end.
+		if record, err = s.current(ctx, id); err != nil {
+			return err
+		}
+	}
 	switch {
-	case !held:
+	case !held && record.Kind == KindExport:
 		s.runs[id] = &run{cancelled: true}
+		s.wg.Go(func() {
+			(&exportJob{job: s.newJob(record), ruleName: record.Steps[0].Detail}).cancel(context.WithoutCancel(ctx))
+			s.mu.Lock()
+			delete(s.runs, id)
+			s.mu.Unlock()
+		})
+		return nil
+	case !held:
+	case r.committed && record.Kind == KindExport:
+		return ErrFinished
 	case r.committed:
 		return ErrCancelTooLate
 	case r.cancelled:
@@ -371,7 +451,14 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 		r.cancelled = true
 		r.cancel()
 		return nil
-	default:
+	}
+	ended := false
+	if record.Kind == KindTransfer {
+		if ended, err = s.keepCancel(ctx, record); err != nil {
+			return err
+		}
+	}
+	if held {
 		r.cancelled = true
 		// An Export run is held but sits in no queue: a source key without
 		// a worker would stop the next Transfer of the source.
@@ -379,8 +466,48 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 			s.queues[record.SourceInstanceID] = slices.DeleteFunc(queue, func(queued int64) bool { return queued == id })
 		}
 	}
-	s.wg.Go(func() { s.rollBack(context.WithoutCancel(ctx), id) })
+	if ended {
+		delete(s.runs, id)
+		return nil
+	}
+	if !held {
+		s.runs[id] = &run{cancelled: true}
+	}
+	s.wg.Go(func() {
+		s.rollingBack.Lock()
+		defer s.rollingBack.Unlock()
+		s.rollBack(context.WithoutCancel(ctx), id)
+	})
 	return nil
+}
+
+// current reads the record of a Transfer that a cancel can still stop.
+func (s *Service) current(ctx context.Context, id int64) (*Record, error) {
+	record, err := s.deps.Store.Get(ctx, id)
+	switch {
+	case err != nil:
+		return nil, err
+	case !record.FinishedAt.IsZero():
+		return nil, ErrFinished
+	case s.newJob(record).reached(stepRemoveFromSource):
+		return nil, ErrCancelTooLate
+	}
+	return record, nil
+}
+
+// keepCancel saves the cancel of a Transfer that does not run, so that a
+// stop of qui after Cancel answers cannot lose it. A Transfer that changed
+// nothing yet ends, and keepCancel reports ended. Another one records its
+// cleanup, which the rollback runs, or the next start of qui.
+func (s *Service) keepCancel(ctx context.Context, record *Record) (ended bool, err error) {
+	j := s.newJob(record)
+	j.logf("Cancelled.")
+	if !j.reached(stepPrepare) {
+		return true, j.finish(ctx, StateCancelled)
+	}
+	record.State, record.RetryAt = StateCancelled, time.Time{}
+	record.Steps = append(record.Steps, Step{Name: stepCleanUp, At: s.deps.Now()})
+	return false, s.deps.Store.Save(ctx, record)
 }
 
 // rollBack takes back what a cancelled Transfer did that does not run.
@@ -395,9 +522,15 @@ func (s *Service) rollBack(ctx context.Context, id int64) {
 		log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
 		return
 	}
-	if record.FinishedAt.IsZero() {
-		s.newJob(record).rollBack(ctx)
+	if !record.FinishedAt.IsZero() {
+		return
 	}
+	j := s.newJob(record)
+	if j.reached(stepCleanUp) {
+		j.cleanUpAgain(ctx)
+		return
+	}
+	j.rollBack(ctx)
 }
 
 func (s *Service) cancelled(id int64) bool {

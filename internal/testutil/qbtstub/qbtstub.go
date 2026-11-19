@@ -7,6 +7,7 @@
 package qbtstub
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io"
@@ -79,6 +80,10 @@ type Torrent struct {
 
 	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
+	// staleNames are the file names from before the last renames, which the
+	// next staleLists torrents/files answers still give.
+	staleNames []string
+	staleLists int
 	// add is set for a torrent that came in through torrents/add.
 	add *added
 }
@@ -91,6 +96,8 @@ type Server struct {
 	rid        int
 	torrents   map[string]*Torrent
 	categories map[string]string
+	// addedTags holds the tags that each torrents/add gave a torrent.
+	addedTags map[string][]string
 	// downloadPaths holds each category's download path option, with no
 	// entry when the category inherits it.
 	downloadPaths map[string]*qbt.CategoryDownloadPath
@@ -115,6 +122,14 @@ type Server struct {
 	DownloadPathOff bool
 	// SubcategoriesOff reports use_subcategories turned off.
 	SubcategoriesOff bool
+	// AutoManagement reports auto_tmm_enabled turned on: the default
+	// torrent management mode is Automatic.
+	AutoManagement bool
+	// RefreshInterval is reported as the refresh_interval preference, in
+	// milliseconds, 1 without a value. StaleSyncs is how many syncs after a
+	// recheck still report the state from before it, 1 without a value.
+	RefreshInterval int
+	StaleSyncs      int
 	// Platform, when set, makes app/buildInfo answer with this build
 	// platform. Without it the endpoint answers 404.
 	Platform string
@@ -134,6 +149,11 @@ type Server struct {
 	// PartialUpdates answers a sync with a nonzero rid as a partial update, as
 	// qBittorrent does. Without it, each sync is a full update.
 	PartialUpdates bool
+	// LeaveOutNew makes a partial update send a torrent that the last full
+	// update did not list without its added_on, as qBittorrent before
+	// 5.3.0rc1 does after it lost a sync response. qui leaves such a torrent
+	// out of its cache until the next full update.
+	LeaveOutNew bool
 	// FailSyncs makes the first FailSyncs sync/maindata requests answer 500.
 	FailSyncs int
 	// CheckSyncs is how many syncs a check of an added torrent reports
@@ -142,6 +162,10 @@ type Server struct {
 	// ListAfterSyncs is how many syncs leave out a torrent after its add, as
 	// qBittorrent lists a new torrent only once libtorrent added it.
 	ListAfterSyncs int
+	// StaleFileLists is how many torrents/files answers after a rename
+	// still give the names from before it, as qBittorrent lists a new name
+	// only once libtorrent renamed the file.
+	StaleFileLists int
 	// HashCheck makes a check of an added torrent hash each piece against
 	// its .torrent. Without it, a file passes when its size is right.
 	HashCheck bool
@@ -158,6 +182,9 @@ type Server struct {
 	// with its endpoint, such as torrents/stop. It runs under the lock of
 	// the stub.
 	OnWrite func(endpoint string)
+	// OnSync, when set, runs for each sync/maindata request before the stub
+	// answers it. It runs under the lock of the stub.
+	OnSync func()
 	// ListenPort is reported as the listen_port preference. qBittorrent
 	// reports 0 when it picks a random port.
 	ListenPort int
@@ -187,11 +214,13 @@ type Server struct {
 	versionReads int
 	// freeSpacePath is the path of the last app/getFreeSpaceAtPath request.
 	freeSpacePath string
+	// listed holds the hashes of the last full update.
+	listed map[string]bool
 }
 
 // New starts a stub whose default save path is savePath.
 func New(t *testing.T, savePath string) *Server {
-	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
+	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, addedTags: map[string][]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
 		savePath: savePath, calls: map[string]int{}, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{},
 		params: map[string]url.Values{}, synced: map[int]chan struct{}{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
@@ -251,6 +280,14 @@ func (s *Server) SetDefaultSavePath(p string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.savePath = p
+}
+
+// SetRefreshInterval changes the refresh_interval preference, in
+// milliseconds, as an edit in qBittorrent's own WebUI does.
+func (s *Server) SetRefreshInterval(ms int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.RefreshInterval = ms
 }
 
 // DefaultSavePath returns the reported default save path.
@@ -371,6 +408,14 @@ func (s *Server) Tags(hash string) []string {
 	return slices.Sorted(slices.Values(s.torrents[hash].Tags))
 }
 
+// AddedTags returns the sorted tags that torrents/add gave a torrent, also
+// after the torrent left the stub.
+func (s *Server) AddedTags(hash string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Sorted(slices.Values(s.addedTags[hash]))
+}
+
 // LastBody is the raw body of the last write to an endpoint.
 func (s *Server) LastBody(endpoint string) string {
 	s.mu.Lock()
@@ -456,6 +501,10 @@ func (s *Server) fileNames(t *Torrent) []string {
 
 func (s *Server) apiFiles(t *Torrent) []map[string]any {
 	names := s.fileNames(t)
+	if t.staleLists > 0 {
+		t.staleLists--
+		names = t.staleNames
+	}
 	out := make([]map[string]any, 0, len(names))
 	for i, name := range names {
 		size, priority := int64(1), 1
@@ -512,8 +561,12 @@ func (s *Server) FinishMoves() {
 }
 
 func (s *Server) relocate(from, to *Torrent) {
-	old := s.diskFiles(from)
-	for i, f := range s.diskFiles(to) {
+	old, files := s.diskFiles(from), s.diskFiles(to)
+	// qBittorrent starts no move to the folder where the content is.
+	if slices.Equal(old, files) {
+		return
+	}
+	for i, f := range files {
 		assert.NoError(s.t, os.MkdirAll(filepath.Dir(f), 0o755))
 		assert.NoError(s.t, os.Rename(old[i], f))
 	}
@@ -624,13 +677,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			downloadPath = join(s.savePath, "incomplete")
 		}
 		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": downloadPath,
-			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "torrent_changed_tmm_enabled": true,
+			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "auto_tmm_enabled": s.AutoManagement, "torrent_changed_tmm_enabled": true,
 			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs, "listen_port": s.ListenPort,
-			"bittorrent_protocol": s.BittorrentProtocol})
+			"bittorrent_protocol": s.BittorrentProtocol, "refresh_interval": cmp.Or(s.RefreshInterval, 1)})
 	case "sync/maindata":
 		s.syncs++
 		if ch, ok := s.synced[s.syncs]; ok {
 			close(ch)
+		}
+		if s.OnSync != nil {
+			s.OnSync()
 		}
 		if s.syncs <= s.FailSyncs {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -665,7 +721,17 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				row["state"] = state
 			}
 			if t.add != nil {
-				row["downloaded"], row["amount_left"] = t.add.downloaded, t.add.amountLeft()
+				var size int64
+				for _, n := range t.add.sizes {
+					size += n
+				}
+				row["size"], row["amount_left"] = size, t.add.amountLeft()
+				if t.add.allTimeLate > 0 {
+					t.add.allTimeLate--
+				} else {
+					t.add.allTime = t.add.downloaded
+				}
+				row["downloaded"], row["downloaded_session"] = t.add.allTime, t.add.downloaded
 			}
 			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
 				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata
@@ -682,6 +748,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			categories[name] = s.categoryJSON(name)
 		}
 		full := !s.PartialUpdates || param("rid") == "0"
+		if full {
+			s.listed = map[string]bool{}
+			for h := range torrents {
+				s.listed[h] = true
+			}
+		} else if s.LeaveOutNew {
+			for h, row := range torrents {
+				if !s.listed[h] {
+					delete(row.(map[string]any), "added_on")
+				}
+			}
+		}
 		writeJSON(w, map[string]any{"rid": s.rid, "full_update": full, "torrents": torrents, "categories": categories,
 			"server_state": map[string]any{"connection_status": "connected",
 				"last_external_address_v4": s.externalV4, "last_external_address_v6": s.externalV6, "free_space_on_disk": s.FreeSpace}})

@@ -6,6 +6,7 @@
 package torrentadd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -116,6 +117,9 @@ const (
 	Errored
 	// Cancelled: ctx ended during the polls.
 	Cancelled
+	// CheckNotSeen: the polls after a recheck ran out while the state could
+	// still be the one from before it.
+	CheckNotSeen
 )
 
 // Result is the outcome of an add. Torrent is what the last poll read, nil
@@ -130,10 +134,17 @@ type Result struct {
 // final reports whether more polls cannot change the result. With the stop
 // condition "files checked", a stopped torrent has ended its check.
 func (r Result) final(s Settings) bool {
-	if s.StopWhenFilesChecked && r.Torrent != nil && r.Outcome == Accepted && stopped(r.Torrent.State) {
+	if s.StopWhenFilesChecked && r.checkedAndStopped() {
 		return true
 	}
 	return r.Outcome == Verified || r.Failure == MissingFiles || r.Failure == Errored
+}
+
+// checkedAndStopped reports whether the torrent is stopped and incomplete,
+// as it is after a check that found pieces missing, when qBittorrent stops
+// the torrent at the end of the check.
+func (r Result) checkedAndStopped() bool {
+	return r.Torrent != nil && r.Outcome == Accepted && stopped(r.Torrent.State)
 }
 
 func stopped(state qbt.TorrentState) bool {
@@ -249,6 +260,72 @@ func (s Settings) options() map[string]string {
 // Confirm polls fresh syncs until the torrent is verified or failed, or the
 // polls run out, as Add does after its add. req.Torrent is not used.
 func (a *Adder) Confirm(ctx context.Context, req Request) Result {
+	return a.confirm(ctx, req, func(_ int, res Result) bool { return res.final(req.Settings) })
+}
+
+// staleRefreshes is how many status refreshes of qBittorrent can still report
+// the state from before a recheck. qBittorrent recomputes the state that it
+// reports only at a refresh, and a refresh that began before the recheck can
+// end after it.
+const staleRefreshes = 2
+
+// defaultRefreshInterval is the status refresh interval of qBittorrent in
+// milliseconds, for a qBittorrent that does not report its own.
+const defaultRefreshInterval = 1500
+
+// stalePolls is how many polls of req after a recheck can still read the
+// state from before it. The count follows the status refresh interval of the
+// instance, which the user can set far above the default. It reads the
+// interval from qBittorrent, not from the cache of the preferences, which can
+// hold a lower one.
+func (a *Adder) stalePolls(ctx context.Context, req Request) (int, error) {
+	client, err := a.sync.GetClient(ctx, req.InstanceID)
+	if err != nil {
+		return 0, fmt.Errorf("read the status refresh interval: %w", err)
+	}
+	prefs, err := client.GetAppPreferencesCtx(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("read the status refresh interval: %w", err)
+	}
+	refresh := time.Duration(cmp.Or(prefs.RefreshInterval, defaultRefreshInterval)) * time.Millisecond
+	return int(staleRefreshes*refresh/req.PollInterval) + 1, nil
+}
+
+// Recheck checks the files of a stopped torrent, and waits for the check as
+// ConfirmRecheck does. The torrent stays stopped.
+func (a *Adder) Recheck(ctx context.Context, req Request) Result {
+	if err := a.sync.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), req.InstanceID, []string{req.Hash}, "recheck"); err != nil {
+		return Result{Failure: AfterAddFailed, Err: err}
+	}
+	return a.ConfirmRecheck(ctx, req)
+}
+
+// ConfirmRecheck polls fresh syncs until the recheck that a stopped torrent
+// just got ends, or the polls run out. Verified says that the check found
+// every piece. Of req, it uses InstanceID, Hash, Polls, and PollInterval.
+func (a *Adder) ConfirmRecheck(ctx context.Context, req Request) Result {
+	stale, err := a.stalePolls(ctx, req)
+	if err != nil {
+		return Result{Failure: PollFailed, Err: err}
+	}
+	checking, accepted := false, false
+	res := a.confirm(ctx, req, func(poll int, res Result) bool {
+		checking = checking || res.Outcome == Checking
+		// A state that is not a check can be the one from before the
+		// recheck, also a complete one.
+		accepted = (checking || poll >= stale) && res.final(Settings{StopWhenFilesChecked: true})
+		return accepted
+	})
+	if res.Outcome == Verified && !accepted {
+		return Result{Failure: CheckNotSeen, Torrent: res.Torrent,
+			Err: fmt.Errorf("qBittorrent showed no result of the check within %s", time.Duration(req.Polls)*req.PollInterval)}
+	}
+	return res
+}
+
+// confirm polls until final says that the result of a poll, counted from 0,
+// cannot change.
+func (a *Adder) confirm(ctx context.Context, req Request, final func(poll int, res Result) bool) Result {
 	owner, err := a.sync.GetSyncOwner(ctx, req.InstanceID)
 	if err != nil {
 		return Result{Failure: PollFailed, Err: fmt.Errorf("unable to get sync manager: %w", err)}
@@ -263,7 +340,7 @@ func (a *Adder) Confirm(ctx context.Context, req Request) Result {
 			}
 		}
 		res = a.poll(ctx, owner, req)
-		if res.final(req.Settings) {
+		if final(poll, res) {
 			return res
 		}
 	}

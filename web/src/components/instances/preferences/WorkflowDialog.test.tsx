@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { Automation, FilesystemCapabilities, RuleCondition } from "@/types"
+import type { Automation, FilesystemCapabilities, RuleCondition, TransferToInstanceAction } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string) => key
@@ -214,7 +214,7 @@ async function optionLabels(trigger: HTMLElement) {
 }
 
 // Labels in actionRunOrder, without delete.
-const combinableLabels = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance"]
+const combinableLabels = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance", "transferToInstance"]
   .map(action => key(`actions.${action}`))
 
 describe("WorkflowDialog action order", () => {
@@ -235,10 +235,11 @@ describe("WorkflowDialog action order", () => {
         move: { enabled: true, path: "/moved" },
         externalProgram: { enabled: true, programId: 1 },
         exportToInstance: { enabled: true, targetInstanceId: 2, savePath: "" },
+        transferToInstance: { enabled: true, targetInstanceId: 3, savePath: "" },
       },
     })
 
-    const headings = ["actions.speedLimits", "actions.shareLimits", "actions.pause", "actions.resume", "actions.recheck", "actions.reannounce", "actions.autoManagement", "tag.title", "actions.category", "actions.move", "actions.externalProgram", "export.title"]
+    const headings = ["actions.speedLimits", "actions.shareLimits", "actions.pause", "actions.resume", "actions.recheck", "actions.reannounce", "actions.autoManagement", "tag.title", "actions.category", "actions.move", "actions.externalProgram", "export.title", "transfer.title"]
       .map(suffix => screen.getByText(key(suffix)))
     const inDomOrder = [...headings].sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)
     expect(inDomOrder.map(heading => heading.textContent)).toEqual(headings.map(heading => heading.textContent))
@@ -256,6 +257,54 @@ describe("WorkflowDialog action order", () => {
     const client = renderDialog(rule)
 
     expect(await optionLabels(screen.getByText(key("actions.addAction")))).toEqual(combinableLabels.filter(label => label !== key("actions.pause")))
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog Transfer to Instance", () => {
+  const renderRule = (conditions: Automation["conditions"]) => {
+    mocks.instancesQuery.data = [{ id: 1, name: "Source", capabilities: noCapabilities }, { id: 2, name: "Archive", capabilities: noCapabilities }]
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={{ ...rule, conditions }} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    return client
+  }
+  afterEach(() => {
+    mocks.instancesQuery.data = []
+  })
+
+  it("saves each field of the action as the rule has it", async () => {
+    mocks.save.mockResolvedValue({})
+    const transferToInstance: TransferToInstanceAction = {
+      enabled: true, targetInstanceId: 2, savePath: "/archive/{{ .Category }}", category: "linux", tags: ["moved", "old"],
+      after: "keepFiles", leaveStopped: true, way: "copy",
+    }
+    const client = renderRule({ schemaVersion: "1", transferToInstance })
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    expect(mocks.save.mock.calls[0][2].conditions.transferToInstance).toEqual(transferToInstance)
+    client.clear()
+  })
+
+  it("asks for a target instance before a save", async () => {
+    // Radix scrolls focused select options; jsdom has no layout.
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
+    const client = renderRule({ schemaVersion: "1", pause: { enabled: true } })
+
+    fireEvent.keyDown(screen.getByText(key("actions.addAction")), { key: "ArrowDown" })
+    fireEvent.click(await screen.findByRole("option", { name: key("actions.transferToInstance") }))
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    expect(mocks.error).toHaveBeenCalledWith(key("toast.selectTargetInstance"))
+    expect(mocks.save).not.toHaveBeenCalled()
     client.clear()
   })
 })

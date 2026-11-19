@@ -14,19 +14,20 @@ func TestActionConditionsConditions(t *testing.T) {
 	cond := func(field ConditionField) *RuleCondition { return &RuleCondition{Field: field} }
 
 	ac := &ActionConditions{
-		SpeedLimits:      &SpeedLimitAction{Enabled: true, Condition: cond(FieldName)},
-		ShareLimits:      &ShareLimitsAction{Condition: cond(FieldRatio)},
-		Pause:            &PauseAction{Enabled: true},
-		Resume:           &ResumeAction{Enabled: true},
-		Recheck:          &RecheckAction{Enabled: true},
-		Reannounce:       &ReannounceAction{Enabled: true},
-		Delete:           &DeleteAction{Enabled: true, Condition: cond(FieldSize)},
-		Tags:             []*TagAction{{Enabled: true}, nil, {Condition: cond(FieldTags)}},
-		Category:         &CategoryAction{Enabled: true},
-		Move:             &MoveAction{Enabled: true},
-		ExternalProgram:  &ExternalProgramAction{Enabled: true},
-		AutoManagement:   &AutoManagementAction{Enabled: false, Condition: cond(FieldState)},
-		ExportToInstance: &ExportToInstanceAction{Enabled: true},
+		SpeedLimits:        &SpeedLimitAction{Enabled: true, Condition: cond(FieldName)},
+		ShareLimits:        &ShareLimitsAction{Condition: cond(FieldRatio)},
+		Pause:              &PauseAction{Enabled: true},
+		Resume:             &ResumeAction{Enabled: true},
+		Recheck:            &RecheckAction{Enabled: true},
+		Reannounce:         &ReannounceAction{Enabled: true},
+		Delete:             &DeleteAction{Enabled: true, Condition: cond(FieldSize)},
+		Tags:               []*TagAction{{Enabled: true}, nil, {Condition: cond(FieldTags)}},
+		Category:           &CategoryAction{Enabled: true},
+		Move:               &MoveAction{Enabled: true},
+		ExternalProgram:    &ExternalProgramAction{Enabled: true},
+		AutoManagement:     &AutoManagementAction{Enabled: false, Condition: cond(FieldState)},
+		ExportToInstance:   &ExportToInstanceAction{Enabled: true},
+		TransferToInstance: &TransferToInstanceAction{Condition: cond(FieldSeedingTime)},
 	}
 
 	got := slices.Collect(ac.Conditions())
@@ -48,6 +49,7 @@ func TestActionConditionsConditions(t *testing.T) {
 		// AutoManagement.Enabled is the ATM value the action sets, so the action counts as enabled.
 		{Path: "/conditions/autoManagement/condition", Enabled: true, Condition: ac.AutoManagement.Condition},
 		{Path: "/conditions/exportToInstance/condition", Enabled: true},
+		{Path: "/conditions/transferToInstance/condition", Condition: ac.TransferToInstance.Condition},
 	}
 	require.Equal(t, want, got)
 }

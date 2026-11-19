@@ -14,7 +14,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/share"
 	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/internal/services/transfer"
@@ -30,16 +29,6 @@ var shareRoutes = []routeKey{
 	{http.MethodPost, "/api/shares/1/unlock"},
 	{http.MethodGet, "/api/shares/1/torrent"},
 	{http.MethodDelete, "/api/shares/1"},
-}
-
-func TestTransferAndShareRoutesAreClosedWhileTheSwitchIsOff(t *testing.T) {
-	rig := newPermissionRig(t, func(deps *Dependencies) { deps.Switches = rollout.Production() })
-	cookie := rig.sessionCookie(t)
-	for _, route := range append([]routeKey{{http.MethodPost, "/api/transfers"}}, shareRoutes...) {
-		status, body := rig.sendBody(t, route.Method, route.Path, "", cookie, "{}")
-		require.Equal(t, http.StatusNotFound, status, "%s %s", route.Method, route.Path)
-		require.Equal(t, "404 page not found\n", body, "%s %s", route.Method, route.Path)
-	}
 }
 
 func TestShareStartRoute(t *testing.T) {
@@ -84,7 +73,6 @@ func newShareRig(t *testing.T) (*permissionRig, *share.Store, *transfer.Store) {
 			Helpers:         helpers,
 			Instances:       deps.InstanceStore,
 			Sync:            deps.SyncManager,
-			Switches:        deps.Switches,
 			TrackerHost:     "127.0.0.1",
 			Config:          share.DefaultConfig(),
 		})

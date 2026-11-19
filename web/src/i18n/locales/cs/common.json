@@ -5,6 +5,10 @@
     "search": "Hledat",
     "crossSeed": "Křížové sdílení",
     "automations": "Automatizace",
+    "transfers": "Přenosy",
+    "transfersQueued_one": "{{count}} položka běží nebo čeká",
+    "transfersQueued_few": "{{count}} položky běží nebo čekají",
+    "transfersQueued_other": "{{count}} položek běží nebo čeká",
     "backups": "Zálohy",
     "rss": "RSS",
     "settings": "Nastavení",
@@ -445,7 +449,8 @@
     }
   },
   "labels": {
-    "path": "Cesta"
+    "path": "Cesta",
+    "beta": "Beta"
   },
   "kit": {
     "loadFailed": "Tuto sekci se nepodařilo načíst.",

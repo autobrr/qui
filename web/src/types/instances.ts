@@ -37,6 +37,10 @@ export interface Instance {
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
+  // The host:port that the user set for other BitTorrent clients, or "".
+  publicPeerAddress?: string
+  // The address that qui works out: publicPeerAddress, or else what qBittorrent reports. "" when it has none.
+  resolvedPublicPeerAddress?: string
 }
 
 export type SSHTier = "sftp" | "exec"
@@ -99,6 +103,8 @@ export interface InstanceFormData {
   // Fallback to regular mode when reflink/hardlink fails
   fallbackToRegularMode?: boolean
   reannounceSettings: InstanceReannounceSettings
+  // The user's value only. Left out, the server keeps the stored value; "" clears it.
+  publicPeerAddress?: string
 }
 
 export interface InstanceReannounceSettings {

@@ -24,9 +24,10 @@ type Request struct {
 	SourceInstanceID int
 	Hash             string
 	TargetInstanceID int
-	// Placement is where the torrent lands. An empty save path is the
-	// default save path of the target. ContentLayout is ignored: the target
-	// gets the layout that is on disk.
+	// Placement is where the torrent lands. An empty save path is the save
+	// path of the category on the target, or its default save path for no
+	// category. ContentLayout is ignored: the target gets the layout that is
+	// on disk.
 	Placement Placement
 	Options   Options
 	StartedBy StartedBy
@@ -59,14 +60,30 @@ const (
 	reasonSkipped = "Torrents with skipped files are unsupported"
 )
 
-// check runs the entry checks and returns the Transfer to record.
-func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
+// planned is the Transfer to record, with the Shared-file group as check
+// read it.
+type planned struct {
+	record *Record
+	group  []*source
+	// stay holds the hashes of the cross-seeds on hardlinks that stay on the
+	// source.
+	stay []string
+	// versions holds those of stay that have the same files as the torrent
+	// of the request. Only a Transfer that a rule starts has them.
+	versions []string
+}
+
+// check runs the entry checks and plans the Transfer.
+func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	hash := strings.ToLower(strings.TrimSpace(req.Hash))
 	if hash == "" {
 		return nil, refuse("Name the torrent to transfer.")
 	}
 	if req.SourceInstanceID == req.TargetInstanceID {
 		return nil, refuse("The Transfer source and the Transfer target are the same instance.")
+	}
+	if err := s.waitsForUser(ctx, req, hash); err != nil {
+		return nil, err
 	}
 	source, err := s.instance(ctx, req.SourceInstanceID)
 	if err != nil {
@@ -104,23 +121,30 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 	} else if onTarget {
 		return nil, refuse("Already on the target: %s has this torrent.", target.Name)
 	}
-	group, err := s.groupOf(ctx, source.ID, src)
+	group, stay, err := s.groupOf(ctx, source.ID, src, way)
+	if err != nil {
+		return nil, err
+	}
+	others := make([]string, 0, len(group)-1)
+	for _, member := range group[1:] {
+		others = append(others, member.torrent.Hash)
+	}
+	versions, err := s.ruleChecks(ctx, req, source, src, stay, others)
 	if err != nil {
 		return nil, err
 	}
 
 	placement := req.Placement
-	placement.ContentLayout = ""
-	if placement.SavePath == "" {
-		prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
-		if err != nil {
-			return nil, fmt.Errorf("read the default save path of %s: %w", target.Name, err)
-		}
-		placement.SavePath = prefs.SavePath
-	}
+	placement.ContentLayout, placement.AutoTMM = "", false
+	placement.SavePathOfTarget = placement.SavePath == ""
 	targetFiles, err := s.deps.Files.GetBackend(ctx, target.ID)
 	if err != nil {
 		return nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
+	}
+	if placement.SavePathOfTarget {
+		if placement.SavePath, placement.AutoTMM, err = s.categorySavePath(ctx, target, targetFiles, placement.Category); err != nil {
+			return nil, err
+		}
 	}
 	td := pathsOf(target, targetFiles, placement.SavePath)
 	if !td.IsAbs(placement.SavePath) {
@@ -142,11 +166,16 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 	if !slices.Contains([]After{AfterRemoveWithFiles, AfterKeepFiles, AfterKeepSeeding}, options.After) {
 		return nil, refuse("Unknown choice for after the transfer: %q.", options.After)
 	}
+	leaveFilesToSource(members, way, options.After)
 	startedBy := req.StartedBy
 	if startedBy == "" {
 		startedBy = StartedByUser
 	}
-	return &Record{
+	var logged []LogLine
+	if len(stay) > 0 {
+		logged = []LogLine{{At: s.deps.Now(), Message: stayLine(len(stay), source, target)}}
+	}
+	return &planned{stay: stay, versions: versions, group: group, record: &Record{
 		Kind:             KindTransfer,
 		Way:              way,
 		State:            StateWaiting,
@@ -158,8 +187,79 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 		TargetEndpoint:   fsops.EndpointOf(target),
 		Options:          options,
 		Steps:            []Step{{Name: "start", At: s.deps.Now()}},
+		Log:              logged,
 		Members:          members,
-	}, nil
+		Size:             src.torrent.Size,
+	}}, nil
+}
+
+// leaveFilesToSource keeps the members of a Transfer with no copy on manual
+// management when the source keeps seeding. The target reads the files of the
+// source then. A target that manages the torrent moves them when the folder
+// of its category changes, and the source would lose them.
+func leaveFilesToSource(members []Member, way Way, after After) {
+	if way != WayNone || after != AfterKeepSeeding {
+		return
+	}
+	for i := range members {
+		members[i].Placement.AutoTMM = false
+	}
+}
+
+// ruleChecks runs the checks that only a Transfer of a rule gets, and returns
+// ErrStays or ErrWaitsForUser when the rule must not start it. versions holds
+// the torrents of stay that have the same files as first.
+func (s *Service) ruleChecks(ctx context.Context, req Request, source *models.Instance, first *source, stay, others []string) (versions []string, err error) {
+	if req.StartedBy != StartedByRule {
+		return nil, nil
+	}
+	if versions, err = s.versionsOf(ctx, source, first, stay); err != nil {
+		return nil, err
+	}
+	if err := s.alreadyPasses(ctx, req.SourceInstanceID, req.TargetInstanceID, versions); err != nil {
+		return nil, err
+	}
+	return versions, s.waitsForUser(ctx, req, others...)
+}
+
+// alreadyPasses returns ErrStays when a Transfer holds one of versions, the
+// cross-seeds on hardlinks that have the same files and that this Transfer
+// leaves on the source, or the target has one. A rule matches each torrent of
+// such a set, and a Transfer torrent passes the same files for each Transfer
+// that starts.
+func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, versions []string) error {
+	if len(versions) == 0 {
+		return nil
+	}
+	if slices.ContainsFunc(versions, func(hash string) bool { return s.deps.Store.IsClaimed(sourceID, hash) }) {
+		return ErrStays
+	}
+	_, onTarget, err := s.deps.Sync.HasTorrentByAnyHash(ctx, targetID, versions)
+	if err != nil {
+		return fmt.Errorf("read the torrents of instance %d: %w", targetID, err)
+	}
+	if onTarget {
+		return ErrStays
+	}
+	return nil
+}
+
+// waitsForUser returns ErrWaitsForUser for a Transfer that a rule starts when
+// the last Transfer of one of the torrents failed for good.
+func (s *Service) waitsForUser(ctx context.Context, req Request, hashes ...string) error {
+	if req.StartedBy != StartedByRule {
+		return nil
+	}
+	for _, hash := range hashes {
+		waits, err := s.deps.Store.WaitsForUser(ctx, req.SourceInstanceID, hash)
+		if err != nil {
+			return err
+		}
+		if waits {
+			return ErrWaitsForUser
+		}
+	}
+	return nil
 }
 
 func (s *Service) instance(ctx context.Context, id int) (*models.Instance, error) {
@@ -212,6 +312,25 @@ func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 	case WayLocal, WayNone:
 	}
 	return "", refuse("Unknown way: %q.", forced)
+}
+
+// categorySavePath is the folder where the qBittorrent of target saves a
+// torrent of category under automatic management, and its default save path
+// for no category. It also reports whether automatic management is the mode
+// that target gives a new torrent.
+func (s *Service) categorySavePath(ctx context.Context, target *models.Instance, files fsops.Backend, category string) (folder string, automatic bool, err error) {
+	prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
+	if err != nil {
+		return "", false, fmt.Errorf("read the default save path of %s: %w", target.Name, err)
+	}
+	if category == "" {
+		return prefs.SavePath, prefs.AutoTmmEnabled, nil
+	}
+	folder, err = s.deps.Sync.CategorySaveFolder(ctx, pathsOf(target, files, prefs.SavePath), target.ID, &prefs, category)
+	if err != nil {
+		return "", false, fmt.Errorf("read the save path of category %q on %s: %w", category, target.Name, err)
+	}
+	return folder, prefs.AutoTmmEnabled, nil
 }
 
 // pathsOf is the path dialect of the save paths of inst: the dialect of its

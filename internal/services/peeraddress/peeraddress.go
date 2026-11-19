@@ -39,6 +39,19 @@ func New(instances *models.InstanceStore, sync *qbittorrent.SyncManager) *Resolv
 // qBittorrent reports. It syncs the instance first, so each call sees a new
 // external address. Without an address it returns ErrNoAddress.
 func (r *Resolver) PublicPeerAddress(ctx context.Context, instanceID int) (string, error) {
+	return r.address(ctx, instanceID, true)
+}
+
+// LastPublicPeerAddress is PublicPeerAddress from the last sync of the
+// instance and the preferences that qui read last. It sends no sync/maindata
+// request, and it reads the preferences from qBittorrent only while qui has
+// none, so a list of the instances does not wait for qBittorrent. Before the
+// first sync it returns ErrNoAddress.
+func (r *Resolver) LastPublicPeerAddress(ctx context.Context, instanceID int) (string, error) {
+	return r.address(ctx, instanceID, false)
+}
+
+func (r *Resolver) address(ctx context.Context, instanceID int, sync bool) (string, error) {
 	instance, err := r.instances.Get(ctx, instanceID)
 	if err != nil {
 		return "", err
@@ -50,15 +63,21 @@ func (r *Resolver) PublicPeerAddress(ctx context.Context, instanceID int) (strin
 	if err != nil {
 		return "", err
 	}
-	if err := owner.Sync(ctx); err != nil {
-		return "", fmt.Errorf("refresh maindata: %w", err)
+	if sync {
+		if err := owner.Sync(ctx); err != nil {
+			return "", fmt.Errorf("refresh maindata: %w", err)
+		}
 	}
 	state := owner.GetServerStateUnchecked()
 	host := cmp.Or(state.LastExternalAddressV4, state.LastExternalAddressV6)
 	if host == "" {
 		return "", ErrNoAddress
 	}
-	prefs, err := r.sync.GetAppPreferences(ctx, instanceID)
+	readPreferences := r.sync.GetLastAppPreferences
+	if sync {
+		readPreferences = r.sync.GetAppPreferences
+	}
+	prefs, err := readPreferences(ctx, instanceID)
 	if err != nil {
 		return "", err
 	}

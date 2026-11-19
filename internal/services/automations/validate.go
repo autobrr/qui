@@ -64,6 +64,15 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
+	if transfer := conditions.TransferToInstance; transfer != nil {
+		if transfer.Enabled && transfer.TargetInstanceID <= 0 {
+			return ruleError("Transfer to instance requires a target instance")
+		}
+		if transfer.Enabled && transfer.TargetInstanceID == rule.InstanceID {
+			return ruleError("Transfer target cannot be the same as the source instance")
+		}
+	}
+
 	// Validate delete is standalone - it cannot be combined with any other action
 	if del := conditions.Delete; del != nil && del.Enabled {
 		if del.Condition == nil {

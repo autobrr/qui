@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 )
@@ -67,6 +68,25 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 		return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, hashes[i])
 	}
 	return nil
+}
+
+// TorrentGoneSince reports whether qui can see that the instance no longer
+// has the torrent: its client is connected, and the torrent list of a sync
+// after since that left no torrent out does not hold hash. It sends no
+// request to qBittorrent, so it reports false while the instance is offline
+// or has no such sync. A sync that left torrents out does not count: qui
+// cannot tell which torrents it left out.
+func (sm *SyncManager) TorrentGoneSince(instanceID int, hash string, since time.Time) bool {
+	client, err := sm.clientPool.GetClientOffline(context.Background(), instanceID)
+	if err != nil || !client.IsHealthy() {
+		return false
+	}
+	snapshot := client.fullList.Load()
+	if snapshot == nil || !snapshot.Time().After(since) {
+		return false
+	}
+	_, listed := snapshot.Torrent(strings.ToLower(hash))
+	return !listed
 }
 
 // snapshotHelpers are the helper torrents of one Sync snapshot, and at the

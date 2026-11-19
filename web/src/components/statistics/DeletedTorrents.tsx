@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { TorrentName } from "@/components/statistics/TopTorrents"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TorrentName } from "@/components/ui/torrent-name"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { api } from "@/lib/api"

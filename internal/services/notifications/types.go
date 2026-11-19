@@ -29,6 +29,8 @@ const (
 	EventCrossSeedWebhookFailed       EventType = "cross_seed_webhook_failed"
 	EventAutomationsActionsApplied    EventType = "automations_actions_applied"
 	EventAutomationsRunFailed         EventType = "automations_run_failed"
+	EventTransferFailed               EventType = "transfer_failed"
+	EventTransferFinished             EventType = "transfer_finished"
 	EventSystemNotice                 EventType = "system_notice"
 )
 
@@ -57,6 +59,8 @@ var eventDefinitions = []EventDefinition{
 	{Type: EventCrossSeedWebhookFailed, Label: "Cross-seed webhook failed", Description: "A webhook check or apply fails."},
 	{Type: EventAutomationsActionsApplied, Label: "Automations actions applied", Description: "Automation rules applied actions (summary counts and samples; only when actions occur)."},
 	{Type: EventAutomationsRunFailed, Label: "Automations run failed", Description: "Automation rules failed to run for an instance (system error)."},
+	{Type: EventTransferFailed, Label: "Transfer failed", Description: "A Transfer that you or a rule started fails."},
+	{Type: EventTransferFinished, Label: "Transfer finished", Description: "A Transfer that you or a rule started moves its torrents to the target."},
 	{Type: EventSystemNotice, Label: "System notice", Description: "A fault in qui needs an action from you, for example when qui cannot record the Transfer history."},
 }
 

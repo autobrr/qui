@@ -50,6 +50,10 @@ const (
 	WayBitTorrent Way = "bittorrent"
 )
 
+// ForcedWays maps the way that a user picks to Options.ForcedWay. With
+// "auto" or no value, qui picks the way.
+var ForcedWays = map[string]Way{"": "", "auto": "", "copy": WaySFTP, "bittorrent": WayBitTorrent}
+
 type StartedBy string
 
 const (
@@ -101,6 +105,8 @@ type Record struct {
 	Members          []Member
 	FlushState       FlushState
 	ReservedBytes    int64
+	// Size is the size of the torrent of the request at the start.
+	Size int64
 	// RetryAt is zero when no retry waits.
 	RetryAt       time.Time
 	FailureClass  FailureClass
@@ -173,6 +179,14 @@ type Placement struct {
 	Category      string
 	Tags          []string
 	ContentLayout string
+	// SavePathOfTarget is true when the request named no save path, so that
+	// SavePath is the folder that the target has for the category. Start
+	// sets it, and a Retry then names no save path either.
+	SavePathOfTarget bool
+	// AutoTMM is true when the target manages the save path of the member:
+	// the request named no save path, and Automatic Torrent Management is
+	// the default mode of the target. Start sets it.
+	AutoTMM bool
 	// Endpoint is where qui reached the Cross-seed instance at the start, for
 	// a member that lands there, and zero for a member on the target.
 	Endpoint fsops.Endpoint
@@ -184,6 +198,14 @@ type OwnerKind string
 const (
 	OwnerTransfer OwnerKind = "transfer"
 	OwnerShare    OwnerKind = "share"
+)
+
+// The tags that qui gives a helper torrent when it adds it. qBittorrent's
+// own "run on add" and "run on finished" programs see helper torrents, and
+// a script skips one by its tag. qui itself trusts only the registry.
+const (
+	TransferHelperTag = "qui-transfer"
+	ShareHelperTag    = "qui-share"
 )
 
 // Helper is a helper torrent: a Transfer torrent or a Share torrent.

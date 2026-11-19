@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // failure ends a Transfer with a reason for the user. Its format may wrap
@@ -90,6 +91,8 @@ type job struct {
 	// flushedPieces counts the pieces that qui wrote and flushed in this run,
 	// also on a target that does not confirm a flush.
 	flushedPieces int
+	// meter counts the bytes that reached the target.
+	meter *meter
 }
 
 func (j *job) hashes() []string {
@@ -287,25 +290,36 @@ func (j *job) freeSpace(ctx context.Context) (space, error) {
 		read.free = stat.BytesAvailable
 		return read, nil
 	}
-	free, err := j.svc.deps.Sync.GetFreeSpaceAtPath(ctx, j.target.ID, j.rootDir)
+	free, known, err := j.svc.clientFreeSpace(ctx, j.target, j.rootPaths, j.rootDir)
+	if err != nil || !known {
+		return space{}, err
+	}
+	read.free = free
+	return read, nil
+}
+
+// clientFreeSpace reads the free space at dir on target as its qBittorrent
+// reports it. Before 5.3 qBittorrent reports it only at its default save
+// path, so elsewhere it is not known.
+func (s *Service) clientFreeSpace(ctx context.Context, target *models.Instance, d fsops.PathDialect, dir string) (free int64, known bool, err error) {
+	free, err = s.deps.Sync.GetFreeSpaceAtPath(ctx, target.ID, dir)
 	if !errors.Is(err, qbittorrent.ErrFreeSpaceAtPathUnsupported) {
 		if err != nil {
-			return space{}, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+			return 0, false, temporary("qui cannot read the free space on %s: %v", target.Name, err)
 		}
-		read.free = free
-		return read, nil
+		return free, true, nil
 	}
-	prefs, err := j.svc.deps.Sync.GetAppPreferences(ctx, j.target.ID)
+	prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
 	if err != nil {
-		return space{}, temporary("qui cannot read the default save path of %s: %v", j.target.Name, err)
+		return 0, false, temporary("qui cannot read the default save path of %s: %v", target.Name, err)
 	}
-	if j.rootPaths.Clean(prefs.SavePath) != j.rootDir {
-		return space{}, nil
+	if d.Clean(prefs.SavePath) != dir {
+		return 0, false, nil
 	}
-	if read.free, err = j.svc.deps.Sync.GetFreeSpace(ctx, j.target.ID); err != nil {
-		return space{}, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+	if free, err = s.deps.Sync.GetFreeSpace(ctx, target.ID); err != nil {
+		return 0, false, temporary("qui cannot read the free space on %s: %v", target.Name, err)
 	}
-	return read, nil
+	return free, true, nil
 }
 
 func (j *job) logStart(ctx context.Context, need int64, known bool) {
@@ -342,11 +356,7 @@ func (j *job) logStart(ctx context.Context, need int64, known bool) {
 }
 
 func (j *job) hint(ctx context.Context) {
-	for _, inst := range []*models.Instance{j.source, j.target} {
-		prefs, err := j.svc.deps.Sync.GetAppPreferences(ctx, inst.ID)
-		if err != nil || prefs.BittorrentProtocol != bittorrentTCPAndUTP {
-			continue
-		}
+	for _, inst := range j.svc.onTCPAndUTP(ctx, j.source, j.target) {
 		j.rec.Log = append(j.rec.Log, LogLine{
 			At: j.svc.deps.Now(),
 			Message: fmt.Sprintf(`%s uses qBittorrent's default "TCP and μTP". In qui's tests, "TCP only" was about three times faster. `+
@@ -354,6 +364,18 @@ func (j *job) hint(ctx context.Context) {
 			Hint: &Hint{Kind: HintTCPAndUTP, InstanceID: inst.ID},
 		})
 	}
+}
+
+// onTCPAndUTP returns the instances whose qBittorrent uses "TCP and μTP".
+func (s *Service) onTCPAndUTP(ctx context.Context, instances ...*models.Instance) []*models.Instance {
+	var out []*models.Instance
+	for _, inst := range instances {
+		prefs, err := s.deps.Sync.GetAppPreferences(ctx, inst.ID)
+		if err == nil && prefs.BittorrentProtocol == bittorrentTCPAndUTP {
+			out = append(out, inst)
+		}
+	}
+	return out
 }
 
 // bittorrentTCPAndUTP is "TCP and μTP" in qBittorrent's "Peer connection
@@ -534,20 +556,31 @@ func (j *job) rollBack(ctx context.Context) {
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
 	defer j.release()
+	// A Transfer records the prepare step before it changes anything. One
+	// that never got there has nothing to take back, so its end asks the
+	// instances nothing.
+	if j.rec.Kind == KindTransfer && !j.reached(stepPrepare) {
+		j.logf("Cancelled.")
+		_ = j.finish(ctx, StateCancelled)
+		return
+	}
 	// The check marks the instances that the cleanup must not touch.
 	_ = j.checkInstances(ctx)
 	j.logf("Cancelled.")
-	j.cleanUp(ctx, StateCancelled)
+	_ = j.cleanUp(ctx, StateCancelled)
 }
 
-// cleanUpAgain finishes a cleanup that a stop interrupted.
+// cleanUpAgain finishes a cleanup that a stop interrupted, and sends the
+// failure that the stop held back.
 func (j *job) cleanUpAgain(ctx context.Context) {
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
 	defer j.release()
 	_ = j.checkInstances(ctx)
 	j.cleanup(ctx)
-	j.finish(ctx, j.rec.State)
+	if err := j.finish(ctx, j.rec.State); err == nil && j.rec.State == StateFailed {
+		j.notify(ctx, notifications.EventTransferFailed)
+	}
 }
 
 // end records how the run ended. A temporary failure keeps the partial data
@@ -560,7 +593,9 @@ func (j *job) end(ctx context.Context, runErr error) {
 
 	if runErr == nil {
 		j.logf("Done.")
-		j.finish(ctx, StateDone)
+		if err := j.finish(ctx, StateDone); err == nil {
+			j.notify(ctx, notifications.EventTransferFinished)
+		}
 		return
 	}
 	class, reason := FailureTemporary, runErr.Error()
@@ -581,7 +616,9 @@ func (j *job) end(ctx context.Context, runErr error) {
 	j.rec.FailureClass, j.rec.FailureReason = class, reason
 	if class == FailurePermanent {
 		j.logf("Failed: %s", reason)
-		j.cleanUp(ctx, StateFailed)
+		if err := j.cleanUp(ctx, StateFailed); err == nil {
+			j.notify(ctx, notifications.EventTransferFailed)
+		}
 		return
 	}
 
@@ -595,6 +632,42 @@ func (j *job) end(ctx context.Context, runErr error) {
 		j.startSource(ctx)
 	}
 	j.save(ctx)
+	j.notify(ctx, notifications.EventTransferFailed)
+}
+
+// notify sends the end of the Transfer as an event of the source instance.
+func (j *job) notify(ctx context.Context, eventType notifications.EventType) {
+	if j.svc.deps.Notifier == nil {
+		return
+	}
+	first := j.rec.Members[0]
+	lines := []string{"Torrent: " + first.Name}
+	if len(j.rec.Members) > 1 {
+		lines = append(lines, fmt.Sprintf("Torrents: %d", len(j.rec.Members)))
+	}
+	target := fmt.Sprintf("Instance %d", j.rec.TargetInstanceID)
+	if j.target != nil {
+		target = j.target.Name
+	}
+	lines = append(lines, "Target: "+target)
+	switch {
+	case eventType != notifications.EventTransferFailed:
+	case j.rec.FailureClass == FailureTemporary:
+		lines = append(lines, "Error: "+j.rec.FailureReason+" qui tries again in an hour.")
+	default:
+		lines = append(lines, "Error: "+j.rec.FailureReason)
+	}
+	event := notifications.Event{
+		Type:        eventType,
+		InstanceID:  j.rec.SourceInstanceID,
+		TorrentName: first.Name,
+		TorrentHash: first.Hash,
+		Message:     strings.Join(lines, "\n"),
+	}
+	if j.source != nil {
+		event.InstanceName = j.source.Name
+	}
+	j.svc.deps.Notifier.Notify(ctx, event)
 }
 
 func (j *job) save(ctx context.Context) {
@@ -604,23 +677,27 @@ func (j *job) save(ctx context.Context) {
 }
 
 // cleanUp records the step clean up, takes back what the Transfer did, and
-// finishes it in state.
-func (j *job) cleanUp(ctx context.Context, state State) {
+// finishes it in state. It returns the error of finish.
+func (j *job) cleanUp(ctx context.Context, state State) error {
 	j.rec.State = state
 	j.rec.Steps = append(j.rec.Steps, Step{Name: stepCleanUp, At: j.svc.deps.Now()})
 	j.save(ctx)
 	j.cleanup(ctx)
-	j.finish(ctx, state)
+	return j.finish(ctx, state)
 }
 
-// finish records the end of the Transfer and releases its torrents.
-func (j *job) finish(ctx context.Context, state State) {
+// finish records the end of the Transfer and releases its torrents. On an
+// error the Transfer stays unfinished, and the next start of qui ends it
+// again, so the caller sends the event of the end only on success.
+func (j *job) finish(ctx context.Context, state State) error {
 	j.rec.State = state
 	j.rec.Steps = append(j.rec.Steps, Step{Name: string(state), At: j.svc.deps.Now()})
 	j.save(ctx)
 	if err := j.svc.deps.Store.Finish(ctx, j.rec.ID, state); err != nil {
 		log.Error().Err(err).Int64("transfer", j.rec.ID).Msg("transfer: cannot finish the Transfer")
+		return err
 	}
+	return nil
 }
 
 // release frees what the run holds, and keeps the files.

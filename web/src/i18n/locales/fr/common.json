@@ -5,6 +5,9 @@
     "search": "Recherche",
     "crossSeed": "Cross-Seed",
     "automations": "Automatisations",
+    "transfers": "Transferts",
+    "transfersQueued_one": "{{count}} élément en cours ou en attente",
+    "transfersQueued_other": "{{count}} éléments en cours ou en attente",
     "backups": "Sauvegardes",
     "rss": "RSS",
     "settings": "Paramètres",
@@ -434,7 +437,8 @@
     }
   },
   "labels": {
-    "path": "Chemin"
+    "path": "Chemin",
+    "beta": "Bêta"
   },
   "kit": {
     "loadFailed": "Cette section n'a pas pu être chargée.",

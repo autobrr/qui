@@ -5,6 +5,8 @@
     "search": "搜索",
     "crossSeed": "辅种",
     "automations": "自动化",
+    "transfers": "传输",
+    "transfersQueued_other": "{{count}} 项正在运行或等待",
     "backups": "备份",
     "rss": "RSS",
     "settings": "设置",
@@ -423,7 +425,8 @@
     }
   },
   "labels": {
-    "path": "路径"
+    "path": "路径",
+    "beta": "测试版"
   },
   "kit": {
     "loadFailed": "此部分加载失败。",

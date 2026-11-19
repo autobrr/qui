@@ -27,6 +27,17 @@ var (
 	ErrHelper = errors.New("qui added this torrent for a Transfer or a Share")
 	// ErrHelperOwned is a second registration of a helper torrent by another owner.
 	ErrHelperOwned = errors.New("another Transfer or Share owns this helper torrent")
+	// ErrWaitsForUser is the refusal of a rule to transfer a torrent whose
+	// last Transfer failed permanently: the failure waits for the user.
+	ErrWaitsForUser = errors.New("the last Transfer of this torrent failed and waits for the user")
+	// ErrStays is the refusal of a rule to pass the files of a torrent by a
+	// Transfer torrent again: a cross-seed that has the same files through
+	// hardlinks is in a Transfer or on the target.
+	ErrStays = errors.New("a cross-seed that has the same files through hardlinks is in a Transfer or on the target")
+	// ErrNotFound: no Transfer has the id.
+	ErrNotFound = errors.New("no Transfer has this id")
+	// ErrNotFinished refuses to remove a Transfer that holds its torrents.
+	ErrNotFinished = errors.New("the Transfer has not ended")
 )
 
 type torrentKey struct {
@@ -43,11 +54,15 @@ type Store struct {
 	mu      sync.RWMutex
 	claims  map[torrentKey]int64
 	helpers map[torrentKey]OwnerKind
+	// orphans holds, for each helper torrent whose Transfer row is gone, the
+	// time after which a sync of its instance shows whether it is gone.
+	orphans map[torrentKey]time.Time
 }
 
 // NewStore reads the claims and the helper torrents of db.
 func NewStore(ctx context.Context, db dbinterface.Querier) (*Store, error) {
-	s := &Store{db: db, claims: make(map[torrentKey]int64), helpers: make(map[torrentKey]OwnerKind)}
+	s := &Store{db: db, claims: make(map[torrentKey]int64), helpers: make(map[torrentKey]OwnerKind),
+		orphans: make(map[torrentKey]time.Time)}
 	if err := s.load(ctx); err != nil {
 		return nil, err
 	}
@@ -168,12 +183,12 @@ func insertRecord(ctx context.Context, tx dbinterface.TxQuerier, r *Record) (int
 	err = tx.QueryRowContext(ctx, `INSERT INTO torrent_transfers (
 			kind, way, state, started_by, rule_id, source_instance_id, target_instance_id,
 			source_endpoint_json, target_endpoint_json, options_json, steps_json, log_json,
-			flush_state, reserved_bytes, retry_at, failure_class, failure_reason
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			flush_state, reserved_bytes, size, retry_at, failure_class, failure_reason
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
 		string(r.Kind), string(r.Way), string(r.State), string(r.StartedBy), r.RuleID, r.SourceInstanceID, r.TargetInstanceID,
 		string(source), string(target), string(options), string(steps), string(logLines),
-		string(r.FlushState), r.ReservedBytes, nullTime(r.RetryAt), string(r.FailureClass), r.FailureReason,
+		string(r.FlushState), r.ReservedBytes, r.Size, nullTime(r.RetryAt), string(r.FailureClass), r.FailureReason,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert transfer: %w", err)
@@ -182,7 +197,10 @@ func insertRecord(ctx context.Context, tx dbinterface.TxQuerier, r *Record) (int
 }
 
 func insertMember(ctx context.Context, tx dbinterface.TxQuerier, transferID int64, position int, m *Member) error {
-	placement, err := json.Marshal(placementJSON{Category: m.Placement.Category, Tags: m.Placement.Tags, ContentLayout: m.Placement.ContentLayout, Endpoint: endpointJSONOf(m.Placement.Endpoint)})
+	placement, err := json.Marshal(placementJSON{
+		Category: m.Placement.Category, Tags: m.Placement.Tags, ContentLayout: m.Placement.ContentLayout,
+		SavePathOfTarget: m.Placement.SavePathOfTarget, AutoTMM: m.Placement.AutoTMM, Endpoint: endpointJSONOf(m.Placement.Endpoint),
+	})
 	if err != nil {
 		return err
 	}
@@ -208,12 +226,15 @@ func (s *Store) Get(ctx context.Context, id int64) (*Record, error) {
 	)
 	err := s.db.QueryRowContext(ctx, `SELECT id, kind, way, state, started_by, rule_id, source_instance_id, target_instance_id,
 			source_endpoint_json, target_endpoint_json, options_json, steps_json, log_json,
-			flush_state, reserved_bytes, retry_at, failure_class, failure_reason, created_at, finished_at
+			flush_state, reserved_bytes, size, retry_at, failure_class, failure_reason, created_at, finished_at
 		FROM torrent_transfers WHERE id = ?`, id).Scan(
 		&r.ID, &kind, &way, &state, &startedBy, &ruleID, &r.SourceInstanceID, &r.TargetInstanceID,
 		&source, &target, &options, &steps, &logLines,
-		&flushState, &r.ReservedBytes, &retryAt, &failureClass, &r.FailureReason, &r.CreatedAt, &finishedAt,
+		&flushState, &r.ReservedBytes, &r.Size, &retryAt, &failureClass, &r.FailureReason, &r.CreatedAt, &finishedAt,
 	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %d", ErrNotFound, id)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read transfer %d: %w", id, err)
 	}
@@ -237,6 +258,10 @@ func (s *Store) Get(ctx context.Context, id int64) (*Record, error) {
 	members, err := s.members(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if len(members) == 0 {
+		// A removal of the Transfer came between the two reads.
+		return nil, fmt.Errorf("%w: %d", ErrNotFound, id)
 	}
 	r.Members = members
 	return &r, nil
@@ -262,7 +287,8 @@ func (s *Store) members(ctx context.Context, transferID int64) ([]Member, error)
 		if err := json.Unmarshal([]byte(placement), &stored); err != nil {
 			return nil, fmt.Errorf("decode transfer member placement: %w", err)
 		}
-		m.Placement.Category, m.Placement.Tags, m.Placement.ContentLayout, m.Placement.Endpoint = stored.Category, stored.Tags, stored.ContentLayout, stored.Endpoint.endpoint()
+		m.Placement.Category, m.Placement.Tags, m.Placement.ContentLayout = stored.Category, stored.Tags, stored.ContentLayout
+		m.Placement.SavePathOfTarget, m.Placement.AutoTMM, m.Placement.Endpoint = stored.SavePathOfTarget, stored.AutoTMM, stored.Endpoint.endpoint()
 		members = append(members, m)
 	}
 	return members, rows.Err()
@@ -343,6 +369,23 @@ func (s *Store) Unfinished(ctx context.Context) ([]int64, error) {
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// WaitsForUser reports whether the last Transfer of the torrent from the
+// instance failed permanently.
+func (s *Store) WaitsForUser(ctx context.Context, instanceID int, hash string) (bool, error) {
+	var state, class string
+	err := s.db.QueryRowContext(ctx, `SELECT t.state, t.failure_class FROM torrent_transfers t
+			JOIN torrent_transfer_members m ON m.transfer_id = t.id
+			WHERE t.kind = ? AND t.source_instance_id = ? AND m.hash = ?
+			ORDER BY t.id DESC LIMIT 1`, string(KindTransfer), instanceID, strings.ToLower(hash)).Scan(&state, &class)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("read the last transfer of %s: %w", hash, err)
+	}
+	return State(state) == StateFailed && FailureClass(class) == FailurePermanent, nil
 }
 
 // HasClaims reports whether an unfinished Transfer holds a torrent. It reads
@@ -587,10 +630,12 @@ func (e endpointJSON) endpoint() fsops.Endpoint {
 }
 
 type placementJSON struct {
-	Category      string       `json:"category"`
-	Tags          []string     `json:"tags"`
-	ContentLayout string       `json:"contentLayout"`
-	Endpoint      endpointJSON `json:"endpoint,omitzero"`
+	Category         string       `json:"category"`
+	Tags             []string     `json:"tags"`
+	ContentLayout    string       `json:"contentLayout"`
+	SavePathOfTarget bool         `json:"savePathOfTarget,omitzero"`
+	AutoTMM          bool         `json:"autoTMM,omitzero"`
+	Endpoint         endpointJSON `json:"endpoint,omitzero"`
 }
 
 func nullTime(t time.Time) any {

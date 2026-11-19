@@ -30,6 +30,8 @@ type ExportRequest struct {
 	TargetInstanceID int
 	Hash             string
 	Name             string
+	// Size is the size of the torrent, for the list of the Transfers page.
+	Size int64
 	// Placement is where the target keeps the torrent. Without a save path,
 	// a category lets the category choose it (Auto TMM), and without either,
 	// the default save path of the target holds it.
@@ -78,6 +80,7 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 		Steps: []Step{{Name: "start", At: s.deps.Now(), Detail: req.RuleName}},
 		Members: []Member{{Hash: req.Hash, Name: req.Name, TargetInstanceID: req.TargetInstanceID,
 			Placement: req.Placement}},
+		Size: req.Size,
 	}
 	if err := s.deps.Store.Create(ctx, record); err != nil {
 		return 0, nil, err
@@ -95,23 +98,42 @@ func (s *Service) export(record *Record, done chan<- ExportResult) {
 		close(done)
 		return
 	}
-	s.runs[record.ID] = &run{}
+	// A cancel may have ended the run since the caller read it, or saved its
+	// cleanup and failed to record the end, and a cancel leaves s.runs once
+	// its cleanup ends.
+	if current, err := s.deps.Store.Get(s.ctx, record.ID); err == nil {
+		if !current.FinishedAt.IsZero() {
+			close(done)
+			return
+		}
+		record = current
+	}
+	ctx, cancel := context.WithCancel(s.ctx)
+	s.runs[record.ID] = &run{cancel: cancel}
 	s.wg.Go(func() {
 		defer close(done)
+		defer cancel()
 		defer func() {
 			s.mu.Lock()
 			delete(s.runs, record.ID)
 			s.mu.Unlock()
 		}()
+		e := &exportJob{job: s.newJob(record), ruleName: record.Steps[0].Detail}
 		select {
 		case s.exports <- struct{}{}:
-		case <-s.ctx.Done():
+		case <-ctx.Done():
+			if s.cancelled(record.ID) {
+				done <- e.cancel(ctx)
+			}
 			return
 		}
 		defer func() { <-s.exports }()
-		e := &exportJob{job: s.newJob(record), ruleName: record.Steps[0].Detail}
-		if res, ended := e.run(s.ctx); ended {
+		res, ended := e.run(ctx)
+		switch {
+		case ended:
 			done <- res
+		case s.cancelled(record.ID):
+			done <- e.cancel(ctx)
 		}
 	})
 }
@@ -130,7 +152,10 @@ func (e *exportJob) member() *Member {
 // run takes the steps that the Export run did not take. ended is false when
 // qui stopped first.
 func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
-	if e.reached(stepCleanUp) {
+	switch {
+	case e.reached(stepCleanUp) && e.rec.State == StateCancelled:
+		return e.cancel(ctx), true
+	case e.reached(stepCleanUp):
 		return e.end(ctx, e.rec.FailureReason, true), true
 	}
 	m := e.member()
@@ -197,14 +222,18 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		return e.end(ctx, "qui cannot record the Export run: "+err.Error(), false), true
 	}
 	added := e.svc.adder.Add(ctx, e.addRequest(data))
+	if added.Failure != torrentadd.AddRefused {
+		// The target answered the add, so a cancel or a restart during the
+		// wait for the torrent still knows that qui added it.
+		e.rec.Steps = append(e.rec.Steps, Step{Name: stepAdded, At: e.svc.deps.Now()})
+		e.save(context.WithoutCancel(ctx))
+	}
 	switch {
 	case ctx.Err() != nil:
 		return ExportResult{}, false
 	case added.Failure == torrentadd.AddRefused:
 		return e.end(ctx, "Add to target failed: "+added.Err.Error(), false), true
 	}
-	e.rec.Steps = append(e.rec.Steps, Step{Name: stepAdded, At: e.svc.deps.Now()})
-	e.save(ctx)
 	if added.Failure == torrentadd.AfterAddFailed {
 		return e.end(ctx, "Recheck on target failed: "+added.Err.Error(), true), true
 	}
@@ -256,13 +285,16 @@ func (e *exportJob) mark(ctx context.Context, state State, name string) error {
 // off the target and keeps its files there, so that the next run of the
 // rule tries again.
 func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportResult {
+	if !e.svc.commit(e.rec.ID) {
+		return e.cancel(ctx)
+	}
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
 	m := e.member()
 	event := log.Info()
 	if reason == "" {
 		e.logf("Done.")
-		e.finish(ctx, StateDone)
+		_ = e.finish(ctx, StateDone)
 	} else {
 		event = log.Warn().Str("reason", reason)
 		e.rec.FailureReason = reason
@@ -278,11 +310,31 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 		} else {
 			e.logf("Failed: %s", reason)
 		}
-		e.finish(ctx, StateFailed)
+		_ = e.finish(ctx, StateFailed)
 	}
 	event.Int64("transfer", e.rec.ID).Int("rule", *e.rec.RuleID).Int("source", e.rec.SourceInstanceID).
 		Int("target", m.TargetInstanceID).Str("hash", m.Hash).Msg("transfer: the Export run ended")
 	return e.result
+}
+
+// cancel ends a run that the user cancelled. A torrent that the run added
+// comes off the target, with its files kept there. One whose add did not
+// answer stays, because qui cannot tell who added it.
+func (e *exportJob) cancel(ctx context.Context) ExportResult {
+	ctx, cancel := cleanupContext(ctx)
+	defer cancel()
+	if !e.reached(stepCleanUp) {
+		e.logf("Cancelled.")
+		e.rec.State = StateCancelled
+		e.rec.Steps = append(e.rec.Steps, Step{Name: stepCleanUp, At: e.svc.deps.Now()})
+		e.save(ctx)
+	}
+	if e.reached(stepAdded) {
+		e.removeFromTarget(ctx)
+	}
+	_ = e.finish(ctx, StateCancelled)
+	log.Info().Int64("transfer", e.rec.ID).Int("rule", *e.rec.RuleID).Msg("transfer: the Export run was cancelled")
+	return ExportResult{Failure: "Cancelled."}
 }
 
 func (e *exportJob) removeFromTarget(ctx context.Context) {

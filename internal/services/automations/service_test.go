@@ -22,7 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/transfer"
 )
@@ -232,6 +231,12 @@ func TestNeedsForTrackerNames(t *testing.T) {
 		{
 			name: "export save path uses Tracker",
 			rule: rule(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}/{{ .IsolationFolderName }}"}}),
+			want: true,
+		},
+		// regression: #4242
+		{
+			name: "transfer save path uses Tracker",
+			rule: rule(&models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}"}}),
 			want: true,
 		},
 		{
@@ -2089,22 +2094,20 @@ func TestReserveExports(t *testing.T) {
 }
 
 func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
-	forEachExportPath(t, func(t *testing.T, switches rollout.Switches) {
-		// Another run exported the torrent after this run planned it.
-		s := &Service{
-			targetLookup:    fakeTargetLookup{onTarget: map[string]bool{"done": true}},
-			inFlightExports: map[string]struct{}{"2:done": {}},
-		}
-		s.SetExportRunner(noExports{t}, switches)
-		action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
+	// Another run exported the torrent after this run planned it.
+	s := &Service{
+		targetLookup:    fakeTargetLookup{onTarget: map[string]bool{"done": true}},
+		inFlightExports: map[string]struct{}{"2:done": {}},
+	}
+	s.SetExportRunner(noExports{t})
+	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
 
-		results := s.executeExportToInstance(t.Context(), 1, []pendingExportToInstance{{hash: "done", action: action, mark: exportReady}})
+	results := s.executeExportToInstance(t.Context(), 1, []pendingExportToInstance{{hash: "done", action: action, mark: exportReady}})
 
-		for activity := range results {
-			t.Fatalf("unexpected activity: %s %s", activity.Outcome, activity.Reason)
-		}
-		require.Empty(t, s.inFlightExports)
-	})
+	for activity := range results {
+		t.Fatalf("unexpected activity: %s %s", activity.Outcome, activity.Reason)
+	}
+	require.Empty(t, s.inFlightExports)
 }
 
 // noExports fails the test at each Export run.

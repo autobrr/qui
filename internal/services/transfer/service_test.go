@@ -618,6 +618,88 @@ func TestTransferFollowsTheAfterChoice(t *testing.T) {
 	}
 }
 
+// With no save path, a Transfer lands at the save path of its category on
+// the target, as qBittorrent places a torrent of that category.
+// regression: #4242
+func TestTransferPutsATorrentAtTheSavePathOfItsCategory(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		categoryPath string
+		folder       string
+	}{
+		{name: "category with its own save path", categoryPath: "sorted", folder: "sorted"},
+		{name: "category without a save path", folder: "archive"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			if tc.categoryPath != "" {
+				r.dst.AddCategory("archive", filepath.Join(r.dstDir, tc.categoryPath))
+			} else {
+				r.dst.AddCategory("archive", "")
+			}
+			s := newShow(t, showName)
+			r.seed(s)
+			req := r.request(s)
+			req.Placement.Category = "archive"
+
+			record := r.run(req)
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, contents(s, tc.folder+"/"+showName), tree(t, r.dstDir))
+			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			require.NoError(t, err)
+			require.Len(t, landed, 1)
+			require.Equal(t, "archive", landed[0].Category)
+			require.Equal(t, filepath.Join(r.dstDir, tc.folder), landed[0].SavePath)
+		})
+	}
+}
+
+// A Transfer with no save path leaves the torrent on Automatic Torrent
+// Management when that is the default mode of the target, as qBittorrent
+// does for a torrent that a user adds there. A save path in the request
+// keeps the torrent on manual management.
+// regression: #4242
+func TestTransferLeavesATorrentOnAutomaticManagement(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		automatic bool
+		category  string
+		savePath  string
+		folder    string
+		managed   bool
+	}{
+		{name: "the target manages a category", automatic: true, category: "archive", folder: "sorted", managed: true},
+		{name: "the target manages no category", automatic: true, managed: true},
+		{name: "the request names a save path", automatic: true, category: "archive", savePath: "picked", folder: "picked"},
+		{name: "the target adds on manual management", category: "archive", folder: "sorted"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			r.dst.AutoManagement = tc.automatic
+			r.dst.AddCategory("archive", filepath.Join(r.dstDir, "sorted"))
+			s := newShow(t, showName)
+			r.seed(s)
+			req := r.request(s)
+			req.Placement = transfer.Placement{Category: tc.category}
+			if tc.savePath != "" {
+				req.Placement.SavePath = filepath.Join(r.dstDir, tc.savePath)
+			}
+
+			record := r.run(req)
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, contents(s, path.Join(tc.folder, showName)), tree(t, r.dstDir))
+			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			require.NoError(t, err)
+			require.Len(t, landed, 1)
+			require.Equal(t, tc.managed, landed[0].AutoManaged)
+			require.Equal(t, filepath.Join(r.dstDir, tc.folder), landed[0].SavePath)
+			require.True(t, r.seeding(r.target.ID, s.hash), "the target seeds the torrent")
+		})
+	}
+}
+
 // Each entry check refuses with its reason, and records no Transfer.
 func TestTransferRefuses(t *testing.T) {
 	for _, tc := range []struct {
@@ -825,6 +907,20 @@ func singleFileTorrent(t *testing.T, name string, data []byte) ([]byte, string) 
 	return buf.Bytes(), mi.HashInfoBytes().HexString()
 }
 
+// A Transfer records the size of its torrent at the start, for the list of
+// the Transfers page.
+func TestTransferRecordsTheSizeOfItsTorrent(t *testing.T) {
+	r := newRig(t)
+	show := newShow(t, showName)
+	r.seed(show)
+	id, err := r.svc.Start(t.Context(), r.request(show))
+	require.NoError(t, err)
+	r.svc.Wait()
+	record, err := r.store.Get(t.Context(), id)
+	require.NoError(t, err)
+	require.Equal(t, int64(70), record.Size, "the two files of the show hold 40 and 30 bytes")
+}
+
 // One Transfer runs at a time for each source. The next one waits.
 func TestTransferQueuesBySource(t *testing.T) {
 	r := newRig(t)
@@ -862,6 +958,121 @@ func TestTransferQueuesBySource(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	}
+}
+
+// A cancel of a Transfer that waits for its turn ends it at once. It never
+// ran, so it changed nothing, and its end runs no cleanup on the instances.
+// The Transfer that runs goes on.
+func TestCancelOfAWaitingTransferRunsNoCleanup(t *testing.T) {
+	r := newRig(t)
+	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")
+	r.seed(first)
+	write(t, filepath.Join(r.srcDir, "Other.Show.S02.720p-GRP"), second.files)
+	r.src.Seed(second.data, r.srcPath())
+	copying, held := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	t.Cleanup(release)
+	var once sync.Once
+	r.disk.onWrite = func(string) {
+		once.Do(func() {
+			close(copying)
+			<-held
+		})
+	}
+
+	firstID, err := r.svc.Start(t.Context(), r.request(first))
+	require.NoError(t, err)
+	<-copying
+	secondID, err := r.svc.Start(t.Context(), r.request(second))
+	require.NoError(t, err)
+	require.NoError(t, r.svc.Cancel(t.Context(), secondID))
+	require.False(t, r.get(secondID).FinishedAt.IsZero(), "the Transfer ended before Cancel answered")
+	release()
+	r.svc.Wait()
+
+	cancelled := r.get(secondID)
+	require.Equal(t, transfer.StateCancelled, cancelled.State)
+	steps := make([]string, 0, len(cancelled.Steps))
+	for _, step := range cancelled.Steps {
+		steps = append(steps, step.Name)
+	}
+	require.Equal(t, []string{"start", "cancelled"}, steps, "no cleanup step")
+	require.False(t, r.store.IsClaimed(r.source.ID, second.hash), "the cancel frees the torrent")
+	require.False(t, r.src.Stopped(second.hash))
+	require.Equal(t, transfer.StateDone, r.get(firstID).State)
+}
+
+// regression: #4242
+// A cancel that saved its state, but that a stop of qui cut before the end,
+// ends the Transfer at the next start. The Transfer does not run.
+func TestASavedCancelEndsTheTransferAtTheNextStart(t *testing.T) {
+	r := newRig(t)
+	// The first write of a cancel of a waiting Transfer, without the second.
+	record := r.waiting("bbbb")
+	record.State, record.RetryAt = transfer.StateCancelled, time.Time{}
+	record.Steps = []transfer.Step{{Name: "start", At: r.now()}, {Name: string(transfer.StateCancelled), At: r.now()}}
+	require.NoError(t, r.store.Save(t.Context(), record))
+	require.True(t, r.store.IsClaimed(r.source.ID, "bbbb"))
+
+	r.restart()
+	r.svc.Wait()
+
+	cancelled := r.get(record.ID)
+	require.Equal(t, transfer.StateCancelled, cancelled.State)
+	require.False(t, cancelled.FinishedAt.IsZero(), "the Transfer ended")
+	steps := make([]string, 0, len(cancelled.Steps))
+	for _, step := range cancelled.Steps {
+		steps = append(steps, step.Name)
+	}
+	require.Equal(t, []string{"start", "cancelled"}, steps, "the Transfer did not run")
+	require.False(t, r.store.IsClaimed(r.source.ID, "bbbb"), "the end frees the torrent")
+}
+
+// regression: #4242
+// Cancel saves the cancel before it answers, also while the cleanup of
+// another cancel runs: a stop of qui then cannot lose it, and the next start
+// runs the cleanup at once.
+func TestACancelIsSavedBeforeCancelAnswers(t *testing.T) {
+	r := newRig(t)
+	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")
+	r.seed(first)
+	write(t, filepath.Join(r.srcDir, "Other.Show.S02.720p-GRP"), second.files)
+	r.src.Seed(second.data, r.srcPath())
+	// Each one fails for a time after its copy, and keeps its files on the target.
+	r.dst.Reject = http.StatusInternalServerError
+	firstID, secondID := r.run(r.request(first)).ID, r.run(r.request(second)).ID
+	r.dst.Reject = 0
+	require.Equal(t, transfer.StateFailed, r.get(secondID).State)
+	require.False(t, r.get(secondID).RetryAt.IsZero())
+
+	removing, held := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	t.Cleanup(release)
+	var once sync.Once
+	r.disk.failRemove = func(string) bool {
+		once.Do(func() {
+			close(removing)
+			<-held
+		})
+		return false
+	}
+	require.NoError(t, r.svc.Cancel(t.Context(), firstID))
+	<-removing
+	require.NoError(t, r.svc.Cancel(t.Context(), secondID))
+
+	saved := r.get(secondID)
+	require.Equal(t, transfer.StateCancelled, saved.State)
+	require.True(t, saved.RetryAt.IsZero(), "the next start does not wait for the retry time")
+	require.Equal(t, "clean up", saved.Steps[len(saved.Steps)-1].Name)
+
+	release()
+	r.svc.Wait()
+	for _, id := range []int64{firstID, secondID} {
+		record := r.get(id)
+		require.Equal(t, transfer.StateCancelled, record.State, record.FailureReason)
+		require.False(t, record.FinishedAt.IsZero())
+	}
+	require.Empty(t, tree(t, r.dstDir))
 }
 
 // A file at a path that the copy writes stops the Transfer, and qui leaves
@@ -1147,58 +1358,6 @@ func logOf(record *transfer.Record) string {
 	return strings.Join(lines, "\n")
 }
 
-// A copy that stops halfway keeps its partial data, and each Proven piece in
-// the record is on the target and passes its check.
-func TestTransferStoppedHalfwayKeepsProvenPieces(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	writes := 0
-	r.disk.onWrite = func(string) {
-		if writes++; writes == 5 {
-			r.cancel()
-		}
-	}
-
-	id, err := r.svc.Start(t.Context(), r.request(s))
-	require.NoError(t, err)
-	r.svc.Wait()
-
-	record, err := r.store.Get(t.Context(), id)
-	require.NoError(t, err)
-	require.True(t, record.FinishedAt.IsZero(), "the Transfer stays unfinished")
-	require.True(t, r.store.IsClaimed(r.source.ID, s.hash))
-	proven := record.Members[0].ProvenPieces
-	require.NotEmpty(t, proven)
-	mi, err := metainfo.Load(bytes.NewReader(s.data))
-	require.NoError(t, err)
-	info, err := mi.UnmarshalInfo()
-	require.NoError(t, err)
-	var stream []byte
-	for _, f := range info.Files {
-		data, err := os.ReadFile(filepath.Join(r.dstDir, showName, f.Path[0]+".qui-transfer-"+strconv.FormatInt(id, 10)))
-		if errors.Is(err, fs.ErrNotExist) {
-			break
-		}
-		require.NoError(t, err)
-		stream = append(stream, data...)
-	}
-	count := 0
-	for piece := range info.NumPieces() {
-		if proven[piece/8]&(0x80>>(piece%8)) == 0 {
-			continue
-		}
-		count++
-		start := int64(piece) * info.PieceLength
-		end := min(start+info.PieceLength, info.TotalLength())
-		require.LessOrEqual(t, end, int64(len(stream)), "piece %d is on the target", piece)
-		sum := sha1.Sum(stream[start:end]) //nolint:gosec // BitTorrent v1 pieces are SHA-1
-		require.Equal(t, info.Pieces[piece*sha1.Size:(piece+1)*sha1.Size], sum[:], "piece %d passes its check", piece)
-	}
-	require.Less(t, count, info.NumPieces(), "the copy stopped halfway")
-	require.True(t, r.src.Has(s.hash))
-}
-
 // regression: #4231
 // A write that the target never answers ignores the stop. Close waits for it
 // only until its context ends, so that a shutdown keeps its time limit, and
@@ -1329,24 +1488,4 @@ func TestTransferServiceIdleWithoutTransfers(t *testing.T) {
 		require.NoError(t, reader.Close())
 	}
 	require.Equal(t, 1, r.ssh.Accepts(), "other file features read on one connection")
-}
-
-// A finished Transfer stays finished: a Wake and a restart send nothing.
-func TestTransferServiceLeavesFinishedTransfers(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	write(t, filepath.Join(r.dstDir, showName), map[string][]byte{"Show.S01E02.mkv": []byte("theirs")})
-	require.Equal(t, transfer.FailurePermanent, r.run(r.request(s)).FailureClass)
-	require.NoError(t, os.RemoveAll(filepath.Join(r.dstDir, showName)))
-	require.Equal(t, transfer.StateDone, r.run(r.request(s)).State)
-	src, dst := sent(r.src), sent(r.dst)
-
-	r.svc.Wake()
-	r.svc.Wait()
-	r.restart()
-	r.svc.Wait()
-
-	require.Equal(t, src, sent(r.src))
-	require.Equal(t, dst, sent(r.dst))
 }

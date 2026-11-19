@@ -5,6 +5,11 @@
     "search": "Пошук",
     "crossSeed": "Cross-Seed",
     "automations": "Автоматизації",
+    "transfers": "Перенесення",
+    "transfersQueued_one": "{{count}} елемент виконується або очікує",
+    "transfersQueued_few": "{{count}} елементи виконуються або очікують",
+    "transfersQueued_many": "{{count}} елементів виконуються або очікують",
+    "transfersQueued_other": "{{count}} елемента виконуються або очікують",
     "backups": "Резервні копії",
     "rss": "RSS",
     "settings": "Налаштування",
@@ -456,7 +461,8 @@
     }
   },
   "labels": {
-    "path": "Шлях"
+    "path": "Шлях",
+    "beta": "Бета"
   },
   "kit": {
     "loadFailed": "Не вдалося завантажити цей розділ.",

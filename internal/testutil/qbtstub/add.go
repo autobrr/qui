@@ -5,6 +5,7 @@ package qbtstub
 
 import (
 	"bytes"
+	"cmp"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -67,16 +68,27 @@ type added struct {
 	missing  bool
 	// listAfter counts the syncs that still leave the torrent out.
 	listAfter int
+	// staleRows counts the syncs after a recheck that still report
+	// staleState and staleProgress, the row from before it.
+	staleRows     int
+	staleState    string
+	staleProgress float64
 	// downloaded is the bytes that the torrent got from its peers.
 	downloaded int64
+	// allTime is the count of all sessions, which qBittorrent reports as
+	// downloaded. qBittorrent adds the bytes of a session to it about once a
+	// second, so it is late when a download ends: allTimeLate counts the
+	// syncs that still report the count from before the last bytes.
+	allTime     int64
+	allTimeLate int
 }
 
 // add answers torrents/add for uploaded .torrent files, as qBittorrent 5
 // does: it refuses file priorities in an upload from WebAPI 2.11.9, a torrent
 // it already has with 409, and bytes that are no torrent with 415. Seed mode
-// takes the files on trust, but finds missing wanted files once the torrent
-// runs. A stopped torrent without seed mode is not checked until it starts or
-// a recheck.
+// takes the files on trust, but finds missing wanted files at the add, also
+// when the torrent is stopped. A stopped torrent without seed mode is not
+// checked until it starts or a recheck.
 func (s *Server) add(w http.ResponseWriter, form *multipart.Form, param func(string) string) {
 	if param("filePriorities") != "" && s.webAPIAtLeast("2.11.9") {
 		http.Error(w, "Cannot specify filePriorities when uploading torrent files", http.StatusBadRequest)
@@ -101,6 +113,7 @@ func (s *Server) add(w http.ResponseWriter, form *multipart.Form, param func(str
 		}
 		s.place(t, param)
 		s.torrents[t.Hash] = t
+		s.addedTags[t.Hash] = slices.Clone(t.Tags)
 		ids = append(ids, t.Hash)
 	}
 	if len(ids) == 0 {
@@ -168,8 +181,13 @@ func (s *Server) place(t *Torrent, param func(string) string) {
 	if tags := param("tags"); tags != "" {
 		t.Tags = strings.Split(tags, ",")
 	}
-	if t.Layout == RootFolder && param("contentLayout") == "NoSubfolder" {
+	switch layout := param("contentLayout"); {
+	case t.Layout == RootFolder && layout == "NoSubfolder":
 		t.Layout = NoRootFolder
+	case t.Layout == SingleFile && layout == "Subfolder":
+		// qBittorrent names the folder after the file, without its extension.
+		folder, _, _ := strings.CutLast(t.Name, ".")
+		t.Layout, t.Files = NoRootFolder, []string{folder + "/" + t.Name}
 	}
 	a.stopped = param("stopped") == "true" || param("paused") == "true"
 	a.forced = param("forced") == "true"
@@ -178,14 +196,16 @@ func (s *Server) place(t *Torrent, param func(string) string) {
 	a.listAfter = s.ListAfterSyncs
 	if a.seedMode {
 		a.checked, a.progress = true, 1
+		a.missing = s.onDisk(t) < 1
 	}
 	if !a.stopped {
 		s.run(t)
 	}
 }
 
-// run starts a torrent: seed mode looks for missing files, and a torrent that
-// was never checked is checked.
+// run starts a torrent: seed mode looks for missing files again, as
+// qBittorrent loads a torrent with missing files again at its start, and a
+// torrent that was never checked is checked.
 func (s *Server) run(t *Torrent) {
 	a := t.add
 	switch {
@@ -227,6 +247,10 @@ func (s *Server) addedRow(t *Torrent) (state string, progress float64, listed bo
 		a.listAfter--
 		return "", 0, false
 	}
+	if a.staleRows > 0 {
+		a.staleRows--
+		return a.staleState, a.staleProgress, true
+	}
 	if a.checking {
 		if a.checkLeft > 0 {
 			a.checkLeft--
@@ -237,11 +261,17 @@ func (s *Server) addedRow(t *Torrent) (state string, progress float64, listed bo
 			a.stopped = true
 		}
 	}
+	state, progress = a.row()
+	return state, progress, true
+}
+
+// row is the state and progress of a torrent that runs no check.
+func (a *added) row() (state string, progress float64) {
 	switch {
 	case a.missing:
-		return "missingFiles", 0, true
+		return "missingFiles", 0
 	case !a.checked:
-		return "stoppedDL", 0, true
+		return "stoppedDL", 0
 	}
 	suffix := "DL"
 	if a.progress >= 1 {
@@ -249,11 +279,11 @@ func (s *Server) addedRow(t *Torrent) (state string, progress float64, listed bo
 	}
 	switch {
 	case a.stopped:
-		return "stopped" + suffix, a.progress, true
+		return "stopped" + suffix, a.progress
 	case a.forced:
-		return "forced" + suffix, a.progress, true
+		return "forced" + suffix, a.progress
 	}
-	return "stalled" + suffix, a.progress, true
+	return "stalled" + suffix, a.progress
 }
 
 // amountLeft is the bytes of the pieces that the last check did not pass,
@@ -288,12 +318,19 @@ func (s *Server) start(t *Torrent, forced bool) {
 }
 
 // recheck answers torrents/recheck, which ends seed mode. A stopped torrent
-// stays stopped after the check.
+// stays stopped after the check. The next sync, or the next StaleSyncs syncs,
+// still report the state from before the recheck, as qBittorrent does until
+// its next refresh.
 func (s *Server) recheck(t *Torrent) {
-	if t.add == nil {
+	a := t.add
+	if a == nil {
 		return
 	}
-	t.add.seedMode, t.add.missing = false, false
+	if !a.checking {
+		a.staleState, a.staleProgress = a.row()
+		a.staleRows = cmp.Or(s.StaleSyncs, 1)
+	}
+	a.seedMode, a.missing = false, false
 	s.startCheck(t)
 }
 

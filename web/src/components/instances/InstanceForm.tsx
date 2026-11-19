@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { MigrationHint } from "@/components/instances/MigrationHint"
+import { PublicPeerAddressField } from "@/components/instances/PublicPeerAddressField"
 import { Editor } from "@/components/kit/Editor"
 import { Field } from "@/components/kit/Field"
 import { SwitchRow } from "@/components/kit/SwitchRow"
@@ -50,6 +51,7 @@ function getInstanceFormDefaults(instance?: Instance): InstanceFormData {
     tlsSkipVerify: instance?.tlsSkipVerify ?? false,
     hasLocalFilesystemAccess: instance?.hasLocalFilesystemAccess ?? false,
     reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
+    publicPeerAddress: instance?.publicPeerAddress ?? "",
   }
 }
 
@@ -373,6 +375,18 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
             />
           )}
         </form.Field>
+
+        {instance && (
+          <form.Field name="publicPeerAddress">
+            {(field) => (
+              <PublicPeerAddressField
+                value={field.state.value ?? ""}
+                resolvedValue={instance.resolvedPublicPeerAddress}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+        )}
       </div>
     </Editor>
   )

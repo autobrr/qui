@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/autobrr/qui/internal/fsops"
@@ -37,14 +38,17 @@ type RouteReader interface {
 }
 
 // groupOf returns the Shared-file group of first on its instance, first
-// first, each member read fresh and checked like first.
-func (s *Service) groupOf(ctx context.Context, instanceID int, first *source) ([]*source, error) {
-	group := []*source{first}
+// first, each member read fresh and checked like first. A Transfer torrent
+// makes no hardlinks on the target: with that way, a torrent that reads the
+// files through hardlinks stays out of the group, and stay holds the hashes
+// of these torrents.
+func (s *Service) groupOf(ctx context.Context, instanceID int, first *source, way Way) (group []*source, stay []string, err error) {
+	group = []*source{first}
 	seen := map[string]bool{strings.ToLower(first.torrent.Hash): true}
 	for frontier := []string{first.torrent.Hash}; len(frontier) > 0; {
 		res, err := s.deps.Groups.FindDeleteMatches(ctx, map[int][]string{instanceID: frontier})
 		if err != nil {
-			return nil, fmt.Errorf("find the torrents that share the files: %w", err)
+			return nil, nil, fmt.Errorf("find the torrents that share the files: %w", err)
 		}
 		frontier = nil
 		for _, m := range res.Matches {
@@ -53,21 +57,41 @@ func (s *Service) groupOf(ctx context.Context, instanceID int, first *source) ([
 				continue
 			}
 			seen[hash] = true
+			if m.MatchType == matchHardlink && way == WayBitTorrent {
+				stay = append(stay, hash)
+				continue
+			}
 			member, err := s.readSource(ctx, instanceID, hash)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if member == nil {
 				continue
 			}
 			if err := member.movable(); err != nil {
-				return nil, refuse("%s shares the files of this torrent: %w", m.Name, err)
+				return nil, nil, refuse("%s shares the files of this torrent: %w", m.Name, err)
 			}
 			group = append(group, member)
 			frontier = append(frontier, hash)
 		}
 	}
-	return group, nil
+	return group, stay, nil
+}
+
+// stayLine says why the cross-seeds on hardlinks stay on the source, and how
+// the user moves them too.
+func stayLine(stay int, from, target *models.Instance) string {
+	who, read, them := strconv.Itoa(stay)+" cross-seeds stay", "They read", "them"
+	if stay == 1 {
+		who, read, them = "1 cross-seed stays", "It reads", "it"
+	}
+	if models.FilesystemAccessMode(target) == models.FilesystemModeNone {
+		return fmt.Sprintf("%s on %s. %s these files through hardlinks, and qui cannot make hardlinks on %s without file access. "+
+			"To move %s too, give qui file access to %s, on qui's own disk or over SSH, or cross-seed again on %s.",
+			who, from.Name, read, target.Name, them, target.Name, target.Name)
+	}
+	return fmt.Sprintf("%s on %s. %s these files through hardlinks, and a Transfer torrent cannot make hardlinks. "+
+		`To move %s too, select the way "Auto" or "Copy through qui".`, who, from.Name, read, them)
 }
 
 // members places each torrent of the group on the target. The group keeps
@@ -119,7 +143,7 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 			lands = crossSeed
 			m.TargetInstanceID = crossSeed.ID
 			m.Placement.Endpoint = fsops.EndpointOf(crossSeed)
-			m.Placement.Category, m.Placement.Tags = "", nil
+			m.Placement.Category, m.Placement.Tags, m.Placement.AutoTMM = "", nil, false
 		}
 		if i > 0 || lands != target {
 			if onTarget, err := s.has(ctx, lands.ID, m.Hash); err != nil {
@@ -129,6 +153,17 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 			}
 		}
 		members = append(members, m)
+	}
+	// The target manages a torrent only at the folder of its category, and it
+	// moves the torrent when that folder changes. A member in a folder below
+	// would then lose the files that it shares, so the target manages each
+	// of its members or none.
+	if slices.ContainsFunc(members, func(m Member) bool {
+		return m.TargetInstanceID == target.ID && m.Placement.SavePath != placement.SavePath
+	}) {
+		for i := range members {
+			members[i].Placement.AutoTMM = false
+		}
 	}
 	return members, nil
 }

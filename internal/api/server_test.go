@@ -33,7 +33,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -229,7 +228,6 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		Instances:       instanceStore,
 		Sync:            syncManager,
 		Peers:           peeraddress.New(instanceStore, syncManager),
-		Switches:        rollout.Switches{TransfersAndShares: true},
 		TrackerHost:     "127.0.0.1",
 		Config:          share.DefaultConfig(),
 	})
@@ -292,7 +290,6 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		Transfers:                 transfers,
 		TransferService:           transferService,
 		ShareService:              shareService,
-		Switches:                  rollout.Switches{TransfersAndShares: true},
 	}
 }
 

@@ -965,3 +965,37 @@ func TestValidateRule_MovePathSkippedWhenRuleDisabled(t *testing.T) {
 
 	require.NoError(t, ValidateRule(rule, nil))
 }
+
+func TestValidateRuleTransferToInstance(t *testing.T) {
+	seeded := &models.RuleCondition{Field: models.FieldSeedingTime, Operator: models.OperatorGreaterThan, Value: "7776000"}
+	transfer := func(enabled bool, target int) *models.TransferToInstanceAction {
+		return &models.TransferToInstanceAction{Enabled: enabled, TargetInstanceID: target, SavePath: "/data", Condition: seeded}
+	}
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		wantMsg    string
+	}{
+		{name: "action off", conditions: &models.ActionConditions{
+			TransferToInstance: transfer(false, 0), Pause: &models.PauseAction{Enabled: true, Condition: seeded},
+		}},
+		{name: "no target", conditions: &models.ActionConditions{TransferToInstance: transfer(true, 0)}, wantMsg: "Transfer to instance requires a target instance"},
+		{name: "target is the source", conditions: &models.ActionConditions{TransferToInstance: transfer(true, 1)}, wantMsg: "Transfer target cannot be the same as the source instance"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rule := &models.Automation{InstanceID: 1, Name: "Move old seeds", TrackerPattern: "*", Enabled: true, Conditions: tt.conditions}
+
+			err := ValidateRule(rule, nil)
+
+			if tt.wantMsg == "" {
+				require.NoError(t, err)
+				return
+			}
+			ruleErr, ok := errors.AsType[*RuleError](err)
+			require.True(t, ok, "want a RuleError, got %v", err)
+			require.Equal(t, tt.wantMsg, ruleErr.Message)
+		})
+	}
+}

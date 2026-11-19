@@ -556,6 +556,7 @@
         "externalProgram": "Externí program",
         "dryRun": "Zkušební běh",
         "exportToInstance": "Exportovat do instance",
+        "transferToInstance": "Přenést do instance",
         "ruleSkipped": "Pravidlo nespuštěno"
       },
       "shareLimit": {
@@ -626,7 +627,10 @@
         "exportedDryRun_other": "{{count}} torrentů by bylo exportováno",
         "exportFailed_one": "{{count}} torrent se nepodařilo exportovat",
         "exportFailed_few": "{{count}} torrenty se nepodařilo exportovat",
-        "exportFailed_other": "{{count}} torrentů se nepodařilo exportovat"
+        "exportFailed_other": "{{count}} torrentů se nepodařilo exportovat",
+        "transferredDryRun_one": "{{count}} torrent by byl přenesen",
+        "transferredDryRun_few": "{{count}} torrenty by byly přeneseny",
+        "transferredDryRun_other": "{{count}} torrentů by bylo přeneseno"
       },
       "deleteDialog": {
         "title": "Smazat pravidlo",
@@ -686,6 +690,7 @@
         "deleteActivityFailed": "Nepodařilo se smazat aktivitu"
       },
       "exported": "Exportováno",
+      "transferStarted": "Spuštěno",
       "skipped": "Přeskočeno"
     },
     "runWorkflowNow": {
@@ -1001,6 +1006,7 @@
         "auto_managed": "Automatická správa",
         "dry_run_no_match": "Zkušební běh (bez shody)",
         "exported_to_instance": "Exportováno do instance",
+        "transferred_to_instance": "Přenést do instance",
         "rule_skipped": "Pravidlo nespuštěno"
       }
     },
@@ -1179,6 +1185,11 @@
         "skipChecking": "Přeskočit ověření",
         "addPaused": "Přidat pozastaveno"
       },
+      "transfer": {
+        "title": "Přenést do instance",
+        "description": "Přesune každý odpovídající torrent i s jeho soubory do cílové instance a před odstraněním čehokoli ověří kopii. Stránka Přenosy ukazuje každý přenos.",
+        "remove": "Odebrat akci Přenést do instance"
+      },
       "priority": {
         "title": "Priorita torrentu",
         "description": "Kontroluje pořadí, v jakém jsou torrenty zpracovávány.",
@@ -1221,7 +1232,8 @@
         "category": "Kategorie",
         "move": "Přesunout",
         "externalProgram": "Spustit externí program",
-        "exportToInstance": "Exportovat do instance"
+        "exportToInstance": "Exportovat do instance",
+        "transferToInstance": "Přenést do instance"
       },
       "option": {
         "noChange": "Bez změny",
@@ -1477,6 +1489,7 @@
           "externalProgram": "Externí program",
           "noMatches": "Žádné shody",
           "exportedToInstance": "Exportováno do instance",
+          "transferredToInstance": "Přenést do instance",
           "ruleSkipped": "Pravidlo nespuštěno"
         },
         "actionFallback": "Neznámá akce ({{action}})",
@@ -2149,5 +2162,10 @@
     "emptyDescription": "Přidejte klienta qBittorrent, aby qui mohl spravovat jeho torrenty.",
     "tlsSkipped": "Bez kontroly TLS",
     "reorderFailed": "Nepodařilo se změnit pořadí instance"
+  },
+  "publicPeerAddress": {
+    "label": "Veřejná adresa peeru",
+    "noResolvedAddress": "qui zatím nedokáže zjistit adresu",
+    "description": "Adresa a port, na kterých ostatní BitTorrent klienti dosáhnou na tento qBittorrent, pro Přenosy a Sdílení. Nechte prázdné, aby qui při každém použití vzal adresu zjištěnou z qBittorrentu. Nastavte ji, když qBittorrent běží v Dockeru nebo za NAT."
   }
 }

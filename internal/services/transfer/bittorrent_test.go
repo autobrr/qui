@@ -50,6 +50,23 @@ func (r *rig) requireNoHelpers(record *transfer.Record) {
 	}
 }
 
+// requireHelperTag fails unless qui added each helper torrent of the
+// Transfer with the tag qui-transfer, the tag that lets a script of
+// qBittorrent skip it.
+func (r *rig) requireHelperTag(record *transfer.Record) {
+	r.t.Helper()
+	helpers, err := r.store.HelpersOf(r.t.Context(), transfer.OwnerTransfer, record.ID)
+	require.NoError(r.t, err)
+	require.NotEmpty(r.t, helpers)
+	for _, h := range helpers {
+		client := r.dst
+		if h.InstanceID == r.source.ID {
+			client = r.src
+		}
+		require.Equal(r.t, []string{"qui-transfer"}, client.AddedTags(h.Hash))
+	}
+}
+
 // A Transfer to a target without file access passes the files by a Transfer
 // torrent. When no byte arrives on the target from the source, qui asks the
 // source to connect to the target.
@@ -436,6 +453,7 @@ func TestTransferTorrentStartsAfterTheHeadStart(t *testing.T) {
 		require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 		require.Equal(t, map[string]string{showName + "/Show.S01E01.mkv": string(s.files["Show.S01E01.mkv"])}, tree(t, r.srcDir),
 			"the file that the target had stays on the source")
+		r.requireHelperTag(record)
 	})
 	t.Run("fails the check", func(t *testing.T) {
 		r := newRigOn(t, overSFTP, overSFTP)
@@ -520,6 +538,7 @@ func TestTransferTorrentRetries(t *testing.T) {
 		source func(s show) map[string]string
 	}{
 		// regression: #4231
+		// regression: #4242
 		{name: "nothing on the target", before: func(*rig, show) {},
 			source: func(show) map[string]string { return map[string]string{} }},
 		// regression: #4231
@@ -559,68 +578,82 @@ func TestTransferTorrentRetries(t *testing.T) {
 	}
 }
 
-// A Transfer torrent downloads each path of a hardlinked cross-seed on its
-// own, so the free space on the target counts each one.
-func TestTransferTorrentCountsEachPathOfAHardlinkedCrossSeed(t *testing.T) {
+// A Transfer torrent makes no hardlinks on the target. The picked torrent
+// moves alone, a cross-seed that reads its files through hardlinks stays on
+// the source with the files, and the log says how to move it too.
+func TestTransferTorrentLeavesAHardlinkedCrossSeed(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		free   int64
-		reason string
-		// windows puts the group below a Windows save path, which qui never
-		// reaches.
-		windows bool
+		target side
+		forced transfer.Way
+		line   string
 	}{
-		{name: "room for each path", free: 140},
-		{name: "room for one copy", free: 139,
-			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
-		// regression: #4231
-		{name: "below a Windows save path", free: 139, windows: true},
+		{name: "a target without file access", target: noAccess,
+			line: "1 cross-seed stays on seedbox. It reads these files through hardlinks, and qui cannot make hardlinks on homelab without file access. " +
+				"To move it too, give qui file access to homelab, on qui's own disk or over SSH, or cross-seed again on homelab."},
+		{name: "a forced Transfer torrent", target: overSFTP, forced: transfer.WayBitTorrent,
+			line: "1 cross-seed stays on seedbox. It reads these files through hardlinks, and a Transfer torrent cannot make hardlinks. " +
+				`To move it too, select the way "Auto" or "Copy through qui".`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := newRigOn(t, onDisk, noAccess)
+			r := newRigOn(t, onDisk, tc.target)
 			r.connect()
-			r.dst.FreeSpace = tc.free
+			// Room for one copy, not for a copy of each path.
+			r.dst.FreeSpace = 70
 			s := newShow(t, showName)
 			r.seed(s)
-			_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+			links, crossSeedHash := r.seedHardlinkedCrossSeed(s)
 			sourceFiles := tree(t, r.srcDir)
 			req := r.request(s)
-			if tc.windows {
-				req.Placement.SavePath = "C:/Downloads"
-				r.dst.WebAPIVersion = "2.15.2"
-				// The stub writes at the save path of an add, which is not on
-				// this host.
-				r.dst.OnWrite = func(endpoint string) {
-					if endpoint == "torrents/add" {
-						r.dst.Reject = http.StatusConflict
-					}
-				}
-			}
+			req.Options.ForcedWay = tc.forced
+
+			summary, err := r.svc.Summary(t.Context(), req)
+			require.NoError(t, err)
+			require.Equal(t, 1, summary.Stay)
+			require.Len(t, summary.Members, 1)
 
 			record := r.run(req)
 
-			if tc.windows {
-				require.Equal(t, []string{`C:\Downloads`, `C:\Downloads\links`},
-					[]string{record.Members[0].Placement.SavePath, record.Members[1].Placement.SavePath})
-				require.Equal(t, `C:\Downloads`, r.dst.FreeSpacePath())
-				require.Equal(t, transfer.StateFailed, record.State)
-				require.Equal(t, "homelab did not take the Transfer torrent: could not add torrent | conflicts detected: torrent(s) failed to be added",
-					record.FailureReason, "the stub cannot write at a save path on another host")
-				return
-			}
-			if tc.reason != "" {
-				require.Equal(t, transfer.StateFailed, record.State)
-				require.Equal(t, tc.reason, record.FailureReason)
-				r.requireNoHelpers(record)
-				require.Equal(t, 1, r.src.Writes("torrents/add"), "the first path took 70 B, and the second does not fit")
-				return
-			}
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-			require.Len(t, record.Members, 2)
-			require.Equal(t, sourceFiles, tree(t, r.dstDir))
+			require.Len(t, record.Members, 1)
+			require.Contains(t, logOf(record), tc.line)
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 			require.True(t, r.seeding(r.target.ID, s.hash))
-			require.True(t, r.seeding(r.target.ID, crossSeedHash))
+			require.False(t, r.dst.Has(crossSeedHash))
+			require.True(t, r.seeding(r.source.ID, crossSeedHash))
+			require.Equal(t, contents(s, showName), tree(t, links))
+			require.Equal(t, sourceFiles, tree(t, r.srcDir), "the cross-seed reads the files, so they stay on the source")
 			r.requireNoHelpers(record)
 		})
 	}
+}
+
+// regression: #4231
+// A Transfer torrent places each torrent of a group below a Windows save
+// path, which qui never reaches, and reads the free space at that path.
+func TestTransferTorrentPlacesAGroupBelowAWindowsSavePath(t *testing.T) {
+	r := newRigOn(t, onDisk, noAccess)
+	r.connect()
+	r.dst.FreeSpace = 140
+	r.dst.WebAPIVersion = "2.15.2"
+	// The stub writes at the save path of an add, which is not on this host.
+	r.dst.OnWrite = func(endpoint string) {
+		if endpoint == "torrents/add" {
+			r.dst.Reject = http.StatusConflict
+		}
+	}
+	s := newShow(t, showName)
+	r.seed(s)
+	r.seedEpisode(s)
+	req := r.request(s)
+	req.Placement.SavePath = "C:/Downloads"
+
+	record := r.run(req)
+
+	require.Equal(t, []string{`C:\Downloads`, `C:\Downloads\` + showName},
+		[]string{record.Members[0].Placement.SavePath, record.Members[1].Placement.SavePath})
+	require.Equal(t, `C:\Downloads`, r.dst.FreeSpacePath())
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, "homelab did not take the Transfer torrent: could not add torrent | conflicts detected: torrent(s) failed to be added",
+		record.FailureReason, "the stub cannot write at a save path on another host")
 }

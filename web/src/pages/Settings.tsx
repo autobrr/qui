@@ -22,6 +22,7 @@ import { SecuritySettings } from "@/components/settings/SecuritySettings"
 import { TimeLanguageSettings } from "@/components/settings/TimeLanguageSettings"
 import { TrackerCustomizationsManager } from "@/components/settings/TrackerCustomizationsManager"
 import { StatisticsSettingsCard } from "@/components/settings/StatisticsSettingsCard"
+import { ShareSettingsForm } from "@/components/shares/ShareSettingsForm"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { Button } from "@/components/ui/button"
@@ -112,6 +113,10 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
 
           {activeTab === "external-programs" && (
             <ExternalProgramsManager />
+          )}
+
+          {activeTab === "shares" && (
+            <ShareSettingsForm />
           )}
 
           {activeTab === "notifications" && (

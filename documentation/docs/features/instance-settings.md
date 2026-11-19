@@ -27,6 +27,7 @@ To open the instance settings dialog, go to **Settings → Instances** and click
 | **URL** | Full URL to the qBittorrent WebUI (for example, `http://localhost:8080`). |
 | **Skip TLS Verification** (**Skip TLS certificate check** in the Add instance form) | Accept self-signed or otherwise untrusted certificates. |
 | **Local Filesystem Access** | Enable for features that read files directly. See [Local Filesystem Access](#local-filesystem-access). |
+| **Public peer address** | The address and port at which other BitTorrent clients reach this qBittorrent. See [Public peer address](#public-peer-address). |
 
 ### Authentication
 
@@ -71,6 +72,16 @@ If qBittorrent runs on another machine and qui cannot mount its files, set up SS
 The Add instance form has no SSH tab. Add the instance first, then edit it.
 
 See [SSH Access](./ssh-access.md) for the setup and for the list of features that work over SSH.
+
+## Public peer address
+
+[Transfers](./transfers.md) and [Shares](./shares.md) give the address of a qBittorrent client to another BitTorrent client. The public peer address is a host and a port, for example `203.0.113.7:51413` or `seedbox.example.org:6881`.
+
+If you leave the field empty, qui gets the address from qBittorrent each time it needs it. qui uses the external IP address and the listen port that qBittorrent reports. The field shows this address as its placeholder. qui does not save it.
+
+Set the field when the address that qBittorrent reports is not the address that other clients connect to. For example, set it when qBittorrent runs in Docker or behind NAT with another port on the router.
+
+The Add instance form does not have this field. Add the instance first, then edit it. To clear the value, empty the field and save.
 
 ## Incognito mode
 
@@ -246,7 +257,9 @@ qui shows a preference only where qBittorrent uses it:
 - The write-through disk I/O write mode needs libtorrent 2.0.6 or later. The I2P length variance needs libtorrent 2.0.12 or later. Multiple connections from one peer ID need libtorrent 2.0.13 or later. The STUN server for WebTorrent needs libtorrent 2.1 or later.
 - qui does not show the memory working set limit on Linux or macOS. qui shows Mark-of-the-Web only on macOS and Windows. qBittorrent before 5.0 does not report its platform, so qui shows both there.
 
-The refresh interval, the application instance name, the confirmation of a torrent recheck, the Python executable path, and the lookup of peer host names change only the qBittorrent WebUI or desktop app. qui does not show them.
+The application instance name, the confirmation of a torrent recheck, the Python executable path, and the lookup of peer host names change only the qBittorrent WebUI or desktop app. qui does not show them.
+
+qui does not show the refresh interval. A [Transfer](./transfers.md) reads the refresh interval of the target instance. For two refresh intervals after a recheck, qBittorrent can report the state from before the recheck. In that time, the Transfer accepts a result only if it saw the check run.
 
 #### Network binding
 

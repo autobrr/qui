@@ -39,6 +39,23 @@ vi.mock("@/components/torrents/TorrentDialogs", async (importOriginal) => {
   }
 })
 
+// The Transfer and Share dialogs show the torrents and the instance that the module gives them.
+vi.mock("@/components/transfers/TransferDialog", async () => {
+  const { createElement } = await import("react")
+  return {
+    TransferDialog: (p: { open: boolean; sourceInstanceId: number; hash: string; name: string; onStarted: () => void }) => p.open ? createElement("div", { role: "dialog" },
+      createElement("h2", null, "transfer"), createElement("p", null, JSON.stringify([p.sourceInstanceId, p.hash, p.name])),
+      createElement("button", { onClick: p.onStarted }, "started")) : null,
+  }
+})
+vi.mock("@/components/shares/ShareDialog", async () => {
+  const { createElement } = await import("react")
+  return {
+    ShareDialog: (p: { open: boolean; instanceId: number; torrents: unknown[] }) => p.open ? createElement("div", { role: "dialog" },
+      createElement("h2", null, "share"), createElement("p", null, JSON.stringify([p.instanceId, p.torrents]))) : null,
+  }
+})
+
 // Keeps the count and the size in the text, so a test can read them in a toast or a dialog.
 // One translator for every render: the tag editor runs an effect again when t changes.
 const translation = vi.hoisted(() => ({
@@ -968,6 +985,33 @@ describe("bulk action module - dialogs with values", () => {
     expect(mockedApi.bulkAction.mock.calls).toEqual([[0, expect.objectContaining({ action: "setComment", comment: "note", targets: [{ instanceId: 3, hash: "a" }] })]])
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.setComment/1")
     expect(dialogTitle()).toBeNull()
+  })
+
+  it("opens the Transfer dialog for one torrent on its instance", () => {
+    const torrent = { ...makeTorrent({ hash: "a", name: "Some.Linux.ISO" }), instanceId: 3 }
+    const { result } = renderModule({ instanceId: ALL_INSTANCES_ID, actionTarget: pairs([{ instanceId: 3, hash: "a" }], [torrent]) })
+
+    act(() => result.current.pick({ action: "transfer" }))
+    expect(dialogValues("transfer")).toBe(JSON.stringify([3, "a", "Some.Linux.ISO"]))
+  })
+
+  // regression: #4242
+  it("clears the selection when a Transfer starts, so a phone leaves its selection mode", () => {
+    const { result } = renderModule({ actionTarget: ticks("a") })
+    act(() => result.current.dispatchSelection({ type: "tick", keys: ["a"], checked: true }))
+
+    act(() => result.current.pick({ action: "transfer" }))
+    act(() => clickButton("started"))
+
+    expect(hasSelection(result.current.selection)).toBe(false)
+  })
+
+  it("opens the Share dialog with each torrent of the Action target on the instance of the page", () => {
+    const actionTarget: ActionTarget = { kind: "ticks", hashes: ["a", "b"], count: 2, previewTorrents: [makeTorrent({ hash: "a", name: "A" }), makeTorrent({ hash: "b", name: "B" })] }
+    const { result } = renderModule({ actionTarget })
+
+    act(() => result.current.pick({ action: "share" }))
+    expect(dialogValues("share")).toBe(JSON.stringify([INSTANCE_ID, [{ hash: "a", name: "A" }, { hash: "b", name: "B" }]]))
   })
 
   it("renames the first torrent of the Action target on the instance of the page, with the follow-up refetch", async () => {

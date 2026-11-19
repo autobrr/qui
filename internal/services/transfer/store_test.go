@@ -170,11 +170,12 @@ func TestRecordKeepsEveryFieldPostgresIntegration(t *testing.T) {
 				Name:             "Name aaaa",
 				SourceSavePath:   "/src",
 				TargetInstanceID: 3,
-				Placement:        transfer.Placement{SavePath: "/dst", Category: "tv", Tags: []string{"moved"}, ContentLayout: "Original"},
+				Placement:        transfer.Placement{SavePath: "/dst", Category: "tv", Tags: []string{"moved"}, ContentLayout: "Original", SavePathOfTarget: true, AutoTMM: true},
 				ProvenPieces:     []byte{0b1010_0000},
 			}},
 			FlushState:    transfer.FlushConfirmed,
 			ReservedBytes: 5 << 30,
+			Size:          8 << 30,
 			RetryAt:       retryAt,
 			FailureClass:  transfer.FailureTemporary,
 			FailureReason: "the source went offline",
@@ -310,4 +311,82 @@ func normalizeSteps(steps []transfer.Step) []transfer.Step {
 		steps[i].At = steps[i].At.UTC()
 	}
 	return steps
+}
+
+// regression: #4242
+// The cleanup of old rows keeps a permanent failure that still holds a rule
+// off. Without the row, the rule would start the Transfer again after 30
+// days, with no action of the user. The row goes once a later Transfer of
+// each of its torrents exists.
+func TestTheCleanupKeepsAPermanentFailureThatWaitsForTheUserPostgresIntegration(t *testing.T) {
+	t.Parallel()
+
+	engines(t, func(t *testing.T, db *database.DB) {
+		store := open(t, db)
+		end := func(record *transfer.Record, class transfer.FailureClass) int64 {
+			t.Helper()
+			require.NoError(t, store.Create(t.Context(), record))
+			record.State, record.FailureClass = transfer.StateFailed, class
+			require.NoError(t, store.Save(t.Context(), record))
+			require.NoError(t, store.Finish(t.Context(), record.ID, transfer.StateFailed))
+			return record.ID
+		}
+		exists := func(id int64) bool {
+			t.Helper()
+			_, err := store.Get(t.Context(), id)
+			return err == nil
+		}
+		cleanup := func() int {
+			t.Helper()
+			n, err := store.RemoveFinishedBefore(t.Context(), time.Now().Add(time.Hour), func(int, string, time.Time) bool { return true })
+			require.NoError(t, err)
+			return n
+		}
+
+		permanent := end(group("aaaa", "bbbb"), transfer.FailurePermanent)
+		temporary := end(group("cccc"), transfer.FailureTemporary)
+		require.Equal(t, 1, cleanup())
+		require.False(t, exists(temporary))
+		require.True(t, exists(permanent))
+		waits, err := store.WaitsForUser(t.Context(), source, "aaaa")
+		require.NoError(t, err)
+		require.True(t, waits, "the rule stays off")
+
+		retry := group("aaaa", "bbbb")
+		require.NoError(t, store.Create(t.Context(), retry))
+		require.Equal(t, 1, cleanup())
+		require.False(t, exists(permanent), "a later Transfer of each torrent exists")
+		require.True(t, exists(retry.ID))
+	})
+}
+
+// Only the last Transfer of a torrent counts: a permanent failure waits for
+// the user until a later Transfer of the torrent ends.
+func TestTheLastPermanentFailureWaitsForTheUserPostgresIntegration(t *testing.T) {
+	t.Parallel()
+
+	engines(t, func(t *testing.T, db *database.DB) {
+		store := open(t, db)
+		waits := func(hash string) bool {
+			t.Helper()
+			got, err := store.WaitsForUser(t.Context(), source, hash)
+			require.NoError(t, err)
+			return got
+		}
+		end := func(record *transfer.Record, class transfer.FailureClass) {
+			t.Helper()
+			require.NoError(t, store.Create(t.Context(), record))
+			record.State, record.FailureClass = transfer.StateFailed, class
+			require.NoError(t, store.Save(t.Context(), record))
+			require.NoError(t, store.Finish(t.Context(), record.ID, transfer.StateFailed))
+		}
+
+		require.False(t, waits("aaaa"), "a torrent with no Transfer")
+		end(group("aaaa", "bbbb"), transfer.FailurePermanent)
+		require.True(t, waits("aaaa"))
+		require.True(t, waits("BBBB"), "each member, by any case of its hash")
+		end(group("aaaa"), transfer.FailureTemporary)
+		require.False(t, waits("aaaa"), "a later Transfer ended the wait")
+		require.True(t, waits("bbbb"))
+	})
 }
