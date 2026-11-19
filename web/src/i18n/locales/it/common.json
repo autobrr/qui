@@ -51,7 +51,8 @@
       "reporterFull": "Le tue segnalazioni occupano tutto lo spazio che brrbin dà a una persona. Elimina una vecchia segnalazione in Segnalazioni inviate, poi invia di nuovo.",
       "tooLarge": "La segnalazione è troppo grande. Scegli meno righe di log o un'immagine più piccola.",
       "tokenRejected": "Il tuo accesso è scaduto. Accedi di nuovo, poi invia.",
-      "unavailable": "brrbin non può ricevere segnalazioni in questo momento. Riprova più tardi."
+      "unavailable": "brrbin non può ricevere segnalazioni in questo momento. Riprova più tardi.",
+      "sendFailed": "Impossibile inviare la segnalazione: {{message}}"
     }
   },
   "header": {

@@ -102,7 +102,12 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 		switch part.FormName() {
 		case "report":
-			decoded, err := problemreport.DecodeReport(io.LimitReader(part, maxReportPart))
+			limited := &io.LimitedReader{R: part, N: maxReportPart + 1}
+			decoded, err := problemreport.DecodeReport(limited)
+			if limited.N == 0 {
+				RespondError(w, http.StatusRequestEntityTooLarge, problemreport.ReasonTooLarge)
+				return
+			}
 			if err != nil {
 				RespondError(w, http.StatusBadRequest, err.Error())
 				return

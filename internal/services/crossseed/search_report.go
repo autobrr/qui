@@ -6,6 +6,7 @@ package crossseed
 import (
 	"context"
 	"slices"
+	"strconv"
 )
 
 // SearchReportFacts are the Match policy and the Search scope of a manual
@@ -77,15 +78,22 @@ func (s *Service) SearchReportFacts(ctx context.Context, instanceID int, hash st
 	}
 	skipped := skippedTorznabIndexers(search.scope.facts, search.scope.torznabIndexerIDs, search.scope.skipReason)
 	if len(search.scope.torznabIndexerIDs)+len(skipped) > 0 && s.jackettService != nil {
-		names, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+		// The stored names; GetEnabledIndexersInfo also asks Prowlarr for each tracker domain.
+		indexers, err := s.jackettService.GetIndexers(ctx)
 		if err != nil {
 			return nil, err
 		}
+		names := make(map[int]string, len(indexers.Indexers))
+		for _, indexer := range indexers.Indexers {
+			if id, err := strconv.Atoi(indexer.ID); err == nil {
+				names[id] = indexer.Name
+			}
+		}
 		for _, id := range search.scope.torznabIndexerIDs {
-			scope.TorznabIndexers = append(scope.TorznabIndexers, ReportIndexer{ID: id, Name: names[id].Name})
+			scope.TorznabIndexers = append(scope.TorznabIndexers, ReportIndexer{ID: id, Name: names[id]})
 		}
 		for id, reason := range skipped {
-			scope.TorznabSkipped = append(scope.TorznabSkipped, ReportIndexer{ID: id, Name: names[id].Name, Reason: reason})
+			scope.TorznabSkipped = append(scope.TorznabSkipped, ReportIndexer{ID: id, Name: names[id], Reason: reason})
 		}
 		byID := func(a, b ReportIndexer) int { return a.ID - b.ID }
 		slices.SortFunc(scope.TorznabIndexers, byID)

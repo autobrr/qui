@@ -51,7 +51,8 @@
       "reporterFull": "Deine Meldungen belegen den ganzen Platz, den brrbin einer Person gibt. Lösche eine alte Meldung unter Gesendete Meldungen und sende dann erneut.",
       "tooLarge": "Die Meldung ist zu groß. Wähle weniger Logzeilen oder ein kleineres Bild.",
       "tokenRejected": "Deine Anmeldung ist abgelaufen. Melde dich erneut an und sende dann.",
-      "unavailable": "brrbin kann gerade keine Meldungen annehmen. Versuche es später erneut."
+      "unavailable": "brrbin kann gerade keine Meldungen annehmen. Versuche es später erneut.",
+      "sendFailed": "Die Meldung konnte nicht gesendet werden: {{message}}"
     }
   },
   "header": {

@@ -144,6 +144,7 @@ describe("ProblemReportDialog", () => {
     mount()
 
     const { textField, sendButton } = await openDialog()
+    expect(screen.getByText(/"userAgent"/).textContent).toContain(navigator.userAgent)
     fireEvent.change(textField, { target: { value: "Torrents vanish" } })
     fireEvent.click(sendButton)
 
@@ -159,6 +160,7 @@ describe("ProblemReportDialog", () => {
     expect(report.qui).toEqual(facts.qui)
     expect(report.instances).toEqual(facts.instances)
     expect(report.failedRequests).toEqual([])
+    expect(report.browser.userAgent).toBe(navigator.userAgent)
   })
 
   it("keeps a newer report open when an earlier Send succeeds after its dialog closed", async () => {
@@ -171,6 +173,7 @@ describe("ProblemReportDialog", () => {
     fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
     fireEvent.click(first.sendButton)
     await waitFor(() => expect(first.sendButton.disabled).toBe(true))
+    expect(first.textField.disabled).toBe(true)
     fireEvent.click(screen.getByRole("button", { name: "Close" }))
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
 
@@ -211,7 +214,7 @@ describe("ProblemReportDialog", () => {
 
     fireEvent.click(sendButton)
 
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Problem reports are off in the qui config."))
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Could not send the report: Problem reports are off in the qui config."))
     expect(submissionIds).toHaveLength(2)
     expect(submissionIds[1]).toBe(submissionIds[0])
     expect(toastSuccess).not.toHaveBeenCalled()

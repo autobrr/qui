@@ -1043,7 +1043,7 @@ func (app *Application) runServer() {
 			ClientAPIKeys: clientAPIKeyStore,
 			Notifications: notificationTargetStore,
 			Config: func() []string {
-				return []string{cfg.Config.SessionSecret, cfg.Config.DatabasePassword, cfg.Config.OIDCClientSecret}
+				return problemreport.ConfigSecrets(cfg.Config)
 			},
 		},
 	})

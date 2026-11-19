@@ -7362,7 +7362,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
-          description: Problem reports are off in the qui config, or the request came with an API key
+          description: Problem reports are off in the qui config
           content:
             application/json:
               schema:
@@ -7421,7 +7421,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
-          description: Problem reports are off in the qui config, the request came with an API key, or brrbin wants a sign-in (sign_in_required)
+          description: Problem reports are off in the qui config, or brrbin wants a sign-in (sign_in_required)
           content:
             application/json:
               schema:
@@ -8863,9 +8863,10 @@ components:
         API key for authentication. Browser-only routes refuse every API key with
         403 "API key not allowed; use the web UI": API key and client API key
         management, system update and restart, instance SSH credential and host-key
-        routes, change password, logout, license routes, and external program
-        create, update, and delete. When authentication is disabled, qui ignores
-        API keys and these routes accept the request.
+        routes, change password, logout, license routes, external program
+        create, update, and delete, and the Problem report routes. When
+        authentication is disabled, qui ignores API keys and these routes
+        accept the request.
     ApiKeyQuery:
       type: apiKey
       in: query

@@ -51,7 +51,8 @@
       "reporterFull": "Els teus informes ocupen tot l'espai que brrbin dona a una persona. Esborra un informe antic a Informes enviats i torna a enviar.",
       "tooLarge": "L'informe és massa gran. Tria menys línies de registre o una imatge més petita.",
       "tokenRejected": "La sessió ha acabat. Torna a iniciar la sessió i envia.",
-      "unavailable": "brrbin no pot rebre informes ara mateix. Torna-ho a provar més tard."
+      "unavailable": "brrbin no pot rebre informes ara mateix. Torna-ho a provar més tard.",
+      "sendFailed": "No s'ha pogut enviar l'informe: {{message}}"
     }
   },
   "header": {

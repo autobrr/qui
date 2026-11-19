@@ -50,7 +50,8 @@
       "reporterFull": "你的报告已用完 brrbin 给每个人的全部空间。请在已发送的报告中删除一份旧报告，然后再发送。",
       "tooLarge": "报告太大。请选择更少的日志行或更小的图片。",
       "tokenRejected": "你的登录已结束。请重新登录后再发送。",
-      "unavailable": "brrbin 现在无法接收报告。请稍后再试。"
+      "unavailable": "brrbin 现在无法接收报告。请稍后再试。",
+      "sendFailed": "无法发送报告：{{message}}"
     }
   },
   "header": {

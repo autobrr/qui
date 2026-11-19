@@ -50,7 +50,8 @@
       "reporterFull": "你的回報已用完 brrbin 給每個人的全部空間。請在已傳送的回報中刪除一則舊回報，然後再傳送。",
       "tooLarge": "回報太大。請選擇較少的記錄行或較小的圖片。",
       "tokenRejected": "你的登入已結束。請重新登入後再傳送。",
-      "unavailable": "brrbin 現在無法接收回報。請稍後再試。"
+      "unavailable": "brrbin 現在無法接收回報。請稍後再試。",
+      "sendFailed": "無法傳送回報：{{message}}"
     }
   },
   "header": {

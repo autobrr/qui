@@ -544,7 +544,7 @@ func TestSkippedTorznabIndexers(t *testing.T) {
 
 	asked, reasons := skipped(searchScopeFacts{
 		requestedIndexerIDs:    []int{1, 2, 3, 4, 5},
-		contentFilter:          contentFilterFacts{done: true, indexerIDs: []int{1, 2, 4}},
+		contentFilter:          contentFilterFacts{done: true, indexerIDs: []int{1, 2, 4}, capableIDs: []int{1, 2, 3, 4}},
 		cooldownIndexerIDs:     []int{2},
 		gazelleKeys:            []string{red},
 		gazelleTorznabIndexers: map[int]string{5: red},
@@ -558,9 +558,17 @@ func TestSkippedTorznabIndexers(t *testing.T) {
 
 	asked, reasons = skipped(searchScopeFacts{
 		requestedIndexerIDs: []int{1, 2},
-		contentFilter:       contentFilterFacts{indexerIDs: []int{1}},
+		contentFilter:       contentFilterFacts{indexerIDs: []int{1}, capableIDs: []int{1}},
 		cooldownIndexerIDs:  []int{1},
 	})
 	assert.Empty(t, asked)
 	assert.Equal(t, map[int]string{1: "within cooldown", 2: "does not support the required caps"}, reasons)
+
+	// The content filter finishes at once when no indexer supports the caps.
+	asked, reasons = skipped(searchScopeFacts{
+		requestedIndexerIDs: []int{1, 2},
+		contentFilter:       contentFilterFacts{done: true, indexerIDs: []int{}, noCapableIndexers: true},
+	})
+	assert.Empty(t, asked)
+	assert.Equal(t, map[int]string{1: "does not support the required caps", 2: "does not support the required caps"}, reasons)
 }

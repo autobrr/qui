@@ -57,7 +57,7 @@ export function ProblemReportMenuItem({ onOpen }: { onOpen: () => void }) {
 export function ProblemReportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         {/* The dialog unmounts its content when it closes, so each open starts a new report. */}
         <ProblemReportForm onSent={() => onOpenChange(false)} />
       </DialogContent>
@@ -71,6 +71,8 @@ function ProblemReportForm({ onSent }: { onSent: () => void }) {
   const [text, setText] = useState("")
   // One id for each open, so that a retry of the same report stores no second row.
   const [submissionId] = useState(newSubmissionId)
+  // Read once, so that the preview shows the values that Send posts.
+  const [browser] = useState(browserFacts)
 
   const factsQuery = useQuery({
     queryKey: ["problem-reports", "facts", "menu"],
@@ -83,13 +85,7 @@ function ProblemReportForm({ onSent }: { onSent: () => void }) {
       text,
       startedFrom: "menu",
       ...reportFacts(facts),
-      browser: {
-        route: window.location.pathname,
-        userAgent: navigator.userAgent,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-        devicePixelRatio: window.devicePixelRatio,
-      },
+      browser,
       failedRequests: [],
     }),
     onSuccess: () => toast.success(t("problemReports.sent")),
@@ -97,7 +93,7 @@ function ProblemReportForm({ onSent }: { onSent: () => void }) {
 
   const facts = factsQuery.data
   // Typing re-renders the form, so the facts text is built once per load.
-  const factsText = useMemo(() => facts && JSON.stringify(reportFacts(facts), null, 2), [facts])
+  const factsText = useMemo(() => facts && JSON.stringify({ ...reportFacts(facts), browser }, null, 2), [facts, browser])
   const canSend = facts !== undefined && text.trim() !== "" && !sendMutation.isPending
 
   return (
@@ -109,7 +105,14 @@ function ProblemReportForm({ onSent }: { onSent: () => void }) {
 
       <div className="grid gap-2">
         <Label htmlFor={textId}>{t("problemReports.textLabel")}</Label>
-        <Textarea id={textId} value={text} onChange={(event) => setText(event.target.value)} className="max-h-48" required />
+        <Textarea
+          id={textId}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          disabled={sendMutation.isPending}
+          className="max-h-48"
+          required
+        />
       </div>
 
       <div className="grid min-w-0 gap-2">
@@ -163,7 +166,17 @@ function sendErrorMessage(t: TFunction<"common">, error: Error): string {
     case "unavailable":
       return t("problemReports.errors.unavailable")
     default:
-      return error.message
+      return t("problemReports.errors.sendFailed", { message: error.message })
+  }
+}
+
+function browserFacts() {
+  return {
+    route: window.location.pathname,
+    userAgent: navigator.userAgent,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    devicePixelRatio: window.devicePixelRatio,
   }
 }
 

@@ -51,7 +51,8 @@
       "reporterFull": "Vos rapports occupent toute la place que brrbin donne à une personne. Supprimez un ancien rapport dans Rapports envoyés, puis renvoyez.",
       "tooLarge": "Le rapport est trop volumineux. Choisissez moins de lignes de journal ou une image plus petite.",
       "tokenRejected": "Votre connexion a pris fin. Reconnectez-vous, puis envoyez.",
-      "unavailable": "brrbin ne peut pas recevoir de rapports pour le moment. Réessayez plus tard."
+      "unavailable": "brrbin ne peut pas recevoir de rapports pour le moment. Réessayez plus tard.",
+      "sendFailed": "Impossible d'envoyer le rapport : {{message}}"
     }
   },
   "header": {

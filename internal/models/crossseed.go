@@ -778,6 +778,10 @@ func (s *CrossSeedStore) gazelleAPIKeys(ctx context.Context, evenWhenOff bool) (
 	return keys, nil
 }
 
+// ErrUndecryptableCredential reports a stored credential that does not
+// decrypt, most likely because sessionSecret changed.
+var ErrUndecryptableCredential = errors.New("stored credential does not decrypt")
+
 // GetDecryptedSeasonPackTVDBCredentials returns the decrypted TVDB API key and PIN
 // for season pack metadata resolution.
 func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Context) (apiKey, pin string, err error) {
@@ -795,7 +799,7 @@ func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Conte
 	if keyEnc.Valid && strings.TrimSpace(keyEnc.String) != "" {
 		apiKey, err = s.decrypt(keyEnc.String)
 		if err != nil {
-			return "", "", fmt.Errorf("decrypt tvdb api key: %w", err)
+			return "", "", fmt.Errorf("decrypt tvdb api key: %w: %w", ErrUndecryptableCredential, err)
 		}
 	}
 	if pinEnc.Valid && strings.TrimSpace(pinEnc.String) != "" {

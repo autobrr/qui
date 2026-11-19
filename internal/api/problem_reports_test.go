@@ -574,6 +574,35 @@ func TestProblemReportImageRefusedBeforeBrrbin(t *testing.T) {
 	assert.Equal(t, png, rig.fake.Requests()[0].Image)
 }
 
+func TestProblemReportOversizedReportPartIsTooLarge(t *testing.T) {
+	rig := newReportRig(t, reportRigOptions{})
+	_, facts := rig.facts("startedFrom=menu")
+
+	status, answer := rig.send(menuReport(strings.Repeat("x", 16<<20), facts, "none", nil), nil)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, status)
+	assert.Equal(t, "too_large", answer["error"])
+	assert.Empty(t, rig.fake.Requests())
+}
+
+func TestProblemReportTVDBReadFailure(t *testing.T) {
+	// A TVDB key that does not decrypt cannot reach a log line, so the report still sends.
+	rig := newReportRig(t, reportRigOptions{})
+	_, facts := rig.facts("startedFrom=menu")
+	_, err := rig.db.ExecContext(t.Context(), `UPDATE cross_seed_settings SET season_pack_tvdb_api_key_encrypted = 'not-a-ciphertext' WHERE id = 1`)
+	require.NoError(t, err)
+	status, _ := rig.send(menuReport("text", facts, "none", nil), nil)
+	assert.Equal(t, http.StatusCreated, status)
+
+	// A failed read could leave the TVDB key in the text, so nothing leaves qui.
+	rig = newReportRig(t, reportRigOptions{})
+	_, facts = rig.facts("startedFrom=menu")
+	_, err = rig.db.ExecContext(t.Context(), `ALTER TABLE cross_seed_settings DROP COLUMN season_pack_tvdb_pin_encrypted`)
+	require.NoError(t, err)
+	status, _ = rig.send(menuReport("text", facts, "none", nil), nil)
+	assert.Equal(t, http.StatusInternalServerError, status)
+	assert.Empty(t, rig.fake.Requests())
+}
+
 func TestProblemReportRoutesWhenOff(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

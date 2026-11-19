@@ -51,7 +51,8 @@
       "reporterFull": "Seus relatos ocupam todo o espaço que o brrbin dá a uma pessoa. Exclua um relato antigo em Relatos enviados e envie de novo.",
       "tooLarge": "O relato é grande demais. Escolha menos linhas de log ou uma imagem menor.",
       "tokenRejected": "Sua sessão terminou. Entre de novo e envie.",
-      "unavailable": "O brrbin não pode receber relatos agora. Tente de novo mais tarde."
+      "unavailable": "O brrbin não pode receber relatos agora. Tente de novo mais tarde.",
+      "sendFailed": "Não foi possível enviar o relato: {{message}}"
     }
   },
   "header": {

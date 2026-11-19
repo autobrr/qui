@@ -51,7 +51,8 @@
       "reporterFull": "Your reports use all the room brrbin gives one person. Delete an old report in Sent reports, then send again.",
       "tooLarge": "The report is too large. Pick fewer log lines or a smaller image.",
       "tokenRejected": "Your sign-in ended. Sign in again, then send.",
-      "unavailable": "brrbin cannot take reports right now. Try again later."
+      "unavailable": "brrbin cannot take reports right now. Try again later.",
+      "sendFailed": "Could not send the report: {{message}}"
     }
   },
   "header": {

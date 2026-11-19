@@ -7,12 +7,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"regexp"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/redact"
 )
@@ -37,9 +41,22 @@ type StoreSecrets struct {
 	APIKeys       *models.APIKeyStore
 	ClientAPIKeys *models.ClientAPIKeyStore
 	Notifications *models.NotificationTargetStore
-	// Config returns the secrets of the config: the session secret, the
-	// database password and the OIDC client secret.
+	// Config returns the secrets of the config, see ConfigSecrets.
 	Config func() []string
+}
+
+// ConfigSecrets returns the secrets of the qui config: the session secret,
+// the database password, the password in the Postgres DSN and the OIDC
+// client secret.
+func ConfigSecrets(cfg *domain.Config) []string {
+	secrets := []string{cfg.SessionSecret, cfg.DatabasePassword, cfg.OIDCClientSecret}
+	if dsn := strings.TrimSpace(cfg.DatabaseDSN); dsn != "" {
+		// The same parser as the database connection, for the URL and the key/value form.
+		if parsed, err := pgconn.ParseConfig(dsn); err == nil {
+			secrets = append(secrets, parsed.Password)
+		}
+	}
+	return secrets
 }
 
 func (s StoreSecrets) ReportSecrets(ctx context.Context) (Secrets, error) {
@@ -146,11 +163,12 @@ func (s StoreSecrets) crossSeedSecrets(ctx context.Context, c *secretCollector) 
 	for _, key := range keys.Keys {
 		c.add(key)
 	}
-	// It fails only on a key that does not decrypt, which cannot reach a log
-	// line either, so the report still sends.
-	if apiKey, pin, err := s.CrossSeed.GetDecryptedSeasonPackTVDBCredentials(ctx); err == nil {
-		c.add(apiKey, pin)
+	apiKey, pin, err := s.CrossSeed.GetDecryptedSeasonPackTVDBCredentials(ctx)
+	if err != nil && !errors.Is(err, models.ErrUndecryptableCredential) {
+		return fmt.Errorf("read TVDB credentials: %w", err)
 	}
+	// A key that does not decrypt comes back empty, and cannot reach a log line either.
+	c.add(apiKey, pin)
 	return nil
 }
 

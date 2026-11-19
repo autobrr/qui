@@ -52,7 +52,8 @@
       "reporterFull": "Vaše hlášení zabírají všechno místo, které brrbin dává jedné osobě. Smažte staré hlášení v Odeslaných hlášeních a odešlete znovu.",
       "tooLarge": "Hlášení je příliš velké. Vyberte méně řádků logu nebo menší obrázek.",
       "tokenRejected": "Vaše přihlášení skončilo. Přihlaste se znovu a pak odešlete.",
-      "unavailable": "brrbin teď nemůže přijímat hlášení. Zkuste to později."
+      "unavailable": "brrbin teď nemůže přijímat hlášení. Zkuste to později.",
+      "sendFailed": "Hlášení se nepodařilo odeslat: {{message}}"
     }
   },
   "header": {

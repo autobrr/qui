@@ -103,6 +103,8 @@ type contentFilterFacts struct {
 	// out, indexerIDs holds the result of the capability filter.
 	done       bool
 	indexerIDs []int
+	// capableIDs are the indexers that support the required caps.
+	capableIDs []int
 	// seededOn counts the indexers that the filter removed because the content
 	// seeds there already.
 	seededOn          int
@@ -262,10 +264,10 @@ func skippedTorznabIndexers(f searchScopeFacts, asked []int, skipReason string) 
 			skipped[id] = gazelleAPISkipReason
 		case f.torznabOff || f.contentFilter.torznabErr != nil:
 			skipped[id] = skipReason
-		case !slices.Contains(f.contentFilter.indexerIDs, id) && f.contentFilter.done:
-			skipped[id] = indexerContentSkipReason
-		case !slices.Contains(f.contentFilter.indexerIDs, id):
+		case !slices.Contains(f.contentFilter.capableIDs, id):
 			skipped[id] = indexerCapabilitySkipReason
+		case !slices.Contains(f.contentFilter.indexerIDs, id):
+			skipped[id] = indexerContentSkipReason
 		case slices.Contains(f.cooldownIndexerIDs, id):
 			skipped[id] = indexerInCooldownSkipReason
 		default:
@@ -472,6 +474,7 @@ func (s *Service) contentFilterFacts(ctx context.Context, instanceID int, hash s
 		torznabErr:        snapshot.torznabErr,
 		done:              snapshot.ContentCompleted,
 		indexerIDs:        snapshot.CapabilityIndexers,
+		capableIDs:        snapshot.CapabilityIndexers,
 		seededOn:          len(snapshot.ExcludedIndexers),
 		noCapableIndexers: len(snapshot.CapabilityIndexers) == 0,
 	}

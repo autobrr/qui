@@ -2516,7 +2516,8 @@ class ApiClient {
     return this.request<ApplicationInfo>("/application/info")
   }
 
-  async getProblemReportFacts(startedFrom: ProblemReportStartedFrom): Promise<ProblemReportFacts> {
+  // A search report needs the instance and the torrent too; its entry point comes with #4255.
+  async getProblemReportFacts(startedFrom: Exclude<ProblemReportStartedFrom, "search">): Promise<ProblemReportFacts> {
     return this.request<ProblemReportFacts>(`/problem-reports/facts?startedFrom=${startedFrom}`)
   }
 
