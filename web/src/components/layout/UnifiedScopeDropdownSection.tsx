@@ -38,7 +38,7 @@ export function UnifiedScopeDropdownSection({
   const isSidebar = variant === "sidebar"
 
   const rowContainerClassName = isSidebar ? cn(
-    "flex items-stretch rounded-md text-sm",
+    "flex items-stretch rounded-md text-sm short:text-[13px]/5",
     isAllInstancesRoute ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium" : "text-sidebar-foreground"
   ) : cn(
     "flex items-stretch rounded-sm text-sm",
@@ -46,7 +46,7 @@ export function UnifiedScopeDropdownSection({
   )
 
   const rowLinkClassName = isSidebar ? cn(
-    "flex min-w-0 flex-1 items-center gap-3 px-3 py-2 outline-hidden",
+    "flex min-w-0 flex-1 items-center gap-3 px-3 py-1.5 outline-hidden short:py-1",
     isAllInstancesRoute ? "rounded-l-md" : "rounded-l-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:bg-sidebar-accent focus-visible:text-sidebar-accent-foreground hover:transition-colors hover:duration-200 hover:ease-out"
   ) : cn(
     "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 outline-hidden transition-colors",
@@ -68,9 +68,9 @@ export function UnifiedScopeDropdownSection({
     !isSidebar && "max-h-[min(18rem,calc(100vh-14rem))]"
   )
 
-  const contentInnerClassName = isSidebar ? "ml-6 space-y-1 border-l border-sidebar-border/70 pl-3" : "ml-4 max-h-[min(18rem,calc(100vh-14rem))] space-y-1 overflow-y-auto overscroll-contain border-l border-border/60 pl-2 pr-1"
+  const contentInnerClassName = isSidebar ? "ml-6 space-y-0.5 border-l border-sidebar-border/70 pl-3 short:space-y-px" : "ml-4 max-h-[min(18rem,calc(100vh-14rem))] space-y-1 overflow-y-auto overscroll-contain border-l border-border/60 pl-2 pr-1"
 
-  const sidebarScopeRowClassName = "flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out outline-hidden"
+  const sidebarScopeRowClassName = "flex w-full items-center justify-between gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-200 ease-out outline-hidden short:py-1 short:text-[13px]/5"
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded} className="space-y-1">
