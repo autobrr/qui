@@ -1743,7 +1743,7 @@
     "settings": {
       "title": "Profils d’affichage",
       "holds": "Contient : colonnes · densité des lignes · barres latérales · sections de filtres · arborescences de catégories · filtres vides",
-      "holdsHelp": "Un profil contient l’apparence de la liste des torrents : les colonnes affichées, leur ordre et leur largeur, l’étirement de la colonne Nom, la densité des lignes, les barres latérales et les sections de filtres ouvertes, les arborescences de catégories repliées et l’affichage des filtres vides. Chaque navigateur utilise un profil, et seul ce navigateur retient le choix. Un navigateur qui n’en a jamais choisi, et une fenêtre privée, utilisent Default. Tous les profils partagent les autres réglages.",
+      "holdsHelp": "Un profil contient l’apparence de la liste des torrents : les colonnes affichées, leur ordre et leur largeur, l’étirement de la colonne Nom, la densité des lignes, les barres latérales et les sections de filtres ouvertes, les arborescences de catégories repliées et l’affichage des filtres vides. Il contient aussi les lignes d’instances ouvertes du Tableau de bord. Chaque navigateur utilise un profil, et seul ce navigateur retient le choix. Un navigateur qui n’en a jamais choisi, et une fenêtre privée, utilisent Default. Tous les profils partagent les autres réglages.",
       "thisBrowser": "Ce navigateur",
       "use": "Utiliser dans ce navigateur",
       "makeProfile": "Créer un profil pour un ordinateur portable ou un téléphone",

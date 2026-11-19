@@ -1743,7 +1743,7 @@
     "settings": {
       "title": "Profili di visualizzazione",
       "holds": "Contiene: colonne · densità delle righe · barre laterali · sezioni dei filtri · alberi delle categorie · filtri vuoti",
-      "holdsHelp": "Un profilo contiene l’aspetto dell’elenco dei torrent: quali colonne sono visibili, il loro ordine e la loro larghezza, l’estensione della colonna Nome, la densità delle righe, le barre laterali e le sezioni dei filtri aperte, gli alberi delle categorie compressi e se i filtri vuoti sono visibili. Ogni browser usa un profilo, e solo quel browser ricorda la scelta. Un browser che non ne ha mai scelto uno, e una finestra privata, usano Default. Tutti i profili condividono le altre impostazioni.",
+      "holdsHelp": "Un profilo contiene l’aspetto dell’elenco dei torrent: quali colonne sono visibili, il loro ordine e la loro larghezza, l’estensione della colonna Nome, la densità delle righe, le barre laterali e le sezioni dei filtri aperte, gli alberi delle categorie compressi e se i filtri vuoti sono visibili. Contiene anche quali righe delle istanze della Dashboard sono aperte. Ogni browser usa un profilo, e solo quel browser ricorda la scelta. Un browser che non ne ha mai scelto uno, e una finestra privata, usano Default. Tutti i profili condividono le altre impostazioni.",
       "thisBrowser": "Questo browser",
       "use": "Usa in questo browser",
       "makeProfile": "Crea un profilo per un portatile o un telefono",
