@@ -144,6 +144,7 @@ describe("ProblemReportDialog", () => {
     mount()
 
     const { textField, sendButton } = await openDialog()
+    // regression: #4288
     expect(screen.getByText(/"userAgent"/).textContent).toContain(navigator.userAgent)
     fireEvent.change(textField, { target: { value: "Torrents vanish" } })
     fireEvent.click(sendButton)
@@ -160,9 +161,11 @@ describe("ProblemReportDialog", () => {
     expect(report.qui).toEqual(facts.qui)
     expect(report.instances).toEqual(facts.instances)
     expect(report.failedRequests).toEqual([])
+    // regression: #4288
     expect(report.browser.userAgent).toBe(navigator.userAgent)
   })
 
+  // regression: #4288
   it("keeps a newer report open when an earlier Send succeeds after its dialog closed", async () => {
     serveInfo({ experimentalFeatures: ["problemReports"], problemReports: true })
     let answer: (response: Response) => void = () => {}
@@ -214,6 +217,7 @@ describe("ProblemReportDialog", () => {
 
     fireEvent.click(sendButton)
 
+    // regression: #4288
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Could not send the report: Problem reports are off in the qui config."))
     expect(submissionIds).toHaveLength(2)
     expect(submissionIds[1]).toBe(submissionIds[0])

@@ -564,6 +564,7 @@ func TestSkippedTorznabIndexers(t *testing.T) {
 	assert.Empty(t, asked)
 	assert.Equal(t, map[int]string{1: "within cooldown", 2: "does not support the required caps"}, reasons)
 
+	// regression: #4288
 	// The content filter finishes at once when no indexer supports the caps.
 	asked, reasons = skipped(searchScopeFacts{
 		requestedIndexerIDs: []int{1, 2},

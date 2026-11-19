@@ -317,6 +317,7 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 
 	text := "Uploads stall.\nMy announce is udp://tracker.example.invalid:6969/" + reportPasskey + "/announce and my key " + rig.apiKey +
 		"\nqui reaches " + rig.stub.URL + " as " + reportInstanceUser + ", and http://localhost/ answers, and so does localhost." +
+		// regression: #4288
 		"\nThe files sit on " + reportSSHHost + " for " + reportSSHUser + " with this key:\n" + rig.sshKey +
 		"\nRED/OPS is off, its key was " + reportREDKey
 	status, answer := rig.send(menuReport(text, facts, "warnings", facts.Logs.Warnings), nil)
@@ -331,6 +332,7 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 	assert.Empty(t, request.Header.Get("Authorization"), "an anonymous report carries no token")
 	raw := string(request.Report)
 	for _, private := range []string{reportPasskey, rig.apiKey, reportInstanceUser, reportBasicUser, stubHost, "127.0.0.1", reportIndexerKey,
+		// regression: #4288
 		reportSSHHost, reportSSHUser, strings.TrimSpace(rig.sshKey), reportREDKey} {
 		assert.NotContains(t, raw, private)
 	}
@@ -574,6 +576,7 @@ func TestProblemReportImageRefusedBeforeBrrbin(t *testing.T) {
 	assert.Equal(t, png, rig.fake.Requests()[0].Image)
 }
 
+// regression: #4288
 func TestProblemReportOversizedReportPartIsTooLarge(t *testing.T) {
 	rig := newReportRig(t, reportRigOptions{})
 	_, facts := rig.facts("startedFrom=menu")
@@ -584,6 +587,7 @@ func TestProblemReportOversizedReportPartIsTooLarge(t *testing.T) {
 	assert.Empty(t, rig.fake.Requests())
 }
 
+// regression: #4288
 func TestProblemReportTVDBReadFailure(t *testing.T) {
 	// A TVDB key that does not decrypt cannot reach a log line, so the report still sends.
 	rig := newReportRig(t, reportRigOptions{})
