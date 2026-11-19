@@ -96,6 +96,14 @@ export function freeShare(d: DashboardInstanceStats): number | undefined {
   return total > 0 ? free / total : undefined
 }
 
+/** The upload and the download that qBittorrent counted since its first start, for the instances together. */
+export function allTimeTransfer(statsData: DashboardInstanceStats[]): { uploaded: number; downloaded: number } {
+  return {
+    uploaded: statsData.reduce((sum, d) => sum + (d.serverState?.alltime_ul ?? 0), 0),
+    downloaded: statsData.reduce((sum, d) => sum + (d.serverState?.alltime_dl ?? 0), 0),
+  }
+}
+
 // A disk is almost full below this share of free space.
 const LOW_DISK_SHARE = 0.05
 
@@ -249,6 +257,29 @@ export function trackerGroupShares(rows: TransferHistoryRow[]): TrackerGroupShar
 export function slotTotals(layers: ChartLayer[], half: "up" | "down"): number[] {
   const length = layers[0]?.[half].length ?? 0
   return Array.from({ length }, (_, index) => layers.reduce((sum, layer) => sum + (layer[half][index] ?? 0), 0))
+}
+
+/**
+ * Returns the layer that holds a value of the stack of one half. at is a slot, or a place between two slots of an area
+ * chart, where each layer runs in a straight line from slot to slot. A layer with a hole in a slot holds no value there.
+ */
+export function layerAt(layers: ChartLayer[], half: "up" | "down", at: number, value: number): number | undefined {
+  const left = Math.floor(at)
+  const right = Math.ceil(at)
+  const share = at - left
+  let leftSum = 0
+  let rightSum = 0
+  for (const layer of layers) {
+    const leftValue = layer[half][left] ?? null
+    const rightValue = layer[half][right] ?? null
+    const bottom = leftSum + (rightSum - leftSum) * share
+    leftSum += leftValue ?? 0
+    rightSum += rightValue ?? 0
+    if (leftValue !== null && rightValue !== null && value > bottom && value <= leftSum + (rightSum - leftSum) * share) {
+      return layer.layer
+    }
+  }
+  return undefined
 }
 
 /** The highest total of each half of the layers. */

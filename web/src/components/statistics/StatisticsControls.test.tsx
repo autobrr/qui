@@ -31,6 +31,7 @@ function renderPicker(screenKind: "upright" | "desktop") {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  Reflect.deleteProperty(HTMLInputElement.prototype, "showPicker")
 })
 
 describe("PeriodPicker", () => {
@@ -53,5 +54,25 @@ describe("PeriodPicker", () => {
 
     const firstDay = await screen.findByLabelText("customRange.from")
     await vi.waitFor(() => expect(document.activeElement).toBe(firstDay))
+  })
+
+  it("keeps the date picker of the device for a tap that iOS Safari reports as a mouse click", async () => {
+    const showPicker = vi.fn()
+    Object.defineProperty(HTMLInputElement.prototype, "showPicker", { value: showPicker, configurable: true })
+    renderPicker("upright")
+    fireEvent.click(screen.getByRole("button", { name: "periods.custom" }))
+    const firstDay = await screen.findByLabelText("customRange.from")
+
+    fireEvent.pointerDown(firstDay, { pointerType: "touch" })
+    const tap = new PointerEvent("click", { bubbles: true, cancelable: true, pointerType: "mouse" })
+    fireEvent(firstDay, tap)
+    expect(showPicker).not.toHaveBeenCalled()
+    expect(tap.defaultPrevented).toBe(false)
+
+    fireEvent.pointerDown(firstDay, { pointerType: "mouse" })
+    const click = new PointerEvent("click", { bubbles: true, cancelable: true, pointerType: "mouse" })
+    fireEvent(firstDay, click)
+    expect(showPicker).toHaveBeenCalledOnce()
+    expect(click.defaultPrevented).toBe(true)
   })
 })

@@ -17,7 +17,6 @@
     "liveDownloading": "Stahování: {{downloading}} · Zbývá: {{size}}",
     "peakHour": "Nejvytíženější hodina: {{size}}",
     "peakSpeed": "Špička: {{speed}}",
-    "hourTitle": "{{time}}: odesláno {{uploaded}}, staženo {{downloaded}}",
     "dayLabel": "Odesílání a stahování všech instancí v každé z posledních 24 hodin",
     "liveLabel": "Rychlost odesílání a stahování všech instancí za poslední 3 minuty",
     "liveStart": "před 3 min",
@@ -34,6 +33,11 @@
     "issues": "Problémy",
     "noIssues": "Žádné",
     "loading": "Načítání",
+    "expandAll": "Rozbalit vše",
+    "collapseAll": "Sbalit vše",
+    "altSpeedOff": "Alternativní rychlostní limity jsou vypnuté",
+    "altSpeedTurnOn": "Zapnout alternativní rychlostní limity",
+    "altSpeedTurnOff": "Vypnout alternativní rychlostní limity",
     "streamStatus": {
       "cached": "Zobrazuje se uložený snímek přehledu během obnovování",
       "fallback": "Obnovování statistik přehledu",
@@ -71,10 +75,15 @@
     "peers": "Peer připojení",
     "uptime": "Doba provozu",
     "version": "qBittorrent",
+    "libtorrent": "libtorrent",
     "connection": "Připojení",
     "externalAddresses": "Externí adresy",
     "unknown": "Neznámé",
-    "day": "Posledních 24 h: odesláno {{uploaded}}, staženo {{downloaded}}",
+    "last24h": "Posledních 24 h",
+    "allTime": "Celkem",
+    "uploaded": "Odesláno",
+    "downloaded": "Staženo",
+    "ratio": "poměr {{ratio}}",
     "uploadSpeed": "Rychlost odesílání",
     "downloadSpeed": "Rychlost stahování",
     "chartLabel": "Odesílání a stahování instance {{name}} v každé z posledních 24 hodin",
@@ -89,15 +98,6 @@
     "firewalled": "Za firewallem",
     "disconnected": "Odpojeno",
     "other": "Jiné"
-  },
-  "altSpeedDialog": {
-    "enableTitle": "Povolit alternativní rychlostní limity?",
-    "disableTitle": "Zakázat alternativní rychlostní limity?",
-    "enableDescription": "Toto povolí alternativní rychlostní limity pro {{name}}, které sníží rychlost přenosu na základě vašich nastavených limitů.",
-    "disableDescription": "Toto zakáže alternativní rychlostní limity pro {{name}} a vrátí se k normálním rychlostním limitům.",
-    "enable": "Povolit",
-    "disable": "Zakázat",
-    "cancel": "Zrušit"
   },
   "trackers": {
     "title": "Hlavní trackery, posledních 24 h",
@@ -119,7 +119,11 @@
     "torrents": "Torrenty",
     "totalSize": "Celková velikost",
     "seedingSize": "Velikost sdílených",
-    "instances": "Připojené instance"
+    "instances": "Připojené instance",
+    "allTime": "Celkem",
+    "uploaded": "Odesláno",
+    "downloaded": "Staženo",
+    "ratio": "Poměr"
   },
   "uniqueSize": {
     "calculating": "počítá se",

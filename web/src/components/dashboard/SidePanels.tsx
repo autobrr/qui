@@ -7,6 +7,7 @@ import { IssueIcon, IssueLink } from "@/components/dashboard/InstanceList"
 import { SizeCalculatingMark } from "@/components/dashboard/UniqueSize"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
+  allTimeTransfer,
   freeShare,
   instanceHealth,
   instanceIssues,
@@ -16,6 +17,7 @@ import {
   type DashboardInstanceStats
 } from "@/lib/dashboard-overview"
 import { resolveDashboardSizes } from "@/lib/dashboard-stream"
+import { formatRatio } from "@/lib/statistics"
 import { themeArea } from "@/lib/theme-areas"
 import { cn, formatBytes } from "@/lib/utils"
 import { Link } from "@tanstack/react-router"
@@ -111,12 +113,13 @@ export function Storage({ statsData, className }: { statsData: DashboardInstance
   )
 }
 
-/** The torrents and the sizes of all instances, and the count of connected instances. */
+/** The torrents and the sizes of all instances, the count of connected instances, and the all-time transfer. */
 export function Library({ statsData, className }: { statsData: DashboardInstanceStats[]; className?: string }) {
   const { t, i18n } = useTranslation("dashboard")
   const sizes = resolveDashboardSizes(statsData.map(d => d.stats))
   const torrents = statsData.reduce((sum, d) => sum + (d.torrentCounts?.total ?? 0), 0)
   const connected = statsData.filter(d => d.instance.connected).length
+  const allTime = allTimeTransfer(statsData)
   const values: Array<{ key: string; label: string; value: string; calculating?: boolean }> = [
     { key: "torrents", label: t("library.torrents"), value: torrents.toLocaleString(i18n.resolvedLanguage ?? i18n.language) },
     { key: "instances", label: t("library.instances"), value: `${connected}/${statsData.length}` },
@@ -134,6 +137,21 @@ export function Library({ statsData, className }: { statsData: DashboardInstance
           </div>
         ))}
       </dl>
+      <div className="mt-3 border-t pt-3" data-testid="library-all-time">
+        <div className="text-xs font-medium">{t("library.allTime")}</div>
+        <dl className="mt-1 grid grid-cols-3 gap-2">
+          {[
+            { key: "uploaded", label: t("library.uploaded"), value: formatBytes(allTime.uploaded) },
+            { key: "downloaded", label: t("library.downloaded"), value: formatBytes(allTime.downloaded) },
+            { key: "ratio", label: t("library.ratio"), value: formatRatio(allTime) ?? "–" },
+          ].map(({ key, label, value }) => (
+            <div key={key} className="min-w-0">
+              <dd className="truncate text-sm font-semibold tabular-nums">{value}</dd>
+              <dt className="text-xs text-muted-foreground">{label}</dt>
+            </div>
+          ))}
+        </dl>
+      </div>
     </Section>
   )
 }

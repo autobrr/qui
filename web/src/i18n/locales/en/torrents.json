@@ -1743,7 +1743,7 @@
     "settings": {
       "title": "Display profiles",
       "holds": "Holds: Columns · Row density · Sidebars · Filter sections · Category trees · Empty filters",
-      "holdsHelp": "A profile holds how the torrent list looks: which columns show, their order and widths, Name stretch, the row density, the open sidebars and filter sections, the collapsed category trees, and whether empty filters show. Each browser uses one profile, and only that browser remembers the pick. A browser that never picked one, and a private window, use Default. Every profile shares the other settings.",
+      "holdsHelp": "A profile holds how the torrent list looks: which columns show, their order and widths, Name stretch, the row density, the open sidebars and filter sections, the collapsed category trees, and whether empty filters show. It also holds which instance rows of the Dashboard are open. Each browser uses one profile, and only that browser remembers the pick. A browser that never picked one, and a private window, use Default. Every profile shares the other settings.",
       "thisBrowser": "This browser",
       "use": "Use in this browser",
       "makeProfile": "Make a profile for a laptop or phone",

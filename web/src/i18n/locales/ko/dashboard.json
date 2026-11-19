@@ -17,7 +17,6 @@
     "liveDownloading": "다운로드 중: {{downloading}} · 남은 크기: {{size}}",
     "peakHour": "가장 바쁜 시간: {{size}}",
     "peakSpeed": "최고: {{speed}}",
-    "hourTitle": "{{time}}: 업로드 {{uploaded}}, 다운로드 {{downloaded}}",
     "dayLabel": "최근 24시간 동안 시간별 모든 인스턴스의 업로드 및 다운로드",
     "liveLabel": "최근 3분 동안 모든 인스턴스의 업로드 및 다운로드 속도",
     "liveStart": "3분 전",
@@ -34,6 +33,11 @@
     "issues": "문제",
     "noIssues": "없음",
     "loading": "불러오는 중",
+    "expandAll": "모두 펼치기",
+    "collapseAll": "모두 접기",
+    "altSpeedOff": "대체 속도 제한이 꺼져 있습니다",
+    "altSpeedTurnOn": "대체 속도 제한 켜기",
+    "altSpeedTurnOff": "대체 속도 제한 끄기",
     "streamStatus": {
       "cached": "새로 고치는 동안 캐시된 대시보드 스냅샷 표시",
       "fallback": "대시보드 통계 새로 고침 중",
@@ -63,10 +67,15 @@
     "peers": "피어",
     "uptime": "가동 시간",
     "version": "qBittorrent",
+    "libtorrent": "libtorrent",
     "connection": "연결",
     "externalAddresses": "외부 주소",
     "unknown": "알 수 없음",
-    "day": "최근 24시간: {{uploaded}} 업로드, {{downloaded}} 다운로드",
+    "last24h": "최근 24시간",
+    "allTime": "전체 기간",
+    "uploaded": "업로드됨",
+    "downloaded": "다운로드됨",
+    "ratio": "비율 {{ratio}}",
     "uploadSpeed": "업로드 속도",
     "downloadSpeed": "다운로드 속도",
     "chartLabel": "최근 24시간 동안 시간별 {{name}}의 업로드 및 다운로드",
@@ -81,15 +90,6 @@
     "firewalled": "방화벽 차단",
     "disconnected": "연결 끊김",
     "other": "기타"
-  },
-  "altSpeedDialog": {
-    "enableTitle": "대체 속도 제한을 활성화하시겠습니까?",
-    "disableTitle": "대체 속도 제한을 비활성화하시겠습니까?",
-    "enableDescription": "{{name}}의 대체 속도 제한을 활성화하면 구성된 제한에 따라 전송 속도가 줄어듭니다.",
-    "disableDescription": "{{name}}의 대체 속도 제한을 비활성화하고 일반 속도 제한으로 돌아갑니다.",
-    "enable": "활성화",
-    "disable": "비활성화",
-    "cancel": "취소"
   },
   "trackers": {
     "title": "상위 트래커, 최근 24시간",
@@ -111,7 +111,11 @@
     "torrents": "토렌트",
     "totalSize": "전체 크기",
     "seedingSize": "시딩 크기",
-    "instances": "연결된 인스턴스"
+    "instances": "연결된 인스턴스",
+    "allTime": "전체 기간",
+    "uploaded": "업로드됨",
+    "downloaded": "다운로드됨",
+    "ratio": "비율"
   },
   "uniqueSize": {
     "calculating": "계산 중",
