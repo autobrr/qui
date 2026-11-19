@@ -33,6 +33,26 @@
     "collapseToIcons": "收起为图标",
     "expandSidebar": "展开侧边栏"
   },
+  "problemReports": {
+    "reportProblem": "报告问题",
+    "description": "描述问题。qui 会添加下方的信息，移除密钥等机密，然后把报告发送给 qui 维护者。",
+    "textLabel": "出了什么问题？",
+    "factsLabel": "qui 添加的信息",
+    "loadingFacts": "正在加载信息...",
+    "factsFailed": "无法加载信息：{{message}}",
+    "send": "发送",
+    "sending": "正在发送...",
+    "sent": "报告已发送",
+    "errors": {
+      "anonymousFull": "今天的匿名报告已满。请登录后立即发送，或明天再试。",
+      "signInRequired": "请登录后发送此报告。",
+      "accountLimit": "你在过去一小时内发送了很多报告。请稍后再试。",
+      "reporterFull": "你的报告已用完 brrbin 给每个人的全部空间。请在已发送的报告中删除一份旧报告，然后再发送。",
+      "tooLarge": "报告太大。请选择更少的日志行或更小的图片。",
+      "tokenRejected": "你的登录已结束。请重新登录后再发送。",
+      "unavailable": "brrbin 现在无法接收报告。请稍后再试。"
+    }
+  },
   "header": {
     "currentInstance": "当前实例：{{name}}。点击切换实例。",
     "connected": "已连接",

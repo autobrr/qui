@@ -18,7 +18,12 @@ type Feature string
 
 // known lists every Experimental feature. Each name carries a comment with the
 // number of the issue that deletes it.
-var known = []Feature{}
+var known = []Feature{
+	ProblemReports, // deleted by #4257
+}
+
+// ProblemReports is Report a problem: Problem reports that qui's server sends to brrbin.
+const ProblemReports Feature = "problemReports"
 
 // Features holds the Experimental features that are on. qui builds it once at start.
 type Features struct {

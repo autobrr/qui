@@ -34,6 +34,26 @@
     "collapseToIcons": "Réduire aux icônes",
     "expandSidebar": "Développer la barre latérale"
   },
+  "problemReports": {
+    "reportProblem": "Signaler un problème",
+    "description": "Décrivez le problème. qui ajoute les informations ci-dessous, retire les secrets et envoie le rapport aux mainteneurs de qui.",
+    "textLabel": "Qu'est-ce qui n'a pas marché ?",
+    "factsLabel": "Informations ajoutées par qui",
+    "loadingFacts": "Chargement des informations...",
+    "factsFailed": "Impossible de charger les informations : {{message}}",
+    "send": "Envoyer",
+    "sending": "Envoi...",
+    "sent": "Rapport envoyé",
+    "errors": {
+      "anonymousFull": "Les rapports anonymes sont complets pour aujourd'hui. Connectez-vous pour l'envoyer maintenant, ou réessayez demain.",
+      "signInRequired": "Connectez-vous pour envoyer ce rapport.",
+      "accountLimit": "Vous avez envoyé beaucoup de rapports dans la dernière heure. Réessayez plus tard.",
+      "reporterFull": "Vos rapports occupent toute la place que brrbin donne à une personne. Supprimez un ancien rapport dans Rapports envoyés, puis renvoyez.",
+      "tooLarge": "Le rapport est trop volumineux. Choisissez moins de lignes de journal ou une image plus petite.",
+      "tokenRejected": "Votre connexion a pris fin. Reconnectez-vous, puis envoyez.",
+      "unavailable": "brrbin ne peut pas recevoir de rapports pour le moment. Réessayez plus tard."
+    }
+  },
   "header": {
     "currentInstance": "Instance actuelle : {{name}}. Cliquez pour changer d'instance.",
     "connected": "Connecté",

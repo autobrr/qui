@@ -33,6 +33,26 @@
     "collapseToIcons": "收合為圖示",
     "expandSidebar": "展開側邊欄"
   },
+  "problemReports": {
+    "reportProblem": "回報問題",
+    "description": "描述問題。qui 會加入下方的資訊，移除金鑰等機密，然後把回報傳送給 qui 維護者。",
+    "textLabel": "出了什麼問題？",
+    "factsLabel": "qui 加入的資訊",
+    "loadingFacts": "正在載入資訊...",
+    "factsFailed": "無法載入資訊：{{message}}",
+    "send": "傳送",
+    "sending": "正在傳送...",
+    "sent": "回報已傳送",
+    "errors": {
+      "anonymousFull": "今天的匿名回報已滿。請登入後立即傳送，或明天再試。",
+      "signInRequired": "請登入後傳送此回報。",
+      "accountLimit": "你在過去一小時內傳送了很多回報。請稍後再試。",
+      "reporterFull": "你的回報已用完 brrbin 給每個人的全部空間。請在已傳送的回報中刪除一則舊回報，然後再傳送。",
+      "tooLarge": "回報太大。請選擇較少的記錄行或較小的圖片。",
+      "tokenRejected": "你的登入已結束。請重新登入後再傳送。",
+      "unavailable": "brrbin 現在無法接收回報。請稍後再試。"
+    }
+  },
   "header": {
     "currentInstance": "目前實例：{{name}}。點選切換實例。",
     "connected": "已連線",

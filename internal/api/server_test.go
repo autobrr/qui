@@ -166,6 +166,12 @@ func TestAllEndpointsDocumented(t *testing.T) {
 
 func newTestDependencies(t *testing.T) *Dependencies {
 	t.Helper()
+	deps, _ := newTestDependenciesWithDB(t)
+	return deps
+}
+
+func newTestDependenciesWithDB(t *testing.T) (*Dependencies, *database.DB) {
+	t.Helper()
 
 	sessionManager := scs.New()
 
@@ -291,7 +297,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		Transfers:                 transfers,
 		TransferService:           transferService,
 		ShareService:              shareService,
-	}
+	}, db
 }
 
 func collectRouterRoutes(t *testing.T, r chi.Routes) map[routeKey]struct{} {

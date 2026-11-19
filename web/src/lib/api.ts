@@ -10,6 +10,10 @@ import type {
   AddRSSFolderRequest,
   AddTorrentResponse,
   ApplicationInfo,
+  ProblemReportFacts,
+  ProblemReportPayload,
+  ProblemReportStartedFrom,
+  SentProblemReport,
   AppPreferences,
   PreferenceField,
   NetworkBindingInterface,
@@ -2510,6 +2514,30 @@ class ApiClient {
 
   async getApplicationInfo(): Promise<ApplicationInfo> {
     return this.request<ApplicationInfo>("/application/info")
+  }
+
+  async getProblemReportFacts(startedFrom: ProblemReportStartedFrom): Promise<ProblemReportFacts> {
+    return this.request<ProblemReportFacts>(`/problem-reports/facts?startedFrom=${startedFrom}`)
+  }
+
+  /** Throws an APIError whose message is the refusal reason from the server, for example `anonymous_full`. */
+  async sendProblemReport(report: ProblemReportPayload): Promise<SentProblemReport> {
+    const endpoint = "/problem-reports"
+    const formData = new FormData()
+    formData.append("report", JSON.stringify(report))
+
+    const response = await ssoSafeFetch(`${API_BASE}${endpoint}`, {
+      method: "POST",
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const { message, data } = await this.extractErrorData(response)
+      this.handleAuthError(response.status, endpoint, message)
+      throw new APIError(message, response.status, data)
+    }
+
+    return response.json()
   }
 
   async getVersion(): Promise<VersionInfo> {

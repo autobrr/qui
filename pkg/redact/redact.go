@@ -219,6 +219,16 @@ func Secrets(s string, secrets []string) string {
 	if s == "" {
 		return s
 	}
+	if replacer := SecretsReplacer(secrets); replacer != nil {
+		return replacer.Replace(s)
+	}
+	return s
+}
+
+// SecretsReplacer returns the replacer that Secrets uses, for a caller that
+// cleans many texts with the same secrets. It returns nil when no secret is
+// 6 characters or longer.
+func SecretsReplacer(secrets []string) *strings.Replacer {
 	values := make([]string, 0, len(secrets))
 	for _, secret := range secrets {
 		if utf8.RuneCountInString(secret) >= minSecretLength {
@@ -226,7 +236,7 @@ func Secrets(s string, secrets []string) string {
 		}
 	}
 	if len(values) == 0 {
-		return s
+		return nil
 	}
 	// Longest first, so a secret that holds another secret is removed whole.
 	slices.SortFunc(values, func(a, b string) int {
@@ -238,7 +248,7 @@ func Secrets(s string, secrets []string) string {
 	for _, value := range values {
 		pairs = append(pairs, value, "REDACTED")
 	}
-	return strings.NewReplacer(pairs...).Replace(s)
+	return strings.NewReplacer(pairs...)
 }
 
 // regexRedact redacts sensitive query params, userinfo passwords, and proxy

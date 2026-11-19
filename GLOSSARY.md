@@ -248,6 +248,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Experimental feature**: A feature that is merged before it is finished. It stays off unless the user puts its name in `experimentalFeatures`. The ticket that opens the feature to all users deletes the name. _Avoid_: feature flag, toggle, beta.
 
+## Problem reports
+
+- **Problem report**: A message that a user sends to the qui maintainers from inside qui: the user's text, plus the facts that qui adds. qui's server sends it to brrbin, and it is never public. _Avoid_: feedback, bug report, ticket.
+- **Install key**: The secret that tells brrbin which qui install sent a Problem report. qui makes it, stores it encrypted, and never shows it. _Avoid_: install ID, device ID, client token.
+
 ## Running on Windows
 
 - **Tray**: The icon qui shows in the Windows notification area while it runs in a user's logon session. It replaces the console window as the user's handle on a running qui. _Avoid_: Systray, tray app, GUI mode (the GUI is the web UI).

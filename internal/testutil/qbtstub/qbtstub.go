@@ -130,9 +130,11 @@ type Server struct {
 	// recheck still report the state from before it, 1 without a value.
 	RefreshInterval int
 	StaleSyncs      int
-	// Platform, when set, makes app/buildInfo answer with this build
-	// platform. Without it the endpoint answers 404.
-	Platform string
+	// Platform and Libtorrent, when one is set, make app/buildInfo answer
+	// with this build platform and libtorrent version. Without them the
+	// endpoint answers 404.
+	Platform   string
+	Libtorrent string
 	// CategoriesStatus, when set, makes torrents/categories answer with it.
 	CategoriesStatus int
 	// WebAPIVersion, when set, replaces the reported 2.11.4 (qBittorrent
@@ -682,11 +684,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case "app/version":
 		_, _ = io.WriteString(w, "v5.1.0")
 	case "app/buildInfo":
-		if s.Platform == "" {
+		if s.Platform == "" && s.Libtorrent == "" {
 			http.NotFound(w, r)
 			return
 		}
-		writeJSON(w, map[string]any{"platform": s.Platform})
+		writeJSON(w, map[string]any{"platform": s.Platform, "libtorrent": s.Libtorrent})
 	case "app/preferences":
 		downloadPath := s.DownloadPath
 		if downloadPath == "" {

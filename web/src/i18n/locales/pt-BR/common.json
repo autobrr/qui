@@ -34,6 +34,26 @@
     "collapseToIcons": "Recolher para ícones",
     "expandSidebar": "Expandir barra lateral"
   },
+  "problemReports": {
+    "reportProblem": "Relatar um problema",
+    "description": "Descreva o problema. O qui adiciona os dados abaixo, remove segredos e envia o relato aos mantenedores do qui.",
+    "textLabel": "O que deu errado?",
+    "factsLabel": "Dados que o qui adiciona",
+    "loadingFacts": "Carregando os dados...",
+    "factsFailed": "Não foi possível carregar os dados: {{message}}",
+    "send": "Enviar",
+    "sending": "Enviando...",
+    "sent": "Relato enviado",
+    "errors": {
+      "anonymousFull": "Os relatos anônimos de hoje acabaram. Entre para enviar agora ou tente de novo amanhã.",
+      "signInRequired": "Entre para enviar este relato.",
+      "accountLimit": "Você enviou muitos relatos na última hora. Tente de novo mais tarde.",
+      "reporterFull": "Seus relatos ocupam todo o espaço que o brrbin dá a uma pessoa. Exclua um relato antigo em Relatos enviados e envie de novo.",
+      "tooLarge": "O relato é grande demais. Escolha menos linhas de log ou uma imagem menor.",
+      "tokenRejected": "Sua sessão terminou. Entre de novo e envie.",
+      "unavailable": "O brrbin não pode receber relatos agora. Tente de novo mais tarde."
+    }
+  },
   "header": {
     "currentInstance": "Instância atual: {{name}}. Clique para trocar de instância.",
     "connected": "Conectado",

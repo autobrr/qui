@@ -34,6 +34,26 @@
     "collapseToIcons": "Auf Symbole reduzieren",
     "expandSidebar": "Sidebar ausklappen"
   },
+  "problemReports": {
+    "reportProblem": "Problem melden",
+    "description": "Beschreibe das Problem. qui fügt die Fakten unten hinzu, entfernt Geheimnisse und sendet die Meldung an die qui-Maintainer.",
+    "textLabel": "Was ist schiefgelaufen?",
+    "factsLabel": "Fakten, die qui hinzufügt",
+    "loadingFacts": "Fakten werden geladen...",
+    "factsFailed": "Die Fakten konnten nicht geladen werden: {{message}}",
+    "send": "Senden",
+    "sending": "Wird gesendet...",
+    "sent": "Meldung gesendet",
+    "errors": {
+      "anonymousFull": "Anonyme Meldungen sind für heute voll. Melde dich an, um jetzt zu senden, oder versuche es morgen erneut.",
+      "signInRequired": "Melde dich an, um diese Meldung zu senden.",
+      "accountLimit": "Du hast in der letzten Stunde viele Meldungen gesendet. Versuche es später erneut.",
+      "reporterFull": "Deine Meldungen belegen den ganzen Platz, den brrbin einer Person gibt. Lösche eine alte Meldung unter Gesendete Meldungen und sende dann erneut.",
+      "tooLarge": "Die Meldung ist zu groß. Wähle weniger Logzeilen oder ein kleineres Bild.",
+      "tokenRejected": "Deine Anmeldung ist abgelaufen. Melde dich erneut an und sende dann.",
+      "unavailable": "brrbin kann gerade keine Meldungen annehmen. Versuche es später erneut."
+    }
+  },
   "header": {
     "currentInstance": "Aktuelle Instanz: {{name}}. Zum Wechseln der Instanz klicken.",
     "connected": "Verbunden",
