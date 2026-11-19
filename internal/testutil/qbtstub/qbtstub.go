@@ -11,13 +11,17 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -63,9 +67,20 @@ type Torrent struct {
 	Popularity float64
 	Private    bool
 	NoMetadata bool
+	// AddedOn is the Unix time at which qBittorrent added the torrent.
+	AddedOn int64
+	// Uploaded is the bytes that the torrent sent, and Peers its connected
+	// peers, which sync/torrentPeers reports.
+	Uploaded int64
+	Peers    []qbt.TorrentPeer
+	// Moving reports the state "moving", as qBittorrent does while it moves
+	// the files to a new save path. The save path changes when the move ends.
+	Moving bool
 
 	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
+	// add is set for a torrent that came in through torrents/add.
+	add *added
 }
 
 // Server answers the WebAPI calls qui makes around a delete or a move.
@@ -121,21 +136,64 @@ type Server struct {
 	PartialUpdates bool
 	// FailSyncs makes the first FailSyncs sync/maindata requests answer 500.
 	FailSyncs int
+	// CheckSyncs is how many syncs a check of an added torrent reports
+	// checking before it ends.
+	CheckSyncs int
+	// ListAfterSyncs is how many syncs leave out a torrent after its add, as
+	// qBittorrent lists a new torrent only once libtorrent added it.
+	ListAfterSyncs int
+	// HashCheck makes a check of an added torrent hash each piece against
+	// its .torrent. Without it, a file passes when its size is right.
+	HashCheck bool
+	// IncompleteFilesExt is qBittorrent's setting "Append .!qB extension to
+	// incomplete files": a hash check renames each incomplete file.
+	IncompleteFilesExt bool
+	// OnAdd, when set, runs for each new torrent of torrents/add before the
+	// stub has it. It runs under the lock of the stub.
+	OnAdd func(hash string)
+	// DropAddAnswers is how many adds of torrents/add take effect, and then
+	// drop the connection instead of the answer.
+	DropAddAnswers int
+	// OnWrite, when set, runs for each write before the stub answers it,
+	// with its endpoint, such as torrents/stop. It runs under the lock of
+	// the stub.
+	OnWrite func(endpoint string)
+	// ListenPort is reported as the listen_port preference. qBittorrent
+	// reports 0 when it picks a random port.
+	ListenPort int
+	// BittorrentProtocol is reported as the bittorrent_protocol preference:
+	// 0 is qBittorrent's default "TCP and μTP", 1 "TCP", and 2 "μTP".
+	BittorrentProtocol int
+	// FreeSpace is the free space that the server state reports for the
+	// default save path, and app/getFreeSpaceAtPath for any path from
+	// qBittorrent 5.3. A download from a stub of the swarm takes its bytes.
+	FreeSpace int64
+	// Unreachable is a closed port: no peer of the swarm connects to the
+	// stub, and the stub still connects to its peers.
+	Unreachable bool
+
+	swarm                  *Swarm
+	externalV4, externalV6 string
 
 	calls        map[string]int
 	writes       map[string]int
 	conflicts    map[string]int
 	bodies       map[string]string
+	params       map[string]url.Values
+	writeLog     []string
 	requests     int
 	syncs        int
 	synced       map[int]chan struct{}
 	versionReads int
+	// freeSpacePath is the path of the last app/getFreeSpaceAtPath request.
+	freeSpacePath string
 }
 
 // New starts a stub whose default save path is savePath.
 func New(t *testing.T, savePath string) *Server {
 	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
-		savePath: savePath, calls: map[string]int{}, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{}, synced: map[int]chan struct{}{}}
+		savePath: savePath, calls: map[string]int{}, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{},
+		params: map[string]url.Values{}, synced: map[int]chan struct{}{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
 	return s
@@ -178,6 +236,15 @@ func (s *Server) categoryJSON(name string) map[string]any {
 	return c
 }
 
+// SetExternalAddress sets the external addresses that the server state
+// reports, as qBittorrent learns them from its peers. An empty value is an
+// address that qBittorrent does not know yet.
+func (s *Server) SetExternalAddress(v4, v6 string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.externalV4, s.externalV6 = v4, v6
+}
+
 // SetDefaultSavePath changes the default save path, as an edit in
 // qBittorrent's own WebUI does, without qui seeing the request.
 func (s *Server) SetDefaultSavePath(p string) {
@@ -216,6 +283,14 @@ func (s *Server) DeleteElsewhere(hash string) {
 	}
 }
 
+// DeleteElsewhereKeepFiles removes a torrent as another client does, and
+// keeps its files.
+func (s *Server) DeleteElsewhereKeepFiles(hash string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.torrents, hash)
+}
+
 // Writes counts the write requests qBittorrent received on an endpoint.
 func (s *Server) Writes(endpoint string) int {
 	s.mu.Lock()
@@ -244,6 +319,14 @@ func (s *Server) Requests() int {
 	return s.requests
 }
 
+// RequestsWithout counts every request qBittorrent received, without the
+// requests on endpoint.
+func (s *Server) RequestsWithout(endpoint string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.requests - s.calls[endpoint]
+}
+
 // Syncs counts the sync/maindata requests qBittorrent received.
 func (s *Server) Syncs() int {
 	s.mu.Lock()
@@ -267,6 +350,13 @@ func (s *Server) Synced(n int) <-chan struct{} {
 	return ch
 }
 
+// FreeSpacePath is the path of the last app/getFreeSpaceAtPath request.
+func (s *Server) FreeSpacePath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.freeSpacePath
+}
+
 // VersionReads counts the app/webapiVersion requests qBittorrent received.
 func (s *Server) VersionReads() int {
 	s.mu.Lock()
@@ -288,6 +378,21 @@ func (s *Server) LastBody(endpoint string) string {
 	return s.bodies[endpoint]
 }
 
+// LastParams are the parameters of the last write to an endpoint, also of a
+// multipart upload.
+func (s *Server) LastParams(endpoint string) url.Values {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.params[endpoint].Clone()
+}
+
+// WriteLog lists the endpoints of the writes, in the order they came in.
+func (s *Server) WriteLog() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.writeLog)
+}
+
 func (s *Server) anchor(t *Torrent) string {
 	if t.DownloadPath != "" {
 		return t.DownloadPath
@@ -301,35 +406,63 @@ func (s *Server) contentPath(t *Torrent) string {
 		return s.anchor(t)
 	case RootFolder, SingleFile:
 	}
-	return filepath.Join(s.anchor(t), t.Name)
+	return join(s.anchor(t), t.Name)
 }
 
 func (s *Server) diskFiles(t *Torrent) []string {
+	content := onHost(s.contentPath(t))
 	if t.Layout == SingleFile {
-		return []string{s.contentPath(t)}
+		return []string{content}
 	}
 	files := make([]string, 0, len(t.Files))
 	for _, f := range t.Files {
-		files = append(files, filepath.Join(s.contentPath(t), filepath.FromSlash(f)))
+		files = append(files, filepath.Join(content, filepath.FromSlash(f)))
 	}
 	return files
 }
 
-func (s *Server) apiFiles(t *Torrent) []map[string]any {
-	var names []string
+// onHost is the host path of p. A stub whose files qui reaches over sshtest
+// names them as pkg/sftp does, /C:/x on Windows for the host path C:\x.
+func onHost(p string) string {
+	if native, ok := strings.CutPrefix(p, "/"); ok && filepath.VolumeName(native) != "" {
+		return filepath.FromSlash(native)
+	}
+	return p
+}
+
+// join joins the slash name to dir in the form of dir.
+func join(dir, name string) string {
+	if onHost(dir) != dir {
+		return path.Join(dir, name)
+	}
+	return filepath.Join(dir, filepath.FromSlash(name))
+}
+
+// fileNames are the file names that torrents/files reports.
+func (s *Server) fileNames(t *Torrent) []string {
 	switch t.Layout {
 	case SingleFile:
-		names = []string{t.Name}
+		return []string{t.Name}
 	case RootFolder:
+		names := make([]string, 0, len(t.Files))
 		for _, f := range t.Files {
 			names = append(names, path.Join(t.Name, f))
 		}
+		return names
 	case NoRootFolder:
-		names = t.Files
 	}
+	return slices.Clone(t.Files)
+}
+
+func (s *Server) apiFiles(t *Torrent) []map[string]any {
+	names := s.fileNames(t)
 	out := make([]map[string]any, 0, len(names))
 	for i, name := range names {
-		out = append(out, map[string]any{"index": i, "name": name, "size": 1, "progress": 1, "priority": 1})
+		size, priority := int64(1), 1
+		if t.add != nil {
+			size, priority = t.add.sizes[i], t.add.priorities[i]
+		}
+		out = append(out, map[string]any{"index": i, "name": name, "size": size, "progress": 1, "priority": priority})
 	}
 	return out
 }
@@ -341,7 +474,7 @@ func (s *Server) categoryPath(name string) string {
 	if name == "" {
 		return s.savePath
 	}
-	return filepath.Join(s.savePath, filepath.FromSlash(name))
+	return join(s.savePath, name)
 }
 
 // move relocates the content the way libtorrent's move_storage does: file by
@@ -385,7 +518,7 @@ func (s *Server) relocate(from, to *Torrent) {
 		assert.NoError(s.t, os.Rename(old[i], f))
 	}
 	if from.Layout == RootFolder {
-		assert.NoError(s.t, os.RemoveAll(s.contentPath(from)))
+		assert.NoError(s.t, os.RemoveAll(onHost(s.contentPath(from))))
 	}
 }
 
@@ -394,7 +527,7 @@ func (s *Server) relocate(from, to *Torrent) {
 // missing, such as one set to Do Not Download, is skipped.
 func (s *Server) remove(t *Torrent) {
 	if t.Layout == RootFolder {
-		assert.NoError(s.t, os.RemoveAll(s.contentPath(t)))
+		assert.NoError(s.t, os.RemoveAll(onHost(s.contentPath(t))))
 		return
 	}
 	for _, f := range s.diskFiles(t) {
@@ -432,6 +565,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(strings.NewReader(string(body)))
 		s.bodies[endpoint] = string(body)
 		s.writes[endpoint]++
+		if s.OnWrite != nil {
+			s.OnWrite(endpoint)
+		}
 		if s.Reject != 0 {
 			w.WriteHeader(s.Reject)
 			return
@@ -440,13 +576,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	// qBittorrent 5 reads a GET's query, and a POST's urlencoded or multipart
 	// body only. A repeated key keeps its last value.
 	params := r.URL.Query()
+	var form *multipart.Form
 	if r.Method == http.MethodPost {
 		_ = r.ParseForm()
 		params = r.PostForm
 		if mr, err := r.MultipartReader(); err == nil {
-			if form, err := mr.ReadForm(1 << 20); err == nil {
+			if form, err = mr.ReadForm(1 << 20); err == nil {
 				params = form.Value
 			}
+		}
+		if endpoint != "auth/login" {
+			s.params[endpoint] = params
+			s.writeLog = append(s.writeLog, endpoint)
 		}
 	}
 	param := func(key string) string {
@@ -480,11 +621,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case "app/preferences":
 		downloadPath := s.DownloadPath
 		if downloadPath == "" {
-			downloadPath = filepath.Join(s.savePath, "incomplete")
+			downloadPath = join(s.savePath, "incomplete")
 		}
 		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": downloadPath,
 			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "torrent_changed_tmm_enabled": true,
-			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs})
+			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs, "listen_port": s.ListenPort,
+			"bittorrent_protocol": s.BittorrentProtocol})
 	case "sync/maindata":
 		s.syncs++
 		if ch, ok := s.synced[s.syncs]; ok {
@@ -505,10 +647,26 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			if t.Incomplete {
 				progress = 0.5
 			}
+			var state string
+			if t.add != nil {
+				var listed bool
+				if state, progress, listed = s.addedRow(t); !listed {
+					continue
+				}
+			}
+			if t.Moving {
+				state = string(qbt.TorrentStateMoving)
+			}
 			row := map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
 				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2,
-				"tags": strings.Join(t.Tags, ", ")}
+				"tags": strings.Join(t.Tags, ", "), "added_on": t.AddedOn, "uploaded": t.Uploaded}
+			if state != "" {
+				row["state"] = state
+			}
+			if t.add != nil {
+				row["downloaded"], row["amount_left"] = t.add.downloaded, t.add.amountLeft()
+			}
 			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
 				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata
 				if t.NoMetadata {
@@ -525,7 +683,19 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		full := !s.PartialUpdates || param("rid") == "0"
 		writeJSON(w, map[string]any{"rid": s.rid, "full_update": full, "torrents": torrents, "categories": categories,
-			"server_state": map[string]any{"connection_status": "connected"}})
+			"server_state": map[string]any{"connection_status": "connected",
+				"last_external_address_v4": s.externalV4, "last_external_address_v6": s.externalV6, "free_space_on_disk": s.FreeSpace}})
+	case "sync/torrentPeers":
+		t, ok := s.torrents[strings.ToLower(param("hash"))]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		peers := map[string]qbt.TorrentPeer{}
+		for _, p := range t.Peers {
+			peers[net.JoinHostPort(p.IP, strconv.Itoa(p.Port))] = p
+		}
+		writeJSON(w, map[string]any{"rid": 1, "full_update": true, "peers": peers})
 	case "torrents/files":
 		if t, ok := s.torrents[strings.ToLower(param("hash"))]; ok {
 			writeJSON(w, s.apiFiles(t))
@@ -621,6 +791,38 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			if param("tags") != "" {
 				t.Tags = strings.Split(param("tags"), ",")
 			}
+		}
+	case "torrents/add":
+		s.add(w, form, param)
+	case "torrents/filePrio":
+		s.filePrio(w, param)
+	case "torrents/start", "torrents/resume":
+		for _, t := range s.selected(param("hashes"), "|") {
+			s.start(t, false)
+		}
+	case "torrents/setForceStart":
+		for _, t := range s.selected(param("hashes"), "|") {
+			if param("value") == "true" {
+				s.start(t, true)
+			}
+		}
+	case "torrents/stop", "torrents/pause":
+		for _, t := range s.selected(param("hashes"), "|") {
+			s.stop(t)
+		}
+	case "torrents/export":
+		s.export(w, param)
+	case "torrents/pieceStates":
+		s.pieceStatesOf(w, param)
+	case "torrents/addPeers":
+		s.addPeers(w, param)
+	case "app/getFreeSpaceAtPath":
+		s.freeSpaceAt(w, r)
+	case "torrents/renameFile":
+		s.renameFile(w, param)
+	case "torrents/recheck":
+		for _, t := range s.selected(param("hashes"), "|") {
+			s.recheck(t)
 		}
 	case "torrents/setShareLimits":
 		// LastBody has what qui sent.

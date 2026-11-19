@@ -81,7 +81,7 @@ func (s *Service) getCompletionMaxAttempts() int {
 
 // HandleTorrentCompletion evaluates completed torrents for cross-seed opportunities.
 func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-	if s == nil || instanceID <= 0 {
+	if s == nil || instanceID <= 0 || s.isHelper(instanceID, torrent.Hash) {
 		return
 	}
 	s.partialPool.wake(partialPoolWake{instanceID: instanceID, hash: partialPoolCanonicalTorrentKey(&torrent)})

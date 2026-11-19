@@ -1502,6 +1502,9 @@
     "trackerDown": "Tracker 离线",
     "unregistered": "未注册",
     "trackerError": "Tracker 错误",
+    "helperTransfer": "传输辅助",
+    "helperShare": "共享辅助",
+    "helperHint": "qui 为传输或共享添加了此种子。其文件属于另一个种子。",
     "now": "现在",
     "yes": "是",
     "no": "否"

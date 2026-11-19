@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
@@ -48,8 +49,10 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/share"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/update"
@@ -108,6 +111,9 @@ type Server struct {
 	discScanStore                    *models.DiscScanStore
 	discScanService                  *discscan.Service
 	transferHistory                  *transferhistory.Module
+	transfers                        *transfer.Store
+	transferService                  *transfer.Service
+	shareService                     *share.Service
 	liveSamples                      *livesamples.Recorder
 	systemNotices                    *systemnotice.Module
 	databaseShrink                   *dbshrink.Service
@@ -117,6 +123,7 @@ type Server struct {
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
 	activityHub                      *activity.Hub
+	switches                         rollout.Switches
 	// shuttingDown ends the log and RSS streams: http.Server.Shutdown does not cancel request contexts.
 	shuttingDown <-chan struct{}
 }
@@ -176,6 +183,15 @@ type Dependencies struct {
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
 	ActivityHub                      *activity.Hub
+	// Transfers holds the Transfer records and the helper registry.
+	Transfers *transfer.Store
+	// TransferService runs Transfers. The router uses it only while the
+	// switch for Transfers and Shares is on.
+	TransferService *transfer.Service
+	// ShareService runs Shares. The router uses it only while the switch for
+	// Transfers and Shares is on.
+	ShareService *share.Service
+	Switches     rollout.Switches
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -259,12 +275,42 @@ func NewServer(deps *Dependencies) *Server {
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
 		activityHub:                      deps.ActivityHub,
+		transfers:                        deps.Transfers,
+		transferService:                  deps.TransferService,
+		shareService:                     deps.ShareService,
+		switches:                         deps.Switches,
 		shuttingDown:                     streamsCtx.Done(),
 	}
 	// Shutdown runs this callback on every call; a CancelFunc tolerates repeats where close would panic.
 	s.server.RegisterOnShutdown(stopStreams)
 
 	return &s
+}
+
+// Switches returns the server-side switches that the router was built with.
+func (s *Server) Switches() rollout.Switches {
+	return s.switches
+}
+
+// transferRoutes adds the Transfer and Share routes while the switch for
+// Transfers and Shares is on.
+func (s *Server) transferRoutes(r chi.Router) {
+	if !s.switches.TransfersAndShares {
+		return
+	}
+	transfersHandler := handlers.NewTransfersHandler(s.transferService)
+	r.Post("/transfers", transfersHandler.Start)
+	r.Route("/shares", handlers.NewSharesHandler(s.shareService).Routes)
+}
+
+// newTorrentsHandler builds the handler of the torrent routes. It refuses to
+// change a torrent that a Transfer holds, and a helper torrent.
+func (s *Server) newTorrentsHandler() *handlers.TorrentsHandler {
+	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
+	if s.transfers != nil {
+		torrentsHandler.SetHeldTorrents(s.transfers)
+	}
+	return torrentsHandler
 }
 
 // ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
@@ -409,7 +455,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore), s.sshPool)
 	instancesHandler.SetOrphanScan(s.orphanScanService)
 	instancesHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
-	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
+	torrentsHandler := s.newTorrentsHandler()
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
@@ -862,6 +908,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.With(allInstances, settings.Read).Get("/database/shrink", databaseShrinkHandler.Status)
 			r.With(browserOnly).Post("/database/shrink", databaseShrinkHandler.Request)
 			r.With(allInstances, settings.Write).Delete("/database/shrink/result", databaseShrinkHandler.DismissResult)
+			s.transferRoutes(r.With(browserOnly))
 		})
 	})
 

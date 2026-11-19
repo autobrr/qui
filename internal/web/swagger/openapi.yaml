@@ -6848,6 +6848,422 @@ paths:
         '204':
           description: The outcome is dismissed
 
+  /api/transfers:
+    post:
+      tags:
+        - Transfers
+      summary: Start a Transfer
+      description: >-
+        Moves one torrent from the Transfer source to the Transfer target. qui copies its files through qui, on its
+        own disk or over SSH, or the two qBittorrents pass them by a Transfer torrent. Then qui checks every piece,
+        adds the torrent to the target, and handles the source as the "after" field says. The route answers when the
+        Transfer is recorded, before the copy starts. Transfers from the same source run one at a time, in the order
+        they started. Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sourceInstanceId
+                - hash
+                - targetInstanceId
+              properties:
+                sourceInstanceId:
+                  type: integer
+                  description: The instance that has the torrent
+                hash:
+                  type: string
+                  description: The infohash of the torrent on the source
+                targetInstanceId:
+                  type: integer
+                  description: The instance that gets the torrent
+                savePath:
+                  type: string
+                  description: The save path on the target. Empty is the default save path of the target.
+                category:
+                  type: string
+                  description: The category of the torrent on the target
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  description: The tags of the torrent on the target
+                after:
+                  type: string
+                  enum:
+                    - removeWithFiles
+                    - keepFiles
+                    - keepSeeding
+                  default: removeWithFiles
+                  description: >-
+                    What happens to the torrent on the source after the Transfer. removeWithFiles keeps a file that
+                    another torrent reads.
+                leaveStopped:
+                  type: boolean
+                  description: Keep the torrent stopped on the target
+                way:
+                  type: string
+                  enum:
+                    - auto
+                    - copy
+                    - bittorrent
+                  default: auto
+                  description: >-
+                    How the files move. auto lets qui pick: a copy through qui when qui reaches the files of a side on
+                    its own disk, and else a Transfer torrent between the two qBittorrents, which falls back to a copy
+                    over SSH when the clients do not connect. copy forces a copy through qui, which needs file access
+                    to both instances. bittorrent forces a Transfer torrent.
+      responses:
+        '202':
+          description: The Transfer is recorded and waits for its turn
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+        '400':
+          description: The body is invalid, it does not name the source, the torrent, and the target, or it names an unknown way
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: qui refuses the Transfer, or another Transfer holds the torrent. The message says why.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to record the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/shares:
+    post:
+      tags:
+        - Shares
+      summary: Start Shares
+      description: >-
+        Starts one Share for each torrent. qui builds a Share torrent with the same pieces and a new infohash, and adds
+        it to the client of the instance on the same files, forced and in seed mode. The recipient gets the .torrent of
+        the Share. A Share needs qBittorrent 5.1 or newer, a tracker in the Share settings, and a complete torrent.
+        Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instanceId
+                - hashes
+              properties:
+                instanceId:
+                  type: integer
+                  description: The instance that has the torrents
+                hashes:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                  description: The infohashes of the torrents. Each torrent gets its own Share.
+                days:
+                  type: integer
+                  minimum: 1
+                  maximum: 365
+                  description: The days until the Share ends. Empty takes the default of the Share settings.
+                endAtFirstDownload:
+                  type: boolean
+                  description: End the Share when the first recipient has the files. Empty takes the default.
+                firstDownloaderOnly:
+                  type: boolean
+                  description: >-
+                    Give the address of the client only to the first downloader. Empty takes the default. A Share on an
+                    outside tracker ignores it.
+      responses:
+        '201':
+          description: At least one Share started. refused lists the torrents that did not get a Share, and why.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartSharesResponse'
+        '400':
+          description: The body is invalid, or it does not name the instance and 1 to 100 torrents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: qui refused each Share. error has the first reason, and refused has each reason.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartSharesResponse'
+        '500':
+          description: No Share started, and at least one failed with an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartSharesResponse'
+    get:
+      tags:
+        - Shares
+      summary: List the Shares
+      description: >-
+        Lists every Share, the newest first. An ended Share stays 30 days. Only a signed-in browser can use this route.
+        The route is not available yet.
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: The Shares
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Share'
+        '500':
+          description: Failed to list the Shares
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/shares/settings:
+    get:
+      tags:
+        - Shares
+      summary: Get the Share settings
+      description: >-
+        Returns the settings of Settings → Shares: qui's own tracker, the outside tracker URL, the limits, and the
+        defaults for a new Share. Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: The Share settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareSettings'
+        '500':
+          description: Failed to read the Share settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - Shares
+      summary: Save the Share settings
+      description: >-
+        Saves the settings of Settings → Shares and moves qui's own tracker to the new port. Only a signed-in browser
+        can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareSettings'
+      responses:
+        '200':
+          description: The saved Share settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareSettings'
+        '400':
+          description: The body is invalid, or a setting has a value that qui does not take
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: >-
+            Another program uses the port, or the change moves qui's own tracker (a new port or public address) while
+            a Share on it is active. qui saves nothing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to save the Share settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/shares/{shareID}:
+    delete:
+      tags:
+        - Shares
+      summary: Remove an ended Share
+      description: >-
+        Removes the row of an ended Share before the 30 days are over. Only a signed-in browser can use this route.
+        The route is not available yet.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/shareID'
+      responses:
+        '204':
+          description: The Share is removed
+        '400':
+          description: Invalid Share ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Share not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The Share has not ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to remove the Share
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/shares/{shareID}/stop:
+    post:
+      tags:
+        - Shares
+      summary: Stop a Share
+      description: >-
+        Ends an active Share. qui removes the Share torrent from the client and never deletes files. While the client
+        is offline, the Share stays "ending" and qui retries. Only a signed-in browser can use this route. The route is
+        not available yet.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/shareID'
+      responses:
+        '204':
+          description: The Share ends
+        '400':
+          description: Invalid Share ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Share not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to stop the Share
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/shares/{shareID}/unlock:
+    post:
+      tags:
+        - Shares
+      summary: Unlock a Share
+      description: >-
+        Lets the next downloader of an active Share with "Only the first downloader" get the address of the client.
+        Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/shareID'
+      responses:
+        '204':
+          description: The next downloader gets the address
+        '400':
+          description: Invalid Share ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Share not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The Share has ended, uses an outside tracker, or lets every downloader in. The message says why.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to unlock the Share
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/shares/{shareID}/torrent:
+    get:
+      tags:
+        - Shares
+      summary: Download the .torrent of a Share
+      description: >-
+        Returns the .torrent for the recipient of a Share again. Anyone who has it can download until the Share ends.
+        Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/shareID'
+      responses:
+        '200':
+          description: The .torrent of the recipient
+          content:
+            application/x-bittorrent:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid Share ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Share not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to read the .torrent of the Share
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/system-notices/{kind}:
     delete:
       tags:
@@ -7959,6 +8375,15 @@ components:
         header. Other clients should use an API key.
 
   parameters:
+    shareID:
+      name: shareID
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      description: The ID of the Share
     instanceID:
       name: instanceID
       in: path
@@ -8019,6 +8444,166 @@ components:
       properties:
         error:
           type: string
+
+    Share:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        instanceId:
+          type: integer
+        hash:
+          type: string
+          description: The infohash of the shared torrent
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        tracker:
+          type: string
+          enum:
+            - own
+            - outside
+          description: >-
+            own is qui's own tracker. With outside, qui reads the peers that the client is connected to, as best
+            effort.
+        endAtFirstDownload:
+          type: boolean
+        firstDownloaderOnly:
+          type: boolean
+        state:
+          type: string
+          enum:
+            - active
+            - ending
+            - ended
+        endReason:
+          type: string
+          description: Why the Share ended, for the user
+        endReasonCode:
+          type: string
+          enum:
+            - ""
+            - downloaded
+            - expired
+            - stopped
+            - torrent_deleted
+            - torrent_moved
+            - files_renamed
+            - share_torrent_gone
+            - other
+          description: >-
+            A stable code for endReason, for the UI to translate. It is empty while the Share has no end reason, and
+            other for a reason with no code. Then endReason has the text.
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        peers:
+          type: array
+          description: >-
+            The recipients that announced to qui's own tracker, or the peers that the client is connected to with an
+            outside tracker
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+              progress:
+                type: number
+                minimum: 0
+                maximum: 1
+              seenAt:
+                type: string
+                format: date-time
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: The largest download progress of a recipient
+        downloaded:
+          type: integer
+          format: int64
+          description: The largest number of bytes that a recipient has
+        uploaded:
+          type: integer
+          format: int64
+          description: The bytes that the client sent for the Share
+
+    StartSharesResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: The first reason, when no Share started
+        shares:
+          type: array
+          items:
+            $ref: '#/components/schemas/Share'
+        refused:
+          type: array
+          items:
+            type: object
+            properties:
+              hash:
+                type: string
+              reason:
+                type: string
+
+    ShareSettings:
+      type: object
+      properties:
+        port:
+          type: integer
+          minimum: 0
+          maximum: 65535
+          description: The port of qui's own tracker. 0 turns it off.
+        publicAddress:
+          type: string
+          description: The http or https URL at which recipients reach qui's own tracker
+        trustedProxies:
+          type: array
+          items:
+            type: string
+          description: Addresses or CIDR ranges of reverse proxies whose X-Forwarded-For header qui's own tracker reads
+        trackerUrl:
+          type: string
+          description: The outside tracker URL. qui uses it when qui's own tracker has no port or no public address.
+        maxActive:
+          type: integer
+          minimum: 1
+          description: The most active Shares
+        peersPerShare:
+          type: integer
+          minimum: 1
+          description: The most recipients for each Share on qui's own tracker
+        defaults:
+          type: object
+          properties:
+            days:
+              type: integer
+              minimum: 1
+              maximum: 365
+            endAtFirstDownload:
+              type: boolean
+            firstDownloaderOnly:
+              type: boolean
+        trackerInUse:
+          type: string
+          readOnly: true
+          enum:
+            - own
+            - outside
+            - ''
+          description: The tracker that a new Share gets. Empty while no tracker is set.
 
     SelfUpdateRequest:
       type: object
@@ -12576,6 +13161,10 @@ tags:
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
   - name: Transfer History
     description: The upload and download that qui recorded for each instance
+  - name: Transfers
+    description: Moves of a torrent and its files from one instance to another
+  - name: Shares
+    description: Giving the files of one torrent to someone whose client qui does not manage
   - name: Disc Scans
     description: BDInfo scans of Blu-ray Discs (BDMV folders and .iso files) in torrents
   - name: RSS

@@ -326,6 +326,9 @@ export const createColumns = ({
   const priorityLabel = t("tableColumns.priority")
   const statusIconLabel = t("tableColumns.statusIcon")
   const trackerIconLabel = t("tableColumns.trackerIcon")
+  const helperTransferLabel = t("tableColumns.helperTransfer")
+  const helperShareLabel = t("tableColumns.helperShare")
+  const helperHint = t("tableColumns.helperHint")
 
   const instanceColumn: TorrentTableColumnDef = {
     id: "instance",
@@ -420,8 +423,14 @@ export const createColumns = ({
       header: t("tableColumns.name"),
       cell: ({ row }) => {
         const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
+        const helper = row.original.qui_helper
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
+            {helper && (
+              <Badge variant="outline" className={cn("text-xs mr-1.5", badgePadding)} title={helperHint}>
+                {helper === "share" ? helperShareLabel : helperTransferLabel}
+              </Badge>
+            )}
             {displayName}
           </div>
         )

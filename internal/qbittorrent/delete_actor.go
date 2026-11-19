@@ -66,10 +66,14 @@ func (sm *SyncManager) NoteProxiedDelete(ctx context.Context, instanceID int, ha
 }
 
 // DeleteTorrents removes the torrents from qBittorrent, and their files when
-// deleteFiles is true.
+// deleteFiles is true. It refuses a delete with files that names a helper
+// torrent, and then removes no torrent.
 func (sm *SyncManager) DeleteTorrents(ctx context.Context, instanceID int, hashes []string, deleteFiles bool, actor DeleteActor) error {
 	action := "delete"
 	if deleteFiles {
+		if err := sm.RefuseHelperFiles(ctx, instanceID, hashes); err != nil {
+			return err
+		}
 		action = "deleteWithFiles"
 	}
 	log.Debug().

@@ -1596,6 +1596,9 @@
     "trackerDown": "Tracker Injoignable",
     "unregistered": "Non enregistré",
     "trackerError": "Erreur Tracker",
+    "helperTransfer": "Assistant de transfert",
+    "helperShare": "Assistant de partage",
+    "helperHint": "qui a ajouté ce torrent pour un transfert ou un partage. Ses fichiers appartiennent à un autre torrent.",
     "now": "maintenant",
     "yes": "Oui",
     "no": "Non"

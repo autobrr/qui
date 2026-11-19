@@ -259,11 +259,8 @@ func BuildSingleFilePlan(d PathDialect, rootDir, relativePath, sourcePath string
 	if sourcePath == "" {
 		return nil, errors.New("source path is required")
 	}
-	if err := validateCandidatePath(d, relativePath); err != nil {
+	if err := ValidateRelativePath(d, relativePath); err != nil {
 		return nil, err
-	}
-	if path.Clean(relativePath) != relativePath {
-		return nil, errors.New("non-canonical torrent path: " + relativePath)
 	}
 
 	targetPath := d.Join(rootDir, d.FromSlash(relativePath))
@@ -316,6 +313,18 @@ func computeTargetPath(d PathDialect, candidatePath string, layout ContentLayout
 	default: // LayoutOriginal
 		return d.Join(destDir, d.FromSlash(candidatePath))
 	}
+}
+
+// ValidateRelativePath reports why name is not a canonical slash path below
+// its folder that the destination dialect d can store, nil when it is.
+func ValidateRelativePath(d PathDialect, name string) error {
+	if err := validateCandidatePath(d, name); err != nil {
+		return err
+	}
+	if path.Clean(name) != name {
+		return errors.New("non-canonical torrent path: " + name)
+	}
+	return nil
 }
 
 // validateCandidatePath checks if a torrent file path is safe (no path traversal)

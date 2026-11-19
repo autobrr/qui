@@ -650,6 +650,9 @@
     "trackerDown": "Tracker caigut",
     "unregistered": "No registrat",
     "trackerError": "Error del tracker",
+    "helperTransfer": "Ajudant de transferència",
+    "helperShare": "Ajudant de compartició",
+    "helperHint": "qui ha afegit aquest torrent per a una transferència o una compartició. Els seus fitxers pertanyen a un altre torrent.",
     "now": "ara",
     "yes": "Sí",
     "no": "No"

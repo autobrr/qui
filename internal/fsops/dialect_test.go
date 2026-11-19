@@ -66,3 +66,112 @@ func TestSlashPathsRel(t *testing.T) {
 		}
 	}
 }
+
+// WindowsPaths reads a Windows path the same way on every host. On a Windows
+// host the host dialect is the oracle.
+// regression: #4231
+func TestWindowsPathsIsHostIndependent(t *testing.T) {
+	d := WindowsPaths
+	onWindows := filepath.Separator == '\\'
+	require.Equal(t, `\`, d.Separator())
+	require.Equal(t, `Show\E01.mkv`, d.FromSlash("Show/E01.mkv"))
+	require.Equal(t, "Show/E01.mkv", d.ToSlash(`Show\E01.mkv`))
+	for _, tc := range []struct {
+		p, clean, dir, base string
+		abs                 bool
+	}{
+		{p: `C:\Downloads`, clean: `C:\Downloads`, dir: `C:\`, base: "Downloads", abs: true},
+		{p: "C:/Downloads/Show/", clean: `C:\Downloads\Show`, dir: `C:\Downloads\Show`, base: "Show", abs: true},
+		{p: `c:\a\..\..\b`, clean: `c:\b`, dir: `c:\`, base: "b", abs: true},
+		{p: `C:\`, clean: `C:\`, dir: `C:\`, base: `\`, abs: true},
+		{p: "C:", clean: "C:.", dir: "C:.", base: `\`},
+		{p: "C:Downloads", clean: "C:Downloads", dir: "C:.", base: "Downloads"},
+		{p: `\\nas\media`, clean: `\\nas\media`, dir: `\\nas\media`, base: `\`, abs: true},
+		{p: `\\nas\media\`, clean: `\\nas\media\`, dir: `\\nas\media\`, base: `\`, abs: true},
+		{p: "//nas/media/Show", clean: `\\nas\media\Show`, dir: `\\nas\media\`, base: "Show", abs: true},
+		{p: `\\nas\media\a\..\..`, clean: `\\nas\media\`, dir: `\\nas\media\`, base: "..", abs: true},
+		{p: `\\nas\..\x`, clean: `\x`, dir: `\`, base: "x"},
+		{p: `\rooted\x`, clean: `\rooted\x`, dir: `\rooted`, base: "x"},
+		{p: `a\b\..\c`, clean: `a\c`, dir: "a", base: "c"},
+		{p: "/data", clean: `\data`, dir: `\`, base: "data"},
+		{p: "", clean: ".", dir: ".", base: "."},
+	} {
+		require.Equal(t, tc.clean, d.Clean(tc.p), "Clean(%q)", tc.p)
+		require.Equal(t, tc.dir, d.Dir(tc.p), "Dir(%q)", tc.p)
+		require.Equal(t, tc.base, d.Base(tc.p), "Base(%q)", tc.p)
+		require.Equal(t, tc.abs, d.IsAbs(tc.p), "IsAbs(%q)", tc.p)
+		if onWindows {
+			require.Equal(t, HostPaths.Clean(tc.p), d.Clean(tc.p), "oracle Clean(%q)", tc.p)
+			require.Equal(t, HostPaths.Dir(tc.p), d.Dir(tc.p), "oracle Dir(%q)", tc.p)
+			require.Equal(t, HostPaths.Base(tc.p), d.Base(tc.p), "oracle Base(%q)", tc.p)
+			require.Equal(t, HostPaths.IsAbs(tc.p), d.IsAbs(tc.p), "oracle IsAbs(%q)", tc.p)
+		}
+	}
+	for _, tc := range []struct{ base, name, want string }{
+		{base: `C:\Downloads`, name: `Show\E01.mkv`, want: `C:\Downloads\Show\E01.mkv`},
+		{base: `C:\`, name: "Show", want: `C:\Show`},
+		{base: "C:", name: "Show", want: "C:Show"},
+		{base: `\\nas\media`, name: "Show", want: `\\nas\media\Show`},
+		{base: `\\nas\media\`, name: "Show/E01.mkv", want: `\\nas\media\Show\E01.mkv`},
+		{base: `C:\Downloads`, name: `..\Other`, want: `C:\Other`},
+		{base: `C:\Downloads`, name: "", want: `C:\Downloads`},
+		{base: `\\nas\media`, name: "", want: `\\nas\media\`},
+		{base: `C:\`, name: `\Show`, want: `C:\Show`},
+		{base: "", name: "Show/E01.mkv", want: `Show\E01.mkv`},
+		{base: "", name: "", want: ""},
+	} {
+		require.Equal(t, tc.want, d.Join(tc.base, tc.name), "Join(%q, %q)", tc.base, tc.name)
+		if onWindows {
+			require.Equal(t, HostPaths.Join(tc.base, tc.name), d.Join(tc.base, tc.name), "oracle Join(%q, %q)", tc.base, tc.name)
+		}
+	}
+	for _, tc := range []struct {
+		base, target, want string
+		wantErr            bool
+	}{
+		{base: `C:\Downloads`, target: `C:\Downloads\Show\E01.mkv`, want: `Show\E01.mkv`},
+		{base: `C:\Downloads`, target: `c:\downloads\show`, want: "show"},
+		{base: `C:\Downloads\a`, target: `C:\Downloads\b`, want: `..\b`},
+		{base: `C:\Downloads`, target: `C:\`, want: ".."},
+		{base: "C:/Downloads", target: `C:\Downloads`, want: "."},
+		{base: `\\nas\media`, target: `\\NAS\Media\Show`, want: "Show"},
+		{base: `\\nas\media\`, target: `\\nas\media`, want: "."},
+		{base: "//nas/media", target: `\\nas\media\Show`, want: "Show"},
+		{base: `C:\Downloads`, target: `D:\Downloads`, wantErr: true},
+		{base: `\\nas\a`, target: `\\nas\b`, wantErr: true},
+		{base: `C:\Downloads`, target: "Downloads", wantErr: true},
+		{base: `\\nas`, target: `\\nas\`, wantErr: true},
+	} {
+		got, err := d.Rel(tc.base, tc.target)
+		if tc.wantErr {
+			require.Error(t, err, "Rel(%q, %q)", tc.base, tc.target)
+		} else {
+			require.NoError(t, err, "Rel(%q, %q)", tc.base, tc.target)
+			require.Equal(t, tc.want, got, "Rel(%q, %q)", tc.base, tc.target)
+		}
+		if onWindows {
+			want, wantErr := HostPaths.Rel(tc.base, tc.target)
+			require.Equal(t, wantErr != nil, err != nil, "oracle Rel(%q, %q): %v", tc.base, tc.target, wantErr)
+			require.Equal(t, want, got, "oracle Rel(%q, %q)", tc.base, tc.target)
+		}
+	}
+}
+
+// An instance whose files qui cannot reach gets the path rules that the form
+// of its save path shows, whatever the host.
+// regression: #4231
+func TestClientPaths(t *testing.T) {
+	for _, tc := range []struct {
+		savePath string
+		want     PathDialect
+	}{
+		{savePath: `C:\Downloads`, want: WindowsPaths},
+		{savePath: "C:/Downloads", want: WindowsPaths},
+		{savePath: `\\nas\media`, want: WindowsPaths},
+		{savePath: "//nas/media", want: WindowsPaths},
+		{savePath: "/data/downloads", want: SlashPaths},
+		{savePath: "/", want: SlashPaths},
+	} {
+		require.Equal(t, tc.want, ClientPaths(tc.savePath), tc.savePath)
+	}
+}

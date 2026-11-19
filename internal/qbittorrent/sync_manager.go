@@ -322,6 +322,9 @@ type TorrentView struct {
 	HasTrackerError       *struct{}     `json:"has_tracker_error,omitempty"`
 	HasOtherAnnounceError *struct{}     `json:"has_other_announce_error,omitempty"`
 	TrackerHealth         TrackerHealth `json:"tracker_health,omitempty"`
+	// QuiHelper is the owner kind of a helper torrent, from the helper
+	// registry. The torrent list shows a badge for it.
+	QuiHelper string `json:"qui_helper,omitempty"`
 	// CopyGroup is nil on a flat row and on a plain row of a grouped list.
 	CopyGroup *CopyGroupRow `json:"copy_group,omitempty"`
 	// Reannounce, Popularity and Private are nil when the instance does not
@@ -355,11 +358,13 @@ type rowValues struct {
 type rowBuilder struct {
 	reannounce, popularity bool // the instance sends them in the torrent list
 	values                 []rowValues
+	helpers                snapshotHelpers
 }
 
-// newRowBuilder returns a builder for n rows of the instance of c.
-func (c *Client) newRowBuilder(n int) rowBuilder {
-	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5)}
+// newRowBuilder returns a builder for n rows of the instance of c, which are
+// torrents of snapshot.
+func (c *Client) newRowBuilder(n int, helpers HelperTorrents, snapshot *qbt.SyncSnapshot) rowBuilder {
+	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5), helpers: helpersOf(snapshot, helpers, c.instanceID)}
 	if b.reannounce || b.popularity {
 		b.values = make([]rowValues, n)
 	}
@@ -370,7 +375,7 @@ func (c *Client) newRowBuilder(n int) rowBuilder {
 // sends neither Reannounce nor Popularity, allocates for a row with a known
 // Private.
 func (b *rowBuilder) view(i int, t *qbt.Torrent, health TrackerHealth) TorrentView {
-	tv := TorrentView{Torrent: t, TrackerHealth: health}
+	tv := TorrentView{Torrent: t, TrackerHealth: health, QuiHelper: b.helpers.kind(t)}
 	privateKnown := !PrivateUnknown(t)
 	if !b.reannounce && !b.popularity && !privateKnown {
 		return tv
@@ -619,8 +624,10 @@ type SyncManager struct {
 	// Cached tracker display name map (domain -> displayName), refreshed periodically
 	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
 
-	folderCleanup atomic.Pointer[FolderCleanup]
-	deleteNoter   atomic.Pointer[DeleteNoter]
+	folderCleanup  atomic.Pointer[FolderCleanup]
+	deleteNoter    atomic.Pointer[DeleteNoter]
+	helperTorrents atomic.Pointer[HelperTorrents]
+	changeGuard    atomic.Pointer[TorrentChangeGuard]
 
 	syncEventSinkMu sync.RWMutex
 	syncEventSink   SyncEventSink
@@ -1552,9 +1559,19 @@ func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID i
 	return client, syncManager, nil
 }
 
-// validateTorrentsExist checks if the specified torrent hashes exist
-func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, operation string) error {
+// validateTorrentsExist checks if the specified torrent hashes exist. With
+// [WithPostAddBulkActionRetry] it waits as long as a bulk action does for
+// torrents that were just added.
+func (sm *SyncManager) validateTorrentsExist(ctx context.Context, client *Client, hashes []string, operation string) error {
 	if !client.hasAnyTorrent(hashes) {
+		if client != nil && client.syncManager != nil && postAddBulkActionRetry(ctx) {
+			found, _ := bulkActionSyncRetry(context.WithoutCancel(ctx), ownerSyncer{client.syncManager}, hashes, client.instanceID, operation,
+				bulkActionAddRetryAttempts, bulkActionSyncRetryInterval, countListed(hashes))
+			if found > 0 {
+				return nil
+			}
+			return fmt.Errorf("no valid torrents found to %s", operation)
+		}
 		// Force a fresh sync (needed by backup restore flows) to pick up torrents that were just added and are not yet cached.
 		if client != nil && client.syncManager != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -1570,6 +1587,19 @@ func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, op
 	return nil
 }
 
+// countListed counts the hashes that an index lists, for bulkActionSyncRetry.
+func countListed(hashes []string) func(torrentIndex) (int, int) {
+	return func(index torrentIndex) (int, int) {
+		found := 0
+		for _, hash := range hashes {
+			if _, ok := index.Torrent(hash); ok {
+				found++
+			}
+		}
+		return found, 0
+	}
+}
+
 // editTorrents is the one path for every edit of existing torrents by hash, so
 // a fix to a shared step reaches each edit. A failed call starts no sync and
 // queues no folder cleanup, as ADR 0025 asks.
@@ -1578,7 +1608,7 @@ func (sm *SyncManager) editTorrents(ctx context.Context, instanceID int, hashes 
 	if err != nil {
 		return err
 	}
-	if err := sm.validateTorrentsExist(client, hashes, operation); err != nil {
+	if err := sm.validateTorrentsExist(ctx, client, hashes, operation); err != nil {
 		return err
 	}
 	var folders FolderCleanupBatch
@@ -1779,14 +1809,14 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	var paginatedViews []TorrentView
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
-		rows := client.newRowBuilder(len(paginatedTorrents))
+		rows := client.newRowBuilder(len(paginatedTorrents), sm.helpers(), syncSnapshot)
 		for i := range paginatedTorrents {
 			paginatedViews[i] = rows.view(i, paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash))
 		}
 	}
 	if len(groupedRows) > 0 {
 		paginatedViews = make([]TorrentView, len(groupedRows))
-		rows := client.newRowBuilder(len(groupedRows))
+		rows := client.newRowBuilder(len(groupedRows), sm.helpers(), syncSnapshot)
 		for i, grouped := range groupedRows {
 			torrent := filteredTorrents[grouped.row]
 			paginatedViews[i] = rows.view(i, torrent, cachedHealth.Health(torrent.Hash))
@@ -1879,7 +1909,7 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, err
 	}
 
-	return sm.instanceTorrentViews(client, instanceID, name, TorrentRefFilter{}.Select(syncManager.Snapshot())), nil
+	return sm.instanceTorrentViews(client, instanceID, name, syncManager.Snapshot()), nil
 }
 
 func (sm *SyncManager) lookupInstanceName(ctx context.Context, instanceID int) (string, error) {
@@ -1893,8 +1923,10 @@ func (sm *SyncManager) lookupInstanceName(ctx context.Context, instanceID int) (
 	return instance.Name, nil
 }
 
-// instanceTorrentViews sorts the views by name, then hash. It returns nil for no torrents.
-func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, instanceName string, torrents []*qbt.Torrent) []CrossInstanceTorrentView {
+// instanceTorrentViews returns the views of the torrents of snapshot, sorted by
+// name, then hash. It returns nil for no torrents.
+func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, instanceName string, snapshot *qbt.SyncSnapshot) []CrossInstanceTorrentView {
+	torrents := snapshotTorrents(snapshot)
 	if len(torrents) == 0 {
 		return nil
 	}
@@ -1904,7 +1936,7 @@ func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, inst
 		cachedHealth = sm.GetTrackerHealthSnapshot(instanceID)
 	}
 
-	rows := client.newRowBuilder(len(torrents))
+	rows := client.newRowBuilder(len(torrents), sm.helpers(), snapshot)
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i := range torrents {
 		views[i] = CrossInstanceTorrentView{
@@ -2375,6 +2407,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 	case "resume":
 		err = client.ResumeCtx(ctx, canonicalHashes)
 	case "delete":
+		sm.beforeTorrentChange(ctx, instanceID, canonicalHashes, TorrentChangeDelete)
 		sm.noteDelete(instanceID, canonicalHashes, actor)
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, false)
 		// Invalidate caches for deleted torrents
@@ -2389,6 +2422,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 			}
 		}
 	case "deleteWithFiles":
+		sm.beforeTorrentChange(ctx, instanceID, canonicalHashes, TorrentChangeDelete)
 		sm.noteDelete(instanceID, canonicalHashes, actor)
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
@@ -5334,6 +5368,7 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 
 	cleanup := &FolderCleanupOp{Kind: FolderCleanupSetLocation, Hashes: hashes, Path: location}
 	return sm.editTorrents(ctx, instanceID, hashes, "set location", cleanup, func(client *Client) error {
+		sm.beforeTorrentChange(ctx, instanceID, hashes, TorrentChangeMove)
 		// Set the location - this will disable Auto TMM and move the torrents
 		if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
 			return fmt.Errorf("failed to set torrent location: %w", err)
@@ -5444,6 +5479,7 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 			return errors.New("new file path cannot be empty")
 		}
 
+		sm.beforeTorrentChange(ctx, instanceID, []string{hash}, TorrentChangeRename)
 		if err := client.RenameFileCtx(ctx, hash, oldPath, newPath); err != nil {
 			return fmt.Errorf("failed to rename file: %w", err)
 		}
@@ -5479,6 +5515,7 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 			return errors.New("new folder path cannot be empty")
 		}
 
+		sm.beforeTorrentChange(ctx, instanceID, []string{hash}, TorrentChangeRename)
 		if err := client.RenameFolderCtx(ctx, hash, oldPath, newPath); err != nil {
 			return fmt.Errorf("failed to rename folder: %w", err)
 		}

@@ -1516,6 +1516,9 @@
     "trackerDown": "트래커 다운",
     "unregistered": "등록되지 않음",
     "trackerError": "트래커 오류",
+    "helperTransfer": "전송 도우미",
+    "helperShare": "공유 도우미",
+    "helperHint": "qui가 전송 또는 공유를 위해 이 토렌트를 추가했습니다. 파일은 다른 토렌트에 속합니다.",
     "now": "지금",
     "yes": "예",
     "no": "아니요"

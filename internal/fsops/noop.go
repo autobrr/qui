@@ -5,6 +5,7 @@ package fsops
 
 import (
 	"context"
+	"io"
 	"io/fs"
 
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -72,6 +73,13 @@ func (noopBackend) RemoveTree(ctx context.Context, created *TreeCreateResult) er
 }
 func (noopBackend) SupportsReflink(ctx context.Context, _ string) (bool, string, error) {
 	return false, "", noopErr(ctx)
+}
+
+func (noopBackend) OpenRead(ctx context.Context, _ string, _ int64) (io.ReadCloser, error) {
+	return nil, noopErr(ctx)
+}
+func (noopBackend) OpenWrite(ctx context.Context, _ string, _ int64) (FileWriter, error) {
+	return nil, noopErr(ctx)
 }
 
 func (noopBackend) Paths() PathDialect { return HostPaths }
