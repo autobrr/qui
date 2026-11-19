@@ -118,6 +118,7 @@ func (s StoreSecrets) instanceSecrets(ctx context.Context, c *secretCollector) e
 		c.decrypted(s.Instances.GetDecryptedSSHKey(instance))
 		c.add(instanceAddress(instance.SSHHost)...)
 		c.add(instance.SSHUsername)
+		c.add(instanceAddress(instance.PublicPeerAddress)...)
 	}
 	return nil
 }
@@ -218,8 +219,8 @@ var hostCredentialSchemes = map[string]bool{
 // notificationURLSecrets returns a notification URL and each part of it
 // that can hold a credential, because a text can hold one part alone: the
 // user name and the password, which hold the token of a discord:// or a
-// telegram:// URL, each path segment, and the host of a URL whose scheme is
-// in hostCredentialSchemes.
+// telegram:// URL, each path segment that is no plain word, and the host of
+// a URL whose scheme is in hostCredentialSchemes.
 func notificationURLSecrets(raw string) []string {
 	secrets := []string{raw}
 	parsed, err := url.Parse(strings.TrimSpace(raw))
@@ -233,7 +234,19 @@ func notificationURLSecrets(raw string) []string {
 	if hostCredentialSchemes[parsed.Scheme] {
 		secrets = append(secrets, parsed.Host)
 	}
-	return append(secrets, strings.Split(parsed.Path, "/")...)
+	for segment := range strings.SplitSeq(parsed.Path, "/") {
+		if !isPlainWord(segment) {
+			secrets = append(secrets, segment)
+		}
+	}
+	return secrets
+}
+
+// isPlainWord reports whether a URL path segment holds only lower-case
+// letters, dashes and underscores, such as webhooks. A token holds a digit or
+// an upper-case letter, and a plain word stays in the report text.
+func isPlainWord(segment string) bool {
+	return strings.Trim(segment, "abcdefghijklmnopqrstuvwxyz-_") == ""
 }
 
 // instanceAddress returns the forms of an instance address that a text can
