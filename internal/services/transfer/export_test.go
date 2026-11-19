@@ -296,11 +296,11 @@ func TestExportResumesAfterACrash(t *testing.T) {
 				req.Paused, req.SkipChecking = true, false
 			}
 			child := make(chan *os.Process, 1)
-			r.dst.OnAdd = func(string) {
+			r.dst.SetOnAdd(func(string) {
 				if tc.killAtAdd {
 					require.NoError(t, (<-child).Kill())
 				}
-			}
+			})
 			runCrashChild(t, crash{DB: r.dbPath, Export: &req, At: tc.at}, child, tc.killAtAdd)
 			if tc.recheckFails {
 				r.dst.OnWrite = func(endpoint string) {
@@ -403,7 +403,7 @@ func TestExportRechecksAPausedAddAfterACrash(t *testing.T) {
 	req := r.exportRequest(s)
 	req.Paused, req.SkipChecking = true, false
 	child := make(chan *os.Process, 1)
-	r.dst.OnAdd = func(string) { require.NoError(t, (<-child).Kill()) }
+	r.dst.SetOnAdd(func(string) { require.NoError(t, (<-child).Kill()) })
 	runCrashChild(t, crash{DB: r.dbPath, Export: &req}, child, true)
 	require.Zero(t, r.dst.Writes("torrents/recheck"), "qui stopped before the recheck")
 

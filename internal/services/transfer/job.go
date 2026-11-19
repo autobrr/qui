@@ -97,8 +97,8 @@ type job struct {
 
 func (j *job) hashes() []string {
 	out := make([]string, len(j.rec.Members))
-	for i, m := range j.rec.Members {
-		out[i] = m.Hash
+	for i := range j.rec.Members {
+		out[i] = j.rec.Members[i].Hash
 	}
 	return out
 }

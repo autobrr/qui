@@ -143,18 +143,18 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 			child := make(chan *os.Process, 1)
 			var added []string
 			killed := ""
-			r.dst.OnAdd = func(hash string) {
+			r.dst.SetOnAdd(func(hash string) {
 				added = append(added, hash)
 				if len(added) == tc.killAtAdd {
 					killed = hash
 					require.NoError(t, (<-child).Kill())
 				}
-			}
-			r.src.OnWrite = func(endpoint string) {
+			})
+			r.src.SetOnWrite(func(endpoint string) {
 				if tc.killAtRemoval && endpoint == "torrents/delete" {
 					require.NoError(t, (<-child).Kill())
 				}
-			}
+			})
 			runCrashChild(t, plan, child, tc.killAtAdd > 0 || tc.killAtRemoval)
 
 			notified := &events{}
