@@ -1,0 +1,84 @@
+/* @name: Rosé Pine
+ * @id: rose-pine
+ * @description: Port of Rosé Pine (rosepinetheme.com, MIT) via the Omarchy Rosé Pine theme, with a matching iris dark companion palette
+ */
+
+:root {
+  --background: oklch(0.9699 0.0113 71.8999);
+  --foreground: oklch(0.4200 0.0629 289.5561);
+  --card: oklch(0.9880 0.0080 71.8999);
+  --card-foreground: oklch(0.4200 0.0629 289.5561);
+  --popover: oklch(0.9960 0.0029 71.8999);
+  --popover-foreground: oklch(0.4200 0.0629 289.5561);
+  --primary: oklch(0.5400 0.0800 210.1228);
+  --primary-foreground: oklch(0.9880 0.0080 71.8999);
+  --secondary: oklch(0.8920 0.0057 31.0551);
+  --secondary-foreground: oklch(0.4200 0.0629 289.5561);
+  --muted: oklch(0.9389 0.0145 64.3381);
+  --muted-foreground: oklch(0.5183 0.0435 291.4122);
+  --accent: oklch(0.9250 0.0300 210.1228);
+  --accent-foreground: oklch(0.4200 0.0629 289.5561);
+  --destructive: oklch(0.5600 0.1200 2.6555);
+  --destructive-foreground: oklch(0.9880 0.0080 71.8999);
+  --border: oklch(0.8920 0.0057 31.0551);
+  --input: oklch(0.8945 0.0105 67.6922);
+  --ring: oklch(0.5400 0.0800 210.1228);
+  --chart-1: oklch(0.5300 0.0800 210.1228);
+  --chart-2: oklch(0.4909 0.0770 227.9983);
+  --chart-3: oklch(0.5425 0.1176 69.7433);
+  --chart-4: oklch(0.5450 0.0900 305.6980);
+  --chart-5: oklch(0.5525 0.1200 2.6555);
+  --sidebar: oklch(0.9389 0.0145 64.3381);
+  --sidebar-foreground: oklch(0.4200 0.0629 289.5561);
+  --sidebar-primary: oklch(0.5400 0.0800 210.1228);
+  --sidebar-primary-foreground: oklch(0.9880 0.0080 71.8999);
+  --sidebar-accent: oklch(0.9250 0.0300 210.1228);
+  --sidebar-accent-foreground: oklch(0.4200 0.0629 289.5561);
+  --sidebar-border: oklch(0.8920 0.0057 31.0551);
+  --sidebar-ring: oklch(0.5400 0.0800 210.1228);
+  --ratio-bad: oklch(0.5600 0.1200 2.6555);
+  --ratio-almost: oklch(0.6400 0.1388 69.7433);
+  --ratio-good: oklch(0.5400 0.0800 210.1228);
+  --ratio-best: oklch(0.4909 0.0770 227.9983);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.2200 0.0230 289.5561);
+  --foreground: oklch(0.9000 0.0250 289.5561);
+  --card: oklch(0.2520 0.0230 289.5561);
+  --card-foreground: oklch(0.9000 0.0250 289.5561);
+  --popover: oklch(0.2800 0.0230 289.5561);
+  --popover-foreground: oklch(0.9000 0.0250 289.5561);
+  --primary: oklch(0.7800 0.0800 210.1228);
+  --primary-foreground: oklch(0.2200 0.0230 289.5561);
+  --secondary: oklch(0.3300 0.0230 289.5561);
+  --secondary-foreground: oklch(0.9000 0.0250 289.5561);
+  --muted: oklch(0.3000 0.0230 289.5561);
+  --muted-foreground: oklch(0.7100 0.0300 289.5561);
+  --accent: oklch(0.2700 0.0350 210.1228);
+  --accent-foreground: oklch(0.8500 0.0600 210.1228);
+  --destructive: oklch(0.6800 0.1400 2.6555);
+  --destructive-foreground: oklch(0.2200 0.0230 289.5561);
+  --border: oklch(0.3300 0.0230 289.5561);
+  --input: oklch(0.1850 0.0200 289.5561);
+  --ring: oklch(0.7800 0.0800 210.1228);
+  --chart-1: oklch(0.7800 0.0800 210.1228);
+  --chart-2: oklch(0.6400 0.0900 227.9983);
+  --chart-3: oklch(0.8000 0.1400 69.7433);
+  --chart-4: oklch(0.7400 0.0900 305.6980);
+  --chart-5: oklch(0.6800 0.1400 2.6555);
+  --sidebar: oklch(0.2520 0.0230 289.5561);
+  --sidebar-foreground: oklch(0.9000 0.0250 289.5561);
+  --sidebar-primary: oklch(0.7800 0.0800 210.1228);
+  --sidebar-primary-foreground: oklch(0.2200 0.0230 289.5561);
+  --sidebar-accent: oklch(0.2700 0.0350 210.1228);
+  --sidebar-accent-foreground: oklch(0.8500 0.0600 210.1228);
+  --sidebar-border: oklch(0.3300 0.0230 289.5561);
+  --sidebar-ring: oklch(0.7800 0.0800 210.1228);
+  --ratio-bad: oklch(0.6800 0.1400 2.6555);
+  --ratio-almost: oklch(0.8000 0.1400 69.7433);
+  --ratio-good: oklch(0.7800 0.0800 210.1228);
+  --ratio-best: oklch(0.6400 0.0900 227.9983);
+  --radius: 0.5rem;
+}

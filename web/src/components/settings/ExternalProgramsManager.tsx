@@ -3,488 +3,428 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { APIError, api } from "@/lib/api"
-import type { ExternalProgram, ExternalProgramCreate, ExternalProgramUpdate, PathMapping } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Edit, Plus, Trash2, X } from "lucide-react"
-import { useState } from "react"
+import { AppWindow, ChevronDown, Plus, SquareTerminal, Trash2, X } from "lucide-react"
+import { useId, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-// Type for automation references in delete conflict response
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog"
+import { Editor } from "@/components/kit/Editor"
+import { Field } from "@/components/kit/Field"
+import { ResourceList } from "@/components/kit/ResourceList"
+import { Section } from "@/components/kit/Section"
+import { SwitchRow } from "@/components/kit/SwitchRow"
+import { usePendingIds } from "@/components/kit/use-pending-ids"
+import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { FieldHelp } from "@/components/ui/field-help"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { APIError, api } from "@/lib/api"
+import type { ExternalProgram, ExternalProgramPayload, PathMapping } from "@/types"
+
+const PROGRAMS_KEY = ["externalPrograms"]
+const TOGGLE_KEY = ["externalPrograms", "toggle"]
+
+/** The automations that use a program, from the 409 answer to a delete. */
 interface AutomationReference {
   id: number
   instanceId: number
   name: string
 }
 
-const UNKNOWN_ERROR_KEY = "externalPrograms.unknownError"
+interface DeleteState {
+  program: ExternalProgram
+  /** The automations that use the program, once the server refused the first delete. */
+  conflict: AutomationReference[] | null
+  open: boolean
+}
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof APIError) return error.message
-  if (error instanceof Error) return error.message
-  return UNKNOWN_ERROR_KEY
+const PLACEHOLDERS = [
+  ["{hash}", "hash"],
+  ["{name}", "name"],
+  ["{save_path}", "savePath"],
+  ["{content_path}", "contentPath"],
+  ["{category}", "category"],
+  ["{tags}", "tags"],
+  ["{state}", "state"],
+  ["{size}", "size"],
+  ["{progress}", "progress"],
+  ["{comment}", "comment"],
+] as const
+
+function toPayload(program: ExternalProgram): ExternalProgramPayload {
+  const { name, path, args_template, enabled, use_terminal, path_mappings } = program
+  return { name, path, args_template, enabled, use_terminal, path_mappings: path_mappings ?? [] }
 }
 
 export function ExternalProgramsManager() {
   const { t } = useTranslation("settings")
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [editProgram, setEditProgram] = useState<ExternalProgram | null>(null)
-  const [deleteProgram, setDeleteProgram] = useState<ExternalProgram | null>(null)
-  const [deleteConflict, setDeleteConflict] = useState<AutomationReference[] | null>(null)
   const queryClient = useQueryClient()
-  const { formatDate } = useDateTimeFormatters()
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editing, setEditing] = useState<ExternalProgram | null>(null)
+  // A new key on each open gives the form fresh state.
+  const [editorSession, setEditorSession] = useState(0)
+  // The dialog keeps its program and its text while it fades out.
+  const [deleting, setDeleting] = useState<DeleteState | null>(null)
 
-  // Fetch external programs
-  const { data: programs, isLoading, error } = useQuery({
-    queryKey: ["externalPrograms"],
+  const errorText = (error: unknown) => error instanceof Error && error.message ? error.message : t("externalPrograms.unknownError")
+
+  const programsQuery = useQuery({
+    queryKey: PROGRAMS_KEY,
     queryFn: () => api.listExternalPrograms(),
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 30 * 1000,
   })
 
-  const createMutation = useMutation({
-    mutationFn: async (data: ExternalProgramCreate) => {
-      return api.createExternalProgram(data)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["externalPrograms"] })
-      setShowCreateDialog(false)
-      toast.success(t("externalPrograms.toasts.created"))
-    },
-    onError: (error: unknown) => {
-      toast.error(t("externalPrograms.toasts.createFailed", { error: t(getErrorMessage(error)) }))
+  const saveMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number | null; data: ExternalProgramPayload }) =>
+      id === null ? api.createExternalProgram(data) : api.updateExternalProgram(id, data),
+    onSuccess: (saved, { id }) => {
+      // The switch sends every field of its row, so the row holds the saved values before the switch is in reach again.
+      if (id !== null) queryClient.setQueryData<ExternalProgram[]>(PROGRAMS_KEY, (old) => old?.map((item) => item.id === id ? saved : item))
+      void queryClient.invalidateQueries({ queryKey: PROGRAMS_KEY })
+      setEditorOpen(false)
+      toast.success(t(id === null ? "externalPrograms.toasts.created" : "externalPrograms.toasts.updated"))
     },
   })
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: ExternalProgramUpdate }) => {
-      return api.updateExternalProgram(id, data)
+  const setEnabledInCache = (id: number, enabled: boolean) =>
+    queryClient.setQueryData<ExternalProgram[]>(PROGRAMS_KEY, (old) => old?.map((item) => item.id === id ? { ...item, enabled } : item))
+
+  // The switch and the editor of a program take no save while its switch save runs, so two saves of one program never overlap.
+  const toggleMutation = useMutation({
+    mutationKey: TOGGLE_KEY,
+    mutationFn: (program: ExternalProgram) => api.updateExternalProgram(program.id, toPayload(program)),
+    onMutate: async (program) => {
+      await queryClient.cancelQueries({ queryKey: PROGRAMS_KEY })
+      setEnabledInCache(program.id, program.enabled)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["externalPrograms"] })
-      setEditProgram(null)
-      toast.success(t("externalPrograms.toasts.updated"))
+    onError: (error, program) => {
+      setEnabledInCache(program.id, !program.enabled)
+      toast.error(t("externalPrograms.toasts.updateFailed", { error: errorText(error) }))
     },
-    onError: (error: unknown) => {
-      toast.error(t("externalPrograms.toasts.updateFailed", { error: t(getErrorMessage(error)) }))
-    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: PROGRAMS_KEY }),
   })
+  const toggling = usePendingIds(TOGGLE_KEY)
 
   const deleteMutation = useMutation({
-    mutationFn: async ({ id, force }: { id: number; force?: boolean }) => {
-      return api.deleteExternalProgram(id, force)
-    },
+    mutationFn: ({ id, force }: { id: number; force: boolean }) => api.deleteExternalProgram(id, force),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["externalPrograms"] })
-      // Also invalidate automations since we may have modified them
-      queryClient.invalidateQueries({ queryKey: ["automations"] })
-      setDeleteProgram(null)
-      setDeleteConflict(null)
+      void queryClient.invalidateQueries({ queryKey: PROGRAMS_KEY })
+      // A forced delete removes the program action from the automations that used it.
+      void queryClient.invalidateQueries({ queryKey: ["automations"] })
       toast.success(t("externalPrograms.toasts.deleted"))
     },
-    onError: (error: unknown) => {
-      if (error instanceof APIError && error.status === 409) {
-        const data = error.data as { automations?: AutomationReference[] } | undefined
-        if (data?.automations) {
-          setDeleteConflict(data.automations)
-          return
-        }
+    onError: (error) => {
+      const automations = error instanceof APIError && error.status === 409
+        ? (error.data as { automations?: AutomationReference[] } | undefined)?.automations
+        : undefined
+      if (automations) {
+        // The dialog stays open and lists the automations, and the next confirm forces the delete.
+        setDeleting((current) => current && { ...current, conflict: automations })
+        return
       }
-      toast.error(t("externalPrograms.toasts.deleteFailed", { error: t(getErrorMessage(error)) }))
+      toast.error(t("externalPrograms.toasts.deleteFailed", { error: errorText(error) }))
     },
   })
 
+  const openEditor = (program: ExternalProgram | null) => {
+    saveMutation.reset()
+    setEditing(program)
+    setEditorSession((session) => session + 1)
+    setEditorOpen(true)
+  }
+
+  const command = (program: ExternalProgram) => [program.path, program.args_template].filter(Boolean).join(" ")
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="w-full sm:w-auto">
-              <Plus className="mr-2 h-4 w-4" />
-              {t("externalPrograms.createButton")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
-            <DialogHeader className="flex-shrink-0">
-              <DialogTitle>{t("externalPrograms.createTitle")}</DialogTitle>
-              <DialogDescription>
-                {t("externalPrograms.createDescription")}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <ProgramForm
-                onSubmit={(data) => createMutation.mutate(data)}
-                onCancel={() => setShowCreateDialog(false)}
-                isPending={createMutation.isPending}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {isLoading && <div className="text-center py-8">{t("externalPrograms.loading")}</div>}
-      {error && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-destructive">{t("externalPrograms.loadFailed")}</div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!isLoading && !error && (!programs || programs.length === 0) && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground">
-              {t("externalPrograms.empty")}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {programs && programs.length > 0 && (
-        <div className="grid gap-4">
-          {programs.map((program) => (
-            <Card className="bg-muted/40" key={program.id}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1 flex-1">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-lg">{program.name}</CardTitle>
-                      <Badge variant={program.enabled ? "default" : "secondary"}>
-                        {program.enabled ? t("externalPrograms.enabled") : t("externalPrograms.disabled")}
-                      </Badge>
-                    </div>
-                    <CardDescription className="text-xs">
-                      {t("externalPrograms.created", { date: formatDate(new Date(program.created_at)) })}
-                      {program.updated_at !== program.created_at &&
-                        ` • ${t("externalPrograms.updated", { date: formatDate(new Date(program.updated_at)) })}`}
-                    </CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditProgram(program)}
-                      aria-label={t("externalPrograms.ariaLabels.edit", { name: program.name })}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeleteProgram(program)}
-                      aria-label={t("externalPrograms.ariaLabels.delete", { name: program.name })}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div>
-                  <div className="text-sm font-medium mb-1">{t("externalPrograms.programPath")}</div>
-                  <code className="text-xs bg-muted px-2 py-1 rounded block break-all">
-                    {program.path}
-                  </code>
-                </div>
-                {program.args_template && (
-                  <div>
-                    <div className="text-sm font-medium mb-1">{t("externalPrograms.argumentsTemplate")}</div>
-                    <code className="text-xs bg-muted px-2 py-1 rounded block break-all">
-                      {program.args_template}
-                    </code>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Edit Dialog */}
-      {editProgram && (
-        <Dialog open={true} onOpenChange={() => setEditProgram(null)}>
-          <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
-            <DialogHeader className="flex-shrink-0">
-              <DialogTitle>{t("externalPrograms.editTitle")}</DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <ProgramForm
-                program={editProgram}
-                onSubmit={(data) => updateMutation.mutate({ id: editProgram.id, data })}
-                onCancel={() => setEditProgram(null)}
-                isPending={updateMutation.isPending}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteProgram !== null} onOpenChange={(open) => {
-        if (!open) {
-          setDeleteProgram(null)
-          setDeleteConflict(null)
+    <>
+      <Section
+        title={t("externalPrograms.cardTitle")}
+        description={t("externalPrograms.cardDescription")}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => openEditor(null)}>
+            <Plus />
+            {t("externalPrograms.createButton")}
+          </Button>
         }
-      }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("externalPrograms.deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                {deleteConflict ? (
-                  <>
-                    <p className="text-amber-600 dark:text-amber-500">
-                      {t("externalPrograms.deleteConflictIntro")}
-                    </p>
-                    <ul className="list-disc list-inside text-sm space-y-1 max-h-32 overflow-y-auto">
-                      {deleteConflict.map((ref) => (
-                        <li key={ref.id}>{ref.name}</li>
-                      ))}
-                    </ul>
-                    <p>
-                      {t("externalPrograms.deleteConflictDescription")}
-                    </p>
-                  </>
-                ) : (
-                  <p>{t("externalPrograms.deleteDescription", { name: deleteProgram?.name ?? "" })}</p>
-                )}
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("externalPrograms.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteProgram && deleteMutation.mutate({ id: deleteProgram.id, force: deleteConflict !== null })}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deleteMutation.isPending}
-            >
-              {deleteConflict ? t("externalPrograms.deleteAnyway") : t("externalPrograms.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+        queries={[programsQuery]}
+      >
+        <ResourceList
+          label={t("externalPrograms.cardTitle")}
+          items={programsQuery.data ?? []}
+          itemKey={(program) => program.id}
+          row={(program) => ({
+            title: program.name,
+            icon: program.use_terminal ? SquareTerminal : AppWindow,
+            meta: [
+              <span key="command" className="font-mono">{command(program)}</span>,
+              ...(program.path_mappings?.length ? [t("externalPrograms.pathMappingsCount", { count: program.path_mappings.length })] : []),
+            ],
+            enabled: {
+              checked: program.enabled,
+              onCheckedChange: (enabled) => toggleMutation.mutate({ ...program, enabled }),
+              disabled: toggling.has(program.id),
+            },
+            onOpen: () => openEditor(program),
+            actions: [
+              {
+                label: t("externalPrograms.delete"),
+                icon: Trash2,
+                destructive: true,
+                onSelect: () => setDeleting({ program, conflict: null, open: true }),
+              },
+            ],
+          })}
+          empty={{
+            title: t("externalPrograms.emptyTitle"),
+            description: t("externalPrograms.emptyDescription"),
+            onAdd: () => openEditor(null),
+          }}
+        />
+      </Section>
+      {/* Outside the section, so a failed refetch of the list never takes an open form away. */}
+      <ProgramEditor
+        key={editorSession}
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        program={editing}
+        pending={saveMutation.isPending}
+        submitDisabled={editing !== null && toggling.has(editing.id)}
+        error={saveMutation.error
+          ? t(editing ? "externalPrograms.toasts.updateFailed" : "externalPrograms.toasts.createFailed", { error: errorText(saveMutation.error) })
+          : undefined}
+        onSave={(data) => saveMutation.mutate({ id: editing?.id ?? null, data })}
+      />
+      {deleting && (
+        <ConfirmDialog
+          open={deleting.open}
+          onOpenChange={(open) => !open && setDeleting((current) => current && { ...current, open: false })}
+          title={t("externalPrograms.deleteTitle")}
+          description={deleting.conflict
+            ? t("externalPrograms.deleteConflictIntro")
+            : t("externalPrograms.deleteDescription", { name: deleting.program.name })}
+          confirmLabel={t(deleting.conflict ? "externalPrograms.deleteAnyway" : "externalPrograms.delete")}
+          onConfirm={() => deleteMutation.mutateAsync({ id: deleting.program.id, force: deleting.conflict !== null })}
+        >
+          {deleting.conflict && (
+            <div className="space-y-3 text-sm">
+              <ul className="max-h-40 divide-y overflow-y-auto rounded-lg border">
+                {deleting.conflict.map((automation) => (
+                  <li key={automation.id} className="px-3 py-2 [overflow-wrap:anywhere]">{automation.name}</li>
+                ))}
+              </ul>
+              <p className="text-muted-foreground">{t("externalPrograms.deleteConflictDescription")}</p>
+            </div>
+          )}
+        </ConfirmDialog>
+      )}
+    </>
   )
 }
 
-interface ProgramFormProps {
-  program?: ExternalProgram
-  onSubmit: (data: ExternalProgramCreate | ExternalProgramUpdate) => void
-  onCancel: () => void
-  isPending: boolean
+interface ProgramEditorProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** The program to edit, or null for a new one. */
+  program: ExternalProgram | null
+  pending: boolean
+  submitDisabled: boolean
+  error?: string
+  onSave: (data: ExternalProgramPayload) => void
 }
 
-function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProps) {
+interface FormErrors {
+  name?: string
+  path?: string
+}
+
+function ProgramEditor({ open, onOpenChange, program, pending, submitDisabled, error, onSave }: ProgramEditorProps) {
   const { t } = useTranslation("settings")
-  const [name, setName] = useState(program?.name || "")
-  const [path, setPath] = useState(program?.path || "")
-  const [argsTemplate, setArgsTemplate] = useState(program?.args_template || "")
-  const [enabled, setEnabled] = useState(program?.enabled !== false)
-  const [useTerminal, setUseTerminal] = useState(program?.use_terminal !== false)
-  const [pathMappings, setPathMappings] = useState<PathMapping[]>(program?.path_mappings || [])
+  const [name, setName] = useState(program?.name ?? "")
+  const [path, setPath] = useState(program?.path ?? "")
+  const [argsTemplate, setArgsTemplate] = useState(program?.args_template ?? "")
+  const [enabled, setEnabled] = useState(program?.enabled ?? true)
+  const [useTerminal, setUseTerminal] = useState(program?.use_terminal ?? true)
+  const [pathMappings, setPathMappings] = useState<PathMapping[]>(program?.path_mappings ?? [])
+  const [errors, setErrors] = useState<FormErrors>({})
+  const nameRef = useRef<HTMLInputElement>(null)
+  const pathRef = useRef<HTMLInputElement>(null)
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!name.trim()) {
-      toast.error(t("externalPrograms.validation.nameRequired"))
-      return
+  const submit = () => {
+    const next: FormErrors = {
+      name: name.trim() ? undefined : t("externalPrograms.validation.nameRequired"),
+      path: path.trim() ? undefined : t("externalPrograms.validation.pathRequired"),
     }
-
-    if (!path.trim()) {
-      toast.error(t("externalPrograms.validation.pathRequired"))
-      return
+    setErrors(next)
+    if (next.name) {
+      nameRef.current?.focus()
+    } else if (next.path) {
+      pathRef.current?.focus()
+    } else {
+      onSave({
+        name: name.trim(),
+        path: path.trim(),
+        args_template: argsTemplate.trim(),
+        enabled,
+        use_terminal: useTerminal,
+        path_mappings: pathMappings.filter((mapping) => mapping.from.trim() !== "" && mapping.to.trim() !== ""),
+      })
     }
-
-    // Filter out empty path mappings
-    const validPathMappings = pathMappings.filter(
-      (mapping) => mapping.from.trim() !== "" && mapping.to.trim() !== ""
-    )
-
-    onSubmit({
-      name: name.trim(),
-      path: path.trim(),
-      args_template: argsTemplate.trim(),
-      enabled,
-      use_terminal: useTerminal,
-      path_mappings: validPathMappings,
-    })
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="name">{t("externalPrograms.nameLabel")}</Label>
+    <Editor
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t(program ? "externalPrograms.editTitle" : "externalPrograms.createTitle")}
+      description={program ? undefined : t("externalPrograms.createDescription")}
+      submitLabel={t(program ? "externalPrograms.save" : "externalPrograms.createButton")}
+      onSubmit={submit}
+      pending={pending}
+      submitDisabled={submitDisabled}
+      error={error}
+    >
+      <Field label={t("externalPrograms.nameLabel")} error={errors.name}>
         <Input
-          id="name"
+          ref={nameRef}
           value={name}
-          onChange={(e) => setName(e.target.value)}
           placeholder={t("externalPrograms.namePlaceholder")}
-          required
+          autoComplete="off"
+          onChange={(event) => {
+            setName(event.target.value)
+            setErrors((prev) => ({ ...prev, name: undefined }))
+          }}
         />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="path">{t("externalPrograms.pathLabel")}</Label>
+      </Field>
+      <Field label={t("externalPrograms.pathLabel")} error={errors.path}>
         <Input
-          id="path"
+          ref={pathRef}
           value={path}
-          onChange={(e) => setPath(e.target.value)}
           placeholder={t("externalPrograms.pathPlaceholder")}
-          required
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          className="font-mono md:text-[13px]"
+          onChange={(event) => {
+            setPath(event.target.value)
+            setErrors((prev) => ({ ...prev, path: undefined }))
+          }}
         />
-        <p className="text-xs text-muted-foreground">
-          {t("externalPrograms.pathDescription")}
-        </p>
-      </div>
-
+      </Field>
       <div className="space-y-2">
-        <Label htmlFor="args">{t("externalPrograms.argumentsLabel")}</Label>
-        <Textarea
-          id="args"
-          value={argsTemplate}
-          onChange={(e) => setArgsTemplate(e.target.value)}
-          placeholder={t("externalPrograms.argumentsPlaceholder")}
-          rows={3}
-        />
-        <div className="text-xs text-muted-foreground space-y-1">
-          <div>{t("externalPrograms.argumentsDescription")}</div>
-          <div>{t("externalPrograms.availablePlaceholders")}</div>
-          <ul className="list-disc list-inside pl-2 space-y-0.5">
-            <li><code className="bg-muted px-1 rounded">{"{hash}"}</code> - {t("externalPrograms.placeholders.hash")}</li>
-            <li><code className="bg-muted px-1 rounded">{"{name}"}</code> - {t("externalPrograms.placeholders.name")}</li>
-            <li><code className="bg-muted px-1 rounded">{"{save_path}"}</code> - {t("externalPrograms.placeholders.savePath")}</li>
-            <li><code className="bg-muted px-1 rounded">{"{content_path}"}</code> - {t("externalPrograms.placeholders.contentPath")}</li>
-            <li><code className="bg-muted px-1 rounded">{"{category}"}</code> - {t("externalPrograms.placeholders.category")}</li>
-            <li><code className="bg-muted px-1 rounded">{"{tags}"}</code> - {t("externalPrograms.placeholders.tags")}</li>
-            <li><code className="bg-muted px-1 rounded">{"{state}"}</code> - {t("externalPrograms.placeholders.state")}</li>
-            <li><code className="bg-muted px-1 rounded">{"{size}"}</code> - {t("externalPrograms.placeholders.size")}</li>
-            <li><code className="bg-muted px-1 rounded">{"{progress}"}</code> - {t("externalPrograms.placeholders.progress")}</li>
-            <li><code className="bg-muted px-1 rounded">{"{comment}"}</code> - {t("externalPrograms.placeholders.comment")}</li>
-          </ul>
-        </div>
+        <Field label={t("externalPrograms.argumentsLabel")}>
+          <Textarea
+            value={argsTemplate}
+            placeholder={t("externalPrograms.argumentsPlaceholder")}
+            rows={3}
+            autoCapitalize="off"
+            spellCheck={false}
+            className="font-mono md:text-[13px]"
+            onChange={(event) => setArgsTemplate(event.target.value)}
+          />
+        </Field>
+        <PlaceholderList />
       </div>
+      <PathMappingsField mappings={pathMappings} onChange={setPathMappings} />
+      <SwitchRow
+        label={t("externalPrograms.launchInTerminal")}
+        help={t("externalPrograms.launchInTerminalDescription")}
+        checked={useTerminal}
+        onCheckedChange={setUseTerminal}
+      />
+      <SwitchRow label={t("externalPrograms.enableProgram")} checked={enabled} onCheckedChange={setEnabled} />
+    </Editor>
+  )
+}
 
-      <div className="space-y-2">
-        <Label>{t("externalPrograms.pathMappings")}</Label>
-        <div className="space-y-2">
-          {pathMappings.map((mapping, index) => (
-            <div key={index} className="flex gap-2 items-start">
-              <div className="flex-1">
-                <Input
-                  placeholder={t("externalPrograms.remotePathPlaceholder")}
-                  value={mapping.from}
-                  onChange={(e) => {
-                    const newMappings = [...pathMappings]
-                    newMappings[index] = { ...newMappings[index], from: e.target.value }
-                    setPathMappings(newMappings)
-                  }}
-                />
-              </div>
-              <div className="flex-1">
-                <Input
-                  placeholder={t("externalPrograms.localPathPlaceholder")}
-                  value={mapping.to}
-                  onChange={(e) => {
-                    const newMappings = [...pathMappings]
-                    newMappings[index] = { ...newMappings[index], to: e.target.value }
-                    setPathMappings(newMappings)
-                  }}
-                />
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  const newMappings = pathMappings.filter((_, i) => i !== index)
-                  setPathMappings(newMappings)
-                }}
-                aria-label={t("externalPrograms.removePathMapping")}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+/** The placeholders that the arguments can hold, folded away until the user opens them. */
+function PlaceholderList() {
+  const { t } = useTranslation("settings")
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="group -mx-1 inline-flex min-h-8 items-center gap-1 rounded-md px-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:min-h-10">
+        {t("externalPrograms.availablePlaceholders")}
+        <ChevronDown aria-hidden="true" className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2.5 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
+          {PLACEHOLDERS.map(([token, key]) => (
+            <div key={token} className="contents">
+              <dt className="font-mono text-foreground">{token}</dt>
+              <dd className="text-muted-foreground">{t(`externalPrograms.placeholders.${key}`)}</dd>
             </div>
           ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setPathMappings([...pathMappings, { from: "", to: "" }])
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            {t("externalPrograms.addPathMapping")}
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {t("externalPrograms.pathMappingsDescription")}
-        </p>
-      </div>
+        </dl>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
 
-      <div className="space-y-3">
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="useTerminal"
-            checked={useTerminal}
-            onCheckedChange={setUseTerminal}
-          />
-          <Label htmlFor="useTerminal" className="cursor-pointer">
-            {t("externalPrograms.launchInTerminal")}
-          </Label>
-        </div>
-        <p className="text-xs text-muted-foreground ml-9">
-          {t("externalPrograms.launchInTerminalDescription")}
-        </p>
+/** Pairs of a remote path and a local path. A phone puts the two paths of a pair one above the other, each with its label. */
+function PathMappingsField({ mappings, onChange }: { mappings: PathMapping[]; onChange: (mappings: PathMapping[]) => void }) {
+  const { t } = useTranslation("settings")
+  const labelId = useId()
 
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="enabled"
-            checked={enabled}
-            onCheckedChange={setEnabled}
-          />
-          <Label htmlFor="enabled" className="cursor-pointer">
-            {t("externalPrograms.enableProgram")}
-          </Label>
-        </div>
-      </div>
+  const update = (index: number, change: Partial<PathMapping>) =>
+    onChange(mappings.map((mapping, i) => i === index ? { ...mapping, ...change } : mapping))
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-          {t("externalPrograms.cancel")}
-        </Button>
-        <Button type="submit" disabled={isPending}>
-          {isPending ? t("externalPrograms.saving") : program ? t("externalPrograms.updateButton") : t("externalPrograms.createSubmit")}
-        </Button>
+  const pathInput = (index: number, side: "from" | "to") => (
+    <label className="block min-w-0 space-y-1">
+      <span className="block text-xs text-muted-foreground sm:sr-only">
+        {t(side === "from" ? "externalPrograms.remotePath" : "externalPrograms.localPath")}
+      </span>
+      <Input
+        value={mappings[index][side]}
+        placeholder={t(side === "from" ? "externalPrograms.remotePathPlaceholder" : "externalPrograms.localPathPlaceholder")}
+        autoComplete="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        className="font-mono md:text-[13px]"
+        onChange={(event) => update(index, { [side]: event.target.value })}
+      />
+    </label>
+  )
+
+  return (
+    <div role="group" aria-labelledby={labelId} className="space-y-2">
+      <div className="flex min-h-5 items-center gap-1.5">
+        <span id={labelId} className="text-sm font-medium leading-5">{t("externalPrograms.pathMappings")}</span>
+        <FieldHelp>{t("externalPrograms.pathMappingsDescription")}</FieldHelp>
       </div>
-    </form>
+      {mappings.length > 0 && (
+        <>
+          <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.25rem] gap-2 text-xs text-muted-foreground max-sm:hidden">
+            <span>{t("externalPrograms.remotePath")}</span>
+            <span>{t("externalPrograms.localPath")}</span>
+          </div>
+          <ul className="space-y-2 max-sm:space-y-3">
+            {mappings.map((_, index) => (
+              <li key={index} className="flex items-start gap-2 max-sm:rounded-lg max-sm:border max-sm:p-3">
+                <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+                  {pathInput(index, "from")}
+                  {pathInput(index, "to")}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("externalPrograms.removePathMapping")}
+                  className="size-9 shrink-0 text-muted-foreground hover:text-destructive max-sm:-mt-1 max-sm:-mr-1 max-sm:size-10"
+                  onClick={() => onChange(mappings.filter((_mapping, i) => i !== index))}
+                >
+                  <X />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <Button type="button" variant="outline" size="sm" className="max-sm:h-10 max-sm:w-full" onClick={() => onChange([...mappings, { from: "", to: "" }])}>
+        <Plus />
+        {t("externalPrograms.addPathMapping")}
+      </Button>
+    </div>
   )
 }

@@ -5,6 +5,9 @@
     "search": "Search",
     "crossSeed": "Cross-Seed",
     "automations": "Automations",
+    "transfers": "Transfers",
+    "transfersQueued_one": "{{count}} item running or waiting",
+    "transfersQueued_other": "{{count}} items running or waiting",
     "backups": "Backups",
     "rss": "RSS",
     "settings": "Settings",
@@ -59,6 +62,7 @@
     "smartSearchEnter": "Press Enter for instant search",
     "smartSearchAuto": "Auto-searches after 500ms pause",
     "smartSearchShortcut": "Press {{shortcutKey}} to focus search",
+    "smartSearchPalette": "Press {{shortcutKey}} to open the command palette",
     "torrentCreationTasksTitle": "Torrent Creation Tasks",
     "updateAvailable": "Update Available",
     "updateVersion": "Version {{version}}",
@@ -76,6 +80,33 @@
     "collapseScope": "Collapse unified scope",
     "expandScope": "Expand unified scope",
     "allActive": "All active ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Command palette",
+    "placeholder": "Search pages, settings and torrents...",
+    "placeholderIn": "Search {{name}}...",
+    "groups": {
+      "pages": "Pages",
+      "actions": "Actions"
+    },
+    "current": "Current",
+    "statisticsNote": "Upload and download history of your instances",
+    "searchTorrentsFor": "Search torrents for \"{{query}}\"",
+    "torrentMatches_one": "{{count}} torrent matches",
+    "torrentMatches_other": "{{count}} torrents match",
+    "noTorrentMatches": "No torrent matches",
+    "searching": "Searching...",
+    "searchFailed": "The torrent search failed",
+    "listFiltersApply": "List filters apply",
+    "noMatchIn": "Nothing in {{name}} matches",
+    "moreOf": "More for {{name}}",
+    "hints": {
+      "navigate": "Navigate",
+      "open": "Open",
+      "more": "More",
+      "searchTorrents": "Search torrents",
+      "back": "Back"
+    }
   },
   "mobileNav": {
     "dashboard": "Dashboard",
@@ -223,6 +254,28 @@
         "fix": "If the key is wrong, make an API key with the Torrents permission in your Orpheus profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If Orpheus banned the IP of qui, a new key does not help: contact the staff of Orpheus.",
         "menuFix": "Paste a new key in settings",
         "action": "Open Gazelle (OPS/RED) settings"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Library Scan schedule blocked",
+        "title": "Library Scan schedule cannot run",
+        "effect": "qui cannot start the scheduled Library Scan run. It tries again every hour.",
+        "fix": "Check the Library Scan settings. qui tries again every hour.",
+        "menuFix": "Check the Library Scan settings",
+        "action": "Open the Library Scan settings",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab is off in the Library Scan settings, and no RED or OPS API key is set. Turn Torznab on, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+            "menuFix": "Turn Torznab on, or add a RED or OPS key"
+          },
+          "no_indexer": {
+            "fix": "No indexer is enabled. Enable a Torznab indexer, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+            "menuFix": "Enable an indexer"
+          },
+          "instance_missing": {
+            "fix": "The instance in the saved Library Scan settings does not exist. Pick an instance in the Library Scan settings, then save. qui tries again every hour.",
+            "menuFix": "Pick an instance, then save"
+          }
+        }
       }
     },
     "actions": {
@@ -321,14 +374,77 @@
   },
   "support": {
     "title": "Support qui",
-    "description": "Already got themes and want to help further? Everything in qui is already yours. A subscription doesn't unlock features, it funds the time that goes into building them.",
-    "perkPrefix": "Patrons get the",
-    "perkSuffix": "role in Discord and our eternal gratitude.",
-    "yearly": "{{price}} / year",
-    "monthly": "{{price}} / month",
-    "notLicense": "The theme license is a separate one-time purchase."
+    "description": "The ways to support qui, and their prices.",
+    "heading": "Help keep qui maintained",
+    "intro": "qui is free, and it works the same whether you pay or not. Support pays for the time and the tools that go into it.",
+    "licensed": "Thank you for your theme license.",
+    "releases_one": "qui had {{count}} release in the last 12 months.",
+    "releases_other": "qui had {{count}} releases in the last 12 months.",
+    "releaseMap": "The last 52 weeks, one square for each day. A bright square is a day with a release.",
+    "releaseDay": "A day with a release",
+    "plans": {
+      "yearly": "{{price}} a year",
+      "yearlyNote": "{{price}} a month, paid yearly",
+      "yearlyNoteWithLicense": "{{price}} a month, paid yearly. Includes the theme license.",
+      "license": "Theme license, from {{price}}",
+      "licenseNote": "All current and future premium themes, for life",
+      "onePayment": "one payment"
+    },
+    "checkout": "Continue to checkout",
+    "fromPrice": "from {{price}}",
+    "terms": {
+      "yearly": "You pay {{price}} today, then {{price}} each year until you cancel.",
+      "license": "One payment of {{price}} or more, set at checkout. No subscription."
+    },
+    "perks": {
+      "yearly": "Supporters get the Supporter badge in qui and the supporter role in Discord. After checkout, add your supporter key to this server.",
+      "license": "The license unlocks the premium themes. After checkout, add your license key to this server."
+    },
+    "existing": "Already a supporter?",
+    "addKey": "Add your supporter key",
+    "key": {
+      "help": "Your supporter key is on the checkout page and in the email with your receipt.",
+      "label": "Supporter key",
+      "submit": "Add key",
+      "back": "Back"
+    },
+    "ended": "The supporter key on this server is not valid any more. qui checks it again each day. If your support ended, your theme license stays. Find its key in the <portal>license portal</portal>, and add it in Settings, under Themes.",
+    "removeKey": "Remove the supporter key from this server",
+    "supporter": {
+      "badge": "Supporter",
+      "title": "You support qui",
+      "thanks": "Thank you. Your support pays for the time and the tools that go into qui.",
+      "detail": "You have the Supporter badge in qui and the supporter role in Discord. Your support also unlocks the premium themes, and it includes a theme license for life. Find the license key in the <portal>license portal</portal>.",
+      "manage": "Manage or cancel your support"
+    },
+    "reminder": {
+      "title_one": "{{count}} day of qui on this server",
+      "title_other": "{{count}} days of qui on this server",
+      "tooltip": "Counted on this server and never sent. qui asks once a year.",
+      "subtitle": "Support qui. qui asks once a year.",
+      "notNow": "Not now",
+      "serverDays_one": "This server has run qui for {{count}} day. qui counts that on this server and never sends it.",
+      "serverDays_other": "This server has run qui for {{count}} days. qui counts that on this server and never sends it.",
+      "notNowToast": "qui asks again in a year",
+      "dontAskAgain": "Don't ask again",
+      "offToast": "qui will not ask again",
+      "offToastDescription": "The support shortcut stays. Turn the reminder back on in Settings, under Application.",
+      "undo": "Undo",
+      "hiddenToast": "The support shortcut is hidden",
+      "hiddenToastDescription": "qui will not ask again. Bring the shortcut back in Settings, under Application.",
+      "notForYou": "Not for you? <reminder>Turn off the yearly reminder</reminder>, or <heart>hide the heart</heart>. Settings brings both back.",
+      "notForYouHeart": "Not for you? <heart>Hide the heart</heart>. Settings brings it back."
+    }
   },
   "labels": {
-    "path": "Path"
+    "path": "Path",
+    "beta": "Beta"
+  },
+  "kit": {
+    "loadFailed": "This section did not load.",
+    "retry": "Try again",
+    "edit": "Edit",
+    "moreActions": "More actions",
+    "enabled": "Enabled"
   }
 }

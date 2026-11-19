@@ -35,7 +35,7 @@ import { Input } from "@/components/ui/input"
 import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
-import { SupportDialog } from "@/components/support/SupportDialog"
+import { SupportButton } from "@/components/support/SupportButton"
 import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import {
@@ -63,6 +63,7 @@ import {
   isAllInstancesScope,
   normalizeUnifiedInstanceIds
 } from "@/lib/instances"
+import { modShortcut } from "@/lib/keyboard"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { hasSelection } from "@/lib/torrent-selection"
 import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
@@ -72,7 +73,7 @@ import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
-import { Archive, Check, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, Globe, HardDrive, Heart, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
+import { Archive, Check, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, Globe, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { useTranslation } from "react-i18next"
@@ -236,7 +237,8 @@ export function Header({
     setSearchValue(prev => (prev.trim() === routeQuery ? prev : routeQuery))
   }, [selectedInstanceId, routeSearch?.q])
 
-  // Update URL search param after debounce
+  // Update URL search param after debounce. Only new text writes the URL: on a
+  // change of page, the debounced text is older than the q of the new URL.
   useEffect(() => {
     if (!shouldShowInstanceControls) return
     const trimmedSearch = debouncedSearch.trim()
@@ -245,11 +247,10 @@ export function Header({
     else delete next.q
     navigateWithSearch({ navigate, search: next, replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, shouldShowInstanceControls])
+  }, [debouncedSearch])
 
   const isGlobSearch = !!searchValue && /[*?]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
-  const [showSupport, setShowSupport] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastFilterToggleRef = useRef(0)
 
@@ -263,21 +264,16 @@ export function Header({
     setFilterSidebarCollapsed((prev) => !prev)
   }, [setFilterSidebarCollapsed])
 
-  // Detect platform for appropriate key display
-  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
-  const shortcutKey = isMac ? "⌘K" : "Ctrl+K"
-
-  // Global keyboard shortcut to focus search
+  // Many layouts type "/" with Shift, for example Shift+7 on a Nordic or a German keyboard.
   useHotkeys(
-    "meta+k, ctrl+k",
-    (event) => {
-      event.preventDefault()
-      searchInputRef.current?.focus()
-    },
+    ["/", "shift+/"],
+    () => searchInputRef.current?.focus(),
     {
+      useKey: true,
       preventDefault: true,
-      enableOnFormTags: ["input", "textarea", "select"],
       enabled: shouldShowInstanceControls,
+      // A narrow window hides the search field, and the key then stays with the browser.
+      ignoreEventWhen: event => !searchInputRef.current?.offsetParent || (event.target instanceof Element && event.target.closest("[role=\"dialog\"]") !== null),
     },
     [shouldShowInstanceControls]
   )
@@ -659,7 +655,7 @@ export function Header({
                 )}
                 {/* Info tooltip */}
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger asChild openOnTap>
                     <button
                       type="button"
                       className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
@@ -678,7 +674,8 @@ export function Header({
                         <li>• {t("header.smartSearchFields")}</li>
                         <li>• {t("header.smartSearchEnter")}</li>
                         <li>• {t("header.smartSearchAuto")}</li>
-                        <li>• {t("header.smartSearchShortcut", { shortcutKey })}</li>
+                        <li>• {t("header.smartSearchShortcut", { shortcutKey: "/" })}</li>
+                        <li>• {t("header.smartSearchPalette", { shortcutKey: modShortcut("K") })}</li>
                       </ul>
                     </div>
                   </TooltipContent>
@@ -692,20 +689,7 @@ export function Header({
 
 
       <div className={cn("grid grid-cols-[auto_auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none", smInnerHeight)}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hover:bg-muted transition-colors"
-              aria-label={t("support.title")}
-              onClick={() => setShowSupport(true)}
-            >
-              <Heart className="h-4 w-4 fill-current text-red-500" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t("support.title")}</TooltipContent>
-        </Tooltip>
+        <SupportButton />
         <ThemeToggle />
         <div className={cn(
           "transition-all duration-300 ease-out overflow-hidden",
@@ -989,7 +973,6 @@ export function Header({
         )
       })()}
 
-      <SupportDialog open={showSupport} onOpenChange={setShowSupport} />
       <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </header>
   )

@@ -89,6 +89,16 @@ func (c *Client) GetCachedAppPreferences() *qbt.AppPreferences {
 	return cloneAppPreferences(c.preferencesCache)
 }
 
+// GetLastAppPreferences returns the app preferences that qui read last, of
+// any age. It asks qBittorrent only while qui has read none yet. Use it where
+// an old value is good enough and the caller must not wait for qBittorrent.
+func (c *Client) GetLastAppPreferences(ctx context.Context) (*qbt.AppPreferences, error) {
+	if cached := c.GetCachedAppPreferences(); cached != nil {
+		return cached, nil
+	}
+	return c.GetAppPreferences(ctx)
+}
+
 // InvalidateAppPreferencesCache clears the cached preferences to force a refresh on next access.
 func (c *Client) InvalidateAppPreferencesCache() {
 	c.preferencesMu.Lock()

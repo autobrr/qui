@@ -22,11 +22,19 @@ import { TorrentSelectionProvider, useTorrentSelectionSummary } from "@/contexts
 import "@/i18n"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
+import {
+  _resetClientSettingsForTests,
+  createDisplayProfile,
+  getDisplayProfiles,
+  markClientSettingsUnavailable,
+  pickDisplayProfile
+} from "@/lib/client-settings"
+import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 import { formatBytes } from "@/lib/utils"
 import type { ActionTarget } from "@/lib/torrent-selection"
 import type { Torrent, TorrentFilters } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, cleanup, fireEvent, render, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react"
 import { useMemo, useRef, type ComponentProps, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -63,6 +71,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     ...(await importOriginal<typeof import("@tanstack/react-router")>()),
     useSearch: () => search,
     useNavigate: () => navigate,
+    Link: ({ to, search, children, ...props }: { to: string; search?: Record<string, string>; children: ReactNode }) => (
+      <a href={`${to}?${new URLSearchParams(search)}`} {...props}>{children}</a>
+    ),
   }
 })
 
@@ -425,6 +436,78 @@ describe("TorrentCardsMobile Copy groups", () => {
 
 })
 
+describe("TorrentCardsMobile swipe actions", () => {
+  beforeEach(() => {
+    // jsdom has no pointer capture.
+    Element.prototype.setPointerCapture = vi.fn()
+  })
+
+  const swipeLeft = (card: HTMLElement) => {
+    const touch = { pointerId: 1, pointerType: "touch", isPrimary: true, clientY: 10 }
+    fireEvent.pointerDown(card, { ...touch, clientX: 300 })
+    fireEvent.pointerMove(card, { ...touch, clientX: 280 })
+    fireEvent.pointerMove(card, { ...touch, clientX: 100 })
+    fireEvent.pointerUp(card, { ...touch, clientX: 100 })
+  }
+  const openCard = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-swipe-open]")
+  const tapAction = (container: HTMLElement, name: string) => {
+    const action = within(openCard(container)!).getByRole("button", { name })
+    fireEvent.pointerDown(action, { pointerId: 2, pointerType: "touch", isPrimary: true })
+    fireEvent.pointerUp(action, { pointerId: 2, pointerType: "touch", isPrimary: true })
+    fireEvent.click(action)
+    const target = picks[0].target
+    return target?.kind === "ticks" ? target.hashes : undefined
+  }
+
+  it("reaches only the swiped card with Delete, selects nothing, and keeps the card open for the dialog", () => {
+    const { container } = renderCards(flatRows(3))
+
+    swipeLeft(cardOf(container, "Release 1"))
+
+    expect(tapAction(container, "managementBar.delete")).toEqual(["hash-1"])
+    expect(picks.map(({ pick }) => pick)).toEqual([{ action: "delete" }])
+    expect(tickedCards(container)).toEqual([])
+    expect(openCard(container)?.querySelector("h3")?.textContent).toBe("Release 1")
+  })
+
+  it("resumes a stopped torrent, pauses a running one, and closes the card", () => {
+    const { container } = renderCards([makeTorrent({ hash: "hash-stopped", name: "Stopped Release", state: "stoppedUP" }), makeTorrent({ hash: "hash-running", name: "Running Release", state: "uploading" })])
+
+    swipeLeft(cardOf(container, "Stopped Release"))
+    expect(tapAction(container, "managementBar.resume")).toEqual(["hash-stopped"])
+    expect(openCard(container)).toBeNull()
+
+    picks.length = 0
+    swipeLeft(cardOf(container, "Running Release"))
+    expect(tapAction(container, "managementBar.pause")).toEqual(["hash-running"])
+    expect(picks.map(({ pick }) => pick)).toEqual([{ action: "pause" }])
+  })
+
+  it("closes the open card on a tap on another card, and opens no details", () => {
+    const onTorrentSelect = vi.fn()
+    const { container } = renderCards(flatRows(3), { onTorrentSelect })
+    swipeLeft(cardOf(container, "Release 1"))
+
+    const other = cardOf(container, "Release 2")
+    fireEvent.pointerDown(other, { pointerId: 2, pointerType: "touch", isPrimary: true })
+    fireEvent.click(other)
+
+    expect(openCard(container)).toBeNull()
+    expect(onTorrentSelect).not.toHaveBeenCalled()
+  })
+
+  it("ignores a swipe while torrents are selected, also after the selection ends", () => {
+    const { container } = renderCards(flatRows(3))
+    longPress(cardOf(container, "Release 0"))
+
+    swipeLeft(cardOf(container, "Release 1"))
+    fireEvent.click(cardOf(container, "Release 0"))
+
+    expect(tickedCards(container)).toEqual([])
+    expect(openCard(container)).toBeNull()
+  })
+})
+
 describe("TorrentCardsMobile Compact card", () => {
   // 2026-01-01 12:30 UTC and 2026-01-02 08:15 UTC. Now is 2026-01-02 10:15 UTC.
   const ADDED_ON = 1767270600
@@ -522,5 +605,103 @@ describe("TorrentCardsMobile count bar", () => {
 
     expect(container.textContent).not.toContain("copyGroups.grouping")
     expect(container.textContent).toContain("statusBar.torrentsLoaded {\"loaded\":3,\"total\":500}")
+  })
+})
+
+describe("TorrentCardsMobile Display profile", () => {
+  beforeEach(() => {
+    _resetClientSettingsForTests()
+    markClientSettingsUnavailable()
+  })
+
+  it("the sheet takes a pick or a new profile only after the first read of the server ends", async () => {
+    const laptop = createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    _resetClientSettingsForTests()
+    const view = renderCards(flatRows(3))
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+    const sheet = view.getByRole("dialog", { name: "displayProfiles.menuLabel" })
+    const laptopRow = () => within(within(sheet).getByRole("list")).getAllByRole("button")[1]
+    const newProfile = () => within(sheet).getByRole("button", { name: "displayProfiles.newProfile" }) as HTMLButtonElement
+
+    fireEvent.click(laptopRow())
+    expect(getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(newProfile().disabled).toBe(true)
+
+    act(() => markClientSettingsUnavailable())
+
+    expect(newProfile().disabled).toBe(false)
+    fireEvent.click(laptopRow())
+    expect(getDisplayProfiles().active.id).toBe(laptop)
+  })
+
+  it("opens the profile list in a sheet from the sort menu, and a tap on a row picks that profile and closes the sheet", async () => {
+    const laptop = createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    const view = renderCards(flatRows(3))
+
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+
+    const sheet = view.getByRole("dialog", { name: "displayProfiles.menuLabel" })
+    const rows = within(within(sheet).getByRole("list")).getAllByRole("button")
+    expect(rows.map((row) => row.textContent)).toEqual(["displayProfiles.defaultNamedisplayProfiles.settings.thisBrowser", "Laptop"])
+
+    fireEvent.click(rows[1])
+
+    expect(getDisplayProfiles().active.id).toBe(laptop)
+    expect(view.queryByRole("dialog")).toBeNull()
+  })
+
+  it("New profile in the sheet closes the sheet and opens the New profile dialog with focus on the name", async () => {
+    const view = renderCards(flatRows(3))
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+
+    fireEvent.click(within(view.getByRole("dialog", { name: "displayProfiles.menuLabel" })).getByRole("button", { name: "displayProfiles.newProfile" }))
+
+    const dialog = await view.findByRole("dialog", { name: "displayProfiles.newDialog.title" })
+    // The open dialog hides the rest of the page from the a11y tree, so a sheet left open under it counts only with hidden.
+    expect(view.queryAllByRole("dialog", { hidden: true })).toEqual([dialog])
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("textbox", { name: "displayProfiles.newDialog.name" })))
+  })
+})
+
+describe("TorrentCardsMobile Transfer and Share", () => {
+  const moreActions = (view: ReturnType<typeof render>) => {
+    fireEvent.click(view.getByRole("button", { name: "mobileCards.more" }))
+    return within(view.getByRole("dialog"))
+  }
+
+  // regression: #4242
+  it("offers Transfer and Share for one selected torrent, and the pick reaches only that torrent", () => {
+    const view = renderCards(flatRows(3))
+    longPress(cardOf(view.container, "Release 1"))
+
+    const sheet = moreActions(view)
+    expect(sheet.getByRole("button", { name: "contextMenu.shareWithSomeone" })).toBeTruthy()
+    fireEvent.click(sheet.getByRole("button", { name: "contextMenu.transferToInstance" }))
+
+    expect(picks.map(({ pick }) => pick)).toEqual([{ action: "transfer" }])
+    const target = picks[0].target
+    expect(target?.kind === "ticks" ? target.hashes : undefined).toEqual(["hash-1"])
+  })
+
+  it("offers only Share for two selected torrents", () => {
+    const view = renderCards(flatRows(3))
+    longPress(cardOf(view.container, "Release 0"))
+    fireEvent.click(cardOf(view.container, "Release 2"))
+
+    const sheet = moreActions(view)
+    expect(sheet.queryByRole("button", { name: "contextMenu.transferToInstance" })).toBeNull()
+    expect(sheet.getByRole("button", { name: "contextMenu.shareWithSomeone" })).toBeTruthy()
+  })
+
+  it("offers neither in the demo", () => {
+    scenario.isDemo = true
+    const view = renderCards(flatRows(3))
+    longPress(cardOf(view.container, "Release 1"))
+
+    const sheet = moreActions(view)
+    expect(sheet.queryByRole("button", { name: "contextMenu.transferToInstance" })).toBeNull()
+    expect(sheet.queryByRole("button", { name: "contextMenu.shareWithSomeone" })).toBeNull()
   })
 })

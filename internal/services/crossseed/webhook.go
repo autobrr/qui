@@ -205,6 +205,10 @@ func validateWebhookCheckRequest(req *WebhookCheckRequest) error {
 	return nil
 }
 
+// nearMissDebugLimit is stated in
+// documentation/docs/features/cross-seed/troubleshooting.md.
+const nearMissDebugLimit = 5
+
 // CheckWebhook checks if a release announced by autobrr can be cross-seeded with existing torrents.
 // This endpoint is designed for autobrr webhook integration where autobrr sends parsed release metadata
 // and we check if any existing torrents across our instances match, indicating a cross-seed opportunity.
@@ -283,6 +287,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		matches          []WebhookCheckMatch
 		hasCompleteMatch bool
 		hasPendingMatch  bool
+		nearMisses       int
 	)
 
 	// A rejected torrent of the announced group is a near miss: log why, so a
@@ -352,7 +357,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		}
 
 		// Log webhook filter settings once per instance
-		log.Debug().
+		log.Trace().
 			Str("source", "cross-seed.webhook").
 			Int("instanceID", instance.ID).
 			Strs("includeCategories", settings.WebhookSourceCategories).
@@ -365,7 +370,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		// Track filtering stats if we're logging them
 		var counts sourceFilterCounts
 
-		log.Debug().
+		log.Trace().
 			Str("source", "cross-seed.webhook").
 			Int("instanceId", instance.ID).
 			Str("instanceName", instance.Name).
@@ -410,7 +415,12 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 					if m.normalizedGroupSiteIdentity(source.release) == announcedGroup ||
 						(source.release.Site != "") != (announcedCandidate.release.Site != "") &&
 							m.crossFieldGroupSiteFallback(source, announcedCandidate) {
-						log.Debug().
+						event := log.Trace()
+						if nearMisses < nearMissDebugLimit {
+							event = log.Debug()
+						}
+						nearMisses++
+						event.
 							Str("source", "cross-seed.webhook").
 							Int("instanceId", instance.ID).
 							Str("incomingName", req.TorrentName).
@@ -466,6 +476,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Ints("targetInstanceIds", targetInstanceIDs).
 		Str("torrentName", req.TorrentName).
 		Int("matchCount", len(matches)).
+		Int("nearMisses", nearMisses).
 		Bool("canCrossSeed", canCrossSeed).
 		Str("recommendation", recommendation).
 		Msg("Webhook check completed")

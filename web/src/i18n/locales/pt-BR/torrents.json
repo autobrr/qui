@@ -67,6 +67,8 @@
     "externalPrograms": "Programas Externos",
     "exportTorrent": "Exportar Torrent",
     "exportTorrents": "Exportar Torrents ({{count}})",
+    "transferToInstance": "Transferir para instância…",
+    "shareWithSomeone": "Compartilhar com alguém…",
     "copy": "Copiar...",
     "copyName": "Copiar Nome",
     "copyHash": "Copiar Hash",
@@ -1511,19 +1513,11 @@
     "incognito": "Modo Anônimo",
     "add": "Adicionar",
     "tasks": "Tarefas",
-    "done": "Concluído",
     "actionsForCount": "Ações para {{count}} torrent(s)",
     "actionsForAll": "Ações para todos os {{count}} torrent(s)",
     "selection": {
       "selectedCount": "{{count}} selecionado(s)",
       "allSelectedCount": "Todos os {{count}} selecionados"
-    },
-    "searchModal": {
-      "title": "Pesquisar Torrents",
-      "description": "Pesquise por nome, categoria ou tags. Suporta padrões glob (ex: *.mkv).",
-      "placeholder": "Pesquisar torrents...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Pesquisa automática ao digitar"
     },
     "ratio": "Ratio:",
     "added": "Adicionado {{time}}"
@@ -1604,6 +1598,9 @@
     "trackerDown": "Tracker Fora",
     "unregistered": "Não Registrado",
     "trackerError": "Erro de Tracker",
+    "helperTransfer": "Auxiliar de transferência",
+    "helperShare": "Auxiliar de compartilhamento",
+    "helperHint": "O qui adicionou este torrent para uma transferência ou um compartilhamento. Os arquivos pertencem a outro torrent.",
     "now": "agora",
     "yes": "Sim",
     "no": "Não"
@@ -1730,6 +1727,137 @@
       "title": "Agrupe seus Cross-Seeds",
       "description": "Mostra as cópias de um torrent em uma única linha.",
       "action": "Experimentar"
+    },
+    "displayProfiles": {
+      "title": "Perfis de exibição",
+      "description": "Dê a cada tela suas próprias colunas, densidade de linhas e barras laterais. Escolha aqui o perfil deste navegador.",
+      "action": "Criar um perfil"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Perfil de exibição: {{name}}",
+    "menuLabel": "Perfil de exibição",
+    "defaultName": "Padrão",
+    "manage": "Gerenciar perfis…",
+    "sheetDescription": "Cada navegador escolhe o próprio perfil.",
+    "settings": {
+      "title": "Perfis de exibição",
+      "holds": "Guarda: colunas · densidade das linhas · barras laterais · seções de filtros · árvores de categorias · filtros vazios",
+      "holdsHelp": "Um perfil guarda a aparência da lista de torrents: quais colunas aparecem, sua ordem e largura, o esticamento da coluna Nome, a densidade das linhas, as barras laterais e seções de filtros abertas, as árvores de categorias recolhidas e se os filtros vazios aparecem. Cada navegador usa um perfil, e só esse navegador lembra a escolha. Um navegador que nunca escolheu um, e uma janela privada, usam Default. Todos os perfis compartilham as outras configurações.",
+      "thisBrowser": "Este navegador",
+      "use": "Usar neste navegador",
+      "makeProfile": "Criar um perfil para um notebook ou celular",
+      "themesSync": "Os temas sincronizam por conta própria: <sync>Sincronização do tema</sync>",
+      "renameAriaLabel": "Renomear {{name}}",
+      "saveName": "Salvar o nome",
+      "cancelRename": "Cancelar a renomeação",
+      "editAriaLabel": "Editar {{name}}",
+      "editTitle": "Editar perfil",
+      "delete": "Excluir…",
+      "deleteTitle": "Excluir {{name}}?",
+      "deleteDescription": "Outros navegadores que o usam passam para {{defaultName}}.",
+      "deleteConfirm": "Excluir",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Linhas de tabela",
+        "dense": "Linhas densas",
+        "stacked": "Cartões empilhados"
+      },
+      "filterSidebarOpen": "barra de filtros aberta",
+      "filterSidebarClosed": "barra de filtros fechada"
+    },
+    "nameErrors": {
+      "empty": "Digite um nome.",
+      "tooLong": "Use no máximo {{max}} caracteres.",
+      "duplicate": "Outro perfil já tem este nome."
+    },
+    "ownSortAndFilters": {
+      "label": "Ordenação e filtros próprios",
+      "help": "<lead>Quando esta opção está ativada, este perfil mantém os próprios:</lead><list><item>ordem da lista de torrents</item><item>filtros de coluna e filtros da barra lateral</item><item>instâncias que a visão unificada mostra</item><item>Agrupar cópias, ativado ou não</item><item>última aba aberta do painel de detalhes</item><item>instância que as páginas de Backups e RSS mostram</item></list><note>Uma alteração nesses itens neste perfil não chega a outros perfis. Quando esta opção está desativada, este perfil os compartilha com todos os outros perfis que não mantêm os próprios. Desativar esta opção exclui os valores próprios deste perfil.</note>",
+      "offWarning": "Desativar esta opção exclui a ordenação e os filtros próprios de {{name}}.",
+      "defaultShares": "Sempre compartilha ordenação e filtros",
+      "defaultSharesHelp": "Default sempre compartilha a ordenação, os filtros e as outras escolhas de visualização com todos os perfis que não mantêm os próprios. Para manter os seus, crie outro perfil e ative Ordenação e filtros próprios."
+    },
+    "deletedToast": "O perfil {{name}} foi excluído. Este navegador agora usa {{defaultName}}.",
+    "newProfile": "Novo perfil a partir desta configuração…",
+    "newDialog": {
+      "title": "Novo perfil",
+      "copies": "Copia <profile>{{name}}</profile>: colunas, densidade, barras laterais e filtros. Depois, este navegador passa a usá-lo.",
+      "name": "Nome",
+      "namePlaceholder": "Por exemplo, Notebook",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Cancelar",
+      "create": "Criar"
+    },
+    "iconPicker": {
+      "trigger": "Ícone: {{icon}}. Alterar o ícone e a cor",
+      "letter": "Primeira letra do nome",
+      "color": "Cor"
+    },
+    "iconGroups": {
+      "devices": "Dispositivos",
+      "places": "Lugares",
+      "use": "Uso",
+      "mood": "Humor"
+    },
+    "icons": {
+      "appWindow": "Janela de app",
+      "monitor": "Monitor",
+      "laptop": "Notebook",
+      "tablet": "Tablet",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Servidor",
+      "gamepad": "Controle",
+      "house": "Casa",
+      "briefcase": "Maleta",
+      "building": "Prédio",
+      "sofa": "Sofá",
+      "bed": "Cama",
+      "coffee": "Café",
+      "plane": "Avião",
+      "train": "Trem",
+      "rows": "Linhas",
+      "table": "Tabela",
+      "list": "Lista",
+      "eye": "Olho",
+      "gauge": "Medidor",
+      "zap": "Raio",
+      "download": "Download",
+      "upload": "Upload",
+      "sprout": "Broto",
+      "bookmark": "Marcador",
+      "moon": "Lua",
+      "sun": "Sol",
+      "star": "Estrela",
+      "heart": "Coração",
+      "flame": "Chama",
+      "rocket": "Foguete"
+    },
+    "colors": {
+      "none": "Nenhuma (cor do texto)",
+      "sky": "Céu",
+      "emerald": "Esmeralda",
+      "amber": "Âmbar",
+      "rose": "Rosa",
+      "violet": "Violeta",
+      "orange": "Laranja",
+      "teal": "Azul-petróleo",
+      "pink": "Rosa-choque"
+    },
+    "columns": {
+      "headingEveryInstance": "Colunas em {{profile}} · todas as instâncias",
+      "headingOneInstance": "Colunas em {{profile}} · somente {{instance}}",
+      "unifiedView": "Visualização unificada",
+      "thisInstance": "esta instância"
+    },
+    "sameColumns": {
+      "label": "Mesmas colunas em todas as instâncias",
+      "menuHelp": "A ordenação e os filtros de coluna continuam por instância.",
+      "helpOn": "Uma configuração de colunas para {{instances}}.",
+      "helpOff": "Cada instância mantém a sua. Ao ativar, todas as instâncias recebem as colunas de {{instance}}.",
+      "helpOffNoInstance": "Cada instância mantém a sua.",
+      "unifiedViewInList": "a visualização unificada"
     }
   }
 }

@@ -110,7 +110,7 @@ func trackRemoteFile(t *testing.T, store *models.DirScanStore, dirID int, filePa
 	t.Helper()
 	require.NoError(t, store.UpsertFile(t.Context(), &models.DirScanFile{
 		DirectoryID: dirID, FilePath: filePath, FileSize: 100, FileModTime: remoteFileModTime,
-		FileID: append(remoteID(1).Bytes(), endpointTag(remoteInstance(models.SSHTierExec))...), Status: status,
+		FileID: append(remoteID(1).Bytes(), fsops.WalkedEndpointTag(remoteInstance(models.SSHTierExec))...), Status: status,
 	}))
 }
 

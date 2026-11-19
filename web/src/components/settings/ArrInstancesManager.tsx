@@ -3,442 +3,326 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { api } from "@/lib/api"
-import type {
-  ArrInstance,
-  ArrInstanceFormData,
-  ArrInstanceType,
-  ArrInstanceUpdateData
-} from "@/types/arr"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CheckCircle, Edit, Loader2, Plus, Trash2, XCircle, Zap } from "lucide-react"
-import { useState } from "react"
+import { Clapperboard, Loader2, Plus, Trash2, Tv, Zap } from "lucide-react"
+import { useRef, useState, type ChangeEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { Editor } from "@/components/kit/Editor"
+import { Field } from "@/components/kit/Field"
+import { ResourceList, type ResourceRow } from "@/components/kit/ResourceList"
+import { Section } from "@/components/kit/Section"
+import { SwitchRow } from "@/components/kit/SwitchRow"
+import { usePendingIds } from "@/components/kit/use-pending-ids"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
+import type { ArrInstance, ArrInstanceFormData, ArrInstanceType, ArrInstanceUpdateData, ArrTestResponse } from "@/types/arr"
+
+const INSTANCES_KEY = ["arrInstances"]
+const TOGGLE_KEY = ["arrInstances", "toggle"]
+const TEST_KEY = ["arrInstances", "test"]
+
+// The server keeps the saved basic auth password when the update sends this value back.
+const REDACTED = "<redacted>"
+
+const TYPES: readonly ArrInstanceType[] = ["sonarr", "radarr"]
+
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback
+
+type SaveRequest =
+  | { id: null; data: ArrInstanceFormData }
+  | { id: number; data: ArrInstanceUpdateData }
+
+/** The Integrations tab: the Sonarr and Radarr instances that cross-seed asks for IDs. */
 export function ArrInstancesManager() {
   const { t } = useTranslation("settings")
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [editInstance, setEditInstance] = useState<ArrInstance | null>(null)
-  const [deleteInstance, setDeleteInstance] = useState<ArrInstance | null>(null)
-  const [testingId, setTestingId] = useState<number | null>(null)
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editing, setEditing] = useState<ArrInstance | null>(null)
+  // A new key on each open gives the form fresh state.
+  const [editorSession, setEditorSession] = useState(0)
 
-  const { data: instances, isLoading, error } = useQuery({
-    queryKey: ["arrInstances"],
+  const instancesQuery = useQuery({
+    queryKey: INSTANCES_KEY,
     queryFn: () => api.listArrInstances(),
     staleTime: 30 * 1000,
   })
+  // In the order of TYPES, so that the headings keep their order.
+  const instances = TYPES.flatMap((type) => instancesQuery.data?.filter((instance) => instance.type === type) ?? [])
+  const typeName = (type: ArrInstanceType) => t(type === "sonarr" ? "arrInstances.form.types.sonarrShort" : "arrInstances.form.types.radarrShort")
 
-  const createMutation = useMutation({
-    mutationFn: async (data: ArrInstanceFormData) => {
-      return api.createArrInstance(data)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
-      setShowCreateDialog(false)
-      toast.success(t("arrInstances.toasts.created"))
-    },
-    onError: (error: Error) => {
-      toast.error(t("arrInstances.toasts.createFailed", { error: error.message || t("arrInstances.unknownError") }))
+  const unknownError = t("arrInstances.unknownError")
+
+  const saveMutation = useMutation({
+    mutationFn: (request: SaveRequest) =>
+      request.id === null ? api.createArrInstance(request.data) : api.updateArrInstance(request.id, request.data),
+    onSuccess: (_instance, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: INSTANCES_KEY })
+      setEditorOpen(false)
+      toast.success(t(id === null ? "arrInstances.toasts.created" : "arrInstances.toasts.updated"))
     },
   })
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: ArrInstanceUpdateData }) => {
-      return api.updateArrInstance(id, data)
+  const setEnabledInCache = (id: number, enabled: boolean) =>
+    queryClient.setQueryData<ArrInstance[]>(INSTANCES_KEY, (old) => old?.map((item) => item.id === id ? { ...item, enabled } : item))
+
+  // The switch of an instance takes no input while its save runs, so two saves of one instance never overlap.
+  const toggleMutation = useMutation({
+    mutationKey: TOGGLE_KEY,
+    // The server changes only the fields that the request holds.
+    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) => api.updateArrInstance(id, { enabled }),
+    onMutate: async ({ id, enabled }) => {
+      await queryClient.cancelQueries({ queryKey: INSTANCES_KEY })
+      setEnabledInCache(id, enabled)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
-      setEditInstance(null)
-      toast.success(t("arrInstances.toasts.updated"))
+    onError: (error, { id, enabled }) => {
+      setEnabledInCache(id, !enabled)
+      toast.error(t("arrInstances.toasts.updateFailed", { error: errorMessage(error, unknownError) }))
     },
-    onError: (error: Error) => {
-      toast.error(t("arrInstances.toasts.updateFailed", { error: error.message || t("arrInstances.unknownError") }))
-    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: INSTANCES_KEY }),
   })
+  const toggling = usePendingIds(TOGGLE_KEY)
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return api.deleteArrInstance(id)
-    },
+    mutationFn: (id: number) => api.deleteArrInstance(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
-      setDeleteInstance(null)
+      void queryClient.invalidateQueries({ queryKey: INSTANCES_KEY })
       toast.success(t("arrInstances.toasts.deleted"))
     },
-    onError: (error: Error) => {
-      toast.error(t("arrInstances.toasts.deleteFailed", { error: error.message || t("arrInstances.unknownError") }))
-    },
+    onError: (error) => toast.error(t("arrInstances.toasts.deleteFailed", { error: errorMessage(error, unknownError) })),
   })
 
   const testMutation = useMutation({
+    mutationKey: TEST_KEY,
     mutationFn: (id: number) => api.testArrInstance(id),
-    onMutate: (id: number) => {
-      setTestingId(id)
-    },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
+      void queryClient.invalidateQueries({ queryKey: INSTANCES_KEY })
       if (result.success) {
         toast.success(t("arrInstances.toasts.connectionSuccess"))
       } else {
-        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || t("arrInstances.unknownError") }))
+        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || unknownError }))
       }
     },
-    onError: (error: Error) => {
-      toast.error(t("arrInstances.toasts.testFailed", { error: error.message || t("arrInstances.unknownError") }))
+    onError: (error) => toast.error(t("arrInstances.toasts.testFailed", { error: errorMessage(error, unknownError) })),
+  })
+  const testing = usePendingIds(TEST_KEY)
+
+  const openEditor = (instance: ArrInstance | null) => {
+    saveMutation.reset()
+    setEditing(instance)
+    setEditorSession((session) => session + 1)
+    setEditorOpen(true)
+  }
+
+  const saveError = saveMutation.error
+    ? t(editing ? "arrInstances.toasts.updateFailed" : "arrInstances.toasts.createFailed", { error: errorMessage(saveMutation.error, unknownError) })
+    : undefined
+
+  const row = (instance: ArrInstance): ResourceRow => ({
+    title: instance.name,
+    icon: instance.type === "sonarr" ? Tv : Clapperboard,
+    status: instance.last_test_status === "ok"
+      ? { tone: "ok", label: t("arrInstances.status.connected") }
+      : instance.last_test_status === "error" ? { tone: "error", label: t("arrInstances.status.failed") } : undefined,
+    meta: [
+      instance.base_url,
+      ...(instance.last_test_at ? [t("arrInstances.tested", { date: formatDate(new Date(instance.last_test_at)) })] : []),
+    ],
+    enabled: {
+      checked: instance.enabled,
+      onCheckedChange: (enabled) => toggleMutation.mutate({ id: instance.id, enabled }),
+      disabled: toggling.has(instance.id),
     },
-    onSettled: () => {
-      setTestingId(null)
-    },
+    onOpen: () => openEditor(instance),
+    actions: [
+      {
+        label: t("arrInstances.actions.testConnection"),
+        icon: Zap,
+        pending: testing.has(instance.id),
+        onSelect: () => testMutation.mutate(instance.id),
+      },
+      {
+        label: t("arrInstances.actions.delete"),
+        icon: Trash2,
+        destructive: true,
+        onSelect: () => deleteMutation.mutateAsync(instance.id),
+        confirm: {
+          title: t("arrInstances.deleteDialog.title"),
+          description: t("arrInstances.deleteDialog.description", { name: instance.name }),
+          confirmLabel: t("arrInstances.actions.delete"),
+        },
+      },
+    ],
+    detail: instance.last_test_status === "error" && instance.last_test_error
+      ? <p className="text-xs text-destructive [overflow-wrap:anywhere]">{instance.last_test_error}</p>
+      : undefined,
   })
 
-  // Group instances by type
-  const sonarrInstances = instances?.filter(i => i.type === "sonarr") ?? []
-  const radarrInstances = instances?.filter(i => i.type === "radarr") ?? []
-
-  const renderInstanceCard = (instance: ArrInstance) => (
-    <Card className="bg-muted/40" key={instance.id}>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1 flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <CardTitle className="text-lg truncate">{instance.name}</CardTitle>
-              <Badge variant={instance.enabled ? "default" : "secondary"}>
-                {instance.enabled ? t("arrInstances.badges.enabled") : t("arrInstances.badges.disabled")}
-              </Badge>
-              {instance.last_test_status === "ok" && (
-                <Badge variant="outline" className="text-green-500 border-green-500/50">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  {t("arrInstances.badges.connected")}
-                </Badge>
-              )}
-              {instance.last_test_status === "error" && (
-                <Badge variant="outline" className="text-red-500 border-red-500/50">
-                  <XCircle className="h-3 w-3 mr-1" />
-                  {t("arrInstances.badges.failed")}
-                </Badge>
-              )}
-            </div>
-            <CardDescription className="text-xs truncate">
-              {instance.base_url}
-            </CardDescription>
-            <CardDescription className="text-xs">
-              {t("arrInstances.created", { date: formatDate(new Date(instance.created_at)) })}
-              {instance.last_test_at && ` • Tested ${formatDate(new Date(instance.last_test_at))}`}
-            </CardDescription>
-          </div>
-          <div className="flex gap-1 flex-shrink-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => testMutation.mutate(instance.id)}
-              disabled={testingId === instance.id}
-              aria-label={t("arrInstances.ariaLabels.testConnection", { name: instance.name })}
-            >
-              {testingId === instance.id ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Zap className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditInstance(instance)}
-              aria-label={t("arrInstances.ariaLabels.edit", { name: instance.name })}
-            >
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDeleteInstance(instance)}
-              aria-label={t("arrInstances.ariaLabels.delete", { name: instance.name })}
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      {instance.last_test_error && (
-        <CardContent className="pt-0">
-          <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
-            {instance.last_test_error}
-          </div>
-        </CardContent>
-      )}
-    </Card>
-  )
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="w-full sm:w-auto">
-              <Plus className="mr-2 h-4 w-4" />
-              {t("arrInstances.addButton")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg max-w-full max-h-[90dvh] flex flex-col">
-            <DialogHeader className="flex-shrink-0">
-              <DialogTitle>{t("arrInstances.addDialog.title")}</DialogTitle>
-              <DialogDescription>
-                {t("arrInstances.addDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <ArrInstanceForm
-                onSubmit={(data) => createMutation.mutate(data as ArrInstanceFormData)}
-                onCancel={() => setShowCreateDialog(false)}
-                isPending={createMutation.isPending}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {isLoading && <div className="text-center py-8">{t("arrInstances.loading")}</div>}
-      {error && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-destructive">{t("arrInstances.loadFailed")}</div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!isLoading && !error && (!instances || instances.length === 0) && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground">
-              {t("arrInstances.empty")}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {sonarrInstances.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">{t("arrInstances.sonarrInstances")}</h3>
-          <div className="grid gap-3">
-            {sonarrInstances.map(renderInstanceCard)}
-          </div>
-        </div>
-      )}
-
-      {radarrInstances.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">{t("arrInstances.radarrInstances")}</h3>
-          <div className="grid gap-3">
-            {radarrInstances.map(renderInstanceCard)}
-          </div>
-        </div>
-      )}
-
-      {/* Edit Dialog */}
-      {editInstance && (
-        <Dialog open={true} onOpenChange={() => setEditInstance(null)}>
-          <DialogContent className="sm:max-w-lg max-w-full max-h-[90dvh] flex flex-col">
-            <DialogHeader className="flex-shrink-0">
-              <DialogTitle>{t("arrInstances.editDialog.title")}</DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <ArrInstanceForm
-                instance={editInstance}
-                onSubmit={(data) => updateMutation.mutate({ id: editInstance.id, data })}
-                onCancel={() => setEditInstance(null)}
-                isPending={updateMutation.isPending}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteInstance !== null} onOpenChange={() => setDeleteInstance(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("arrInstances.deleteDialog.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("arrInstances.deleteDialog.description", { name: deleteInstance?.name ?? "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("arrInstances.actions.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteInstance && deleteMutation.mutate(deleteInstance.id)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t("arrInstances.actions.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    <>
+      <Section
+        title={t("integrations.title")}
+        description={t("integrations.description")}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => openEditor(null)}>
+            <Plus />
+            {t("arrInstances.addButton")}
+          </Button>
+        }
+        queries={[instancesQuery]}
+      >
+        <ResourceList
+          label={t("integrations.title")}
+          items={instances}
+          itemKey={(instance) => instance.id}
+          row={row}
+          group={(instance) => typeName(instance.type)}
+          empty={{
+            title: t("arrInstances.emptyTitle"),
+            description: t("arrInstances.emptyDescription"),
+            onAdd: () => openEditor(null),
+          }}
+        />
+      </Section>
+      {/* Outside the section, so a failed refetch of the list never takes an open form away. */}
+      <ArrInstanceEditor
+        key={editorSession}
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        instance={editing}
+        pending={saveMutation.isPending}
+        error={saveError}
+        onSave={(request) => saveMutation.mutate(request)}
+      />
+    </>
   )
 }
 
-interface ArrInstanceFormProps {
-  instance?: ArrInstance
-  onSubmit: (data: ArrInstanceFormData | ArrInstanceUpdateData) => void
-  onCancel: () => void
-  isPending: boolean
+interface ArrInstanceEditorProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** The instance to edit, or null for a new one. */
+  instance: ArrInstance | null
+  pending: boolean
+  error?: string
+  onSave: (request: SaveRequest) => void
 }
 
-function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanceFormProps) {
+// A new test clears the last result, so the result mounts again, and comes into view, after each test.
+const scrollIntoView = (element: HTMLElement | null) => element?.scrollIntoView({ block: "nearest" })
+
+type FieldName = "name" | "baseUrl" | "apiKey" | "basicUsername" | "basicPassword"
+type FormErrors = Partial<Record<FieldName, string>>
+// The order of the fields in the form, for the focus on the first error.
+const FIELD_ORDER: readonly FieldName[] = ["name", "baseUrl", "apiKey", "basicUsername", "basicPassword"]
+
+function ArrInstanceEditor({ open, onOpenChange, instance, pending, error, onSave }: ArrInstanceEditorProps) {
   const { t } = useTranslation("settings")
-  const [type, setType] = useState<ArrInstanceType>(instance?.type || "sonarr")
-  const [name, setName] = useState(instance?.name || "")
-  const [baseUrl, setBaseUrl] = useState(instance?.base_url || "")
+  const isEdit = instance !== null
+  const [type, setType] = useState<ArrInstanceType>(instance?.type ?? "sonarr")
+  const [name, setName] = useState(instance?.name ?? "")
+  const [baseUrl, setBaseUrl] = useState(instance?.base_url ?? "")
   const [apiKey, setApiKey] = useState("")
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basic_username)
   const [basicUsername, setBasicUsername] = useState(instance?.basic_username ?? "")
-  const [basicPassword, setBasicPassword] = useState(instance?.basic_username ? "<redacted>" : "")
+  const [basicPassword, setBasicPassword] = useState(instance?.basic_username ? REDACTED : "")
   const [enabled, setEnabled] = useState(instance?.enabled !== false)
   const [priority, setPriority] = useState(instance?.priority ?? 0)
   const [timeoutSeconds, setTimeoutSeconds] = useState(instance?.timeout_seconds ?? 15)
-  const [isTesting, setIsTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null)
+  const [errors, setErrors] = useState<FormErrors>({})
+  const inputs = useRef<Partial<Record<FieldName, HTMLInputElement | null>>>({})
+  const unknownError = t("arrInstances.unknownError")
+  const typeName = t(type === "sonarr" ? "arrInstances.form.types.sonarrShort" : "arrInstances.form.types.radarrShort")
 
-  const isEdit = !!instance
-
-  const handleTestConnection = async () => {
-    if (!baseUrl.trim() || !apiKey.trim()) {
-      toast.error(t("arrInstances.validation.baseUrlAndApiKeyRequired"))
-      return
-    }
-
-    const trimmedBasicUser = basicUsername.trim()
-    const trimmedBasicPass = basicPassword
-    if (showBasicAuth) {
-      if (!trimmedBasicUser) {
-        toast.error(t("arrInstances.validation.basicUsernameRequired"))
-        return
-      }
-      if (!trimmedBasicPass || trimmedBasicPass === "<redacted>") {
-        toast.error(t("arrInstances.validation.basicPasswordRequired"))
-        return
-      }
-    }
-
-    setIsTesting(true)
-    setTestResult(null)
-
-    try {
-      const result = await api.testArrConnection({
-        type,
-        base_url: baseUrl.trim(),
-        api_key: apiKey.trim(),
-        basic_username: showBasicAuth ? trimmedBasicUser : undefined,
-        basic_password: showBasicAuth ? trimmedBasicPass : undefined,
-      })
-      setTestResult(result)
+  const testMutation = useMutation({
+    mutationFn: () => api.testArrConnection({
+      type,
+      base_url: baseUrl.trim(),
+      api_key: apiKey.trim(),
+      basic_username: showBasicAuth ? basicUsername.trim() : undefined,
+      basic_password: showBasicAuth ? basicPassword : undefined,
+    }),
+    onSuccess: (result) => {
       if (result.success) {
         toast.success(t("arrInstances.toasts.connectionSuccess"))
       } else {
-        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || t("arrInstances.unknownError") }))
+        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || unknownError }))
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : t("arrInstances.unknownError")
-      setTestResult({ success: false, error: message })
-      toast.error(t("arrInstances.toasts.testFailed", { error: message }))
-    } finally {
-      setIsTesting(false)
+    },
+    onError: (testError) => toast.error(t("arrInstances.toasts.testFailed", { error: errorMessage(testError, unknownError) })),
+  })
+  const testResult: ArrTestResponse | null = testMutation.error
+    ? { success: false, error: errorMessage(testMutation.error, unknownError) }
+    : testMutation.data ?? null
+
+  /** Shows the errors, and focuses the first field that has one. Returns true when the form has none. */
+  const check = (next: FormErrors) => {
+    setErrors(next)
+    const first = FIELD_ORDER.find((field) => next[field])
+    if (first) inputs.current[first]?.focus()
+    return first === undefined
+  }
+
+  const basicAuthErrors = (forTest: boolean): FormErrors => {
+    if (!showBasicAuth) return {}
+    let password: string | undefined
+    if (forTest) {
+      password = !basicPassword || basicPassword === REDACTED ? t("arrInstances.validation.basicPasswordRequired") : undefined
+    } else if (!basicPassword) {
+      password = t(isEdit ? "arrInstances.validation.basicPasswordKeepOrEnter" : "arrInstances.validation.basicPasswordRequiredSubmit")
+    }
+    return {
+      basicUsername: basicUsername.trim() ? undefined : t("arrInstances.validation.basicUsernameRequired"),
+      basicPassword: password,
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const test = () => {
+    const required = t("arrInstances.validation.baseUrlAndApiKeyRequired")
+    const valid = check({
+      baseUrl: baseUrl.trim() ? undefined : required,
+      apiKey: apiKey.trim() ? undefined : required,
+      ...basicAuthErrors(true),
+    })
+    if (valid) testMutation.mutate()
+  }
 
-    if (!name.trim()) {
-      toast.error(t("arrInstances.validation.nameRequired"))
-      return
-    }
+  const submit = () => {
+    const valid = check({
+      name: name.trim() ? undefined : t("arrInstances.validation.nameRequired"),
+      baseUrl: baseUrl.trim() ? undefined : t("arrInstances.validation.baseUrlRequired"),
+      apiKey: isEdit || apiKey.trim() ? undefined : t("arrInstances.validation.apiKeyRequired"),
+      ...basicAuthErrors(false),
+    })
+    if (!valid) return
 
-    if (!baseUrl.trim()) {
-      toast.error(t("arrInstances.validation.baseUrlRequired"))
-      return
-    }
-
-    const trimmedBasicUser = basicUsername.trim()
-    const trimmedBasicPass = basicPassword
-    if (showBasicAuth) {
-      if (!trimmedBasicUser) {
-        toast.error(t("arrInstances.validation.basicUsernameRequired"))
-        return
-      }
-      if (!isEdit && !trimmedBasicPass) {
-        toast.error(t("arrInstances.validation.basicPasswordRequiredSubmit"))
-        return
-      }
-      if (isEdit && trimmedBasicPass === "") {
-        toast.error(t("arrInstances.validation.basicPasswordKeepOrEnter"))
-        return
-      }
-    }
-
-    if (!isEdit && !apiKey.trim()) {
-      toast.error(t("arrInstances.validation.apiKeyRequired"))
-      return
-    }
-
+    const basicUser = basicUsername.trim()
     if (isEdit) {
-      const updateData: ArrInstanceUpdateData = {
+      const data: ArrInstanceUpdateData = {
         name: name.trim(),
         base_url: baseUrl.trim(),
         enabled,
         priority,
         timeout_seconds: timeoutSeconds,
       }
-      if (apiKey.trim()) {
-        updateData.api_key = apiKey.trim()
-      }
+      if (apiKey.trim()) data.api_key = apiKey.trim()
       if (showBasicAuth) {
-        updateData.basic_username = trimmedBasicUser
-        if (trimmedBasicPass !== "<redacted>") {
-          updateData.basic_password = trimmedBasicPass
-        }
+        data.basic_username = basicUser
+        if (basicPassword !== REDACTED) data.basic_password = basicPassword
       } else {
-        updateData.basic_username = ""
-        updateData.basic_password = ""
+        data.basic_username = ""
+        data.basic_password = ""
       }
-      onSubmit(updateData)
+      onSave({ id: instance.id, data })
     } else {
-      const createData: ArrInstanceFormData = {
+      const data: ArrInstanceFormData = {
         type,
         name: name.trim(),
         base_url: baseUrl.trim(),
@@ -448,208 +332,143 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
         timeout_seconds: timeoutSeconds,
       }
       if (showBasicAuth) {
-        createData.basic_username = trimmedBasicUser
-        createData.basic_password = trimmedBasicPass
+        data.basic_username = basicUser
+        data.basic_password = basicPassword
       }
-      onSubmit(createData)
+      onSave({ id: null, data })
     }
   }
 
+  /** The props of a text input of the form: its value, its ref for the focus on an error, and the reset of its error. */
+  const input = (field: FieldName, value: string, setValue: (value: string) => void) => ({
+    ref: (element: HTMLInputElement | null) => {
+      inputs.current[field] = element
+    },
+    value,
+    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+      setValue(event.target.value)
+      setErrors((prev) => ({ ...prev, [field]: undefined }))
+    },
+  })
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <Editor
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t(isEdit ? "arrInstances.editDialog.title" : "arrInstances.addDialog.title")}
+      description={isEdit ? undefined : t("arrInstances.addDialog.description")}
+      submitLabel={t(isEdit ? "arrInstances.actions.save" : "arrInstances.addButton")}
+      onSubmit={submit}
+      pending={pending}
+      error={error}
+      secondaryActions={
+        <Button type="button" variant="outline" disabled={testMutation.isPending} onClick={test}>
+          {testMutation.isPending ? <Loader2 className="animate-spin" /> : <Zap />}
+          {t("arrInstances.actions.testConnection")}
+        </Button>
+      }
+    >
       {!isEdit && (
-        <div className="space-y-2">
-          <Label htmlFor="type">{t("arrInstances.form.type")}</Label>
-          <Select value={type} onValueChange={(v) => setType(v as ArrInstanceType)}>
-            <SelectTrigger>
-              <SelectValue placeholder={t("arrInstances.form.selectType")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="sonarr">{t("arrInstances.form.types.sonarr")}</SelectItem>
-              <SelectItem value="radarr">{t("arrInstances.form.types.radarr")}</SelectItem>
-            </SelectContent>
-          </Select>
+        <Field label={t("arrInstances.form.type")}>
+          {(control) => (
+            <Select value={type} onValueChange={(value) => setType(value as ArrInstanceType)}>
+              <SelectTrigger {...control} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sonarr">{t("arrInstances.form.types.sonarr")}</SelectItem>
+                <SelectItem value="radarr">{t("arrInstances.form.types.radarr")}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        </Field>
+      )}
+      <Field label={t("arrInstances.form.name")} error={errors.name}>
+        <Input
+          {...input("name", name, setName)}
+          placeholder={t("arrInstances.form.namePlaceholder", { type: typeName })}
+          autoComplete="off"
+        />
+      </Field>
+      <Field label={t("arrInstances.form.baseUrl")} error={errors.baseUrl}>
+        <Input
+          {...input("baseUrl", baseUrl, setBaseUrl)}
+          inputMode="url"
+          placeholder={`http://localhost:${type === "sonarr" ? "8989" : "7878"}`}
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      </Field>
+      <Field
+        label={t("arrInstances.form.apiKey")}
+        help={t("arrInstances.form.apiKeyDescription", { type: typeName })}
+        description={isEdit ? t("arrInstances.form.apiKeyKeep") : undefined}
+        error={errors.apiKey}
+      >
+        <Input
+          {...input("apiKey", apiKey, setApiKey)}
+          type="password"
+          placeholder={isEdit ? t("arrInstances.form.apiKeyPlaceholderEdit") : t("arrInstances.form.apiKeyPlaceholder")}
+          autoComplete="off"
+        />
+      </Field>
+      <SwitchRow
+        label={t("arrInstances.form.basicAuth")}
+        help={t("arrInstances.form.basicAuthDescription")}
+        checked={showBasicAuth}
+        onCheckedChange={(checked) => {
+          setShowBasicAuth(checked)
+          if (!checked) {
+            setBasicUsername("")
+            setBasicPassword("")
+          } else if (!basicUsername.trim()) {
+            setBasicPassword("")
+          }
+          setErrors((prev) => ({ ...prev, basicUsername: undefined, basicPassword: undefined }))
+        }}
+      />
+      {showBasicAuth && (
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label={t("arrInstances.form.basicUsername")} error={errors.basicUsername}>
+            <Input {...input("basicUsername", basicUsername, setBasicUsername)} autoComplete="off" />
+          </Field>
+          <Field
+            label={t("arrInstances.form.basicPassword")}
+            description={instance?.basic_username ? t("arrInstances.form.basicPasswordKeep") : undefined}
+            error={errors.basicPassword}
+          >
+            <Input {...input("basicPassword", basicPassword, setBasicPassword)} type="password" autoComplete="off" />
+          </Field>
         </div>
       )}
-
-      <div className="space-y-2">
-        <Label htmlFor="name">{t("arrInstances.form.name")}</Label>
-        <Input
-          id="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t("arrInstances.form.namePlaceholder", {
-            type: type === "sonarr" ? t("arrInstances.form.types.sonarrShort") : t("arrInstances.form.types.radarrShort"),
-          })}
-          required
-        />
+      <div className="grid grid-cols-2 gap-4">
+        <Field label={t("arrInstances.form.priority")} help={t("arrInstances.form.priorityDescription")}>
+          <Input type="number" inputMode="numeric" value={priority} min={0} onChange={(event) => setPriority(parseInt(event.target.value) || 0)} />
+        </Field>
+        <Field label={t("arrInstances.form.timeoutSeconds")}>
+          <Input type="number" inputMode="numeric" value={timeoutSeconds} min={1} max={120} onChange={(event) => setTimeoutSeconds(parseInt(event.target.value) || 15)} />
+        </Field>
       </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="baseUrl">{t("arrInstances.form.baseUrl")}</Label>
-        <Input
-          id="baseUrl"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder={`http://localhost:${type === "sonarr" ? "8989" : "7878"}`}
-          required
-        />
-        <p className="text-xs text-muted-foreground">
-          {t("arrInstances.form.baseUrlDescription", {
-            type: type === "sonarr" ? t("arrInstances.form.types.sonarrShort") : t("arrInstances.form.types.radarrShort"),
-          })}
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="apiKey">
-          {isEdit ? t("arrInstances.form.apiKeyOptional") : t("arrInstances.form.apiKey")}
-        </Label>
-        <Input
-          id="apiKey"
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={isEdit ? t("arrInstances.form.apiKeyPlaceholderEdit") : t("arrInstances.form.apiKeyPlaceholder")}
-          required={!isEdit}
-        />
-        <p className="text-xs text-muted-foreground">
-          {t("arrInstances.form.apiKeyDescription", {
-            type: type === "sonarr" ? t("arrInstances.form.types.sonarrShort") : t("arrInstances.form.types.radarrShort"),
-          })}
-        </p>
-      </div>
-
-      <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
-        <div className="space-y-1">
-          <Label htmlFor="arr-basic-auth">{t("arrInstances.form.basicAuth")}</Label>
-          <p className="text-sm text-muted-foreground max-w-prose">
-            {t("arrInstances.form.basicAuthDescription")}
-          </p>
-        </div>
-        <Switch
-          id="arr-basic-auth"
-          checked={showBasicAuth}
-          onCheckedChange={(checked) => {
-            setShowBasicAuth(checked)
-            if (!checked) {
-              setBasicUsername("")
-              setBasicPassword("")
-            } else if (!basicUsername.trim()) {
-              setBasicPassword("")
-            }
-          }}
-        />
-      </div>
-
-      {showBasicAuth && (
-        <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
-          <div className="grid gap-2">
-            <Label htmlFor="basicUsername">{t("arrInstances.form.basicUsername")}</Label>
-            <Input
-              id="basicUsername"
-              value={basicUsername}
-              onChange={(e) => setBasicUsername(e.target.value)}
-              placeholder={t("arrInstances.form.basicUsernamePlaceholder")}
-              autoComplete="off"
-              data-1p-ignore
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="basicPassword">{t("arrInstances.form.basicPassword")}</Label>
-            <Input
-              id="basicPassword"
-              type="password"
-              value={basicPassword}
-              onChange={(e) => setBasicPassword(e.target.value)}
-              placeholder={isEdit ? t("arrInstances.form.basicPasswordPlaceholderEdit") : t("arrInstances.form.basicPasswordPlaceholder")}
-              autoComplete="off"
-              data-1p-ignore
-              required={!isEdit}
-            />
-            {isEdit && (
-              <p className="text-xs text-muted-foreground">
-                {t("arrInstances.form.basicPasswordKeep")}
-              </p>
+      <SwitchRow label={t("arrInstances.form.enabled")} checked={enabled} onCheckedChange={setEnabled} />
+      {testResult && (
+        <div
+          ref={scrollIntoView}
+          role="status"
+          className={cn(
+            "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm",
+            testResult.success ? "border-emerald-500/40 bg-emerald-500/5" : "border-destructive/40 bg-destructive/5"
+          )}
+        >
+          <span aria-hidden="true" className={cn("mt-1.5 size-2 shrink-0 rounded-full", testResult.success ? "bg-emerald-500" : "bg-destructive")} />
+          <div className="min-w-0">
+            <p className="font-medium">{t(testResult.success ? "arrInstances.toasts.connectionSuccess" : "arrInstances.status.failed")}</p>
+            {!testResult.success && (
+              <p className="mt-0.5 text-xs text-muted-foreground [overflow-wrap:anywhere]">{testResult.error || unknownError}</p>
             )}
           </div>
         </div>
       )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="priority">{t("arrInstances.form.priority")}</Label>
-          <Input
-            id="priority"
-            type="number"
-            value={priority}
-            onChange={(e) => setPriority(parseInt(e.target.value) || 0)}
-            min={0}
-          />
-          <p className="text-xs text-muted-foreground">
-            {t("arrInstances.form.priorityDescription")}
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="timeout">{t("arrInstances.form.timeoutSeconds")}</Label>
-          <Input
-            id="timeout"
-            type="number"
-            value={timeoutSeconds}
-            onChange={(e) => setTimeoutSeconds(parseInt(e.target.value) || 15)}
-            min={1}
-            max={120}
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center space-x-2">
-        <Switch
-          id="enabled"
-          checked={enabled}
-          onCheckedChange={setEnabled}
-        />
-        <Label htmlFor="enabled" className="cursor-pointer">
-          {t("arrInstances.form.enabled")}
-        </Label>
-      </div>
-
-      {testResult && (
-        <div className={`text-sm p-2 rounded ${testResult.success ? "bg-green-500/10 text-green-500" : "bg-destructive/10 text-destructive"}`}>
-          {testResult.success? t("arrInstances.toasts.connectionSuccess"): t("arrInstances.toasts.connectionFailed", { error: testResult.error ?? t("arrInstances.unknownError") })}
-        </div>
-      )}
-
-      <div className="flex justify-between gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={handleTestConnection}
-          disabled={isTesting || !baseUrl.trim() || !apiKey.trim()}
-        >
-          {isTesting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t("arrInstances.actions.testing")}
-            </>
-          ) : (
-            <>
-              <Zap className="mr-2 h-4 w-4" />
-              {t("arrInstances.actions.testConnection")}
-            </>
-          )}
-        </Button>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-            {t("arrInstances.actions.cancel")}
-          </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? t("arrInstances.actions.saving") : isEdit ? t("arrInstances.actions.update") : t("arrInstances.actions.create")}
-          </Button>
-        </div>
-      </div>
-    </form>
+    </Editor>
   )
 }

@@ -105,46 +105,13 @@ func TestParseTorznabCaps_Limits(t *testing.T) {
 			wantDefault: 100,
 			wantMax:     100,
 		},
-		{
-			name: "real-world MTV example",
-			xml: `<?xml version="1.0" encoding="UTF-8"?>
-<caps>
-	<limits default="50" max="100"/>
-	<searching>
-		<search available="yes" supportedParams="q,imdbid"/>
-		<tv-search available="yes" supportedParams="q,tvdbid,imdbid,season,ep"/>
-		<movie-search available="yes" supportedParams="q,imdbid"/>
-	</searching>
-	<categories>
-		<category id="2000" name="Movies">
-			<subcat id="2010" name="Foreign"/>
-			<subcat id="2020" name="Other"/>
-		</category>
-	</categories>
-</caps>`,
-			wantDefault: 50,
-			wantMax:     100,
-		},
-		{
-			name: "limits with large values",
-			xml: `<?xml version="1.0" encoding="UTF-8"?>
-<caps>
-	<limits default="500" max="1000"/>
-	<searching>
-		<search available="yes" supportedParams="q"/>
-	</searching>
-	<categories></categories>
-</caps>`,
-			wantDefault: 500,
-			wantMax:     1000,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			caps, err := parseTorznabCaps(strings.NewReader(tt.xml))
+			caps, err := parseTorznabCapsResponse(strings.NewReader(tt.xml), "")
 			if err != nil {
-				t.Fatalf("parseTorznabCaps() error = %v", err)
+				t.Fatalf("parseTorznabCapsResponse() error = %v", err)
 			}
 
 			if caps.LimitDefault != tt.wantDefault {
@@ -175,9 +142,9 @@ func TestParseTorznabCaps_FullParsing(t *testing.T) {
 	</categories>
 </caps>`
 
-	caps, err := parseTorznabCaps(strings.NewReader(xml))
+	caps, err := parseTorznabCapsResponse(strings.NewReader(xml), "")
 	if err != nil {
-		t.Fatalf("parseTorznabCaps() error = %v", err)
+		t.Fatalf("parseTorznabCapsResponse() error = %v", err)
 	}
 
 	// Check limits

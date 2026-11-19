@@ -14,7 +14,7 @@ qui sends notifications to the Notifiarr API and to Shoutrrr targets. Configure 
 1. Open **Settings → Notifications**.
 2. Add a target name and URL.
 3. Select the events to send.
-4. Save, then click the send icon (paper plane) on the target card to send a test notification.
+4. Save, then click **Send test** on the row of the target to send a test notification. On a phone, **Send test** is in the menu of the row.
 
 Notes:
 
@@ -37,15 +37,15 @@ Notes:
 | `orphan_scan_failed` | An orphan scan run fails. |
 | `cross_seed_automation_succeeded` | RSS cross-seed automation completes (summary counts and samples). |
 | `cross_seed_automation_failed` | RSS cross-seed automation fails or completes with errors (summary). |
-| `cross_seed_search_succeeded` | Seeded search run completes (summary counts and samples). |
-| `cross_seed_search_failed` | Seeded search run fails or cancels (summary). |
+| `cross_seed_search_succeeded` | A Library Scan run completes (summary counts and samples). A scheduled run sends it only when it adds a cross-seed, when a torrent fails, or when the run records an error, for example when qui could not load the Torznab indexers. |
+| `cross_seed_search_failed` | A Library Scan run fails or cancels (summary). qui also sends it one time when the Library Scan schedule cannot start a run for a cause that clears without you, for example when qBittorrent is offline. qui tries again every hour and does not send it again for each try. |
 | `cross_seed_completion_succeeded` | Completion search run completes (summary counts and samples). |
 | `cross_seed_completion_failed` | Completion search run fails. |
 | `cross_seed_webhook_succeeded` | Webhook apply adds one or more torrents. No-op checks and applies do not notify. |
 | `cross_seed_webhook_failed` | Webhook check or apply fails. |
 | `automations_actions_applied` | Automation rules apply actions (summary counts and samples, only if actions occur). |
 | `automations_run_failed` | Automation rules fail to run for an instance (system error). |
-| `system_notice` | A fault in qui needs an action from you. qui sends it one time when the notice opens, for example "Recording stopped" when qui cannot write the transfer history, "Shrink failed" when qui cannot shrink the database file, "Low disk" when the disk of the SQLite database has little free space, or "Redacted rejected the API key" and "Orpheus rejected the API key" when a cross-seed search gets a refusal from that site. The message gives the cause and the fix. |
+| `system_notice` | A fault in qui needs an action from you. qui sends it one time when the notice opens, for example "Recording stopped" when qui cannot write the transfer history, "Shrink failed" when qui cannot shrink the database file, "Low disk" when the disk of the SQLite database has little free space, "Redacted rejected the API key" and "Orpheus rejected the API key" when a cross-seed search gets a refusal from that site, or "Library Scan schedule cannot run" when the saved Library settings make a scheduled run impossible. The message gives the cause and the fix. |
 
 ## Notifiarr API
 

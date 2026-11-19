@@ -12,9 +12,9 @@ import { useTranslation } from "react-i18next"
 
 interface RemoteAccessIndicatorProps {
   instance: Pick<Instance, "filesystemMode" | "sshTier" | "sshHardlink">
-  // value: icon and label, for the instance card row. icon: the icon alone,
-  // for the dashboard. inline: the list of limits, for the SSH tab.
-  variant: "value" | "icon" | "inline"
+  // fact: an icon and a few words, for the row of the instance in Settings, with the limits in a tooltip on hover. It
+  // takes no focus, because the row is a button. inline: the list of limits, for the SSH tab.
+  variant: "fact" | "inline"
   className?: string
 }
 
@@ -32,31 +32,26 @@ export function RemoteAccessIndicator({ instance, variant, className }: RemoteAc
   }
 
   const mode = instance.filesystemMode
-  // The dashboard shows nothing for an instance without file access.
-  if (mode === "none" && variant === "icon") {
-    return null
+  if (mode !== "local" && mode !== "remote") {
+    return <span className={className}>{t("access.none")}</span>
   }
   const Icon = mode === "remote" ? KeyRound : HardDrive
-  const label = mode === "local" ? t("access.local") : mode === "remote" ? t("access.remote") : t("access.none")
-  const content = (
-    <>
-      <Icon className={variant === "icon" ? "h-4 w-4" : "h-3 w-3"} aria-label={variant === "icon" ? label : undefined} />
-      {variant === "value" && label}
-    </>
+  const fact = (
+    <span className={cn(limits.length > 0 && "cursor-help", className)}>
+      <Icon aria-hidden="true" className="mr-1 inline size-3 align-[-0.125em]" />
+      {mode === "local" ? t("access.local") : t("access.remote")}
+    </span>
   )
-  const classes = cn("flex items-center gap-1", mode === "none" ? "text-muted-foreground" : "text-primary", className)
-  if (mode === "none") {
-    return <span className={classes}>{content}</span>
+  if (limits.length === 0) {
+    return fact
   }
-  // A button, so the keyboard reaches the tooltip with the limits.
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button type="button" className={cn(classes, "cursor-help rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring")}>{content}</button>
+      {/* A tap opens the tooltip, not the row: the row opens the editor, which would cover the tooltip. A mouse click still opens the row. */}
+      <TooltipTrigger asChild openOnTap="only">
+        {fact}
       </TooltipTrigger>
       <TooltipContent className="max-w-xs">
-        {variant === "icon" && <p className="font-medium">{label}</p>}
-        {mode === "local" && <p>{t("access.localFull")}</p>}
         <LimitList limits={limits} />
       </TooltipContent>
     </Tooltip>

@@ -5,6 +5,9 @@
     "search": "Recherche",
     "crossSeed": "Cross-Seed",
     "automations": "Automatisations",
+    "transfers": "Transferts",
+    "transfersQueued_one": "{{count}} élément en cours ou en attente",
+    "transfersQueued_other": "{{count}} éléments en cours ou en attente",
     "backups": "Sauvegardes",
     "rss": "RSS",
     "settings": "Paramètres",
@@ -59,6 +62,7 @@
     "smartSearchEnter": "Appuyez sur Entrée pour une recherche instantanée",
     "smartSearchAuto": "Recherche auto. après une pause de 500ms",
     "smartSearchShortcut": "Appuyez sur {{shortcutKey}} pour aller à la recherche",
+    "smartSearchPalette": "Appuyez sur {{shortcutKey}} pour ouvrir la palette de commandes",
     "torrentCreationTasksTitle": "Tâches de création de torrents",
     "updateAvailable": "Mise à jour disponible",
     "updateVersion": "Version {{version}}",
@@ -76,6 +80,33 @@
     "collapseScope": "Réduire la portée unifiée",
     "expandScope": "Étendre la portée unifiée",
     "allActive": "Tous les actifs ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Palette de commandes",
+    "placeholder": "Rechercher des pages, des paramètres et des torrents...",
+    "placeholderIn": "Rechercher dans {{name}}...",
+    "groups": {
+      "pages": "Pages",
+      "actions": "Actions"
+    },
+    "current": "En cours",
+    "statisticsNote": "Historique d'envoi et de réception de vos instances",
+    "searchTorrentsFor": "Rechercher \"{{query}}\" dans les torrents",
+    "torrentMatches_one": "{{count}} torrent correspond",
+    "torrentMatches_other": "{{count}} torrents correspondent",
+    "noTorrentMatches": "Aucun torrent ne correspond",
+    "searching": "Recherche en cours...",
+    "searchFailed": "La recherche de torrents a échoué",
+    "listFiltersApply": "Les filtres de la liste s'appliquent",
+    "noMatchIn": "Aucun résultat dans {{name}}",
+    "moreOf": "Plus d'options pour {{name}}",
+    "hints": {
+      "navigate": "Naviguer",
+      "open": "Ouvrir",
+      "more": "Plus",
+      "searchTorrents": "Rechercher des torrents",
+      "back": "Retour"
+    }
   },
   "mobileNav": {
     "dashboard": "Tableau de bord",
@@ -223,6 +254,28 @@
         "fix": "Si la clé est incorrecte, créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Orpheus, puis collez-la dans les paramètres Gazelle (OPS/RED) de qui. Si Orpheus a banni l’IP de qui, une nouvelle clé ne suffit pas : contactez l’équipe de Orpheus.",
         "menuFix": "Coller une nouvelle clé dans les paramètres",
         "action": "Ouvrir les paramètres Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Planning de l’analyse bloqué",
+        "title": "Le planning de l’analyse de la bibliothèque ne peut pas s’exécuter",
+        "effect": "qui ne peut pas démarrer l’exécution planifiée de l’analyse de la bibliothèque. Il réessaie toutes les heures.",
+        "fix": "Vérifiez les paramètres de l’analyse de la bibliothèque. qui réessaie toutes les heures.",
+        "menuFix": "Vérifier les paramètres de l’analyse",
+        "action": "Ouvrir les paramètres de l’analyse de la bibliothèque",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab est désactivé dans les paramètres de l’analyse de la bibliothèque, et aucune clé API RED ou OPS n’est définie. Activez Torznab, ou ajoutez une clé RED ou OPS dans les paramètres Gazelle (OPS/RED). qui réessaie toutes les heures.",
+            "menuFix": "Activer Torznab, ou ajouter une clé RED ou OPS"
+          },
+          "no_indexer": {
+            "fix": "Aucun indexeur n’est activé. Activez un indexeur Torznab, ou ajoutez une clé RED ou OPS dans les paramètres Gazelle (OPS/RED). qui réessaie toutes les heures.",
+            "menuFix": "Activer un indexeur"
+          },
+          "instance_missing": {
+            "fix": "L’instance des paramètres enregistrés de l’analyse de la bibliothèque n’existe pas. Choisissez une instance dans les paramètres de l’analyse de la bibliothèque, puis enregistrez. qui réessaie toutes les heures.",
+            "menuFix": "Choisir une instance, puis enregistrer"
+          }
+        }
       }
     },
     "actions": {
@@ -321,14 +374,77 @@
   },
   "support": {
     "title": "Soutenir qui",
-    "description": "Vous avez déjà les thèmes et vous voulez aider davantage ? Tout dans qui est déjà à vous. Un abonnement ne débloque aucune fonctionnalité, il finance le temps consacré à leur développement.",
-    "perkPrefix": "Les mécènes obtiennent le rôle",
-    "perkSuffix": "sur Discord et notre éternelle gratitude.",
-    "yearly": "{{price}} / an",
-    "monthly": "{{price}} / mois",
-    "notLicense": "La licence des thèmes fait l'objet d'un achat unique distinct."
+    "description": "Les façons de soutenir qui, et leurs prix.",
+    "heading": "Aidez à maintenir qui",
+    "intro": "qui est gratuit et fonctionne de la même façon, que vous payiez ou non. Le soutien paie le temps et les outils consacrés à qui.",
+    "licensed": "Merci pour votre licence des thèmes.",
+    "releases_one": "qui a publié {{count}} version au cours des 12 derniers mois.",
+    "releases_other": "qui a publié {{count}} versions au cours des 12 derniers mois.",
+    "releaseMap": "Les 52 dernières semaines, un carré par jour. Un carré lumineux est un jour avec une nouvelle version.",
+    "releaseDay": "Un jour avec une nouvelle version",
+    "plans": {
+      "yearly": "{{price}} par an",
+      "yearlyNote": "{{price}} par mois, payé à l'année",
+      "yearlyNoteWithLicense": "{{price}} par mois, payé à l'année. Licence des thèmes incluse.",
+      "license": "Licence des thèmes, dès {{price}}",
+      "licenseNote": "Tous les thèmes premium actuels et futurs, à vie",
+      "onePayment": "paiement unique"
+    },
+    "checkout": "Passer au paiement",
+    "fromPrice": "dès {{price}}",
+    "terms": {
+      "yearly": "Vous payez {{price}} aujourd'hui, puis {{price}} chaque année jusqu'à votre résiliation.",
+      "license": "Un paiement unique de {{price}} ou plus, montant choisi au paiement. Sans abonnement."
+    },
+    "perks": {
+      "yearly": "Les mécènes obtiennent le badge Mécène dans qui et le rôle de mécène sur Discord. Après le paiement, ajoutez votre clé de mécène à ce serveur.",
+      "license": "La licence débloque les thèmes premium. Après le paiement, ajoutez votre clé de licence à ce serveur."
+    },
+    "existing": "Déjà mécène ?",
+    "addKey": "Ajouter votre clé de mécène",
+    "key": {
+      "help": "Votre clé de mécène figure sur la page de paiement et dans l'e-mail contenant votre reçu.",
+      "label": "Clé de mécène",
+      "submit": "Ajouter la clé",
+      "back": "Retour"
+    },
+    "ended": "La clé de mécène de ce serveur n'est plus valide. qui la vérifie à nouveau chaque jour. Si votre soutien a pris fin, vous gardez votre licence des thèmes. Retrouvez sa clé sur le <portal>portail des licences</portal>, puis ajoutez-la dans Paramètres, sous Thèmes.",
+    "removeKey": "Retirer la clé de mécène de ce serveur",
+    "supporter": {
+      "badge": "Mécène",
+      "title": "Vous soutenez qui",
+      "thanks": "Merci. Votre soutien paie le temps et les outils consacrés à qui.",
+      "detail": "Vous avez le badge Mécène dans qui et le rôle de mécène sur Discord. Votre soutien débloque aussi les thèmes premium et inclut une licence des thèmes à vie. Retrouvez la clé de licence sur le <portal>portail des licences</portal>.",
+      "manage": "Gérer ou résilier votre soutien"
+    },
+    "reminder": {
+      "title_one": "{{count}} jour de qui sur ce serveur",
+      "title_other": "{{count}} jours de qui sur ce serveur",
+      "tooltip": "Compté sur ce serveur et jamais envoyé. qui demande une fois par an.",
+      "subtitle": "Soutenir qui. qui demande une fois par an.",
+      "notNow": "Pas maintenant",
+      "serverDays_one": "Ce serveur fait tourner qui depuis {{count}} jour. qui compte cela sur ce serveur et ne l'envoie jamais.",
+      "serverDays_other": "Ce serveur fait tourner qui depuis {{count}} jours. qui compte cela sur ce serveur et ne l'envoie jamais.",
+      "notNowToast": "qui redemandera dans un an",
+      "dontAskAgain": "Ne plus demander",
+      "offToast": "qui ne demandera plus",
+      "offToastDescription": "Le raccourci de soutien reste. Réactivez le rappel dans Paramètres, sous Application.",
+      "undo": "Annuler",
+      "hiddenToast": "Le raccourci de soutien est masqué",
+      "hiddenToastDescription": "qui ne demandera plus. Réaffichez le raccourci dans Paramètres, sous Application.",
+      "notForYou": "Pas pour vous ? <reminder>Désactivez le rappel annuel</reminder> ou <heart>masquez le cœur</heart>. Les paramètres permettent de rétablir les deux.",
+      "notForYouHeart": "Pas pour vous ? <heart>Masquez le cœur</heart>. Les paramètres permettent de le rétablir."
+    }
   },
   "labels": {
-    "path": "Chemin"
+    "path": "Chemin",
+    "beta": "Bêta"
+  },
+  "kit": {
+    "loadFailed": "Cette section n'a pas pu être chargée.",
+    "retry": "Réessayer",
+    "edit": "Modifier",
+    "moreActions": "Plus d'actions",
+    "enabled": "Activé"
   }
 }

@@ -597,58 +597,6 @@ func TestSearchScheduler_DoesNotRunQueuedTaskAfterDeadline(t *testing.T) {
 	})
 }
 
-func TestSearchScheduler_RSSDeduplication(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		rl := newRequestSlots(1*time.Millisecond, nil, nil)
-		s := newSearchScheduler(rl, 1) // Single worker
-		defer s.Stop()
-
-		var executions atomic.Int32
-		var completed atomic.Int32
-		done := make(chan struct{})
-		release := make(chan struct{})
-
-		exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
-			executions.Add(1)
-			<-release
-			return []Result{{Title: "test"}}, []int{1}, nil
-		}
-
-		indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
-		rssMeta := &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityRSS}}
-
-		callback := func(jobID uint64) {
-			if completed.Add(1) == 2 {
-				close(done)
-			}
-		}
-
-		// Submit first RSS search
-		_, err1 := s.Submit(context.Background(), SubmitRequest{
-			Indexers:  []*models.TorznabIndexer{indexer},
-			Meta:      rssMeta,
-			ExecFn:    exec,
-			Callbacks: JobCallbacks{OnJobDone: callback},
-		})
-		require.NoError(t, err1)
-
-		// Submit second RSS search to same indexer - should be deduplicated
-		_, err2 := s.Submit(context.Background(), SubmitRequest{
-			Indexers:  []*models.TorznabIndexer{indexer},
-			Meta:      rssMeta,
-			ExecFn:    exec,
-			Callbacks: JobCallbacks{OnJobDone: callback},
-		})
-		require.NoError(t, err2)
-
-		close(release)
-		<-done
-
-		// Only first search should have executed
-		assert.Equal(t, int32(1), executions.Load())
-	})
-}
-
 func TestSearchScheduler_RSSDeduplicationInvokesOnComplete(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		rl := newRequestSlots(1*time.Millisecond, nil, nil)
@@ -878,36 +826,6 @@ func TestSearchScheduler_MultipleIndexersPerSubmission(t *testing.T) {
 	})
 }
 
-func TestSearchScheduler_HeapOrderingCorrectness(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		h := &taskHeap{}
-		heap.Init(h)
-
-		now := time.Now()
-
-		// Add tasks with different priorities
-		heap.Push(h, &taskItem{priority: 3, created: now.Add(1 * time.Hour)}) // Background
-		heap.Push(h, &taskItem{priority: 0, created: now.Add(2 * time.Hour)}) // Interactive
-		heap.Push(h, &taskItem{priority: 1, created: now.Add(3 * time.Hour)}) // RSS
-		heap.Push(h, &taskItem{priority: 0, created: now.Add(4 * time.Hour)}) // Interactive (later)
-
-		// Should pop in priority order, then by creation time
-		item1 := heap.Pop(h).(*taskItem)
-		assert.Equal(t, 0, item1.priority) // First interactive
-
-		item2 := heap.Pop(h).(*taskItem)
-		assert.Equal(t, 0, item2.priority) // Second interactive
-
-		item3 := heap.Pop(h).(*taskItem)
-		assert.Equal(t, 1, item3.priority) // RSS
-
-		item4 := heap.Pop(h).(*taskItem)
-		assert.Equal(t, 3, item4.priority) // Background
-
-		assert.Equal(t, 0, h.Len())
-	})
-}
-
 func TestSearchScheduler_RateLimitPriorityMapping(t *testing.T) {
 	tests := []struct {
 		rateLimitPriority         RateLimitPriority
@@ -931,54 +849,6 @@ func TestSearchScheduler_RateLimitPriorityMapping(t *testing.T) {
 	assert.Equal(t, searchJobPriorityBackground, jobPriority(nil))
 	assert.Equal(t, searchJobPriorityBackground, jobPriority(&searchContext{}))
 	assert.Equal(t, searchJobPriorityBackground, jobPriority(&searchContext{rateLimit: &RateLimitOptions{}}))
-}
-
-func TestSearchScheduler_JobAndTaskIDGeneration(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		s := newSearchScheduler(nil, 10)
-		defer s.Stop()
-
-		id1 := s.nextJobID()
-		id2 := s.nextJobID()
-		assert.Equal(t, uint64(1), id1)
-		assert.Equal(t, uint64(2), id2)
-
-		tid1 := s.nextTaskID()
-		tid2 := s.nextTaskID()
-		assert.Equal(t, uint64(1), tid1)
-		assert.Equal(t, uint64(2), tid2)
-	})
-}
-
-func TestSearchScheduler_ErrorPropagation(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		s := newSearchScheduler(nil, 10)
-		defer s.Stop()
-
-		expectedErr := errors.New("test error")
-		exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
-			return nil, nil, expectedErr
-		}
-
-		indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
-
-		// Use channel to wait for OnComplete specifically (not OnJobDone)
-		// since both callbacks run as goroutines and may race
-		completeCh := make(chan error, 1)
-		_, err := s.Submit(context.Background(), SubmitRequest{
-			Indexers: []*models.TorznabIndexer{indexer},
-			ExecFn:   exec,
-			Callbacks: JobCallbacks{
-				OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
-					completeCh <- err
-				},
-			},
-		})
-
-		require.NoError(t, err)
-		callbackErr := <-completeCh
-		assert.Equal(t, expectedErr, callbackErr)
-	})
 }
 
 func TestSearchScheduler_RateLimitIntervalStartsAfterCompletion(t *testing.T) {

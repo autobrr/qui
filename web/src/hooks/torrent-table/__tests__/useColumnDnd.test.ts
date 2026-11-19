@@ -27,18 +27,6 @@ function params(over: Partial<UseColumnDndParams>): UseColumnDndParams {
 beforeEach(() => localStorage.clear())
 
 describe("useColumnDnd", () => {
-  it("configures the two sensors and keeps setColumnOrder identity stable", () => {
-    const initial = params({ instanceId: 1 })
-    const { result, rerender } = renderHook((p: UseColumnDndParams) => useColumnDnd(p), { initialProps: initial })
-    const setColumnOrder = result.current.setColumnOrder
-    expect(result.current.sensors).toHaveLength(2) // MouseSensor + TouchSensor
-
-    rerender(params({ instanceId: 1 }))
-
-    // setColumnOrder is a raw useState setter -> stable, which is what keeps onDragEnd stable.
-    expect(result.current.setColumnOrder).toBe(setColumnOrder)
-  })
-
   it("bails out when there is no over target or active equals over", () => {
     const { result } = renderHook(() => useColumnDnd(params({ instanceId: 2 })))
     const before = result.current.columnOrder

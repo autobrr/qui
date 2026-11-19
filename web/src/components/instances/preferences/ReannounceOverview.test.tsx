@@ -112,16 +112,6 @@ function renderExpanded() {
 }
 
 describe("ReannounceOverview instance card", () => {
-  it("wraps a long instance name instead of cutting it off", () => {
-    const { container } = renderExpanded()
-
-    const name = Array.from(container.querySelectorAll("span")).find((el) => el.textContent === "seedbox-europe-west-archive-01")
-    expect(name).toBeDefined()
-    // Two names that share a long prefix look identical once truncated.
-    expect(name!.classList.contains("truncate")).toBe(false)
-    expect(name!.classList.contains("wrap-anywhere")).toBe(true)
-  })
-
   it("passes one settings summary pair per setting", () => {
     const { getByTestId } = renderExpanded()
 

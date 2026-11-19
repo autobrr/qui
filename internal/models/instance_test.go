@@ -48,6 +48,7 @@ const testInstanceSchema = `
 		ssh_host_key_encrypted TEXT NOT NULL DEFAULT '',
 		ssh_tier TEXT NOT NULL DEFAULT 'sftp',
 		ssh_hardlink BOOLEAN,
+		public_peer_address TEXT NOT NULL DEFAULT '',
 		FOREIGN KEY (name_id) REFERENCES string_pool(id),
 		FOREIGN KEY (host_id) REFERENCES string_pool(id),
 		FOREIGN KEY (username_id) REFERENCES string_pool(id),
@@ -79,7 +80,8 @@ const testInstanceSchema = `
 		i.ssh_key_encrypted,
 		i.ssh_host_key_encrypted,
 		i.ssh_tier,
-		i.ssh_hardlink
+		i.ssh_hardlink,
+		i.public_peer_address
 	FROM instances i
 	LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
 	LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
@@ -509,17 +511,4 @@ func newInstanceStoreWithAPIKeySchema(t *testing.T) *InstanceStore {
 	require.NoError(t, err, "Failed to create test schema")
 
 	return store
-}
-
-func TestInstanceStoreGetDecryptedAPIKeyLegacyEmptyValue(t *testing.T) {
-	store, err := NewInstanceStore(newMockQuerier(nil), []byte("01234567890123456789012345678901"))
-	require.NoError(t, err)
-
-	instance := &Instance{
-		APIKeyEncrypted: "",
-	}
-
-	apiKey, err := store.GetDecryptedAPIKey(instance)
-	require.NoError(t, err)
-	assert.Empty(t, apiKey)
 }

@@ -44,24 +44,6 @@ func TestNormalizeConnectionStatus(t *testing.T) {
 	require.Empty(t, NormalizeConnectionStatus(" \t"))
 }
 
-func TestTrackerHealthSupportSurvivesSkippedHydration(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{version: semver.MustParse("2.11.4")}
-
-	trackerHealthSupported := trackerHealthSupportedByClient(client)
-	require.True(t, trackerHealthSupported)
-}
-
-func TestTrackerHealthUnsupportedClientDoesNotHydrate(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{}
-
-	trackerHealthSupported := trackerHealthSupportedByClient(client)
-	require.False(t, trackerHealthSupported)
-}
-
 func TestAddTorrentURLsErrorSummaryDoesNotExposeRawURLs(t *testing.T) {
 	t.Parallel()
 
@@ -2727,13 +2709,6 @@ func TestListTorrentsSummaryOmitsRows(t *testing.T) {
 	require.Equal(t, 2, resp.Counts.Status["all"])
 }
 
-// A stalled instance must still be visible now that the per-pass start line is
-// gone.
-func TestTrackerHealthRefreshLevel(t *testing.T) {
-	require.Equal(t, zerolog.DebugLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow-time.Millisecond))
-	require.Equal(t, zerolog.WarnLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow))
-}
-
 // Counts accumulate per domain, so one domain must not bleed into the next.
 func TestTrackerDomainCountsKeepDomainsSeparate(t *testing.T) {
 	t.Parallel()
@@ -3376,6 +3351,53 @@ func testFreshReadSeesTorrentAddedDuringInFlightSync(t *testing.T, read func(ctx
 		res := <-readDone
 		require.NoError(t, res.err)
 		require.ElementsMatch(t, []string{"aa11", "bb22"}, res.hashes)
+	})
+}
+
+// A wait for a Transfer torrent reads its progress once per poll. The read
+// sends a request only when no reader synced the instance within maxAge.
+func TestGetTorrentRefsWithinSyncsOnlyAnOlderSnapshot(t *testing.T) {
+	t.Parallel()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  1,
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+
+	synctest.Test(t, func(t *testing.T) {
+		var maindataCalls atomic.Int32
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				n := maindataCalls.Add(1)
+				_, _ = fmt.Fprintf(w, `{"rid":%d,"full_update":%t,"torrents":{"aa11":{"progress":0.%d}}}`, n, n == 1, n)
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		for _, step := range []struct {
+			wait      time.Duration
+			wantCalls int32
+			want      float64
+		}{
+			{0, 1, 0.1},
+			{2 * time.Second, 1, 0.1},
+			{2 * time.Second, 2, 0.2},
+		} {
+			time.Sleep(step.wait)
+			torrents, err := sm.GetTorrentRefsWithin(t.Context(), 1, TorrentRefFilter{Hashes: []string{"aa11"}}, 3*time.Second)
+			require.NoError(t, err)
+			require.Len(t, torrents, 1)
+			require.Equal(t, step.wantCalls, maindataCalls.Load())
+			require.InDelta(t, step.want, torrents[0].Progress, 0.001)
+		}
 	})
 }
 

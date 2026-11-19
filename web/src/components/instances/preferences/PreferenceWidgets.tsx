@@ -14,6 +14,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { api } from "@/lib/api"
 import { useIncognitoMode } from "@/lib/incognito"
+import { passwordManagerAttributes } from "@/lib/password-manager"
 import { BYTES_PER_UNIT, unitLabel, type ByteUnit } from "@/lib/unit-format"
 import { cn } from "@/lib/utils"
 import type { PreferenceField } from "@/types"
@@ -122,7 +123,8 @@ function NumberWidget({ id, field, labels, value, onChange, disabled }: WidgetPr
 }
 
 // Incognito mode blurs text, paths, and lists: they can hold paths, addresses, and commands.
-// A password box uses new-password, so that the browser does not fill in the password of qui.
+// A password box uses new-password, so that the browser does not fill in the password of qui. The password belongs
+// to qBittorrent, so the password managers leave it alone too.
 function TextWidget({ id, field, labels, value, onChange, disabled }: WidgetProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
@@ -134,6 +136,7 @@ function TextWidget({ id, field, labels, value, onChange, disabled }: WidgetProp
         id={id}
         type={isPassword ? "password" : undefined}
         autoComplete={isPassword ? "new-password" : undefined}
+        {...passwordManagerAttributes()}
         value={String(value ?? "")}
         disabled={disabled}
         placeholder={labels.placeholderKey ? t(labels.placeholderKey) : undefined}

@@ -22,7 +22,7 @@ If you have one server, run qui on that server. Some seedbox providers install q
 - **Single Binary**: No dependencies. Download and run.
 - **Multi-Instance Support**: Manage all your qBittorrent instances from one place
 - **Large Collections**: Handles thousands of torrents
-- **Themeable**: Multiple built-in color themes, including the themes from [qui-community-themes](https://github.com/autobrr/qui-community-themes) (license required), plus sideloadable [custom themes](./features/custom-themes.md) (license required)
+- **Themeable**: Multiple built-in color themes, including the community themes (license required), plus sideloadable [custom themes](./features/custom-themes.md) (license required)
 - **Base URL Support**: Serve from a subdirectory (for example `/qui/`) behind a reverse proxy
 - **OIDC Single Sign-On**: Authenticate through your [OpenID Connect provider](./configuration/oidc.md)
 - **External Programs**: Launch [custom scripts](./features/external-programs.md) from the torrent context menu
@@ -47,7 +47,7 @@ Right-click a magnet or torrent link to add it to your qBittorrent instances:
 - [Chrome Extension](https://chromewebstore.google.com/detail/kbjnjgihepmcoilegnghgpmijbecoili)
 - [Firefox Add-on](https://addons.mozilla.org/en-US/firefox/addon/qui/)
 
-To register qui as your browser handler for magnet links, open **Settings → Security** and click **Register as Handler**. The button shows only when you open qui over HTTPS or on localhost, in a browser that supports protocol handlers.
+To register qui as your browser handler for magnet links, open **Settings → Security** and click **Register as handler**. The button shows only when you open qui over HTTPS or on localhost, in a browser that supports protocol handlers.
 
 ## Languages
 

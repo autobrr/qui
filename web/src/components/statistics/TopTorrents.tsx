@@ -8,6 +8,7 @@ import { GroupChart } from "@/components/statistics/GroupChart"
 import { RowLimit } from "@/components/statistics/RowLimit"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TorrentName } from "@/components/ui/torrent-name"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useTorrentName } from "@/hooks/useTopTorrents"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
@@ -116,18 +117,6 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
       </Table>
       {narrow && shown.length > PHONE_ROWS && <RowLimit shown={all ? shown.length : PHONE_ROWS} total={shown.length} all={all} onAllChange={next => setAllOf(next ? scope : undefined)} />}
     </div>
-  )
-}
-
-/** A torrent name that wraps after a dot, a dash, or an underscore, and inside a word only when the word does not fit. */
-export function TorrentName({ name, className }: { name: string; className?: string }) {
-  const parts = name.split(/([._-])/)
-  // A file extension stays on the line of the word before it, so that ".iso" never ends a name alone.
-  const extensionDot = parts.length > 2 && parts.at(-2) === "." && parts.at(-1)!.length <= 4 ? parts.length - 2 : -1
-  return (
-    <span className={cn("whitespace-normal [overflow-wrap:anywhere]", className)} title={name}>
-      {parts.map((part, index) => <Fragment key={index}>{part}{index % 2 === 1 && index !== extensionDot && <wbr />}</Fragment>)}
-    </span>
   )
 }
 

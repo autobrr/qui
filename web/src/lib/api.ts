@@ -607,7 +607,7 @@ function normalizeStreamSubscription(stream: StreamSubscription) {
 }
 
 class ApiClient {
-  private async request<T>(
+  async request<T>(
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
@@ -1947,6 +1947,8 @@ class ApiClient {
     instanceId: number
     categories: string[]
     tags: string[]
+    excludeCategories: string[]
+    excludeTags: string[]
     intervalSeconds: number
     indexerIds: number[]
     disableTorznab?: boolean
@@ -1958,6 +1960,11 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(payload),
     })
+  }
+
+  /** Starts a scheduled run with the saved settings and restarts the schedule clock. Fails with 409 while a run is active. */
+  async runCrossSeedSearchScheduleNow(): Promise<CrossSeedSearchRun> {
+    return this.request<CrossSeedSearchRun>("/cross-seed/search/schedule/run", { method: "POST" })
   }
 
   async cancelCrossSeedSearchRun(): Promise<void> {
@@ -2387,6 +2394,7 @@ class ApiClient {
   // License endpoints
   async activateLicense(licenseKey: string): Promise<{
     valid: boolean
+    productName?: string
     expiresAt?: string
     message?: string
     error?: string
@@ -2397,7 +2405,7 @@ class ApiClient {
     })
   }
 
-  async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean }> {
+  async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean; isSupporter: boolean; setupAt?: string }> {
     return this.request("/license/licensed")
   }
 
@@ -3194,6 +3202,11 @@ class ApiClient {
       method: "POST",
     })
   }
+}
+
+/** Sends a JSON request through the shared API client (auth, SSO, errors). */
+export function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  return api.request<T>(endpoint, options)
 }
 
 export const api = new ApiClient()

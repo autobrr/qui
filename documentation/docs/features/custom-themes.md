@@ -155,7 +155,7 @@ qui creates the directory on startup. If you want to use a different location, s
 
 Place each theme as a single, self-contained `.css` file directly in that directory. qui ignores subdirectories and symlinks, skips files larger than 1 MiB, and reads at most 100 theme files. The theme editor cannot add a theme when the directory already has 100 theme files.
 
-qui ships every theme from [qui-community-themes](https://github.com/autobrr/qui-community-themes) built in, so you do not need to copy those themes here. To add a theme for every qui user, send a pull request to that repository.
+qui ships the community themes built in, so you do not need to copy them here. To add a theme for every qui user, send a pull request to [qui](https://github.com/autobrr/qui) that adds the theme file to `internal/themes/assets/premium/`.
 
 ## Authoring a theme
 

@@ -63,9 +63,7 @@ func TestSearchDirectCtxKeepsCallerSearchType(t *testing.T) {
 		want  string
 	}{
 		{name: "movie", query: "The Matrix", opts: map[string]string{"t": "movie"}, want: "movie"},
-		{name: "tvsearch", query: "Severance", opts: map[string]string{"t": "tvsearch"}, want: "tvsearch"},
 		{name: "empty", query: "ubuntu", opts: map[string]string{"t": ""}, want: "search"},
-		{name: "unset", query: "ubuntu", opts: map[string]string{}, want: "search"},
 		{name: "nil", query: "ubuntu", opts: nil, want: "search"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

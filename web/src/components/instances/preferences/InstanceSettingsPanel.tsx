@@ -193,7 +193,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder={t("preferences.settingsPanel.placeholders.instanceName")}
-                  data-1p-ignore
                   autoComplete="off"
                   aria-required="true"
                   aria-invalid={field.state.meta.isTouched && !!field.state.meta.errors[0]}
@@ -316,7 +315,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         placeholder={t("preferences.settingsPanel.placeholders.username")}
-                        data-1p-ignore
                         autoComplete="off"
                         className={incognitoMode ? "blur-sm select-none" : ""}
                       />
@@ -335,7 +333,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         placeholder={t("preferences.settingsPanel.placeholders.passwordKeepCurrent")}
-                        data-1p-ignore
                         autoComplete="off"
                       />
                       {field.state.meta.isTouched && field.state.meta.errors[0] && (
@@ -365,7 +362,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
                         }}
                         onChange={(e) => field.handleChange(e.target.value)}
                         placeholder={t("preferences.settingsPanel.placeholders.passwordKeepCurrent")}
-                        data-1p-ignore
                         autoComplete="off"
                       />
                     </div>
@@ -401,7 +397,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         placeholder={t("preferences.settingsPanel.placeholders.basicUsername")}
-                        data-1p-ignore
                         autoComplete="off"
                         className={incognitoMode ? "blur-sm select-none" : ""}
                       />
@@ -431,7 +426,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
                         }}
                         onChange={(e) => field.handleChange(e.target.value)}
                         placeholder={t("preferences.settingsPanel.placeholders.basicPassword")}
-                        data-1p-ignore
                         autoComplete="off"
                       />
                       {field.state.meta.errors[0] && (

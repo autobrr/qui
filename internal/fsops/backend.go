@@ -5,6 +5,7 @@ package fsops
 
 import (
 	"context"
+	"io"
 	"io/fs"
 
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -105,6 +106,18 @@ type Backend interface {
 	// call with a nil result.
 	RemoveTree(ctx context.Context, created *TreeCreateResult) error
 
+	// --- File bytes ---
+
+	// OpenRead opens the file at path for reading from offset on. The ctx
+	// covers the open, not the reads.
+	OpenRead(ctx context.Context, path string, offset int64) (io.ReadCloser, error)
+
+	// OpenWrite opens the file at path for writing from offset on, and
+	// creates it when it is missing. It never truncates, so a copy that
+	// stopped can write the rest of a file. The umask decides the mode of a
+	// new file. The ctx covers the open, not the writes.
+	OpenWrite(ctx context.Context, path string, offset int64) (FileWriter, error)
+
 	// --- Capabilities ---
 
 	// Paths is the dialect of this backend's filesystem. Every Join, Dir,
@@ -114,6 +127,26 @@ type Backend interface {
 	// SupportsReflink returns whether the filesystem at path supports CoW
 	// reflinks. The string return is a human-readable reason when unsupported.
 	SupportsReflink(ctx context.Context, path string) (bool, string, error)
+}
+
+// FileWriter writes one file from the offset that OpenWrite gave.
+type FileWriter interface {
+	io.WriteCloser
+	// Flush asks for the bytes written so far to reach stable storage, and
+	// reports whether the backend confirmed it: an fsync on qui's own disk,
+	// or the fsync@openssh.com extension over SFTP. A server without that
+	// extension gives false and no error.
+	Flush() (confirmed bool, err error)
+}
+
+// Connector is a Backend that reaches its instance on several connections,
+// so that a copy can read on all of them at once.
+type Connector interface {
+	// Connections returns up to n backends of the instance, each bound to a
+	// connection of its own. A host that refuses extra connections gives
+	// fewer, down to one. A bound backend does not redial: once its
+	// connection drops, each call fails with ErrConnectionLost.
+	Connections(ctx context.Context, n int) ([]Backend, error)
 }
 
 // BatchStater is a Backend that answers many paths in one request, so a

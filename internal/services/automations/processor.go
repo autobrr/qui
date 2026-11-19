@@ -100,6 +100,10 @@ type torrentDesiredState struct {
 	exportToInstance         *models.ExportToInstanceAction
 	exportToInstanceRuleID   int
 	exportToInstanceRuleName string
+
+	// Transfer to instance (last rule wins)
+	transferToInstance     *models.TransferToInstanceAction
+	transferToInstanceRule ruleRef
 }
 
 type ruleRef struct {
@@ -149,13 +153,15 @@ type ruleRunStats struct {
 	ExternalProgramConditionNotMet   int
 	ExportToInstanceApplied          int
 	ExportToInstanceConditionNotMet  int
+	TransferApplied                  int
+	TransferConditionNotMet          int
 }
 
 func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied + s.ExportToInstanceApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied + s.ExportToInstanceApplied + s.TransferApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -624,6 +630,19 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
+	// Transfer to instance (last rule wins)
+	if transfer := conditions.TransferToInstance; transfer != nil && transfer.Enabled && transfer.TargetInstanceID > 0 {
+		if transfer.Condition == nil || EvaluateConditionWithContext(transfer.Condition, torrent, evalCtx, 0) {
+			if stats != nil {
+				stats.TransferApplied++
+			}
+			state.transferToInstance = transfer
+			state.transferToInstanceRule = ruleRef{id: rule.ID, name: rule.Name}
+		} else if stats != nil {
+			stats.TransferConditionNotMet++
+		}
+	}
+
 	// Move (first rule to trigger wins - skip if already set)
 	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
 		evaluateMoveAction(rule, conditions.Move, torrent, evalCtx, crossSeeds, stats, state)
@@ -1080,7 +1099,8 @@ func hasActions(state *torrentDesiredState) bool {
 		state.category != nil ||
 		state.shouldMove ||
 		state.externalProgramID != nil ||
-		state.exportToInstance != nil
+		state.exportToInstance != nil ||
+		state.transferToInstance != nil
 }
 
 // selectTrackerTag picks the best tracker domain to use as a tag.

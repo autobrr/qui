@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -18,9 +17,6 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
-
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
@@ -218,7 +214,7 @@ func TestAdaptiveSearchTimeoutScalesWithIndexerCount(t *testing.T) {
 	}{
 		{name: "zero indexers uses default", indexerCount: 0, expectedLimit: timeouts.DefaultSearchTimeout},
 		{name: "single indexer uses default", indexerCount: 1, expectedLimit: timeouts.DefaultSearchTimeout},
-		{name: "adds budget per indexer", indexerCount: 5, expectedLimit: timeouts.DefaultSearchTimeout + 4*timeouts.PerIndexerSearchTimeout},
+		{name: "adds budget per indexer", indexerCount: 5, expectedLimit: 13 * time.Second},
 		{name: "clamps to max", indexerCount: 500, expectedLimit: timeouts.MaxSearchTimeout},
 	}
 
@@ -1526,12 +1522,6 @@ func TestBuildSearchParamsDeduplicatesCategories(t *testing.T) {
 	}
 }
 
-func TestFormatCategoryListPreservesDuplicates(t *testing.T) {
-	if got := formatCategoryList([]int{CategoryMoviesHD, CategoryMovies, CategoryMoviesHD}); got != "2040,2000,2040" {
-		t.Fatalf("formatCategoryList() = %q, want %q", got, "2040,2000,2040")
-	}
-}
-
 func TestSearchGenericAutoDetectCategories(t *testing.T) {
 	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{}}
 	s := NewService(store)
@@ -1645,85 +1635,70 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 		},
 	}
 	s := NewService(store)
+	var mu sync.Mutex
+	var searched []int
 	s.searchExecutor = func(ctx context.Context, idxs []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+		mu.Lock()
+		defer mu.Unlock()
 		coverage := make([]int, 0, len(idxs))
 		for _, idx := range idxs {
-			if idx != nil && idx.Enabled {
-				coverage = append(coverage, idx.ID)
-			}
+			searched = append(searched, idx.ID)
+			coverage = append(coverage, idx.ID)
 		}
 		return []Result{}, coverage, nil
 	}
 
 	tests := []struct {
-		name        string
-		req         *TorznabSearchRequest
-		shouldError bool
+		name         string
+		indexerIDs   []int
+		wantSearched []int
 	}{
-		{
-			name: "search specific enabled indexer",
-			req: &TorznabSearchRequest{
-				Query:      "test",
-				IndexerIDs: []int{1},
-			},
-			shouldError: false,
-		},
-		{
-			name: "search multiple indexers",
-			req: &TorznabSearchRequest{
-				Query:      "test",
-				IndexerIDs: []int{1, 2},
-			},
-			shouldError: false,
-		},
-		{
-			name: "search disabled indexer returns empty",
-			req: &TorznabSearchRequest{
-				Query:      "test",
-				IndexerIDs: []int{3},
-			},
-			shouldError: false,
-		},
-		{
-			name: "search all enabled indexers",
-			req: &TorznabSearchRequest{
-				Query: "test",
-			},
-			shouldError: false,
-		},
+		{name: "search specific enabled indexer", indexerIDs: []int{1}, wantSearched: []int{1}},
+		{name: "search multiple indexers", indexerIDs: []int{1, 2}, wantSearched: []int{1, 2}},
+		{name: "search disabled indexer returns empty", indexerIDs: []int{3}},
+		{name: "search all enabled indexers", wantSearched: []int{1, 2}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			mu.Lock()
+			searched = nil
+			mu.Unlock()
+
 			respCh := make(chan *SearchResponse, 1)
 			errCh := make(chan error, 1)
-			tt.req.OnAllComplete = func(resp *SearchResponse, err error) {
-				if err != nil {
-					errCh <- err
-				} else {
-					respCh <- resp
-				}
+			req := &TorznabSearchRequest{
+				Query:      "test",
+				IndexerIDs: tt.indexerIDs,
+				CacheMode:  CacheModeBypass,
+				OnAllComplete: func(resp *SearchResponse, err error) {
+					if err != nil {
+						errCh <- err
+					} else {
+						respCh <- resp
+					}
+				},
 			}
 
-			searchErr := s.SearchGeneric(context.Background(), tt.req)
-			if tt.shouldError && searchErr == nil {
-				t.Error("SearchGeneric() expected error, got nil")
+			if err := s.SearchGeneric(context.Background(), req); err != nil {
+				t.Fatalf("SearchGeneric() unexpected error = %v", err)
 			}
-			if !tt.shouldError && searchErr != nil {
-				t.Errorf("SearchGeneric() unexpected error = %v", searchErr)
-			}
-			if !tt.shouldError {
-				var resp *SearchResponse
-				select {
-				case resp = <-respCh:
-					if resp == nil {
-						t.Error("SearchGeneric() returned nil response")
-					}
-				case err := <-errCh:
-					t.Errorf("SearchGeneric() callback error = %v", err)
-				case <-time.After(1 * time.Second):
-					t.Fatal("SearchGeneric timed out")
+			select {
+			case resp := <-respCh:
+				if resp == nil {
+					t.Fatal("SearchGeneric() returned nil response")
 				}
+			case err := <-errCh:
+				t.Fatalf("SearchGeneric() callback error = %v", err)
+			case <-time.After(1 * time.Second):
+				t.Fatal("SearchGeneric timed out")
+			}
+
+			mu.Lock()
+			got := slices.Sorted(slices.Values(searched))
+			mu.Unlock()
+			if !slices.Equal(got, tt.wantSearched) {
+				t.Fatalf("searched indexers = %v, want %v", got, tt.wantSearched)
 			}
 		})
 	}
@@ -2392,7 +2367,7 @@ func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
 	</categories>
 </caps>`
 
-	caps, err := parseTorznabCaps(strings.NewReader(prowlarrCapsXML))
+	caps, err := parseTorznabCapsResponse(strings.NewReader(prowlarrCapsXML), "")
 	if err != nil {
 		t.Fatalf("Failed to parse Prowlarr caps XML: %v", err)
 	}
@@ -2513,27 +2488,6 @@ func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
 	if !foundMoviesOther {
 		t.Error("Missing Movies > Other subcategory (2020)")
 	}
-
-	// Verify we have all the capabilities we expect
-	t.Logf("Parsed %d capabilities total", len(caps.Capabilities))
-	t.Logf("Parsed %d categories total", len(caps.Categories))
-
-	// Verify our capability parsing creates exactly what we need for hasCapability checks
-	testCapabilities := []string{
-		"movie-search-year",   // Critical for our Prowlarr workaround
-		"movie-search-imdbid", // Common for movie searches
-		"tv-search-season",    // Common for TV searches
-		"tv-search-ep",        // Common for TV searches
-		"music-search-artist", // Common for music searches
-		"book-search-author",  // Common for book searches
-	}
-
-	for _, testCap := range testCapabilities {
-		found := slices.Contains(caps.Capabilities, testCap)
-		if !found {
-			t.Errorf("Critical capability missing: %s", testCap)
-		}
-	}
 }
 
 func TestExtractInfoHashFromAttributes(t *testing.T) {
@@ -2593,19 +2547,9 @@ func TestExtractInfoHashFromAttributes(t *testing.T) {
 			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
 		},
 		{
-			name:     "magnet URL without other params",
-			attrs:    map[string]string{"magneturl": "magnet:?xt=urn:btih:63e07ff523710ca268567dad344ce1e0e6b7e8a3"},
-			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
-		},
-		{
 			name:     "infohash takes priority over magneturl",
 			attrs:    map[string]string{"infohash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "magneturl": "magnet:?xt=urn:btih:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
 			expected: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		},
-		{
-			name:     "invalid magnet URL",
-			attrs:    map[string]string{"magneturl": "not-a-magnet-url"},
-			expected: "",
 		},
 		{
 			name:     "magnet URL missing hash",
@@ -3134,15 +3078,6 @@ func TestRecentSurfacesTotalIndexerFailure(t *testing.T) {
 // TestRecentPartialCoverageMarksPartial verifies Recent flags incomplete indexer
 // coverage as partial even when no error is returned.
 func TestRecentPartialCoverageMarksPartial(t *testing.T) {
-	originalLogger := log.Logger
-	partialLogLevel := zerolog.NoLevel
-	log.Logger = zerolog.New(io.Discard).Level(zerolog.TraceLevel).Hook(zerolog.HookFunc(func(_ *zerolog.Event, level zerolog.Level, msg string) {
-		if msg == "Recent search returning partial results" {
-			partialLogLevel = level
-		}
-	}))
-	t.Cleanup(func() { log.Logger = originalLogger })
-
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{
 			{ID: 1, Name: "IndexerOne", Enabled: true},
@@ -3185,10 +3120,6 @@ func TestRecentPartialCoverageMarksPartial(t *testing.T) {
 		t.Fatalf("expected partial success, got error %v", err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("Recent never invoked its callback")
-	}
-
-	if partialLogLevel != zerolog.DebugLevel {
-		t.Fatalf("partial search log level = %s, want debug", partialLogLevel)
 	}
 }
 

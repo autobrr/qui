@@ -7,7 +7,7 @@ description: Manage theme license activations, deactivate old servers, and recov
 
 # License Management
 
-Some built-in themes need a license key. Each key has a limited number of activation slots, one for each server that runs qui. The same license also unlocks [custom themes](./features/custom-themes.md), which you sideload as CSS. The [supporter subscription](./support.md) is separate: a recurring donation that issues no key.
+Some built-in themes need a license key. Each key has a limited number of activation slots, one for each server that runs qui. The same license also unlocks [custom themes](./features/custom-themes.md), which you sideload as CSS. [Yearly support](./support.md) includes a theme license. It also has a key of its own, the supporter key, which you add from the heart icon.
 
 ## Activate a license
 

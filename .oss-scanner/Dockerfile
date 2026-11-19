@@ -11,7 +11,6 @@ RUN npm install -g corepack@latest && corepack enable
 COPY . /src
 WORKDIR /src
 
-# make build fetches the community themes, so the image holds all of them.
 RUN make build
 
 # Run the Go tests once, so the image holds every test dependency for offline runs.

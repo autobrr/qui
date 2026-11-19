@@ -146,6 +146,8 @@ export interface Torrent {
   trackers_count: number
   trackers?: TorrentTracker[]
   tracker_health?: "unregistered" | "tracker_down" | "tracker_error"
+  /** Set only on a torrent that qui added for a Transfer or a Share: the owner kind from the helper registry. */
+  qui_helper?: "transfer" | "share"
   up_limit: number
   uploaded: number
   uploaded_session: number

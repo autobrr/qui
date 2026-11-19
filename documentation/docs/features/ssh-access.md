@@ -106,7 +106,7 @@ The other pages name the two tiers by what qui can do:
 - "a remote instance where qui can run commands on the host" is the tier **SFTP + commands**.
 - "a remote instance where qui only has SFTP" is the tier **SFTP**.
 
-qui tests again each time that it connects, and the tier follows the result. In **Settings → Instances**, the card of a remote instance shows **Over SSH**. Point at the label to read the limits of the instance. The SSH tab shows the same limits below the settings.
+qui tests again each time that it connects, and the tier follows the result. In **Settings → Instances**, the row of a remote instance shows **Files over SSH**. To read the limits of the instance, open the instance and look below the settings on the SSH tab.
 
 ## What works over SSH
 
@@ -124,6 +124,7 @@ qui tests again each time that it connects, and the tier follows the result. In 
 | Automations: Has Missing Files condition | Yes | Yes | Yes |
 | Automations: Hardlink Scope conditions, hardlink grouping, and **Include hardlinked copies** | Yes | No | No |
 | Detection of hardlinked cross-seeds in the delete dialog | Yes | No | No |
+| [Transfer](./transfers.md#cross-seeds-on-hardlinks): cross-seeds on hardlinks move with the torrent | Yes | No | No |
 | Content file download, MediaInfo, and BDInfo | Yes | No | No |
 | Cross-seed ID fallback from MKV tags | Yes | No | No |
 

@@ -113,15 +113,60 @@ An instance without a status icon shows live data. If a qBittorrent instance res
 
 ## Interface preferences sync
 
-qui stores interface preferences in its database, so they apply on every browser and device. This covers:
+qui stores interface preferences in its database, so they follow you to each browser and device. Each browser keeps a local copy for fast startup. After a short delay, the browser sends each change to the server. Other open tabs get the change through the live stream. You do not need to configure anything.
 
-- Theme selection
-- Torrent table columns: visibility, order, sorting, and widths
-- Active filters, sidebar state, and collapsed categories
-- View mode, speed units, language, incognito mode, and date and time format
+qui puts each preference into one of three groups:
 
-Each browser keeps a local copy for fast startup. After a short delay, the browser pushes changes to the server automatically. Other open tabs receive these updates through the live stream. You do not need to configure anything.
+- Display settings follow the [Display profile](#display-profiles) of the browser.
+- Sort and filters are the same in every profile, unless a profile [keeps its own](#own-sort-and-filters).
+- All other preferences are the same in every browser. Examples are the language, the speed units, the date and time format, the delete defaults, incognito mode, and the view of the Dashboard chart.
+
+The theme has its own sync. See [Theme selection syncs across devices](./custom-themes.md#theme-selection-syncs-across-devices). qui does not sync the height of the details panel. Each browser keeps its own height.
 
 :::note
-qui is single-user software. Interface preferences belong to the installation, not to a browser or an account. Everyone who logs in to the same qui sees the same preferences.
+qui is single-user software. Interface preferences and Display profiles belong to the installation, not to a browser or an account. Everyone who logs in to the same qui sees the same profiles. The pick of a profile belongs to the browser.
 :::
+
+### Display profiles
+
+A Display profile is a named set of Display settings. Display settings are the preferences that can be different on each screen:
+
+- The [table columns](./torrent-management.md#table-columns): which columns show, their order, their widths, and the stretch or scroll mode of the Name column
+- The row density of the torrent table, and the view of the mobile torrent list
+- The app sidebar and the filter sidebar, open or closed
+- The open sections of the filter sidebar
+- The collapsed category trees
+- The switches that show empty statuses, categories, and tags
+
+Each browser uses one profile, and only that browser remembers its pick. A browser that never picked a profile uses Default. A private window starts on Default. If you used qui before Display profiles, Default holds the Display settings that you had then.
+
+A change to a Display setting goes to the profile of the browser. The other profiles do not change. If two browsers use the same profile, a change in one browser also shows in the other. If you clear the site data of a browser, the browser uses Default again. Pick your profile again to get its Display settings back.
+
+To make a profile, click the profile chip in the status bar under the torrent table. Then click **New profile from this setup…**, enter a name, and click **Create**. The new profile copies these values from the profile of the browser:
+
+- Every Display setting, for every instance
+- The switches **Same columns on every instance** and **Own sort and filters**
+- The own sort and filters, if the source profile keeps its own
+
+The new profile does not copy the icon or the color. After **Create**, this browser uses the new profile. **Settings → Display profiles** has the same button.
+
+A name has 1 to 32 characters. Two profiles cannot have the same name, also if the letter case is different. While you type the name, qui selects an icon that fits it, for example a smartphone for "Phone". To use a different icon or a color, click the icon button in the dialog.
+
+To use a different profile in this browser, click the chip, and then click the profile. The table changes at once. On a phone, open the sort menu above the cards and tap **Display profile**. Then tap the profile in the sheet that opens. The sheet also has the **New profile from this setup…** button.
+
+**Settings → Display profiles** lists the profiles. Click a profile to open it in the editor. In the editor, you can change the name, the icon, the color, and the two switches, and you can delete the profile. **Use in this browser** makes this browser use the profile. On a phone, tap a profile to use it, and tap **›** to open the editor. You can rename Default, but you cannot delete it. When you delete a profile, each browser that uses it moves to Default. The other browsers show a message, for example "The Laptop profile was deleted. This browser now uses Default."
+
+### Own sort and filters
+
+Sort and filters are these preferences:
+
+- The sort of the torrent table and of the mobile torrent list
+- The column filters and the sidebar filters
+- The instances that the Unified view shows
+- [Group copies](./torrent-management.md#group-copies), on or off
+- The last open tab of the details panel
+- The instance that the Backups and RSS pages show
+
+By default, every profile shares them. Thus, a filter that you set on one screen also shows on a screen with a different profile. To give a profile its own sort and filters, open the profile in **Settings → Display profiles** and turn on **Own sort and filters**. The profile starts with a copy of the shared values, so nothing changes at that moment. After that, a change in this profile does not reach the other profiles, and a change in the other profiles does not reach this one. Default always shares its sort and filters, so it has no switch.
+
+If you turn the switch off, qui deletes the own sort and filters of the profile. The profile then uses the shared values again. qui does not ask for a confirmation. The help line under the switch tells you this before you turn it off.

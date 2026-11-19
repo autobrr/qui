@@ -7,24 +7,12 @@
       "disconnected": "Getrennt"
     },
     "tooltips": {
-      "disableInstance": "Instanz deaktivieren",
-      "enableInstance": "Instanz aktivieren",
       "moveUp": "Nach oben",
       "moveDown": "Nach unten"
     },
     "actions": {
-      "edit": "Bearbeiten",
       "testConnection": "Verbindung testen",
       "delete": "Löschen"
-    },
-    "labels": {
-      "username": "Benutzername:",
-      "basicAuth": "Basic Auth:",
-      "tlsVerification": "TLS-Überprüfung:",
-      "tlsSkipped": "Übersprungen",
-      "tlsStrict": "Strikt",
-      "testingConnection": "Verbindung wird getestet...",
-      "fileAccess": "Dateizugriff:"
     },
     "deleteDialog": {
       "title": "Instanz löschen",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "Instanz deaktiviert",
-      "testDisabledDescription": "Aktiviere die Instanz, bevor du die Verbindung testest.",
       "testSuccessTitle": "Verbindungstest erfolgreich",
       "testSuccessDescription": "Erfolgreich mit der qBittorrent-Instanz verbunden",
       "testFailedTitle": "Verbindungstest fehlgeschlagen",
@@ -55,7 +42,13 @@
     "passwordRequired": "Passwort erforderlich",
     "decryptionDescription": "Das gespeicherte Passwort kann nicht entschlüsselt werden. Das passiert üblicherweise, wenn sich das Session-Secret geändert hat.",
     "reenterPassword": "Passwort erneut eingeben",
-    "recentErrors": "Letzte Fehler ({{count}})"
+    "recentErrors": "Letzte Fehler ({{count}})",
+    "errorTypes": {
+      "connection": "Verbindung",
+      "authentication": "Authentifizierung",
+      "ban": "Sperre",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "Instanzname ist erforderlich",
-      "basicAuthPasswordRequired": "Basic-Auth-Passwort ist erforderlich, wenn Basic Auth aktiviert ist"
+      "basicAuthPasswordRequired": "Basic-Auth-Passwort ist erforderlich, wenn Basic Auth aktiviert ist",
+      "usernameRequired": "Benutzername ist erforderlich",
+      "passwordRequired": "Passwort ist erforderlich",
+      "apiKeyRequired": "API-Schlüssel ist erforderlich"
     },
     "buttons": {
-      "saving": "Wird gespeichert...",
       "updateInstance": "Instanz aktualisieren",
-      "addInstance": "Instanz hinzufügen",
-      "cancel": "Abbrechen"
+      "addInstance": "Instanz hinzufügen"
     },
     "toast": {
-      "missingCredentialsTitle": "Fehlende Anmeldedaten",
       "instanceUpdatedTitle": "Instanz aktualisiert",
       "instanceUpdatedDescription": "Instanz erfolgreich aktualisiert. Verbindungstest läuft im Hintergrund...",
-      "updateFailedTitle": "Aktualisierung fehlgeschlagen",
       "updateFailedDescription": "Aktualisieren der Instanz fehlgeschlagen",
       "instanceCreatedTitle": "Instanz erstellt",
       "instanceCreatedDescription": "Instanz erfolgreich erstellt. Verbindungstest läuft im Hintergrund...",
-      "createFailedTitle": "Erstellen fehlgeschlagen",
       "createFailedDescription": "Erstellen der Instanz fehlgeschlagen"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "Benutzername und Passwort",
       "apiKey": "API-Key"
     },
-    "sshAfterSave": "Der SSH-Zugriff auf die Dateien der Instanz wird nach dem Speichern in den Instanz-Einstellungen eingerichtet."
+    "sshAfterSave": "Der SSH-Zugriff auf die Dateien der Instanz wird nach dem Speichern in den Instanz-Einstellungen eingerichtet.",
+    "addTitle": "Instanz hinzufügen",
+    "addDescription": "Eine neue qBittorrent-Instanz konfigurieren",
+    "editTitle": "Instanz bearbeiten"
   },
   "settingsButton": {
     "tooltip": "Instanz-Einstellungen"
@@ -561,6 +555,7 @@
         "externalProgram": "Externes Programm",
         "dryRun": "Probelauf",
         "exportToInstance": "In Instanz exportieren",
+        "transferToInstance": "An Instanz übertragen",
         "ruleSkipped": "Regel nicht ausgeführt"
       },
       "shareLimit": {
@@ -614,7 +609,9 @@
         "exportedDryRun_one": "{{count}} Torrent würde exportiert",
         "exportedDryRun_other": "{{count}} Torrents würden exportiert",
         "exportFailed_one": "{{count}} Torrent konnte nicht exportiert werden",
-        "exportFailed_other": "{{count}} Torrents konnten nicht exportiert werden"
+        "exportFailed_other": "{{count}} Torrents konnten nicht exportiert werden",
+        "transferredDryRun_one": "{{count}} Torrent würde übertragen",
+        "transferredDryRun_other": "{{count}} Torrents würden übertragen"
       },
       "deleteDialog": {
         "title": "Regel löschen",
@@ -674,6 +671,7 @@
         "deleteActivityFailed": "Aktivität konnte nicht gelöscht werden"
       },
       "exported": "Exportiert",
+      "transferStarted": "Gestartet",
       "skipped": "Übersprungen"
     },
     "runWorkflowNow": {
@@ -973,6 +971,7 @@
         "auto_managed": "Automatisch verwaltet",
         "dry_run_no_match": "Probelauf (keine Übereinstimmung)",
         "exported_to_instance": "Export zur Instanz",
+        "transferred_to_instance": "An Instanz übertragen",
         "rule_skipped": "Regel nicht ausgeführt"
       }
     },
@@ -1150,6 +1149,11 @@
         "skipChecking": "Prüfung überspringen",
         "addPaused": "Pausiert hinzufügen"
       },
+      "transfer": {
+        "title": "An Instanz übertragen",
+        "description": "Verschiebt jeden passenden Torrent mit seinen Dateien in die Zielinstanz und prüft die Kopie, bevor etwas entfernt wird. Die Seite Transfers zeigt jeden Transfer.",
+        "remove": "„An Instanz übertragen“ entfernen"
+      },
       "priority": {
         "title": "Torrent-Priorität",
         "description": "Steuert die Reihenfolge, in der Torrents verarbeitet werden.",
@@ -1192,7 +1196,8 @@
         "category": "Kategorie",
         "move": "Verschieben",
         "externalProgram": "Externes Programm ausführen",
-        "exportToInstance": "In Instanz exportieren"
+        "exportToInstance": "In Instanz exportieren",
+        "transferToInstance": "An Instanz übertragen"
       },
       "option": {
         "noChange": "Keine Änderung",
@@ -1448,6 +1453,7 @@
           "externalProgram": "Externes Programm",
           "noMatches": "Keine Treffer",
           "exportedToInstance": "In Instanz exportieren",
+          "transferredToInstance": "An Instanz übertragen",
           "ruleSkipped": "Regel nicht ausgeführt"
         },
         "actionFallback": "Unbekannte Aktion ({{action}})",
@@ -2099,10 +2105,9 @@
     }
   },
   "access": {
-    "local": "Lokal",
-    "remote": "Über SSH",
-    "none": "Keiner",
-    "localFull": "qui liest und schreibt die Dateien dieser Instanz auf diesem Rechner.",
+    "local": "Lokale Dateien",
+    "remote": "Dateien über SSH",
+    "none": "Kein Dateizugriff",
     "limits": {
       "noIdentity": "Keine Dateiidentität: qui erkennt nicht, wenn zwei Pfade dieselbe Datei sind. Der Orphan-Scan kann hier nicht löschen, und ein vorhandenes Hardlink-Ziel stoppt ein Hinzufügen per Hardlink.",
       "noReflinks": "Keine Reflinks auf einer Remote-Instanz.",
@@ -2113,5 +2118,17 @@
     "label": "Auch den Übertragungsverlauf löschen",
     "description": "Ohne diese Option behält qui den Verlauf unter dem Namen der Instanz.",
     "failed": "Die Instanz ist gelöscht, aber qui konnte nicht ihren ganzen Verlauf löschen. Sieh unter Einstellungen > Statistik nach und lösche den Rest dort."
+  },
+  "list": {
+    "label": "Instanzen",
+    "emptyTitle": "Noch keine Instanzen konfiguriert",
+    "emptyDescription": "Füge einen qBittorrent-Client hinzu, damit qui seine Torrents verwalten kann.",
+    "tlsSkipped": "TLS-Prüfung aus",
+    "reorderFailed": "Instanzen konnten nicht neu sortiert werden"
+  },
+  "publicPeerAddress": {
+    "label": "Öffentliche Peer-Adresse",
+    "noResolvedAddress": "qui kann noch keine Adresse ermitteln",
+    "description": "Die Adresse und der Port, unter denen andere BitTorrent-Clients dieses qBittorrent erreichen, für Transfers und Freigaben. Lass das Feld leer, damit qui die Adresse bei jeder Verwendung aus qBittorrent ermittelt. Setze sie, wenn qBittorrent in Docker oder hinter NAT läuft."
   }
 }

@@ -5,6 +5,9 @@
     "search": "Suche",
     "crossSeed": "Cross-Seed",
     "automations": "Automatisierungen",
+    "transfers": "Transfers",
+    "transfersQueued_one": "{{count}} Eintrag läuft oder wartet",
+    "transfersQueued_other": "{{count}} Einträge laufen oder warten",
     "backups": "Backups",
     "rss": "RSS",
     "settings": "Einstellungen",
@@ -59,6 +62,7 @@
     "smartSearchEnter": "Enter für sofortige Suche drücken",
     "smartSearchAuto": "Sucht automatisch nach 500 ms Pause",
     "smartSearchShortcut": "{{shortcutKey}} drücken, um zur Suche zu springen",
+    "smartSearchPalette": "{{shortcutKey}} drücken, um die Befehlspalette zu öffnen",
     "torrentCreationTasksTitle": "Torrent-Erstellungsaufgaben",
     "updateAvailable": "Update verfügbar",
     "updateVersion": "Version {{version}}",
@@ -76,6 +80,33 @@
     "collapseScope": "Vereinheitlichten Bereich einklappen",
     "expandScope": "Vereinheitlichten Bereich ausklappen",
     "allActive": "Alle aktiv ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Befehlspalette",
+    "placeholder": "Seiten, Einstellungen und Torrents suchen...",
+    "placeholderIn": "In {{name}} suchen...",
+    "groups": {
+      "pages": "Seiten",
+      "actions": "Aktionen"
+    },
+    "current": "Aktuell",
+    "statisticsNote": "Upload- und Download-Verlauf deiner Instanzen",
+    "searchTorrentsFor": "Torrents nach \"{{query}}\" durchsuchen",
+    "torrentMatches_one": "{{count}} Torrent passt",
+    "torrentMatches_other": "{{count}} Torrents passen",
+    "noTorrentMatches": "Kein Torrent passt",
+    "searching": "Suche läuft...",
+    "searchFailed": "Die Torrent-Suche ist fehlgeschlagen",
+    "listFiltersApply": "Filter der Liste aktiv",
+    "noMatchIn": "Kein Treffer in {{name}}",
+    "moreOf": "Mehr zu {{name}}",
+    "hints": {
+      "navigate": "Navigieren",
+      "open": "Öffnen",
+      "more": "Mehr",
+      "searchTorrents": "Torrents suchen",
+      "back": "Zurück"
+    }
   },
   "mobileNav": {
     "dashboard": "Dashboard",
@@ -223,6 +254,28 @@
         "fix": "Wenn der Schlüssel falsch ist, erstelle in deinen Orpheus-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein. Wenn Orpheus die IP von qui gesperrt hat, hilft ein neuer Schlüssel nicht: wende dich an das Team von Orpheus.",
         "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
         "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Zeitplan des Bibliotheks-Scans blockiert",
+        "title": "Zeitplan des Bibliotheks-Scans kann nicht laufen",
+        "effect": "qui kann den geplanten Bibliotheks-Scan nicht starten. qui versucht es jede Stunde erneut.",
+        "fix": "Prüfe die Einstellungen des Bibliotheks-Scans. qui versucht es jede Stunde erneut.",
+        "menuFix": "Einstellungen des Bibliotheks-Scans prüfen",
+        "action": "Einstellungen des Bibliotheks-Scans öffnen",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab ist in den Einstellungen des Bibliotheks-Scans aus, und kein RED- oder OPS-API-Schlüssel ist gesetzt. Schalte Torznab ein, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",
+            "menuFix": "Torznab einschalten oder RED- oder OPS-Schlüssel hinzufügen"
+          },
+          "no_indexer": {
+            "fix": "Kein Indexer ist aktiviert. Aktiviere einen Torznab-Indexer, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",
+            "menuFix": "Einen Indexer aktivieren"
+          },
+          "instance_missing": {
+            "fix": "Die Instanz in den gespeicherten Einstellungen des Bibliotheks-Scans existiert nicht. Wähle eine Instanz in den Einstellungen des Bibliotheks-Scans und speichere. qui versucht es jede Stunde erneut.",
+            "menuFix": "Instanz wählen, dann speichern"
+          }
+        }
       }
     },
     "actions": {
@@ -321,14 +374,77 @@
   },
   "support": {
     "title": "qui unterstützen",
-    "description": "Hast du schon Designs und möchtest weiter helfen? Alles in qui gehört dir bereits. Ein Abo schaltet keine Funktionen frei, es finanziert die Zeit, die in ihre Entwicklung fließt.",
-    "perkPrefix": "Patrons erhalten die Rolle",
-    "perkSuffix": "in Discord und unsere ewige Dankbarkeit.",
-    "yearly": "{{price}} / Jahr",
-    "monthly": "{{price}} / Monat",
-    "notLicense": "Die Design-Lizenz ist ein separater einmaliger Kauf."
+    "description": "Die Wege, qui zu unterstützen, und ihre Preise.",
+    "heading": "Hilf mit, qui zu pflegen",
+    "intro": "qui ist kostenlos und funktioniert gleich, ob du zahlst oder nicht. Die Unterstützung bezahlt die Zeit und die Werkzeuge, die in qui stecken.",
+    "licensed": "Danke für deine Design-Lizenz.",
+    "releases_one": "qui hat in den letzten 12 Monaten {{count}} Version veröffentlicht.",
+    "releases_other": "qui hat in den letzten 12 Monaten {{count}} Versionen veröffentlicht.",
+    "releaseMap": "Die letzten 52 Wochen, ein Quadrat pro Tag. Ein helles Quadrat ist ein Tag mit einer neuen Version.",
+    "releaseDay": "Ein Tag mit einer neuen Version",
+    "plans": {
+      "yearly": "{{price}} pro Jahr",
+      "yearlyNote": "{{price}} pro Monat, jährlich bezahlt",
+      "yearlyNoteWithLicense": "{{price}} pro Monat, jährlich bezahlt. Inklusive Design-Lizenz.",
+      "license": "Design-Lizenz, ab {{price}}",
+      "licenseNote": "Alle aktuellen und zukünftigen Premium-Designs, lebenslang",
+      "onePayment": "einmalige Zahlung"
+    },
+    "checkout": "Weiter zum Checkout",
+    "fromPrice": "ab {{price}}",
+    "terms": {
+      "yearly": "Du zahlst heute {{price}} und danach jedes Jahr {{price}}, bis du kündigst.",
+      "license": "Eine Zahlung von {{price}} oder mehr, den Betrag legst du im Checkout fest. Kein Abo."
+    },
+    "perks": {
+      "yearly": "Supporter erhalten das Supporter-Abzeichen in qui und die Supporter-Rolle in Discord. Füge nach dem Checkout deinen Supporter-Schlüssel zu diesem Server hinzu.",
+      "license": "Die Lizenz schaltet die Premium-Designs frei. Füge nach dem Checkout deinen Lizenzschlüssel zu diesem Server hinzu."
+    },
+    "existing": "Schon Supporter?",
+    "addKey": "Supporter-Schlüssel hinzufügen",
+    "key": {
+      "help": "Dein Supporter-Schlüssel steht auf der Checkout-Seite und in der E-Mail mit deiner Quittung.",
+      "label": "Supporter-Schlüssel",
+      "submit": "Schlüssel hinzufügen",
+      "back": "Zurück"
+    },
+    "ended": "Der Supporter-Schlüssel auf diesem Server ist nicht mehr gültig. qui prüft ihn jeden Tag erneut. Wenn deine Unterstützung beendet ist, bleibt deine Design-Lizenz erhalten. Ihren Schlüssel findest du im <portal>Lizenzportal</portal>. Füge ihn unter Einstellungen, Designs hinzu.",
+    "removeKey": "Supporter-Schlüssel von diesem Server entfernen",
+    "supporter": {
+      "badge": "Supporter",
+      "title": "Du unterstützt qui",
+      "thanks": "Danke. Deine Unterstützung bezahlt die Zeit und die Werkzeuge, die in qui stecken.",
+      "detail": "Du hast das Supporter-Abzeichen in qui und die Supporter-Rolle in Discord. Deine Unterstützung schaltet auch die Premium-Designs frei und enthält eine lebenslange Design-Lizenz. Den Lizenzschlüssel findest du im <portal>Lizenzportal</portal>.",
+      "manage": "Unterstützung verwalten oder kündigen"
+    },
+    "reminder": {
+      "title_one": "{{count}} Tag qui auf diesem Server",
+      "title_other": "{{count}} Tage qui auf diesem Server",
+      "tooltip": "Auf diesem Server gezählt und nie gesendet. qui fragt einmal im Jahr.",
+      "subtitle": "qui unterstützen. qui fragt einmal im Jahr.",
+      "notNow": "Nicht jetzt",
+      "serverDays_one": "Dieser Server nutzt qui seit {{count}} Tag. qui zählt das auf diesem Server und sendet es nie.",
+      "serverDays_other": "Dieser Server nutzt qui seit {{count}} Tagen. qui zählt das auf diesem Server und sendet es nie.",
+      "notNowToast": "qui fragt in einem Jahr wieder",
+      "dontAskAgain": "Nicht mehr fragen",
+      "offToast": "qui fragt nicht mehr",
+      "offToastDescription": "Die Verknüpfung zum Unterstützen bleibt. Schalte die Erinnerung unter Einstellungen, Anwendung wieder ein.",
+      "undo": "Rückgängig",
+      "hiddenToast": "Die Verknüpfung zum Unterstützen ist ausgeblendet",
+      "hiddenToastDescription": "qui fragt nicht mehr. Hole die Verknüpfung unter Einstellungen, Anwendung zurück.",
+      "notForYou": "Nichts für dich? <reminder>Schalte die jährliche Erinnerung aus</reminder> oder <heart>blende das Herz aus</heart>. Die Einstellungen bringen beides zurück.",
+      "notForYouHeart": "Nichts für dich? <heart>Blende das Herz aus</heart>. Die Einstellungen bringen es zurück."
+    }
   },
   "labels": {
-    "path": "Pfad"
+    "path": "Pfad",
+    "beta": "Beta"
+  },
+  "kit": {
+    "loadFailed": "Dieser Abschnitt konnte nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "edit": "Bearbeiten",
+    "moreActions": "Weitere Aktionen",
+    "enabled": "Aktiviert"
   }
 }

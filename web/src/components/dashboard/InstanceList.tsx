@@ -22,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
-import { writeRaw } from "@/lib/client-settings"
+import { writeClientSetting } from "@/lib/client-settings"
 import {
   connectionStatusOf,
   instanceHealth,
@@ -77,7 +77,7 @@ export function IssueLink({ issue, className, children }: { issue: InstanceIssue
       params={{ instanceId: String(issue.instanceId) }}
       onClick={event => {
         event.stopPropagation()
-        writeRaw("qui-filters-global", JSON.stringify({ status: [issue.kind], excludeStatus: [] }))
+        writeClientSetting("qui-filters-global", { status: [issue.kind], excludeStatus: [] })
       }}
       className={className}
     >

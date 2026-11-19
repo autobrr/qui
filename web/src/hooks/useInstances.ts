@@ -10,6 +10,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+/** The key of the status save, so that a list can read the ids of the instances that it still runs for. */
+export const instanceStatusKey = ["instances", "status"] as const
+
 export function useInstances() {
   const queryClient = useQueryClient()
   const { t } = useTranslation("instances")
@@ -82,6 +85,7 @@ export function useInstances() {
   })
 
   const statusMutation = useMutation<InstanceResponse, Error, { id: number; isActive: boolean }, { previousInstances?: InstanceResponse[] }>({
+    mutationKey: instanceStatusKey,
     mutationFn: ({ id, isActive }) => api.updateInstanceStatus(id, isActive),
     onMutate: async ({ id, isActive }) => {
       await queryClient.cancelQueries({ queryKey: ["instances"] })

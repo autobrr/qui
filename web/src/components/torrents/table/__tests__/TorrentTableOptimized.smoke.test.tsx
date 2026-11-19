@@ -23,12 +23,14 @@
 
 import { TorrentTableOptimized } from "@/components/torrents/TorrentTableOptimized"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
 import { useBulkActions } from "@/components/torrents/bulk-actions/bulk-actions-context"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { api } from "@/lib/api"
+import { _resetClientSettingsForTests } from "@/lib/client-settings"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, renderHook, waitFor, within } from "@testing-library/react"
@@ -53,6 +55,8 @@ const scenario = vi.hoisted(() => ({
   listOptions: undefined as { groupCopies?: boolean } | undefined,
   isDemo: false,
   capabilities: undefined as InstanceCapabilities | undefined,
+  streamError: null as string | null,
+  streamRetrying: false,
 }))
 // The real list controller, so a test can read its load-more window.
 const controller = vi.hoisted(() => ({ current: undefined as undefined | { loadedRows: number; reportNearEnd: () => void } }))
@@ -211,8 +215,8 @@ vi.mock("@/hooks/useTorrentsList", () => {
         streamConnected: false,
         streamMeta: undefined,
         isStreaming: false,
-        streamError: null,
-        streamRetrying: false,
+        get streamError() { return scenario.streamError },
+        get streamRetrying() { return scenario.streamRetrying },
         streamNextRetryAt: undefined,
         streamRetryAttempt: 0,
         get isCrossSeedFiltering() { return scenario.isCrossSeedFiltering },
@@ -263,12 +267,14 @@ function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <TorrentSelectionProvider>
-          <BulkActionProvider>
-            <PublishedTargetProbe />
-            {children}
-          </BulkActionProvider>
-        </TorrentSelectionProvider>
+        <MobileScrollProvider>
+          <TorrentSelectionProvider>
+            <BulkActionProvider>
+              <PublishedTargetProbe />
+              {children}
+            </BulkActionProvider>
+          </TorrentSelectionProvider>
+        </MobileScrollProvider>
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -278,6 +284,7 @@ function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>
 describe("TorrentTableOptimized smoke", () => {
   beforeEach(() => {
     localStorage.clear()
+    _resetClientSettingsForTests()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
     scenario.totalCount = torrents.length
@@ -535,6 +542,7 @@ function renderGroups(rows: Torrent[], props: Partial<ComponentProps<typeof Torr
 describe("TorrentTableOptimized Copy groups", () => {
   beforeEach(() => {
     localStorage.clear()
+    _resetClientSettingsForTests()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
     scenario.rows = undefined
@@ -888,9 +896,46 @@ describe("TorrentTableOptimized Copy groups", () => {
   })
 })
 
+describe("TorrentTableOptimized stream status", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    _resetClientSettingsForTests()
+    scenario.isCrossSeedFiltering = false
+    scenario.rows = undefined
+    scenario.streamError = null
+    scenario.streamRetrying = false
+  })
+
+  // regression: #4206
+  it("shows only the dot while the stream connects, and names the dot and the tooltip with the label", async () => {
+    const { getByRole, queryByText, findByRole } = renderTable()
+
+    expect(queryByText("statusBar.streamStatus.connecting.label")).toBeNull()
+    const dot = getByRole("img", { name: "statusBar.streamStatus.connecting.label" })
+
+    fireEvent.click(dot)
+
+    const tooltip = await findByRole("tooltip")
+    expect(tooltip.textContent).toContain("statusBar.streamStatus.connecting.label")
+    expect(tooltip.textContent).toContain("statusBar.streamStatus.connecting.message")
+    expect(tooltip.textContent).toContain("statusBar.streamStatus.connecting.secondary")
+  })
+
+  it.each([
+    ["reconnecting", { streamRetrying: true }, "statusBar.streamStatus.reconnecting.label"],
+    ["fallback", { streamError: "stream closed by the server" }, "statusBar.streamStatus.fallback.degraded.label"],
+  ] as const)("shows the label next to the dot while the stream is %s", (_phase, stream, label) => {
+    Object.assign(scenario, stream)
+    const { getByText } = renderTable()
+
+    expect(getByText(label)).toBeTruthy()
+  })
+})
+
 describe("TorrentTableOptimized Group copies switch", () => {
   beforeEach(() => {
     localStorage.clear()
+    _resetClientSettingsForTests()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
     scenario.totalCount = torrents.length

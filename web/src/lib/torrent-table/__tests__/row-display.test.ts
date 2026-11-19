@@ -12,25 +12,19 @@ import { describe, expect, it } from "vitest"
 const t = i18n.getFixedT("en", "torrents")
 
 describe("getRowBackgroundClass", () => {
-  it("uses the accent background when the row is selected, regardless of zebra parity", () => {
-    expect(getRowBackgroundClass(true, false, 0)).toBe("bg-accent")
-    expect(getRowBackgroundClass(true, false, 1)).toBe("bg-accent")
-    expect(getRowBackgroundClass(false, true, 0)).toBe("bg-accent")
+  it("highlights a selected row the same way on every stripe", () => {
+    const selected = getRowBackgroundClass(true, false, 0)
+    expect(getRowBackgroundClass(true, false, 1)).toBe(selected)
+    expect(getRowBackgroundClass(false, true, 0)).toBe(selected)
+    expect(selected).not.toBe(getRowBackgroundClass(false, false, 0))
+    expect(selected).not.toBe(getRowBackgroundClass(false, false, 1))
   })
 
-  it("selection takes precedence over the zebra stripe", () => {
-    // Odd index would normally be muted, but selection wins.
-    expect(getRowBackgroundClass(true, false, 1)).toBe("bg-accent")
-  })
-
-  it("applies the zebra stripe to odd rows when unselected", () => {
-    expect(getRowBackgroundClass(false, false, 1)).toBe("bg-muted/40")
-    expect(getRowBackgroundClass(false, false, 3)).toBe("bg-muted/40")
-  })
-
-  it("returns no background for unselected even rows", () => {
+  it("stripes odd unselected rows", () => {
     expect(getRowBackgroundClass(false, false, 0)).toBe("")
     expect(getRowBackgroundClass(false, false, 2)).toBe("")
+    expect(getRowBackgroundClass(false, false, 1)).not.toBe("")
+    expect(getRowBackgroundClass(false, false, 3)).toBe(getRowBackgroundClass(false, false, 1))
   })
 })
 

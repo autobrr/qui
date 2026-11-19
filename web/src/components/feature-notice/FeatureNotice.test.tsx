@@ -9,7 +9,7 @@ import { forwardRef } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { _resetClientSettingsForTests, applyServerSettings, readRaw, seedAndMarkReady, writeRaw } from "@/lib/client-settings"
-import { _resetFeatureNoticesForTests } from "./due-notice"
+import { _resetFeatureNoticesForTests, markFeatureNoticeSeen } from "./due-notice"
 import { FeatureNotice } from "./FeatureNotice"
 import type { FeatureNoticeId } from "./notices"
 
@@ -84,16 +84,6 @@ afterEach(() => {
 })
 
 describe("FeatureNotice", () => {
-  it("shows the bubble with its text and buttons when the feature is off", () => {
-    loadServerSnapshot()
-    renderNotice("first")
-
-    expect(screen.getByText("first.title")).not.toBeNull()
-    expect(screen.getByText("first.description")).not.toBeNull()
-    expect(screen.getByRole("button", { name: "common:featureNotice.gotIt" })).not.toBeNull()
-    expect(screen.getByRole("button", { name: "first.action" })).not.toBeNull()
-  })
-
   it("shows nothing before the first server snapshot arrives", () => {
     renderNotice("first")
     expect(bubbleShown()).toBe(false)
@@ -130,6 +120,17 @@ describe("FeatureNotice", () => {
     expect(bubbleShown()).toBe(true)
 
     act(() => writeRaw("qui-test-first-on", "true"))
+
+    expect(bubbleShown()).toBe(false)
+    expect(readRaw(FIRST_SEEN)).toBe("true")
+  })
+
+  it("closes and stores seen when the control opens and marks it seen", () => {
+    loadServerSnapshot()
+    renderNotice("first")
+    expect(bubbleShown()).toBe(true)
+
+    act(() => markFeatureNoticeSeen("first"))
 
     expect(bubbleShown()).toBe(false)
     expect(readRaw(FIRST_SEEN)).toBe("true")

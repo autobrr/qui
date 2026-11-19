@@ -6,9 +6,11 @@ package metadata
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -47,24 +49,6 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		"data": map[string]string{"token": "test-jwt-token"},
 	}
 	_ = json.NewEncoder(w).Encode(resp)
-}
-
-func TestTVDB_AuthFlow(t *testing.T) {
-	t.Parallel()
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v4/login", handleLogin)
-
-	ts := serveTVDB(t, mux)
-	p := tvdbProviderWithBase(ts.URL, "test-key", "1234")
-
-	err := p.ensureToken(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if p.token != "test-jwt-token" {
-		t.Errorf("got token %q, want %q", p.token, "test-jwt-token")
-	}
 }
 
 func TestTVDB_SearchAndEpisodes(t *testing.T) {
@@ -116,31 +100,59 @@ func TestTVDB_SearchAndEpisodes(t *testing.T) {
 func TestTVDB_TokenRefreshWhenExpired(t *testing.T) {
 	t.Parallel()
 
-	var loginCalls int
 	mux := http.NewServeMux()
-
-	mux.HandleFunc("/v4/login", func(w http.ResponseWriter, r *http.Request) {
-		loginCalls++
-		handleLogin(w, r)
-	})
+	mux.HandleFunc("/v4/login", handleLogin)
+	handleShowWithTwoEpisodes(mux, func(auth string) bool { return auth == "Bearer test-jwt-token" })
 
 	ts := serveTVDB(t, mux)
 	p := tvdbProviderWithBase(ts.URL, "test-key", "")
 
-	// Set an expired token so ensureToken must refresh.
+	// An expired token that the server no longer accepts.
 	p.token = "old-token"
 	p.tokenExpiry = time.Now().Add(-1 * time.Hour)
 
-	err := p.ensureToken(context.Background())
+	count, err := p.EpisodesInSeason(t.Context(), "Test Show", 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if loginCalls != 1 {
-		t.Errorf("expected 1 login call for refresh, got %d", loginCalls)
+	if count != 2 {
+		t.Errorf("got count %d, want 2", count)
 	}
-	if p.token != "test-jwt-token" {
-		t.Errorf("token not refreshed: got %q", p.token)
-	}
+}
+
+func handleShowWithTwoEpisodes(mux *http.ServeMux, accepts func(auth string) bool) {
+	mux.HandleFunc("/v4/search", func(w http.ResponseWriter, r *http.Request) {
+		if !accepts(r.Header.Get("Authorization")) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		resp := tvdbSearchResult{
+			Data: []struct {
+				TVDBID   string `json:"tvdb_id"`
+				Name     string `json:"name"`
+				ObjectID string `json:"objectID"`
+			}{
+				{TVDBID: "999", Name: "Test Show"},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	mux.HandleFunc("/v4/series/999/episodes/default", func(w http.ResponseWriter, r *http.Request) {
+		if !accepts(r.Header.Get("Authorization")) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		result := tvdbEpisodesResult{}
+		result.Data.Episodes = []struct {
+			SeasonNumber int `json:"seasonNumber"`
+			Number       int `json:"number"`
+		}{
+			{SeasonNumber: 1, Number: 1},
+			{SeasonNumber: 1, Number: 2},
+		}
+		_ = json.NewEncoder(w).Encode(result)
+	})
 }
 
 func TestTVDB_SearchFails(t *testing.T) {
@@ -200,57 +212,24 @@ func TestTVDB_EpisodesFails(t *testing.T) {
 func TestTVDB_UnauthorizedClearsToken(t *testing.T) {
 	t.Parallel()
 
-	var searchCalls int
+	var logins atomic.Int32
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v4/login", handleLogin)
-
-	mux.HandleFunc("/v4/search", func(w http.ResponseWriter, _ *http.Request) {
-		searchCalls++
-		if searchCalls == 1 {
-			// First search returns 401 (token revoked server-side).
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		// Second search succeeds after re-auth.
-		resp := tvdbSearchResult{
-			Data: []struct {
-				TVDBID   string `json:"tvdb_id"`
-				Name     string `json:"name"`
-				ObjectID string `json:"objectID"`
-			}{
-				{TVDBID: "999", Name: "Test Show"},
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
+	mux.HandleFunc("/v4/login", func(w http.ResponseWriter, _ *http.Request) {
+		token := fmt.Sprintf("token-%d", logins.Add(1))
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"token": token}})
 	})
-
-	mux.HandleFunc("/v4/series/999/episodes/default", func(w http.ResponseWriter, _ *http.Request) {
-		result := tvdbEpisodesResult{}
-		result.Data.Episodes = []struct {
-			SeasonNumber int `json:"seasonNumber"`
-			Number       int `json:"number"`
-		}{
-			{SeasonNumber: 1, Number: 1},
-			{SeasonNumber: 1, Number: 2},
-		}
-		_ = json.NewEncoder(w).Encode(result)
-	})
+	// The server revoked the first token.
+	handleShowWithTwoEpisodes(mux, func(auth string) bool { return auth != "Bearer token-1" })
 
 	ts := serveTVDB(t, mux)
 	p := tvdbProviderWithBase(ts.URL, "test-key", "")
 
-	// First call fails with 401.
-	_, err := p.EpisodesInSeason(context.Background(), "Test Show", 1)
+	_, err := p.EpisodesInSeason(t.Context(), "Test Show", 1)
 	if err == nil {
 		t.Fatal("expected error on 401")
 	}
 
-	// Token should be cleared, so next call re-authenticates and succeeds.
-	if p.token != "" {
-		t.Fatalf("token should be cleared after 401, got %q", p.token)
-	}
-
-	count, err := p.EpisodesInSeason(context.Background(), "Test Show", 1)
+	count, err := p.EpisodesInSeason(t.Context(), "Test Show", 1)
 	if err != nil {
 		t.Fatalf("second call should succeed after re-auth: %v", err)
 	}

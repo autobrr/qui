@@ -56,6 +56,10 @@ type Instance struct {
 	// SSHHardlink is whether the server advertises hardlink@openssh.com, as
 	// the last probe found; nil until a probe answers.
 	SSHHardlink *bool `json:"-"`
+
+	// PublicPeerAddress is the host:port that the user set for other
+	// BitTorrent clients. Empty lets peeraddress work it out at each use.
+	PublicPeerAddress string `json:"-"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -427,7 +431,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 }
 
 // instanceViewColumns is the column list for instances_view queries.
-const instanceViewColumns = `id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode, ssh_host, ssh_port, ssh_username, ssh_key_encrypted, ssh_host_key_encrypted, ssh_tier, ssh_hardlink`
+const instanceViewColumns = `id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode, ssh_host, ssh_port, ssh_username, ssh_key_encrypted, ssh_host_key_encrypted, ssh_tier, ssh_hardlink, public_peer_address`
 
 // scanInstance scans a row from instances_view into an Instance.
 func scanInstance(scan func(dest ...any) error) (*Instance, error) {
@@ -442,6 +446,7 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 	var sshPort int
 	var sshKeyEncrypted, sshHostKeyEncrypted, sshTier string
 	var sshHardlink sql.NullBool
+	var publicPeerAddress string
 
 	err := scan(
 		&instanceID, &name, &host, &username,
@@ -453,6 +458,7 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 		&useReflinks, &fallbackToRegularMode,
 		&sshHost, &sshPort, &sshUsername,
 		&sshKeyEncrypted, &sshHostKeyEncrypted, &sshTier, &sshHardlink,
+		&publicPeerAddress,
 	)
 	if err != nil {
 		return nil, err
@@ -480,6 +486,7 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 		SSHKeyEncrypted:          sshKeyEncrypted,
 		SSHHostKeyEncrypted:      sshHostKeyEncrypted,
 		SSHTier:                  SSHTier(sshTier),
+		PublicPeerAddress:        publicPeerAddress,
 	}
 	if sshHardlink.Valid {
 		instance.SSHHardlink = &sshHardlink.Bool
@@ -549,6 +556,7 @@ type InstanceUpdateParams struct {
 	HardlinkDirPreset        *string
 	UseReflinks              *bool
 	FallbackToRegularMode    *bool
+	PublicPeerAddress        *string
 }
 
 func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams, apiKey ...*string) (*Instance, error) {
@@ -695,6 +703,11 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		if params.FallbackToRegularMode != nil {
 			query += ", fallback_to_regular_mode = ?"
 			args = append(args, BoolToSQLite(*params.FallbackToRegularMode))
+		}
+
+		if params.PublicPeerAddress != nil {
+			query += ", public_peer_address = ?"
+			args = append(args, *params.PublicPeerAddress)
 		}
 	}
 

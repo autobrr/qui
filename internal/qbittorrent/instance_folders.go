@@ -85,6 +85,26 @@ func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int, pre
 	return version.ruleFor(prefs), nil
 }
 
+// CategorySaveFolder is the folder where qBittorrent saves a torrent of
+// category under automatic management, with the categories read from
+// qBittorrent and prefs the read the caller takes the default save path
+// from. A category that qBittorrent lacks resolves as qBittorrent creates it.
+func (sm *SyncManager) CategorySaveFolder(ctx context.Context, d fsops.PathDialect, instanceID int, prefs *qbt.AppPreferences, category string) (string, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get client: %w", err)
+	}
+	categories, err := client.GetCategoriesCtx(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to read qBittorrent categories: %w", err)
+	}
+	version, err := sm.categoryVersion(ctx, client, instanceID)
+	if err != nil {
+		return "", err
+	}
+	return CategorySavePath(d, category, categories, d.Clean(prefs.SavePath), version.ruleFor(prefs)), nil
+}
+
 // ruleFor applies the use_subcategories preference, which turns nesting off
 // on the versions where it is optional.
 func (v categoryVersion) ruleFor(prefs *qbt.AppPreferences) CategoryPathRule {

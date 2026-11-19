@@ -48,6 +48,9 @@ function SheetOverlay({
   )
 }
 
+// A transparent top border, not padding, keeps a sheet at the top edge clear of the iOS status bar and its fade: callers set p-0, and the close button positions from inside the border.
+const clearTopEdge = "border-t-[length:calc(var(--app-inset-top)+var(--app-fade-gap))] border-t-transparent"
+
 function SheetContent({
   className,
   children,
@@ -67,6 +70,7 @@ function SheetContent({
         data-slot="sheet-content"
         className={cn(
           "bg-background fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-300 data-[state=closed]:duration-200",
+          side !== "bottom" && clearTopEdge,
           side === "right" &&
             "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
           side === "left" &&

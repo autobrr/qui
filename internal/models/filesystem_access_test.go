@@ -62,7 +62,7 @@ func TestFilesystemCapabilitiesOf(t *testing.T) {
 	localWithExecTier := remoteExec
 	localWithExecTier.HasLocalFilesystemAccess = true
 
-	all := FilesystemCapabilities{Read: true, Identity: true, TrustedIdentity: true, Write: true, Content: true}
+	all := FilesystemCapabilities{Read: true, Identity: true, TrustedIdentity: true, Write: true, Content: true, ReadBytes: true, WriteBytes: true}
 	tests := []struct {
 		name string
 		inst *Instance
@@ -71,9 +71,11 @@ func TestFilesystemCapabilitiesOf(t *testing.T) {
 		{"local", &Instance{HasLocalFilesystemAccess: true}, all},
 		{"local with SSH credentials", &localWithSSH, all},
 		{"local with an exec tier", &localWithExecTier, all},
-		{"remote sftp tier", remote, FilesystemCapabilities{Read: true, Write: true}},
+		// Content stays local: downloads, MediaInfo, and disc scans expect the
+		// files on qui's own disk.
+		{"remote sftp tier", remote, FilesystemCapabilities{Read: true, Write: true, ReadBytes: true, WriteBytes: true}},
 		// Peer identity serves matching and dedup, never a local-only trust.
-		{"remote exec tier", &remoteExec, FilesystemCapabilities{Read: true, Identity: true, Write: true}},
+		{"remote exec tier", &remoteExec, FilesystemCapabilities{Read: true, Identity: true, Write: true, ReadBytes: true, WriteBytes: true}},
 		{"none", &Instance{}, FilesystemCapabilities{}},
 	}
 
@@ -87,6 +89,8 @@ func TestFilesystemCapabilitiesOf(t *testing.T) {
 			assert.Equal(t, got.TrustedIdentity, got.Has(CapabilityTrustedIdentity))
 			assert.Equal(t, got.Write, got.Has(CapabilityWrite))
 			assert.Equal(t, got.Content, got.Has(CapabilityContent))
+			assert.Equal(t, got.ReadBytes, got.Has(CapabilityReadBytes))
+			assert.Equal(t, got.WriteBytes, got.Has(CapabilityWriteBytes))
 		})
 	}
 }

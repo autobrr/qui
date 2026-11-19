@@ -10,6 +10,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import { NAV_ITEMS } from "@/components/layout/navigation"
+import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
@@ -20,6 +22,7 @@ import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { useTransferQueue } from "@/hooks/useTransferQueue"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useTheme } from "@/hooks/useTheme"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
@@ -33,97 +36,18 @@ import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-route
 import { navigateWithSearch } from "@/lib/router-search"
 import { themeArea } from "@/lib/theme-areas"
 import {
-  Archive,
-  ChartColumn,
   Check,
   Code,
   Copyright,
-  FileText,
-  GitBranch,
   Globe,
   HardDrive,
-  Home,
   Loader2,
   LogOut,
   Rss,
-  Search,
-  SearchCode,
-  Settings,
-  Zap
+  SearchCode
 } from "lucide-react"
 import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
-
-interface NavItem {
-  id: string
-  titleKey: string
-  href: string
-  icon: React.ComponentType<{ className?: string }>
-  params?: Record<string, string>
-  search?: Record<string, unknown>
-  isActive?: (pathname: string, search: Record<string, unknown> | undefined) => boolean
-}
-
-const navigation: NavItem[] = [
-  {
-    id: "dashboard",
-    titleKey: "nav.dashboard",
-    href: "/dashboard",
-    icon: Home,
-  },
-  {
-    id: "statistics",
-    titleKey: "nav.statistics",
-    href: "/statistics",
-    icon: ChartColumn,
-  },
-  {
-    id: "search",
-    titleKey: "nav.search",
-    href: "/search",
-    icon: Search,
-  },
-  {
-    id: "cross-seed",
-    titleKey: "nav.crossSeed",
-    href: "/cross-seed",
-    icon: GitBranch,
-    params: {},
-  },
-  {
-    id: "automations",
-    titleKey: "nav.automations",
-    href: "/automations",
-    icon: Zap,
-  },
-  {
-    id: "backups",
-    titleKey: "nav.backups",
-    href: "/backups",
-    icon: Archive,
-  },
-  {
-    id: "rss",
-    titleKey: "nav.rss",
-    href: "/rss",
-    icon: Rss,
-  },
-  {
-    id: "settings",
-    titleKey: "nav.settings",
-    href: "/settings",
-    icon: Settings,
-    isActive: (pathname, search) => pathname === "/settings" && search?.tab !== "logs",
-  },
-  {
-    id: "logs",
-    titleKey: "nav.logs",
-    href: "/settings",
-    icon: FileText,
-    search: { tab: "logs" },
-    isActive: (pathname, search) => pathname === "/settings" && search?.tab === "logs",
-  },
-]
 
 export function Sidebar() {
   const { t, i18n } = useTranslation("common")
@@ -132,6 +56,7 @@ export function Sidebar() {
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
   const { theme } = useTheme()
+  const transferQueue = useTransferQueue()
 
   const { data: instances } = useQuery({
     queryKey: ["instances"],
@@ -206,7 +131,7 @@ export function Sidebar() {
 
       <nav className="flex flex-1 min-h-0 flex-col overflow-y-auto px-3">
         <div className="space-y-1">
-          {!isDemo && navigation.map((item) => {
+          {!isDemo && NAV_ITEMS.map((item) => {
             const Icon = item.icon
             const isActive = item.isActive? item.isActive(location.pathname, location.search): location.pathname === item.href
 
@@ -223,6 +148,15 @@ export function Sidebar() {
               >
                 <Icon className="h-4 w-4" />
                 {t(item.titleKey)}
+                {item.id === "transfers" && <BetaBadge />}
+                {item.id === "transfers" && transferQueue > 0 && (
+                  <span
+                    className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-xs text-primary-foreground"
+                    aria-label={t("nav.transfersQueued", { count: transferQueue })}
+                  >
+                    {transferQueue}
+                  </span>
+                )}
               </Link>
             )
           })}

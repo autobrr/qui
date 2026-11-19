@@ -148,12 +148,12 @@ func TestStoredIdentityOfALocalRowIsUnchanged(t *testing.T) {
 
 	local := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 	id := hardlink.FileIDFromBytes(append([]byte{byte(hardlink.KindUnix)}, make([]byte, 24)...))
-	idx := &trackedFilesIndex{instance: local, endpoint: endpointTag(local)}
+	idx := &trackedFilesIndex{instance: local, endpoint: fsops.WalkedEndpointTag(local)}
 	require.Equal(t, id.Bytes(), idx.storedFileID(id))
 	require.Nil(t, idx.storedFileID(hardlink.FileID{}))
 
 	remote := remoteInstance(models.SSHTierExec)
-	remoteIdx := &trackedFilesIndex{instance: remote, endpoint: endpointTag(remote)}
+	remoteIdx := &trackedFilesIndex{instance: remote, endpoint: fsops.WalkedEndpointTag(remote)}
 	_, ok := remoteIdx.keyOfStored(id.Bytes())
 	require.False(t, ok)
 	_, ok = idx.keyOfStored(remoteIdx.storedFileID(remoteID(1)))
@@ -355,7 +355,7 @@ func newRemoteRun(t *testing.T, d fsops.PathDialect, store func(row *models.Inst
 	}
 	require.NoError(t, dirStore.UpsertFile(ctx, &models.DirScanFile{
 		DirectoryID: dir.ID, FilePath: dialectPath(d, "/data/lib/Old.Name/renamed.mkv"), FileSize: 700, FileModTime: modTime,
-		FileID: append(remoteID(3).Bytes(), endpointTag(row)...), Status: models.DirScanFileStatusNoMatch,
+		FileID: append(remoteID(3).Bytes(), fsops.WalkedEndpointTag(row)...), Status: models.DirScanFileStatusNoMatch,
 	}))
 
 	torrent := &metainfo.Info{Name: remoteRunFilmRoot, PieceLength: 16384, Pieces: []byte(strings.Repeat("p", 20)), Files: []metainfo.FileInfo{{Length: remoteRunFilmSize, Path: []string{"film.mkv"}}}}

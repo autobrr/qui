@@ -117,9 +117,7 @@ jobs:
 
       # This job has node_modules, and the notices list the npm packages.
       - name: Write the notices file
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/autobrr/qui-community-themes/main/LICENSE -o internal/themes/assets/premium/LICENSE
-          go run ./scripts/notices
+        run: go run ./scripts/notices
 
       - name: Upload the notices file
         uses: actions/upload-artifact@v7
@@ -155,20 +153,6 @@ jobs:
 
       - name: Create web dist tarball
         run: tar -czf web-dist.tar.gz -C . web/dist
-
-      # A failed fetch fails the job, so a release never ships without the community themes.
-      - name: Fetch community themes
-        uses: actions/checkout@v7.0.1
-        with:
-          repository: autobrr/qui-community-themes
-          ref: main
-          path: .themes-temp
-          sparse-checkout: themes
-          persist-credentials: false
-
-      # Files that start with "_" (the template) are not themes.
-      - name: Copy community themes
-        run: cp .themes-temp/themes/[!_]*.css .themes-temp/LICENSE internal/themes/assets/premium/
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
@@ -339,20 +323,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: notices
-
-      # A failed fetch fails the job, so a release never ships without the community themes.
-      - name: Fetch community themes
-        uses: actions/checkout@v7.0.1
-        with:
-          repository: autobrr/qui-community-themes
-          ref: main
-          path: .themes-temp
-          sparse-checkout: themes
-          persist-credentials: false
-
-      # Files that start with "_" (the template) are not themes.
-      - name: Copy community themes
-        run: cp .themes-temp/themes/[!_]*.css .themes-temp/LICENSE internal/themes/assets/premium/
 
       - name: Extract metadata
         id: meta

@@ -6,8 +6,7 @@
 // themes, the notices of their sources, and the license files of the Go and npm
 // dependencies.
 //
-// Run it from the repo root, after the web build and after the community theme
-// fetch: go run ./scripts/notices
+// Run it from the repo root, after the web build: go run ./scripts/notices
 package main
 
 import (
@@ -54,7 +53,7 @@ func main() {
 func run() error {
 	community, err := os.ReadFile(communityLicense)
 	if err != nil {
-		return fmt.Errorf("the community themes are not fetched: %w", err)
+		return fmt.Errorf("read the community themes license: %w", err)
 	}
 	goText, err := goNotices()
 	if err != nil {
@@ -67,7 +66,7 @@ func run() error {
 
 	var b strings.Builder
 	b.WriteString("Third-party notices for qui\n")
-	writeSection(&b, "Community themes (github.com/autobrr/qui-community-themes)", string(community))
+	writeSection(&b, "Community themes (internal/themes/assets/premium)", string(community))
 	writeSection(&b, "Sources of the community themes", themeNotices)
 	writeSection(&b, "Go and its modules", goText)
 	writeSection(&b, "npm packages, including the packages that only the build uses", npmText)

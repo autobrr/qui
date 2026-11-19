@@ -98,7 +98,7 @@ const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) =>
   }, [src])
 
   return (
-    <div className="flex h-full w-full items-center justify-center" title={title}>
+    <div className="flex h-full w-full items-center justify-center" role={title ? "img" : undefined} aria-label={title || undefined}>
       <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
         {src && !hasError ? (
           <img
@@ -326,6 +326,9 @@ export const createColumns = ({
   const priorityLabel = t("tableColumns.priority")
   const statusIconLabel = t("tableColumns.statusIcon")
   const trackerIconLabel = t("tableColumns.trackerIcon")
+  const helperTransferLabel = t("tableColumns.helperTransfer")
+  const helperShareLabel = t("tableColumns.helperShare")
+  const helperHint = t("tableColumns.helperHint")
 
   const instanceColumn: TorrentTableColumnDef = {
     id: "instance",
@@ -334,7 +337,7 @@ export const createColumns = ({
     cell: ({ row }) => {
       const instanceName = (row.original as CrossInstanceTorrent).instanceName ?? ""
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm font-medium" title={instanceName}>
+        <div className="overflow-hidden whitespace-nowrap text-sm font-medium">
           <Badge variant="outline" className="text-xs">
             {instanceName}
           </Badge>
@@ -378,7 +381,7 @@ export const createColumns = ({
       accessorKey: "priority",
       header: () => (
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger asChild openOnTap>
             <div className="flex items-center justify-center">
               <ListOrdered className="h-4 w-4" />
             </div>
@@ -420,8 +423,14 @@ export const createColumns = ({
       header: t("tableColumns.name"),
       cell: ({ row }) => {
         const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
+        const helper = row.original.qui_helper
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayName}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {helper && (
+              <Badge variant="outline" className={cn("text-xs mr-1.5", badgePadding)} title={helperHint}>
+                {helper === "share" ? helperShareLabel : helperTransferLabel}
+              </Badge>
+            )}
             {displayName}
           </div>
         )
@@ -463,7 +472,7 @@ export const createColumns = ({
       accessorFn: (torrent) => torrent.state,
       header: () => (
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger asChild openOnTap>
             <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={statusIconLabel}>
               <PlayCircle className="h-4 w-4" aria-hidden="true" />
             </div>
@@ -483,7 +492,7 @@ export const createColumns = ({
         return (
           <div
             className="flex h-full w-full items-center justify-center"
-            title={statusLabel}
+            role="img"
             aria-label={statusLabel}
           >
             <StatusIcon className={cn("h-4 w-4", iconClass)} aria-hidden="true" />
@@ -629,7 +638,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || ""}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {displayCategory || ""}
           </div>
         )
@@ -643,7 +652,7 @@ export const createColumns = ({
         const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
         const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayTags}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {displayTags}
           </div>
         )
@@ -689,7 +698,7 @@ export const createColumns = ({
 
         return (
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger asChild openOnTap>
               <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={trackerIconLabel}>
                 <Icon className="h-4 w-4" aria-hidden="true" />
               </div>
@@ -880,7 +889,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {displayPath}
           </div>
         )
@@ -961,7 +970,7 @@ export const createColumns = ({
         const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
         const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {infoHash || "-"}
           </div>
         )
@@ -976,7 +985,7 @@ export const createColumns = ({
         const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
         const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {infoHash || "-"}
           </div>
         )

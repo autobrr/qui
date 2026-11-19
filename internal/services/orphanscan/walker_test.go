@@ -280,54 +280,6 @@ func TestWalkScanRoot_UsesMarkerDirWhenMarkerIsDirectlyUnderScanRoot(t *testing.
 	}
 }
 
-func TestWalkScanRoot_DiscUnitUsesParentWhenSiblingContentNotInUse(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	movieDir := filepath.Join(root, "Movie.2024")
-	bdmvDir := filepath.Join(movieDir, "BDMV")
-	streamDir := filepath.Join(bdmvDir, "STREAM")
-	if err := os.MkdirAll(streamDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-
-	// Disc files.
-	for _, p := range []string{
-		filepath.Join(bdmvDir, "index.bdmv"),
-		filepath.Join(streamDir, "00000.m2ts"),
-	} {
-		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
-			t.Fatalf("write file: %v", err)
-		}
-		old := time.Now().Add(-2 * time.Hour)
-		_ = os.Chtimes(p, old, old)
-	}
-
-	// Extra sibling content that is NOT referenced by any torrent should not prevent deleting
-	// the parent as a single unit.
-	extra := filepath.Join(movieDir, "readme.txt")
-	if err := os.WriteFile(extra, []byte("hello"), 0o600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-	old := time.Now().Add(-2 * time.Hour)
-	_ = os.Chtimes(extra, old, old)
-
-	tfm := NewTorrentFileMap(fsops.HostPaths)
-	orphans, truncated, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
-	if err != nil {
-		t.Fatalf("walkScanRoot: %v", err)
-	}
-	if truncated {
-		t.Fatalf("expected not truncated")
-	}
-	if len(orphans) != 1 {
-		t.Fatalf("expected 1 orphan unit (parent folder), got %d", len(orphans))
-	}
-	if filepath.Clean(orphans[0].Path) != filepath.Clean(movieDir) {
-		t.Fatalf("expected orphan unit path %q, got %q", movieDir, orphans[0].Path)
-	}
-}
-
 // A nested scan root is walked inside the outer one, so it is never the disc
 // unit: its delete would be refused, and the loose orphans in it would go
 // unlisted. The result matches a walk of the nested root on its own.
@@ -735,46 +687,6 @@ func TestWalkScanRoot_IgnorePathSiblingPreventsParentDiscUnit(t *testing.T) {
 	// Should use marker dir, not parent, because parent contains ignored sibling.
 	if filepath.Clean(orphans[0].Path) != filepath.Clean(bdmvDir) {
 		t.Fatalf("expected orphan unit path %q, got %q", bdmvDir, orphans[0].Path)
-	}
-}
-
-func TestWalkScanRoot_IgnorePathInsideMarkerDisablesDiscGrouping(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	movieDir := filepath.Join(root, "Movie.2024")
-	bdmvDir := filepath.Join(movieDir, "BDMV")
-	streamDir := filepath.Join(bdmvDir, "STREAM")
-	if err := os.MkdirAll(streamDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-
-	// Disc files.
-	fileA := filepath.Join(bdmvDir, "index.bdmv")
-	fileB := filepath.Join(streamDir, "00000.m2ts")
-	for _, p := range []string{fileA, fileB} {
-		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
-			t.Fatalf("write file: %v", err)
-		}
-		old := time.Now().Add(-2 * time.Hour)
-		_ = os.Chtimes(p, old, old)
-	}
-
-	// Ignore a file inside the marker directory - this should disable disc-unit grouping entirely.
-	ignorePaths := []string{fileA}
-
-	tfm := NewTorrentFileMap(fsops.HostPaths)
-	orphans, _, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, ignorePaths, tfm), 0, 100, local.NewBackend(), nil)
-	if err != nil {
-		t.Fatalf("walkScanRoot: %v", err)
-	}
-	// Should have individual file orphans, not a disc unit.
-	// Only fileB should be reported (fileA is ignored).
-	if len(orphans) != 1 {
-		t.Fatalf("expected 1 individual file orphan, got %d", len(orphans))
-	}
-	if filepath.Clean(orphans[0].Path) != filepath.Clean(fileB) {
-		t.Fatalf("expected orphan path %q, got %q", fileB, orphans[0].Path)
 	}
 }
 

@@ -129,7 +129,7 @@ export function CompactRow({
             />
           </div>
         )}
-        <div className="flex items-center gap-1 flex-shrink-0" title={trackerTitle}>
+        <div className="flex items-center gap-1 flex-shrink-0">
           <TrackerIcon
             title={trackerTitle}
             fallback={trackerHost ? trackerHost.charAt(0).toUpperCase() : "?"}
@@ -142,7 +142,7 @@ export function CompactRow({
             </span>
           )}
         </div>
-        <h3 className="flex-1 font-medium text-sm truncate min-w-0" title={displayName}>
+        <h3 className="flex-1 font-medium text-sm truncate min-w-0">
           {displayName}
         </h3>
         {groupPill}
