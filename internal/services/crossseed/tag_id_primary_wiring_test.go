@@ -30,6 +30,7 @@ import (
 
 const mediaIDWiringSourceHash = "14a238e56ab06fed600c38d5068998d95e9338c2"
 
+// regression: #3306
 // TestTagIDPrimaryMixedModeWithTitleRescue drives the full search flow against
 // two recording Torznab servers: one with an imdbid capability, one without.
 // With no arr ID available, the primary search must run ID-first from the

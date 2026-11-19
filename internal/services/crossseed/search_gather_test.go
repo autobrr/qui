@@ -231,6 +231,7 @@ func TestGatherSearchResults(t *testing.T) {
 			// Indexers 1 and 2 have history rows only under the primary job.
 			wantJobID: 1,
 		},
+		// regression: #3306
 		{
 			name:  "narrowed yearless retry keeps its own job when the primary came from cache",
 			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2, 3}, IMDbID: "tt1", OmitQueryForIDs: true},
