@@ -28,7 +28,7 @@ export function SystemNoticeList() {
       <p id={headingId} className="flex items-center justify-between px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
         <SystemNoticeHeading count={notices.length} />
       </p>
-      <div className="space-y-1">
+      <div className="space-y-0.5 short:space-y-px">
         {notices.map((notice) => (
           <SystemNoticeRow key={notice.kind} notice={notice} now={now} />
         ))}
@@ -44,7 +44,7 @@ function SystemNoticeRow({ notice, now }: { notice: SystemNotice; now: number })
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-sidebar-foreground outline-none transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
+      <PopoverTrigger className="group flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm font-medium short:py-1 short:text-[13px]/5 text-sidebar-foreground outline-none transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
         <span className="flex h-4 w-4 items-center justify-center">
           <SystemNoticeDot severity={notice.severity} fresh={isFreshSystemNotice(notice.openedAt, now)} />
         </span>
