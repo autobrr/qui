@@ -17,10 +17,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useIsPhone, useMediaQuery } from "@/hooks/useMediaQuery"
+import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { SERIES_COLOR_SETS, useSeriesColorSet, type SeriesColorSet } from "@/hooks/useSeriesColors"
+import { formatCalendarDay } from "@/lib/dateTimeUtils"
 import { PERIOD_PRESETS, type PeriodPreset } from "@/lib/statistics"
-import { CalendarRange, ChevronDown, Palette } from "lucide-react"
-import { useState, type ReactNode } from "react"
+import { cn } from "@/lib/utils"
+import { CalendarDays, CalendarRange, ChevronDown, Palette } from "lucide-react"
+import { useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 export type PeriodChoice = PeriodPreset | "custom"
@@ -83,6 +86,62 @@ export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodP
   )
 }
 
+interface DayFieldProps {
+  id: string
+  label: string
+  // A day as YYYY-MM-DD, or an empty string.
+  value: string
+  max?: string
+  onChange: (value: string) => void
+}
+
+/**
+ * A date field that shows its day in the date format of the user. The date field of the browser lies on top of the
+ * text and cannot be seen, because a browser shows a date only in its own format.
+ */
+function DayField({ id, label, value, max, onChange }: DayFieldProps) {
+  const { t } = useTranslation("statistics")
+  const { preferences } = usePersistedDateTimePreferences()
+  const day = parseDay(value)
+  // iOS Safari reports a tap as a mouse click, so the type comes from pointer down.
+  const press = useRef<string>(undefined)
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="relative flex h-9 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-[color,box-shadow] has-focus-visible:border-ring has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 dark:bg-input/30">
+        <span className={cn("tabular-nums", !day && "text-muted-foreground")}>{day ? formatCalendarDay(day, preferences) : t("customRange.pick")}</span>
+        <CalendarDays className="size-4 text-muted-foreground" />
+        <Input
+          id={id}
+          type="date"
+          className="absolute inset-0 size-full cursor-pointer opacity-0 pointer-coarse:appearance-none [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:size-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+          max={max}
+          value={value}
+          onChange={event => onChange(event.target.value)}
+          // Firefox opens its calendar only on a click on its own calendar button, and closes it again without preventDefault.
+          // A touch keeps the picker of the device, because Safari on iOS has no showPicker for a date.
+          onPointerDown={event => {
+            press.current = event.pointerType
+          }}
+          onClick={event => {
+            if (press.current === "mouse") {
+              event.preventDefault()
+              event.currentTarget.showPicker()
+            }
+          }}
+          onKeyDown={event => {
+            if (event.key === " ") {
+              event.preventDefault()
+              event.currentTarget.showPicker()
+            }
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function CustomRange({ onCustom, children }: { onCustom: (firstDay: Date, lastDay: Date) => void; children: ReactNode }) {
   const { t } = useTranslation("statistics")
   const touch = useMediaQuery("(hover: none)")
@@ -111,14 +170,8 @@ function CustomRange({ onCustom, children }: { onCustom: (firstDay: Date, lastDa
             }
           }}
         >
-          <div className="space-y-1.5">
-            <Label htmlFor="statistics-first-day">{t("customRange.from")}</Label>
-            <Input id="statistics-first-day" type="date" className="pointer-coarse:appearance-none" max={today} value={firstDay} onChange={event => setFirstDay(event.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="statistics-last-day">{t("customRange.to")}</Label>
-            <Input id="statistics-last-day" type="date" className="pointer-coarse:appearance-none" value={lastDay} onChange={event => setLastDay(event.target.value)} />
-          </div>
+          <DayField id="statistics-first-day" label={t("customRange.from")} max={today} value={firstDay} onChange={setFirstDay} />
+          <DayField id="statistics-last-day" label={t("customRange.to")} value={lastDay} onChange={setLastDay} />
           <Button type="submit" size="sm" className="w-full" disabled={!valid}>{t("customRange.apply")}</Button>
         </form>
       </PopoverContent>

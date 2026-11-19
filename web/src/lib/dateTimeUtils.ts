@@ -181,13 +181,14 @@ function formatDateAndTime(date: Date, preferences: DateTimePreferences, include
   }
 }
 
-function formatDateOnlyAbsolute(date: Date, preferences: DateTimePreferences): string {
+function formatDateOnlyAbsolute(date: Date, preferences: { dateFormat: DateTimePreferences["dateFormat"]; timezone?: string }, weekday?: "short"): string {
   const timeZone = preferences.timezone
 
   switch (preferences.dateFormat) {
     case "iso":
       return getFormatter(getDateLocales("iso"), {
         timeZone,
+        weekday,
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -195,6 +196,7 @@ function formatDateOnlyAbsolute(date: Date, preferences: DateTimePreferences): s
     case "us":
       return getFormatter(getDateLocales("us"), {
         timeZone,
+        weekday,
         month: "2-digit",
         day: "2-digit",
         year: "numeric",
@@ -202,6 +204,7 @@ function formatDateOnlyAbsolute(date: Date, preferences: DateTimePreferences): s
     case "eu":
       return getFormatter(getDateLocales("eu"), {
         timeZone,
+        weekday,
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
@@ -209,6 +212,14 @@ function formatDateOnlyAbsolute(date: Date, preferences: DateTimePreferences): s
     default:
       return getFormatter(getDisplayLocales(), { timeZone }).format(date)
   }
+}
+
+/**
+ * Formats a calendar day of the browser in the date format of the preferences, after the name of its weekday when
+ * weekday is set. The time zone of the preferences does not move the day, and the relative format gives the ISO form.
+ */
+export function formatCalendarDay(date: Date, preferences: DateTimePreferences, weekday?: "short"): string {
+  return formatDateOnlyAbsolute(date, { dateFormat: preferences.dateFormat === "relative" ? "iso" : preferences.dateFormat }, weekday)
 }
 
 /**

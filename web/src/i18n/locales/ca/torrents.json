@@ -1743,7 +1743,7 @@
     "settings": {
       "title": "Perfils de visualització",
       "holds": "Conté: columnes · densitat de files · barres laterals · seccions de filtres · arbres de categories · filtres buits",
-      "holdsHelp": "Un perfil conté l’aspecte de la llista de torrents: quines columnes es mostren, el seu ordre i amplada, l’estirament de la columna Nom, la densitat de files, les barres laterals i les seccions de filtres obertes, els arbres de categories plegats i si es mostren els filtres buits. Cada navegador fa servir un perfil, i només aquest navegador recorda l’elecció. Un navegador que no n’ha triat mai cap, i una finestra privada, fan servir Default. Tots els perfils comparteixen la resta de la configuració.",
+      "holdsHelp": "Un perfil conté l’aspecte de la llista de torrents: quines columnes es mostren, el seu ordre i amplada, l’estirament de la columna Nom, la densitat de files, les barres laterals i les seccions de filtres obertes, els arbres de categories plegats i si es mostren els filtres buits. També conté quines files d’instàncies del Tauler estan obertes. Cada navegador fa servir un perfil, i només aquest navegador recorda l’elecció. Un navegador que no n’ha triat mai cap, i una finestra privada, fan servir Default. Tots els perfils comparteixen la resta de la configuració.",
       "thisBrowser": "Aquest navegador",
       "use": "Fes-lo servir en aquest navegador",
       "makeProfile": "Crea un perfil per a un portàtil o un telèfon",

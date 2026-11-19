@@ -78,7 +78,7 @@ export function EventsChart({ days }: EventsChartProps) {
             stackId={kind === "completed" ? "completed" : "library"}
             fill={`var(--color-${kind})`}
             radius={kind === "deleted" ? [0, 0, 2, 2] : [2, 2, 0, 0]}
-            maxBarSize={24}
+            maxBarSize={64}
             isAnimationActive={false}
           />
         ))}

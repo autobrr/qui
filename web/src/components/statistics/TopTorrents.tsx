@@ -74,6 +74,7 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
             const key = `${torrent.instanceId}:${torrent.hash}`
             const expanded = open === key
             const name = torrentName(torrent)
+            const tracker = `${displayGroup(torrent.trackerGroup)}${instanceNames ? ` · ${instanceNames.get(torrent.instanceId)}` : ""}`
             return (
               <Fragment key={key}>
                 <TableRow className={cn("cursor-pointer", expanded && "bg-muted hover:bg-muted")} onClick={() => setOpen(expanded ? undefined : key)}>
@@ -84,7 +85,7 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
                       <span className="hidden shrink-0 items-center gap-2 @2xl:flex"><TorrentMarks torrent={torrent} /></span>
                     </button>
                     <div className="flex min-w-0 items-center gap-2 pl-5.5 text-xs font-normal text-muted-foreground @2xl:hidden">
-                      <span className="truncate">{displayGroup(torrent.trackerGroup)}{instanceNames && ` · ${instanceNames.get(torrent.instanceId)}`}</span>
+                      <span className="truncate">{tracker}</span>
                       <TorrentMarks torrent={torrent} />
                     </div>
                     <Facts
@@ -95,9 +96,8 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
                       ]}
                       className="@2xl:hidden"
                     />
-                    {instanceNames && <div className="hidden truncate pl-5.5 text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(torrent.instanceId)}</div>}
                   </TableCell>
-                  <TableCell className="hidden max-w-48 truncate text-muted-foreground @2xl:table-cell">{displayGroup(torrent.trackerGroup)}</TableCell>
+                  <TableCell className="hidden max-w-64 truncate text-muted-foreground @2xl:table-cell" title={tracker}>{tracker}</TableCell>
                   <TableCell className="pr-4 text-right tabular-nums sm:pr-6 @xl:pr-2">{formatBytes(torrent.uploaded)}</TableCell>
                   <TableCell className="hidden text-right tabular-nums @xl:table-cell">{formatBytes(torrent.downloaded)}</TableCell>
                   <TableCell className="hidden text-right tabular-nums @xl:table-cell @xl:pr-6 @2xl:pr-2">{formatRatio(torrent) ?? "–"}</TableCell>
@@ -115,7 +115,7 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
           })}
         </TableBody>
       </Table>
-      {narrow && shown.length > PHONE_ROWS && <RowLimit shown={all ? shown.length : PHONE_ROWS} total={shown.length} all={all} onAllChange={next => setAllOf(next ? scope : undefined)} />}
+      {narrow && shown.length > PHONE_ROWS && <RowLimit shown={all ? shown.length : PHONE_ROWS} total={shown.length} onAll={all ? undefined : () => setAllOf(scope)} onFewer={all ? () => setAllOf(undefined) : undefined} />}
     </div>
   )
 }

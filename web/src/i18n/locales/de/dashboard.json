@@ -17,7 +17,6 @@
     "liveDownloading": "Download: {{downloading}} · Verbleibend: {{size}}",
     "peakHour": "Stärkste Stunde: {{size}}",
     "peakSpeed": "Spitze: {{speed}}",
-    "hourTitle": "{{time}}: {{uploaded}} hochgeladen, {{downloaded}} heruntergeladen",
     "dayLabel": "Upload und Download aller Instanzen in jeder der letzten 24 Stunden",
     "liveLabel": "Upload- und Download-Geschwindigkeit aller Instanzen in den letzten 3 Minuten",
     "liveStart": "vor 3 Min.",
@@ -34,6 +33,11 @@
     "issues": "Probleme",
     "noIssues": "Keine",
     "loading": "Wird geladen",
+    "expandAll": "Alle ausklappen",
+    "collapseAll": "Alle einklappen",
+    "altSpeedOff": "Alternative Geschwindigkeitsbegrenzungen sind nicht aktiv",
+    "altSpeedTurnOn": "Alternative Geschwindigkeitsbegrenzungen aktivieren",
+    "altSpeedTurnOff": "Alternative Geschwindigkeitsbegrenzungen deaktivieren",
     "streamStatus": {
       "cached": "Zwischengespeicherter Dashboard-Snapshot wird während der Aktualisierung angezeigt",
       "fallback": "Dashboard-Statistiken werden aktualisiert",
@@ -67,10 +71,15 @@
     "peers": "Peers",
     "uptime": "Uptime",
     "version": "qBittorrent",
+    "libtorrent": "libtorrent",
     "connection": "Verbindung",
     "externalAddresses": "Externe Adressen",
     "unknown": "Unbekannt",
-    "day": "Letzte 24 Std.: {{uploaded}} hochgeladen, {{downloaded}} heruntergeladen",
+    "last24h": "Letzte 24 Std.",
+    "allTime": "Gesamt",
+    "uploaded": "Hochgeladen",
+    "downloaded": "Heruntergeladen",
+    "ratio": "Ratio {{ratio}}",
     "uploadSpeed": "Upload-Geschwindigkeit",
     "downloadSpeed": "Download-Geschwindigkeit",
     "chartLabel": "Upload und Download von {{name}} in jeder der letzten 24 Stunden",
@@ -85,15 +94,6 @@
     "firewalled": "Hinter Firewall",
     "disconnected": "Getrennt",
     "other": "Andere"
-  },
-  "altSpeedDialog": {
-    "enableTitle": "Alternative Geschwindigkeitsbegrenzungen aktivieren?",
-    "disableTitle": "Alternative Geschwindigkeitsbegrenzungen deaktivieren?",
-    "enableDescription": "Dadurch werden alternative Geschwindigkeitsbegrenzungen für {{name}} aktiviert, was die Übertragungsgeschwindigkeiten entsprechend deinen konfigurierten Limits reduziert.",
-    "disableDescription": "Dadurch werden alternative Geschwindigkeitsbegrenzungen für {{name}} deaktiviert und es wird zu den normalen Geschwindigkeitsbegrenzungen zurückgekehrt.",
-    "enable": "Aktivieren",
-    "disable": "Deaktivieren",
-    "cancel": "Abbrechen"
   },
   "trackers": {
     "title": "Top-Tracker, letzte 24 Std.",
@@ -115,7 +115,11 @@
     "torrents": "Torrents",
     "totalSize": "Gesamtgröße",
     "seedingSize": "Seeding-Größe",
-    "instances": "Verbundene Instanzen"
+    "instances": "Verbundene Instanzen",
+    "allTime": "Gesamt",
+    "uploaded": "Hochgeladen",
+    "downloaded": "Heruntergeladen",
+    "ratio": "Ratio"
   },
   "uniqueSize": {
     "calculating": "wird berechnet",

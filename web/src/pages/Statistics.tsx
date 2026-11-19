@@ -20,8 +20,10 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTransferHistoryLibrary } from "@/hooks/useTransferHistoryLibrary"
 import { useIsPhone } from "@/hooks/useMediaQuery"
+import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { usePrefetchTransferHistoryRows, useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
+import { formatCalendarDay } from "@/lib/dateTimeUtils"
 import { useTrackerGroupName } from "@/hooks/useTrackerGroupName"
 import { getLinuxCategoryName, getLinuxReleaseGroup, useIncognitoMode } from "@/lib/incognito"
 import {
@@ -140,6 +142,7 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [incognitoMode] = useIncognitoMode()
   const narrow = useIsPhone()
+  const { preferences } = usePersistedDateTimePreferences()
   const [savedPreset, savePreset] = useStatisticsPeriod()
   const [periodState, setPeriodState] = useState<PeriodState>(() => presetState(initialPreset ?? savedPreset))
   // A preset saved after the page opened, by the first read of the server or by another tab or device, opens here too, except over a custom range.
@@ -291,7 +294,10 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
 
   const formatDay = (date: Date) => date.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
   // A phone leaves out the year of this year, so that the range leaves room for the instances.
-  const formatRangeDay = (date: Date) => narrow && date.getFullYear() === new Date().getFullYear() ? date.toLocaleDateString(locale, { day: "numeric", month: "short" }) : formatDay(date)
+  const formatRangeDay = (date: Date) => {
+    if (!narrow) return formatCalendarDay(date, preferences)
+    return date.getFullYear() === new Date().getFullYear() ? date.toLocaleDateString(locale, { day: "numeric", month: "short" }) : formatDay(date)
+  }
   const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatRangeDay(period.from), to: formatRangeDay(new Date(period.to.getTime() - 1)) }) : undefined
   const formatChange = new Intl.NumberFormat(locale, { style: "percent", signDisplay: "exceptZero", maximumFractionDigits: 0 })
   const error = statusQuery.error ?? (chart.error ? undefined : allTime.error ?? compared.error ?? before.error)
@@ -316,7 +322,7 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   const instanceFilter = options.length > 1 && <InstanceFilter options={options} selected={selectedIds} onChange={setSelectedIds} />
   const recording = (
     <span className="inline-flex flex-wrap items-center gap-2">
-      {since ? t("recordingSince", { date: formatDay(since) }) : !statusQuery.isPending && t("notRecording")}
+      {since ? t("recordingSince", { date: formatCalendarDay(since, preferences) }) : !statusQuery.isPending && t("notRecording")}
       {partial && <Badge variant="outline" className="py-0 font-normal text-muted-foreground">{t("partial")}</Badge>}
     </span>
   )
@@ -342,7 +348,7 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
       )}
     >
       {/* On a phone, the cards of this page are 16 px apart. */}
-      <div className="space-y-4 sm:space-y-6">
+      <div className="@container space-y-4 sm:space-y-6">
         {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
         {/* A phone shows the five numbers in two columns of one card, the last across both, and a phone turned sideways in one row. Six tracks give rows of 3 and 2 without an empty cell. */}
@@ -396,42 +402,45 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
           </CardContent>
         </Card>
 
-        <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
-          <GroupTable
-            listScope={listScope}
-            grouping={grouping}
-            onGroupingChange={setGrouping}
-            rows={loading ? undefined : tableRows}
-            error={statusQuery.error ?? chart.error ?? (period.from ? undefined : allTime.error) ?? (byTracker ? undefined : grouped.error)}
-            liveLoaded={liveIds.length > 0 && live.groups !== undefined}
-            liveError={live.error}
-            period={shown.period}
-            since={since}
-            series={shown.series}
-            instances={selected}
-            seriesGroups={groups}
-            displayName={tableName}
-            onPrefetch={prefetchGroupings}
-          />
-        </Card>
+        {/* The two tables sit side by side when each half has room for all columns of the table by Tracker group. */}
+        <div className="grid gap-4 sm:gap-6 @[118rem]:grid-cols-2">
+          <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
+            <GroupTable
+              listScope={listScope}
+              grouping={grouping}
+              onGroupingChange={setGrouping}
+              rows={loading ? undefined : tableRows}
+              error={statusQuery.error ?? chart.error ?? (period.from ? undefined : allTime.error) ?? (byTracker ? undefined : grouped.error)}
+              liveLoaded={liveIds.length > 0 && live.groups !== undefined}
+              liveError={live.error}
+              period={shown.period}
+              since={since}
+              series={shown.series}
+              instances={selected}
+              seriesGroups={groups}
+              displayName={tableName}
+              onPrefetch={prefetchGroupings}
+            />
+          </Card>
 
-        <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
-          <CardHeader className="px-4 pb-4 sm:px-6">
-            <CardTitle>{t("topTorrents.title")}</CardTitle>
-            <CardDescription>{t("topTorrents.description")}</CardDescription>
-          </CardHeader>
-          {statusQuery.error ? (
-            <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
-          ) : ready ? (
-            <TopTorrents scope={listScope} torrents={shown.torrents} error={top.error} period={shown.period} instances={selected} since={since} displayGroup={displayName} />
-          ) : (
-            <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-          )}
-          <div className="space-y-1 px-4 pt-3 text-xs text-muted-foreground sm:px-6">
-            <p>{t("topTorrents.note")}</p>
-            {!period.from && <p>{t("table.baselineNote")}</p>}
-          </div>
-        </Card>
+          <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
+            <CardHeader className="px-4 pb-4 sm:px-6">
+              <CardTitle>{t("topTorrents.title")}</CardTitle>
+              <CardDescription>{t("topTorrents.description")}</CardDescription>
+            </CardHeader>
+            {statusQuery.error ? (
+              <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
+            ) : ready ? (
+              <TopTorrents scope={listScope} torrents={shown.torrents} error={top.error} period={shown.period} instances={selected} since={since} displayGroup={displayName} />
+            ) : (
+              <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+            )}
+            <div className="space-y-1 px-4 pt-3 text-xs text-muted-foreground sm:px-6">
+              <p>{t("topTorrents.note")}</p>
+              {!period.from && <p>{t("table.baselineNote")}</p>}
+            </div>
+          </Card>
+        </div>
 
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
           <Card className="gap-4 py-4 sm:gap-6 sm:py-6">

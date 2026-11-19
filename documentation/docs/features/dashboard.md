@@ -13,7 +13,11 @@ The page has a chart at the top, a list of the instances below it, and the large
 
 ## Chart
 
-The chart shows the upload above the zero line and the download below it, for all instances together. It counts the instances as the Statistics page counts **All instances**, so it also counts a disabled or removed instance that moved data in the last 24 hours. Each of the first five active instances in the instance order has its own layer, in a shade of the text color of the theme. The other instances share one layer.
+The chart shows the upload above the zero line and the download below it, for all instances together. If the chart has no download, the upload uses the whole height of the chart. The chart counts the instances as the Statistics page counts **All instances**, so it also counts a disabled or removed instance that moved data in the last 24 hours. Each of the first five active instances in the instance order has its own layer, in a shade of the text color of the theme. The other instances share one layer.
+
+The instance list is a table of rows on a wide screen and a list of lines on a phone. When the pointer is on an instance row, the chart draws its layer in the primary color of the theme, and the other layers fade. The same happens while a row has the keyboard focus. When the pointer is on a chart layer, the chart draws that layer in the primary color, and the other layers fade. The instance list also marks the instance row for that layer, or the instance line on a phone. On a touch screen, a tap on a layer does the same as the pointer.
+
+For the layer that instances share, the instance list marks each of its instances, also when the pointer is on only one of them. If an instance has no data in the chart, all layers fade, and the chart does not draw any layer in the primary color. The chart and the instance list work this way in both chart views, **24 h** and **Live**.
 
 The switch above the chart has two views:
 
@@ -24,14 +28,12 @@ The switch above the chart has two views:
 
 The page opens on the view that you selected last. qui keeps this choice on the server, so it applies in each browser and on each device. If no active instance recorded any transfer in the last 24 hours, the page opens on **Live**, and **24 h** is off. qui keeps your choice for the time when history is available again. Its tooltip gives the reason. If qui cannot read the history, the chart shows the error in place of the numbers.
 
-The upload speed and the download speed of this moment are the two large numbers above and below the chart. Below each number is a caption:
+The upload speed and the download speed of this moment are the two large numbers above the chart. Below each number is a caption:
 
 - In **24 h**, the upload caption gives the upload of the last 24 hours and the share from [Statistics cross-seeds](./statistics.md). The download caption gives the download of the last 24 hours. These numbers equal the **Uploaded** and **Downloaded** numbers of the Statistics page for the period **24 hours** and all instances.
 - In **Live**, the upload caption gives the count of seeding torrents and the count of peers. The download caption gives the count of downloading torrents and the size that is left to download.
 
 A dashed yellow line marks an hour that includes a recording gap. A recording gap is a time when qui did not read the instance, for example while qui did not run. If the recording started less than 24 hours ago, the chart has the label **Partial period**. The page reads the history again each 5 minutes, because qui writes the history each 5 minutes.
-
-The Dashboard shows no all-time counter of qBittorrent. The [Statistics](./statistics.md) page shows the recorded totals.
 
 ## Instances
 
@@ -39,14 +41,24 @@ Each instance has one line. The line shows the name, the upload speed, the downl
 
 An offline instance shows the cause in place of the numbers. A status icon next to the name tells you that the numbers are not live. See [Live updates](#live-updates).
 
-On a phone, tap a line to open its details in a sheet at the bottom of the screen. On a wide screen, click a row to open its details below the row. One row is open at a time. The details show these values:
+On a wide screen, the name of an online instance is a link to its torrent list. The button next to the name turns the alternative speed limits of the instance on or off with one click. The button shows a turtle. A gray turtle shows that the limits are off. A red turtle shows that the limits are on. qui does not ask for confirmation. An instance that is not online has no link and no button.
 
-- The upload speed and the download speed, and the upload and the download of the last 24 hours. On a wide screen, a chart shows the last 24 hours of the instance.
+### Details of an instance
+
+On a phone, tap a line to open its details in a sheet at the bottom of the screen. On a wide screen, click a row to open its details below the row. Click the row again to close the details.
+
+On a wide screen, two or more rows can be open at the same time. The button in the header of the table opens each row (**Expand all**) or closes each row (**Collapse all**). qui keeps the open rows in the [Display profile](#display-profiles) of the browser, so each screen can have its own open rows. Each row is closed until you open it. A phone shows one sheet at a time, and qui does not keep which sheet is open.
+
+The details show these values:
+
+- The upload speed and the download speed.
+- **Last 24 h**: the upload, the download, and the ratio of the last 24 hours. On a wide screen, a chart shows the last 24 hours of the instance.
+- **All time**: the upload, the download, and the ratio that qBittorrent counted from its first start.
 - Each problem count as a link. A click opens the torrent list of the instance with the filter for that problem.
 - The host, the torrent counts (total, active, downloading, and seeding), the size, and the free space at the default save path of qBittorrent. The size is the [Unique size](#unique-size).
-- The peer connections, the uptime, the qBittorrent version, the connection status, and the external IP addresses.
+- The peer connections, the uptime, the qBittorrent version, the libtorrent version, the connection status, and the external IP addresses.
 
-The details have three actions: **Open torrents**, **Add torrent**, and the switch for the alternative speed limits. The switch asks for a confirmation before it changes the limits.
+On a phone, the sheet has three actions: **Open torrents**, **Add torrent**, and the switch for the alternative speed limits. The switch changes the limits at once, and qui does not ask for confirmation.
 
 If you tap or click an offline instance, qui shows the cause and a link to the instance settings.
 
@@ -78,6 +90,8 @@ A disk is almost full when the free space is less than 5% of the free space plus
 **Storage** shows the free disk space of each instance at the default save path of qBittorrent.
 
 **Library** shows the torrent count, the total size, the seeding size, and the count of connected instances. The total size and the seeding size are the [Unique size](#unique-size).
+
+Below these numbers, **All time** shows the upload, the download, and the ratio that qBittorrent counted from its first start. These numbers are for all instances together. They come from qBittorrent, so they also include the transfer from before qui started to record. The [Statistics](./statistics.md) page shows the totals that qui recorded.
 
 ## Incognito mode
 
@@ -138,6 +152,7 @@ A Display profile is a named set of Display settings. Display settings are the p
 - The open sections of the filter sidebar
 - The collapsed category trees
 - The switches that show empty statuses, categories, and tags
+- The open rows of the instance table of the Dashboard
 
 Each browser uses one profile, and only that browser remembers its pick. A browser that never picked a profile uses Default. A private window starts on Default. If you used qui before Display profiles, Default holds the Display settings that you had then.
 
