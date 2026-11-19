@@ -33,8 +33,8 @@
     "rssRunning": "RSS cross-seed активний",
     "rssEnabled": "RSS cross-seed увімкнено",
     "scanRunning": "Сканування активне",
-    "showSidebar": "Показати бічну панель",
-    "hideSidebar": "Приховати бічну панель"
+    "collapseToIcons": "Згорнути до значків",
+    "expandSidebar": "Розгорнути бічну панель"
   },
   "header": {
     "currentInstance": "Поточний екземпляр: {{name}}. Натисніть, щоб перемкнути.",
@@ -66,11 +66,6 @@
     "smartSearchShortcut": "Натисніть {{shortcutKey}}, щоб перейти до пошуку",
     "smartSearchPalette": "Натисніть {{shortcutKey}}, щоб відкрити палітру команд",
     "torrentCreationTasksTitle": "Завдання створення торента",
-    "updateAvailable": "Доступне оновлення",
-    "updateVersion": "Версія {{version}}",
-    "rssRunning": "RSS cross-seed активний",
-    "rssEnabled": "RSS cross-seed увімкнено",
-    "scanRunning": "Сканування активне",
     "allScope": "ВСІ",
     "unified": "Об'єднано"
   },

@@ -133,7 +133,8 @@ A Display profile is a named set of Display settings. Display settings are the p
 
 - The [table columns](./torrent-management.md#table-columns): which columns show, their order, their widths, and the stretch or scroll mode of the Name column
 - The row density of the torrent table, and the view of the mobile torrent list
-- The app sidebar and the filter sidebar, open or closed
+- The app sidebar, full or icon-only
+- The filter sidebar, open or closed
 - The open sections of the filter sidebar
 - The collapsed category trees
 - The switches that show empty statuses, categories, and tags

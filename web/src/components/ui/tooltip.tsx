@@ -36,15 +36,27 @@ const TooltipContext = React.createContext<{
   registerPointerType?: (pointerType: string | null) => void
 }>({ isTouchDevice: false })
 
-const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) => {
+type TooltipProps = React.ComponentProps<typeof TooltipPrimitive.Root> & {
+  /** Keeps the tooltip closed. For a trigger that stays mounted in a state where it needs no tooltip. */
+  disabled?: boolean
+}
+
+const Tooltip = ({ children, disabled = false, ...props }: TooltipProps) => {
   const isTouchDevice = useIsTouchDevice()
   const [open, setOpen] = React.useState(props.defaultOpen ?? false)
+  if (disabled && open) {
+    setOpen(false)
+  }
 
   // Track if the tooltip was opened via click (for touch devices)
   const openedViaClickRef = React.useRef(false)
   const lastPointerTypeRef = React.useRef<string | null>(null)
 
   const handleOpenChange = React.useCallback((nextOpen: boolean) => {
+    if (disabled && nextOpen) {
+      return
+    }
+
     // On touch devices, only allow opening via explicit click
     if (isTouchDevice && nextOpen && !openedViaClickRef.current) {
       const pointerType = lastPointerTypeRef.current
@@ -62,9 +74,12 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
     }
 
     setOpen(nextOpen)
-  }, [isTouchDevice])
+  }, [isTouchDevice, disabled])
 
   const handleSetOpen = React.useCallback((nextOpen: boolean) => {
+    if (disabled && nextOpen) {
+      return
+    }
     if (nextOpen) {
       // Mark that this was opened via click so touch can still toggle open
       openedViaClickRef.current = true
@@ -74,7 +89,7 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
       lastPointerTypeRef.current = null
     }
     setOpen(nextOpen)
-  }, [])
+  }, [disabled])
 
   const registerPointerType = React.useCallback((pointerType: string | null) => {
     lastPointerTypeRef.current = pointerType

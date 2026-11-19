@@ -48,6 +48,50 @@ function tap(element: Element) {
 
 const tooltipShown = () => screen.queryByRole("tooltip") !== null
 
+describe("Tooltip with disabled", () => {
+  it("stays closed on a click, and is still closed when disabled goes away", () => {
+    const tree = (disabled: boolean) => (
+      <TooltipProvider>
+        <Tooltip disabled={disabled}>
+          <TooltipTrigger asChild><a href="#stats">Statistics</a></TooltipTrigger>
+          <TooltipContent>Tooltip text</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+    const { rerender } = render(tree(true))
+
+    // On a touch device, a mouse click opens a tooltip, as on a trackpad.
+    fireEvent.click(screen.getByText("Statistics"))
+    expect(tooltipShown()).toBe(false)
+
+    rerender(tree(false))
+    expect(tooltipShown()).toBe(false)
+
+    fireEvent.click(screen.getByText("Statistics"))
+    expect(tooltipShown()).toBe(true)
+  })
+
+  it("closes an open tooltip, and does not open it again when disabled goes away", () => {
+    const tree = (disabled: boolean) => (
+      <TooltipProvider>
+        <Tooltip disabled={disabled}>
+          <TooltipTrigger asChild><span>12 GiB</span></TooltipTrigger>
+          <TooltipContent>Tooltip text</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+    const { rerender } = render(tree(false))
+    tap(screen.getByText("12 GiB"))
+    expect(tooltipShown()).toBe(true)
+
+    rerender(tree(true))
+    expect(tooltipShown()).toBe(false)
+
+    rerender(tree(false))
+    expect(tooltipShown()).toBe(false)
+  })
+})
+
 describe("TooltipTrigger on a touch device", () => {
   it("opens on a tap of text or an icon", () => {
     renderTooltip(<TooltipTrigger asChild><span>12 GiB</span></TooltipTrigger>)

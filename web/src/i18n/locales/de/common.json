@@ -31,8 +31,8 @@
     "rssRunning": "Cross-Seed-RSS läuft",
     "rssEnabled": "Cross-Seed-RSS aktiviert",
     "scanRunning": "Scan läuft",
-    "showSidebar": "Sidebar anzeigen",
-    "hideSidebar": "Sidebar ausblenden"
+    "collapseToIcons": "Auf Symbole reduzieren",
+    "expandSidebar": "Sidebar ausklappen"
   },
   "header": {
     "currentInstance": "Aktuelle Instanz: {{name}}. Zum Wechseln der Instanz klicken.",
@@ -64,11 +64,6 @@
     "smartSearchShortcut": "{{shortcutKey}} drücken, um zur Suche zu springen",
     "smartSearchPalette": "{{shortcutKey}} drücken, um die Befehlspalette zu öffnen",
     "torrentCreationTasksTitle": "Torrent-Erstellungsaufgaben",
-    "updateAvailable": "Update verfügbar",
-    "updateVersion": "Version {{version}}",
-    "rssRunning": "Cross-Seed-RSS läuft",
-    "rssEnabled": "Cross-Seed-RSS aktiviert",
-    "scanRunning": "Scan läuft",
     "allScope": "ALLE",
     "unified": "Vereinheitlicht"
   },

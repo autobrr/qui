@@ -9,6 +9,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { api } from "@/lib/api"
 import { server } from "@/test/msw/server"
@@ -44,7 +45,9 @@ function renderBanner() {
   return render(
     <RouterContextProvider router={router}>
       <QueryClientProvider client={queryClient}>
-        <UpdateBanner />
+        <TooltipProvider>
+          <UpdateBanner />
+        </TooltipProvider>
       </QueryClientProvider>
     </RouterContextProvider>
   )

@@ -11,13 +11,9 @@ import { Sidebar } from "@/components/layout/Sidebar"
 import { SupportDialogRoot } from "@/components/support/SupportDialog"
 import { ReminderBar } from "@/components/support/SupportReminder"
 import { LayoutRouteProvider, useLayoutRoute } from "@/contexts/LayoutRouteContext"
-import { usePersistedSidebarState } from "@/hooks/usePersistedSidebarState"
+import { usePersistedSidebarIconOnly } from "@/hooks/usePersistedSidebarState"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
-import { Menu } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { useTranslation } from "react-i18next"
 import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
@@ -25,8 +21,7 @@ import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { DatabaseShrinkProvider } from "@/components/database/DatabaseShrinkProvider"
 
 function AppLayoutContent() {
-  const { t } = useTranslation("common")
-  const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
+  const [sidebarIconOnly, setSidebarIconOnly] = usePersistedSidebarIconOnly()
   const { isFooterVisible } = useMobileScroll()
   const isInstanceRoute = useLayoutRoute().state.instanceId !== null
   const spreadsheetDisguise = useSpreadsheetDisguise()
@@ -36,40 +31,17 @@ function AppLayoutContent() {
     // Where no top bar shows (the classes of Header and SpreadsheetRibbonTabs), the fade gap goes inside main instead, so it scrolls away with the page.
     // Off an instance route, each page has 1rem of top padding of its own, so main adds a smaller part of the gap.
     <div className={cn("flex h-[calc(100dvh-var(--app-inset-top))] bg-background md:pt-(--app-fade-gap)", !topBarShowsSideways && "sideways:pt-0")}>
-      {/* Desktop Sidebar - Collapsible */}
-      <div className={cn(
-        "hidden lg:flex transition-all duration-300 ease-out overflow-hidden",
-        sidebarCollapsed ? "w-0 opacity-0" : "w-64 opacity-100"
-      )}>
-        <div className="w-64 flex-shrink-0">
-          <Sidebar />
-        </div>
+      <div
+        className={cn(
+          "hidden lg:flex flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out motion-reduce:transition-none",
+          sidebarIconOnly ? "w-16" : "w-64"
+        )}
+      >
+        <Sidebar iconOnly={sidebarIconOnly} onToggleIconOnly={() => setSidebarIconOnly(!sidebarIconOnly)} />
       </div>
 
       <div className="flex flex-1 flex-col min-w-0 relative">
-        <Header
-          sidebarCollapsed={sidebarCollapsed}
-        >
-          {/* Desktop toggle button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="hidden lg:flex transition-transform duration-200 hover:scale-110"
-              >
-                <Menu className={cn(
-                  "h-5 w-5 transition-transform duration-300",
-                  sidebarCollapsed && "rotate-90"
-                )} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {sidebarCollapsed ? t("sidebar.showSidebar") : t("sidebar.hideSidebar")}
-            </TooltipContent>
-          </Tooltip>
-        </Header>
+        <Header sidebarIconOnly={sidebarIconOnly} />
         <ReminderBar />
         <main className={cn(
           "flex-1 overflow-y-auto",

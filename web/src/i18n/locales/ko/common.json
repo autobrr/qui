@@ -30,8 +30,8 @@
     "rssRunning": "Cross-seed RSS 실행 중",
     "rssEnabled": "Cross-seed RSS 활성화됨",
     "scanRunning": "스캔 실행 중",
-    "showSidebar": "사이드바 표시",
-    "hideSidebar": "사이드바 숨기기"
+    "collapseToIcons": "아이콘으로 접기",
+    "expandSidebar": "사이드바 펼치기"
   },
   "header": {
     "currentInstance": "현재 인스턴스: {{name}}. 클릭하여 인스턴스를 전환합니다.",
@@ -63,11 +63,6 @@
     "smartSearchShortcut": "{{shortcutKey}}를 눌러 검색창으로 이동",
     "smartSearchPalette": "{{shortcutKey}}를 눌러 명령 팔레트 열기",
     "torrentCreationTasksTitle": "토렌트 생성 작업",
-    "updateAvailable": "업데이트 사용 가능",
-    "updateVersion": "버전 {{version}}",
-    "rssRunning": "Cross-seed RSS 실행 중",
-    "rssEnabled": "Cross-seed RSS 활성화됨",
-    "scanRunning": "스캔 실행 중",
     "allScope": "전체",
     "unified": "통합"
   },

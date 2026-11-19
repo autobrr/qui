@@ -16,7 +16,6 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
-import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
 import { themeArea } from "@/lib/theme-areas"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,9 +25,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -36,7 +32,6 @@ import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { SupportButton } from "@/components/support/SupportButton"
-import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import {
   Tooltip,
@@ -45,10 +40,7 @@ import {
 } from "@/components/ui/tooltip"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useTorrentSelectionContext, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
-import { useAuth } from "@/hooks/useAuth"
-import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
-import { useOpenSystemNotice, useSystemNotices } from "@/hooks/useSystemNotices"
 import { useDebounce } from "@/hooks/useDebounce"
 import { instanceCapabilitiesQuery } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
@@ -66,21 +58,18 @@ import {
 import { modShortcut } from "@/lib/keyboard"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { hasSelection } from "@/lib/torrent-selection"
-import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
-import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
-import { Archive, Check, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, Globe, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
+import { ChevronsUpDown, Cog, FileEdit, FunnelPlus, FunnelX, HardDrive, Info, ListTodo, Plus, Search, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { useTranslation } from "react-i18next"
 
 interface HeaderProps {
-  children?: ReactNode
-  sidebarCollapsed?: boolean
+  sidebarIconOnly?: boolean
 }
 
 interface UnifiedActionDropdownProps {
@@ -135,12 +124,10 @@ function UnifiedActionDropdown({ icon, tooltip, label, instances, onSelectInstan
   )
 }
 
-export function Header({
-  children,
-  sidebarCollapsed = false,
-}: HeaderProps) {
-  const { t, i18n } = useTranslation("common")
-  const { logout } = useAuth()
+export function Header({ sidebarIconOnly = false }: HeaderProps) {
+  // The icon-only sidebar has no room for the name of the instance or for the Unified scope, so the header shows them.
+  const showTitleOnDesktop = sidebarIconOnly
+  const { t } = useTranslation("common")
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string;[key: string]: unknown }
   const { state: layoutRouteState } = useLayoutRoute()
@@ -281,27 +268,6 @@ export function Header({
   const { viewMode } = usePersistedCompactViewState("desktop")
   const activeTaskCount = useActiveTaskCount(selectedInstanceId, canManageSelectedInstance && shouldShowInstanceControls)
 
-  // Query for available updates
-  const { data: updateInfo } = useQuery({
-    queryKey: ["latest-version"],
-    queryFn: () => api.getLatestVersion(),
-    refetchInterval: 2 * 60 * 1000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-  })
-  const systemNotices = useSystemNotices()
-  const openSystemNotice = useOpenSystemNotice(systemNotices)
-  const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
-  const updateItemLabel = updateInfo && (
-    <>
-      <Download className="mr-2 h-4 w-4" />
-      <div className="flex flex-col">
-        <span className="font-medium">{t("header.updateAvailable")}</span>
-        <span className="text-[10px] opacity-80">{t("header.updateVersion", { version: updateInfo.tag_name })}</span>
-      </div>
-    </>
-  )
-
   // Query instance capabilities via the dedicated lightweight endpoint
   const { data: instanceCapabilities } = useQuery<InstanceCapabilities>({
     queryKey: ["instance-capabilities", selectedInstanceId],
@@ -333,8 +299,6 @@ export function Header({
     setInstanceSettingsOpen(false)
   }, [selectedInstanceId])
 
-  const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
-
   // Dense mode uses reduced header height
   const headerHeight = viewMode === "dense" ? "lg:h-12" : "lg:h-16"
   const innerHeight = viewMode === "dense" ? "h-10 lg:h-auto" : "h-12 lg:h-auto"
@@ -343,9 +307,8 @@ export function Header({
   // Assigned, not returned inline: the spreadsheet ribbon strip mounts as a
   // sibling above the header without reindenting the whole header tree.
   const headerElement = (
-    <header {...themeArea("app-header")} className={cn("sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0", headerHeight, !isInstanceRoute && "sideways:hidden")}>
+    <header {...themeArea("app-header")} className={cn("sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-2 lg:static py-2 lg:py-0", headerHeight, !isInstanceRoute && "sideways:hidden")}>
       <div className={cn("hidden md:flex items-center gap-2 mr-2 order-1 lg:order-none", innerHeight)}>
-        {children}
         {instanceName && (hasMultipleActiveInstances || isAllInstancesRoute) ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -353,7 +316,7 @@ export function Header({
                 className={cn(
                   "group flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-all duration-300 hover:opacity-90 rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   "lg:hidden", // Hidden on desktop by default
-                  sidebarCollapsed && "lg:flex", // Visible on desktop when sidebar collapsed
+                  showTitleOnDesktop && "lg:flex", // Visible on desktop when the sidebar shows only icons
                   !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
                 )}
                 aria-label={t("header.currentInstance", { name: instanceName })}
@@ -423,7 +386,7 @@ export function Header({
           <h1 className={cn(
             "flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-all duration-300",
             "lg:hidden", // Hidden on desktop by default
-            sidebarCollapsed && "lg:flex", // Visible on desktop when sidebar collapsed
+            showTitleOnDesktop && "lg:flex", // Visible on desktop when the sidebar shows only icons
             !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
           )}>
             {theme === "swizzin" ? (
@@ -446,7 +409,7 @@ export function Header({
           <div className={cn(
             "hidden md:flex items-center gap-2 order-2 lg:order-none",
             innerHeight,
-            sidebarCollapsed && "lg:ml-2"
+            showTitleOnDesktop && "lg:ml-2"
           )}>
             {/* Filter button */}
             <Tooltip>
@@ -688,223 +651,9 @@ export function Header({
       )}
 
 
-      <div className={cn("grid grid-cols-[auto_auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none", smInnerHeight)}>
+      <div className={cn("grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none", smInnerHeight)}>
         <SupportButton />
         <ThemeToggle />
-        <div className={cn(
-          "transition-all duration-300 ease-out overflow-hidden",
-          sidebarCollapsed ? "w-10 opacity-100" : "w-0 opacity-0"
-        )}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors relative">
-                <Menu className="h-4 w-4" />
-                {systemNotices.length > 0 && (
-                  <span className={cn("absolute top-1 left-1 h-2 w-2 rounded-full", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
-                )}
-                {updateInfo && (
-                  <span className="absolute top-1 right-1 h-2 w-2 bg-green-500 rounded-full" />
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className={cn(systemNotices.length > 0 ? "w-72" : "w-52")}>
-              <SystemNoticeMenuItems notices={systemNotices} onOpen={openSystemNotice.open} />
-              {updateInfo && (
-                <>
-                  <DropdownMenuItem asChild>
-                    {/* Settings holds the Install update button. */}
-                    <Link to="/settings" search={{ tab: "application", modal: "install-update" }} className={updateItemClass}>{updateItemLabel}</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/dashboard"
-                  className="flex cursor-pointer"
-                >
-                  <Home className="mr-2 h-4 w-4" />
-                  {t("nav.dashboard")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/search"
-                  className="flex cursor-pointer"
-                >
-                  <Search className="mr-2 h-4 w-4" />
-                  {t("nav.search")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/cross-seed"
-                  className="flex cursor-pointer"
-                >
-                  <GitBranch className="mr-2 h-4 w-4" />
-                  {t("nav.crossSeed")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/automations"
-                  className="flex cursor-pointer"
-                >
-                  <Zap className="mr-2 h-4 w-4" />
-                  {t("nav.automations")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/backups"
-                  className="flex cursor-pointer"
-                >
-                  <Archive className="mr-2 h-4 w-4" />
-                  {t("nav.backups")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/rss"
-                  className="flex cursor-pointer"
-                >
-                  <Rss className="mr-2 h-4 w-4" />
-                  {t("nav.rss")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/settings"
-                  search={{ tab: "instances" }}
-                  className="flex cursor-pointer"
-                >
-                  <Server className="mr-2 h-4 w-4" />
-                  {t("nav.instances")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/settings"
-                  search={{ tab: "logs" }}
-                  className="flex cursor-pointer"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  {t("nav.logs")}
-                </Link>
-              </DropdownMenuItem>
-              {activeInstances.length > 0 && <DropdownMenuSeparator />}
-              {activeInstances.length > 0 ? (
-                <>
-                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
-                    {t("nav.instances")}
-                  </DropdownMenuLabel>
-                  {hasMultipleActiveInstances && (
-                    <UnifiedScopeDropdownSection
-                      activeInstances={activeInstances}
-                      effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
-                      isAllInstancesRoute={isAllInstancesRoute}
-                      onResetUnifiedScope={resetUnifiedScope}
-                      onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
-                      scopeKeyPrefix="header-menu-scope"
-                    />
-                  )}
-                  {activeInstances.map((instance) => {
-                    const csState = crossSeedInstanceState[instance.id]
-                    const hasRss = csState?.rssEnabled || csState?.rssRunning
-                    const hasSearch = csState?.searchRunning
-
-                    return (
-                      <DropdownMenuItem key={instance.id} asChild>
-                        <Link
-                          to="/instances/$instanceId"
-                          params={{ instanceId: instance.id.toString() }}
-                          className="flex cursor-pointer"
-                        >
-                          <HardDrive className="mr-2 h-4 w-4" />
-                          <span className="truncate">{instance.name}</span>
-                          <span className="ml-auto flex items-center gap-1.5">
-                            {hasRss && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="flex items-center">
-                                    {csState?.rssRunning ? (
-                                      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                                    ) : (
-                                      <Rss className="h-3 w-3 text-muted-foreground" />
-                                    )}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="left" className="text-xs">
-                                  {csState?.rssRunning ? t("header.rssRunning") : t("header.rssEnabled")}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                            {hasSearch && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="flex items-center">
-                                    <SearchCode className="h-3 w-3 text-muted-foreground" />
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="left" className="text-xs">
-                                  {t("header.scanRunning")}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                            <span
-                              className={cn(
-                                "h-2 w-2 rounded-full flex-shrink-0",
-                                instance.connected ? "bg-green-500" : "bg-red-500"
-                              )}
-                            />
-                          </span>
-                        </Link>
-                      </DropdownMenuItem>
-                    )
-                  })}
-                </>
-              ) : (
-                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                  {t("header.noActiveInstances")}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/settings"
-                  className="flex cursor-pointer"
-                >
-                  <Settings className="mr-2 h-4 w-4" />
-                  {t("nav.settings")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <Globe className="h-4 w-4" />
-                  {languageNames[i18n.resolvedLanguage as keyof typeof languageNames] ?? i18n.resolvedLanguage}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {supportedLanguages.map((lng) => (
-                    <DropdownMenuItem
-                      key={lng}
-                      onClick={() => changeLanguage(lng)}
-                      className="flex items-center justify-between gap-4"
-                    >
-                      {languageNames[lng]}
-                      {i18n.resolvedLanguage === lng && <Check className="h-3.5 w-3.5" />}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => logout()}>
-                <LogOut className="mr-2 h-4 w-4" />
-                {t("sidebar.logout")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
       </div>
 
       {/* Instance Preferences Dialog */}
@@ -973,7 +722,6 @@ export function Header({
         )
       })()}
 
-      <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </header>
   )
 
