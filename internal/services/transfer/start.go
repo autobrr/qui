@@ -432,7 +432,21 @@ func (src *source) movable() error {
 
 // torrent reads one torrent from a fresh sync, nil when it is not there.
 func (s *Service) torrent(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
-	torrents, err := s.deps.Sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+	return s.read(ctx, instanceID, hash, true)
+}
+
+// read reads one torrent, nil when it is not there. A read that is not fresh
+// takes the Sync snapshot, and syncs only when that is older than
+// Config.SnapshotAge.
+func (s *Service) read(ctx context.Context, instanceID int, hash string, fresh bool) (*qbt.Torrent, error) {
+	filter := qbittorrent.TorrentRefFilter{Hashes: []string{hash}}
+	var torrents []*qbt.Torrent
+	var err error
+	if fresh {
+		torrents, err = s.deps.Sync.GetTorrentRefsFresh(ctx, instanceID, filter)
+	} else {
+		torrents, err = s.deps.Sync.GetTorrentRefsWithin(ctx, instanceID, filter, s.deps.Config.SnapshotAge)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read the torrents of instance %d: %w", instanceID, err)
 	}

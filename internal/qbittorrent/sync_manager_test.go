@@ -3354,6 +3354,53 @@ func testFreshReadSeesTorrentAddedDuringInFlightSync(t *testing.T, read func(ctx
 	})
 }
 
+// A wait for a Transfer torrent reads its progress once per poll. The read
+// sends a request only when no reader synced the instance within maxAge.
+func TestGetTorrentRefsWithinSyncsOnlyAnOlderSnapshot(t *testing.T) {
+	t.Parallel()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  1,
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+
+	synctest.Test(t, func(t *testing.T) {
+		var maindataCalls atomic.Int32
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				n := maindataCalls.Add(1)
+				_, _ = fmt.Fprintf(w, `{"rid":%d,"full_update":%t,"torrents":{"aa11":{"progress":0.%d}}}`, n, n == 1, n)
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		for _, step := range []struct {
+			wait      time.Duration
+			wantCalls int32
+			want      float64
+		}{
+			{0, 1, 0.1},
+			{2 * time.Second, 1, 0.1},
+			{2 * time.Second, 2, 0.2},
+		} {
+			time.Sleep(step.wait)
+			torrents, err := sm.GetTorrentRefsWithin(t.Context(), 1, TorrentRefFilter{Hashes: []string{"aa11"}}, 3*time.Second)
+			require.NoError(t, err)
+			require.Len(t, torrents, 1)
+			require.Equal(t, step.wantCalls, maindataCalls.Load())
+			require.InDelta(t, step.want, torrents[0].Progress, 0.001)
+		}
+	})
+}
+
 // Reannounce writes the trackers into the torrent that HasTorrentByAnyHash
 // returns, so the read must not return the shared torrent of the Sync snapshot.
 func TestHasTorrentByAnyHashReturnsPrivateCopy(t *testing.T) {

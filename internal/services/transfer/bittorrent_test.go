@@ -91,6 +91,45 @@ func TestTransferTorrentConnectsTheOtherWay(t *testing.T) {
 	r.requireNoHelpers(record)
 }
 
+// A wait for a Transfer torrent asks qBittorrent only in its first polls.
+// After them it reads the Sync snapshot, which a browser tab on the instance
+// keeps new, so a wait with 40 more polls sends no more syncs.
+func TestTransferTorrentWaitReadsTheSyncSnapshot(t *testing.T) {
+	syncs := func(checkPolls int) int {
+		r := newRigOn(t, overSFTP, noAccess, func(c *transfer.Config) { c.CheckPolls, c.SnapshotAge = checkPolls, time.Hour })
+		r.connect()
+		r.dst.CheckSyncs = 1000
+		s := newShow(t, showName)
+		r.seed(s)
+
+		record := r.run(r.request(s))
+
+		require.Equal(t, transfer.StateFailed, record.State)
+		require.Contains(t, record.FailureReason, "The check of the Transfer torrent on homelab did not end.")
+		return r.dst.Syncs()
+	}
+
+	short, long := syncs(20), syncs(60)
+
+	require.Less(t, long-short, 10, "a poll that asked qBittorrent each time would send 80 more syncs")
+}
+
+// The last poll of a wait asks qBittorrent again, so a wait does not give up
+// on an old Sync snapshot. Here the check ends after the first polls, and no
+// other reader syncs the target.
+func TestTransferTorrentWaitEndsOnAFreshSync(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess, func(c *transfer.Config) { c.SnapshotAge = time.Hour })
+	r.connect()
+	r.dst.CheckSyncs = 12
+	s := newShow(t, showName)
+	r.seed(s)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, transfer.WayBitTorrent, record.Way)
+}
+
 // When the clients do not connect either way, a Transfer between two SFTP
 // sides copies the files over SFTP instead.
 func TestTransferTorrentFallsBackToSFTP(t *testing.T) {

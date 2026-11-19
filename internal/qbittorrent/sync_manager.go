@@ -1518,6 +1518,23 @@ func (sm *SyncManager) syncFresh(ctx context.Context, instanceID int) (*syncowne
 	return syncManager, nil
 }
 
+// GetTorrentRefsWithin returns what filter selects from a Sync snapshot at
+// most maxAge old. It syncs first when the snapshot is older, so an instance
+// that another reader keeps synced costs no request. The torrents are shared
+// with the other readers: copy a torrent before you change it.
+func (sm *SyncManager) GetTorrentRefsWithin(ctx context.Context, instanceID int, filter TorrentRefFilter, maxAge time.Duration) ([]*qbt.Torrent, error) {
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	if time.Since(syncManager.LastSuccessfulSyncTime()) > maxAge {
+		if err := syncManager.Sync(ctx); err != nil {
+			return nil, fmt.Errorf("refresh maindata: %w", err)
+		}
+	}
+	return filter.Select(syncManager.SnapshotUnchecked()), nil
+}
+
 // OmitsTrackersOnExport reports whether the instance exports .torrent files
 // without their trackers (qBittorrent 4.6.x).
 func (sm *SyncManager) OmitsTrackersOnExport(ctx context.Context, instanceID int) (bool, error) {

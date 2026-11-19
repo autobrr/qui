@@ -60,12 +60,17 @@ type Config struct {
 	// PeerPolls bounds the wait for the first bytes of a Transfer torrent in
 	// each direction, and a download that gets no byte, PollInterval apart.
 	PeerPolls int
+	// SnapshotAge is how old the Sync snapshot can be when a long wait for a
+	// Transfer torrent reads it without a sync of its own. A browser tab on
+	// the instance syncs every 2 seconds, and the Transfers page reads the
+	// progress every 3 seconds: the age lies between the two.
+	SnapshotAge time.Duration
 }
 
 func DefaultConfig() Config {
 	return Config{Polls: 30, CheckPolls: 3600, PollInterval: time.Second, FlushBytes: 64 << 20, ReadBytes: 16 << 20,
 		Reconnects: 6, ReconnectWait: 10 * time.Second, WakeInterval: time.Minute,
-		ExportPolls: 10, ExportPollInterval: 3 * time.Second, PeerPolls: 120}
+		ExportPolls: 10, ExportPollInterval: 3 * time.Second, PeerPolls: 120, SnapshotAge: 2500 * time.Millisecond}
 }
 
 // PeerAddresses gives the public peer address of an instance as host:port,
