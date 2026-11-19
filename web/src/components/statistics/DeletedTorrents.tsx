@@ -201,8 +201,8 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const minHeight = held?.scope === scope ? held.height : undefined
   const holdHeight = () => setHeld(body.current ? { scope, height: body.current.offsetHeight } : undefined)
   useEffect(() => {
-    // The rows of the last filter still show, and they fill the space by themselves.
-    if (minHeight === undefined || stale) {
+    // The rows of the last filter or of the last page still show, and they fill the space by themselves.
+    if (minHeight === undefined || stale || waiting) {
       return
     }
     const release = () => {
@@ -218,7 +218,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
       window.removeEventListener("scroll", release, { capture: true })
       window.removeEventListener("resize", release)
     }
-  }, [minHeight, stale])
+  }, [minHeight, stale, waiting])
 
   const table = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
