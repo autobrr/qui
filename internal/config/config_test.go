@@ -1151,12 +1151,23 @@ func TestReloadReadsCurrentConfigFile(t *testing.T) {
 }
 
 func TestReloadKeepsExperimentalFeatures(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("experimentalFeatures = [\"testAlpha\"]\n"), 0o600))
-	cfg, err := New(path, "test")
-	require.NoError(t, err)
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		zerolog.SetGlobalLevel(previousLevel)
+	})
 
-	require.NoError(t, os.WriteFile(path, []byte("experimentalFeatures = [\"testBravo\"]\n"), 0o600))
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(testConfigContent+"experimentalFeatures = [\"testAlpha\"]\n"), 0o600))
+
+	// Build the config without New, so no file watcher reads the file while the test calls reload.
+	cfg := &AppConfig{viper: viper.New(), Config: &domain.Config{}, version: "test", logManager: NewLogManager("test")}
+	require.NoError(t, cfg.load(path))
+	require.NoError(t, cfg.viper.Unmarshal(cfg.Config))
+	cfg.hydrateConfigFromViper()
+	cfg.Config.ExperimentalFeatures = cfg.getNormalizedStringSlice("experimentalFeatures")
+	cfg.PublishConfig()
+
+	require.NoError(t, os.WriteFile(path, []byte(testConfigContent+"experimentalFeatures = [\"testBravo\"]\n"), 0o600))
 	cfg.reload()
 
 	assert.Equal(t, []string{"testAlpha"}, cfg.Config.ExperimentalFeatures)
