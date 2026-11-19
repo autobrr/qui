@@ -8,10 +8,16 @@ tag=$1
 repo=autobrr/qui
 blog_dir="$(dirname "$0")/../blog"
 
-IFS=$'\t' read -r date prerelease < <(
-	gh release view "$tag" -R "$repo" --json publishedAt,isPrerelease \
-		--jq '[.publishedAt[:10], .isPrerelease] | @tsv'
+# A draft has no publish date, so isDraft comes first: read drops an empty
+# first field.
+IFS=$'\t' read -r draft date prerelease < <(
+	gh release view "$tag" -R "$repo" --json isDraft,publishedAt,isPrerelease \
+		--jq '[.isDraft, .publishedAt[:10], .isPrerelease] | @tsv'
 )
+if [[ $draft == true ]]; then
+	echo "$tag is a draft. Publish it first, so that the page gets the final Highlights." >&2
+	exit 1
+fi
 if [[ $prerelease == true ]]; then
 	echo "skip $tag: prerelease"
 	exit 0
