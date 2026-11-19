@@ -295,7 +295,7 @@ A shrink needs free disk space of up to two times the size of the database file.
 
 If qui cannot restart itself on your install, the dialog says so. The shrink then runs at the next start of qui. The shrink also runs when you restart qui in another way. qui never shrinks the file without a request.
 
-If the shrink fails, qui starts as usual, and the database does not change. qui shows the System notice **Shrink failed** in the sidebar, in the header menu, and in the mobile menu. The notice gives the cause and the fix:
+If the shrink fails, qui starts as usual, and the database does not change. qui shows the System notice **Shrink failed** in the sidebar and in the mobile menu. The notice gives the cause and the fix:
 
 - The disk has too little free space. Free space on the disk.
 - Another program held the database file, for example a backup tool or a database viewer. Stop that program.
@@ -322,7 +322,7 @@ When qui runs correctly, you can delete the backup and the old file.
 
 ## Low disk
 
-On SQLite, qui reads the free space on the disk of the database file each minute. When the free space is below a limit, qui shows the System notice **Low disk** in the sidebar, in the header menu, and in the mobile menu. The limit is the smaller of 1 GB and 5% of the size of the disk. For example, a disk of 10 GB has a limit of 500 MB, and a disk of 20 GB or more has a limit of 1 GB. The notice closes when the free space recovers to the limit plus 10%, for example 550 MB on a disk of 10 GB.
+On SQLite, qui reads the free space on the disk of the database file each minute. When the free space is below a limit, qui shows the System notice **Low disk** in the sidebar and in the mobile menu. The limit is the smaller of 1 GB and 5% of the size of the disk. For example, a disk of 10 GB has a limit of 500 MB, and a disk of 20 GB or more has a limit of 1 GB. The notice closes when the free space recovers to the limit plus 10%, for example 550 MB on a disk of 10 GB.
 
 When the disk is full, each write of qui fails. Before that happens, do one of these steps:
 

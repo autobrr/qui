@@ -71,7 +71,7 @@ This list shows each item that needs an action:
 
 If no item needs an action, the page does not show the list.
 
-A disk is almost full when the free space is less than 5% of the free space plus the Unique size of the instance. A System notice is not in this list. qui shows a System notice in the sidebar, the header, and the mobile footer.
+A disk is almost full when the free space is less than 5% of the free space plus the Unique size of the instance. A System notice is not in this list. qui shows a System notice in the sidebar and the mobile footer.
 
 ## Storage and Library
 
