@@ -13,7 +13,7 @@ The page has a chart at the top, a list of the instances below it, and the large
 
 ## Chart
 
-The chart shows the upload above the zero line and the download below it, for all instances together. If the chart has no download, the upload uses the whole height of the chart. It counts the instances as the Statistics page counts **All instances**, so it also counts a disabled or removed instance that moved data in the last 24 hours. Each of the first five active instances in the instance order has its own layer, in a shade of the text color of the theme. The other instances share one layer.
+The chart shows the upload above the zero line and the download below it, for all instances together. If the chart has no download, the upload uses the whole height of the chart. The chart counts the instances as the Statistics page counts **All instances**, so it also counts a disabled or removed instance that moved data in the last 24 hours. Each of the first five active instances in the instance order has its own layer, in a shade of the text color of the theme. The other instances share one layer.
 
 The switch above the chart has two views:
 
@@ -37,13 +37,13 @@ Each instance has one line. The line shows the name, the upload speed, the downl
 
 An offline instance shows the cause in place of the numbers. A status icon next to the name tells you that the numbers are not live. See [Live updates](#live-updates).
 
-On a wide screen, the name of an online instance is a link to its torrent list. The button next to the name turns the alternative speed limits of the instance on or off with one click. The button shows a turtle. A gray turtle shows that the limits are off. A red turtle shows that the limits are on. qui does not ask for a confirmation. An instance that is not online has no link and no button.
+On a wide screen, the name of an online instance is a link to its torrent list. The button next to the name turns the alternative speed limits of the instance on or off with one click. The button shows a turtle. A gray turtle shows that the limits are off. A red turtle shows that the limits are on. qui does not ask for confirmation. An instance that is not online has no link and no button.
 
 ### Details of an instance
 
 On a phone, tap a line to open its details in a sheet at the bottom of the screen. On a wide screen, click a row to open its details below the row. Click the row again to close the details.
 
-On a wide screen, two or more rows can be open at the same time. The button in the header of the table opens each row (**Expand all**) or closes each row (**Collapse all**). qui keeps the open rows in the [Display profile](#display-profiles) of the browser, so each screen can have its own open rows. Each row is closed until you open it. A phone shows one sheet at a time, and qui does not keep it.
+On a wide screen, two or more rows can be open at the same time. The button in the header of the table opens each row (**Expand all**) or closes each row (**Collapse all**). qui keeps the open rows in the [Display profile](#display-profiles) of the browser, so each screen can have its own open rows. Each row is closed until you open it. A phone shows one sheet at a time, and qui does not keep which sheet is open.
 
 The details show these values:
 
@@ -54,7 +54,7 @@ The details show these values:
 - The host, the torrent counts (total, active, downloading, and seeding), the size, and the free space at the default save path of qBittorrent. The size is the [Unique size](#unique-size).
 - The peer connections, the uptime, the qBittorrent version, the libtorrent version, the connection status, and the external IP addresses.
 
-On a phone, the sheet has three actions: **Open torrents**, **Add torrent**, and the switch for the alternative speed limits. The switch changes the limits at once, and qui does not ask for a confirmation.
+On a phone, the sheet has three actions: **Open torrents**, **Add torrent**, and the switch for the alternative speed limits. The switch changes the limits at once, and qui does not ask for confirmation.
 
 If you tap or click an offline instance, qui shows the cause and a link to the instance settings.
 
@@ -87,7 +87,7 @@ A disk is almost full when the free space is less than 5% of the free space plus
 
 **Library** shows the torrent count, the total size, the seeding size, and the count of connected instances. The total size and the seeding size are the [Unique size](#unique-size).
 
-Below these numbers, **All time** shows the upload, the download, and the ratio that qBittorrent counted from its first start. The numbers add the instances together. They come from qBittorrent, so they also hold the transfer from before qui recorded it. The [Statistics](./statistics.md) page shows the totals that qui recorded.
+Below these numbers, **All time** shows the upload, the download, and the ratio that qBittorrent counted from its first start. These numbers are for all instances together. They come from qBittorrent, so they also include the transfer from before qui started to record. The [Statistics](./statistics.md) page shows the totals that qui recorded.
 
 ## Incognito mode
 
@@ -180,4 +180,4 @@ Sort and filters are these preferences:
 
 By default, every profile shares them. Thus, a filter that you set on one screen also shows on a screen with a different profile. To give a profile its own sort and filters, open the profile in **Settings → Display profiles** and turn on **Own sort and filters**. The profile starts with a copy of the shared values, so nothing changes at that moment. After that, a change in this profile does not reach the other profiles, and a change in the other profiles does not reach this one. Default always shares its sort and filters, so it has no switch.
 
-If you turn the switch off, qui deletes the own sort and filters of the profile. The profile then uses the shared values again. qui does not ask for a confirmation. The help line under the switch tells you this before you turn it off.
+If you turn the switch off, qui deletes the own sort and filters of the profile. The profile then uses the shared values again. qui does not ask for confirmation. The help line under the switch tells you this before you turn it off.
