@@ -105,9 +105,9 @@ func TestExecuteBackupArchivePathIgnoresWorkingTrackerFlip(t *testing.T) {
 			require.Equal(t, []string{paths[0], paths[0], paths[0]}, paths)
 			require.Equal(t, "[alpha] Synthetic.Show.S01.1080p.WEB-DL-GRP - abcde.torrent", paths[0])
 			if tt.persistRuns {
-				require.Equal(t, 1, sm.exportCalls, "later runs must read the cached blob")
+				require.Equal(t, int32(1), sm.exportCalls.Load(), "later runs must read the cached blob")
 			} else {
-				require.Equal(t, 3, sm.exportCalls)
+				require.Equal(t, int32(3), sm.exportCalls.Load())
 			}
 		})
 	}
