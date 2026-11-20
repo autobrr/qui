@@ -71,116 +71,78 @@ func rebindQuestionToDollar(query string) string {
 	}
 
 	var (
-		out            strings.Builder
-		param          int
-		inSingleQuote  bool
-		inDoubleQuote  bool
-		inLineComment  bool
-		inBlockComment bool
-		dollarQuoteTag string
+		out   strings.Builder
+		param int
 	)
 	out.Grow(len(query) + 16)
 
-	for i := 0; i < len(query); i++ {
-		ch := query[i]
-
-		if dollarQuoteTag != "" {
-			if strings.HasPrefix(query[i:], dollarQuoteTag) {
-				out.WriteString(dollarQuoteTag)
-				i += len(dollarQuoteTag) - 1
-				dollarQuoteTag = ""
-				continue
-			}
-			out.WriteByte(ch)
+	for i := 0; i < len(query); {
+		// Quoted text and comments are copied as is: a ? inside them is not a
+		// placeholder.
+		if end := skipQuotedOrComment(query, i); end > i {
+			out.WriteString(query[i:end])
+			i = end
 			continue
 		}
-
-		if inLineComment {
-			out.WriteByte(ch)
-			if ch == '\n' {
-				inLineComment = false
-			}
-			continue
-		}
-
-		if inBlockComment {
-			out.WriteByte(ch)
-			if ch == '*' && i+1 < len(query) && query[i+1] == '/' {
-				out.WriteByte('/')
-				i++
-				inBlockComment = false
-			}
-			continue
-		}
-
-		if inSingleQuote {
-			out.WriteByte(ch)
-			if ch == '\'' {
-				// Escaped single quote in SQL string literal.
-				if i+1 < len(query) && query[i+1] == '\'' {
-					out.WriteByte('\'')
-					i++
-				} else {
-					inSingleQuote = false
-				}
-			}
-			continue
-		}
-
-		if inDoubleQuote {
-			out.WriteByte(ch)
-			if ch == '"' {
-				if i+1 < len(query) && query[i+1] == '"' {
-					out.WriteByte('"')
-					i++
-				} else {
-					inDoubleQuote = false
-				}
-			}
-			continue
-		}
-
-		if ch == '\'' {
-			inSingleQuote = true
-			out.WriteByte(ch)
-			continue
-		}
-		if ch == '"' {
-			inDoubleQuote = true
-			out.WriteByte(ch)
-			continue
-		}
-		if ch == '-' && i+1 < len(query) && query[i+1] == '-' {
-			inLineComment = true
-			out.WriteString("--")
-			i++
-			continue
-		}
-		if ch == '/' && i+1 < len(query) && query[i+1] == '*' {
-			inBlockComment = true
-			out.WriteString("/*")
-			i++
-			continue
-		}
-		if ch == '$' {
-			tag := parseDollarQuoteTag(query[i:])
-			if tag != "" {
-				dollarQuoteTag = tag
-				out.WriteString(tag)
-				i += len(tag) - 1
-				continue
-			}
-		}
-		if ch == '?' {
+		if query[i] == '?' {
 			param++
 			out.WriteByte('$')
 			out.WriteString(strconv.Itoa(param))
-			continue
+		} else {
+			out.WriteByte(query[i])
 		}
-		out.WriteByte(ch)
+		i++
 	}
 
 	return out.String()
+}
+
+// skipQuotedOrComment returns the end (exclusive) of the string literal,
+// quoted identifier, comment, or dollar-quoted string that starts at
+// query[i], or i when none starts there. An unterminated one ends at the end
+// of the query.
+func skipQuotedOrComment(query string, i int) int {
+	rest := query[i:]
+	switch {
+	case rest[0] == '\'', rest[0] == '"':
+		return quotedEnd(query, i+1, rest[0])
+	case strings.HasPrefix(rest, "--"):
+		return indexEnd(query, i+2, "\n")
+	case strings.HasPrefix(rest, "/*"):
+		return indexEnd(query, i+2, "*/")
+	case rest[0] == '$':
+		if tag := parseDollarQuoteTag(rest); tag != "" {
+			return indexEnd(query, i+len(tag), tag)
+		}
+	}
+	return i
+}
+
+// quotedEnd returns the index after the quote that closes a quoted section
+// whose content starts at query[start]. A doubled quote is an escaped quote
+// in SQL and keeps the section open.
+func quotedEnd(query string, start int, quote byte) int {
+	for i := start; i < len(query); i++ {
+		if query[i] != quote {
+			continue
+		}
+		if i+1 < len(query) && query[i+1] == quote {
+			i++
+			continue
+		}
+		return i + 1
+	}
+	return len(query)
+}
+
+// indexEnd returns the index after the first terminator at or after
+// query[start], or len(query) when there is none.
+func indexEnd(query string, start int, terminator string) int {
+	idx := strings.Index(query[start:], terminator)
+	if idx < 0 {
+		return len(query)
+	}
+	return start + idx + len(terminator)
 }
 
 func parseDollarQuoteTag(s string) string {
