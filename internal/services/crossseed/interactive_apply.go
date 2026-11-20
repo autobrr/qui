@@ -110,6 +110,10 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				return
 			}
 
+			if !cachedResult.SearchDecision.matchesSource(instanceID, hash) {
+				resultChan <- selectionResult{idx, TorrentSearchAddResult{Title: cachedResult.Title, Indexer: cachedResult.Indexer, Error: "file-evidence source binding mismatch"}, nil}
+				return
+			}
 			indexerName := sel.Indexer
 			if indexerName == "" {
 				indexerName = cachedResult.Indexer

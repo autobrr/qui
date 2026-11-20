@@ -87,7 +87,7 @@ func gazelleStatuses(lookups []GazelleLookup) map[string]string {
 // A dialog search reports one RED/OPS lookup for each site.
 func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 	match := func(context.Context) (*gazellemusic.Match, error) {
-		return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Reason: "hash"}, nil
+		return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
 	}
 	rejected := func(context.Context) (*gazellemusic.Match, error) {
 		return nil, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied)
@@ -151,6 +151,36 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 			}
 			require.Len(t, resp.Results, 1)
 			require.Equal(t, tt.wantIndexer, resp.Results[0].Indexer)
+		})
+	}
+}
+
+// A RED/OPS copy that is not music or books keeps its hash match. The result
+// carries no file-evidence decision, so Add matches it by name.
+// regression: #4219
+func TestSearchTorrentMatches_GazelleHashMatchOutsideMusicAndBooks(t *testing.T) {
+	tests := []struct {
+		name  string
+		files qbt.TorrentFiles
+	}{
+		{"application", qbt.TorrentFiles{{Name: gazelleSeamName + "/setup.exe", Size: 120}, {Name: gazelleSeamName + "/readme.txt", Size: 3}}},
+		{"album with a bonus video", qbt.TorrentFiles{{Name: gazelleSeamName + "/01.flac", Size: 100}, {Name: gazelleSeamName + "/Bonus/video.mkv", Size: 23}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newGazelleSeamService(t, redTracker, bothGazelleKeys(), gazelleSiteAnswers{
+				"orpheus.network": func(context.Context) (*gazellemusic.Match, error) {
+					return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+				},
+			})
+			svc.syncManager.(*hashFilteringSyncManager).filesByHash[gazelleSeamHash] = tt.files
+
+			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+
+			require.NoError(t, err)
+			require.Equal(t, "match ", gazelleStatuses(resp.GazelleLookups)["orpheus.network"])
+			require.Len(t, resp.Results, 1)
+			require.False(t, resp.Results[0].SearchDecision.admitted())
 		})
 	}
 }
@@ -267,7 +297,7 @@ func TestExecuteCompletionSearch_NotificationHasGazelleLine(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key"}
 	svc := newGazelleSeamService(t, "https://home.opsfet.ch/announce", settings, gazelleSiteAnswers{
 		"redacted.sh": func(context.Context) (*gazellemusic.Match, error) {
-			return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Reason: "hash"}, nil
+			return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "redacted.sh", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
 		},
 	})
 	notifier := &recordingNotifier{}

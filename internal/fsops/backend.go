@@ -66,8 +66,8 @@ type Backend interface {
 	// --- Write (mutating) ---
 
 	// MkdirAll creates a directory and all parents. Equivalent to os.MkdirAll.
-	// For torrent content and link-tree dirs, pass fsutil.ContentDirMode /
-	// fsutil.LinkTreeBaseDirMode rather than a hand-typed mode (#1704, #2086).
+	// For torrent content and link-tree dirs, pass fsutil.ContentDirMode
+	// rather than a hand-typed mode (#1704, #2086).
 	MkdirAll(ctx context.Context, path string, perm fs.FileMode) error
 
 	// Mkdir creates one directory, like os.Mkdir. The error wraps fs.ErrExist
