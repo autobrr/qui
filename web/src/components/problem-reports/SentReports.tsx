@@ -16,7 +16,7 @@ import { DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api, APIError } from "@/lib/api"
-import { parseJsonNumber, useClientSetting, writeClientSetting } from "@/lib/client-settings"
+import { parseJsonNumber, readClientSetting, useClientSetting, writeClientSetting } from "@/lib/client-settings"
 import { cn } from "@/lib/utils"
 import type { ListedProblemReport } from "@/types"
 
@@ -73,7 +73,9 @@ export function SentReportsView() {
   }, [])
   useEffect(() => {
     if (!data || data.length === 0) return
-    writeClientSetting(SEEN_AT_KEY, Math.max(...data.map((report) => Date.parse(report.statusChangedAt))))
+    const newest = Math.max(...data.map((report) => Date.parse(report.statusChangedAt)))
+    // Another browser can have seen newer statuses than this list holds.
+    if (newest > (readClientSetting(SEEN_AT_KEY, SEEN_AT) ?? -Infinity)) writeClientSetting(SEEN_AT_KEY, newest)
   }, [data])
 
   return (
@@ -105,9 +107,11 @@ function SentReportRow({ report }: { report: ListedProblemReport }) {
   // One mutation for each row, so that a second Delete does not free the button of the first.
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteProblemReport(report.id),
-    // A list that is still loading would bring the row back.
-    onMutate: () => queryClient.cancelQueries({ queryKey: SENT_REPORTS_KEY }),
-    onSuccess: () => queryClient.setQueryData<ListedProblemReport[]>(SENT_REPORTS_KEY, (rows) => rows?.filter((row) => row.id !== report.id)),
+    // A list that is still loading, also one asked for during the Delete, would bring the row back.
+    onSuccess: async () => {
+      await queryClient.cancelQueries({ queryKey: SENT_REPORTS_KEY })
+      queryClient.setQueryData<ListedProblemReport[]>(SENT_REPORTS_KEY, (rows) => rows?.filter((row) => row.id !== report.id))
+    },
     onError: (error) => toast.error(error instanceof APIError && error.message === "unavailable"
       ? t("problemReports.sentReports.deleteUnavailable")
       : t("problemReports.sentReports.deleteFailed", { message: error.message })),

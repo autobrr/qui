@@ -10,11 +10,12 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { closeProblemReport } from "@/components/problem-reports/open"
 import { ProblemReportButton, ProblemReportDialogRoot, ProblemReportMenuItem } from "@/components/problem-reports/ProblemReportDialog"
+import { SENT_REPORTS_KEY } from "@/components/problem-reports/sent-reports"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import { api } from "@/lib/api"
-import { _resetClientSettingsForTests } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, parseJsonNumber, readClientSetting, writeClientSetting } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
 import type { ApplicationInfo, ListedProblemReport, ProblemReportFacts, ProblemReportPayload } from "@/types"
 
@@ -395,6 +396,7 @@ function listed(report: Partial<ListedProblemReport> & Pick<ListedProblemReport,
 }
 
 const issueURL = "https://github.com/autobrr/qui/issues/4321"
+const SEEN_AT_KEY = "qui-problem-reports-seen-at"
 
 describe("Sent reports", () => {
   it("asks qui once when the dialog opens, and shows no entry while no report exists", async () => {
@@ -473,6 +475,21 @@ describe("Sent reports", () => {
     }
   })
 
+  // regression: #4302
+  it("keeps a newer seen time that another browser stored when Sent reports shows older statuses", async () => {
+    serve()
+    serveSentReports([listed({ id: "r1", title: "Uploads stall", status: "issue", issue: { number: 4321, url: issueURL, closed: false }, statusChangedAt: "2026-11-19T10:00:00Z" })])
+    const seenElsewhere = Date.parse("2026-11-20T10:00:00Z")
+    writeClientSetting(SEEN_AT_KEY, seenElsewhere)
+    mount()
+
+    await openDialog()
+    fireEvent.click(await screen.findByRole("button", { name: /^Sent reports/ }))
+    await screen.findByRole("list")
+
+    expect(readClientSetting(SEEN_AT_KEY, { defaultValue: null, parse: parseJsonNumber })).toBe(seenElsewhere)
+  })
+
   it("asks qui once for each open, also when the layout changes", async () => {
     const matchMedia = window.matchMedia
     let wide = false
@@ -537,6 +554,43 @@ describe("Sent reports", () => {
 
     fireEvent.click(second.querySelector("button") as HTMLButtonElement)
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("brrbin cannot delete reports right now. Try again later."))
+    expect(screen.getByText("Torrents vanish")).not.toBeNull()
+  })
+
+  // regression: #4302
+  it("keeps a deleted row gone when a list that Sent reports asked for during the Delete answers later", async () => {
+    serve()
+    const rows = [listed({ id: "r2", title: "Uploads stall" }), listed({ id: "r1", title: "Torrents vanish" })]
+    let releaseList = () => {}
+    const heldList = new Promise<void>((resolve) => { releaseList = resolve })
+    let lists = 0
+    server.use(http.get("*/api/problem-reports", async () => {
+      // The third list, from the second open of Sent reports, read its rows before the Delete ended.
+      if (++lists === 3) await heldList
+      return HttpResponse.json(rows)
+    }))
+    let releaseDelete = () => {}
+    const heldDelete = new Promise<void>((resolve) => { releaseDelete = resolve })
+    server.use(http.delete("*/api/problem-reports/:id", async () => {
+      await heldDelete
+      return new HttpResponse(null, { status: 204 })
+    }))
+    const queryClient = mount()
+
+    await openDialog()
+    fireEvent.click(await screen.findByRole("button", { name: /^Sent reports/ }))
+    fireEvent.click((await screen.findByRole("list")).querySelector("button") as HTMLButtonElement)
+    fireEvent.click(screen.getByRole("button", { name: "Back to report" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Sent reports/ }))
+    await screen.findByRole("list")
+    await waitFor(() => expect(lists).toBe(3))
+
+    releaseDelete()
+    await waitFor(() => expect(screen.queryByText("Uploads stall")).toBeNull())
+    releaseList()
+    await waitFor(() => expect(queryClient.getQueryState(SENT_REPORTS_KEY)?.fetchStatus).toBe("idle"))
+
+    expect(screen.queryByText("Uploads stall")).toBeNull()
     expect(screen.getByText("Torrents vanish")).not.toBeNull()
   })
 
