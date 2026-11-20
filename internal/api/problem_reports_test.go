@@ -17,6 +17,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -818,6 +820,60 @@ func TestProblemReportSentReportsStatuses(t *testing.T) {
 	down := rig.sentReports()
 	assert.Len(t, rig.brrbinRequests(asked2), 1)
 	assert.Equal(t, forgotten, down)
+}
+
+// holdFirstStatusRead holds the first status read before it reaches brrbin,
+// until release closes.
+type holdFirstStatusRead struct {
+	held, release chan struct{}
+	started       atomic.Bool
+}
+
+func (h *holdFirstStatusRead) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path == "/api/install/reports" && h.started.CompareAndSwap(false, true) {
+		close(h.held)
+		<-h.release
+	}
+	return http.DefaultTransport.RoundTrip(req)
+}
+
+// regression: #4302
+func TestProblemReportSentReportsStampsAChangeWhenBrrbinAnswers(t *testing.T) {
+	hold := &holdFirstStatusRead{held: make(chan struct{}), release: make(chan struct{})}
+	rig := newReportRig(t, reportRigOptions{client: &http.Client{Transport: hold}})
+	release := sync.OnceFunc(func() { close(hold.release) })
+	t.Cleanup(release) // before the rig closes its server, which waits for the held list
+	first := rig.sendReport("11111111-1111-4111-8111-111111111111", "Torrents vanish")
+	second := rig.sendReport("22222222-2222-4222-8222-222222222222", "Uploads stall")
+
+	// A list in a second browser starts first, and reads brrbin last.
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rig.srv.URL+"/api/problem-reports", nil)
+	require.NoError(t, err)
+	req.AddCookie(rig.cookie)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	slow := make(chan error, 1)
+	go func() {
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+		slow <- err
+	}()
+	<-hold.held
+
+	rig.fake.SetStatus(first, fakebrrbin.Status{Status: "closed"})
+	shown := rig.sentReports()
+	seenAt := slices.MaxFunc(shown, func(a, b problemreport.ListedReport) int {
+		return a.StatusChangedAt.Compare(b.StatusChangedAt)
+	}).StatusChangedAt
+	rig.fake.SetStatus(second, fakebrrbin.Status{Status: "issue", Issue: &fakebrrbin.Issue{Number: 4321, URL: "https://github.com/autobrr/qui/issues/4321"}})
+	release()
+	require.NoError(t, <-slow)
+
+	reports := rig.sentReports()
+	require.Equal(t, second, reports[0].ID)
+	assert.Equal(t, "issue", reports[0].Status)
+	assert.False(t, reports[0].StatusChangedAt.Before(seenAt), "a change that the shown list did not hold is stamped no earlier than the newest change it showed")
 }
 
 func TestProblemReportDelete(t *testing.T) {

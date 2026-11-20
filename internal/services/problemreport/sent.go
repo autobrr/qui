@@ -69,7 +69,7 @@ func (s *Service) SentReports(ctx context.Context) ([]ListedReport, error) {
 		}
 	}
 	if len(ids) > 0 {
-		if err := s.refreshStatuses(ctx, rows, ids, now); err != nil {
+		if err := s.refreshStatuses(ctx, rows, ids); err != nil {
 			return nil, err
 		}
 	}
@@ -81,7 +81,7 @@ func (s *Service) SentReports(ctx context.Context) ([]ListedReport, error) {
 	return listed, nil
 }
 
-func (s *Service) refreshStatuses(ctx context.Context, rows []models.SentProblemReport, ids []string, now time.Time) error {
+func (s *Service) refreshStatuses(ctx context.Context, rows []models.SentProblemReport, ids []string) error {
 	installKey, err := s.store.InstallKey(ctx)
 	if err != nil {
 		return err
@@ -91,12 +91,13 @@ func (s *Service) refreshStatuses(ctx context.Context, rows []models.SentProblem
 		log.Warn().Err(err).Msg("Cannot read Report statuses from brrbin, showing the stored ones")
 		return nil
 	}
+	changedAt := s.now().UTC()
 	for i := range rows {
 		status, ok := statuses[rows[i].BrrbinID]
 		if !ok || !status.apply(&rows[i]) {
 			continue
 		}
-		rows[i].StatusChangedAt = now
+		rows[i].StatusChangedAt = changedAt
 		if err := s.store.UpdateSentReportStatus(ctx, rows[i]); err != nil {
 			return err
 		}
