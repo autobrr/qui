@@ -5,7 +5,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from "@tanstack/react-router"
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -20,6 +20,7 @@ import type { InstanceResponse } from "@/types"
 const mocks = vi.hoisted(() => ({
   state: undefined as unknown as StreamState,
   getTorrents: vi.fn(),
+  getInstanceDisk: vi.fn(),
   instances: [] as InstanceResponse[],
 }))
 
@@ -36,7 +37,7 @@ vi.mock("@/contexts/SyncStreamContext", async (importOriginal) => {
     useSyncStreamManager: () => manager,
   }
 })
-vi.mock("@/lib/api", () => ({ api: { getTorrents: mocks.getTorrents, getTransferHistoryStatus: async () => [] } }))
+vi.mock("@/lib/api", () => ({ api: { getTorrents: mocks.getTorrents, getInstanceDisk: mocks.getInstanceDisk, getTransferHistoryStatus: async () => [] } }))
 vi.mock("@/hooks/useTitleBarSpeeds", () => ({ useTitleBarSpeeds: () => {} }))
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => ({ instances: mocks.instances, isLoading: false }) }))
 
@@ -50,6 +51,7 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   mocks.getTorrents.mockReset()
+  mocks.getInstanceDisk.mockReset()
   localStorage.clear()
 })
 
@@ -92,6 +94,30 @@ describe("useAllInstanceStats fallback poll", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2500) })
 
     expect(result.current[0].streamError).toBe("instance unreachable: connection refused")
+    unmount()
+    client.clear()
+  })
+})
+
+describe("useAllInstanceStats disk", () => {
+  // regression: #4305
+  it("drops the measured disk when the instance loses its file access", async () => {
+    mocks.state = healthy
+    mocks.getTorrents.mockResolvedValue({ torrents: [], total: 0 })
+    mocks.getInstanceDisk.mockResolvedValue({ freeBytes: 400, totalBytes: 1000 })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const local = [{ ...instances[0], filesystemMode: "local" }] as InstanceResponse[]
+    const { result, rerender, unmount } = renderHook(
+      ({ list }) => useAllInstanceStats(list, { enabled: true }),
+      { wrapper, initialProps: { list: local } }
+    )
+    await waitFor(() => expect(result.current[0].disk).toEqual({ freeBytes: 400, totalBytes: 1000 }))
+
+    rerender({ list: [{ ...local[0], filesystemMode: "none" }] })
+    expect(result.current[0].disk).toBeNull()
     unmount()
     client.clear()
   })

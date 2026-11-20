@@ -535,7 +535,7 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
 
   const diskQueries = useQueries({
     queries: instances.map(instance => ({
-      queryKey: ["instance-disk", instance.id],
+      queryKey: ["instance-disk", instance.id, instance.filesystemMode],
       queryFn: () => api.getInstanceDisk(instance.id),
       enabled: streamEnabled && instance.filesystemMode !== "none",
       staleTime: DISK_REFRESH_INTERVAL_MS,
