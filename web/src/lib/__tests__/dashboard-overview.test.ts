@@ -124,6 +124,7 @@ describe("isLowDisk", () => {
     } as DashboardInstanceStats
   }
 
+  // regression: #4328
   it("never warns from an estimate, with no disk or with a disk that qui could not read", () => {
     expect(isLowDisk(instance(4 * GiB, 1000 * GiB, null))).toBe(false)
     expect(isLowDisk(instance(4 * GiB, 1000 * GiB, { freeBytes: null, totalBytes: null }))).toBe(false)

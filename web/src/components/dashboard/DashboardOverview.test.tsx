@@ -427,6 +427,7 @@ describe("DashboardOverview instances", () => {
     ])
   })
 
+  // regression: #4328
   it("does not list a disk as almost full when qui only estimates its size", () => {
     renderOverview([
       stats(1, {}, {}, { free_space_on_disk: 4 * GiB }),
