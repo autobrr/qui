@@ -24,7 +24,12 @@ export function Setup() {
   const navigate = useNavigate()
   const { setup, isSettingUp, setupError } = useAuth()
 
-  const { data: oidcConfig } = useQuery({
+  const {
+    data: oidcConfig,
+    isError: oidcConfigFailed,
+    isPending: isCheckingOIDC,
+    refetch: refetchOIDCConfig,
+  } = useQuery({
     queryKey: ["oidc-config"],
     queryFn: () => api.getOIDCConfig(),
     staleTime: Infinity,
@@ -32,21 +37,28 @@ export function Setup() {
     refetchOnWindowFocus: false,
   })
 
+  const {
+    data: setupRequired,
+    isError: setupCheckFailed,
+    isPending: isCheckingSetup,
+    refetch: refetchSetup,
+  } = useQuery({
+    queryKey: ["setup-required"],
+    queryFn: () => api.checkSetupRequired(),
+    staleTime: Infinity,
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+
   useEffect(() => {
-    if (oidcConfig === undefined) {
+    if (oidcConfig === undefined || setupRequired === undefined) {
       return
     }
 
-    if (oidcConfig.enabled) {
+    if (oidcConfig.enabled || !setupRequired) {
       navigate({ to: "/login" })
-      return
     }
-
-    api.checkAuth().then(() => {
-      navigate({ to: "/login" })
-    }).catch(() => {
-    })
-  }, [navigate, oidcConfig])
+  }, [navigate, oidcConfig, setupRequired])
 
   const form = useForm({
     defaultValues: {
@@ -59,6 +71,10 @@ export function Setup() {
       setup({ username, password })
     },
   })
+
+  const checkFailed = setupCheckFailed || oidcConfigFailed
+  const checking = isCheckingSetup || isCheckingOIDC
+  const showForm = setupRequired === true && oidcConfig !== undefined && !oidcConfig.enabled
 
   return (
     <div className="flex h-screen items-center justify-center bg-background px-4 sm:px-6">
@@ -77,122 +93,140 @@ export function Setup() {
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                form.handleSubmit()
-              }}
-              className="space-y-4"
-            >
-              <form.Field
-                name="username"
-                validators={{
-                  onChange: ({ value }) => {
-                    if (!value) return t("setup.usernameRequired")
-                    if (value.length < 3) return t("setup.usernameMinLength")
-                    return undefined
-                  },
+            {checkFailed ? (
+              <div role="alert" className="flex flex-col gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
+                <p className="text-destructive">{t("setup.checkFailed")}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void refetchSetup()
+                    void refetchOIDCConfig()
+                  }}
+                >
+                  {t("setup.retry")}
+                </Button>
+              </div>
+            ) : checking || !showForm ? (
+              <p className="text-center text-sm text-muted-foreground">{t("login.loading")}</p>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  form.handleSubmit()
                 }}
+                className="space-y-4"
               >
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor={field.name}>{t("setup.usernameLabel")}</Label>
-                    <Input
-                      id={field.name}
-                      type="text"
-                      autoComplete="username"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder={t("setup.usernamePlaceholder")}
-                    />
-                    {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                    )}
+                <form.Field
+                  name="username"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value) return t("setup.usernameRequired")
+                      if (value.length < 3) return t("setup.usernameMinLength")
+                      return undefined
+                    },
+                  }}
+                >
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name}>{t("setup.usernameLabel")}</Label>
+                      <Input
+                        id={field.name}
+                        type="text"
+                        autoComplete="username"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder={t("setup.usernamePlaceholder")}
+                      />
+                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                      )}
+                    </div>
+                  )}
+                </form.Field>
+
+                <form.Field
+                  name="password"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value) return t("setup.passwordRequired")
+                      if (value.length < 8) return t("setup.passwordMinLength")
+                      return undefined
+                    },
+                  }}
+                >
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name}>{t("setup.passwordLabel")}</Label>
+                      <Input
+                        id={field.name}
+                        type="password"
+                        autoComplete="new-password"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder={t("setup.passwordPlaceholder")}
+                      />
+                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                      )}
+                    </div>
+                  )}
+                </form.Field>
+
+                <form.Field
+                  name="confirmPassword"
+                  validators={{
+                    onChange: ({ value, fieldApi }) => {
+                      const password = fieldApi.form.getFieldValue("password")
+                      if (!value) return t("setup.confirmPasswordRequired")
+                      if (value !== password) return t("setup.passwordsDoNotMatch")
+                      return undefined
+                    },
+                  }}
+                >
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name}>{t("setup.confirmPasswordLabel")}</Label>
+                      <Input
+                        id={field.name}
+                        type="password"
+                        autoComplete="new-password"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder={t("setup.confirmPasswordPlaceholder")}
+                      />
+                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                      )}
+                    </div>
+                  )}
+                </form.Field>
+
+                {setupError && (
+                  <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
+                    {setupError.message || t("setup.setupFailed")}
                   </div>
                 )}
-              </form.Field>
 
-              <form.Field
-                name="password"
-                validators={{
-                  onChange: ({ value }) => {
-                    if (!value) return t("setup.passwordRequired")
-                    if (value.length < 8) return t("setup.passwordMinLength")
-                    return undefined
-                  },
-                }}
-              >
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor={field.name}>{t("setup.passwordLabel")}</Label>
-                    <Input
-                      id={field.name}
-                      type="password"
-                      autoComplete="new-password"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder={t("setup.passwordPlaceholder")}
-                    />
-                    {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                    )}
-                  </div>
-                )}
-              </form.Field>
-
-              <form.Field
-                name="confirmPassword"
-                validators={{
-                  onChange: ({ value, fieldApi }) => {
-                    const password = fieldApi.form.getFieldValue("password")
-                    if (!value) return t("setup.confirmPasswordRequired")
-                    if (value !== password) return t("setup.passwordsDoNotMatch")
-                    return undefined
-                  },
-                }}
-              >
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor={field.name}>{t("setup.confirmPasswordLabel")}</Label>
-                    <Input
-                      id={field.name}
-                      type="password"
-                      autoComplete="new-password"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder={t("setup.confirmPasswordPlaceholder")}
-                    />
-                    {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                    )}
-                  </div>
-                )}
-              </form.Field>
-
-              {setupError && (
-                <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
-                  {setupError.message || t("setup.setupFailed")}
-                </div>
-              )}
-
-              <form.Subscribe
-                selector={(state) => [state.canSubmit, state.isSubmitting]}
-              >
-                {([canSubmit, isSubmitting]) => (
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    size="lg"
-                    disabled={!canSubmit || isSubmitting || isSettingUp}
-                  >
-                    {isSettingUp ? t("setup.creatingAccount") : t("setup.createAccount")}
-                  </Button>
-                )}
-              </form.Subscribe>
-            </form>
+                <form.Subscribe
+                  selector={(state) => [state.canSubmit, state.isSubmitting]}
+                >
+                  {([canSubmit, isSubmitting]) => (
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      size="lg"
+                      disabled={!canSubmit || isSubmitting || isSettingUp}
+                    >
+                      {isSettingUp ? t("setup.creatingAccount") : t("setup.createAccount")}
+                    </Button>
+                  )}
+                </form.Subscribe>
+              </form>
+            )}
             <Footer />
           </CardContent>
         </Card>
