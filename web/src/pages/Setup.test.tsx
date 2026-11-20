@@ -132,7 +132,18 @@ describe("Setup", () => {
 
     renderSetup()
 
-    await vi.waitFor(() => expect(createAccount()).toBeNull())
-    expect(mocks.navigate).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(sessionStorage.getItem(SETUP_COMPLETED_KEY)).toBeNull())
+    expect(mocks.navigate).not.toHaveBeenCalledWith({ to: "/login" })
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/dashboard" })
+  })
+
+  it("sends a later setup visit with a leftover marker into the app", async () => {
+    server.use(http.get("*/api/auth/check-setup", () => HttpResponse.json({ setupRequired: false })))
+    sessionStorage.setItem(SETUP_COMPLETED_KEY, "1")
+
+    renderSetup()
+
+    await vi.waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: "/dashboard" }))
+    expect(createAccount()).toBeNull()
   })
 })
