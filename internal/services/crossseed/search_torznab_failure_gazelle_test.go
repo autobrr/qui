@@ -208,8 +208,9 @@ func slowGazelleClients(t *testing.T) (clients *gazelleClientSet, started <-chan
 	t.Helper()
 	// Not parallel: the test replaces package-level vars.
 	prevTimeout := gazelleSearchTimeout
-	// Long enough for the request to reach the fake on a busy runner.
-	gazelleSearchTimeout = time.Second
+	// Torznab must reach its fake before this ends, also on a runner that
+	// stalls a local request for a second.
+	gazelleSearchTimeout = 3 * time.Second
 	t.Cleanup(func() { gazelleSearchTimeout = prevTimeout })
 	prevFindMatch := findGazelleMatch
 	findGazelleMatch = gazellemusic.FindMatch
