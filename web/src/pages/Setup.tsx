@@ -18,10 +18,12 @@ import { useQuery } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect } from "react"
 import { useTranslation } from "react-i18next"
+import { useQueryClient } from "@tanstack/react-query"
 
 export function Setup() {
   const { t } = useTranslation("auth")
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { setup, isSettingUp, setupError } = useAuth()
 
   const {
@@ -56,9 +58,13 @@ export function Setup() {
     }
 
     if (oidcConfig.enabled || !setupRequired) {
+      // Login reads its own infinite-stale copy of this answer. Write the
+      // result we just observed there before redirecting, so Login cannot send
+      // the visitor back here with stale data.
+      queryClient.setQueryData(["setup-required"], setupRequired)
       navigate({ to: "/login" })
     }
-  }, [navigate, oidcConfig, setupRequired])
+  }, [navigate, oidcConfig, queryClient, setupRequired])
 
   const form = useForm({
     defaultValues: {
