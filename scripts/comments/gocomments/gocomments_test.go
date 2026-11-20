@@ -85,6 +85,18 @@ func TestStrip(t *testing.T) {
 			[]Block{{Line: 3, Text: "/* one */"}},
 			"package p\n\nvar a = 1\n",
 		},
+		{
+			"two comments after the code on one line",
+			"package p\n\nvar a = 1 /* first */ /* second */\n",
+			[]Block{{Line: 3, Text: "/* first */"}, {Line: 3, Text: "/* second */"}},
+			"package p\n\nvar a = 1\n",
+		},
+		{
+			"the same comment twice on one line",
+			"package p\n\nvar n = /* same */ 1 + /* same */ 2\n",
+			[]Block{{Line: 3, Text: "/* same */"}, {Line: 3, Text: "/* same */"}},
+			"package p\n\nvar n = 1 + 2\n",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

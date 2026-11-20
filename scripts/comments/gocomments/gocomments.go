@@ -91,6 +91,7 @@ func Strip(path string, src []byte, doomed []Block) (out []byte, missed []Block,
 		for _, c := range blocks[i].comments {
 			spans = append(spans, cut(src, c))
 		}
+		blocks = slices.Delete(blocks, i, i+1)
 	}
 	if len(spans) == 0 {
 		return src, missed, nil
@@ -153,8 +154,8 @@ func remove(src []byte, spans []span) []byte {
 	var out bytes.Buffer
 	pos := 0
 	for _, s := range spans {
-		out.Write(src[pos:s.start])
-		pos = s.end
+		out.Write(src[pos:max(pos, s.start)])
+		pos = max(pos, s.end)
 		if s.wholeLines {
 			pos = closeGap(&out, src, pos)
 		}

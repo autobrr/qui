@@ -47,6 +47,14 @@ test("strip refuses a JSX comment that separates two texts", () => {
   assert.throws(() => strip("web/src/a.tsx", source, [{ line: 4, text: "/* gap */" }]), /the emitted code changed/)
 })
 
+test("strip deletes each of two equal comments on one line", () => {
+  const source = "export const n = /* same */ 1 + /* same */ 2\n"
+  const { output, missed } = strip("web/src/a.ts", source, [{ line: 1, text: "/* same */" }, { line: 1, text: "/* same */" }])
+
+  assert.deepEqual(missed, [])
+  assert.equal(output, "export const n = 1 + 2\n")
+})
+
 test("strip skips a block whose text moved", () => {
   const source = "// now different\nexport const a = 1\n"
   const doomed = [{ line: 1, text: "// old text" }]

@@ -129,11 +129,12 @@ export function strip(file, source, doomed) {
   const missed = []
   const spans = []
   for (const block of doomed) {
-    const match = current.find(candidate => candidate.line === block.line && candidate.text === block.text)
-    if (!match) {
+    const index = current.findIndex(candidate => candidate.line === block.line && candidate.text === block.text)
+    if (index < 0) {
       missed.push(block)
       continue
     }
+    const [match] = current.splice(index, 1)
     spans.push(...match.comments.map(comment => cut(source, comment)))
   }
   const output = remove(source, spans.sort((a, b) => a.start - b.start))
