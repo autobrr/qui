@@ -12,16 +12,12 @@ import { findInstanceMarkIcon } from "./instance-mark-icons"
 
 interface MarkGlyphProps {
   mark: InstanceMark
-  /** Shows the letters of a mark without an icon. Without it, such a mark shows the drive icon. */
   letters?: string
-  /** The instance has a problem, for example it is disconnected: the mark takes the destructive color. */
   problem?: boolean
-  /** False keeps the text color, for example on the highlighted row of a list. A problem still shows. */
   colored?: boolean
   className?: string
 }
 
-/** A mark as it would show: its icon, or its letters, in its color. Takes the size of a 16px icon by default. */
 export function MarkGlyph({ mark, letters, problem = false, colored = true, className }: MarkGlyphProps) {
   const Icon = findInstanceMarkIcon(mark.icon)
   const color = problem ? { className: "text-destructive" } : colored ? instanceMarkColorProps(mark.color) : {}
@@ -38,16 +34,10 @@ export function MarkGlyph({ mark, letters, problem = false, colored = true, clas
 }
 
 interface InstanceMarkIconProps extends Omit<MarkGlyphProps, "mark" | "letters"> {
-  /** The id of the instance, or ALL_INSTANCES_ID for Unified. */
   instanceId: number
-  /**
-   * Shows the mark as the icon-only sidebar does: the letters of the mark, or these initials while it has none. Without
-   * it, a mark without an icon shows the drive icon, as everywhere else.
-   */
   autoLetters?: string
 }
 
-/** The stored mark of an instance. By default it shows as an icon, since only the icon-only sidebar shows letters. */
 export function InstanceMarkIcon({ instanceId, autoLetters, ...props }: InstanceMarkIconProps) {
   const [mark] = useInstanceMark(instanceId)
   return <MarkGlyph mark={mark} letters={autoLetters === undefined ? undefined : mark.letters || autoLetters} {...props} />

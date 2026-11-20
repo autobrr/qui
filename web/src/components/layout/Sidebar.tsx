@@ -82,16 +82,13 @@ function IconOnlyLabel({ show, label, children }: { show: boolean; label: ReactN
 const morphClassName = (shown: boolean) => cn("transition-[opacity,scale] duration-200 ease-out motion-reduce:transition-none", !shown && "scale-50 opacity-0")
 
 interface SidebarMarkProps {
-  /** The id of the instance, or ALL_INSTANCES_ID for Unified. */
   instanceId: number
-  /** The letters that a mark without letters of its own shows at the icon-only width. "" keeps the drive icon. */
   autoLetters: string
   iconOnly: boolean
   isActive: boolean
   problem?: boolean
 }
 
-/** The mark of a sidebar row. Letters show only at the icon-only width, and the full width shows the drive icon in their place. */
 function SidebarMark({ instanceId, autoLetters, iconOnly, isActive, problem }: SidebarMarkProps) {
   const [mark] = useInstanceMark(instanceId)
   const letters = findInstanceMarkIcon(mark.icon) ? "" : mark.letters || autoLetters

@@ -26,7 +26,6 @@ interface InstanceListProps {
   instances: readonly InstanceResponse[]
   /** Opens the settings of the instance. */
   onEdit: (instance: InstanceResponse) => void
-  /** Opens the icon editor of the instance. */
   onChangeIcon: (instance: InstanceResponse) => void
   onAdd: () => void
 }
@@ -43,7 +42,6 @@ export function InstanceList({ instances, onEdit, onChangeIcon, onAdd }: Instanc
   const { testConnection, setInstanceStatus, reorderInstances, isReordering } = useInstances()
   const toggling = usePendingIds(instanceStatusKey)
   const [incognito] = useIncognitoMode()
-  // Until the server answers, the icon editor shows the default, and a change would be lost.
   const marksSettled = useClientSettingsSettled()
   const [testing, setTesting] = useState<ReadonlySet<number>>(() => new Set())
   // The instance stays in the state while the dialog fades out. A new session gives the dialog fresh state.
