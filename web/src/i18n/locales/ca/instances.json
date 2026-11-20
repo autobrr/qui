@@ -590,6 +590,7 @@
         "externalProgram": "Programa extern",
         "dryRun": "Execució de prova",
         "exportToInstance": "Exporta a una instància",
+        "transferToInstance": "Transfereix a una instància",
         "ruleSkipped": "Regla no executada"
       },
       "shareLimit": {
@@ -643,7 +644,9 @@
         "exportedDryRun_one": "{{count}} torrent s'exportaria",
         "exportedDryRun_other": "{{count}} torrents s'exportarien",
         "exportFailed_one": "No s'ha pogut exportar {{count}} torrent",
-        "exportFailed_other": "No s'han pogut exportar {{count}} torrents"
+        "exportFailed_other": "No s'han pogut exportar {{count}} torrents",
+        "transferredDryRun_one": "{{count}} torrent es transferiria",
+        "transferredDryRun_other": "{{count}} torrents es transferirien"
       },
       "deleteDialog": {
         "title": "Elimina la regla",
@@ -703,6 +706,7 @@
         "deleteActivityFailed": "No s'ha pogut eliminar l'activitat"
       },
       "exported": "Exportat",
+      "transferStarted": "Iniciat",
       "tagActions_one": "{{count}} acció d'etiqueta",
       "tagActions_other": "{{count}} accions d'etiqueta",
       "skipped": "Omesa"
@@ -796,6 +800,11 @@
         "skipChecking": "Omet la verificació",
         "addPaused": "Afegeix-lo aturat"
       },
+      "transfer": {
+        "title": "Transfereix a una instància",
+        "description": "Mou cada torrent coincident amb els seus fitxers a la instància de destinació i en comprova la còpia abans d'eliminar res. La pàgina Transferències mostra cada transferència.",
+        "remove": "Elimina «Transfereix a una instància»"
+      },
       "priority": {
         "title": "Prioritat dels torrents",
         "description": "Controla l'ordre en què es processen els torrents.",
@@ -838,7 +847,8 @@
         "category": "Categoria",
         "move": "Mou",
         "externalProgram": "Executa un programa extern",
-        "exportToInstance": "Exporta a una instància"
+        "exportToInstance": "Exporta a una instància",
+        "transferToInstance": "Transfereix a una instància"
       },
       "option": {
         "noChange": "Sense canvis",
@@ -1109,6 +1119,7 @@
           "externalProgram": "Programa extern",
           "noMatches": "Cap coincidència",
           "exportedToInstance": "Exporta a una instància",
+          "transferredToInstance": "Transfereix a una instància",
           "ruleSkipped": "Regla no executada"
         },
         "actionFallback": "Acció desconeguda ({{action}})",
@@ -1369,6 +1380,7 @@
         "auto_managed": "Gestionat automàticament",
         "dry_run_no_match": "Execució de prova (cap coincidència)",
         "exported_to_instance": "Exporta a una instància",
+        "transferred_to_instance": "Transfereix a una instància",
         "rule_skipped": "Regla no executada"
       }
     },
@@ -2128,5 +2140,10 @@
     "emptyDescription": "Afegeix un client qBittorrent perquè qui en gestioni els torrents.",
     "tlsSkipped": "Sense comprovació TLS",
     "reorderFailed": "No s'han pogut reordenar les instàncies"
+  },
+  "publicPeerAddress": {
+    "label": "Adreça pública del parell",
+    "noResolvedAddress": "qui encara no pot determinar cap adreça",
+    "description": "L'adreça i el port amb què altres clients BitTorrent arriben a aquest qBittorrent, per a Transferències i Comparticions. Deixa-ho buit per fer servir l'adreça que qui obté de qBittorrent a cada ús. Defineix-la quan qBittorrent s'executa a Docker o darrere de NAT."
   }
 }

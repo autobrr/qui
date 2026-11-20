@@ -5,6 +5,10 @@
     "search": "Hledat",
     "crossSeed": "Křížové sdílení",
     "automations": "Automatizace",
+    "transfers": "Přenosy",
+    "transfersQueued_one": "{{count}} položka běží nebo čeká",
+    "transfersQueued_few": "{{count}} položky běží nebo čekají",
+    "transfersQueued_other": "{{count}} položek běží nebo čeká",
     "backups": "Zálohy",
     "rss": "RSS",
     "settings": "Nastavení",
@@ -28,8 +32,8 @@
     "rssRunning": "RSS křížového sdílení běží",
     "rssEnabled": "RSS křížového sdílení je zapnuto",
     "scanRunning": "Scan běží",
-    "showSidebar": "Zobrazit postranní panel",
-    "hideSidebar": "Skrýt postranní panel"
+    "collapseToIcons": "Sbalit na ikony",
+    "expandSidebar": "Rozbalit postranní panel"
   },
   "header": {
     "currentInstance": "Aktuální instance: {{name}}. Klikněte pro přepnutí instance.",
@@ -61,11 +65,6 @@
     "smartSearchShortcut": "Stiskněte {{shortcutKey}} pro přechod do hledání",
     "smartSearchPalette": "Stiskněte {{shortcutKey}} pro otevření palety příkazů",
     "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
-    "updateAvailable": "Aktualizace dostupná",
-    "updateVersion": "Verze {{version}}",
-    "rssRunning": "RSS křížového sdílení běží",
-    "rssEnabled": "RSS křížového sdílení je zapnuto",
-    "scanRunning": "Scan běží",
     "allScope": "VŠE",
     "unified": "Unifikované"
   },
@@ -252,6 +251,28 @@
         "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Orpheus klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Orpheus zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Orpheus.",
         "menuFix": "Vložte nový klíč v nastavení",
         "action": "Otevřít nastavení Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Plán hledání ve sdílených je blokovaný",
+        "title": "Plán hledání ve sdílených nemůže běžet",
+        "effect": "qui nemůže spustit plánované hledání ve sdílených. Zkusí to znovu každou hodinu.",
+        "fix": "Zkontrolujte nastavení hledání ve sdílených. qui to zkusí znovu každou hodinu.",
+        "menuFix": "Zkontrolovat nastavení hledání ve sdílených",
+        "action": "Otevřít nastavení hledání ve sdílených",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab je v nastavení hledání ve sdílených vypnutý a není nastaven žádný klíč API pro RED ani OPS. Zapněte Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout Torznab, nebo přidat klíč pro RED nebo OPS"
+          },
+          "no_indexer": {
+            "fix": "Není zapnutý žádný indexer. Zapněte indexer Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout indexer"
+          },
+          "instance_missing": {
+            "fix": "Instance v uloženém nastavení hledání ve sdílených neexistuje. Vyberte instanci v nastavení hledání ve sdílených a uložte. qui to zkusí znovu každou hodinu.",
+            "menuFix": "Vybrat instanci a uložit"
+          }
+        }
       }
     },
     "actions": {
@@ -357,15 +378,74 @@
   },
   "support": {
     "title": "Podpořit qui",
-    "description": "Už máte motivy a chcete pomoci ještě víc? Vše v qui už je vaše. Předplatné neodemyká funkce, financuje čas věnovaný jejich vývoji.",
-    "perkPrefix": "Podporovatelé získají roli",
-    "perkSuffix": "na Discordu a naši věčnou vděčnost.",
-    "yearly": "{{price}} / rok",
-    "monthly": "{{price}} / měsíc",
-    "notLicense": "Licence k motivům je samostatný jednorázový nákup."
+    "description": "Způsoby, jak podpořit qui, a jejich ceny.",
+    "heading": "Pomozte udržovat qui",
+    "intro": "qui je zdarma a funguje stejně, ať zaplatíte, nebo ne. Podpora platí čas a nástroje, které se do qui vkládají.",
+    "licensed": "Děkujeme za vaši licenci k motivům.",
+    "releases_one": "qui za posledních 12 měsíců vydalo {{count}} verzi.",
+    "releases_few": "qui za posledních 12 měsíců vydalo {{count}} verze.",
+    "releases_other": "qui za posledních 12 měsíců vydalo {{count}} verzí.",
+    "releaseMap": "Posledních 52 týdnů, jeden čtverec za každý den. Světlý čtverec je den s novou verzí.",
+    "releaseDay": "Den s novou verzí",
+    "plans": {
+      "yearly": "{{price}} ročně",
+      "yearlyNote": "{{price}} měsíčně, placeno ročně",
+      "yearlyNoteWithLicense": "{{price}} měsíčně, placeno ročně. Včetně licence k motivům.",
+      "license": "Licence k motivům, od {{price}}",
+      "licenseNote": "Všechny současné i budoucí prémiové motivy, doživotně",
+      "onePayment": "jedna platba"
+    },
+    "checkout": "Pokračovat k platbě",
+    "fromPrice": "od {{price}}",
+    "terms": {
+      "yearly": "Dnes zaplatíte {{price}}, pak {{price}} každý rok, dokud podporu nezrušíte.",
+      "license": "Jedna platba ve výši {{price}} nebo více, částku zvolíte při platbě. Bez předplatného."
+    },
+    "perks": {
+      "yearly": "Podporovatelé získají v qui odznak Podporovatel a na Discordu roli podporovatele. Po zaplacení přidejte na tento server svůj klíč podporovatele.",
+      "license": "Licence odemyká prémiové motivy. Po zaplacení přidejte na tento server svůj licenční klíč."
+    },
+    "existing": "Už jste podporovatel?",
+    "addKey": "Přidat klíč podporovatele",
+    "key": {
+      "help": "Klíč podporovatele najdete na stránce platby a v e-mailu s potvrzením platby.",
+      "label": "Klíč podporovatele",
+      "submit": "Přidat klíč",
+      "back": "Zpět"
+    },
+    "ended": "Klíč podporovatele na tomto serveru už není platný. qui ho každý den kontroluje znovu. Pokud vaše podpora skončila, licence k motivům vám zůstává. Její klíč najdete v <portal>licenčním portálu</portal>. Přidejte ho v Nastavení, v části Motivy.",
+    "removeKey": "Odebrat klíč podporovatele z tohoto serveru",
+    "supporter": {
+      "badge": "Podporovatel",
+      "title": "Podporujete qui",
+      "thanks": "Děkujeme. Vaše podpora platí čas a nástroje, které se do qui vkládají.",
+      "detail": "Máte v qui odznak Podporovatel a na Discordu roli podporovatele. Vaše podpora také odemyká prémiové motivy a zahrnuje doživotní licenci k motivům. Licenční klíč najdete v <portal>licenčním portálu</portal>.",
+      "manage": "Spravovat nebo zrušit podporu"
+    },
+    "reminder": {
+      "title_one": "{{count}} den s qui na tomto serveru",
+      "title_few": "{{count}} dny s qui na tomto serveru",
+      "title_other": "{{count}} dní s qui na tomto serveru",
+      "tooltip": "Počítá se na tomto serveru a nikdy se neodesílá. qui se ptá jednou za rok.",
+      "subtitle": "Podpořit qui. qui se ptá jednou za rok.",
+      "notNow": "Teď ne",
+      "serverDays_one": "Tento server používá qui {{count}} den. qui to počítá na tomto serveru a nikdy to neodesílá.",
+      "serverDays_few": "Tento server používá qui {{count}} dny. qui to počítá na tomto serveru a nikdy to neodesílá.",
+      "serverDays_other": "Tento server používá qui {{count}} dní. qui to počítá na tomto serveru a nikdy to neodesílá.",
+      "notNowToast": "qui se znovu zeptá za rok",
+      "dontAskAgain": "Už se neptat",
+      "offToast": "qui se už nezeptá",
+      "offToastDescription": "Zkratka pro podporu zůstává. Připomínku znovu zapnete v Nastavení, v části Aplikace.",
+      "undo": "Zpět",
+      "hiddenToast": "Zkratka pro podporu je skrytá",
+      "hiddenToastDescription": "qui se už nezeptá. Zkratku vrátíte v Nastavení, v části Aplikace.",
+      "notForYou": "Není to pro vás? <reminder>Vypněte roční připomínku</reminder>, nebo <heart>skryjte srdce</heart>. V Nastavení obojí vrátíte.",
+      "notForYouHeart": "Není to pro vás? <heart>Skryjte srdce</heart>. V Nastavení ho vrátíte."
+    }
   },
   "labels": {
-    "path": "Cesta"
+    "path": "Cesta",
+    "beta": "Beta"
   },
   "kit": {
     "loadFailed": "Tuto sekci se nepodařilo načíst.",

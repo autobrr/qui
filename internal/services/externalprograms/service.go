@@ -41,6 +41,7 @@ const (
 var (
 	errExecutionQueueFull = errors.New("not started: execution queue full")
 	errExecutionLimitWait = errors.New("not started: execution limit reached")
+	errHelperTorrent      = errors.New("not started: qui added this torrent for a Transfer or a Share")
 )
 
 // Service provides unified external program execution for all consumers.
@@ -58,6 +59,20 @@ type Service struct {
 	waiting     sync.Map
 	maxWaiting  int32
 	waitTimeout time.Duration
+
+	helpers helperTorrents
+}
+
+// helperTorrents is the helper registry: it names the torrents that qui added
+// for a Transfer or a Share. A tag proves nothing.
+type helperTorrents interface {
+	IsHelper(instanceID int, hash string) bool
+}
+
+// SetHelperTorrents makes Execute refuse each helper torrent: no External
+// Program runs for one. Call it one time at start-up.
+func (s *Service) SetHelperTorrents(helpers helperTorrents) {
+	s.helpers = helpers
 }
 
 // NewService creates a new external programs service.
@@ -152,6 +167,9 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) ExecuteResult
 	// Validate request first
 	if err := req.Validate(); err != nil {
 		return FailureResult(err)
+	}
+	if s != nil && s.helpers != nil && s.helpers.IsHelper(req.InstanceID, req.Torrent.Hash) {
+		return FailureResult(errHelperTorrent)
 	}
 
 	program := req.Program

@@ -14,6 +14,7 @@
   "customRange": {
     "from": "Primeiro dia",
     "to": "Último dia",
+    "pick": "Escolha um dia",
     "apply": "Aplicar",
     "range": "{{from}} – {{to}}"
   },
@@ -142,6 +143,10 @@
     "seededValue": "{{value}}x",
     "total": "Total",
     "shown": "{{shown}} de {{total}}",
+    "range": "{{from}}–{{to}} de {{total}}",
+    "previousPage": "Página anterior",
+    "nextPage": "Próxima página",
+    "showMore": "Mostrar mais",
     "showAll": "Mostrar tudo",
     "showFewer": "Mostrar menos",
     "noCategory": "Nenhuma categoria",

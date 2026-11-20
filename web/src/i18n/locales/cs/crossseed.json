@@ -120,18 +120,6 @@
     "skipIndividualEpisodesAutomationOff": "Automatické sestavování balíků sezón je vypnuté. Tento běh balíky sezón nevyhledává.",
     "maxAddedAgeLabel": "Maximální stáří torrentu (dny)",
     "maxAddedAgeDescription": "Přeskočí torrenty přidané před více než tímto počtem dní. 0 limit vypne. Indexery, které torrent nikdy nehledaly, jsou vždy zahrnuty.",
-    "categories": "Kategorie",
-    "tags": "Štítky",
-    "allCategoriesAll": "Všechny kategorie (nechat prázdné pro všechny)",
-    "allTagsAll": "Všechny štítky (nechat prázdné pro všechny)",
-    "selectInstanceToLoadCategories": "Vybrat instanci, aby načetla kategorie",
-    "selectInstanceToLoadTags": "Vybrat instanci, aby načetla štítky",
-    "categoriesLoadAfterInstance": "Kategorie se načtou po vybrání instance; můžete stále zadat název kategorie.",
-    "allCategoriesIncluded": "Všechny kategorie budou zahrnuty.",
-    "selectedCategoriesScanned": "Pouze {{count}} vybraná(é) kategorie bude(ou) hledána(y).",
-    "tagsLoadAfterInstance": "Štítky se načtou po vybrání instance; můžete stále zadat název štítku.",
-    "allTagsIncluded": "Všechny štítky budou zahrnuty.",
-    "selectedTagsScanned": "Pouze {{count}} vybraný(é) štítek(y) bude(ou) hledán(y).",
     "sourceInstance": "Zdrojová instance",
     "selectAnInstance": "Vybrat instanci",
     "addInstanceToSearch": "Přidat instanci, aby hledala torrenty, které již seedujete.",
@@ -216,6 +204,36 @@
         "notMusic": "není hudba",
         "other": "jiné"
       }
+    },
+    "schedule": {
+      "enableLabel": "Spouštět podle plánu",
+      "enableHelp": "qui každých pár hodin spustí plánované hledání s uloženým nastavením této karty. Plánované hledání prohledá jen nedávno přidané torrenty, od nejnovějších, a zastaví se na limitu hledání. Indexer, který selhal, zůstane na řadě, takže se ho příští plánované hledání zeptá znovu. „Spustit plán teď“ hned spustí plánované hledání a vynuluje odpočet.",
+      "intervalLabel": "Spouštět každých (hodin)",
+      "intervalHelp": "Doba od začátku jednoho plánovaného hledání do začátku dalšího. qui si tuto dobu pamatuje i po restartu.",
+      "maxSearchesLabel": "Max. hledání na jedno spuštění",
+      "maxSearchesHelp": "Plánované hledání se zastaví, když tolik torrentů odeslalo hledání. Torrent, který přeskočí čekání nebo filtry, se nepočítá. Zbylé torrenty počkají na další spuštění.",
+      "maxAgeLabel": "Jen torrenty přidané za posledních (dní)",
+      "maxAgeHelp": "Plánované hledání přeskočí každý torrent přidaný před více než tolika dny, i pro indexer, který ho nikdy nehledal. „Spustit hledání“ tento limit nepoužívá.",
+      "runNow": "Spustit plán teď",
+      "runStarted": "Plánované hledání spuštěno",
+      "runAlreadyActive": "Hledání ve sdílených už běží.",
+      "nextRun": "Další plánované hledání: {{time}}",
+      "dueNow": "Plánované hledání je na řadě teď",
+      "dueAfterCurrentRun": "Plánované hledání začne po aktuálním spuštění",
+      "scheduledRunActive": "Běží plánované hledání."
+    },
+    "runKind": {
+      "scheduled": "Plánované",
+      "manual": "Ruční"
+    },
+    "stoppedAtLimit_one": "Zastaveno na limitu {{limit}} hledání. {{count}} torrent čeká na další spuštění.",
+    "stoppedAtLimit_few": "Zastaveno na limitu {{limit}} hledání. {{count}} torrenty čekají na další spuštění.",
+    "stoppedAtLimit_other": "Zastaveno na limitu {{limit}} hledání. {{count}} torrentů čeká na další spuštění.",
+    "runFilters": {
+      "include": "Zahrnout: {{filters}}",
+      "exclude": "Vyloučit: {{filters}}",
+      "categories": "kategorie {{list}}",
+      "tags": "štítky {{list}}"
     }
   },
   "rules": {
@@ -506,7 +524,8 @@
   "validation": {
     "minInterval": "Musí být alespoň {{min}} minut",
     "minIntervalSeconds": "Musí být alespoň {{min}} sekund",
-    "minCooldown": "Musí být alespoň {{min}} minut"
+    "minCooldown": "Musí být alespoň {{min}} minut",
+    "atLeast": "Musí být alespoň {{min}}"
   },
   "blocklist": {
     "title": "Blokované hashe křížového sdílení",

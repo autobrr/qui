@@ -557,6 +557,7 @@
         "externalProgram": "Зовнішня програма",
         "dryRun": "Тестовий запуск",
         "exportToInstance": "Експорт в екземпляр",
+        "transferToInstance": "Перенести до екземпляра",
         "ruleSkipped": "Правило не запущено"
       },
       "shareLimit": {
@@ -644,7 +645,11 @@
         "exportedDryRun_few": "{{count}} торенти буде експортовано",
         "exportedDryRun_many": "{{count}} торентів буде експортовано",
         "exportFailed_few": "{{count}} торенти не вдалося експортувати",
-        "exportFailed_many": "{{count}} торентів не вдалося експортувати"
+        "exportFailed_many": "{{count}} торентів не вдалося експортувати",
+        "transferredDryRun_one": "{{count}} торент буде перенесено",
+        "transferredDryRun_few": "{{count}} торенти буде перенесено",
+        "transferredDryRun_many": "{{count}} торентів буде перенесено",
+        "transferredDryRun_other": "{{count}} торента буде перенесено"
       },
       "deleteDialog": {
         "title": "Видалити правило",
@@ -704,6 +709,7 @@
         "deleteActivityFailed": "Не вдалося видалити активність"
       },
       "exported": "Експортовано",
+      "transferStarted": "Запущено",
       "skipped": "Пропущено"
     },
     "runWorkflowNow": {
@@ -1023,6 +1029,7 @@
         "auto_managed": "Автоматичне керування",
         "dry_run_no_match": "Тестовий запуск (не відповідає)",
         "exported_to_instance": "Експорт в екземпляр",
+        "transferred_to_instance": "Перенести до екземпляра",
         "rule_skipped": "Правило не запущено"
       }
     },
@@ -1202,6 +1209,11 @@
         "skipChecking": "Пропустити перевірку",
         "addPaused": "Додати призупинено"
       },
+      "transfer": {
+        "title": "Перенести до екземпляра",
+        "description": "Переносить кожен відповідний торент разом із файлами до цільового екземпляра і перевіряє копію, перш ніж щось видалити. Сторінка «Перенесення» показує кожне перенесення.",
+        "remove": "Вилучити «Перенести до екземпляра»"
+      },
       "priority": {
         "title": "Пріоритет торента",
         "description": "Контролює порядок обробки торентів.",
@@ -1244,7 +1256,8 @@
         "category": "Категорія",
         "move": "Перемістити",
         "externalProgram": "Запустіть зовнішню програму",
-        "exportToInstance": "Експорт в екземпляр"
+        "exportToInstance": "Експорт в екземпляр",
+        "transferToInstance": "Перенести до екземпляра"
       },
       "option": {
         "noChange": "Без змін",
@@ -1515,6 +1528,7 @@
           "externalProgram": "Зовнішня програма",
           "noMatches": "Немає збігів",
           "exportedToInstance": "Експорт в екземпляр",
+          "transferredToInstance": "Перенести до екземпляра",
           "ruleSkipped": "Правило не запущено"
         },
         "actionFallback": "Невідома дія ({{action}})",
@@ -2188,5 +2202,10 @@
     "emptyDescription": "Додайте клієнт qBittorrent, щоб qui керував його торентами.",
     "tlsSkipped": "Перевірку TLS вимкнено",
     "reorderFailed": "Не вдалося змінити порядок екземплярів"
+  },
+  "publicPeerAddress": {
+    "label": "Публічна адреса піра",
+    "noResolvedAddress": "qui поки не може визначити адресу",
+    "description": "Адреса й порт, за якими інші BitTorrent-клієнти досягають цього qBittorrent, для Передач і Поширень. Залиште порожнім, щоб qui щоразу визначав адресу з qBittorrent. Задайте її, коли qBittorrent працює в Docker або за NAT."
   }
 }

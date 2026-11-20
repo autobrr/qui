@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Instance } from "@/types"
@@ -67,5 +67,24 @@ describe("InstanceForm", () => {
 
     render(<InstanceForm open onOpenChange={vi.fn()} instance={instance} onSuccess={vi.fn()} />)
     expect(screen.queryByText("form.sshAfterSave")).toBeNull()
+  })
+
+  it("shows the worked-out peer address as a placeholder and never saves it", async () => {
+    const { unmount } = render(<InstanceForm open onOpenChange={vi.fn()} onSuccess={vi.fn()} />)
+    expect(screen.queryByText("publicPeerAddress.label")).toBeNull()
+    unmount()
+
+    render(<InstanceForm open onOpenChange={vi.fn()} instance={{ ...instance, publicPeerAddress: "", resolvedPublicPeerAddress: "203.0.113.7:51413" }} onSuccess={vi.fn()} />)
+    const field = screen.getByPlaceholderText("203.0.113.7:51413") as HTMLInputElement
+    expect(field.value).toBe("")
+
+    fireEvent.click(screen.getByText("form.buttons.updateInstance"))
+    await waitFor(() => expect(mocks.instances.updateInstance).toHaveBeenLastCalledWith(
+      { id: 7, data: expect.objectContaining({ publicPeerAddress: "" }) }, expect.anything()))
+
+    fireEvent.change(field, { target: { value: "seedbox.example.org:6881" } })
+    fireEvent.click(screen.getByText("form.buttons.updateInstance"))
+    await waitFor(() => expect(mocks.instances.updateInstance).toHaveBeenLastCalledWith(
+      { id: 7, data: expect.objectContaining({ publicPeerAddress: "seedbox.example.org:6881" }) }, expect.anything()))
   })
 })

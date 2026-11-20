@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -22,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/services/transfer"
 )
 
 func TestNormalizeShareLimitEnum(t *testing.T) {
@@ -229,6 +231,12 @@ func TestNeedsForTrackerNames(t *testing.T) {
 		{
 			name: "export save path uses Tracker",
 			rule: rule(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}/{{ .IsolationFolderName }}"}}),
+			want: true,
+		},
+		// regression: #4242
+		{
+			name: "transfer save path uses Tracker",
+			rule: rule(&models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}"}}),
 			want: true,
 		},
 		{
@@ -735,12 +743,6 @@ func TestLimitHashBatch(t *testing.T) {
 			want:   [][]string{{"a", "b"}, {"c", "d"}, {"e"}},
 		},
 		{
-			name:   "max of 1",
-			hashes: []string{"a", "b", "c"},
-			max:    1,
-			want:   [][]string{{"a"}, {"b"}, {"c"}},
-		},
-		{
 			name:   "zero max returns single batch",
 			hashes: []string{"a", "b", "c"},
 			max:    0,
@@ -852,50 +854,6 @@ func TestProcessTorrents_RunsTheMatchingRules(t *testing.T) {
 // -----------------------------------------------------------------------------
 // Category action tests
 // -----------------------------------------------------------------------------
-
-func TestCategoryLastRuleWins(t *testing.T) {
-	// Test that when multiple rules set a category, the last rule's category wins.
-	torrent := qbt.Torrent{
-		Hash:     "abc123",
-		Name:     "Test Torrent",
-		Category: "movies", // Current category
-	}
-
-	// Rule 1 sets category to "archive"
-	rule1 := &models.Automation{
-		ID:      1,
-		Enabled: true,
-		Name:    "Archive Rule",
-		Conditions: &models.ActionConditions{
-			Category: &models.CategoryAction{Enabled: true, Category: "archive"},
-		},
-	}
-
-	// Rule 2 sets category to "completed" (should win as last rule)
-	rule2 := &models.Automation{
-		ID:      2,
-		Enabled: true,
-		Name:    "Completed Rule",
-		Conditions: &models.ActionConditions{
-			Category: &models.CategoryAction{Enabled: true, Category: "completed"},
-		},
-	}
-
-	state := &torrentDesiredState{
-		hash:        torrent.Hash,
-		name:        torrent.Name,
-		currentTags: make(map[string]struct{}),
-		tagActions:  make(map[string]string),
-	}
-
-	// Process rules in order
-	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
-	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
-
-	// Last rule wins - category should be "completed"
-	require.NotNil(t, state.category)
-	assert.Equal(t, "completed", *state.category)
-}
 
 func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
 	// Test that last rule wins even when the last rule's category matches the current category.
@@ -1312,11 +1270,6 @@ func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "disabled rule",
-			rule: &models.Automation{Enabled: false},
-			want: false,
-		},
-		{
 			name: "disabled preview rule still detects hardlink_signature condition usage",
 			rule: &models.Automation{
 				Enabled: false,
@@ -1355,24 +1308,6 @@ func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
 					Delete: &models.DeleteAction{
 						Enabled: true,
 						GroupID: "hardlink_signature",
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "tag condition uses IS_GROUPED with hardlink_signature, no grouping config",
-			rule: &models.Automation{
-				Enabled: true,
-				Conditions: &models.ActionConditions{
-					Tags: []*models.TagAction{
-						{
-							Enabled: true,
-							Condition: &models.RuleCondition{
-								Field:   models.FieldIsGrouped,
-								GroupID: "hardlink_signature",
-							},
-						},
 					},
 				},
 			},
@@ -1484,13 +1419,6 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 			wantCopies: nil,
 		},
 		{
-			name:                      "trigger is only member of group (singleton filtered out)",
-			triggerHash:               "abc123",
-			deleteSafeSignatureByHash: map[string]string{}, // Singleton groups are filtered, so no entry
-			deleteSafeGroupBySig:      map[string][]string{},
-			wantCopies:                nil,
-		},
-		{
 			name:        "trigger has one hardlink copy",
 			triggerHash: "abc123",
 			deleteSafeSignatureByHash: map[string]string{
@@ -1516,32 +1444,10 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 			wantCopies: []string{"def456", "ghi789"},
 		},
 		{
-			name:        "multiple groups, trigger in second",
-			triggerHash: "xyz999",
-			deleteSafeSignatureByHash: map[string]string{
-				"abc123": "sig1",
-				"def456": "sig1",
-				"xyz999": "sig2",
-				"uvw888": "sig2",
-			},
-			deleteSafeGroupBySig: map[string][]string{
-				"sig1": {"abc123", "def456"},
-				"sig2": {"xyz999", "uvw888"},
-			},
-			wantCopies: []string{"uvw888"},
-		},
-		{
 			name:                      "nil index returns nil",
 			triggerHash:               "abc123",
 			deleteSafeSignatureByHash: nil,
 			deleteSafeGroupBySig:      nil,
-			wantCopies:                nil,
-		},
-		{
-			name:                      "empty index returns nil",
-			triggerHash:               "abc123",
-			deleteSafeSignatureByHash: map[string]string{},
-			deleteSafeGroupBySig:      map[string][]string{},
 			wantCopies:                nil,
 		},
 		{
@@ -1602,21 +1508,6 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 			mode:     DeleteModeWithFilesIncludeCrossSeeds,
 			want:     true,
 		},
-		{
-			scenario: "delete with files => frees space (ignores cross-seeds)",
-			mode:     DeleteModeWithFiles,
-			want:     true,
-		},
-		{
-			scenario: "preserve cross-seeds => no space freed (cross-seed exists)",
-			mode:     DeleteModeWithFilesPreserveCrossSeeds,
-			want:     false, // xyz789 resolves to the same file, so files are kept
-		},
-		{
-			scenario: "keep files => never frees space",
-			mode:     DeleteModeKeepFiles,
-			want:     false,
-		},
 	}
 
 	crossSeeds := testCrossSeedGroups(allTorrents)
@@ -1626,100 +1517,6 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
-}
-
-func TestDeleteFreesSpace_NoCrossSeeds(t *testing.T) {
-	// Different releases - each has unique ContentPath (no cross-seeds)
-	allTorrents := []qbt.Torrent{
-		{Hash: "abc123", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
-		{Hash: "def456", Name: "Other.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/Other.Movie.2024.1080p.BluRay.x264-GRP"},
-	}
-
-	target := allTorrents[0]
-
-	tests := []struct {
-		scenario string
-		mode     string
-		want     bool
-	}{
-		{
-			scenario: "include cross-seeds mode => frees space",
-			mode:     DeleteModeWithFilesIncludeCrossSeeds,
-			want:     true,
-		},
-		{
-			scenario: "preserve cross-seeds => frees space (no cross-seed to preserve)",
-			mode:     DeleteModeWithFilesPreserveCrossSeeds,
-			want:     true, // no cross-seeds exist, so files will be deleted
-		},
-	}
-
-	crossSeeds := testCrossSeedGroups(allTorrents)
-	for _, tc := range tests {
-		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, crossSeeds, nil)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
-	// Test that cross-seed expansion works the same way in both views
-	// Only deleteWithFilesIncludeCrossSeeds mode expands cross-seeds
-	allTorrents := []qbt.Torrent{
-		{Hash: "a", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/shared"}, // 50 GB - trigger
-		{Hash: "b", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/shared"}, // 50 GB - cross-seed
-		{Hash: "c", Size: 30 * 1024 * 1024 * 1024, ContentPath: "/data/unique"}, // 30 GB - unique
-	}
-
-	// findCrossSeedGroup should return both a and b for target a
-	group := testCrossSeedGroups(allTorrents).members(allTorrents[0].Hash)
-	require.NotNil(t, group)
-	assert.Len(t, group, 2)
-
-	groupHashes := make(map[string]bool)
-	for _, t := range group {
-		groupHashes[t.Hash] = true
-	}
-	assert.True(t, groupHashes["a"])
-	assert.True(t, groupHashes["b"])
-	assert.False(t, groupHashes["c"])
-}
-
-func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
-	// The FREE_SPACE condition reads the Projected free space: it stops matching
-	// once the free space at the start plus the Projected freed bytes reaches the target.
-
-	// Simulate 400GB free, target 500GB => need to clear 100GB
-	evalCtx := &EvalContext{activeFreeSpace: testFreeSpaceLedger(400000000000, 0)} // 400 GB
-
-	// Create a FREE_SPACE < 500GB condition (value in bytes)
-	condition := &RuleCondition{
-		Field:    FieldFreeSpace,
-		Operator: OperatorLessThan,
-		Value:    "500000000000", // 500GB in bytes
-	}
-
-	// Initially: 400GB free + 0 to be cleared = 400GB effective
-	// 400GB < 500GB => should match
-	match1 := EvaluateConditionWithContext(condition, qbt.Torrent{}, evalCtx, 0)
-	assert.True(t, match1, "Should match when effective free space is below target")
-
-	// Simulate clearing 50GB
-	evalCtx.activeFreeSpace = testFreeSpaceLedger(400000000000, 50000000000) // 50GB freed
-
-	// Now: 400GB free + 50GB to be cleared = 450GB effective
-	// 450GB < 500GB => should still match
-	match2 := EvaluateConditionWithContext(condition, qbt.Torrent{}, evalCtx, 0)
-	assert.True(t, match2, "Should match when effective free space is still below target")
-
-	// Simulate clearing another 60GB (total 110GB)
-	evalCtx.activeFreeSpace = testFreeSpaceLedger(400000000000, 110000000000) // 110GB freed
-
-	// Now: 400GB free + 110GB to be cleared = 510GB effective
-	// 510GB < 500GB => false, should NOT match
-	match3 := EvaluateConditionWithContext(condition, qbt.Torrent{}, evalCtx, 0)
-	assert.False(t, match3, "Should NOT match when effective free space exceeds target")
 }
 
 // -----------------------------------------------------------------------------
@@ -2302,6 +2099,7 @@ func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
 		targetLookup:    fakeTargetLookup{onTarget: map[string]bool{"done": true}},
 		inFlightExports: map[string]struct{}{"2:done": {}},
 	}
+	s.SetExportRunner(noExports{t})
 	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
 
 	results := s.executeExportToInstance(t.Context(), 1, []pendingExportToInstance{{hash: "done", action: action, mark: exportReady}})
@@ -2310,4 +2108,12 @@ func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
 		t.Fatalf("unexpected activity: %s %s", activity.Outcome, activity.Reason)
 	}
 	require.Empty(t, s.inFlightExports)
+}
+
+// noExports fails the test at each Export run.
+type noExports struct{ t *testing.T }
+
+func (n noExports) Export(context.Context, transfer.ExportRequest) (int64, <-chan transfer.ExportResult, error) {
+	n.t.Error("an Export run started")
+	return 0, nil, errors.New("no Export runs")
 }

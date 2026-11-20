@@ -137,7 +137,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
             fill={`var(--color-${key})`}
             fillOpacity={key === OTHER ? 0.45 : 1}
             radius={index === keys.length - 1 ? [2, 2, 0, 0] : 0}
-            maxBarSize={24}
+            maxBarSize={64}
             isAnimationActive={false}
           />
         ))}

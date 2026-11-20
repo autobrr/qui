@@ -17,7 +17,6 @@
     "liveDownloading": "下載中：{{downloading}} · 剩餘：{{size}}",
     "peakHour": "最忙時段：{{size}}",
     "peakSpeed": "峰值：{{speed}}",
-    "hourTitle": "{{time}}：上傳 {{uploaded}}，下載 {{downloaded}}",
     "dayLabel": "所有實例在過去 24 小時內每小時的上傳和下載",
     "liveLabel": "所有實例在過去 3 分鐘內的上傳和下載速度",
     "liveStart": "3 分鐘前",
@@ -34,6 +33,11 @@
     "issues": "問題",
     "noIssues": "無",
     "loading": "載入中",
+    "expandAll": "全部展開",
+    "collapseAll": "全部收合",
+    "altSpeedOff": "備用速度限制已關閉",
+    "altSpeedTurnOn": "開啟備用速度限制",
+    "altSpeedTurnOff": "關閉備用速度限制",
     "streamStatus": {
       "cached": "重新整理時顯示快取的儀表板快照",
       "fallback": "正在重新整理儀表板統計資訊",
@@ -63,10 +67,15 @@
     "peers": "節點",
     "uptime": "執行時間",
     "version": "qBittorrent",
+    "libtorrent": "libtorrent",
     "connection": "連線",
     "externalAddresses": "外部位址",
     "unknown": "未知",
-    "day": "過去 24 小時：上傳 {{uploaded}}，下載 {{downloaded}}",
+    "last24h": "過去 24 小時",
+    "allTime": "全部時間",
+    "uploaded": "已上傳",
+    "downloaded": "已下載",
+    "ratio": "分享率 {{ratio}}",
     "uploadSpeed": "上傳速度",
     "downloadSpeed": "下載速度",
     "chartLabel": "{{name}} 在過去 24 小時內每小時的上傳和下載",
@@ -81,15 +90,6 @@
     "firewalled": "受防火牆限制",
     "disconnected": "已斷開",
     "other": "其他"
-  },
-  "altSpeedDialog": {
-    "enableTitle": "啟用備用速度限制？",
-    "disableTitle": "停用備用速度限制？",
-    "enableDescription": "這將為 {{name}} 啟用備用速度限制，傳輸速度將根據您配置的限制值降低。",
-    "disableDescription": "這將為 {{name}} 停用備用速度限制，並恢復到正常速度限制。",
-    "enable": "啟用",
-    "disable": "停用",
-    "cancel": "取消"
   },
   "trackers": {
     "title": "熱門 Tracker（過去 24 小時）",
@@ -111,7 +111,11 @@
     "torrents": "種子",
     "totalSize": "總大小",
     "seedingSize": "做種大小",
-    "instances": "已連線實例"
+    "instances": "已連線實例",
+    "allTime": "全部時間",
+    "uploaded": "已上傳",
+    "downloaded": "已下載",
+    "ratio": "分享率"
   },
   "uniqueSize": {
     "calculating": "計算中",

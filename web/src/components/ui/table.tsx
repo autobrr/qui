@@ -70,9 +70,9 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 
 // Pins a column to the right edge of a table that scrolls sideways, so its
 // buttons stay in view. The opaque card background hides the cells that scroll
-// under it, and the hover color matches the row hover of TableRow.
+// under it, and the hover and selected colors match the row colors of TableRow.
 const pinEndClass =
-  "sticky right-0 bg-card [tr:hover>&]:bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-card))]"
+  "sticky right-0 bg-card [tr:hover>&]:bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-card))] [tr[data-state=selected]>&]:bg-muted"
 
 type PinEndProps = {
   pinEnd?: boolean

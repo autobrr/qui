@@ -98,6 +98,8 @@ import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { RunWorkflowNowDialog } from "./RunWorkflowNowDialog"
 import { DryRunToggle, WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 import { EDITING, workflowSaveFlowReducer } from "@/lib/workflow-save-flow"
+import { TransferForm } from "@/components/transfers/TransferForm"
+import { emptyTransferForm, type TransferFormValue } from "@/components/transfers/transfer-form-value"
 
 let ruleIdCounter = 0
 
@@ -150,6 +152,7 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   moved: "preferences.workflowDialog.dryRun.actions.moved",
   external_program: "preferences.workflowDialog.dryRun.actions.externalProgram",
   exported_to_instance: "preferences.workflowDialog.dryRun.actions.exportedToInstance",
+  transferred_to_instance: "preferences.workflowDialog.dryRun.actions.transferredToInstance",
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
   rule_skipped: "preferences.workflowDialog.dryRun.actions.ruleSkipped",
 }
@@ -458,6 +461,9 @@ type FormState = {
   exprExportPaused: boolean
   exprExportSkipChecking: boolean
   exprExportContentLayout: "" | "Original" | "Subfolder" | "NoSubfolder"
+  // Transfer to instance action settings
+  transferToInstanceEnabled: boolean
+  exprTransfer: TransferFormValue
 }
 
 const emptyFormState: FormState = {
@@ -526,6 +532,8 @@ const emptyFormState: FormState = {
   exprExportPaused: false,
   exprExportSkipChecking: true,
   exprExportContentLayout: "",
+  transferToInstanceEnabled: false,
+  exprTransfer: emptyTransferForm,
 }
 
 // Helper to get enabled actions from form state
@@ -987,6 +995,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprMoveGroupId = ""
         let exprMoveAtomic: FormState["exprMoveAtomic"] = ""
         let exportToInstanceEnabled = false
+        let transferToInstanceEnabled = false
+        let exprTransfer = emptyTransferForm
         let exprExportTargetInstanceId: number | null = null
         let exprExportSavePath = ""
         let exprExportCategory = ""
@@ -1123,6 +1133,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             const rawLayout = conditions.exportToInstance.contentLayout ?? ""
             exprExportContentLayout = CONTENT_LAYOUT_VALUES.includes(rawLayout as typeof CONTENT_LAYOUT_VALUES[number])? rawLayout as FormState["exprExportContentLayout"]: ""
           }
+          const transfer = conditions.transferToInstance
+          if (transfer?.enabled) {
+            transferToInstanceEnabled = true
+            exprTransfer = {
+              targetInstanceId: transfer.targetInstanceId ?? null,
+              savePath: transfer.savePath ?? "",
+              category: transfer.category ?? "",
+              tags: (transfer.tags ?? []).join(", "),
+              after: transfer.after ?? "removeWithFiles",
+              leaveStopped: transfer.leaveStopped ?? false,
+              way: transfer.way ?? "auto",
+            }
+          }
         }
 
         const newState: FormState = {
@@ -1192,6 +1215,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprExportPaused,
           exprExportSkipChecking,
           exprExportContentLayout,
+          transferToInstanceEnabled,
+          exprTransfer,
         }
         setFormState(newState)
         loadedForm.current = newState
@@ -1549,6 +1574,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.transferToInstanceEnabled) {
+      if (!input.exprTransfer.targetInstanceId) {
+        throw new Error("Transfer to instance requires a target instance")
+      }
+      const transfer = input.exprTransfer
+      const tags = transfer.tags.split(",").map(t => t.trim()).filter(Boolean)
+      conditions.transferToInstance = {
+        enabled: true,
+        targetInstanceId: input.exprTransfer.targetInstanceId,
+        savePath: transfer.savePath.trim(),
+        category: transfer.category || undefined,
+        tags: tags.length > 0 ? tags : undefined,
+        after: transfer.after,
+        leaveStopped: transfer.leaveStopped || undefined,
+        way: transfer.way,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
 
     // The source stays even if FREE_SPACE isn't currently in the condition
     // (user might add it later, or just want to preserve the setting)
@@ -1672,6 +1715,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.moveEnabled,
     formState.externalProgramEnabled,
     formState.exportToInstanceEnabled,
+    formState.transferToInstanceEnabled,
   ].filter(Boolean).length
 
   const latestDryRunOperationCount = useMemo(
@@ -1931,6 +1975,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }
 
   const validateExportTarget = useCallback((state: FormState): boolean => {
+    if (state.transferToInstanceEnabled) {
+      const target = state.exprTransfer.targetInstanceId
+      if (!target) {
+        toast.error(t("preferences.workflowDialog.toast.selectTargetInstance"))
+        return false
+      }
+      if (nonSelfInstances && !nonSelfInstances.some(i => i.id === target)) {
+        toast.error(t("preferences.workflowDialog.toast.targetInstanceMissing"))
+        setFormState(prev => ({ ...prev, exprTransfer: { ...prev.exprTransfer, targetInstanceId: null } }))
+        return false
+      }
+    }
     if (!state.exportToInstanceEnabled) return true
     if (!state.exprExportTargetInstanceId) {
       toast.error(t("preferences.workflowDialog.toast.selectTargetInstance"))
@@ -2596,7 +2652,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.grouping.title")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger asChild openOnTap>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -2742,6 +2798,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             moveEnabled: false,
                             externalProgramEnabled: false,
                             exportToInstanceEnabled: false,
+                            transferToInstanceEnabled: false,
                             // Safety: when selecting delete in "create new" mode, start disabled
                             enabled: !rule ? false : prev.enabled,
                           }))
@@ -3347,7 +3404,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     </Label>
                                     <TooltipProvider delayDuration={150}>
                                       <Tooltip>
-                                        <TooltipTrigger asChild>
+                                        <TooltipTrigger asChild openOnTap>
                                           <button
                                             type="button"
                                             className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3508,7 +3565,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </Label>
                             <TooltipProvider delayDuration={150}>
                               <Tooltip>
-                                <TooltipTrigger asChild>
+                                <TooltipTrigger asChild openOnTap>
                                   <button
                                     type="button"
                                     className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -3767,6 +3824,31 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </div>
                     )}
 
+                    {/* Transfer to Instance */}
+                    {formState.transferToInstanceEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.transfer.title")}</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            aria-label={t("preferences.workflowDialog.transfer.remove")}
+                            onClick={() => setFormState(prev => ({ ...prev, transferToInstanceEnabled: false, exprTransfer: emptyTransferForm }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.transfer.description")}</p>
+                        <TransferForm
+                          value={formState.exprTransfer}
+                          onChange={exprTransfer => setFormState(prev => ({ ...prev, exprTransfer }))}
+                          targets={nonSelfInstances}
+                        />
+                      </div>
+                    )}
+
                     {/* Delete - standalone only */}
                     {formState.deleteEnabled && (
                       <div className="rounded-lg border border-destructive/50 p-3 space-y-3">
@@ -3837,7 +3919,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
                                       // A checked box stays clickable, so a workflow whose instance lost the option can clear it.
                                       disabled={!hasTrustedIdentity && !formState.exprIncludeHardlinks}
-                                      className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
+                                      className="h-3.5 w-3.5 rounded border-border disabled:pointer-events-none disabled:opacity-50"
                                     />
                                     <span className={!hasTrustedIdentity ? "opacity-50" : ""}>
                                       {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
@@ -3870,7 +3952,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.freeSpace.title")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger asChild openOnTap>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -4040,7 +4122,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <Label className="text-xs">{t("preferences.workflowDialog.category.skipIfCrossSeedExists")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger asChild openOnTap>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -4200,7 +4282,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   {deleteUsesFreeSpace && (
                     <TooltipProvider delayDuration={150}>
                       <Tooltip>
-                        <TooltipTrigger asChild>
+                        <TooltipTrigger asChild openOnTap>
                           <button
                             type="button"
                             className="inline-flex items-center text-muted-foreground hover:text-foreground"

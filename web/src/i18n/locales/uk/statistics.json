@@ -14,6 +14,7 @@
   "customRange": {
     "from": "Перший день",
     "to": "Останній день",
+    "pick": "Виберіть день",
     "apply": "Застосувати",
     "range": "{{from}} – {{to}}"
   },
@@ -143,6 +144,10 @@
     "seededValue": "{{value}}×",
     "total": "Усього",
     "shown": "{{shown}} з {{total}}",
+    "range": "{{from}}–{{to}} з {{total}}",
+    "previousPage": "Попередня сторінка",
+    "nextPage": "Наступна сторінка",
+    "showMore": "Показати більше",
     "showAll": "Показати все",
     "showFewer": "Показати менше",
     "noCategory": "Без категорії",

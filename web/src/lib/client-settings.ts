@@ -59,7 +59,7 @@ const SYNCED_KEYS = new Set<string>([
   "qui-datetime-preferences",
   "qui-titlebar-speeds-enabled",
   "qui.language",
-  "qui-sidebar-collapsed",
+  "qui-sidebar-icon-only",
   FILTER_SIDEBAR_COLLAPSED_KEY,
   "qui-accordion",
   "qui-accordion-views-seeded",
@@ -74,6 +74,10 @@ const SYNCED_KEYS = new Set<string>([
   "qui-statistics-series-colors",
   "qui-statistics-period",
   "qui-dashboard-chart-view",
+  "qui-dashboard-open-instances",
+  "qui-support-shortcut-hidden",
+  "qui-support-reminder-off",
+  "qui-support-reminder-due",
 ])
 const SYNCED_PREFIXES = [
   "qui-cross-seed-blocklist-",
@@ -113,10 +117,11 @@ const SETTING_GROUPS: Record<Exclude<SettingGroup, "shared">, { keys: readonly s
     keys: [
       TORRENT_VIEW_MODE_KEYS.mobile,
       TORRENT_VIEW_MODE_KEYS.desktop,
-      "qui-sidebar-collapsed",
+      "qui-sidebar-icon-only",
       FILTER_SIDEBAR_COLLAPSED_KEY,
       "qui-accordion",
       "qui-accordion-views-seeded",
+      "qui-dashboard-open-instances",
     ],
     prefixes: [...COLUMN_SETUP_PREFIXES, "qui-collapsed-categories-", "qui-show-empty-"],
   },

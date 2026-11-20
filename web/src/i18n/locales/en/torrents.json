@@ -67,6 +67,8 @@
     "externalPrograms": "External Programs",
     "exportTorrent": "Export Torrent",
     "exportTorrents": "Export Torrents ({{count}})",
+    "transferToInstance": "Transfer to instance…",
+    "shareWithSomeone": "Share with someone…",
     "copy": "Copy...",
     "copyName": "Copy Name",
     "copyHash": "Copy Hash",
@@ -1596,6 +1598,9 @@
     "trackerDown": "Tracker Down",
     "unregistered": "Unregistered",
     "trackerError": "Tracker Error",
+    "helperTransfer": "Transfer helper",
+    "helperShare": "Share helper",
+    "helperHint": "qui added this torrent for a Transfer or a Share. Its files belong to another torrent.",
     "now": "now",
     "yes": "Yes",
     "no": "No"
@@ -1738,7 +1743,7 @@
     "settings": {
       "title": "Display profiles",
       "holds": "Holds: Columns · Row density · Sidebars · Filter sections · Category trees · Empty filters",
-      "holdsHelp": "A profile holds how the torrent list looks: which columns show, their order and widths, Name stretch, the row density, the open sidebars and filter sections, the collapsed category trees, and whether empty filters show. Each browser uses one profile, and only that browser remembers the pick. A browser that never picked one, and a private window, use Default. Every profile shares the other settings.",
+      "holdsHelp": "A profile holds how the torrent list looks: which columns show, their order and widths, Name stretch, the row density, the open sidebars and filter sections, the collapsed category trees, and whether empty filters show. It also holds which instance rows of the Dashboard are open. Each browser uses one profile, and only that browser remembers the pick. A browser that never picked one, and a private window, use Default. Every profile shares the other settings.",
       "thisBrowser": "This browser",
       "use": "Use in this browser",
       "makeProfile": "Make a profile for a laptop or phone",

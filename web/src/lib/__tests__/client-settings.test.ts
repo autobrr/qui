@@ -241,7 +241,7 @@ describe("push queue", () => {
       vi.resetModules()
       otherTabs.push(await import("@/lib/client-settings"))
     }
-    const key = "qui-sidebar-collapsed"
+    const key = "qui-sidebar-icon-only"
     const server: Record<string, string> = {}
     fetchMock.mockImplementation((_url: string, init: RequestInit) => {
       Object.assign(server, JSON.parse(String(init.body)))
@@ -742,15 +742,15 @@ describe("display profiles", () => {
 
   it("pushes the profile values and the entry, but never the pick of this browser", async () => {
     seedAndMarkReady({})
-    writeClientSetting("qui-sidebar-collapsed", true)
+    writeClientSetting("qui-sidebar-icon-only", true)
     const laptop = createDisplayProfile("Laptop")
     await vi.runAllTimersAsync()
 
     const pushed = Object.assign({}, ...fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body)))
     expect(Object.keys(pushed).sort()).toEqual([
       `qui-display-profile-entry:${laptop}`,
-      `qui-display-profile:${laptop}:qui-sidebar-collapsed`,
-      "qui-sidebar-collapsed",
+      `qui-display-profile:${laptop}:qui-sidebar-icon-only`,
+      "qui-sidebar-icon-only",
     ])
 
     fetchMock.mockClear()
@@ -800,16 +800,16 @@ describe("display profiles", () => {
   })
 
   it("a pick re-reads every live setting with one render", () => {
-    localStorage.setItem("qui-sidebar-collapsed", "false")
+    localStorage.setItem("qui-sidebar-icon-only", "false")
     localStorage.setItem("qui-filter-sidebar-collapsed", "false")
     const laptop = createDisplayProfile("Laptop")
-    writeClientSetting("qui-sidebar-collapsed", true)
+    writeClientSetting("qui-sidebar-icon-only", true)
     writeClientSetting("qui-filter-sidebar-collapsed", true)
     pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
     let renders = 0
     const { result } = renderHook(() => {
       renders++
-      return [useClientSetting("qui-sidebar-collapsed", boolSetting)[0], useClientSetting("qui-filter-sidebar-collapsed", boolSetting)[0]]
+      return [useClientSetting("qui-sidebar-icon-only", boolSetting)[0], useClientSetting("qui-filter-sidebar-collapsed", boolSetting)[0]]
     })
     expect(result.current).toEqual([false, false])
     renders = 0
@@ -901,7 +901,7 @@ describe("display profiles", () => {
     seedAndMarkReady({})
     localStorage.setItem("qui-column-visibility:1", "{\"ratio\":false}")
     const laptop = createDisplayProfile("Laptop")
-    writeClientSetting("qui-sidebar-collapsed", true)
+    writeClientSetting("qui-sidebar-icon-only", true)
     pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
     await vi.runAllTimersAsync()
     fetchMock.mockClear()
@@ -913,7 +913,7 @@ describe("display profiles", () => {
       [`qui-display-profile-deleted:${laptop}`]: "1",
       [`qui-display-profile-entry:${laptop}`]: "",
       [`qui-display-profile:${laptop}:qui-column-visibility:1`]: "",
-      [`qui-display-profile:${laptop}:qui-sidebar-collapsed`]: "",
+      [`qui-display-profile:${laptop}:qui-sidebar-icon-only`]: "",
     }
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(blanked)
     for (const [key, raw] of Object.entries(blanked)) expect(localStorage.getItem(key)).toBe(raw)
@@ -922,18 +922,18 @@ describe("display profiles", () => {
   })
 
   it("delete refuses Default", () => {
-    writeClientSetting("qui-sidebar-collapsed", true)
+    writeClientSetting("qui-sidebar-icon-only", true)
 
     expect(() => deleteDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)).toThrow()
-    expect(localStorage.getItem("qui-sidebar-collapsed")).toBe("true")
+    expect(localStorage.getItem("qui-sidebar-icon-only")).toBe("true")
     expect(localStorage.getItem("qui-display-profile-entry:default")).toBeNull()
   })
 
   it("a browser that deletes the profile that it uses moves to Default", () => {
-    writeClientSetting("qui-sidebar-collapsed", false)
+    writeClientSetting("qui-sidebar-icon-only", false)
     const laptop = createDisplayProfile("Laptop")
-    writeClientSetting("qui-sidebar-collapsed", true)
-    const { result } = renderHook(() => useClientSetting("qui-sidebar-collapsed", boolSetting))
+    writeClientSetting("qui-sidebar-icon-only", true)
+    const { result } = renderHook(() => useClientSetting("qui-sidebar-icon-only", boolSetting))
     expect(result.current[0]).toBe(true)
 
     act(() => deleteDisplayProfile(laptop))
@@ -943,15 +943,15 @@ describe("display profiles", () => {
   })
 
   it("a browser on a profile that another browser deleted moves to Default, drops its unsaved writes, and keeps the outbox right", async () => {
-    writeClientSetting("qui-sidebar-collapsed", false)
+    writeClientSetting("qui-sidebar-icon-only", false)
     const laptop = createDisplayProfile("Laptop")
-    writeClientSetting("qui-sidebar-collapsed", true)
+    writeClientSetting("qui-sidebar-icon-only", true)
     writeClientSetting("qui-speed-units", "bits", String)
     const deleted = vi.fn()
     const unsubscribe = onActiveDisplayProfileDeleted(deleted)
-    const { result } = renderHook(() => useClientSetting("qui-sidebar-collapsed", boolSetting))
+    const { result } = renderHook(() => useClientSetting("qui-sidebar-icon-only", boolSetting))
 
-    const snapshot = { [`qui-display-profile-entry:${laptop}`]: "", [`qui-display-profile:${laptop}:qui-sidebar-collapsed`]: "" }
+    const snapshot = { [`qui-display-profile-entry:${laptop}`]: "", [`qui-display-profile:${laptop}:qui-sidebar-icon-only`]: "" }
     act(() => {
       applyServerSettings(snapshot)
     })
@@ -962,11 +962,11 @@ describe("display profiles", () => {
     expect(deleted).toHaveBeenCalledTimes(1)
     expect(deleted.mock.calls[0][0]).toMatchObject({ id: laptop, name: "Laptop" })
     const outbox = JSON.parse(localStorage.getItem("qui-client-settings-outbox") ?? "[]") as string[]
-    expect(outbox.sort()).toEqual(["qui-sidebar-collapsed", "qui-speed-units"])
+    expect(outbox.sort()).toEqual(["qui-sidebar-icon-only", "qui-speed-units"])
 
     seedAndMarkReady(snapshot)
     await vi.runAllTimersAsync()
-    expect(Object.keys(JSON.parse(fetchMock.mock.calls[0][1].body)).sort()).toEqual(["qui-sidebar-collapsed", "qui-speed-units"])
+    expect(Object.keys(JSON.parse(fetchMock.mock.calls[0][1].body)).sort()).toEqual(["qui-sidebar-icon-only", "qui-speed-units"])
   })
 
   describe("a second tab of the browser", () => {
@@ -1019,7 +1019,7 @@ describe("display profiles", () => {
     })
     seedAndMarkReady({})
     const laptop = createDisplayProfile("Laptop")
-    writeClientSetting("qui-sidebar-collapsed", true)
+    writeClientSetting("qui-sidebar-icon-only", true)
     await vi.runAllTimersAsync()
     const browserA = { ...localStorage }
     deleteDisplayProfile(laptop)
@@ -1280,7 +1280,7 @@ describe("same columns on every instance", () => {
     renderHook(() => [
       useDisplayProfiles(),
       useClientSetting("qui-column-visibility:1", visibility),
-      useClientSetting("qui-sidebar-collapsed", boolSetting),
+      useClientSetting("qui-sidebar-icon-only", boolSetting),
     ])
     const snapshot: Record<string, string> = { "qui-display-profile-entry:laptop": JSON.stringify({ name: "Laptop" }) }
     for (let instance = 0; instance < 50; instance++) {

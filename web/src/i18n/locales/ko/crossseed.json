@@ -120,18 +120,6 @@
     "skipIndividualEpisodesAutomationOff": "시즌 팩 자동 조립이 꺼져 있습니다. 이 실행에서는 시즌 팩을 검색하지 않습니다.",
     "maxAddedAgeLabel": "토렌트 최대 추가 경과 기간(일)",
     "maxAddedAgeDescription": "이 일수보다 오래전에 추가된 토렌트는 건너뜁니다. 0은 제한을 비활성화합니다. 토렌트를 한 번도 검색하지 않은 인덱서는 항상 포함됩니다.",
-    "categories": "카테고리",
-    "tags": "태그",
-    "allCategoriesAll": "모든 카테고리(전체는 비워 두기)",
-    "allTagsAll": "모든 태그(전체는 비워 두기)",
-    "selectInstanceToLoadCategories": "카테고리를 불러오려면 인스턴스를 선택하세요",
-    "selectInstanceToLoadTags": "태그를 불러오려면 인스턴스를 선택하세요",
-    "categoriesLoadAfterInstance": "카테고리는 인스턴스를 선택한 후 불러옵니다. 카테고리 이름을 직접 입력할 수도 있습니다.",
-    "allCategoriesIncluded": "모든 카테고리가 스캔에 포함됩니다.",
-    "selectedCategoriesScanned": "선택한 카테고리 {{count}}개만 스캔됩니다.",
-    "tagsLoadAfterInstance": "태그는 인스턴스를 선택한 후 불러옵니다. 태그를 직접 입력할 수도 있습니다.",
-    "allTagsIncluded": "모든 태그가 스캔에 포함됩니다.",
-    "selectedTagsScanned": "선택한 태그 {{count}}개만 스캔됩니다.",
     "sourceInstance": "소스 인스턴스",
     "selectAnInstance": "인스턴스 선택",
     "addInstanceToSearch": "이미 시드 중인 토렌트를 검색하려면 인스턴스를 추가하세요.",
@@ -208,6 +196,34 @@
         "notMusic": "음악이 아님",
         "other": "기타"
       }
+    },
+    "schedule": {
+      "enableLabel": "일정에 따라 실행",
+      "enableHelp": "qui는 이 카드에 저장된 설정으로 몇 시간마다 예약 실행을 시작합니다. 예약 실행은 최근에 추가된 토렌트만 최신 순으로 검색하고, 검색 한도에 도달하면 멈춥니다. 실패한 인덱서는 대기 상태로 남아 다음 예약 실행에서 다시 검색합니다. \"지금 일정 실행\"은 예약 실행을 즉시 시작하고 시계를 다시 시작합니다.",
+      "intervalLabel": "실행 간격(시간)",
+      "intervalHelp": "한 예약 실행의 시작부터 다음 예약 실행의 시작까지의 시간입니다. qui는 재시작 후에도 이 시간을 유지합니다.",
+      "maxSearchesLabel": "실행당 최대 검색 수",
+      "maxSearchesHelp": "이 수만큼의 토렌트가 검색을 보내면 예약 실행이 멈춥니다. 대기 시간이나 필터로 건너뛴 토렌트는 세지 않습니다. 남은 토렌트는 다음 실행을 기다립니다.",
+      "maxAgeLabel": "최근 추가된 토렌트만(일)",
+      "maxAgeHelp": "예약 실행은 이 일수보다 오래전에 추가된 토렌트를 건너뜁니다. 한 번도 검색하지 않은 인덱서에도 적용됩니다. \"실행 시작\"은 이 한도를 쓰지 않습니다.",
+      "runNow": "지금 일정 실행",
+      "runStarted": "예약 실행이 시작되었습니다",
+      "runAlreadyActive": "라이브러리 스캔이 이미 실행 중입니다.",
+      "nextRun": "다음 예약 실행: {{time}}",
+      "dueNow": "예약 실행 시간이 되었습니다",
+      "dueAfterCurrentRun": "예약 실행은 현재 실행이 끝난 뒤 시작됩니다",
+      "scheduledRunActive": "예약 실행이 진행 중입니다."
+    },
+    "runKind": {
+      "scheduled": "예약",
+      "manual": "수동"
+    },
+    "stoppedAtLimit_other": "검색 한도 {{limit}}회에서 멈췄습니다. 토렌트 {{count}}개가 다음 실행을 기다립니다.",
+    "runFilters": {
+      "include": "포함: {{filters}}",
+      "exclude": "제외: {{filters}}",
+      "categories": "카테고리 {{list}}",
+      "tags": "태그 {{list}}"
     }
   },
   "rules": {
@@ -486,7 +502,8 @@
   "validation": {
     "minInterval": "최소 {{min}}분 이상이어야 합니다",
     "minIntervalSeconds": "최소 {{min}}초 이상이어야 합니다",
-    "minCooldown": "최소 {{min}}분 이상이어야 합니다"
+    "minCooldown": "최소 {{min}}분 이상이어야 합니다",
+    "atLeast": "최소 {{min}} 이상이어야 합니다"
   },
   "blocklist": {
     "title": "Cross-Seed 차단 목록",

@@ -68,6 +68,8 @@
     "externalPrograms": "Externí programy",
     "exportTorrent": "Exportovat torrent",
     "exportTorrents": "Exportovat torrenty ({{count}})",
+    "transferToInstance": "Přenést do instance…",
+    "shareWithSomeone": "Sdílet s někým…",
     "copy": "Kopírovat...",
     "copyName": "Kopírovat název",
     "copyHash": "Kopírovat hash",
@@ -1668,6 +1670,9 @@
     "trackerDown": "Tracker nedostupný",
     "unregistered": "Neregistrovaný",
     "trackerError": "Chyba trackeru",
+    "helperTransfer": "Pomocník přenosu",
+    "helperShare": "Pomocník sdílení",
+    "helperHint": "qui přidal tento torrent pro přenos nebo sdílení. Jeho soubory patří jinému torrentu.",
     "now": "nyní",
     "yes": "Ano",
     "no": "Ne"
@@ -1822,7 +1827,7 @@
     "settings": {
       "title": "Profily zobrazení",
       "holds": "Obsahuje: sloupce · hustotu řádků · postranní panely · sekce filtrů · stromy kategorií · prázdné filtry",
-      "holdsHelp": "Profil určuje, jak vypadá seznam torrentů: které sloupce se zobrazují, jejich pořadí a šířku, roztažení sloupce Název, hustotu řádků, otevřené postranní panely a sekce filtrů, sbalené stromy kategorií a zda se zobrazují prázdné filtry. Každý prohlížeč používá jeden profil a volbu si pamatuje jen tento prohlížeč. Prohlížeč, který si nikdy žádný nevybral, a anonymní okno používají Default. Ostatní nastavení sdílejí všechny profily.",
+      "holdsHelp": "Profil určuje, jak vypadá seznam torrentů: které sloupce se zobrazují, jejich pořadí a šířku, roztažení sloupce Název, hustotu řádků, otevřené postranní panely a sekce filtrů, sbalené stromy kategorií a zda se zobrazují prázdné filtry. Určuje také, které řádky instancí na stránce Domů jsou otevřené. Každý prohlížeč používá jeden profil a volbu si pamatuje jen tento prohlížeč. Prohlížeč, který si nikdy žádný nevybral, a anonymní okno používají Default. Ostatní nastavení sdílejí všechny profily.",
       "thisBrowser": "Tento prohlížeč",
       "use": "Použít v tomto prohlížeči",
       "makeProfile": "Vytvořit profil pro notebook nebo telefon",

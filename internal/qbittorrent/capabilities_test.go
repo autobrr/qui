@@ -54,6 +54,8 @@ func TestClientSupports(t *testing.T) {
 		{CapTorrentCreation, []string{"2.11.1"}, []string{"2.11.2"}},
 		{CapPathAutocomplete, []string{"2.11.1"}, []string{"2.11.2"}},
 		{CapTestEmail, []string{"2.11.1"}, []string{"2.11.2"}},
+		// qBittorrent 5.0 is 2.11.2, and 5.1 is the first to report last_external_address_v4.
+		{CapTransferAndShare, []string{"2.11.2"}, []string{"2.11.3"}},
 		{CapSetTags, []string{"2.11.3"}, []string{"2.11.4"}},
 		{CapTrackerHealth, []string{"2.11.3"}, []string{"2.11.4"}},
 		{CapAnnounceFlags, []string{"2.11.6"}, []string{"2.11.7"}},

@@ -128,6 +128,8 @@ export const namespaces = [
   "search",
   "instances",
   "automations",
+  "transfers",
+  "shares",
 ] as const
 
 // Initialize synchronously with English so i18n.t works the moment this module is

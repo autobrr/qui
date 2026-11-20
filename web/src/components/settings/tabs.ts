@@ -27,6 +27,7 @@ export const SETTINGS_NAV_GROUPS = [
       { tab: "integrations", labelKey: "tabs.integrations" },
       { tab: "notifications", labelKey: "tabs.notifications" },
       { tab: "external-programs", labelKey: "tabs.externalPrograms" },
+      { tab: "shares", labelKey: "tabs.shares" },
     ],
   },
   {

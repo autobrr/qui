@@ -87,7 +87,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Client settings
 
 - **Client setting**: A UI preference that qui stores for the user on the server, so it follows the user to every browser and tab, for example the language and the date format. A Display setting follows the Display profile of the browser instead, and so do the Sort and filters of a profile that keeps its own. _Avoid_: local setting.
-- **Display settings**: The Client settings that can differ from screen to screen: the Column setup, row density, which sidebars and filter sidebar sections are open, collapsed category trees, and whether empty filters show. Each Display profile keeps its own. _Avoid_: device settings, layout settings.
+- **Display settings**: The Client settings that can differ from screen to screen: the Column setup, row density, which sidebars and filter sidebar sections are open, collapsed category trees, whether empty filters show, and which instance rows of the Dashboard are open. Each Display profile keeps its own. _Avoid_: device settings, layout settings.
 - **Display profile**: A named set of Display settings that qui keeps on the server. Each browser uses one profile, and a browser that never picked one uses Default. A profile can also keep its own Sort and filters. _Avoid_: device profile, layout, workspace.
 - **Column setup**: Which columns of the torrent table show, their order and widths, and Name stretch. A Display profile keeps one for each instance, or one for every instance. _Avoid_: column layout.
 - **Sort and filters**: The Client settings that every Display profile shares with the others, unless the profile keeps its own: the sort, the column filters, the sidebar filters, the instances that the Unified view shows, Group copies, the last open tab of the details panel, and the instance that the Backups and RSS pages show. Default always shares them. _Avoid_: view state.
@@ -115,10 +115,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Cross-seed search
 
 - **Usable result**: A search hit that survives release and size filtering. Retry passes gate on usable results, never on raw hit counts. _Avoid_: Hit, raw result (when gating is meant).
-- **Mixed mode**: One search fan-out where ID-capable indexers receive an ID-only query and the rest receive the title query. Lives in the jackett layer; callers opt in with the `OmitQueryForIDs` flag on an ID-carrying movie or TV request. _Avoid_: Hybrid search, dual query.
+- **Mixed mode**: One search fan-out where ID-capable indexers receive an ID-only query and the rest receive the title query. An ID-only query carries no year. Lives in the jackett layer; callers opt in with the `OmitQueryForIDs` flag on an ID-carrying movie or TV request. _Avoid_: Hybrid search, dual query.
 - **Arr IDs**: External IDs (imdb/tvdb/tmdb/tvmaze) supplied by a Sonarr/Radarr lookup or its cache. The highest-trust ID source.
 - **Tag-sourced IDs**: External IDs read from the Matroska tags of the source file. Trusted blind for querying; a wrong tag is caught by result filtering, not by pre-validation. _Avoid_: MediaInfo IDs (ambiguous with the library name), embedded IDs.
 - **Per-indexer retry**: A retry pass that re-queries only the indexers holding no usable result, leaving satisfied indexers untouched. Cross-seed success is per tracker, so one indexer's match never blocks another's retry. The yearless retry is a whole-search retry, not a per-indexer one. _Avoid_: Fallback search, retry-all, rescue pass.
+- **Yearless retry**: A whole-search retry. When no indexer returns a usable result, the indexers that searched by title are searched again without the year. An indexer that searched by ID takes no part, because its query carries no year. _Avoid_: Year fallback, per-indexer yearless retry.
 - **Title rescue**: A matching rule, not a search pass. A candidate whose title differs from the source is still accepted when the reported total size is exactly equal and every other release attribute matches. A search applies it only when the setting is on, and Skip recheck turns it off. The Batch matcher always applies it. _Avoid_: Rescue pass, fuzzy match.
 - **Query degradation**: A per-search flag telling the frontend the search ran at lower precision than intended (title-only when IDs were wanted). An ID-quality primary, arr- or tag-sourced, is not degraded.
 - **Trigger**: How a cross-seed was found: RSS, webhook, Library Scan, completion, or interactive apply. Tags, auto-resume, and source filters are set per Trigger. _Avoid_: source (that is the source torrent), request source, mode.
@@ -129,7 +130,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Episode map**: The Sonarr-sourced triple (season, episode, absolute) for one release name. It lets one seasoned and one absolute release count as the same episode. Exists only when Sonarr names exactly one episode and that episode has an absolute number; otherwise there is no map and the pair falls back to size evidence. _Avoid_: Sonarr mapping, episode translation, absolute lookup.
 - **Search scope**: The Torznab indexers and the RED/OPS sites that one search asks for one torrent and its duplicate copies. For each RED/OPS site that it does not ask, and when it asks no Torznab indexer, it holds the reason. Every Trigger reads the same Search scope. A scope with no Torznab indexers is not a Gazelle-only run. _Avoid_: allowed indexers, indexer set.
 - **RED/OPS lookup**: The request that one search sends to one RED/OPS site through its API, and its outcome: a match, no match, not asked with a reason, or failed with a reason. Every Trigger reports the lookups of its search. _Avoid_: Gazelle search, pre-search.
-- **Gazelle-only run**: A library search with Torznab off; candidates come only from the OPS/RED APIs. Reached by the Torznab switch on the Library card, which applies to the next run and is not saved, never inferred from the indexer selection. Needs one Gazelle key. _Avoid_: Torznab-disabled run, forced Gazelle-only.
+- **Gazelle-only run**: A library search with Torznab off; candidates come only from the OPS/RED APIs. Reached by the Torznab switch on the Library card, which is saved with the Library settings and applies to manual and scheduled runs, never inferred from the indexer selection. Needs one Gazelle key. _Avoid_: Torznab-disabled run, forced Gazelle-only.
 - **Season numeral**: A Roman numeral at the end of a release title that names the release's season, as in "Kaiju Squad 100 III" for season 3. When the name also has a season marker, the numeral must equal it. When it has none, only II to X count, and only for a pack, not an episode. A movie with a year never has one. Matching reads the title with and without it, and the alternate-title search tries the title without it. _Avoid_: roman suffix, sequel number.
 - **Read release**: What qui knows about one release after it reads its name once, or its files when the name has no title (a season folder or a seasonless batch): its Title keys, Numbering scheme, season, and absolute episode. Every Match path compares Read releases, never raw names. _Avoid_: release view, parsed release (that is the raw parser output).
 - **Title key**: One normalized form of a release title that matching compares, such as the main title, an alternate or AKA title, one side of a slash title, or the title without its Season numeral. Two releases share a title when any of their Title keys are equal. _Avoid_: normalized title, match title.
@@ -155,6 +156,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Dir Scan**: The cross-seed search that reads content from folders on disk and searches indexers for releases that match it. It needs no torrent in qBittorrent. _Avoid_: Directory scan (outside UI copy), dirscan.
 - **Library Scan**: The cross-seed search that goes through the torrents an instance already seeds and searches indexers for each one. _Avoid_: Seeded search, search run.
+- **Library Scan schedule**: The setting that starts a Library Scan run every few hours with the saved Library settings. It searches only recently added torrents, up to a set number of searches. Torrents that an indexer never searched go first, and each group goes newest first. _Avoid_: auto search, daily search, seeded search.
+- **Scheduled run**: A Library Scan run that the Library Scan schedule starts, also from "Run schedule now". _Avoid_: automatic run.
+- **Manual run**: A Library Scan run that the user starts with Start, with the values on the card. _Avoid_: on-demand run.
 - **Searchee**: A top-level folder or file in a Dir Scan directory that Dir Scan tries to match to a release.
 - **Searchee outcome**: The status that one Dir Scan run gives each file of a Searchee, with the indexers that count as searched for that file. _Avoid_: final status, file result.
 - **Work item**: One search that Dir Scan runs for a Searchee: the whole Searchee, one season of a TV folder, or one episode. _Avoid_: sub-searchee, search unit.
@@ -240,6 +244,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **MSI**: The Windows package that installs qui for one Windows account, with a Start Menu entry and an uninstall entry. Self-update keeps working after it. _Avoid_: Installer (that is the seedbox installer), setup.exe.
 - **App container**: A container that runs qui as its application, such as Docker, Podman, or a Kubernetes pod. The image owns the binary, so an update means a new image. A system container with its own init, such as Proxmox LXC, is not an App container. _Avoid_: Container (when the difference matters), Docker install.
 
+## Experimental features
+
+- **Experimental feature**: A feature that is merged before it is finished. It stays off unless the user puts its name in `experimentalFeatures`. The ticket that opens the feature to all users deletes the name. _Avoid_: feature flag, toggle, beta.
+
 ## Running on Windows
 
 - **Tray**: The icon qui shows in the Windows notification area while it runs in a user's logon session. It replaces the console window as the user's handle on a running qui. _Avoid_: Systray, tray app, GUI mode (the GUI is the web UI).
@@ -254,3 +262,14 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Section**: One part of a sectioned page. The user picks it from the section nav of the page, and only one section shows at a time. _Avoid_: tab, panel.
 - **Sectioned page**: A page with a section nav, for example Settings or Cross-Seed. _Avoid_: tabbed page.
 - **Single page**: A page that stacks its cards and has no section nav, for example Search or Backups.
+
+## Transfer and Share
+
+- **Transfer**: The move of a torrent, together with each torrent that shares its files, and of those files, from one instance to another. It copies the missing files, adds the torrents on the target, proves the copy, and then removes or keeps the torrents on the source. _Avoid_: Move (that changes the save path inside one instance), migration, export, transfer history (that is the bytes on the Statistics page).
+- **Transfer to Instance**: The Action that starts a Transfer. _Avoid_: Export to Instance (that adds a torrent whose files are already on the target).
+- **Transfer source** / **Transfer target**: The two instances of a Transfer. _Avoid_: Source instance and Cross-seed instance (cross-seed terms), destination.
+- **Proven piece**: A piece of a torrent in a Transfer that qui checked against the .torrent, and whose bytes the target confirmed on disk. A Transfer resumes from its Proven pieces. _Avoid_: resume point, offset, checkpoint.
+- **Transfer torrent**: A temporary private copy of a torrent, with a new infohash and the same pieces, that two instances use to pass the files of a Transfer. No tracker of the real torrent sees it. _Avoid_: shadow torrent, clone.
+- **Share**: Giving the files of one torrent to someone whose client qui does not manage. Only a click starts a Share. It ends when the recipient has the files, when it expires, or when the user stops it. _Avoid_: Transfer (that moves between two instances qui manages), send, share limit (that is qBittorrent's ratio and seeding-time limit).
+- **Share torrent**: A private copy of a torrent, with a new infohash and the same pieces, that the user's client seeds for a Share. Only the Share tracker knows it. _Avoid_: Transfer torrent.
+- **Share tracker**: The tracker that lets the client of a Share's recipient find the user's client. It is qui's own tracker or a URL from Settings, and it answers only for active Shares. _Avoid_: privtracker, embedded tracker (that is qBittorrent's open tracker).

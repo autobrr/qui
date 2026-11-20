@@ -5,6 +5,8 @@
     "search": "搜尋",
     "crossSeed": "輔種",
     "automations": "自動化",
+    "transfers": "傳輸",
+    "transfersQueued_other": "{{count}} 項正在執行或等待",
     "backups": "備份",
     "rss": "RSS",
     "settings": "設定",
@@ -28,8 +30,8 @@
     "rssRunning": "輔種 RSS 執行中",
     "rssEnabled": "輔種 RSS 已啟用",
     "scanRunning": "掃描執行中",
-    "showSidebar": "顯示側邊欄",
-    "hideSidebar": "隱藏側邊欄"
+    "collapseToIcons": "收合為圖示",
+    "expandSidebar": "展開側邊欄"
   },
   "header": {
     "currentInstance": "目前實例：{{name}}。點選切換實例。",
@@ -61,11 +63,6 @@
     "smartSearchShortcut": "按 {{shortcutKey}} 跳至搜尋框",
     "smartSearchPalette": "按 {{shortcutKey}} 開啟指令面板",
     "torrentCreationTasksTitle": "種子建立任務",
-    "updateAvailable": "有可用更新",
-    "updateVersion": "版本 {{version}}",
-    "rssRunning": "輔種 RSS 執行中",
-    "rssEnabled": "輔種 RSS 已啟用",
-    "scanRunning": "掃描執行中",
     "allScope": "全部",
     "unified": "統一檢視"
   },
@@ -250,6 +247,28 @@
         "fix": "如果金鑰有誤，請在您的 Orpheus 個人檔案設定中建立具有 Torrents 權限的 API 金鑰，然後將其貼到 qui 的 Gazelle (OPS/RED) 設定中。如果 Orpheus 封鎖了 qui 的 IP，新金鑰也無濟於事：請聯絡 Orpheus 的管理團隊。",
         "menuFix": "在設定中貼上新金鑰",
         "action": "開啟 Gazelle (OPS/RED) 設定"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "做種庫掃描排程受阻",
+        "title": "做種庫掃描排程無法執行",
+        "effect": "qui 無法啟動做種庫掃描的排程執行。它會每小時重試一次。",
+        "fix": "請檢查做種庫掃描設定。qui 會每小時重試一次。",
+        "menuFix": "檢查做種庫掃描設定",
+        "action": "開啟做種庫掃描設定",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "做種庫掃描設定中的 Torznab 已關閉，且未設定 RED 或 OPS API 金鑰。請開啟 Torznab，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",
+            "menuFix": "開啟 Torznab，或新增 RED 或 OPS 金鑰"
+          },
+          "no_indexer": {
+            "fix": "沒有已啟用的索引器。請啟用一個 Torznab 索引器，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",
+            "menuFix": "啟用一個索引器"
+          },
+          "instance_missing": {
+            "fix": "已儲存的做種庫掃描設定中的實例不存在。請在做種庫掃描設定中選擇一個實例，然後儲存。qui 會每小時重試一次。",
+            "menuFix": "選擇一個實例，然後儲存"
+          }
+        }
       }
     },
     "actions": {
@@ -341,15 +360,68 @@
   },
   "support": {
     "title": "支援 qui",
-    "description": "已經有主題了，還想再出一份力？qui 的一切已經屬於您。訂閱不會解鎖功能，它資助的是開發這些功能所投入的時間。",
-    "perkPrefix": "贊助者可在 Discord 獲得",
-    "perkSuffix": "身分組，以及我們永遠的感謝。",
-    "yearly": "{{price}} / 年",
-    "monthly": "{{price}} / 月",
-    "notLicense": "主題授權是單獨的一次性購買。"
+    "description": "支援 qui 的方式及其價格。",
+    "heading": "協助 qui 持續維護",
+    "intro": "qui 是免費的，無論您是否付費，功能都完全相同。支援款項用於支付投入 qui 的時間與工具。",
+    "licensed": "感謝您購買主題授權。",
+    "releases_other": "qui 在過去 12 個月發布了 {{count}} 個版本。",
+    "releaseMap": "過去 52 週，每天一個方塊。亮色方塊代表當天有新版本發布。",
+    "releaseDay": "有新版本發布的日子",
+    "plans": {
+      "yearly": "每年 {{price}}",
+      "yearlyNote": "每月 {{price}}，按年付款",
+      "yearlyNoteWithLicense": "每月 {{price}}，按年付款。包含主題授權。",
+      "license": "主題授權，{{price}} 起",
+      "licenseNote": "所有目前和未來的進階主題，終身有效",
+      "onePayment": "一次付清"
+    },
+    "checkout": "前往結帳",
+    "fromPrice": "{{price}} 起",
+    "terms": {
+      "yearly": "您今天支付 {{price}}，之後每年支付 {{price}}，直到您取消為止。",
+      "license": "一次支付 {{price}} 或以上，金額於結帳時設定。非訂閱制。"
+    },
+    "perks": {
+      "yearly": "贊助者可在 qui 中獲得贊助者徽章，並在 Discord 獲得贊助者身分組。結帳後，請將您的贊助者金鑰新增到此伺服器。",
+      "license": "授權可解鎖進階主題。結帳後，請將您的授權金鑰新增到此伺服器。"
+    },
+    "existing": "已經是贊助者？",
+    "addKey": "新增贊助者金鑰",
+    "key": {
+      "help": "您的贊助者金鑰會顯示在結帳頁面上，也在附有收據的電子郵件中。",
+      "label": "贊助者金鑰",
+      "submit": "新增金鑰",
+      "back": "返回"
+    },
+    "ended": "此伺服器上的贊助者金鑰已失效。qui 每天都會重新檢查。如果您的支援已結束，您的主題授權仍會保留。請在<portal>授權門戶</portal>中找到它的金鑰，然後在設定的主題頁中新增。",
+    "removeKey": "從此伺服器移除贊助者金鑰",
+    "supporter": {
+      "badge": "贊助者",
+      "title": "您正在支援 qui",
+      "thanks": "謝謝。您的支援用於支付投入 qui 的時間與工具。",
+      "detail": "您擁有 qui 中的贊助者徽章與 Discord 中的贊助者身分組。您的支援也會解鎖進階主題，並包含一份終身主題授權。請在<portal>授權門戶</portal>中找到授權金鑰。",
+      "manage": "管理或取消支援"
+    },
+    "reminder": {
+      "title_other": "qui 已在此伺服器上執行 {{count}} 天",
+      "tooltip": "僅在此伺服器上計算，從不傳送。qui 每年只詢問一次。",
+      "subtitle": "支援 qui。qui 每年只詢問一次。",
+      "notNow": "以後再說",
+      "serverDays_other": "此伺服器已執行 qui {{count}} 天。qui 只在此伺服器上計算這個數字，從不傳送。",
+      "notNowToast": "qui 將在一年後再次詢問",
+      "dontAskAgain": "不再詢問",
+      "offToast": "qui 不會再詢問",
+      "offToastDescription": "支援捷徑會保留。可在設定的應用頁中重新開啟提醒。",
+      "undo": "復原",
+      "hiddenToast": "支援捷徑已隱藏",
+      "hiddenToastDescription": "qui 不會再詢問。可在設定的應用頁中恢復捷徑。",
+      "notForYou": "不感興趣？<reminder>關閉年度提醒</reminder>，或<heart>隱藏愛心</heart>。可在設定中恢復兩者。",
+      "notForYouHeart": "不感興趣？<heart>隱藏愛心</heart>。可在設定中恢復。"
+    }
   },
   "labels": {
-    "path": "路徑"
+    "path": "路徑",
+    "beta": "測試版"
   },
   "kit": {
     "loadFailed": "此區塊載入失敗。",

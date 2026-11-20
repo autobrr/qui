@@ -112,6 +112,7 @@ func TestStaleSearchWork(t *testing.T) {
 		addedOn      int64
 		opts         SearchRunOptions
 		gazelle      *gazelleClientSet
+		duplicates   []string
 		wantIndexers []int
 		wantGazelle  bool
 	}{
@@ -186,6 +187,27 @@ func TestStaleSearchWork(t *testing.T) {
 			wantIndexers: nil,
 			wantGazelle:  true,
 		},
+		// regression: #4246
+		{
+			name:         "a newer search of another copy counts",
+			hash:         expiredHash,
+			addedOn:      recentAdded,
+			opts:         SearchRunOptions{CooldownMinutes: 720},
+			gazelle:      gazelleClients,
+			duplicates:   []string{freshHash},
+			wantIndexers: nil,
+			wantGazelle:  false,
+		},
+		{
+			name:         "an older search of another copy does not count",
+			hash:         freshHash,
+			addedOn:      recentAdded,
+			opts:         SearchRunOptions{CooldownMinutes: 720},
+			gazelle:      gazelleClients,
+			duplicates:   []string{expiredHash},
+			wantIndexers: nil,
+			wantGazelle:  false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -196,6 +218,7 @@ func TestStaleSearchWork(t *testing.T) {
 				opts:                      opts,
 				resolvedTorznabIndexerIDs: env.indexerIDs,
 				gazelleClients:            tt.gazelle,
+				duplicateHashes:           map[string][]string{tt.hash: tt.duplicates},
 			}
 			torrent := &qbt.Torrent{Hash: tt.hash, AddedOn: tt.addedOn}
 

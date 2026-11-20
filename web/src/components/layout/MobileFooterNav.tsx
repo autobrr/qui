@@ -6,6 +6,9 @@
 import { openCommandPalette } from "@/components/command-palette/open"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
+import { openSupport } from "@/components/support/open"
+import { useSupportShortcutHidden } from "@/components/support/reminder"
+import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -33,7 +36,9 @@ import { useAuth } from "@/hooks/useAuth"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { useTransferQueue } from "@/hooks/useTransferQueue"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import { useHasPremiumAccess } from "@/hooks/useLicense"
 import type { Theme } from "@/config/themes"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
@@ -66,6 +71,7 @@ import { navigateWithSearch } from "@/lib/router-search"
 import { themeArea } from "@/lib/theme-areas"
 import {
   Archive,
+  ArrowRightLeft,
   ChartColumn,
   Check,
   Code,
@@ -74,6 +80,7 @@ import {
   FileText,
   GitBranch,
   HardDrive,
+  Heart,
   Home,
   ListChecks,
   Loader2,
@@ -132,6 +139,7 @@ export function MobileFooterNav() {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
+  const transferQueue = useTransferQueue()
   const isSelectionMode = hasSelection(useTorrentSelectionContext().selection)
   const { isFooterVisible } = useMobileScroll()
   const isMobile = useIsMobile()
@@ -143,6 +151,8 @@ export function MobileFooterNav() {
   useBuiltinThemes()
   const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
+  const supportShortcutHidden = useSupportShortcutHidden()
+  const { isSupporter } = useHasPremiumAccess()
   const appVersion = getAppVersion()
 
   const { data: instances, isPending: isLoadingInstances } = useQuery({
@@ -514,6 +524,21 @@ export function MobileFooterNav() {
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link
+                    to="/transfers"
+                    className="flex items-center gap-2"
+                  >
+                    <ArrowRightLeft className="h-4 w-4" />
+                    {t("nav.transfers")}
+                    <BetaBadge />
+                    {transferQueue > 0 && (
+                      <Badge variant="default" className="ml-auto" aria-label={t("nav.transfersQueued", { count: transferQueue })}>
+                        {transferQueue}
+                      </Badge>
+                    )}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
                     to="/backups"
                     className="flex items-center gap-2"
                   >
@@ -568,6 +593,12 @@ export function MobileFooterNav() {
               <Palette className="h-4 w-4" />
               {t("nav.appearance")}
             </DropdownMenuItem>
+            {!supportShortcutHidden && (
+              <DropdownMenuItem onClick={openSupport}>
+                <Heart className="h-4 w-4 fill-current text-red-500" />
+                {isSupporter ? t("support.supporter.title") : t("support.title")}
+              </DropdownMenuItem>
+            )}
 
             <DropdownMenuSeparator />
 

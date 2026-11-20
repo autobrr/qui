@@ -17,7 +17,6 @@
     "liveDownloading": "Baixando: {{downloading}} · Restante: {{size}}",
     "peakHour": "Hora mais movimentada: {{size}}",
     "peakSpeed": "Pico: {{speed}}",
-    "hourTitle": "{{time}}: {{uploaded}} enviados, {{downloaded}} baixados",
     "dayLabel": "Envio e download de todas as instâncias em cada uma das últimas 24 horas",
     "liveLabel": "Velocidade de envio e download de todas as instâncias nos últimos 3 minutos",
     "liveStart": "há 3 min",
@@ -34,6 +33,11 @@
     "issues": "Problemas",
     "noIssues": "Nenhum",
     "loading": "Carregando",
+    "expandAll": "Expandir tudo",
+    "collapseAll": "Recolher tudo",
+    "altSpeedOff": "Os limites de velocidade alternativos estão inativos",
+    "altSpeedTurnOn": "Ativar os limites de velocidade alternativos",
+    "altSpeedTurnOff": "Desativar os limites de velocidade alternativos",
     "streamStatus": {
       "cached": "Mostrando snapshot em cache enquanto atualiza",
       "fallback": "Atualizando estatísticas do painel",
@@ -67,10 +71,15 @@
     "peers": "Peers",
     "uptime": "Tempo Ativo",
     "version": "qBittorrent",
+    "libtorrent": "libtorrent",
     "connection": "Conexão",
     "externalAddresses": "Endereços externos",
     "unknown": "Desconhecido",
-    "day": "Últimas 24 h: {{uploaded}} enviados, {{downloaded}} baixados",
+    "last24h": "Últimas 24 h",
+    "allTime": "Desde o início",
+    "uploaded": "Enviado",
+    "downloaded": "Baixado",
+    "ratio": "ratio {{ratio}}",
     "uploadSpeed": "Velocidade de upload",
     "downloadSpeed": "Velocidade de download",
     "chartLabel": "Envio e download de {{name}} em cada uma das últimas 24 horas",
@@ -85,15 +94,6 @@
     "firewalled": "Atrás de firewall",
     "disconnected": "Desconectado",
     "other": "Outro"
-  },
-  "altSpeedDialog": {
-    "enableTitle": "Ativar Limites de Velocidade Alternativos?",
-    "disableTitle": "Desativar Limites de Velocidade Alternativos?",
-    "enableDescription": "Isso ativará limites de velocidade alternativos para {{name}}, reduzindo as velocidades de transferência com base nos limites configurados.",
-    "disableDescription": "Isso desativará os limites de velocidade alternativos para {{name}} e retornará aos limites normais.",
-    "enable": "Ativar",
-    "disable": "Desativar",
-    "cancel": "Cancelar"
   },
   "trackers": {
     "title": "Principais trackers, últimas 24 h",
@@ -115,7 +115,11 @@
     "torrents": "Torrents",
     "totalSize": "Tamanho total",
     "seedingSize": "Tamanho semeando",
-    "instances": "Instâncias conectadas"
+    "instances": "Instâncias conectadas",
+    "allTime": "Desde o início",
+    "uploaded": "Enviado",
+    "downloaded": "Baixado",
+    "ratio": "Ratio"
   },
   "uniqueSize": {
     "calculating": "calculando",

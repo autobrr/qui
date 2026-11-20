@@ -5,6 +5,9 @@
     "search": "Busca",
     "crossSeed": "Cross-Seed",
     "automations": "Automações",
+    "transfers": "Transferências",
+    "transfersQueued_one": "{{count}} item em andamento ou aguardando",
+    "transfersQueued_other": "{{count}} itens em andamento ou aguardando",
     "backups": "Backups",
     "rss": "RSS",
     "settings": "Configurações",
@@ -28,8 +31,8 @@
     "rssRunning": "RSS de cross-seed rodando",
     "rssEnabled": "RSS de cross-seed ativado",
     "scanRunning": "Scan rodando",
-    "showSidebar": "Mostrar barra lateral",
-    "hideSidebar": "Ocultar barra lateral"
+    "collapseToIcons": "Recolher para ícones",
+    "expandSidebar": "Expandir barra lateral"
   },
   "header": {
     "currentInstance": "Instância atual: {{name}}. Clique para trocar de instância.",
@@ -61,11 +64,6 @@
     "smartSearchShortcut": "Pressione {{shortcutKey}} para ir à busca",
     "smartSearchPalette": "Pressione {{shortcutKey}} para abrir a paleta de comandos",
     "torrentCreationTasksTitle": "Tarefas de Criação de Torrent",
-    "updateAvailable": "Atualização Disponível",
-    "updateVersion": "Versão {{version}}",
-    "rssRunning": "RSS de cross-seed rodando",
-    "rssEnabled": "RSS de cross-seed ativado",
-    "scanRunning": "Scan rodando",
     "allScope": "TODOS",
     "unified": "Unificado"
   },
@@ -251,6 +249,28 @@
         "fix": "Se a chave estiver errada, crie uma chave de API com a permissão \"Torrents\" nas configurações do seu perfil no Orpheus e cole-a nas configurações Gazelle (OPS/RED) do qui. Se o Orpheus baniu o IP do qui, uma nova chave não resolve: fale com a equipe do Orpheus.",
         "menuFix": "Cole uma nova chave nas configurações",
         "action": "Abrir configurações Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Agendamento da Busca na Biblioteca bloqueado",
+        "title": "O agendamento da Busca na Biblioteca não pode ser executado",
+        "effect": "O qui não consegue iniciar a execução agendada da Busca na Biblioteca. Ele tenta de novo a cada hora.",
+        "fix": "Confira as configurações da Busca na Biblioteca. O qui tenta de novo a cada hora.",
+        "menuFix": "Conferir as configurações da Busca na Biblioteca",
+        "action": "Abrir as configurações da Busca na Biblioteca",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "O Torznab está desligado nas configurações da Busca na Biblioteca, e nenhuma chave de API do RED ou do OPS está definida. Ligue o Torznab, ou adicione uma chave do RED ou do OPS nas configurações Gazelle (OPS/RED). O qui tenta de novo a cada hora.",
+            "menuFix": "Ligar o Torznab, ou adicionar uma chave do RED ou do OPS"
+          },
+          "no_indexer": {
+            "fix": "Nenhum indexador está ativado. Ative um indexador Torznab, ou adicione uma chave do RED ou do OPS nas configurações Gazelle (OPS/RED). O qui tenta de novo a cada hora.",
+            "menuFix": "Ativar um indexador"
+          },
+          "instance_missing": {
+            "fix": "A instância das configurações salvas da Busca na Biblioteca não existe. Escolha uma instância nas configurações da Busca na Biblioteca e salve. O qui tenta de novo a cada hora.",
+            "menuFix": "Escolher uma instância e salvar"
+          }
+        }
       }
     },
     "actions": {
@@ -349,15 +369,71 @@
   },
   "support": {
     "title": "Apoiar o qui",
-    "description": "Já tem os temas e quer ajudar ainda mais? Tudo no qui já é seu. Uma assinatura não desbloqueia recursos, ela financia o tempo dedicado a construí-los.",
-    "perkPrefix": "Apoiadores recebem o cargo",
-    "perkSuffix": "no Discord e nossa eterna gratidão.",
-    "yearly": "{{price}} / ano",
-    "monthly": "{{price}} / mês",
-    "notLicense": "A licença dos temas é uma compra única à parte."
+    "description": "As formas de apoiar o qui e seus preços.",
+    "heading": "Ajude a manter o qui",
+    "intro": "O qui é gratuito e funciona igual, pagando ou não. O apoio paga o tempo e as ferramentas dedicados ao qui.",
+    "licensed": "Obrigado pela sua licença dos temas.",
+    "releases_one": "O qui teve {{count}} versão nos últimos 12 meses.",
+    "releases_other": "O qui teve {{count}} versões nos últimos 12 meses.",
+    "releaseMap": "As últimas 52 semanas, um quadrado para cada dia. Um quadrado claro é um dia com uma nova versão.",
+    "releaseDay": "Um dia com uma nova versão",
+    "plans": {
+      "yearly": "{{price}} por ano",
+      "yearlyNote": "{{price}} por mês, pago anualmente",
+      "yearlyNoteWithLicense": "{{price}} por mês, pago anualmente. Inclui a licença dos temas.",
+      "license": "Licença dos temas, a partir de {{price}}",
+      "licenseNote": "Todos os temas premium atuais e futuros, por toda a vida",
+      "onePayment": "pagamento único"
+    },
+    "checkout": "Continuar para o checkout",
+    "fromPrice": "a partir de {{price}}",
+    "terms": {
+      "yearly": "Você paga {{price}} hoje e depois {{price}} por ano até cancelar.",
+      "license": "Um pagamento único de {{price}} ou mais, definido no checkout. Sem assinatura."
+    },
+    "perks": {
+      "yearly": "Apoiadores recebem o selo Apoiador no qui e o cargo de apoiador no Discord. Após o checkout, adicione sua chave de apoiador a este servidor.",
+      "license": "A licença desbloqueia os temas premium. Após o checkout, adicione sua chave de licença a este servidor."
+    },
+    "existing": "Já é apoiador?",
+    "addKey": "Adicionar chave de apoiador",
+    "key": {
+      "help": "Sua chave de apoiador está na página do checkout e no e-mail com o seu recibo.",
+      "label": "Chave de apoiador",
+      "submit": "Adicionar chave",
+      "back": "Voltar"
+    },
+    "ended": "A chave de apoiador deste servidor não é mais válida. O qui a verifica de novo todos os dias. Se o seu apoio terminou, sua licença dos temas continua. Encontre a chave dela no <portal>portal de licenças</portal> e adicione-a em Configurações, em Temas.",
+    "removeKey": "Remover a chave de apoiador deste servidor",
+    "supporter": {
+      "badge": "Apoiador",
+      "title": "Você apoia o qui",
+      "thanks": "Obrigado. Seu apoio paga o tempo e as ferramentas dedicados ao qui.",
+      "detail": "Você tem o selo Apoiador no qui e o cargo de apoiador no Discord. Seu apoio também desbloqueia os temas premium e inclui uma licença dos temas vitalícia. Encontre a chave de licença no <portal>portal de licenças</portal>.",
+      "manage": "Gerenciar ou cancelar o apoio"
+    },
+    "reminder": {
+      "title_one": "{{count}} dia de qui neste servidor",
+      "title_other": "{{count}} dias de qui neste servidor",
+      "tooltip": "Contado neste servidor e nunca enviado. O qui pergunta uma vez por ano.",
+      "subtitle": "Apoiar o qui. O qui pergunta uma vez por ano.",
+      "notNow": "Agora não",
+      "serverDays_one": "Este servidor roda o qui há {{count}} dia. O qui conta isso neste servidor e nunca envia.",
+      "serverDays_other": "Este servidor roda o qui há {{count}} dias. O qui conta isso neste servidor e nunca envia.",
+      "notNowToast": "O qui pergunta de novo em um ano",
+      "dontAskAgain": "Não perguntar de novo",
+      "offToast": "O qui não vai perguntar de novo",
+      "offToastDescription": "O atalho de apoio continua. Ative o lembrete de novo em Configurações, em Aplicativo.",
+      "undo": "Desfazer",
+      "hiddenToast": "O atalho de apoio está oculto",
+      "hiddenToastDescription": "O qui não vai perguntar de novo. Traga o atalho de volta em Configurações, em Aplicativo.",
+      "notForYou": "Não é para você? <reminder>Desative o lembrete anual</reminder> ou <heart>oculte o coração</heart>. As configurações trazem os dois de volta.",
+      "notForYouHeart": "Não é para você? <heart>Oculte o coração</heart>. As configurações o trazem de volta."
+    }
   },
   "labels": {
-    "path": "Caminho"
+    "path": "Caminho",
+    "beta": "Beta"
   },
   "kit": {
     "loadFailed": "Não foi possível carregar esta seção.",

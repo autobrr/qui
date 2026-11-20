@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -115,7 +116,10 @@ const (
 	SFTPRefuseLinkAndLstat
 )
 
-const hardlinkExtension = "hardlink@openssh.com"
+const (
+	hardlinkExtension = "hardlink@openssh.com"
+	fsyncExtension    = "fsync@openssh.com"
+)
 
 // stallTimeout is how long a stalled listing waits before it releases itself.
 const stallTimeout = 3 * time.Second
@@ -134,15 +138,22 @@ type Server struct {
 
 	mu             sync.Mutex
 	latency        time.Duration
+	maxConns       int
+	fsync          bool
+	stderr         int
 	sftpMode       SFTPMode
 	dials          int
 	auths          int
 	accepts        int
 	channels       int
+	keepalives     int
 	inFlight       int
 	maxInFlight    int
 	commands       [][]string
 	live           map[*ssh.ServerConn]struct{}
+	admitted       map[*ssh.ServerConn]int
+	reads          []ReadRange
+	readIndex      map[readKey]int
 	sessionWaiters []chan struct{}
 	dropOnExec     *execDrop
 
@@ -162,7 +173,8 @@ type Server struct {
 func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	t.Helper()
 
-	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{}, stallRelease: make(chan struct{}), stalled: make(chan struct{})}
+	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{},
+		admitted: map[*ssh.ServerConn]int{}, readIndex: map[readKey]int{}, stallRelease: make(chan struct{}), stalled: make(chan struct{})}
 	server.releaseStall = sync.OnceFunc(func() { close(server.stallRelease) })
 	server.markStalled = sync.OnceFunc(func() { close(server.stalled) })
 	config := &ssh.ServerConfig{
@@ -254,6 +266,14 @@ func (s *Server) Channels() int {
 	return s.channels
 }
 
+// Keepalives returns the number of keepalive@openssh.com requests the
+// clients sent.
+func (s *Server) Keepalives() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.keepalives
+}
+
 // Stalled is closed when the first request reaches a stall: a listing in
 // SFTPStallReadDir, the mutation SFTPHoldNextMutation holds, or a command in
 // ExecHang. A test cancels on it, so its cancel lands inside the stall.
@@ -301,16 +321,27 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	}
 	defer func() { _ = sshConn.Close() }()
 
-	s.mu.Lock()
-	s.live[sshConn] = struct{}{}
-	s.mu.Unlock()
+	if !s.admit(sshConn) {
+		return
+	}
 	defer func() {
 		s.mu.Lock()
 		delete(s.live, sshConn)
 		s.mu.Unlock()
 	}()
 
-	s.wg.Go(func() { ssh.DiscardRequests(reqs) })
+	s.wg.Go(func() {
+		for req := range reqs {
+			if req.Type == "keepalive@openssh.com" {
+				s.mu.Lock()
+				s.keepalives++
+				s.mu.Unlock()
+			}
+			if req.WantReply {
+				_ = req.Reply(false, nil)
+			}
+		}
+	})
 
 	var sessions sync.WaitGroup
 	defer sessions.Wait()
@@ -366,6 +397,19 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 			s.handleSession(sshConn, channel, requests, stalled)
 		})
 	}
+}
+
+// admit records conn as live, or reports false when SetMaxConnections allows
+// no more.
+func (s *Server) admit(conn *ssh.ServerConn) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.maxConns > 0 && len(s.live) >= s.maxConns {
+		return false
+	}
+	s.live[conn] = struct{}{}
+	s.admitted[conn] = len(s.admitted) + 1
+	return true
 }
 
 func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, requests <-chan *ssh.Request, stalled <-chan struct{}) {
@@ -426,7 +470,15 @@ func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
 	cutter := &requestCutter{Channel: channel, conn: conn, server: s}
 	s.mu.Lock()
 	latency := s.latency
+	cutter.fsync = s.fsync
+	stderr := s.stderr
 	s.mu.Unlock()
+	if _, err := channel.Stderr().Write(bytes.Repeat([]byte("x"), stderr)); err != nil {
+		return
+	}
+	if cutter.fsync {
+		cutter.Channel = &requestRewriter{Channel: channel, fsync: cutter.fsync}
+	}
 	if latency > 0 {
 		cutter.latency = newLatencyWriter(channel, latency, s, &s.wg)
 		defer cutter.latency.close()
@@ -624,6 +676,35 @@ func (s *Server) SetLatency(d time.Duration) {
 	s.mu.Unlock()
 }
 
+// SetMaxConnections closes each connection that authenticates while n are
+// open, the way a seedbox with a login limit does. Zero allows any number.
+func (s *Server) SetMaxConnections(n int) {
+	s.mu.Lock()
+	s.maxConns = n
+	s.mu.Unlock()
+}
+
+// SetFsync sets whether sftp sessions opened from now on advertise
+// fsync@openssh.com, as OpenSSH 6.5 and later do. An fsync then checks its
+// handle and syncs nothing. It applies to the modes that serve the host file
+// system.
+func (s *Server) SetFsync(advertise bool) {
+	s.mu.Lock()
+	s.fsync = advertise
+	s.mu.Unlock()
+}
+
+// SetStderr makes sftp sessions opened from now on write n bytes to stderr
+// before they serve, the way a server that logs to stderr does over a long
+// session. A client that never reads them gets no answer once they fill the
+// window of the channel. It applies to the modes that serve the host file
+// system.
+func (s *Server) SetStderr(n int) {
+	s.mu.Lock()
+	s.stderr = n
+	s.mu.Unlock()
+}
+
 // SetSFTP sets what later sftp subsystem requests get.
 func (s *Server) SetSFTP(mode SFTPMode) {
 	s.mu.Lock()
@@ -747,6 +828,7 @@ type requestCutter struct {
 	versionSent bool
 	server      *Server
 	latency     *latencyWriter
+	fsync       bool
 	// bodyLeft is how many bytes of the current request body are still to
 	// be read; zero means the next read is a 4-byte length header. pkg/sftp
 	// reads a request as exactly those two reads.
@@ -777,6 +859,9 @@ func (t *requestCutter) Read(p []byte) (int, error) {
 	}
 	if t.readRequestType(p[:n]) {
 		t.server.requested()
+		if p[0] == fxpRead {
+			t.server.read(t.conn, p[:n])
+		}
 		if t.mode() == SFTPHoldNextMutation {
 			t.holdMutation(p[0])
 		}
@@ -797,6 +882,55 @@ func (t *requestCutter) readRequestType(b []byte) bool {
 	first := t.bodyLeft == t.bodyLen
 	t.bodyLeft = max(t.bodyLeft-len(b), 0)
 	return first
+}
+
+// ReadRange is the part of a file that one handle read on one connection.
+type ReadRange struct {
+	// Conn numbers the connection in the order that the server admitted it,
+	// from 1.
+	Conn     int
+	From, To int64
+}
+
+type readKey struct {
+	conn   *ssh.ServerConn
+	handle string
+}
+
+const fxpRead = 5
+
+// ReadRanges returns the lowest and the highest offset that each file handle
+// read, in the order of the first read of each handle.
+func (s *Server) ReadRanges() []ReadRange {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.reads)
+}
+
+// read records a READ request: its handle, offset and length.
+func (s *Server) read(conn *ssh.ServerConn, body []byte) {
+	// type, id, and the length of the handle
+	if len(body) < 9 {
+		return
+	}
+	handleLen := int(binary.BigEndian.Uint32(body[5:9]))
+	rest := body[9:]
+	if len(rest) < handleLen+12 {
+		return
+	}
+	offset := int64(binary.BigEndian.Uint64(rest[handleLen:]))
+	end := offset + int64(binary.BigEndian.Uint32(rest[handleLen+8:]))
+	key := readKey{conn: conn, handle: string(rest[:handleLen])}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i, ok := s.readIndex[key]
+	if !ok {
+		s.readIndex[key] = len(s.reads)
+		s.reads = append(s.reads, ReadRange{Conn: s.admitted[conn], From: offset, To: end})
+		return
+	}
+	s.reads[i].From, s.reads[i].To = min(s.reads[i].From, offset), max(s.reads[i].To, end)
 }
 
 func (s *Server) requested() {
@@ -877,6 +1011,60 @@ func (c *latencyWriter) close() {
 	c.once.Do(func() { close(c.done) })
 }
 
+// requestRewriter reads the client's requests one whole packet at a time
+// and rewrites the ones that pkg/sftp's server answers differently from the
+// server a test imitates. With fsync, it rewrites each fsync@openssh.com
+// request into an fsetstat that sets nothing, because pkg/sftp's server
+// refuses the fsync: the server then checks the handle and answers OK under
+// the request's id.
+type requestRewriter struct {
+	ssh.Channel
+	fsync   bool
+	pending []byte
+}
+
+func (c *requestRewriter) Read(p []byte) (int, error) {
+	if len(c.pending) == 0 {
+		var header [4]byte
+		if _, err := io.ReadFull(c.Channel, header[:]); err != nil {
+			return 0, err
+		}
+		packet := make([]byte, 4+int(binary.BigEndian.Uint32(header[:])))
+		copy(packet, header[:])
+		body := packet[4:]
+		if _, err := io.ReadFull(c.Channel, body); err != nil {
+			return 0, err
+		}
+		c.pending = packet
+		if handle, ok := fsyncHandle(body); ok && c.fsync {
+			// SSH_FXP_FSETSTAT: id, handle, and attribute flags of zero.
+			c.pending = binary.BigEndian.AppendUint32(nil, uint32(1+4+len(handle)+4))
+			c.pending = append(c.pending, 10)
+			c.pending = append(c.pending, body[1:5]...)
+			c.pending = append(c.pending, handle...)
+			c.pending = binary.BigEndian.AppendUint32(c.pending, 0)
+		}
+	}
+	n := copy(p, c.pending)
+	c.pending = c.pending[n:]
+	return n, nil
+}
+
+// fsyncHandle returns the handle of an fsync@openssh.com request in its wire
+// form, a length and the bytes.
+func fsyncHandle(body []byte) ([]byte, bool) {
+	// SSH_FXP_EXTENDED: type, id, extension name, then the handle.
+	if len(body) < 9 || body[0] != 200 {
+		return nil, false
+	}
+	name := body[9:]
+	nameLen := binary.BigEndian.Uint32(body[5:9])
+	if uint32(len(name)) < nameLen || string(name[:nameLen]) != fsyncExtension {
+		return nil, false
+	}
+	return name[nameLen:], true
+}
+
 // holdMutation blocks a mutation, told by its request type, until the stall
 // is released. One hold only: the mode is cleared so rollback after the hold
 // runs unhindered.
@@ -896,11 +1084,12 @@ func (t *requestCutter) holdMutation(requestType byte) {
 }
 
 // Write follows the framing of each answer, so the count in flight drops when
-// an answer starts. It also strips the hardlink extension from the server's
-// SSH_FXP_VERSION reply when the mode asks for it. Only the first write is
-// parsed for that: the version packet is always the server's first send, and
-// later writes may be payload chunks (file data, names) whose bytes mean
-// nothing to that parser.
+// an answer starts. It also edits the extensions of the server's
+// SSH_FXP_VERSION reply: it strips the hardlink extension when the mode asks
+// for it, and adds the fsync extension when the session advertises it. Only
+// the first write is parsed for that: the version packet is always the
+// server's first send, and later writes may be payload chunks (file data,
+// names) whose bytes mean nothing to that parser.
 func (t *requestCutter) Write(p []byte) (int, error) {
 	// pkg/sftp writes an answer's length and header first, and its payload, if
 	// any, in a second write.
@@ -912,7 +1101,8 @@ func (t *requestCutter) Write(p []byte) (int, error) {
 
 	first := !t.versionSent
 	t.versionSent = true
-	if !first || t.mode() != SFTPNoHardlink || len(p) < 9 || p[4] != 2 {
+	stripHardlink := t.mode() == SFTPNoHardlink
+	if !first || (!stripHardlink && !t.fsync) || len(p) < 9 || p[4] != 2 {
 		if err := t.send(p, answer); err != nil {
 			return 0, err
 		}
@@ -926,9 +1116,15 @@ func (t *requestCutter) Write(p []byte) (int, error) {
 		dataLen := binary.BigEndian.Uint32(rest[4+nameLen:])
 		pair := rest[:8+nameLen+dataLen]
 		rest = rest[len(pair):]
-		if string(name) != hardlinkExtension {
+		if !stripHardlink || string(name) != hardlinkExtension {
 			out = append(out, pair...)
 		}
+	}
+	if t.fsync {
+		out = binary.BigEndian.AppendUint32(out, uint32(len(fsyncExtension)))
+		out = append(out, fsyncExtension...)
+		out = binary.BigEndian.AppendUint32(out, 1)
+		out = append(out, '1')
 	}
 	binary.BigEndian.PutUint32(out, uint32(len(out)-4))
 	if err := t.send(out, answer); err != nil {

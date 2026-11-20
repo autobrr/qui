@@ -29,6 +29,9 @@ import (
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/experimental"
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/arr"
@@ -41,9 +44,13 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/livesamples"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/services/peeraddress"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
+	"github.com/autobrr/qui/internal/services/share"
+	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/internal/update"
@@ -92,7 +99,6 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/activity"}:           {},
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:           {},
 	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:              {},
-	{Method: http.MethodGet, Path: "/api/application/info"}:                                         {},
 	{Method: http.MethodGet, Path: "/api/tracker-customizations"}:                                   {},
 	{Method: http.MethodPost, Path: "/api/tracker-customizations"}:                                  {},
 	{Method: http.MethodPut, Path: "/api/tracker-customizations/{id}"}:                              {},
@@ -198,9 +204,34 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	t.Cleanup(func() { require.NoError(t, transferHistory.Shutdown(context.Background())) })
 	jackettService := jackett.NewService(torznabIndexerStore)
+	// No Transfer and no helper torrent: the API behaves as it did before Transfers.
+	transfers, err := transfer.NewStore(t.Context(), db)
+	require.NoError(t, err)
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
 	require.NoError(t, err)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	transferService := transfer.NewService(t.Context(), transfer.Deps{
+		Store:     transfers,
+		Instances: instanceStore,
+		Sync:      syncManager,
+		Files:     fsops.NewPool(instanceStore, local.NewBackend()),
+		Groups:    crossSeedService,
+		Config:    transfer.DefaultConfig(),
+	})
+	t.Cleanup(func() { require.NoError(t, transferService.Close(context.Background())) })
+	// No Share and every Share setting at its default.
+	shareService := share.NewService(share.Deps{
+		Store:           share.NewStore(db),
+		Settings:        share.NewSettingsStore(db),
+		TrackerSettings: sharetracker.NewSettingsStore(db),
+		Helpers:         transfers,
+		Instances:       instanceStore,
+		Sync:            syncManager,
+		Peers:           peeraddress.New(instanceStore, syncManager),
+		TrackerHost:     "127.0.0.1",
+		Config:          share.DefaultConfig(),
+	})
+	t.Cleanup(shareService.Close)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
@@ -220,6 +251,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 				BaseURL: "/",
 			},
 		},
+		Experimental:              experimental.New(nil),
 		Version:                   "test",
 		AuthService:               authService,
 		SessionManager:            sessionManager,
@@ -256,6 +288,9 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		TorznabIndexerStore:       torznabIndexerStore,
 		ArrInstanceStore:          arrInstanceStore,
 		ArrService:                arr.NewService(arrInstanceStore, models.NewArrIDCacheStore(db)),
+		Transfers:                 transfers,
+		TransferService:           transferService,
+		ShareService:              shareService,
 	}
 }
 

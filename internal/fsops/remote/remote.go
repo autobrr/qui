@@ -39,6 +39,8 @@ import (
 type Backend struct {
 	pool *sshpool.Pool
 	inst *models.Instance
+	// conn is the connection of a backend from Connections.
+	conn *sftp.Client
 }
 
 func New(pool *sshpool.Pool, inst *models.Instance) *Backend {
@@ -48,6 +50,7 @@ func New(pool *sshpool.Pool, inst *models.Instance) *Backend {
 var (
 	_ fsops.Backend     = (*Backend)(nil)
 	_ fsops.BatchStater = (*Backend)(nil)
+	_ fsops.Connector   = (*Backend)(nil)
 )
 
 // errNoIdentity is what sftp cannot answer: its attrs carry no device or inode
@@ -65,6 +68,9 @@ func (b *Backend) client(ctx context.Context) (*sftp.Client, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if b.conn != nil {
+		return b.conn, nil
+	}
 	client, err := b.pool.SFTP(ctx, b.inst)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -73,6 +79,24 @@ func (b *Backend) client(ctx context.Context) (*sftp.Client, error) {
 		return nil, lost(err)
 	}
 	return client, nil
+}
+
+func (b *Backend) Connections(ctx context.Context, n int) ([]fsops.Backend, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	clients, err := b.pool.SFTPConns(ctx, b.inst, n)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, lost(err)
+	}
+	out := make([]fsops.Backend, len(clients))
+	for i, client := range clients {
+		out[i] = &Backend{pool: b.pool, inst: b.inst, conn: client}
+	}
+	return out, nil
 }
 
 func (b *Backend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
@@ -893,8 +917,10 @@ func await[T any](ctx context.Context, call func() (T, error)) (T, error) {
 // leaves the server in a state the caller cannot know, so the call completes
 // and the caller records what it made before honouring the cancel. pkg/sftp
 // gives a request no timeout, so only an answer or a closed connection ends
-// the wait: about 45 s when keepalives fail, the pool's idle close when they
-// do not, and no bound while other callers keep that instance busy.
+// the wait: about 45 s when keepalives fail, and when they do not, the pool's
+// close of a connection whose calls got no answer for an hour. A server that
+// still answers the other calls on the connection holds this one with no
+// bound.
 func awaitMutation(_ context.Context, call func() error) error {
 	return call()
 }

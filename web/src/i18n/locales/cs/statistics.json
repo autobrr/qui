@@ -14,6 +14,7 @@
   "customRange": {
     "from": "První den",
     "to": "Poslední den",
+    "pick": "Vyberte den",
     "apply": "Použít",
     "range": "{{from}} – {{to}}"
   },
@@ -142,6 +143,10 @@
     "seededValue": "{{value}}×",
     "total": "Celkem",
     "shown": "{{shown}} z {{total}}",
+    "range": "{{from}}–{{to}} z {{total}}",
+    "previousPage": "Předchozí stránka",
+    "nextPage": "Další stránka",
+    "showMore": "Zobrazit další",
     "showAll": "Zobrazit vše",
     "showFewer": "Zobrazit méně",
     "noCategory": "Bez kategorie",

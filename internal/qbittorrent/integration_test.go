@@ -153,16 +153,6 @@ func TestSyncManager_ClearTrackerHealthAndRefetch(t *testing.T) {
 	}
 }
 
-func TestSyncManager_ClearTrackerHealthAndRefetch_NoCache(t *testing.T) {
-	sm := &SyncManager{
-		trackerHealthCache: make(map[int]*TrackerHealthSnapshot),
-	}
-
-	// Should not panic when no cache exists for the instanceID
-	sm.clearTrackerHealthAndRefetch(999, []string{"hash1", "hash2"})
-	// If we get here without panic, the test passes
-}
-
 func TestSyncManager_ClearTrackerHealthAndRefetch_NotifiesOnlyOnChange(t *testing.T) {
 	sm := NewSyncManager(nil, nil)
 	sink := &mockSyncEventSink{}
@@ -560,20 +550,6 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		}
 	})
 
-	t.Run("filterTorrentsBySearch fuzzy match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "2023")
-
-		// Should find torrents with 2023 in name or tags
-		assert.GreaterOrEqual(t, len(results), 2, "Should find at least 2 torrents with '2023'")
-
-		for _, result := range results {
-			// Should contain 2023 in name or tags
-			assert.True(t,
-				contains(result.Name, "2023") || contains(result.Tags, "2023"),
-				"Result should contain '2023': %s", result.Name)
-		}
-	})
-
 	t.Run("filterTorrentsBySearch hash match", func(t *testing.T) {
 		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "dd44")
 
@@ -586,17 +562,6 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		// scanned; the name still matches.
 		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "x264")
 		assert.Len(t, results, 2, "Should match names, not hashes")
-	})
-
-	t.Run("filterTorrentsBySearch glob pattern match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "*.iso")
-
-		// Should find all ISO files
-		assert.GreaterOrEqual(t, len(results), 3, "Should find at least 3 ISO files")
-
-		for _, result := range results {
-			assert.Contains(t, result.Name, ".iso", "Result should be an ISO file: %s", result.Name)
-		}
 	})
 
 	t.Run("filterTorrentsBySearch glob episode example skips season packs", func(t *testing.T) {

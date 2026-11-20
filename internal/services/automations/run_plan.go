@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"maps"
@@ -35,6 +36,7 @@ type runPlan struct {
 	move           plannedAction[string] // by save path, with the group members and cross-seeds
 	programs       []pendingProgramExec
 	exports        []pendingExportToInstance
+	transfers      []pendingTransfer
 	deletions      *deletionSelection
 }
 
@@ -263,6 +265,7 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		}
 	}
 	expandTagStatesForCrossSeeds(states, in.ruleByID, in.crossSeeds)
+	failedTransferTargets := map[int]bool{}
 	for hash, state := range states {
 		// A delete trigger gets no other action, even when its delete was skipped or blocked.
 		if deletions.isClaimed(hash) {
@@ -304,11 +307,28 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 			export.trackerDomain = in.scope.tracker(&torrent)
 			plan.exports = append(plan.exports, export)
 		}
+
+		if state.transferToInstance != nil && s.transferRunner != nil {
+			if pending, ok := s.planTransfer(ctx, in.instanceID, hash, torrent, state, evalCtx, failedTransferTargets); ok {
+				pending.trackerDomain = in.scope.tracker(&torrent)
+				plan.transfers = append(plan.transfers, pending)
+			}
+		}
 	}
 	plan.category = s.planCategories(ctx, in, categoryTriggers)
 	plan.move = s.planMoves(ctx, in, moveTriggers)
+	plan.transfers = transfersAfterExports(transfersAfterMoves(plan.transfers, plan.move.rules), plan.exports)
 	var waitingExports []pendingExportToInstance
 	plan.exports, waitingExports = exportsAfterMoves(plan.exports, plan.move.rules)
+	// The module takes the whole Shared-file group at the first Start. The
+	// Transfer of the last rule goes first, as one torrent follows the last
+	// rule that matches it.
+	if len(plan.transfers) > 1 {
+		pos := rulePositions(in.ruleByID)
+		slices.SortFunc(plan.transfers, func(a, b pendingTransfer) int {
+			return cmp.Or(cmp.Compare(pos[b.rule.id], pos[a.rule.id]), strings.Compare(a.hash, b.hash))
+		})
+	}
 	if len(waitingExports) > 0 {
 		log.Debug().Int("instanceID", in.instanceID).Int("count", len(waitingExports)).
 			Msg("automations: exports wait for a later run, their torrents are moving")
@@ -674,7 +694,6 @@ type moveExpansion struct {
 	// failedGroups holds the groups that failed a check for the group, so they cannot move
 	// for any trigger.
 	failedGroups map[ruleGroupKey]struct{}
-	groupChecks  int
 }
 
 func newMoveExpansion(in runPlanInput, ruleByHash map[string]ruleRef) *moveExpansion {
@@ -760,7 +779,6 @@ func (s *Service) planMoveGroup(ctx context.Context, m *moveExpansion, state *to
 			members = found
 		}
 	}
-	m.groupChecks++
 	expand, verifyOverlap, minPercent := s.moveGroupChecks(in, rule, state.moveGroupID, idx, hash, members)
 	if !expand {
 		// A trigger without a group key is a group of its own.

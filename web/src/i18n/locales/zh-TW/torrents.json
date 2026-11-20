@@ -66,6 +66,8 @@
     "externalPrograms": "外部程式",
     "exportTorrent": "匯出種子",
     "exportTorrents": "匯出種子（{{count}}）",
+    "transferToInstance": "傳輸到實例…",
+    "shareWithSomeone": "與他人分享…",
     "copy": "複製...",
     "copyName": "複製名稱",
     "copyHash": "複製雜湊值",
@@ -1502,6 +1504,9 @@
     "trackerDown": "Tracker 離線",
     "unregistered": "未註冊",
     "trackerError": "Tracker 錯誤",
+    "helperTransfer": "傳輸輔助",
+    "helperShare": "共享輔助",
+    "helperHint": "qui 為傳輸或共享新增了此種子。其檔案屬於另一個種子。",
     "now": "現在",
     "yes": "是",
     "no": "否"
@@ -1654,7 +1659,7 @@
     "settings": {
       "title": "顯示設定檔",
       "holds": "包含：欄位 · 列密度 · 側邊欄 · 篩選區段 · 分類樹 · 空篩選",
-      "holdsHelp": "設定檔保存種子列表的外觀：顯示哪些欄位、欄位的順序和寬度、名稱欄延展、列密度、展開的側邊欄和篩選區段、收合的分類樹，以及是否顯示空篩選。每個瀏覽器使用一個設定檔，只有該瀏覽器記住這個選擇。從未選擇過設定檔的瀏覽器和私密視窗使用 Default。其他設定由所有設定檔共用。",
+      "holdsHelp": "設定檔保存種子列表的外觀：顯示哪些欄位、欄位的順序和寬度、名稱欄延展、列密度、展開的側邊欄和篩選區段、收合的分類樹，以及是否顯示空篩選。它也保存儀表板中哪些實例列處於展開狀態。每個瀏覽器使用一個設定檔，只有該瀏覽器記住這個選擇。從未選擇過設定檔的瀏覽器和私密視窗使用 Default。其他設定由所有設定檔共用。",
       "thisBrowser": "此瀏覽器",
       "use": "在此瀏覽器中使用",
       "makeProfile": "為筆記型電腦或手機建立設定檔",

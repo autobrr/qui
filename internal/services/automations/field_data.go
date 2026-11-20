@@ -266,6 +266,9 @@ func ruleTemplatesUseTrackerName(ac *models.ActionConditions) bool {
 	if export := ac.ExportToInstance; export != nil && export.Enabled && strings.Contains(export.SavePath, "Tracker") {
 		return true
 	}
+	if transfer := ac.TransferToInstance; transfer != nil && transfer.Enabled && strings.Contains(transfer.SavePath, "Tracker") {
+		return true
+	}
 	for _, tag := range ac.TagActions() {
 		if tag != nil && tag.Enabled && tag.UseTrackerAsTag && tag.UseDisplayName {
 			return true

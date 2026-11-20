@@ -549,6 +549,7 @@
         "externalProgram": "Programme externe",
         "dryRun": "Simulation",
         "exportToInstance": "Exporter vers l'instance",
+        "transferToInstance": "Transférer vers une instance",
         "ruleSkipped": "Règle non exécutée"
       },
       "shareLimit": {
@@ -602,7 +603,9 @@
         "exportedDryRun_one": "{{count}} torrent serait exporté",
         "exportedDryRun_other": "{{count}} torrents seraient exportés",
         "exportFailed_one": "Échec d'exportation de {{count}} torrent",
-        "exportFailed_other": "Échec d'exportation de {{count}} torrents"
+        "exportFailed_other": "Échec d'exportation de {{count}} torrents",
+        "transferredDryRun_one": "{{count}} torrent serait transféré",
+        "transferredDryRun_other": "{{count}} torrents seraient transférés"
       },
       "deleteDialog": {
         "title": "Supprimer la règle",
@@ -662,6 +665,7 @@
         "deleteActivityFailed": "Échec de la suppression de l'activité"
       },
       "exported": "Exporté",
+      "transferStarted": "Démarré",
       "skipped": "Ignorée"
     },
     "runWorkflowNow": {
@@ -961,6 +965,7 @@
         "auto_managed": "Géré automatiquement",
         "dry_run_no_match": "Simulation (aucune correspondance)",
         "exported_to_instance": "Exporter vers l'instance",
+        "transferred_to_instance": "Transférer vers une instance",
         "rule_skipped": "Règle non exécutée"
       }
     },
@@ -1138,6 +1143,11 @@
         "skipChecking": "Ignorer la vérification",
         "addPaused": "Ajouter en pause"
       },
+      "transfer": {
+        "title": "Transférer vers une instance",
+        "description": "Déplace chaque torrent correspondant avec ses fichiers vers l'instance cible, et vérifie la copie avant de supprimer quoi que ce soit. La page Transferts affiche chaque transfert.",
+        "remove": "Retirer « Transférer vers une instance »"
+      },
       "priority": {
         "title": "Priorité du torrent",
         "description": "Contrôle l'ordre dans lequel les torrents sont traités.",
@@ -1180,7 +1190,8 @@
         "category": "Catégorie",
         "move": "Move",
         "externalProgram": "Exécuter un programme externe",
-        "exportToInstance": "Exporter vers l'instance"
+        "exportToInstance": "Exporter vers l'instance",
+        "transferToInstance": "Transférer vers une instance"
       },
       "option": {
         "noChange": "Aucun changement",
@@ -1451,6 +1462,7 @@
           "externalProgram": "Programme externe",
           "noMatches": "Aucune correspondance",
           "exportedToInstance": "Exporter vers l'instance",
+          "transferredToInstance": "Transférer vers une instance",
           "ruleSkipped": "Règle non exécutée"
         },
         "actionFallback": "Action inconnue ({{action}})",
@@ -2128,5 +2140,10 @@
     "emptyDescription": "Ajoutez un client qBittorrent pour que qui gère ses torrents.",
     "tlsSkipped": "Vérification TLS désactivée",
     "reorderFailed": "Impossible de réorganiser les instances"
+  },
+  "publicPeerAddress": {
+    "label": "Adresse publique du pair",
+    "noResolvedAddress": "qui ne peut pas encore déterminer d'adresse",
+    "description": "L'adresse et le port par lesquels les autres clients BitTorrent atteignent ce qBittorrent, pour les Transferts et les Partages. Laissez vide pour utiliser l'adresse que qui déduit de qBittorrent à chaque utilisation. Définissez-la quand qBittorrent tourne dans Docker ou derrière un NAT."
   }
 }

@@ -26,6 +26,8 @@ interface ConfirmDialogProps {
   description: ReactNode
   /** The label of the button that does the step, for example "Delete". */
   confirmLabel: string
+  /** The label of the button that closes the dialog, when "Cancel" would name the step itself, for example "Keep running". */
+  cancelLabel?: string
   /**
    * Runs on the confirm button. When it returns a promise, the button shows a spinner, and the dialog closes when the
    * promise resolves. A rejected promise keeps the dialog open: the caller reports the error, for example in a toast.
@@ -40,7 +42,7 @@ interface ConfirmDialogProps {
 }
 
 /** The question before a step that the user cannot undo. */
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, onConfirm, reversible = false, confirmDisabled = false, children }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, cancelLabel, onConfirm, reversible = false, confirmDisabled = false, children }: ConfirmDialogProps) {
   const { t } = useTranslation("common")
   const [pending, setPending] = useState(false)
   const returnFocus = useReturnFocus()
@@ -72,7 +74,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
         </AlertDialogHeader>
         {children}
         <AlertDialogFooter>
-          <AlertDialogCancel className="max-sm:h-11" disabled={pending}>{t("actions.cancel")}</AlertDialogCancel>
+          <AlertDialogCancel className="max-sm:h-11" disabled={pending}>{cancelLabel ?? t("actions.cancel")}</AlertDialogCancel>
           <Button variant={reversible ? "default" : "destructive"} className="max-sm:h-11" disabled={pending || confirmDisabled} onClick={() => void confirm()}>
             {pending && <Loader2 className="animate-spin" />}
             {confirmLabel}

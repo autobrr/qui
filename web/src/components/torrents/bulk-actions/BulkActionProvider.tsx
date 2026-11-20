@@ -33,6 +33,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
+import { ShareDialog } from "@/components/shares/ShareDialog"
+import { TransferDialog } from "@/components/transfers/TransferDialog"
 import { DeleteTorrentDialog } from "../DeleteTorrentDialog"
 import {
   LocationWarningDialog,
@@ -469,6 +471,27 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
         onConfirm={confirmRename}
         isPending={isPending}
       />
+
+      {/* Mounted only while open: each dialog keeps its form state for one torrent pick. */}
+      {dialog.name === "transfer" && singleTorrent && (
+        <TransferDialog
+          open
+          onOpenChange={close}
+          onStarted={() => dispatchSelection({ type: "clear" })}
+          sourceInstanceId={(singleTorrent as CrossInstanceTorrent).instanceId ?? instanceId}
+          hash={singleTorrent.hash}
+          name={singleTorrent.name}
+        />
+      )}
+
+      {dialog.name === "share" && (
+        <ShareDialog
+          open
+          onOpenChange={close}
+          instanceId={(previewTorrents[0] as CrossInstanceTorrent | undefined)?.instanceId ?? instanceId}
+          torrents={previewTorrents.map(({ hash, name }) => ({ hash, name }))}
+        />
+      )}
     </BulkActionsContext.Provider>
   )
 }

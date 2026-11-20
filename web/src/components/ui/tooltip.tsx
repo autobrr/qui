@@ -36,7 +36,12 @@ const TooltipContext = React.createContext<{
   registerPointerType?: (pointerType: string | null) => void
 }>({ isTouchDevice: false })
 
-const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) => {
+type TooltipProps = React.ComponentProps<typeof TooltipPrimitive.Root> & {
+  /** Keeps the tooltip closed. For a trigger that stays mounted in a state where it needs no tooltip. */
+  disabled?: boolean
+}
+
+const Tooltip = ({ children, disabled = false, ...props }: TooltipProps) => {
   const isTouchDevice = useIsTouchDevice()
   const [open, setOpen] = React.useState(props.defaultOpen ?? false)
 
@@ -44,7 +49,17 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
   const openedViaClickRef = React.useRef(false)
   const lastPointerTypeRef = React.useRef<string | null>(null)
 
+  if (disabled && open) {
+    openedViaClickRef.current = false
+    lastPointerTypeRef.current = null
+    setOpen(false)
+  }
+
   const handleOpenChange = React.useCallback((nextOpen: boolean) => {
+    if (disabled && nextOpen) {
+      return
+    }
+
     // On touch devices, only allow opening via explicit click
     if (isTouchDevice && nextOpen && !openedViaClickRef.current) {
       const pointerType = lastPointerTypeRef.current
@@ -62,9 +77,12 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
     }
 
     setOpen(nextOpen)
-  }, [isTouchDevice])
+  }, [isTouchDevice, disabled])
 
   const handleSetOpen = React.useCallback((nextOpen: boolean) => {
+    if (disabled && nextOpen) {
+      return
+    }
     if (nextOpen) {
       // Mark that this was opened via click so touch can still toggle open
       openedViaClickRef.current = true
@@ -74,7 +92,7 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
       lastPointerTypeRef.current = null
     }
     setOpen(nextOpen)
-  }, [])
+  }, [disabled])
 
   const registerPointerType = React.useCallback((pointerType: string | null) => {
     lastPointerTypeRef.current = pointerType
@@ -92,19 +110,39 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
   )
 }
 
-type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
+type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger> & {
+  /**
+   * What a tap on a touch device does. Without it, a tap opens the tooltip unless the tap also acts: it reaches an
+   * enabled link, button, form field, label of an enabled field, option, or menu item at the trigger or around it. A
+   * bare trigger (no asChild) opens on every tap. true opens it, also when the tap reaches a control around the trigger;
+   * false keeps it closed.
+   * "only" opens it and stops the click from bubbling to the row around the trigger, whose action would cover it.
+   */
+  openOnTap?: boolean | "only"
+}
 type TriggerPointerEvent = Parameters<NonNullable<TooltipTriggerProps["onPointerDown"]>>[0]
 type TriggerKeyEvent = Parameters<NonNullable<TooltipTriggerProps["onKeyDown"]>>[0]
+
+const CONTROL_SELECTOR = "a[href], button, input, select, textarea, label, [role=button], [role=menuitem], [role=option]"
+
+function tapActs(target: EventTarget) {
+  const control = target instanceof Element ? target.closest(CONTROL_SELECTOR) : null
+  const activated = control instanceof HTMLLabelElement ? control.control : control
+  return activated !== null && !activated.matches(":disabled, [aria-disabled=true]")
+}
 
 const TooltipTrigger = React.forwardRef<
   React.ComponentRef<typeof TooltipPrimitive.Trigger>,
   TooltipTriggerProps
->(({ onClick, onPointerDown, onPointerEnter, onKeyDown, ...props }, ref) => {
+>(({ openOnTap, onClick, onPointerDown, onPointerEnter, onKeyDown, ...props }, ref) => {
   const context = React.useContext(TooltipContext)
 
   const registerPointerType = context.registerPointerType
+  // iOS Safari reports a tap as a mouse click, so the type comes from pointer down.
+  const pressPointerTypeRef = React.useRef<string | null>(null)
 
   const handlePointerDown = React.useCallback((event: TriggerPointerEvent) => {
+    pressPointerTypeRef.current = event.pointerType
     registerPointerType?.(event.pointerType)
     onPointerDown?.(event)
   }, [registerPointerType, onPointerDown])
@@ -115,6 +153,7 @@ const TooltipTrigger = React.forwardRef<
   }, [registerPointerType, onPointerEnter])
 
   const handleKeyDown = React.useCallback((event: TriggerKeyEvent) => {
+    pressPointerTypeRef.current = "keyboard"
     registerPointerType?.("keyboard")
     onKeyDown?.(event)
   }, [registerPointerType, onKeyDown])
@@ -124,7 +163,6 @@ const TooltipTrigger = React.forwardRef<
   const triggerProps = props.asChild ? props : { type: "button" as const, ...props }
 
   if (context.isTouchDevice) {
-    // On touch devices, handle click to toggle tooltip
     return (
       <TooltipPrimitive.Trigger
         ref={ref}
@@ -132,11 +170,15 @@ const TooltipTrigger = React.forwardRef<
         onPointerEnter={handlePointerEnter}
         onKeyDown={handleKeyDown}
         onClick={(e) => {
-          // Toggle tooltip on mobile
-          if (context.setOpen) {
-            context.setOpen(!context.isOpen)
+          // A click from a mouse (for example an iPad trackpad) or a key always toggles.
+          // A bare trigger renders its own button, which does nothing but show the tooltip.
+          const tap = pressPointerTypeRef.current === "touch" || pressPointerTypeRef.current === "pen"
+          if (!tap || (openOnTap ?? (!props.asChild || !tapActs(e.target)))) {
+            context.setOpen?.(!context.isOpen)
           }
-          // Also call any custom onClick
+          if (tap && openOnTap === "only") {
+            e.stopPropagation()
+          }
           onClick?.(e)
         }}
         {...triggerProps}

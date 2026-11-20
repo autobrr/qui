@@ -120,18 +120,6 @@
     "skipIndividualEpisodesAutomationOff": "L'assemblaggio automatico dei pacchetti stagionali è disattivato. Questa esecuzione non cerca pacchetti stagionali.",
     "maxAddedAgeLabel": "Età massima del torrent (giorni)",
     "maxAddedAgeDescription": "Salta i torrent aggiunti più di questo numero di giorni fa. 0 disattiva il limite. Gli indexer che non hanno mai cercato un torrent vengono sempre inclusi.",
-    "categories": "Categorie",
-    "tags": "Tag",
-    "allCategoriesAll": "Tutte le categorie (lascia vuoto per tutte)",
-    "allTagsAll": "Tutti i tag (lascia vuoto per tutti)",
-    "selectInstanceToLoadCategories": "Seleziona un'istanza per caricare le categorie",
-    "selectInstanceToLoadTags": "Seleziona un'istanza per caricare i tag",
-    "categoriesLoadAfterInstance": "Le categorie si caricano dopo aver selezionato un'istanza; puoi comunque digitare il nome di una categoria.",
-    "allCategoriesIncluded": "Tutte le categorie verranno incluse nella scansione.",
-    "selectedCategoriesScanned": "Verranno scansionate solo {{count}} categorie selezionate.",
-    "tagsLoadAfterInstance": "I tag si caricano dopo aver selezionato un'istanza; puoi comunque digitare un tag.",
-    "allTagsIncluded": "Tutti i tag verranno inclusi nella scansione.",
-    "selectedTagsScanned": "Verranno scansionati solo {{count}} tag selezionati.",
     "sourceInstance": "Istanza di origine",
     "selectAnInstance": "Seleziona un'istanza",
     "addInstanceToSearch": "Aggiungi un'istanza per cercare i torrent che già distribuisci.",
@@ -211,6 +199,35 @@
         "notMusic": "non è musica",
         "other": "altro"
       }
+    },
+    "schedule": {
+      "enableLabel": "Esegui secondo una pianificazione",
+      "enableHelp": "qui avvia un'esecuzione pianificata ogni poche ore con le impostazioni salvate di questa scheda. Un'esecuzione pianificata cerca solo i torrent aggiunti di recente, dal più nuovo, e si ferma al limite di ricerche. Un indexer che ha fallito resta da cercare, così la prossima esecuzione pianificata lo interroga di nuovo. \"Esegui la pianificazione ora\" avvia subito un'esecuzione pianificata e fa ripartire l'orologio.",
+      "intervalLabel": "Esegui ogni (ore)",
+      "intervalHelp": "Il tempo dall'avvio di un'esecuzione pianificata all'avvio della successiva. qui conserva questo tempo anche dopo un riavvio.",
+      "maxSearchesLabel": "Ricerche max. per esecuzione",
+      "maxSearchesHelp": "Un'esecuzione pianificata si ferma dopo che questo numero di torrent ha inviato una ricerca. Un torrent che l'attesa o i filtri saltano non conta. I torrent rimasti aspettano la prossima esecuzione.",
+      "maxAgeLabel": "Solo torrent aggiunti negli ultimi (giorni)",
+      "maxAgeHelp": "Un'esecuzione pianificata salta ogni torrent aggiunto più di questo numero di giorni fa, anche per un indexer che non l'ha mai cercato. \"Avvia esecuzione\" non usa questo limite.",
+      "runNow": "Esegui la pianificazione ora",
+      "runStarted": "Esecuzione pianificata avviata",
+      "runAlreadyActive": "Una scansione della libreria è già in corso.",
+      "nextRun": "Prossima esecuzione pianificata: {{time}}",
+      "dueNow": "Esecuzione pianificata da avviare ora",
+      "dueAfterCurrentRun": "L'esecuzione pianificata parte dopo quella in corso",
+      "scheduledRunActive": "È in corso un'esecuzione pianificata."
+    },
+    "runKind": {
+      "scheduled": "Pianificata",
+      "manual": "Manuale"
+    },
+    "stoppedAtLimit_one": "Fermata al limite di {{limit}} ricerche. {{count}} torrent aspetta la prossima esecuzione.",
+    "stoppedAtLimit_other": "Fermata al limite di {{limit}} ricerche. {{count}} torrent aspettano la prossima esecuzione.",
+    "runFilters": {
+      "include": "Includi: {{filters}}",
+      "exclude": "Escludi: {{filters}}",
+      "categories": "categorie {{list}}",
+      "tags": "tag {{list}}"
     }
   },
   "rules": {
@@ -495,7 +512,8 @@
   "validation": {
     "minInterval": "Deve essere almeno {{min}} minuti",
     "minIntervalSeconds": "Deve essere almeno {{min}} secondi",
-    "minCooldown": "Deve essere almeno {{min}} minuti"
+    "minCooldown": "Deve essere almeno {{min}} minuti",
+    "atLeast": "Deve essere almeno {{min}}"
   },
   "blocklist": {
     "title": "Blocklist Cross-Seed",

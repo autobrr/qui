@@ -554,6 +554,7 @@
         "externalProgram": "外部程式",
         "dryRun": "模擬執行",
         "exportToInstance": "匯出到實例",
+        "transferToInstance": "傳輸到實例",
         "ruleSkipped": "規則未執行"
       },
       "shareLimit": {
@@ -590,7 +591,8 @@
         "deleteLabelCondition": "條件",
         "exported_other": "已匯出 {{count}} 個種子",
         "exportedDryRun_other": "將匯出 {{count}} 個種子",
-        "exportFailed_other": "{{count}} 個種子匯出失敗"
+        "exportFailed_other": "{{count}} 個種子匯出失敗",
+        "transferredDryRun_other": "將傳輸 {{count}} 個種子"
       },
       "deleteDialog": {
         "title": "刪除規則",
@@ -650,6 +652,7 @@
         "deleteActivityFailed": "刪除活動失敗"
       },
       "exported": "已匯出",
+      "transferStarted": "已開始",
       "skipped": "已略過"
     },
     "runWorkflowNow": {
@@ -939,6 +942,7 @@
         "auto_managed": "自動管理",
         "dry_run_no_match": "模擬執行（無匹配）",
         "exported_to_instance": "匯出到實例",
+        "transferred_to_instance": "傳輸到實例",
         "rule_skipped": "規則未執行"
       }
     },
@@ -1115,6 +1119,11 @@
         "skipChecking": "跳過檢查",
         "addPaused": "以暫停狀態新增"
       },
+      "transfer": {
+        "title": "傳輸到實例",
+        "description": "將每個符合的種子連同檔案移到目標實例，並在移除任何內容之前核實副本。傳輸頁面會顯示每次傳輸。",
+        "remove": "移除「傳輸到實例」"
+      },
       "priority": {
         "title": "種子優先順序",
         "description": "控制種子的處理順序。",
@@ -1157,7 +1166,8 @@
         "category": "分類",
         "move": "移動",
         "externalProgram": "執行外部程式",
-        "exportToInstance": "匯出到實例"
+        "exportToInstance": "匯出到實例",
+        "transferToInstance": "傳輸到實例"
       },
       "option": {
         "noChange": "不更改",
@@ -1428,6 +1438,7 @@
           "externalProgram": "外部程式",
           "noMatches": "無匹配",
           "exportedToInstance": "匯出到實例",
+          "transferredToInstance": "傳輸到實例",
           "ruleSkipped": "規則未執行"
         },
         "actionFallback": "未知操作（{{action}}）",
@@ -2098,5 +2109,10 @@
     "emptyDescription": "新增一個 qBittorrent 用戶端，讓 qui 管理它的種子。",
     "tlsSkipped": "已關閉 TLS 驗證",
     "reorderFailed": "重新排序實例失敗"
+  },
+  "publicPeerAddress": {
+    "label": "公開節點位址",
+    "noResolvedAddress": "qui 暫時無法判斷位址",
+    "description": "其他 BitTorrent 用戶端連到此 qBittorrent 所用的位址和連接埠，用於轉移和分享。留空則每次使用時由 qui 從 qBittorrent 推斷位址。當 qBittorrent 在 Docker 中執行或位於 NAT 之後時，請設定此項。"
   }
 }

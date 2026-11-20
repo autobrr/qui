@@ -12,7 +12,7 @@ import type { QueryClient } from "@tanstack/react-query"
 
 export type TrackerMatchMode = "include" | "exclude" | "mixed"
 
-export type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance"
+export type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance" | "transferToInstance"
 
 export const ACTION_LABEL_KEYS: Record<ActionType, string> = {
   speedLimits: "preferences.workflowDialog.actions.speedLimits",
@@ -28,6 +28,7 @@ export const ACTION_LABEL_KEYS: Record<ActionType, string> = {
   move: "preferences.workflowDialog.actions.move",
   externalProgram: "preferences.workflowDialog.actions.externalProgram",
   exportToInstance: "preferences.workflowDialog.actions.exportToInstance",
+  transferToInstance: "preferences.workflowDialog.actions.transferToInstance",
 }
 
 // The backend reads the same way: the tags list wins over the legacy single tag.
@@ -125,6 +126,7 @@ export const ACTION_RUN_ORDER = [
   "externalProgram",
   "exportToInstance",
   "delete",
+  "transferToInstance",
 ] as const satisfies readonly ActionType[]
 
 const DEFAULT_INTERVAL_SECONDS = 900

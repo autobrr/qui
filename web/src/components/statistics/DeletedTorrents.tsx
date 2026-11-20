@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { TorrentName } from "@/components/statistics/TopTorrents"
+import { PAGE_ROWS, Pager } from "@/components/statistics/Pager"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TorrentName } from "@/components/ui/torrent-name"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { api } from "@/lib/api"
@@ -105,7 +106,10 @@ interface DeletedTorrentsProps {
   displayGroup: (group: string) => string
 }
 
-/** The deleted torrents of the period with the newest first, with who deleted each one and the numbers it ended with. */
+/**
+ * The deleted torrents of the period with the newest first, with who deleted each one and the numbers it ended with.
+ * A desktop shows the rows in pages. A phone shows the first rows, and Show more adds rows.
+ */
 export function DeletedTorrents({ scope, instances, period, displayGroup }: DeletedTorrentsProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -140,19 +144,25 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   if (phoneRows.view !== shownView) {
     setPhoneRows({ view: shownView, count: PHONE_ROWS })
   }
-  const limit = narrow ? phoneRows.view === shownView ? phoneRows.count : PHONE_ROWS : Infinity
-  const rows = deletes?.slice(0, limit)
+  const [paged, setPaged] = useState({ view: shownView, page: 0 })
+  if (paged.view !== shownView) {
+    setPaged({ view: shownView, page: 0 })
+  }
+  const wantedPage = paged.view === shownView ? paged.page : 0
+  // A desktop stays on its page until the rows of the next page load.
+  const page = Math.min(wantedPage, Math.max(0, Math.ceil((deletes?.length ?? 0) / PAGE_ROWS) - 1))
+  const rows = narrow
+    ? deletes?.slice(0, phoneRows.view === shownView ? phoneRows.count : PHONE_ROWS)
+    : deletes?.slice(page * PAGE_ROWS, (page + 1) * PAGE_ROWS)
   const footer = useRef<HTMLDivElement>(null)
-  const next = (rows?.length ?? 0) + (narrow ? PHONE_MORE : DELETES_PAGE)
-  // A background reload keeps the loaded rows, so only a Show more that needs a new page waits for it.
-  const waiting = loadingMore && next > (deletes?.length ?? 0)
-  const showMore = () => {
+  const next = (rows?.length ?? 0) + PHONE_MORE
+  // A background reload keeps the loaded rows, so only a step that needs a new page of the server waits for it.
+  const waiting = loadingMore && (narrow ? next > (deletes?.length ?? 0) : wantedPage > page)
+  // Loads the rows up to the count when the server holds more than the loaded rows.
+  const loadTo = (count: number) => {
     const loaded = deletes?.length ?? 0
-    if (narrow) {
-      setPhoneRows({ view: shownView, count: next })
-    }
-    // A phone first shows the rows that it loaded, also when a later page failed.
-    if (next <= loaded) {
+    // The rows that are loaded show first, also when a later page failed.
+    if (count <= loaded) {
       return
     }
     if (error) {
@@ -160,6 +170,10 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     } else if (total !== undefined && loaded < total) {
       setPaging({ scope, cause, pages: pages + 1 })
     }
+  }
+  const showMore = () => {
+    setPhoneRows({ view: shownView, count: next })
+    loadTo(next)
   }
 
   // The first page of the other filters loads after the first filter, so that a switch shows its rows at once.
@@ -178,16 +192,17 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     }
   }, [firstLoaded, scope, cause, instances, period, queryClient])
 
-  // Deleted torrents ends the page. A shorter list after a filter switch keeps the height of the last list, so that the
-  // page does not end higher and move the tabs away from the pointer. The space goes when it is below the screen, or when
+  // Deleted torrents ends the page. A shorter list after a filter switch or a page switch keeps the height of the last
+  // list, so that the page does not end higher and move the tabs away from the pointer. The space goes when it is below the screen, or when
   // the rows of the new filter show and fill it.
   const body = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLDivElement>(null)
   const [held, setHeld] = useState<{ scope: string; height: number }>()
   const minHeight = held?.scope === scope ? held.height : undefined
+  const holdHeight = () => setHeld(body.current ? { scope, height: body.current.offsetHeight } : undefined)
   useEffect(() => {
-    // The rows of the last filter still show, and they fill the space by themselves.
-    if (minHeight === undefined || stale) {
+    // The rows of the last filter or of the last page still show, and they fill the space by themselves.
+    if (minHeight === undefined || stale || waiting) {
       return
     }
     const release = () => {
@@ -203,7 +218,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
       window.removeEventListener("scroll", release, { capture: true })
       window.removeEventListener("resize", release)
     }
-  }, [minHeight, stale])
+  }, [minHeight, stale, waiting])
 
   const table = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -233,7 +248,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
         <Tabs
           value={cause}
           onValueChange={value => {
-            setHeld(body.current ? { scope, height: body.current.offsetHeight } : undefined)
+            holdHeight()
             setCause(value as TransferHistoryCauseFilter)
           }}
         >
@@ -278,6 +293,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                     const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
                     const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
                     const time = formatISOTimestamp(event.time)
+                    const tracker = `${displayGroup(event.trackerGroup)}${instanceNames ? ` · ${instanceNames.get(event.instanceId)}` : ""}`
                     const toggle = () => setFullNames(names => {
                       const next = new Set(names)
                       if (full) {
@@ -306,14 +322,11 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                               <TorrentName name={name} className="min-w-0 line-clamp-2" />
                             </div>
                           ) : <TorrentName name={name} className="line-clamp-2 @4xl:line-clamp-1" />}
-                          <div className={cn("truncate text-xs font-normal text-muted-foreground @4xl:hidden", line)}>
-                            {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
-                          </div>
+                          <div className={cn("truncate text-xs font-normal text-muted-foreground @4xl:hidden", line)}>{tracker}</div>
                           <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
                           <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @4xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
-                          {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @4xl:block">{instanceNames.get(event.instanceId)}</div>}
                         </TableCell>
-                        <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @4xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>
+                        <TableCell className="hidden max-w-64 truncate align-top text-muted-foreground @4xl:table-cell" title={tracker}>{tracker}</TableCell>
                         <TableCell className="hidden max-w-64 align-top @2xl:table-cell">{cause}</TableCell>
                         <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @4xl:pr-2">
                           {formatBytes(event.uploaded)}
@@ -326,31 +339,46 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                   })}
                 </TableBody>
               </Table>
-              <div ref={footer} className="flex flex-wrap items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground sm:px-6">
-                <span>{t("deletes.shown", { shown: formatCount.format(rows.length), total: formatCount.format(total ?? rows.length) })}</span>
-                {error && <span className="text-destructive">{t("errors.load", { message: error.message })}</span>}
-                <div className="flex gap-2">
-                  {narrow && rows.length > PHONE_ROWS && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        flushSync(() => setPhoneRows({ view: shownView, count: PHONE_ROWS }))
-                        // Safari keeps the scroll offset when the list above gets shorter, so the button moves out of view.
-                        footer.current?.scrollIntoView({ block: "nearest" })
-                      }}
-                    >
-                      {t("table.showFewer")}
-                    </Button>
-                  )}
-                  {total !== undefined && rows.length < total && (
-                    <Button variant="outline" size="sm" disabled={waiting} onClick={showMore}>
-                      {waiting && <Loader2 className="size-3.5 animate-spin" />}
-                      {t("deletes.more")}
-                    </Button>
-                  )}
+              {narrow ? (
+                <div ref={footer} className="flex flex-wrap items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground sm:px-6">
+                  <span>{t("deletes.shown", { shown: formatCount.format(rows.length), total: formatCount.format(total ?? rows.length) })}</span>
+                  {error && <span className="text-destructive">{t("errors.load", { message: error.message })}</span>}
+                  <div className="flex gap-2">
+                    {rows.length > PHONE_ROWS && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          flushSync(() => setPhoneRows({ view: shownView, count: PHONE_ROWS }))
+                          // Safari keeps the scroll offset when the list above gets shorter, so the button moves out of view.
+                          footer.current?.scrollIntoView({ block: "nearest" })
+                        }}
+                      >
+                        {t("table.showFewer")}
+                      </Button>
+                    )}
+                    {total !== undefined && rows.length < total && (
+                      <Button variant="outline" size="sm" disabled={waiting} onClick={showMore}>
+                        {waiting && <Loader2 className="size-3.5 animate-spin" />}
+                        {t("deletes.more")}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <Pager
+                  page={page}
+                  total={total ?? rows.length}
+                  waiting={waiting}
+                  onPageChange={target => {
+                    holdHeight()
+                    setPaged({ view: shownView, page: target })
+                    loadTo((target + 1) * PAGE_ROWS)
+                  }}
+                >
+                  {error && <span className="text-destructive">{t("errors.load", { message: error.message })}</span>}
+                </Pager>
+              )}
             </div>
           )}
         </div>

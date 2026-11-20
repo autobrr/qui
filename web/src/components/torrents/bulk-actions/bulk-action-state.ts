@@ -14,7 +14,7 @@ import { getTotalSize } from "@/lib/torrent-utils"
 import type { Category } from "@/types"
 
 type QueueAction = "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority"
-type ValueDialogAction = "setTags" | "setShareLimit" | "setSpeedLimits" | "setComment" | "renameTorrent"
+type ValueDialogAction = "setTags" | "setShareLimit" | "setSpeedLimits" | "setComment" | "renameTorrent" | "transfer" | "share"
 
 // A pick that runs its request at once.
 export type RequestPick =
@@ -92,6 +92,8 @@ export function resolvePick(pick: BulkActionPick, count: number): PickOutcome {
     case "setSpeedLimits":
     case "setComment":
     case "renameTorrent":
+    case "transfer":
+    case "share":
       return { kind: "open", dialog: { name: pick.action } }
     case "export":
       return { kind: "export" }

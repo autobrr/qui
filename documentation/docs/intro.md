@@ -55,7 +55,7 @@ qui is available in English, German, French, Italian, Czech, Ukrainian, Korean, 
 
 Sizes and speeds follow the language: French shows `1,5 Gio` where English shows `1.5 GiB`. If a unit reads wrong in yours, say so in a Discussion.
 
-To change the language, click the globe icon at the bottom of the sidebar. If the sidebar is collapsed, use the globe submenu in the top-right menu. On a phone, use the globe submenu under **Settings** in the footer bar.
+To change the language, click the globe icon at the bottom of the sidebar. If the sidebar shows only icons, click **More actions** (the three dots) at the bottom of the sidebar, then **Language**. On a phone, use the globe submenu under **Settings** in the footer bar.
 
 The team does not take new translations at this time. To report a wrong translation, start a [Discussion](https://github.com/autobrr/qui/discussions/new/choose) or contact the team on [Discord](https://discord.autobrr.com/qui). The file [`web/AGENTS.md`](https://github.com/autobrr/qui/blob/develop/web/AGENTS.md) documents the translation workflow.
 

@@ -326,6 +326,9 @@ export const createColumns = ({
   const priorityLabel = t("tableColumns.priority")
   const statusIconLabel = t("tableColumns.statusIcon")
   const trackerIconLabel = t("tableColumns.trackerIcon")
+  const helperTransferLabel = t("tableColumns.helperTransfer")
+  const helperShareLabel = t("tableColumns.helperShare")
+  const helperHint = t("tableColumns.helperHint")
 
   const instanceColumn: TorrentTableColumnDef = {
     id: "instance",
@@ -378,7 +381,7 @@ export const createColumns = ({
       accessorKey: "priority",
       header: () => (
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger asChild openOnTap>
             <div className="flex items-center justify-center">
               <ListOrdered className="h-4 w-4" />
             </div>
@@ -420,8 +423,14 @@ export const createColumns = ({
       header: t("tableColumns.name"),
       cell: ({ row }) => {
         const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
+        const helper = row.original.qui_helper
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
+            {helper && (
+              <Badge variant="outline" className={cn("text-xs mr-1.5", badgePadding)} title={helperHint}>
+                {helper === "share" ? helperShareLabel : helperTransferLabel}
+              </Badge>
+            )}
             {displayName}
           </div>
         )
@@ -463,7 +472,7 @@ export const createColumns = ({
       accessorFn: (torrent) => torrent.state,
       header: () => (
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger asChild openOnTap>
             <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={statusIconLabel}>
               <PlayCircle className="h-4 w-4" aria-hidden="true" />
             </div>
@@ -689,7 +698,7 @@ export const createColumns = ({
 
         return (
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger asChild openOnTap>
               <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={trackerIconLabel}>
                 <Icon className="h-4 w-4" aria-hidden="true" />
               </div>

@@ -780,11 +780,23 @@ The executable path of the program must be in the allowlist. Disabled programs a
 - Trigger media library scans after category changes.
 - Run cleanup scripts for old or stalled torrents.
 
+### Transfer to Instance
+
+Move each matching torrent with its files to a different qBittorrent instance. The action starts a [Transfer](./transfers.md): qui copies the files that the target does not have, checks every piece, adds the torrent on the target, and then removes or keeps the torrent on the source. Transfer needs qBittorrent 5.1 or newer on both instances.
+
+The fields are **Target instance**, **Save path**, **Category**, **Tags**, **After the Transfer**, **Leave the torrent stopped on the target**, and **Way**. [Transfers](./transfers.md#start-a-transfer) describes each field. The save path accepts the [save path templates](#save-path-templates) of Export to Instance.
+
+- You cannot combine it with Delete. In one run, a Delete action of another rule wins over the Transfer, and a Move action makes the Transfer wait.
+- If an Export to Instance action sends the same torrent to a different instance, the Transfer waits. The Transfer also waits for the Export of a cross-seed that moves in the same Transfer. The Transfer starts in a later run, when that instance has the torrent. If the Export fails in each run, the Transfer does not start.
+- A dry run lists the Transfers that the rule starts in a live run. It does not start them.
+- Each Transfer shows on the **Transfers** page. The activity log of the rule shows when the Transfer started.
+- With a [Transfer torrent](./transfers.md#transfer-torrent), the rule starts one Transfer for a set of cross-seeds that have the same files through hardlinks. It skips the other torrents of the set.
+
 ### Export to Instance
 
 Export a torrent's `.torrent` file from the current instance and add it to a different qBittorrent instance. Use this action to migrate torrents between instances, for example from a seedbox to a local instance for long-term seeding.
 
-The action assumes the data already exists on the target (moved with rclone, Quickdrop for Deluge, or another tool) and uses `skip_checking=true` by default.
+The action assumes the data already exists on the target (moved with rclone, Quickdrop for Deluge, or another tool) and uses `skip_checking=true` by default. To move the files too, use [Transfer to Instance](#transfer-to-instance).
 
 | Field | Description |
 | --- | --- |

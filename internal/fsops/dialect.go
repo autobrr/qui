@@ -44,6 +44,20 @@ var HostPaths PathDialect = hostPaths{}
 // the host: path. FromSlash and ToSlash are the identity.
 var SlashPaths PathDialect = slashPaths{}
 
+// WindowsPaths is the dialect of a Windows filesystem regardless of the host:
+// path/filepath as it works on Windows, for drive and UNC paths.
+var WindowsPaths PathDialect = windowsPaths{}
+
+// ClientPaths is the dialect of a path that a qBittorrent reports, for an
+// instance whose files qui cannot reach: Windows rules for a path that starts
+// with a drive letter or a UNC prefix, and slash rules for any other.
+func ClientPaths(savePath string) PathDialect {
+	if windowsVolume(savePath) != "" {
+		return WindowsPaths
+	}
+	return SlashPaths
+}
+
 type hostPaths struct{}
 
 func (hostPaths) Join(base, name string) string { return filepath.Join(base, name) }
@@ -87,7 +101,7 @@ func (slashPaths) Rel(base, target string) (string, error) {
 	// filepath.Rel is separator-aware through filepath.Separator, so on a
 	// Windows host it would treat "/" as a plain character. Route through a
 	// slash-only implementation instead.
-	return relSlash(path.Clean(base), path.Clean(target))
+	return relSlash(path.Clean(base), path.Clean(target), func(a, b string) bool { return a == b })
 }
 
 func (slashPaths) FromSlash(p string) string { return p }
@@ -95,8 +109,9 @@ func (slashPaths) ToSlash(p string) string   { return p }
 func (slashPaths) Separator() string         { return "/" }
 
 // relSlash is filepath.Rel for slash paths; base and target are already clean.
-func relSlash(base, target string) (string, error) {
-	if base == target {
+// same compares two names.
+func relSlash(base, target string, same func(a, b string) bool) (string, error) {
+	if same(base, target) {
 		return ".", nil
 	}
 	if path.IsAbs(base) != path.IsAbs(target) {
@@ -111,7 +126,7 @@ func relSlash(base, target string) (string, error) {
 	bs := splitSlash(base)
 	ts := splitSlash(target)
 	n := 0
-	for n < len(bs) && n < len(ts) && bs[n] == ts[n] {
+	for n < len(bs) && n < len(ts) && same(bs[n], ts[n]) {
 		n++
 	}
 	if slices.Contains(bs[n:], "..") {
@@ -128,4 +143,125 @@ func splitSlash(p string) []string {
 		return nil
 	}
 	return strings.Split(p, "/")
+}
+
+// windowsPaths follows path/filepath on Windows for drive and UNC paths. Both /
+// and \ separate, and each method returns \. Device paths (\\?\, \\.\) are
+// outside it.
+type windowsPaths struct{}
+
+func (windowsPaths) Join(base, name string) string {
+	switch {
+	case base == "" && name == "":
+		return ""
+	case base == "":
+		return windowsPaths{}.Clean(name)
+	case isWindowsSeparator(base[len(base)-1]):
+		// More separators after base could make a UNC prefix of it.
+		name = strings.TrimLeft(name, `\/`)
+	case base[len(base)-1] != ':':
+		// A drive without a separator (C:) gets none: the path stays
+		// relative to the current folder of that drive.
+		name = `\` + name
+	}
+	return windowsPaths{}.Clean(base + name)
+}
+
+func (windowsPaths) Dir(p string) string {
+	vol := windowsVolume(p)
+	i := len(vol) + strings.LastIndexAny(p[len(vol):], `\/`)
+	dir := windowsPaths{}.Clean(p[len(vol) : i+1])
+	vol = windowsPaths{}.FromSlash(vol)
+	if dir == "." && len(vol) > 2 {
+		// A UNC share has no parent.
+		return vol
+	}
+	return vol + dir
+}
+
+func (windowsPaths) Base(p string) string {
+	if p == "" {
+		return "."
+	}
+	p = strings.TrimRight(p, `\/`)
+	p = p[len(windowsVolume(p)):]
+	if p = p[strings.LastIndexAny(p, `\/`)+1:]; p == "" {
+		return `\`
+	}
+	return p
+}
+
+func (windowsPaths) Clean(p string) string {
+	vol := windowsVolume(p)
+	rest := windowsPaths{}.ToSlash(p[len(vol):])
+	vol = windowsPaths{}.FromSlash(vol)
+	if rest == "" && isUNC(vol) {
+		return vol
+	}
+	return vol + windowsPaths{}.FromSlash(path.Clean(rest))
+}
+
+func (windowsPaths) IsAbs(p string) bool {
+	vol := windowsVolume(p)
+	if isUNC(vol) {
+		return true
+	}
+	return vol != "" && len(p) > len(vol) && isWindowsSeparator(p[len(vol)])
+}
+
+// Rel compares names without case, as Windows does. A share root reads the
+// same with and without its trailing separator.
+func (windowsPaths) Rel(base, target string) (string, error) {
+	d := windowsPaths{}
+	baseVol, targetVol := d.FromSlash(windowsVolume(base)), d.FromSlash(windowsVolume(target))
+	if !strings.EqualFold(baseVol, targetVol) {
+		return "", fmt.Errorf("Rel: can't make %s relative to %s", target, base)
+	}
+	rest := func(p, vol string) string {
+		r := d.ToSlash(d.Clean(p)[len(vol):])
+		if r == "" && isUNC(vol) {
+			return "/"
+		}
+		return r
+	}
+	rel, err := relSlash(rest(base, baseVol), rest(target, targetVol), strings.EqualFold)
+	if err != nil {
+		return "", fmt.Errorf("Rel: can't make %s relative to %s", target, base)
+	}
+	return d.FromSlash(rel), nil
+}
+
+func (windowsPaths) FromSlash(p string) string { return strings.ReplaceAll(p, "/", `\`) }
+func (windowsPaths) ToSlash(p string) string   { return strings.ReplaceAll(p, `\`, "/") }
+func (windowsPaths) Separator() string         { return `\` }
+
+// windowsVolume is the drive (C:) or the UNC share (\\host\share) at the start
+// of p, as it is written there, or "". A share with a .. part is no volume.
+func windowsVolume(p string) string {
+	switch {
+	case len(p) >= 2 && p[1] == ':':
+		return p[:2]
+	case len(p) >= 2 && isWindowsSeparator(p[0]) && isWindowsSeparator(p[1]):
+		vol, separators := p, 0
+		for i := 2; i < len(p) && vol == p; i++ {
+			if isWindowsSeparator(p[i]) {
+				if separators++; separators == 2 {
+					vol = p[:i]
+				}
+			}
+		}
+		if strings.Contains(windowsPaths{}.ToSlash(vol)+"/", "/../") {
+			return ""
+		}
+		return vol
+	}
+	return ""
+}
+
+func isUNC(vol string) bool {
+	return len(vol) >= 2 && isWindowsSeparator(vol[0]) && isWindowsSeparator(vol[1])
+}
+
+func isWindowsSeparator(c byte) bool {
+	return c == '\\' || c == '/'
 }

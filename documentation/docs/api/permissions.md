@@ -82,6 +82,8 @@ The Browser-only routes are:
 - Change password and logout
 - The license routes
 - External program create, update, and delete
+- The Transfer routes under `/api/transfers`
+- The Share routes under `/api/shares`, also the Share settings and the download of the `.torrent` file of a Share
 
 ## 403 messages
 

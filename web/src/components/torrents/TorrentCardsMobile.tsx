@@ -37,6 +37,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
+  ArrowRightLeft,
   ArrowUpDown,
   Blocks,
   CheckCircle2,
@@ -63,6 +64,7 @@ import {
   Radio,
   Search,
   Settings2,
+  Share2,
   Sprout,
   Tag,
   Trash2,
@@ -94,6 +96,7 @@ import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
 import { CopyGroupPill } from "./table/CopyGroupPill"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
+import { transferShareOffer } from "./transfer-share-offer"
 
 interface TorrentCardsMobileProps {
   instanceId: number
@@ -383,6 +386,11 @@ function SwipeableCard({
       onToggle={onToggleCopyGroup}
     />
   )
+  const helperBadge = torrent.qui_helper && (
+    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 flex-shrink-0 ml-1" title={t("tableColumns.helperHint")}>
+      {torrent.qui_helper === "share" ? t("tableColumns.helperShare") : t("tableColumns.helperTransfer")}
+    </Badge>
+  )
   const isComplete = torrent.progress === 1
   const hasSpeeds = torrent.dlspeed > 0 || torrent.upspeed > 0
   const trackerTitle = trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName
@@ -473,6 +481,8 @@ function SwipeableCard({
 
           {groupPill}
 
+          {helperBadge}
+
           {/* State badge - smaller */}
           <Badge variant={statusBadgeVariant} className={cn("text-[10px] px-1 py-0 h-4 flex-shrink-0", statusBadgeClass)}>
             {statusBadgeLabel}
@@ -505,6 +515,7 @@ function SwipeableCard({
               </div>
             </div>
             {groupPill}
+            {helperBadge}
           </div>
 
           {/* Tracker, Size and Ratio on the left, state badge on the right. On a full line, the tracker name gets shorter first, then the size. */}
@@ -549,6 +560,7 @@ function SwipeableCard({
               {displayName}
             </h3>
             {groupPill}
+            {helperBadge}
           </div>
 
           {/* Progress bar */}
@@ -972,6 +984,7 @@ export function TorrentCardsMobile({
   const { count: effectiveSelectionCount, previewTorrents: selectedTorrents } = actionTarget
   const actionInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, instanceId), [actionTarget, instanceId])
   const supportsTorrentExport = useInstancesSupport(actionInstanceIds, "supportsTorrentExport")
+  const offer = transferShareOffer(selectedTorrents, effectiveSelectionCount, actionInstanceIds)
 
   const selectionBarVisible = selectionMode && effectiveSelectionCount > 0
 
@@ -1463,6 +1476,27 @@ export function TorrentCardsMobile({
               <Radio className="mr-2 h-4 w-4" />
               {t("managementBar.reannounce")}
             </Button>
+            {/* Transfer and Share sit near the top, so the sheet shows them without a scroll. */}
+            {offer.transfer && (
+              <Button
+                variant="outline"
+                onClick={() => pickBulkAction({ action: "transfer" })}
+                className="justify-start"
+              >
+                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                {t("contextMenu.transferToInstance")}
+              </Button>
+            )}
+            {offer.share && (
+              <Button
+                variant="outline"
+                onClick={() => pickBulkAction({ action: "share" })}
+                className="justify-start"
+              >
+                <Share2 className="mr-2 h-4 w-4" />
+                {t("contextMenu.shareWithSomeone")}
+              </Button>
+            )}
             {(() => {
               const { allEnabled: allSeqDlEnabled, mixed: seqDlMixed } = getToggleSelectionState(selectedTorrents.map(t => t.seq_dl), stateUnknownForSelection)
 
@@ -1755,16 +1789,10 @@ export function TorrentCardsMobile({
         </div>
       )}
 
-      {/* Scroll to top button - only on mobile */}
-      <div className="sm:hidden">
-        <ScrollToTopButton
-          scrollContainerRef={parentRef}
-          className={cn(
-            "right-8 z-[60]",
-            selectionBarVisible? "bottom-[calc(5rem+env(safe-area-inset-bottom))]": isFooterVisible? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
-          )}
-        />
-      </div>
+      <ScrollToTopButton
+        scrollContainerRef={parentRef}
+        extraBottomBarsRem={selectionBarVisible ? 4 : !selectionMode && isFooterVisible ? 3.5 : 0}
+      />
     </div>
   )
 }

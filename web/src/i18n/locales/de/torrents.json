@@ -67,6 +67,8 @@
     "externalPrograms": "Externe Programme",
     "exportTorrent": "Torrent exportieren",
     "exportTorrents": "Torrents exportieren ({{count}})",
+    "transferToInstance": "An Instanz übertragen…",
+    "shareWithSomeone": "Mit jemandem teilen…",
     "copy": "Kopieren...",
     "copyName": "Name kopieren",
     "copyHash": "Hash kopieren",
@@ -1596,6 +1598,9 @@
     "trackerDown": "Tracker offline",
     "unregistered": "Nicht registriert",
     "trackerError": "Tracker-Fehler",
+    "helperTransfer": "Transfer-Helfer",
+    "helperShare": "Freigabe-Helfer",
+    "helperHint": "qui hat diesen Torrent für einen Transfer oder eine Freigabe hinzugefügt. Seine Dateien gehören zu einem anderen Torrent.",
     "now": "jetzt",
     "yes": "Ja",
     "no": "Nein"
@@ -1738,7 +1743,7 @@
     "settings": {
       "title": "Anzeigeprofile",
       "holds": "Enthält: Spalten · Zeilendichte · Seitenleisten · Filterbereiche · Kategoriebäume · Leere Filter",
-      "holdsHelp": "Ein Profil enthält, wie die Torrent-Liste aussieht: welche Spalten sichtbar sind, ihre Reihenfolge und Breite, die Dehnung der Namensspalte, die Zeilendichte, die offenen Seitenleisten und Filterbereiche, die eingeklappten Kategoriebäume und ob leere Filter angezeigt werden. Jeder Browser nutzt ein Profil, und nur dieser Browser merkt sich die Wahl. Ein Browser, der nie eines gewählt hat, und ein privates Fenster nutzen Default. Alle anderen Einstellungen teilen sich alle Profile.",
+      "holdsHelp": "Ein Profil enthält, wie die Torrent-Liste aussieht: welche Spalten sichtbar sind, ihre Reihenfolge und Breite, die Dehnung der Namensspalte, die Zeilendichte, die offenen Seitenleisten und Filterbereiche, die eingeklappten Kategoriebäume und ob leere Filter angezeigt werden. Es enthält auch, welche Instanzzeilen des Dashboards geöffnet sind. Jeder Browser nutzt ein Profil, und nur dieser Browser merkt sich die Wahl. Ein Browser, der nie eines gewählt hat, und ein privates Fenster nutzen Default. Alle anderen Einstellungen teilen sich alle Profile.",
       "thisBrowser": "Dieser Browser",
       "use": "In diesem Browser verwenden",
       "makeProfile": "Ein Profil für einen Laptop oder ein Smartphone erstellen",

@@ -1530,51 +1530,8 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 				}
 			}()
 
-			// Disable foreign keys (must be done outside transaction)
-			if _, err := db.writerConn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-				return fmt.Errorf("failed to disable foreign keys for %s: %w", filename, err)
-			}
-
-			// Run migration within explicit transaction while foreign keys are disabled
-			if err := func() error {
-				fkTx, err := db.writerConn.BeginTx(ctx, nil)
-				if err != nil {
-					return fmt.Errorf("failed to begin migration transaction for %s: %w", filename, err)
-				}
-				committed := false
-				defer func() {
-					if !committed {
-						if rollErr := fkTx.Rollback(); rollErr != nil && !errors.Is(rollErr, sql.ErrTxDone) {
-							log.Error().Err(rollErr).Str("migration", filename).Msg("rollback failed for migration transaction")
-						}
-					}
-				}()
-
-				content, err := migrationsFS.ReadFile("migrations/" + filename)
-				if err != nil {
-					return fmt.Errorf("failed to read migration file %s: %w", filename, err)
-				}
-
-				if _, err := fkTx.ExecContext(ctx, string(content)); err != nil {
-					return fmt.Errorf("failed to execute migration %s: %w", filename, err)
-				}
-
-				if _, err := fkTx.ExecContext(ctx, "INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
-					return fmt.Errorf("failed to record migration %s: %w", filename, err)
-				}
-
-				if err := fkTx.Commit(); err != nil {
-					return fmt.Errorf("failed to commit migration %s: %w", filename, err)
-				}
-				committed = true
-				return nil
-			}(); err != nil {
+			if err := db.applyMigrationWithForeignKeysOff(ctx, filename); err != nil {
 				return err
-			}
-
-			// Re-enable foreign keys explicitly
-			if _, err := db.writerConn.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
-				return fmt.Errorf("failed to re-enable foreign keys after %s: %w", filename, err)
 			}
 
 			// Start new transaction for remaining migrations using BeginTx
@@ -1585,20 +1542,8 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 			// rollbackActive() will handle this new transaction via the defer
 		} else {
 			// Normal migration within transaction
-			// Read migration file
-			content, err := migrationsFS.ReadFile("migrations/" + filename)
-			if err != nil {
-				return fmt.Errorf("failed to read migration file %s: %w", filename, err)
-			}
-
-			// Execute migration
-			if _, err := tx.ExecContext(ctx, string(content)); err != nil {
-				return fmt.Errorf("failed to execute migration %s: %w", filename, err)
-			}
-
-			// Record migration
-			if _, err := tx.ExecContext(ctx, "INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
-				return fmt.Errorf("failed to record migration %s: %w", filename, err)
+			if err := execMigration(ctx, tx, filename); err != nil {
+				return err
 			}
 		}
 	}
@@ -1610,6 +1555,68 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 	tx = nil // Clear tx so rollbackActive() won't try to rollback committed tx
 
 	log.Info().Msgf("Applied %d migrations successfully", len(migrations))
+	return nil
+}
+
+// applyMigrationWithForeignKeysOff runs one migration in its own transaction
+// while foreign keys are disabled. No other transaction may be open on writerConn.
+func (db *DB) applyMigrationWithForeignKeysOff(ctx context.Context, filename string) error {
+	// Disable foreign keys (must be done outside transaction)
+	if _, err := db.writerConn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return fmt.Errorf("failed to disable foreign keys for %s: %w", filename, err)
+	}
+
+	// Run migration within explicit transaction while foreign keys are disabled
+	if err := db.execMigrationInOwnTx(ctx, filename); err != nil {
+		return err
+	}
+
+	// Re-enable foreign keys explicitly
+	if _, err := db.writerConn.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+		return fmt.Errorf("failed to re-enable foreign keys after %s: %w", filename, err)
+	}
+	return nil
+}
+
+func (db *DB) execMigrationInOwnTx(ctx context.Context, filename string) error {
+	fkTx, err := db.writerConn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin migration transaction for %s: %w", filename, err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			if rollErr := fkTx.Rollback(); rollErr != nil && !errors.Is(rollErr, sql.ErrTxDone) {
+				log.Error().Err(rollErr).Str("migration", filename).Msg("rollback failed for migration transaction")
+			}
+		}
+	}()
+
+	if err := execMigration(ctx, fkTx, filename); err != nil {
+		return err
+	}
+
+	if err := fkTx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit migration %s: %w", filename, err)
+	}
+	committed = true
+	return nil
+}
+
+// execMigration reads a migration file, executes it, and records it in tx.
+func execMigration(ctx context.Context, tx *sql.Tx, filename string) error {
+	content, err := migrationsFS.ReadFile("migrations/" + filename)
+	if err != nil {
+		return fmt.Errorf("failed to read migration file %s: %w", filename, err)
+	}
+
+	if _, err := tx.ExecContext(ctx, string(content)); err != nil {
+		return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+	}
+
+	if _, err := tx.ExecContext(ctx, "INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
+		return fmt.Errorf("failed to record migration %s: %w", filename, err)
+	}
 	return nil
 }
 

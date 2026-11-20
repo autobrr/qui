@@ -88,6 +88,10 @@ type Client struct {
 	countsGen   atomic.Uint64
 	countsCache atomic.Pointer[cachedInstanceCounts]
 
+	// fullList is the Sync snapshot of the last sync update that left no
+	// torrent out, so that it lists each torrent of qBittorrent.
+	fullList atomic.Pointer[qbt.SyncSnapshot]
+
 	completionMu      sync.Mutex
 	completionState   map[string]bool
 	completionNotify  TorrentCompletionHandler
@@ -241,6 +245,9 @@ func (c *Client) IsHealthy() bool {
 }
 
 func (c *Client) handleSyncUpdate(update qbt.SyncUpdate) {
+	if len(update.Changes.TorrentsLeftOut) == 0 {
+		c.fullList.Store(update.Snapshot)
+	}
 	c.prunePeerSyncManagers(update.Snapshot)
 	if !ServerStateOnly(update.Changes) {
 		c.countsGen.Add(1)

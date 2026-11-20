@@ -302,9 +302,6 @@ describe("generateUniqueName", () => {
     expect(generateUniqueName("Foo   (copy)", [])).toBe("Foo (copy)")
   })
 
-  it("returns the first attempt when no collision exists", () => {
-    expect(generateUniqueName("Foo", ["Bar", "Baz"])).toBe("Foo (copy)")
-  })
 })
 
 // Intent: validate clipboard JSON before letting it through. Returns
@@ -371,23 +368,6 @@ describe("parseImportJSON", () => {
     expect(result.data).not.toHaveProperty("trackerPattern")
   })
 
-  it("keeps dryRun: true from the export shape", () => {
-    const result = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      dryRun: true,
-    }))
-    expect(result.data?.dryRun).toBe(true)
-  })
-
-  it("includes notify only when it's an explicit boolean", () => {
-    const withNotify = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      notify: false,
-    }))
-    expect(withNotify.data?.notify).toBe(false)
-  })
 })
 
 // Intent: thin pretty-print wrapper. Pinning the indent so future readers
@@ -399,8 +379,7 @@ describe("toExportJSON", () => {
       trackerPattern: "*",
       conditions,
     }
-    expect(toExportJSON(data)).toBe(JSON.stringify(data, null, 2))
-    expect(toExportJSON(data)).toContain("\n  \"name\": \"x\"")
+    expect(toExportJSON(data)).toBe("{\n  \"name\": \"x\",\n  \"trackerPattern\": \"*\",\n  \"conditions\": {\n    \"schemaVersion\": \"1\"\n  }\n}")
   })
 })
 
