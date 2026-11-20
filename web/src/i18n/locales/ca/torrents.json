@@ -67,6 +67,8 @@
     "externalPrograms": "Programes externs",
     "exportTorrent": "Exporta el torrent",
     "exportTorrents": "Exporta els torrents ({{count}})",
+    "transferToInstance": "Transfereix a una instància…",
+    "shareWithSomeone": "Comparteix amb algú…",
     "copy": "Copia...",
     "copyName": "Copia el nom",
     "copyHash": "Copia el hash",
@@ -650,6 +652,9 @@
     "trackerDown": "Tracker caigut",
     "unregistered": "No registrat",
     "trackerError": "Error del tracker",
+    "helperTransfer": "Ajudant de transferència",
+    "helperShare": "Ajudant de compartició",
+    "helperHint": "qui ha afegit aquest torrent per a una transferència o una compartició. Els seus fitxers pertanyen a un altre torrent.",
     "now": "ara",
     "yes": "Sí",
     "no": "No"
@@ -667,19 +672,11 @@
     "incognito": "Incògnit",
     "add": "Afegeix",
     "tasks": "Tasques",
-    "done": "Fet",
     "actionsForCount": "Accions per a {{count}} torrent(s)",
     "actionsForAll": "Accions per als {{count}} torrent(s)",
     "selection": {
       "selectedCount": "{{count}} seleccionats",
       "allSelectedCount": "Tots {{count}} seleccionats"
-    },
-    "searchModal": {
-      "title": "Cerca torrents",
-      "description": "Cerca per nom, categoria o etiquetes. Admet patrons glob com ara *.mkv o *1080p*.",
-      "placeholder": "Cerca torrents...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Cerca automàticament mentre escrius"
     },
     "ratio": "Ràtio:",
     "added": "Afegit {{time}}"
@@ -1730,6 +1727,137 @@
       "title": "Agrupa els teus cross-seeds",
       "description": "Mostra les còpies d'un torrent en una sola fila.",
       "action": "Prova-ho"
+    },
+    "displayProfiles": {
+      "title": "Perfils de visualització",
+      "description": "Dona a cada pantalla les seves pròpies columnes, densitat de files i barres laterals. Tria aquí el perfil d’aquest navegador.",
+      "action": "Crea un perfil"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Perfil de visualització: {{name}}",
+    "menuLabel": "Perfil de visualització",
+    "defaultName": "Predeterminat",
+    "manage": "Gestiona els perfils…",
+    "sheetDescription": "Cada navegador tria el seu propi perfil.",
+    "settings": {
+      "title": "Perfils de visualització",
+      "holds": "Conté: columnes · densitat de files · barres laterals · seccions de filtres · arbres de categories · filtres buits",
+      "holdsHelp": "Un perfil conté l’aspecte de la llista de torrents: quines columnes es mostren, el seu ordre i amplada, l’estirament de la columna Nom, la densitat de files, les barres laterals i les seccions de filtres obertes, els arbres de categories plegats i si es mostren els filtres buits. També conté quines files d’instàncies del Tauler estan obertes. Cada navegador fa servir un perfil, i només aquest navegador recorda l’elecció. Un navegador que no n’ha triat mai cap, i una finestra privada, fan servir Default. Tots els perfils comparteixen la resta de la configuració.",
+      "thisBrowser": "Aquest navegador",
+      "use": "Fes-lo servir en aquest navegador",
+      "makeProfile": "Crea un perfil per a un portàtil o un telèfon",
+      "themesSync": "Els temes se sincronitzen pel seu compte: <sync>Sincronització del tema</sync>",
+      "renameAriaLabel": "Canvia el nom de {{name}}",
+      "saveName": "Desa el nom",
+      "cancelRename": "Cancel·la el canvi de nom",
+      "editAriaLabel": "Edita {{name}}",
+      "editTitle": "Edita el perfil",
+      "delete": "Suprimeix…",
+      "deleteTitle": "Vols suprimir {{name}}?",
+      "deleteDescription": "Els altres navegadors que el fan servir passen a {{defaultName}}.",
+      "deleteConfirm": "Suprimeix",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Files de taula",
+        "dense": "Files denses",
+        "stacked": "Targetes apilades"
+      },
+      "filterSidebarOpen": "barra de filtres oberta",
+      "filterSidebarClosed": "barra de filtres tancada"
+    },
+    "nameErrors": {
+      "empty": "Introdueix un nom.",
+      "tooLong": "Fes servir {{max}} caràcters o menys.",
+      "duplicate": "Un altre perfil ja té aquest nom."
+    },
+    "ownSortAndFilters": {
+      "label": "Ordre i filtres propis",
+      "help": "<lead>Quan això està activat, aquest perfil té els seus propis:</lead><list><item>ordre de la llista de torrents</item><item>filtres de columna i filtres de la barra lateral</item><item>instàncies que mostra la vista Unificada</item><item>Agrupa les còpies, activat o desactivat</item><item>última pestanya oberta del panell de detalls</item><item>instància que mostren les pàgines de còpies de seguretat i RSS</item></list><note>Un canvi en aquests valors en aquest perfil no arriba a altres perfils. Quan això està desactivat, aquest perfil els comparteix amb tots els altres perfils que no tenen els seus propis. Desactivar-ho elimina els valors propis d'aquest perfil.</note>",
+      "offWarning": "Desactivar això elimina l'ordre i els filtres propis de {{name}}.",
+      "defaultShares": "Sempre comparteix l'ordre i els filtres",
+      "defaultSharesHelp": "Default sempre comparteix l'ordre, els filtres i les altres opcions de vista amb tots els perfils que no tenen els seus propis. Per tenir els teus propis, crea un altre perfil i activa Ordre i filtres propis."
+    },
+    "deletedToast": "S'ha suprimit el perfil {{name}}. Aquest navegador ara fa servir {{defaultName}}.",
+    "newProfile": "Perfil nou a partir d’aquesta configuració…",
+    "newDialog": {
+      "title": "Perfil nou",
+      "copies": "Copia <profile>{{name}}</profile>: columnes, densitat, barres laterals i filtres. Després aquest navegador l’utilitza.",
+      "name": "Nom",
+      "namePlaceholder": "Per exemple, Portàtil",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Cancel·la",
+      "create": "Crea"
+    },
+    "iconPicker": {
+      "trigger": "Icona: {{icon}}. Canvia la icona i el color",
+      "letter": "Primera lletra del nom",
+      "color": "Color"
+    },
+    "iconGroups": {
+      "devices": "Dispositius",
+      "places": "Llocs",
+      "use": "Ús",
+      "mood": "Estat d’ànim"
+    },
+    "icons": {
+      "appWindow": "Finestra d’aplicació",
+      "monitor": "Monitor",
+      "laptop": "Portàtil",
+      "tablet": "Tauleta",
+      "smartphone": "Telèfon intel·ligent",
+      "tv": "TV",
+      "server": "Servidor",
+      "gamepad": "Comandament",
+      "house": "Casa",
+      "briefcase": "Maletí",
+      "building": "Edifici",
+      "sofa": "Sofà",
+      "bed": "Llit",
+      "coffee": "Cafè",
+      "plane": "Avió",
+      "train": "Tren",
+      "rows": "Files",
+      "table": "Taula",
+      "list": "Llista",
+      "eye": "Ull",
+      "gauge": "Indicador",
+      "zap": "Llamp",
+      "download": "Baixada",
+      "upload": "Pujada",
+      "sprout": "Brot",
+      "bookmark": "Marcador",
+      "moon": "Lluna",
+      "sun": "Sol",
+      "star": "Estrella",
+      "heart": "Cor",
+      "flame": "Flama",
+      "rocket": "Coet"
+    },
+    "colors": {
+      "none": "Cap (color del text)",
+      "sky": "Cel",
+      "emerald": "Maragda",
+      "amber": "Ambre",
+      "rose": "Rosa",
+      "violet": "Violeta",
+      "orange": "Taronja",
+      "teal": "Verd blavós",
+      "pink": "Rosa intens"
+    },
+    "columns": {
+      "headingEveryInstance": "Columnes de {{profile}} · cada instància",
+      "headingOneInstance": "Columnes de {{profile}} · només {{instance}}",
+      "unifiedView": "Vista unificada",
+      "thisInstance": "aquesta instància"
+    },
+    "sameColumns": {
+      "label": "Les mateixes columnes a cada instància",
+      "menuHelp": "L’ordenació i els filtres de columna es mantenen per instància.",
+      "helpOn": "Una sola configuració de columnes per a {{instances}}.",
+      "helpOff": "Cada instància manté la seva. Si ho actives, cada instància rep les columnes de {{instance}}.",
+      "helpOffNoInstance": "Cada instància manté la seva.",
+      "unifiedViewInList": "la vista unificada"
     }
   }
 }

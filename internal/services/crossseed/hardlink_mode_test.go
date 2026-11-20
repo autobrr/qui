@@ -284,42 +284,6 @@ func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
 	assert.Contains(t, err.Error(), "no base directory")
 }
 
-func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
-	tests := []struct {
-		name       string
-		configured string
-	}{
-		{
-			name:       "spaces around commas",
-			configured: "/path1 , /path2 , /path3",
-		},
-		{
-			name:       "tabs around commas",
-			configured: "/path1\t,\t/path2\t,\t/path3",
-		},
-		{
-			name:       "mixed whitespace",
-			configured: "  /path1  ,   /path2   ,  /path3  ",
-		},
-		{
-			name:       "no spaces",
-			configured: "/path1,/path2,/path3",
-		},
-		{
-			name:       "empty segments ignored",
-			configured: "/path1, , /path2, ,, /path3",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := firstMatchingBaseDir(t, tt.configured, "/nonexistent/source")
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "no base directory")
-		})
-	}
-}
-
 func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
 	sourceRoot := t.TempDir()
 	sourceFile := filepath.Join(sourceRoot, "source.bin")

@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -17,9 +19,18 @@ import (
 )
 
 const (
-	offlineGracePeriod = 7 * 24 * time.Hour
-	ProductNamePremium = "premium-access"
+	offlineGracePeriod   = 7 * 24 * time.Hour
+	ProductNamePremium   = "premium-access"
+	ProductNameSupporter = "supporter"
 )
+
+// The Dodo products of the yearly support: the two live products, then the two of test mode.
+var supporterProductIDs = []string{
+	"pdt_0NsEXpOuhHMsJwbdagrM9",
+	"pdt_0NsEXpSFgcjPNVB6CI98V",
+	"pdt_0NsEI8EDAVegKwxDz8SVP",
+	"pdt_0NsEI8I0tAjVO2lZ7cVv2",
+}
 
 var (
 	ErrDodoClientNotConfigured = errors.New("dodo client not configured")
@@ -31,6 +42,7 @@ type Service struct {
 	licenseRepo *database.LicenseRepo
 	dodoClient  *dodo.Client
 	configDir   string
+	setupAt     atomic.Pointer[time.Time]
 }
 
 // NewLicenseService creates a new license service
@@ -81,9 +93,7 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 	return existingLicense, nil
 }
 
-// activateWithDodo stores each key that activates as premium access, because the
-// Dodo response does not name the product. A Dodo product that issues a key thus
-// unlocks premium themes, so the supporter subscription must stay keyless.
+// activateWithDodo stores a key of a supporter product as a supporter key, and each other key as premium access.
 func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fingerprint string, existingLicense *models.ProductLicense) (*models.ProductLicense, error) {
 	if s.dodoClient == nil {
 		return nil, ErrDodoClientNotConfigured
@@ -104,10 +114,15 @@ func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fi
 		instanceID = activateResp.ID
 	}
 
+	productName := ProductNamePremium
+	if slices.Contains(supporterProductIDs, activateResp.Product.ProductID) {
+		productName = ProductNameSupporter
+	}
+
 	now := time.Now()
 
 	if existingLicense != nil {
-		existingLicense.ProductName = ProductNamePremium
+		existingLicense.ProductName = productName
 		existingLicense.Status = models.LicenseStatusActive
 		existingLicense.ActivatedAt = now
 		existingLicense.ExpiresAt = activateResp.ExpiresAt
@@ -131,7 +146,7 @@ func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fi
 
 	license := &models.ProductLicense{
 		LicenseKey:     licenseKey,
-		ProductName:    ProductNamePremium,
+		ProductName:    productName,
 		Status:         models.LicenseStatusActive,
 		ActivatedAt:    now,
 		ExpiresAt:      activateResp.ExpiresAt,
@@ -240,6 +255,24 @@ func (s *Service) HasPremiumAccess(ctx context.Context) (bool, error) {
 	return s.licenseRepo.HasPremiumAccess(ctx)
 }
 
+// IsSupporter reports whether a supporter key on this server is valid.
+func (s *Service) IsSupporter(ctx context.Context) (bool, error) {
+	return s.licenseRepo.IsSupporter(ctx)
+}
+
+// ServerSetupTime returns when this server first ran. The time does not change, so one read of the database serves each later call.
+func (s *Service) ServerSetupTime(ctx context.Context) (time.Time, error) {
+	if setupAt := s.setupAt.Load(); setupAt != nil {
+		return *setupAt, nil
+	}
+	setupAt, err := s.licenseRepo.ServerSetupTime(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	s.setupAt.Store(&setupAt)
+	return setupAt, nil
+}
+
 // RefreshAllLicenses validates all stored licenses against the Dodo API
 func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	licenses, err := s.licenseRepo.GetAllLicenses(ctx)
@@ -261,7 +294,7 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	}
 
 	for _, license := range licenses {
-		if !revalidates(license.Status) {
+		if !revalidates(license) {
 			continue
 		}
 
@@ -336,10 +369,12 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	return refreshErr
 }
 
-// revalidates reports whether the background check and the manual refresh validate a license with this status.
+// revalidates reports whether the background check and the manual refresh validate a license.
 // An invalid license needs an explicit re-activation by the user, so they skip it.
-func revalidates(status string) bool {
-	return status == models.LicenseStatusActive || status == models.LicenseStatusOffline
+// An invalid supporter key is valid again after a failed payment is fixed, so they keep it.
+func revalidates(license *models.ProductLicense) bool {
+	return license.Status == models.LicenseStatusActive || license.Status == models.LicenseStatusOffline ||
+		license.ProductName == ProductNameSupporter
 }
 
 // ValidateLicenses validates all stored licenses against the Dodo API
@@ -386,7 +421,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	}
 
 	for _, license := range licenses {
-		if !revalidates(license.Status) {
+		if !revalidates(license) {
 			allValid = false
 			continue
 		}

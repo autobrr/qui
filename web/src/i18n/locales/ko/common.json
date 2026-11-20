@@ -5,6 +5,8 @@
     "search": "검색",
     "crossSeed": "Cross-Seed",
     "automations": "자동화",
+    "transfers": "전송",
+    "transfersQueued_other": "실행 중이거나 대기 중인 항목 {{count}}개",
     "backups": "백업",
     "rss": "RSS",
     "settings": "설정",
@@ -28,8 +30,29 @@
     "rssRunning": "Cross-seed RSS 실행 중",
     "rssEnabled": "Cross-seed RSS 활성화됨",
     "scanRunning": "스캔 실행 중",
-    "showSidebar": "사이드바 표시",
-    "hideSidebar": "사이드바 숨기기"
+    "collapseToIcons": "아이콘으로 접기",
+    "expandSidebar": "사이드바 펼치기"
+  },
+  "problemReports": {
+    "reportProblem": "문제 신고",
+    "description": "문제를 설명해 주세요. qui가 아래 정보를 추가하고 비밀 값을 지운 뒤 qui 관리자에게 신고를 보냅니다.",
+    "textLabel": "무엇이 잘못되었나요?",
+    "factsLabel": "qui가 추가하는 정보",
+    "loadingFacts": "정보를 불러오는 중...",
+    "factsFailed": "정보를 불러오지 못했습니다: {{message}}",
+    "send": "보내기",
+    "sending": "보내는 중...",
+    "sent": "신고를 보냈습니다",
+    "errors": {
+      "anonymousFull": "오늘 익명 신고가 모두 찼습니다. 로그인하면 지금 보낼 수 있고, 아니면 내일 다시 시도하세요.",
+      "signInRequired": "이 신고를 보내려면 로그인하세요.",
+      "accountLimit": "지난 한 시간 동안 신고를 많이 보냈습니다. 나중에 다시 시도하세요.",
+      "reporterFull": "신고가 brrbin이 한 사람에게 주는 공간을 모두 쓰고 있습니다. 보낸 신고에서 오래된 신고를 삭제한 뒤 다시 보내세요.",
+      "tooLarge": "신고가 너무 큽니다. 로그 줄을 줄이거나 더 작은 이미지를 고르세요.",
+      "tokenRejected": "로그인이 끝났습니다. 다시 로그인한 뒤 보내세요.",
+      "unavailable": "brrbin이 지금은 신고를 받을 수 없습니다. 나중에 다시 시도하세요.",
+      "sendFailed": "신고를 보내지 못했습니다: {{message}}"
+    }
   },
   "header": {
     "currentInstance": "현재 인스턴스: {{name}}. 클릭하여 인스턴스를 전환합니다.",
@@ -59,12 +82,8 @@
     "smartSearchEnter": "Enter를 눌러 즉시 검색",
     "smartSearchAuto": "500ms 일시정지 후 자동 검색",
     "smartSearchShortcut": "{{shortcutKey}}를 눌러 검색창으로 이동",
+    "smartSearchPalette": "{{shortcutKey}}를 눌러 명령 팔레트 열기",
     "torrentCreationTasksTitle": "토렌트 생성 작업",
-    "updateAvailable": "업데이트 사용 가능",
-    "updateVersion": "버전 {{version}}",
-    "rssRunning": "Cross-seed RSS 실행 중",
-    "rssEnabled": "Cross-seed RSS 활성화됨",
-    "scanRunning": "스캔 실행 중",
     "allScope": "전체",
     "unified": "통합"
   },
@@ -76,6 +95,32 @@
     "collapseScope": "통합 범위 접기",
     "expandScope": "통합 범위 펼치기",
     "allActive": "모두 활성 ({{count}})"
+  },
+  "commandPalette": {
+    "title": "명령 팔레트",
+    "placeholder": "페이지, 설정, 토렌트 검색...",
+    "placeholderIn": "{{name}}에서 검색...",
+    "groups": {
+      "pages": "페이지",
+      "actions": "작업"
+    },
+    "current": "현재",
+    "statisticsNote": "인스턴스의 업로드 및 다운로드 기록",
+    "searchTorrentsFor": "\"{{query}}\" 토렌트 검색",
+    "torrentMatches_other": "일치하는 토렌트 {{count}}개",
+    "noTorrentMatches": "일치하는 토렌트 없음",
+    "searching": "검색 중...",
+    "searchFailed": "토렌트 검색에 실패했습니다",
+    "listFiltersApply": "목록 필터 적용됨",
+    "noMatchIn": "{{name}}에 일치하는 항목 없음",
+    "moreOf": "{{name}} 더 보기",
+    "hints": {
+      "navigate": "이동",
+      "open": "열기",
+      "more": "더 보기",
+      "searchTorrents": "토렌트 검색",
+      "back": "뒤로"
+    }
   },
   "mobileNav": {
     "dashboard": "대시보드",
@@ -223,6 +268,28 @@
         "fix": "키가 잘못된 경우 Orpheus 프로필 설정에서 Torrents 권한이 있는 API 키를 만들고 qui의 Gazelle (OPS/RED) 설정에 붙여 넣으세요. Orpheus에서 qui의 IP를 차단했다면 새 키로는 해결되지 않습니다. Orpheus 운영진에 문의하세요.",
         "menuFix": "설정에 새 키 붙여 넣기",
         "action": "Gazelle (OPS/RED) 설정 열기"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "라이브러리 스캔 일정 차단됨",
+        "title": "라이브러리 스캔 일정을 실행할 수 없습니다",
+        "effect": "qui가 예약된 라이브러리 스캔 실행을 시작할 수 없습니다. 매시간 다시 시도합니다.",
+        "fix": "라이브러리 스캔 설정을 확인하세요. qui는 매시간 다시 시도합니다.",
+        "menuFix": "라이브러리 스캔 설정 확인",
+        "action": "라이브러리 스캔 설정 열기",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "라이브러리 스캔 설정에서 Torznab이 꺼져 있고, RED 또는 OPS API 키가 설정되어 있지 않습니다. Torznab을 켜거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "Torznab을 켜거나 RED 또는 OPS 키 추가"
+          },
+          "no_indexer": {
+            "fix": "활성화된 인덱서가 없습니다. Torznab 인덱서를 활성화하거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "인덱서 활성화"
+          },
+          "instance_missing": {
+            "fix": "저장된 라이브러리 스캔 설정의 인스턴스가 존재하지 않습니다. 라이브러리 스캔 설정에서 인스턴스를 선택한 뒤 저장하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "인스턴스를 선택한 뒤 저장"
+          }
+        }
       }
     },
     "actions": {
@@ -314,14 +381,74 @@
   },
   "support": {
     "title": "qui 후원하기",
-    "description": "이미 테마를 갖고 계시고 더 돕고 싶으신가요? qui의 모든 기능은 이미 여러분의 것입니다. 구독은 기능을 잠금 해제하지 않고, 개발에 들어가는 시간을 지원합니다.",
-    "perkPrefix": "후원자는 Discord에서",
-    "perkSuffix": "역할과 저희의 영원한 감사를 받습니다.",
-    "yearly": "{{price}} / 년",
-    "monthly": "{{price}} / 월",
-    "notLicense": "테마 라이선스는 별도의 일회성 구매입니다."
+    "description": "qui를 후원하는 방법과 가격입니다.",
+    "heading": "qui의 유지 관리를 도와주세요",
+    "intro": "qui는 무료이며, 결제 여부와 관계없이 똑같이 작동합니다. 후원금은 qui에 들어가는 시간과 도구 비용으로 쓰입니다.",
+    "licensed": "테마 라이선스를 구매해 주셔서 감사합니다.",
+    "releases_other": "qui는 지난 12개월 동안 {{count}}번 릴리스되었습니다.",
+    "releaseMap": "지난 52주를 하루에 한 칸씩 보여 줍니다. 밝은 칸은 릴리스가 있었던 날입니다.",
+    "releaseDay": "릴리스가 있었던 날",
+    "plans": {
+      "yearly": "연 {{price}}",
+      "yearlyNote": "월 {{price}}, 연간 결제",
+      "yearlyNoteWithLicense": "월 {{price}}, 연간 결제. 테마 라이선스 포함.",
+      "license": "테마 라이선스, {{price}}부터",
+      "licenseNote": "현재 및 향후 모든 프리미엄 테마, 평생 사용",
+      "onePayment": "1회 결제"
+    },
+    "checkout": "결제 계속하기",
+    "fromPrice": "{{price}}부터",
+    "terms": {
+      "yearly": "오늘 {{price}}, 이후 취소할 때까지 매년 {{price}}씩 결제됩니다.",
+      "license": "{{price}} 이상 1회 결제이며, 금액은 결제할 때 정합니다. 구독이 아닙니다."
+    },
+    "perks": {
+      "yearly": "후원자는 qui에서 후원자 배지를, Discord에서 후원자 역할을 받습니다. 결제 후 이 서버에 후원자 키를 추가하세요.",
+      "license": "라이선스로 프리미엄 테마가 잠금 해제됩니다. 결제 후 이 서버에 라이선스 키를 추가하세요."
+    },
+    "existing": "이미 후원자이신가요?",
+    "addKey": "후원자 키 추가",
+    "key": {
+      "help": "후원자 키는 결제 페이지와 영수증 이메일에 있습니다.",
+      "label": "후원자 키",
+      "submit": "키 추가",
+      "back": "뒤로"
+    },
+    "ended": "이 서버의 후원자 키가 더 이상 유효하지 않습니다. qui는 매일 키를 다시 확인합니다. 후원이 끝났다면 테마 라이선스는 그대로 남아 있습니다. <portal>라이선스 포털</portal>에서 라이선스 키를 찾아 설정의 테마에서 추가하세요.",
+    "removeKey": "이 서버에서 후원자 키 제거",
+    "supporter": {
+      "badge": "후원자",
+      "title": "qui 후원 중",
+      "thanks": "감사합니다. 여러분의 후원은 qui에 들어가는 시간과 도구 비용으로 쓰입니다.",
+      "detail": "qui의 후원자 배지와 Discord의 후원자 역할을 받으셨습니다. 후원으로 프리미엄 테마도 잠금 해제되며, 평생 사용할 수 있는 테마 라이선스가 포함됩니다. <portal>라이선스 포털</portal>에서 라이선스 키를 찾을 수 있습니다.",
+      "manage": "후원 관리 또는 취소"
+    },
+    "reminder": {
+      "title_other": "이 서버에서 qui를 사용한 지 {{count}}일",
+      "tooltip": "이 서버에서만 계산하며 외부로 보내지 않습니다. qui는 1년에 한 번 묻습니다.",
+      "subtitle": "qui 후원하기. qui는 1년에 한 번 묻습니다.",
+      "notNow": "나중에",
+      "serverDays_other": "이 서버는 {{count}}일 동안 qui를 실행했습니다. qui는 이 값을 이 서버에서 계산하며 외부로 보내지 않습니다.",
+      "notNowToast": "qui가 1년 뒤에 다시 묻습니다",
+      "dontAskAgain": "다시 묻지 않기",
+      "offToast": "qui가 더 이상 묻지 않습니다",
+      "offToastDescription": "후원 바로가기는 그대로 남습니다. 설정의 애플리케이션에서 알림을 다시 켤 수 있습니다.",
+      "undo": "실행 취소",
+      "hiddenToast": "후원 바로가기를 숨겼습니다",
+      "hiddenToastDescription": "qui가 더 이상 묻지 않습니다. 설정의 애플리케이션에서 바로가기를 다시 표시할 수 있습니다.",
+      "notForYou": "관심 없으신가요? <reminder>연간 알림 끄기</reminder> 또는 <heart>하트 숨기기</heart>. 설정에서 둘 다 되돌릴 수 있습니다.",
+      "notForYouHeart": "관심 없으신가요? <heart>하트 숨기기</heart>. 설정에서 되돌릴 수 있습니다."
+    }
   },
   "labels": {
-    "path": "경로"
+    "path": "경로",
+    "beta": "베타"
+  },
+  "kit": {
+    "loadFailed": "이 섹션을 불러오지 못했습니다.",
+    "retry": "다시 시도",
+    "edit": "편집",
+    "moreActions": "추가 작업",
+    "enabled": "사용"
   }
 }

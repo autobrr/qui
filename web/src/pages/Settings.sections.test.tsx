@@ -27,13 +27,19 @@ vi.mock("@/lib/api", () => ({
 }))
 vi.mock("@/hooks/useSelfUpdate", () => ({ useSelfUpdate: () => stubs.selfUpdate }))
 vi.mock("@/components/indexers/IndexersPage", () => ({ IndexersPage: () => <div data-testid="section-indexers" /> }))
+vi.mock("@/components/settings/ApplicationSettings", () => ({ ApplicationInfoPanel: () => <div data-testid="section-application" /> }))
+vi.mock("@/components/settings/InstancesSettings", () => ({ InstancesManager: () => <div data-testid="section-instances" /> }))
+vi.mock("@/components/settings/SearchCacheSettings", () => ({ TorznabSearchCachePanel: () => <div data-testid="section-search-cache" /> }))
 vi.mock("@/components/settings/GazelleSettingsCard", () => ({ GazelleSettingsCard: () => null }))
 vi.mock("@/components/settings/ArrInstancesManager", () => ({ ArrInstancesManager: () => <div data-testid="section-integrations" /> }))
 vi.mock("@/components/settings/ClientApiKeysManager", () => ({ ClientApiKeysManager: () => <div data-testid="section-client-api" /> }))
 vi.mock("@/components/settings/ExternalProgramsManager", () => ({ ExternalProgramsManager: () => <div data-testid="section-external-programs" /> }))
 vi.mock("@/components/settings/NotificationsManager", () => ({ NotificationsManager: () => <div data-testid="section-notifications" /> }))
-vi.mock("@/components/settings/DateTimePreferencesForm", () => ({ DateTimePreferencesForm: () => <div data-testid="section-datetime" /> }))
+vi.mock("@/components/settings/TimeLanguageSettings", () => ({ TimeLanguageSettings: () => <div data-testid="section-datetime" /> }))
+vi.mock("@/components/settings/SecuritySettings", () => ({ SecuritySettings: () => <div data-testid="section-security" /> }))
+vi.mock("@/components/display-profiles/DisplayProfilesSettings", () => ({ DisplayProfilesSettings: () => <div data-testid="section-display-profiles" /> }))
 vi.mock("@/components/settings/LogSettingsPanel", () => ({ LogSettingsPanel: () => <div data-testid="section-logs" /> }))
+vi.mock("@/components/shares/ShareSettingsForm", () => ({ ShareSettingsForm: () => <div data-testid="section-shares" /> }))
 vi.mock("@/components/settings/StatisticsSettingsCard", () => ({ StatisticsSettingsCard: () => <div data-testid="section-statistics" /> }))
 vi.mock("@/components/settings/TrackerCustomizationsManager", () => ({ TrackerCustomizationsManager: () => <div data-testid="section-trackers" /> }))
 vi.mock("@/components/themes/ThemeSelector", () => ({ ThemeSelector: () => <div data-testid="section-themes" /> }))
@@ -42,13 +48,9 @@ vi.mock("@/components/themes/LicenseManager.tsx", () => ({ LicenseManager: () =>
 import { SETTINGS_TABS, type SettingsTab } from "@/components/settings/tabs"
 import { Settings } from "./Settings"
 
-// Sections that Settings.tsx renders inline show a translation key that only they render.
+// A section that Settings.tsx renders inline shows a translation key that only it renders.
 const INLINE_MARKERS: Partial<Record<SettingsTab, string>> = {
-  application: "application.loading",
-  instances: "instances.title",
-  "search-cache": "searchCache.disabled",
   api: "apiKeys.cardTitle",
-  security: "security.changePassword.title",
 }
 
 function isShown(tab: SettingsTab) {

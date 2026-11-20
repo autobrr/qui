@@ -13,6 +13,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * The classes of a wrapper that changes its height between that of its one child and zero, with a transition. The
+ * child needs `min-h-0 overflow-hidden`.
+ */
+export function collapseRowClassName(collapsed: boolean) {
+  return cn(
+    "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
+    collapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"
+  )
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return formatValueWithUnit(0, "B")
   const scaled = scaleToUnit(bytes, BYTE_LADDER, 1024)

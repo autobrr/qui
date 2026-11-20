@@ -7,24 +7,12 @@
       "disconnected": "Déconnecté"
     },
     "tooltips": {
-      "disableInstance": "Désactiver l'instance",
-      "enableInstance": "Activer l'instance",
       "moveUp": "Monter",
       "moveDown": "Descendre"
     },
     "actions": {
-      "edit": "Edit",
       "testConnection": "Tester la connexion",
       "delete": "Supprimer"
-    },
-    "labels": {
-      "username": "Nom d'utilisateur :",
-      "basicAuth": "Auth Basic :",
-      "tlsVerification": "Vérification TLS :",
-      "tlsSkipped": "Ignorée",
-      "tlsStrict": "Stricte",
-      "testingConnection": "Test de connexion...",
-      "fileAccess": "Accès aux fichiers :"
     },
     "deleteDialog": {
       "title": "Supprimer l'instance",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "Instance désactivée",
-      "testDisabledDescription": "Activez l'instance avant de tester la connexion.",
       "testSuccessTitle": "Test de connexion réussi",
       "testSuccessDescription": "Connexion réussie à l'instance qBittorrent",
       "testFailedTitle": "Échec du test de connexion",
@@ -55,7 +42,13 @@
     "passwordRequired": "Mot de passe requis",
     "decryptionDescription": "Impossible de déchiffrer le mot de passe sauvegardé. Cela arrive généralement lorsque le secret de session a changé.",
     "reenterPassword": "Ré-entrez le mot de passe",
-    "recentErrors": "Erreurs récentes ({{count}})"
+    "recentErrors": "Erreurs récentes ({{count}})",
+    "errorTypes": {
+      "connection": "Connexion",
+      "authentication": "Authentification",
+      "ban": "Bannissement",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "Le nom de l'instance est requis",
-      "basicAuthPasswordRequired": "Le mot de passe basic auth est requis lorsque l'authentification basic est activée"
+      "basicAuthPasswordRequired": "Le mot de passe basic auth est requis lorsque l'authentification basic est activée",
+      "usernameRequired": "Le nom d'utilisateur est requis",
+      "passwordRequired": "Le mot de passe est requis",
+      "apiKeyRequired": "La clé API est requise"
     },
     "buttons": {
-      "saving": "Enregistrement...",
       "updateInstance": "Mettre à jour l'instance",
-      "addInstance": "Ajouter une instance",
-      "cancel": "Annuler"
+      "addInstance": "Ajouter une instance"
     },
     "toast": {
-      "missingCredentialsTitle": "Identifiants manquants",
       "instanceUpdatedTitle": "Instance mise à jour",
       "instanceUpdatedDescription": "Instance mise à jour avec succès. Test de connexion en arrière-plan...",
-      "updateFailedTitle": "Échec de la mise à jour",
       "updateFailedDescription": "Échec de la mise à jour de l'instance",
       "instanceCreatedTitle": "Instance créée",
       "instanceCreatedDescription": "Instance créée avec succès. Test de connexion en arrière-plan...",
-      "createFailedTitle": "Échec de la création",
       "createFailedDescription": "Échec de la création de l'instance"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "Nom d'utilisateur et mot de passe",
       "apiKey": "Clé API"
     },
-    "sshAfterSave": "L'accès SSH aux fichiers de l'instance se configure dans les paramètres de l'instance après l'enregistrement."
+    "sshAfterSave": "L'accès SSH aux fichiers de l'instance se configure dans les paramètres de l'instance après l'enregistrement.",
+    "addTitle": "Ajouter une instance",
+    "addDescription": "Configurer une nouvelle instance qBittorrent",
+    "editTitle": "Modifier l'instance"
   },
   "settingsButton": {
     "tooltip": "Paramètres de l'instance"
@@ -555,6 +549,7 @@
         "externalProgram": "Programme externe",
         "dryRun": "Simulation",
         "exportToInstance": "Exporter vers l'instance",
+        "transferToInstance": "Transférer vers une instance",
         "ruleSkipped": "Règle non exécutée"
       },
       "shareLimit": {
@@ -608,7 +603,9 @@
         "exportedDryRun_one": "{{count}} torrent serait exporté",
         "exportedDryRun_other": "{{count}} torrents seraient exportés",
         "exportFailed_one": "Échec d'exportation de {{count}} torrent",
-        "exportFailed_other": "Échec d'exportation de {{count}} torrents"
+        "exportFailed_other": "Échec d'exportation de {{count}} torrents",
+        "transferredDryRun_one": "{{count}} torrent serait transféré",
+        "transferredDryRun_other": "{{count}} torrents seraient transférés"
       },
       "deleteDialog": {
         "title": "Supprimer la règle",
@@ -668,6 +665,7 @@
         "deleteActivityFailed": "Échec de la suppression de l'activité"
       },
       "exported": "Exporté",
+      "transferStarted": "Démarré",
       "skipped": "Ignorée"
     },
     "runWorkflowNow": {
@@ -967,6 +965,7 @@
         "auto_managed": "Géré automatiquement",
         "dry_run_no_match": "Simulation (aucune correspondance)",
         "exported_to_instance": "Exporter vers l'instance",
+        "transferred_to_instance": "Transférer vers une instance",
         "rule_skipped": "Règle non exécutée"
       }
     },
@@ -1144,6 +1143,11 @@
         "skipChecking": "Ignorer la vérification",
         "addPaused": "Ajouter en pause"
       },
+      "transfer": {
+        "title": "Transférer vers une instance",
+        "description": "Déplace chaque torrent correspondant avec ses fichiers vers l'instance cible, et vérifie la copie avant de supprimer quoi que ce soit. La page Transferts affiche chaque transfert.",
+        "remove": "Retirer « Transférer vers une instance »"
+      },
       "priority": {
         "title": "Priorité du torrent",
         "description": "Contrôle l'ordre dans lequel les torrents sont traités.",
@@ -1186,7 +1190,8 @@
         "category": "Catégorie",
         "move": "Move",
         "externalProgram": "Exécuter un programme externe",
-        "exportToInstance": "Exporter vers l'instance"
+        "exportToInstance": "Exporter vers l'instance",
+        "transferToInstance": "Transférer vers une instance"
       },
       "option": {
         "noChange": "Aucun changement",
@@ -1295,9 +1300,24 @@
           "unsupportedWindows": "Source d'espace basée sur un chemin non supportée sur Windows.",
           "qbitPathUnsupported": "Cette instance est antérieure à qBittorrent 5.3 et ne peut pas indiquer l'espace libre d'un chemin.",
           "pathRequired": "Le chemin est requis avec 'Chemin sur le serveur'.",
-          "filesystemAccessRequired": "La source d'espace libre basée sur un chemin nécessite un accès au système de fichiers local ou via SSH."
+          "filesystemAccessRequired": "La source d'espace libre basée sur un chemin nécessite un accès au système de fichiers local ou via SSH.",
+          "allowanceRequired": "Entrez un espace alloué supérieur à 0.",
+          "allowanceAccessRequired": "La source d'espace alloué nécessite un accès au système de fichiers local, ou un accès SSH avec shell."
         },
-        "pathSourceFilesystemAccessRequired": "Chemin sur le serveur (nécessite un accès local ou SSH)"
+        "pathSourceFilesystemAccessRequired": "Chemin sur le serveur (nécessite un accès local ou SSH)",
+        "allowanceSource": "Espace alloué sur un chemin",
+        "allowanceSourceWindowsUnsupported": "Espace alloué sur un chemin (non supporté sur Windows)",
+        "allowanceSourceAccessRequired": "Espace alloué sur un chemin (nécessite un accès local, ou un accès SSH avec shell)",
+        "allowanceLabel": "Espace alloué",
+        "allowancePathLabel": "Dossier à mesurer",
+        "allowanceUnitAria": "Unité de l'espace alloué",
+        "allowanceHelp": "Entrez l'espace que votre offre autorise, dans l'unité qu'utilise votre fournisseur. qui en soustrait la taille des fichiers sous le chemin. La plupart des fournisseurs comptent par paliers de 1000 ({{decimalUnit}}), et non de 1024 ({{binaryUnit}}) : l'écart est d'environ 9 %.",
+        "allowanceUnits": {
+          "MB": "Mo",
+          "GB": "Go",
+          "TB": "To"
+        },
+        "allowancePathHelp": "Par exemple, votre répertoire personnel"
       },
       "grouping": {
         "title": "Groupes de conditions",
@@ -1442,6 +1462,7 @@
           "externalProgram": "Programme externe",
           "noMatches": "Aucune correspondance",
           "exportedToInstance": "Exporter vers l'instance",
+          "transferredToInstance": "Transférer vers une instance",
           "ruleSkipped": "Règle non exécutée"
         },
         "actionFallback": "Action inconnue ({{action}})",
@@ -2099,10 +2120,9 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Via SSH",
-    "none": "Aucun",
-    "localFull": "L'application lit et écrit les fichiers de cette instance sur cette machine.",
+    "local": "Fichiers locaux",
+    "remote": "Fichiers via SSH",
+    "none": "Pas d'accès aux fichiers",
     "limits": {
       "noIdentity": "Pas d'identité des fichiers : l'application ne sait pas reconnaître deux chemins menant au même fichier. L'analyse d'orphelins ne peut pas supprimer ici, et une cible de lien physique existante bloque un ajout par lien physique.",
       "noReflinks": "Pas de reflinks sur une instance distante.",
@@ -2113,5 +2133,17 @@
     "label": "Supprimer aussi son historique de transfert",
     "description": "Sans cette option, qui garde l'historique sous le nom de l'instance.",
     "failed": "L'instance est supprimée, mais qui n'a pas pu supprimer tout son historique. Consultez Paramètres > Statistiques et supprimez le reste."
+  },
+  "list": {
+    "label": "Gérer les instances",
+    "emptyTitle": "Aucune instance configurée pour le moment",
+    "emptyDescription": "Ajoutez un client qBittorrent pour que qui gère ses torrents.",
+    "tlsSkipped": "Vérification TLS désactivée",
+    "reorderFailed": "Impossible de réorganiser les instances"
+  },
+  "publicPeerAddress": {
+    "label": "Adresse publique du pair",
+    "noResolvedAddress": "qui ne peut pas encore déterminer d'adresse",
+    "description": "L'adresse et le port par lesquels les autres clients BitTorrent atteignent ce qBittorrent, pour les Transferts et les Partages. Laissez vide pour utiliser l'adresse que qui déduit de qBittorrent à chaque utilisation. Définissez-la quand qBittorrent tourne dans Docker ou derrière un NAT."
   }
 }

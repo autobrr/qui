@@ -59,7 +59,9 @@ type ValidateLicenseResponse struct {
 
 // PremiumAccessResponse represents the response for premium access status
 type PremiumAccessResponse struct {
-	HasPremiumAccess bool `json:"hasPremiumAccess"`
+	HasPremiumAccess bool       `json:"hasPremiumAccess"`
+	IsSupporter      bool       `json:"isSupporter"`
+	SetupAt          *time.Time `json:"setupAt,omitempty"`
 }
 
 // LicenseInfo represents basic license information for UI display
@@ -212,9 +214,25 @@ func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, PremiumAccessResponse{
-		HasPremiumAccess: hasPremium,
-	})
+	isSupporter, err := h.licenseService.IsSupporter(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to check supporter status")
+		RespondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "Failed to check supporter status",
+		})
+		return
+	}
+
+	response := PremiumAccessResponse{HasPremiumAccess: hasPremium, IsSupporter: isSupporter}
+	// Only the yearly support reminder reads the setup time, so the license check does not fail without it.
+	if setupAt, err := h.licenseService.ServerSetupTime(r.Context()); err != nil {
+		log.Warn().Err(err).Msg("Failed to read the server setup time")
+	} else {
+		setupAt = setupAt.UTC()
+		response.SetupAt = &setupAt
+	}
+
+	RespondJSON(w, http.StatusOK, response)
 }
 
 // GetAllLicenses returns all licenses for the current user

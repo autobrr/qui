@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -23,6 +25,7 @@ import (
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/orphanscan"
+	"github.com/autobrr/qui/internal/services/peeraddress"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/sshpool"
 )
@@ -44,6 +47,11 @@ type InstancesHandler struct {
 	// routes refuses instance changes that break a cross-seed route. Nil in
 	// tests that do not need it.
 	routes *crossseedroute.Service
+	// peers works out the public peer address. Nil without a sync manager.
+	peers *peeraddress.Resolver
+	// connectionTests tracks the connection tests that outlive their request.
+	// A test waits for them before it closes the database.
+	connectionTests sync.WaitGroup
 }
 
 type orphanScanGuard interface {
@@ -99,7 +107,7 @@ func (h *InstancesHandler) changeSSH(ctx context.Context, instanceID int, change
 }
 
 func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer, sshPool *sshpool.Pool) *InstancesHandler {
-	return &InstancesHandler{
+	h := &InstancesHandler{
 		instanceStore:   instanceStore,
 		reannounceStore: reannounceStore,
 		reannounceCache: reannounceCache,
@@ -109,6 +117,10 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *m
 		sshDialer:       sshDialer,
 		sshPool:         sshPool,
 	}
+	if syncManager != nil {
+		h.peers = peeraddress.New(instanceStore, syncManager)
+	}
+	return h
 }
 
 // GetInstanceCapabilities returns lightweight capability metadata for an instance.
@@ -416,32 +428,34 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
 
 	response := InstanceResponse{
-		ID:                       instance.ID,
-		Name:                     instance.Name,
-		Host:                     instance.Host,
-		Username:                 instance.Username,
-		HasAPIKey:                instance.APIKeyEncrypted != "",
-		BasicUsername:            instance.BasicUsername,
-		TLSSkipVerify:            instance.TLSSkipVerify,
-		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
-		UseHardlinks:             instance.UseHardlinks,
-		HardlinkBaseDir:          instance.HardlinkBaseDir,
-		HardlinkDirPreset:        instance.HardlinkDirPreset,
-		UseReflinks:              instance.UseReflinks,
-		FallbackToRegularMode:    instance.FallbackToRegularMode,
-		Connected:                healthy,
-		HasDecryptionError:       hasDecryptionError,
-		ConnectionStatus:         connectionStatus,
-		SortOrder:                instance.SortOrder,
-		IsActive:                 instance.IsActive,
-		SSHHost:                  instance.SSHHost,
-		SSHPort:                  instance.SSHPort,
-		SSHUsername:              instance.SSHUsername,
-		SSHHostKeyPinned:         instance.SSHHostKeyEncrypted != "",
-		SSHTier:                  sshTierField(instance),
-		SSHHardlink:              instance.SSHHardlink,
-		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
-		Capabilities:             models.FilesystemCapabilitiesOf(instance),
+		ID:                        instance.ID,
+		Name:                      instance.Name,
+		Host:                      instance.Host,
+		Username:                  instance.Username,
+		HasAPIKey:                 instance.APIKeyEncrypted != "",
+		BasicUsername:             instance.BasicUsername,
+		TLSSkipVerify:             instance.TLSSkipVerify,
+		HasLocalFilesystemAccess:  instance.HasLocalFilesystemAccess,
+		UseHardlinks:              instance.UseHardlinks,
+		HardlinkBaseDir:           instance.HardlinkBaseDir,
+		HardlinkDirPreset:         instance.HardlinkDirPreset,
+		UseReflinks:               instance.UseReflinks,
+		FallbackToRegularMode:     instance.FallbackToRegularMode,
+		Connected:                 healthy,
+		HasDecryptionError:        hasDecryptionError,
+		ConnectionStatus:          connectionStatus,
+		SortOrder:                 instance.SortOrder,
+		IsActive:                  instance.IsActive,
+		SSHHost:                   instance.SSHHost,
+		SSHPort:                   instance.SSHPort,
+		SSHUsername:               instance.SSHUsername,
+		SSHHostKeyPinned:          instance.SSHHostKeyEncrypted != "",
+		SSHTier:                   sshTierField(instance),
+		SSHHardlink:               instance.SSHHardlink,
+		FilesystemMode:            string(models.FilesystemAccessMode(instance)),
+		Capabilities:              models.FilesystemCapabilitiesOf(instance),
+		PublicPeerAddress:         instance.PublicPeerAddress,
+		ResolvedPublicPeerAddress: h.resolvedPublicPeerAddress(ctx, instance, healthy),
 
 		ReannounceSettings: h.getReannounceSettingsPayload(ctx, instance.ID)}
 
@@ -492,7 +506,46 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		SSHHardlink:              instance.SSHHardlink,
 		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
 		Capabilities:             models.FilesystemCapabilitiesOf(instance),
+		PublicPeerAddress:        instance.PublicPeerAddress,
 	}
+}
+
+// resolvePeerAddressTimeout bounds the wait for qBittorrent while the list
+// works out a public peer address.
+const resolvePeerAddressTimeout = 3 * time.Second
+
+// resolvedPublicPeerAddress is the public peer address that qui works out for
+// the instance from its last sync, or "" when it has none. It sends qBittorrent
+// no sync, and it asks only a connected qBittorrent, so that an instance that
+// is down does not hold up the list.
+func (h *InstancesHandler) resolvedPublicPeerAddress(ctx context.Context, instance *models.Instance, connected bool) string {
+	if instance.PublicPeerAddress != "" {
+		return instance.PublicPeerAddress
+	}
+	if h.peers == nil || !connected {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, resolvePeerAddressTimeout)
+	defer cancel()
+	address, err := h.peers.LastPublicPeerAddress(ctx, instance.ID)
+	if err != nil && !errors.Is(err, peeraddress.ErrNoAddress) {
+		log.Debug().Err(err).Int("instanceID", instance.ID).Msg("Failed to work out the public peer address")
+	}
+	return address
+}
+
+// validPublicPeerAddress reports whether address is a host and a port from 1
+// to 65535, or "" to clear the address.
+func validPublicPeerAddress(address string) bool {
+	if address == "" {
+		return true
+	}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || host == "" {
+		return false
+	}
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 1 && n <= 65535
 }
 
 // testConnectionAsync tests connection in background and updates cache
@@ -587,6 +640,9 @@ type UpdateInstanceRequest struct {
 	UseReflinks              *bool                              `json:"useReflinks,omitempty"`
 	FallbackToRegularMode    *bool                              `json:"fallbackToRegularMode,omitempty"`
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
+	// PublicPeerAddress is the host:port that the user sets. Without it, the
+	// stored value stays; "" clears it.
+	PublicPeerAddress *string `json:"publicPeerAddress,omitempty"`
 }
 
 type UpdateInstanceStatusRequest struct {
@@ -623,6 +679,12 @@ type InstanceResponse struct {
 	FilesystemMode           string                            `json:"filesystemMode"`
 	Capabilities             models.FilesystemCapabilities     `json:"capabilities"`
 	ReannounceSettings       InstanceReannounceSettingsPayload `json:"reannounceSettings"`
+	// PublicPeerAddress is the host:port that the user set, or "".
+	PublicPeerAddress string `json:"publicPeerAddress"`
+	// ResolvedPublicPeerAddress is the address that qui works out: the
+	// user's value, or else the address that qBittorrent reports. It is ""
+	// when qui has none, and in the answer of a create or an update.
+	ResolvedPublicPeerAddress string `json:"resolvedPublicPeerAddress"`
 }
 
 // sshTierField is the probed tier on the wire: only an instance with SSH
@@ -824,7 +886,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	go h.testConnectionAsync(instance.ID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
+	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) }) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 
 	RespondJSON(w, http.StatusCreated, response)
 }
@@ -847,6 +909,11 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	// Validate input
 	if req.Name == "" || req.Host == "" {
 		RespondError(w, http.StatusBadRequest, "Name and host are required")
+		return
+	}
+
+	if req.PublicPeerAddress != nil && !validPublicPeerAddress(*req.PublicPeerAddress) {
+		RespondError(w, http.StatusBadRequest, "The public peer address must be a host and a port, such as 203.0.113.7:51413")
 		return
 	}
 
@@ -894,6 +961,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		HardlinkDirPreset:        req.HardlinkDirPreset,
 		UseReflinks:              req.UseReflinks,
 		FallbackToRegularMode:    req.FallbackToRegularMode,
+		PublicPeerAddress:        req.PublicPeerAddress,
 	}
 	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams, req.APIKey)
 	if err != nil {
@@ -940,7 +1008,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	go h.testConnectionAsync(instance.ID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
+	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) }) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -1071,7 +1139,7 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 	} else {
 		// Clear backoff state and errors when re-enabling instance
 		h.clientPool.ResetFailureTracking(instanceID)
-		go h.testConnectionAsync(instanceID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
+		h.connectionTests.Go(func() { h.testConnectionAsync(instanceID) }) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 	}
 
 	response := h.buildQuickInstanceResponse(instance)

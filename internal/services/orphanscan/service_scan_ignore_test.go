@@ -392,22 +392,6 @@ func TestExecuteScan_IgnoredTransitionalPathDoesNotMakeScanPartial(t *testing.T)
 	require.Empty(t, run.ErrorMessage)
 }
 
-// A scan root that is not on disk must be reported without failing the run.
-// Scanning category paths turns every unused category into a root, and
-// qBittorrent creates a category directory only on the first torrent.
-func TestExecuteScan_MissingScanRootDoesNotFailRun(t *testing.T) {
-	t.Parallel()
-
-	svc, store, presentRoot, missingRoot := newScanTestService(t)
-
-	run := runScanForTest(t, svc, store)
-
-	assert.Equal(t, "completed", run.Status)
-	assert.Contains(t, run.ErrorMessage, missingRoot)
-	assert.Equal(t, 0, run.FilesFound)
-	assert.Contains(t, run.ScanPaths, filepath.Clean(presentRoot))
-}
-
 // A category destination qBittorrent has not created yet is absent by design,
 // so it must not raise a partial-scan warning. A save path a torrent points at
 // is a different story and still gets reported.

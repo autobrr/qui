@@ -66,6 +66,8 @@
     "externalPrograms": "外部程式",
     "exportTorrent": "匯出種子",
     "exportTorrents": "匯出種子（{{count}}）",
+    "transferToInstance": "傳輸到實例…",
+    "shareWithSomeone": "與他人分享…",
     "copy": "複製...",
     "copyName": "複製名稱",
     "copyHash": "複製雜湊值",
@@ -1431,19 +1433,11 @@
     "incognito": "隱身模式",
     "add": "新增",
     "tasks": "任務",
-    "done": "完成",
     "actionsForCount": "{{count}} 個種子的操作",
     "actionsForAll": "全部 {{count}} 個種子的操作",
     "selection": {
       "selectedCount": "已選 {{count}} 個",
       "allSelectedCount": "全部 {{count}} 個已選"
-    },
-    "searchModal": {
-      "title": "搜尋種子",
-      "description": "按名稱、分類或標籤搜尋。支援 glob 模式，如 *.mkv 或 *1080p*。",
-      "placeholder": "搜尋種子...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "輸入後自動搜尋"
     },
     "ratio": "分享率：",
     "added": "新增於{{time}}"
@@ -1510,6 +1504,9 @@
     "trackerDown": "Tracker 離線",
     "unregistered": "未註冊",
     "trackerError": "Tracker 錯誤",
+    "helperTransfer": "傳輸輔助",
+    "helperShare": "共享輔助",
+    "helperHint": "qui 為傳輸或共享新增了此種子。其檔案屬於另一個種子。",
     "now": "現在",
     "yes": "是",
     "no": "否"
@@ -1646,6 +1643,137 @@
       "title": "合併你的輔種",
       "description": "將同一種子的多個副本顯示為一行。",
       "action": "試試看"
+    },
+    "displayProfiles": {
+      "title": "顯示設定檔",
+      "description": "為每個螢幕保留各自的欄位、列密度和側邊欄。在這裡選擇此瀏覽器的設定檔。",
+      "action": "建立設定檔"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "顯示設定檔：{{name}}",
+    "menuLabel": "顯示設定檔",
+    "defaultName": "預設",
+    "manage": "管理設定檔…",
+    "sheetDescription": "每個瀏覽器各自選擇設定檔。",
+    "settings": {
+      "title": "顯示設定檔",
+      "holds": "包含：欄位 · 列密度 · 側邊欄 · 篩選區段 · 分類樹 · 空篩選",
+      "holdsHelp": "設定檔保存種子列表的外觀：顯示哪些欄位、欄位的順序和寬度、名稱欄延展、列密度、展開的側邊欄和篩選區段、收合的分類樹，以及是否顯示空篩選。它也保存儀表板中哪些實例列處於展開狀態。每個瀏覽器使用一個設定檔，只有該瀏覽器記住這個選擇。從未選擇過設定檔的瀏覽器和私密視窗使用 Default。其他設定由所有設定檔共用。",
+      "thisBrowser": "此瀏覽器",
+      "use": "在此瀏覽器中使用",
+      "makeProfile": "為筆記型電腦或手機建立設定檔",
+      "themesSync": "主題單獨同步：<sync>主題同步</sync>",
+      "renameAriaLabel": "重新命名 {{name}}",
+      "saveName": "儲存名稱",
+      "cancelRename": "取消重新命名",
+      "editAriaLabel": "編輯 {{name}}",
+      "editTitle": "編輯設定檔",
+      "delete": "刪除…",
+      "deleteTitle": "刪除 {{name}}？",
+      "deleteDescription": "使用它的其他瀏覽器將切換到 {{defaultName}}。",
+      "deleteConfirm": "刪除",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "表格列",
+        "dense": "緊湊列",
+        "stacked": "堆疊卡片"
+      },
+      "filterSidebarOpen": "篩選側邊欄展開",
+      "filterSidebarClosed": "篩選側邊欄收合"
+    },
+    "nameErrors": {
+      "empty": "請輸入名稱。",
+      "tooLong": "最多 {{max}} 個字元。",
+      "duplicate": "已有其他設定檔使用此名稱。"
+    },
+    "ownSortAndFilters": {
+      "label": "獨立的排序和篩選",
+      "help": "<lead>開啟後，此設定檔會單獨保存：</lead><list><item>種子清單的排序方式</item><item>欄位篩選和側邊欄篩選</item><item>統一檢視顯示的執行個體</item><item>合併副本的開關</item><item>詳細資料面板上次開啟的分頁</item><item>備份和 RSS 頁面顯示的執行個體</item></list><note>在此設定檔中對這些內容的變更不會影響其他設定檔。關閉後，此設定檔與其他所有未單獨保存的設定檔共用這些內容。關閉會刪除此設定檔單獨保存的值。</note>",
+      "offWarning": "關閉此設定會刪除 {{name}} 單獨保存的排序和篩選。",
+      "defaultShares": "一律共用排序和篩選",
+      "defaultSharesHelp": "Default 一律與所有未單獨保存的設定檔共用排序、篩選和其他檢視選項。如需單獨保存，請建立另一個設定檔並開啟「獨立的排序和篩選」。"
+    },
+    "deletedToast": "{{name}} 設定檔已刪除。此瀏覽器現在使用 {{defaultName}}。",
+    "newProfile": "用目前設定新增設定檔…",
+    "newDialog": {
+      "title": "新增設定檔",
+      "copies": "複製<profile>{{name}}</profile>的欄位、密度、側邊欄和篩選器。之後此瀏覽器使用它。",
+      "name": "名稱",
+      "namePlaceholder": "例如：筆電",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "取消",
+      "create": "建立"
+    },
+    "iconPicker": {
+      "trigger": "圖示：{{icon}}。變更圖示和顏色",
+      "letter": "名稱的首字母",
+      "color": "顏色"
+    },
+    "iconGroups": {
+      "devices": "裝置",
+      "places": "地點",
+      "use": "用途",
+      "mood": "心情"
+    },
+    "icons": {
+      "appWindow": "應用程式視窗",
+      "monitor": "螢幕",
+      "laptop": "筆電",
+      "tablet": "平板",
+      "smartphone": "手機",
+      "tv": "電視",
+      "server": "伺服器",
+      "gamepad": "遊戲手把",
+      "house": "房子",
+      "briefcase": "公事包",
+      "building": "大樓",
+      "sofa": "沙發",
+      "bed": "床",
+      "coffee": "咖啡",
+      "plane": "飛機",
+      "train": "火車",
+      "rows": "列",
+      "table": "表格",
+      "list": "清單",
+      "eye": "眼睛",
+      "gauge": "儀表",
+      "zap": "閃電",
+      "download": "下載",
+      "upload": "上傳",
+      "sprout": "嫩芽",
+      "bookmark": "書籤",
+      "moon": "月亮",
+      "sun": "太陽",
+      "star": "星星",
+      "heart": "愛心",
+      "flame": "火焰",
+      "rocket": "火箭"
+    },
+    "colors": {
+      "none": "無（文字顏色）",
+      "sky": "天藍",
+      "emerald": "翠綠",
+      "amber": "琥珀",
+      "rose": "玫紅",
+      "violet": "紫羅蘭",
+      "orange": "橘色",
+      "teal": "青綠",
+      "pink": "粉紅"
+    },
+    "columns": {
+      "headingEveryInstance": "{{profile}} 中的欄位 · 所有實例",
+      "headingOneInstance": "{{profile}} 中的欄位 · 僅 {{instance}}",
+      "unifiedView": "統一檢視",
+      "thisInstance": "此實例"
+    },
+    "sameColumns": {
+      "label": "所有實例使用相同的欄位",
+      "menuHelp": "排序和欄位篩選仍按實例分別保存。",
+      "helpOn": "{{instances}}共用一套欄位設定。",
+      "helpOff": "每個實例保留自己的欄位設定。開啟後，所有實例都會使用 {{instance}} 的欄位。",
+      "helpOffNoInstance": "每個實例保留自己的欄位設定。",
+      "unifiedViewInList": "統一檢視"
     }
   }
 }

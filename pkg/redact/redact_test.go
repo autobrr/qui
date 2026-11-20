@@ -272,6 +272,18 @@ func TestString(t *testing.T) {
 			wantContain: []string{"authkey=REDACTED", "torrent_pass=REDACTED"},
 			wantNotHave: []string{"SECRETAUTH", "SECRETPASS"},
 		},
+		{
+			name:        "udp announce url with passkey in path",
+			input:       "tracker error: udp://tracker.example.test:1337/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/announce timed out",
+			wantContain: []string{"udp://tracker.example.test:1337/REDACTED/announce", "timed out"},
+			wantNotHave: []string{"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"},
+		},
+		{
+			name:        "http announce url with passkey in path",
+			input:       "announce failed: http://tracker.example.test/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/announce",
+			wantContain: []string{"http://tracker.example.test/REDACTED/announce"},
+			wantNotHave: []string{"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -363,6 +375,160 @@ func TestBasicAuthUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, BasicAuthUser(tt.input))
+		})
+	}
+}
+
+func TestText(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "json fields whose name holds a secret word",
+			input: `{"apiKey":"abc123def","password": "hunter22","user":"bob","retries":3}`,
+			want:  `{"apiKey":"REDACTED","password": "REDACTED","user":"bob","retries":3}`,
+		},
+		{
+			name:  "json field with escaped quote and non-string value",
+			input: `{"client_secret":"a\"b c","authToken":12345678,"level":"warn"}`,
+			want:  `{"client_secret":"REDACTED","authToken":REDACTED,"level":"warn"}`,
+		},
+		{
+			name:  "json field escaped inside a json log line",
+			input: `{"level":"error","message":"body {\"apiKey\":\"abc123def\",\"name\":\"x\"}"}`,
+			want:  `{"level":"error","message":"body {\"apiKey\":\"REDACTED\",\"name\":\"x\"}"}`,
+		},
+		{
+			name:  "escaped json field with a backslash or a number in its value",
+			input: `{"message":"body {\"apiKey\":\"ab\\\\cd\",\"authToken\":12345678}"}`,
+			want:  `{"message":"body {\"apiKey\":\"REDACTED\",\"authToken\":REDACTED}"}`,
+		},
+		{
+			name:  "json array or object under a secret name",
+			input: `{"apiKeys":["abcdef123","uvwxyz987"],"auth":{"credential":"abcdef456"},"message":"body {\"tokens\":[\"abcdef789\"]}","user":"bob"}`,
+			want:  `{"apiKeys":"REDACTED","auth":"REDACTED","message":"body {\"tokens\":\"REDACTED\"}","user":"bob"}`,
+		},
+		{
+			name:  "json array or object under a secret name with a bracket inside a string",
+			input: `{"apiKeys":["abc]def123","uvw[xyz987","a\"]b456"],"secrets":{"a":"x}y{z123"},"message":"body {\"tokens\":[\"abc]def789\",\"x[y\"]}","user":"bob"}`,
+			want:  `{"apiKeys":"REDACTED","secrets":"REDACTED","message":"body {\"tokens\":\"REDACTED\"}","user":"bob"}`,
+		},
+		{
+			name:  "host name in a url is not a key value pair",
+			input: "dial https://auth.example.test:8443/login failed",
+			want:  "dial https://auth.example.test:8443/login failed",
+		},
+		{
+			name:  "key value pairs",
+			input: "password: hunter22\nSessionSecret: s3cr3t-v4lue, user: bob\nX-Api-Key: abcdef123",
+			want:  "password: REDACTED\nSessionSecret: REDACTED, user: bob\nX-Api-Key: REDACTED",
+		},
+		{
+			name:  "authorization header bearer",
+			input: "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig\nHost: example.test",
+			want:  "Authorization: REDACTED\nHost: example.test",
+		},
+		{
+			name:  "authorization header basic",
+			input: "authorization: Basic dXNlcjpwYXNzd29yZA==",
+			want:  "authorization: REDACTED",
+		},
+		{
+			name:  "escaped json field with an escaped newline or quote in its value",
+			input: `{"message":"body {\"password\":\"abc\\ndef\\\"gh\",\"name\":\"x\"}"}`,
+			want:  `{"message":"body {\"password\":\"REDACTED\",\"name\":\"x\"}"}`,
+		},
+		{
+			name:  "authorization header with quoted parameters",
+			input: `Authorization: Digest username="alice", realm="test", response="abcdef123456"`,
+			want:  "Authorization: REDACTED",
+		},
+		{
+			name:  "authorization header with a quoted value",
+			input: `Authorization: "Bearer abcdef123456"`,
+			want:  "Authorization: REDACTED",
+		},
+		{
+			name:  "authorization header with quoted parameters inside a json log line",
+			input: `{"message":"request Authorization: Digest username=\"alice\", response=\"abcdef123456\"","level":"warn"}`,
+			want:  `{"message":"request Authorization: REDACTED","level":"warn"}`,
+		},
+		{
+			name:  "key value pair with an escaped quote in its quoted value",
+			input: "password: \"abc\\\"def123456\"\nauthToken: 'abc\\'def123456'",
+			want:  "password: REDACTED\nauthToken: REDACTED",
+		},
+		{
+			name:  "quoted key value pair inside a json log line",
+			input: `{"message":"config password: \"abc \\\"def\" loaded","level":"warn"}`,
+			want:  `{"message":"config password: REDACTED loaded","level":"warn"}`,
+		},
+		{
+			name:  "json field whose value holds a query parameter",
+			input: `{"password":"s3cr3t&token=public","user":"bob"}`,
+			want:  `{"password":"REDACTED","user":"bob"}`,
+		},
+		{
+			name:  "unquoted key value pair with an ampersand in its value",
+			input: "password: abc&def123456 user: bob",
+			want:  "password: REDACTED user: bob",
+		},
+		{
+			name:  "key value pair whose value is a flat list or object",
+			input: "apiKeys: [\"abcdef123\",\"uvw]xyz987\"] user: bob\ntokens: [abcdef456, uvwxyz654]\nsecrets: {\"a\":\"abcdef789\"}\nmessage: \"body tokens: [\\\"abcdef321\\\"]\"",
+			want:  "apiKeys: REDACTED user: bob\ntokens: REDACTED\nsecrets: REDACTED\nmessage: \"body tokens: REDACTED\"",
+		},
+		{
+			name:  "key value pair whose value is a url with a comma in its password",
+			input: "authURL: https://user:pa,ss@host.test\nproxyAuth: http://user:pa;ss@host.test/x",
+			want:  "authURL: REDACTED\nproxyAuth: REDACTED",
+		},
+		{
+			name:  "json field name with a space",
+			input: `{"API Key":"abcdef123456","message":"body {\"Auth Token\":\"abcdef789\"}","user name":"bob"}`,
+			want:  `{"API Key":"REDACTED","message":"body {\"Auth Token\":\"REDACTED\"}","user name":"bob"}`,
+		},
+		{
+			name:  "plain text stays",
+			input: "cross-seed search found 3 results for Some.Show.S01E01",
+			want:  "cross-seed search found 3 results for Some.Show.S01E01",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, Text(tt.input))
+		})
+	}
+}
+
+func TestSecrets(t *testing.T) {
+	secrets := []string{"s3ss10n-s3cr3t", "s3ss10n", "abc", "", "hunter22"}
+	input := "cfg dump: <<s3ss10n-s3cr3t>>|pw=hunter22|s3ss10n;abc stays;hunter2 stays"
+
+	got := Secrets(input, secrets)
+
+	assert.Equal(t, "cfg dump: <<REDACTED>>|pw=REDACTED|REDACTED;abc stays;hunter2 stays", got)
+}
+
+// regression: #4288
+func TestSecretsRemovesTheJSONEscapedForm(t *testing.T) {
+	tests := []struct {
+		name   string
+		secret string
+		input  string
+		want   string
+	}{
+		{"quote in a log line", `abc"defghi`, `{"level":"warn","detail":"login failed: abc\"defghi"}`, `{"level":"warn","detail":"login failed: REDACTED"}`},
+		{"HTML escape of encoding/json", `pa<ss>word`, `{"body":"pa\u003css\u003eword"}`, `{"body":"REDACTED"}`},
+		{"line separator escape of encoding/json", "pa<ss\u2028wo\u2029rd", `{"body":"pa\u003css\u2028wo\u2029rd"}`, `{"body":"REDACTED"}`},
+		{"short secret stays", `ab"cd`, `{"detail":"ab\"cd"}`, `{"detail":"ab\"cd"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, Secrets(tt.input, []string{tt.secret}))
 		})
 	}
 }

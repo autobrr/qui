@@ -283,3 +283,54 @@ func TestParser_KeepsATagListOfTheExactSize(t *testing.T) {
 	// A copy of the tags can get room for some more, up to the next allocation size.
 	require.LessOrEqual(t, cap(tags), len(tags)+len(tags)/8+1)
 }
+
+// regression: #4289
+func TestParser_ReadsAKGListingAsItsDownloadName(t *testing.T) {
+	t.Parallel()
+
+	parser := NewDefaultParser()
+	for _, tc := range []struct {
+		name      string
+		wantTitle string
+		wantYear  int
+		wantGroup string
+	}{
+		{name: "Quiet Harbour AKA Stiller Hafen 1987 France [Quiet.Harbour.1987.DVDRip.x264-GRP.mkv]", wantTitle: "Quiet Harbour", wantYear: 1987, wantGroup: "GRP"},
+		{name: "Still Waters 1957 Czech Republic [Still.Waters.1957]", wantTitle: "Still Waters", wantYear: 1957},
+		{name: "Kein - Ein Wienerfilm 1997 Austria [Kein.Ein.Wienerfilm]", wantTitle: "Kein Ein Wienerfilm", wantYear: 1997},
+		{name: "Still Waters 1957  [Still.Waters]", wantTitle: "Still Waters", wantYear: 1957},
+		{name: "(1000) Nights of Rain 2009 United States [1000.Nights.of.Rain.2009.1080p.BluRay.x264-GRP.mkv]", wantTitle: "1000 Nights of Rain", wantYear: 2009, wantGroup: "GRP"},
+	} {
+		got := parser.Parse(tc.name)
+		require.Equal(t, tc.wantTitle, got.Title, tc.name)
+		require.Equal(t, tc.wantYear, got.Year, tc.name)
+		require.Equal(t, tc.wantGroup, got.Group, tc.name)
+	}
+}
+
+// regression: #4289
+func TestParser_KeepsABracketTagThatIsNoKGDownloadName(t *testing.T) {
+	t.Parallel()
+
+	parser := NewDefaultParser()
+	for _, name := range []string{
+		"Quiet Tide - Harbor Sounds 2011 [Remaster Vol.2]",
+		"Quiet Tide - Harbor Sounds 2011 [Deluxe]",
+		"Harbor Lights 2019 [H.264]",
+		"Harbor Lights 2019 WEB-DL [DD5.1]",
+		"Harbor Lights 2019 [Harbor.Subs]",
+		"Harbor Lights 2019 [Quiet.Harbor]",
+		"Harbor Lights 2019 (Dual Audio) [Dual.Audio]",
+		"[GRP] Kaiju Squad - 05 [1080p][Multi-Subs]",
+		"Harbor Lights [Harbor.Lights.2019.1080p.BluRay.x264-GRP]",
+		"Harbor Lights 2019 [.]",
+		"[GRP] Kaiju Squad - 05 (1080p) [Batch.Fix]",
+		"Harbor.Toolkit-GRP (2019) [Windows / Multi-Language / Full ISO]",
+	} {
+		want := rls.ParseString(name)
+		got := parser.Parse(name)
+		require.Equal(t, want.Title, got.Title, name)
+		require.Equal(t, want.Year, got.Year, name)
+		require.Equal(t, want.Group, got.Group, name)
+	}
+}

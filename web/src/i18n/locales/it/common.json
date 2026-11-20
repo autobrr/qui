@@ -5,6 +5,9 @@
     "search": "Ricerca",
     "crossSeed": "Cross-Seed",
     "automations": "Automazioni",
+    "transfers": "Trasferimenti",
+    "transfersQueued_one": "{{count}} elemento in corso o in attesa",
+    "transfersQueued_other": "{{count}} elementi in corso o in attesa",
     "backups": "Backup",
     "rss": "RSS",
     "settings": "Impostazioni",
@@ -28,8 +31,29 @@
     "rssRunning": "RSS cross-seed in esecuzione",
     "rssEnabled": "RSS cross-seed abilitato",
     "scanRunning": "Scansione in esecuzione",
-    "showSidebar": "Mostra barra laterale",
-    "hideSidebar": "Nascondi barra laterale"
+    "collapseToIcons": "Riduci a icone",
+    "expandSidebar": "Espandi barra laterale"
+  },
+  "problemReports": {
+    "reportProblem": "Segnala un problema",
+    "description": "Descrivi il problema. qui aggiunge i dati qui sotto, rimuove i segreti e invia la segnalazione ai maintainer di qui.",
+    "textLabel": "Cosa è andato storto?",
+    "factsLabel": "Dati che qui aggiunge",
+    "loadingFacts": "Caricamento dei dati...",
+    "factsFailed": "Impossibile caricare i dati: {{message}}",
+    "send": "Invia",
+    "sending": "Invio in corso...",
+    "sent": "Segnalazione inviata",
+    "errors": {
+      "anonymousFull": "Le segnalazioni anonime di oggi sono esaurite. Accedi per inviarla ora, o riprova domani.",
+      "signInRequired": "Accedi per inviare questa segnalazione.",
+      "accountLimit": "Hai inviato molte segnalazioni nell'ultima ora. Riprova più tardi.",
+      "reporterFull": "Le tue segnalazioni occupano tutto lo spazio che brrbin dà a una persona. Elimina una vecchia segnalazione in Segnalazioni inviate, poi invia di nuovo.",
+      "tooLarge": "La segnalazione è troppo grande. Scegli meno righe di log o un'immagine più piccola.",
+      "tokenRejected": "Il tuo accesso è scaduto. Accedi di nuovo, poi invia.",
+      "unavailable": "brrbin non può ricevere segnalazioni in questo momento. Riprova più tardi.",
+      "sendFailed": "Impossibile inviare la segnalazione: {{message}}"
+    }
   },
   "header": {
     "currentInstance": "Istanza attuale: {{name}}. Clicca per cambiare istanza.",
@@ -59,12 +83,8 @@
     "smartSearchEnter": "Premi Invio per la ricerca istantanea",
     "smartSearchAuto": "Ricerca automatica dopo una pausa di 500ms",
     "smartSearchShortcut": "Premi {{shortcutKey}} per andare alla ricerca",
+    "smartSearchPalette": "Premi {{shortcutKey}} per aprire la tavolozza dei comandi",
     "torrentCreationTasksTitle": "Attività di creazione torrent",
-    "updateAvailable": "Aggiornamento disponibile",
-    "updateVersion": "Versione {{version}}",
-    "rssRunning": "RSS cross-seed in esecuzione",
-    "rssEnabled": "RSS cross-seed abilitato",
-    "scanRunning": "Scansione in esecuzione",
     "allScope": "TUTTI",
     "unified": "Unificato"
   },
@@ -76,6 +96,33 @@
     "collapseScope": "Comprimi ambito unificato",
     "expandScope": "Espandi ambito unificato",
     "allActive": "Tutti gli attivi ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Tavolozza dei comandi",
+    "placeholder": "Cerca pagine, impostazioni e torrent...",
+    "placeholderIn": "Cerca in {{name}}...",
+    "groups": {
+      "pages": "Pagine",
+      "actions": "Azioni"
+    },
+    "current": "Attuale",
+    "statisticsNote": "Cronologia di upload e download delle tue istanze",
+    "searchTorrentsFor": "Cerca \"{{query}}\" nei torrent",
+    "torrentMatches_one": "{{count}} torrent corrisponde",
+    "torrentMatches_other": "{{count}} torrent corrispondono",
+    "noTorrentMatches": "Nessun torrent corrisponde",
+    "searching": "Ricerca in corso...",
+    "searchFailed": "La ricerca dei torrent non è riuscita",
+    "listFiltersApply": "Si applicano i filtri dell'elenco",
+    "noMatchIn": "Nessun risultato in {{name}}",
+    "moreOf": "Altre opzioni per {{name}}",
+    "hints": {
+      "navigate": "Naviga",
+      "open": "Apri",
+      "more": "Altro",
+      "searchTorrents": "Cerca torrent",
+      "back": "Indietro"
+    }
   },
   "mobileNav": {
     "dashboard": "Dashboard",
@@ -223,6 +270,28 @@
         "fix": "Se la chiave è errata, crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Orpheus e incollala nelle impostazioni Gazelle (OPS/RED) di qui. Se Orpheus ha bannato l'IP di qui, una nuova chiave non basta: contatta lo staff di Orpheus.",
         "menuFix": "Incolla una nuova chiave nelle impostazioni",
         "action": "Apri le impostazioni Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Pianificazione della scansione bloccata",
+        "title": "La pianificazione della scansione della libreria non può partire",
+        "effect": "qui non può avviare l'esecuzione pianificata della scansione della libreria. Riprova ogni ora.",
+        "fix": "Controlla le impostazioni della scansione della libreria. qui riprova ogni ora.",
+        "menuFix": "Controlla le impostazioni della scansione",
+        "action": "Apri le impostazioni della scansione della libreria",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab è disattivato nelle impostazioni della scansione della libreria, e nessuna chiave API RED o OPS è impostata. Attiva Torznab, oppure aggiungi una chiave RED o OPS nelle impostazioni Gazelle (OPS/RED). qui riprova ogni ora.",
+            "menuFix": "Attiva Torznab, o aggiungi una chiave RED o OPS"
+          },
+          "no_indexer": {
+            "fix": "Nessun indexer è attivo. Attiva un indexer Torznab, oppure aggiungi una chiave RED o OPS nelle impostazioni Gazelle (OPS/RED). qui riprova ogni ora.",
+            "menuFix": "Attiva un indexer"
+          },
+          "instance_missing": {
+            "fix": "L'istanza nelle impostazioni salvate della scansione della libreria non esiste. Scegli un'istanza nelle impostazioni della scansione della libreria, poi salva. qui riprova ogni ora.",
+            "menuFix": "Scegli un'istanza, poi salva"
+          }
+        }
       }
     },
     "actions": {
@@ -321,14 +390,77 @@
   },
   "support": {
     "title": "Sostieni qui",
-    "description": "Hai già i temi e vuoi dare una mano in più? Tutto in qui è già tuo. Un abbonamento non sblocca funzionalità, finanzia il tempo dedicato a svilupparle.",
-    "perkPrefix": "I sostenitori ottengono il ruolo",
-    "perkSuffix": "su Discord e la nostra eterna gratitudine.",
-    "yearly": "{{price}} / anno",
-    "monthly": "{{price}} / mese",
-    "notLicense": "La licenza dei temi è un acquisto unico separato."
+    "description": "I modi per sostenere qui e i loro prezzi.",
+    "heading": "Aiuta a mantenere qui",
+    "intro": "qui è gratuito e funziona allo stesso modo, che tu paghi o no. Il sostegno paga il tempo e gli strumenti che servono a qui.",
+    "licensed": "Grazie per la tua licenza dei temi.",
+    "releases_one": "qui ha pubblicato {{count}} versione negli ultimi 12 mesi.",
+    "releases_other": "qui ha pubblicato {{count}} versioni negli ultimi 12 mesi.",
+    "releaseMap": "Le ultime 52 settimane, un quadrato per ogni giorno. Un quadrato luminoso è un giorno con una nuova versione.",
+    "releaseDay": "Un giorno con una nuova versione",
+    "plans": {
+      "yearly": "{{price}} all'anno",
+      "yearlyNote": "{{price}} al mese, pagati annualmente",
+      "yearlyNoteWithLicense": "{{price}} al mese, pagati annualmente. Include la licenza dei temi.",
+      "license": "Licenza dei temi, da {{price}}",
+      "licenseNote": "Tutti i temi premium attuali e futuri, a vita",
+      "onePayment": "pagamento unico"
+    },
+    "checkout": "Procedi al pagamento",
+    "fromPrice": "da {{price}}",
+    "terms": {
+      "yearly": "Paghi {{price}} oggi, poi {{price}} ogni anno finché non annulli.",
+      "license": "Un pagamento unico di {{price}} o più, importo scelto al pagamento. Nessun abbonamento."
+    },
+    "perks": {
+      "yearly": "I sostenitori ricevono il badge Sostenitore in qui e il ruolo di sostenitore su Discord. Dopo il pagamento, aggiungi la tua chiave da sostenitore a questo server.",
+      "license": "La licenza sblocca i temi premium. Dopo il pagamento, aggiungi la tua chiave di licenza a questo server."
+    },
+    "existing": "Sei già un sostenitore?",
+    "addKey": "Aggiungi la chiave da sostenitore",
+    "key": {
+      "help": "La tua chiave da sostenitore si trova nella pagina di pagamento e nell'email con la ricevuta.",
+      "label": "Chiave da sostenitore",
+      "submit": "Aggiungi chiave",
+      "back": "Indietro"
+    },
+    "ended": "La chiave da sostenitore su questo server non è più valida. qui la ricontrolla ogni giorno. Se il tuo sostegno è terminato, la licenza dei temi resta tua. Trova la sua chiave nel <portal>portale delle licenze</portal> e aggiungila in Impostazioni, sotto Temi.",
+    "removeKey": "Rimuovi la chiave da sostenitore da questo server",
+    "supporter": {
+      "badge": "Sostenitore",
+      "title": "Stai sostenendo qui",
+      "thanks": "Grazie. Il tuo sostegno paga il tempo e gli strumenti che servono a qui.",
+      "detail": "Hai il badge Sostenitore in qui e il ruolo di sostenitore su Discord. Il tuo sostegno sblocca anche i temi premium e include una licenza dei temi a vita. Trova la chiave di licenza nel <portal>portale delle licenze</portal>.",
+      "manage": "Gestisci o annulla il sostegno"
+    },
+    "reminder": {
+      "title_one": "{{count}} giorno di qui su questo server",
+      "title_other": "{{count}} giorni di qui su questo server",
+      "tooltip": "Contati su questo server e mai inviati. qui lo chiede una volta all'anno.",
+      "subtitle": "Sostieni qui. qui lo chiede una volta all'anno.",
+      "notNow": "Non ora",
+      "serverDays_one": "Questo server usa qui da {{count}} giorno. qui lo conta su questo server e non lo invia mai.",
+      "serverDays_other": "Questo server usa qui da {{count}} giorni. qui lo conta su questo server e non lo invia mai.",
+      "notNowToast": "qui lo chiederà di nuovo tra un anno",
+      "dontAskAgain": "Non chiedere più",
+      "offToast": "qui non lo chiederà più",
+      "offToastDescription": "La scorciatoia per il sostegno resta. Riattiva il promemoria in Impostazioni, sotto Applicazione.",
+      "undo": "Annulla",
+      "hiddenToast": "La scorciatoia per il sostegno è nascosta",
+      "hiddenToastDescription": "qui non lo chiederà più. Ripristina la scorciatoia in Impostazioni, sotto Applicazione.",
+      "notForYou": "Non fa per te? <reminder>Disattiva il promemoria annuale</reminder> o <heart>nascondi il cuore</heart>. Le impostazioni li ripristinano entrambi.",
+      "notForYouHeart": "Non fa per te? <heart>Nascondi il cuore</heart>. Le impostazioni lo ripristinano."
+    }
   },
   "labels": {
-    "path": "Percorso"
+    "path": "Percorso",
+    "beta": "Beta"
+  },
+  "kit": {
+    "loadFailed": "Impossibile caricare questa sezione.",
+    "retry": "Riprova",
+    "edit": "Modifica",
+    "moreActions": "Altre azioni",
+    "enabled": "Abilitato"
   }
 }

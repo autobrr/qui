@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -29,8 +30,10 @@ import (
 	"github.com/autobrr/qui/internal/clientmigrate"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/dodo"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	remotebackend "github.com/autobrr/qui/internal/fsops/remote"
@@ -53,10 +56,15 @@ import (
 	"github.com/autobrr/qui/internal/services/lowdisk"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
+	"github.com/autobrr/qui/internal/services/peeraddress"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
+	"github.com/autobrr/qui/internal/services/problemreport"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/share"
+	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/sqlite3store"
 	"github.com/autobrr/qui/internal/sshpool"
@@ -575,6 +583,7 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Invalid OIDC allowed user configuration")
 	}
 	config.WarnIfOIDCAllowedUserUnset(cfg.Config)
+	experimentalFeatures := experimental.New(cfg.Config.ExperimentalFeatures)
 
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
 	if err != nil {
@@ -649,6 +658,10 @@ func (app *Application) runServer() {
 	logExclusionsStore := models.NewLogExclusionsStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
+	problemReportStore, err := models.NewProblemReportStore(db, encryptionKey)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize problem report store")
+	}
 	externalProgramStore := models.NewExternalProgramStore(db)
 	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
@@ -675,6 +688,11 @@ func (app *Application) runServer() {
 
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
+	transfers, err := transfer.NewStore(context.Background(), db)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load the Transfer records")
+	}
+	syncManager.SetHelperTorrents(transfers)
 
 	notificationTargetStore := models.NewNotificationTargetStore(db)
 	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
@@ -689,6 +707,7 @@ func (app *Application) runServer() {
 	go lowdisk.New(db, systemNotices).Run(lowDiskCtx)
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
+	transferHistoryAdapter.SetHelperTorrents(transfers)
 	clientPool.AddSyncEventSink(transferHistoryAdapter)
 	syncManager.SetDeleteNoter(transferHistoryAdapter)
 	liveSamples := livesamples.New(clientPool)
@@ -750,6 +769,7 @@ func (app *Application) runServer() {
 	// Initialize automation activity store and external programs service
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
+	externalProgramService.SetHelperTorrents(transfers)
 
 	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
 	// backups, automations, indexer activity, etc.) onto the SSE stream so the
@@ -805,9 +825,11 @@ func (app *Application) runServer() {
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
 	crossSeedService.SetActivityPublisher(activityHub)
+	crossSeedService.SetHelperTorrents(transfers)
 	crossSeedService.SetMediaIDCacheStore(models.NewMediaIDCacheStore(db))
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
+	reannounceService.SetHelperTorrents(transfers)
 
 	sshPool := sshpool.NewPool(sshpool.NewDialer(instanceStore))
 	backendPool := fsops.NewPoolWithRemote(instanceStore, localbackend.NewBackend(), func(inst *models.Instance) fsops.Backend {
@@ -821,11 +843,13 @@ func (app *Application) runServer() {
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)
 	automationService.SetCrossSeedRoutes(crossSeedRoutes)
+	automationService.SetHeldTorrents(transfers)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 	orphanScanService.SetActivityPublisher(activityHub)
 	orphanScanService.SetCrossSeedRoutes(crossSeedRoutes)
+	orphanScanService.SetTransfers(transfers)
 
 	folderCleanup := qbittorrent.NewFolderCleanup(backendPool, syncManager, orphanScanService)
 	syncManager.SetFolderCleanup(folderCleanup)
@@ -839,13 +863,45 @@ func (app *Application) runServer() {
 	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
 	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
+	dirScanService.SetTransfers(transfers)
+
+	peerAddresses := peeraddress.New(instanceStore, syncManager)
+	transferService := transfer.NewService(context.Background(), transfer.Deps{
+		Store:      transfers,
+		Instances:  instanceStore,
+		Sync:       syncManager,
+		Files:      backendPool,
+		Groups:     crossSeedService,
+		Routes:     crossSeedRoutes,
+		CrossSeeds: crossSeedService,
+		Peers:      peerAddresses,
+		Notifier:   notificationService,
+		Config:     transfer.DefaultConfig(),
+	})
+	automationService.SetExportRunner(transferService)
+	automationService.SetTransferRunner(transferService)
+	// qui's own Share tracker listens only while a Share on it is active.
+	shareService := share.NewService(share.Deps{
+		Store:           share.NewStore(db),
+		Settings:        share.NewSettingsStore(db),
+		TrackerSettings: sharetracker.NewSettingsStore(db),
+		Helpers:         transfers,
+		Instances:       instanceStore,
+		Sync:            syncManager,
+		Peers:           peerAddresses,
+		Config:          share.DefaultConfig(),
+	})
+	syncManager.SetTorrentChangeGuard(shareService)
+	shareCtx, shareCancel := context.WithCancel(context.Background())
+	defer shareCancel()
+	go shareService.Run(shareCtx)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
+		notifyTorrentCompleted(ctx, syncManager, notificationService, transfers, instanceID, torrent)
 	}, crossSeedService.HandleTorrentCompletion)
 
 	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []*qbt.Torrent) {
-		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
+		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, transfers, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -882,6 +938,7 @@ func (app *Application) runServer() {
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir(), BackupDir: cfg.GetBackupDir()}, notificationService)
 	backupService.SetActivityPublisher(activityHub)
+	backupService.SetHelperTorrents(transfers)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
@@ -956,9 +1013,45 @@ func (app *Application) runServer() {
 		BinaryPath: updateInputs.BinaryPath,
 	})
 
+	startedAt := time.Now().UTC()
+	problemReports := problemreport.NewService(cfg.Config.ProblemReportsURL, &http.Client{}, problemReportStore, problemreport.Sources{
+		Qui: func() problemreport.QuiFacts {
+			return problemreport.QuiFacts{
+				Version:              buildinfo.Version,
+				Commit:               buildinfo.Commit,
+				StartedAt:            startedAt,
+				OS:                   runtime.GOOS,
+				Arch:                 runtime.GOARCH,
+				AppContainer:         updateInputs.AppContainer,
+				Database:             dbinterface.DialectOf(db),
+				LogLevel:             cfg.Config.LogLevel,
+				ExperimentalFeatures: experimentalFeatures.Names(),
+			}
+		},
+		Instances: instanceStore,
+		Pool:      clientPool,
+		Notices:   systemNotices,
+		Logs:      cfg.GetLogManager().GetHub(),
+		Releases:  updateService,
+		Search:    crossSeedService,
+		Secrets: problemreport.StoreSecrets{
+			Instances:     instanceStore,
+			Indexers:      torznabIndexerStore,
+			Arr:           arrInstanceStore,
+			CrossSeed:     crossSeedStore,
+			APIKeys:       models.NewAPIKeyStore(db),
+			ClientAPIKeys: clientAPIKeyStore,
+			Notifications: notificationTargetStore,
+			Config: func() []string {
+				return problemreport.ConfigSecrets(cfg.Config)
+			},
+		},
+	})
+
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
 		Config:                           cfg,
+		Experimental:                     experimentalFeatures,
 		Version:                          buildinfo.Version,
 		AuthService:                      authService,
 		SessionManager:                   sessionManager,
@@ -997,6 +1090,8 @@ func (app *Application) runServer() {
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 		SeasonPackRunStore:               seasonPackRunStore,
 		CrossSeedRoutes:                  crossSeedRoutes,
+		Transfers:                        transfers,
+		TransferService:                  transferService,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
 		DiscScanStore:                    discScanStore,
@@ -1005,12 +1100,15 @@ func (app *Application) runServer() {
 		LiveSamples:                      liveSamples,
 		SystemNotices:                    systemNotices,
 		DatabaseShrink:                   databaseShrink,
+		ProblemReports:                   problemReports,
+		StartedAt:                        startedAt,
 		BackendPool:                      backendPool,
 		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
 		ActivityHub:                      activityHub,
+		ShareService:                     shareService,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
@@ -1109,10 +1207,19 @@ func (app *Application) runServer() {
 		}
 
 		// Closed here because os.Exit below means a defer would never fire. A
-		// job's next read gets ErrConnectionLost with ErrPoolClosed in its
-		// chain, a read in flight gets ErrConnectionLost, and either ends with
-		// the process.
-		sshPool.Close()
+		// running Transfer stops first and keeps its partial data. One that
+		// does not stop in time waits on a call that ignores the stop; the pool
+		// then stays open, so that the run cannot go on against a closed pool
+		// and finish a cleanup with leftovers, and the exit ends it the way a
+		// crash does. Another job's next read gets ErrConnectionLost with
+		// ErrPoolClosed in its chain, a read in flight gets ErrConnectionLost,
+		// and either ends with the process.
+		transfersStopped := transferService.Close(ctx) == nil
+		shareCancel()
+		shareService.Close()
+		if transfersStopped {
+			sshPool.Close()
+		}
 		return nil
 	}
 

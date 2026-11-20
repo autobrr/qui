@@ -254,6 +254,20 @@ export interface ExportToInstanceAction {
   condition?: RuleCondition
 }
 
+export interface TransferToInstanceAction {
+  enabled: boolean
+  targetInstanceId: number
+  savePath: string
+  category?: string
+  tags?: string[]
+  /** Default "removeWithFiles". */
+  after?: "removeWithFiles" | "keepFiles" | "keepSeeding"
+  leaveStopped?: boolean
+  /** Default "auto". */
+  way?: "auto" | "copy" | "bittorrent"
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   grouping?: GroupingConfig
@@ -273,11 +287,13 @@ export interface ActionConditions {
   externalProgram?: ExternalProgramAction
   autoManagement?: AutoManagementAction
   exportToInstance?: ExportToInstanceAction
+  transferToInstance?: TransferToInstanceAction
 }
 
 export type FreeSpaceSource =
   | { type: "qbittorrent" }
   | { type: "path"; path: string }
+  | { type: "allowance"; path: string; allowanceBytes: number }
   | { type: "qbitPath"; path: string }
 
 export type FreeSpaceSourceType = FreeSpaceSource["type"]
@@ -362,7 +378,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "dry_run_no_match" | "rule_skipped"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "transferred_to_instance" | "dry_run_no_match" | "rule_skipped"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed" | "dry-run" | "skipped"

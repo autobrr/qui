@@ -166,7 +166,9 @@ func effectiveTorznabCrossSeedSearchLimit(limit int) int {
 type Service struct {
 	instanceStore instanceProvider
 	syncManager   qbittorrentSync
-	filesManager  *filesmanager.Service
+	// helpers is nil until start-up sets it.
+	helpers      helperTorrents
+	filesManager *filesmanager.Service
 	// mediaIDCacheStore backs the MKV-metadata external-ID fallback; nil
 	// disables it. analyzeMediaFile is replaceable in tests; nil selects the
 	// real MediaInfo analyzer.
@@ -250,6 +252,21 @@ type Service struct {
 	searchMu     sync.RWMutex
 	searchCancel context.CancelFunc
 	searchState  *searchRunState
+
+	// scheduleWake wakes the Library Scan schedule loop after a save of the
+	// Library settings, a "Run schedule now", and the end of a run.
+	scheduleWake chan struct{}
+	// scheduleMu guards scheduleLastStart, scheduleRetryAt and
+	// scheduleFailureNotified.
+	scheduleMu sync.Mutex
+	// scheduleLastStart is the start of the last scheduled run, kept also
+	// when its save to the database failed.
+	scheduleLastStart time.Time
+	// scheduleRetryAt is the next try after a scheduled run could not start.
+	scheduleRetryAt time.Time
+	// scheduleFailureNotified records that the current outage of the schedule
+	// already sent its failure notification.
+	scheduleFailureNotified bool
 
 	// domainMappings provides static mappings between tracker domains and indexer domains
 	domainMappings map[string][]string
@@ -375,6 +392,7 @@ func NewService(
 		recoverErroredTorrentsEnabled: recoverErroredTorrents,
 		seasonPackRunStore:            seasonPackRunStore,
 		automationWake:                make(chan struct{}, 1),
+		scheduleWake:                  make(chan struct{}, 1),
 		domainMappings:                initializeDomainMappings(),
 		torrentFilesCache:             contentFilesCache,
 		dedupCache:                    dedupCache,

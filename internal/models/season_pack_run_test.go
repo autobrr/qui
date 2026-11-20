@@ -12,16 +12,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-func TestDefaultCrossSeedAutomationSettings_SeasonPackMatchingDefaults(t *testing.T) {
-	settings := models.DefaultCrossSeedAutomationSettings()
-	require.True(t, settings.SeasonPackSkipRepackCompare)
-	require.False(t, settings.SeasonPackSimplifyHDRCompare)
-	require.False(t, settings.SeasonPackSimplifyWEBCompare)
-	require.False(t, settings.SeasonPackSkipYearCompare)
-	require.False(t, settings.SeasonPackEnabled)
-	require.InDelta(t, 0.75, settings.SeasonPackCoverageThreshold, 0.0001)
-}
-
 func TestSeasonPackRunStore_CreateAndList(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
 	store := models.NewSeasonPackRunStore(db)

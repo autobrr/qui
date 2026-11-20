@@ -133,7 +133,7 @@ export function sumBytes(rows: (TransferHistoryBytes & { baseline?: TransferHist
 export type Metric = "uploaded" | "downloaded"
 
 /** Returns uploaded divided by downloaded, or undefined when nothing moved. */
-export function formatRatio(bytes: TransferHistoryBytes): string | undefined {
+export function formatRatio(bytes: Pick<TransferHistoryBytes, "uploaded" | "downloaded">): string | undefined {
   if (bytes.downloaded > 0) {
     return (bytes.uploaded / bytes.downloaded).toFixed(2)
   }

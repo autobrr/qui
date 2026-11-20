@@ -10,8 +10,10 @@
     "clientProxy": "Klient proxy",
     "apiKeys": "API klíče",
     "externalPrograms": "Externí programy",
+    "shares": "Sdílení",
     "notifications": "Notifikace",
     "dateTime": "Čas a jazyk",
+    "displayProfiles": "Profily zobrazení",
     "statistics": "Statistiky",
     "trackers": "Úpravy trackerů",
     "premiumThemes": "Motivy",
@@ -32,7 +34,6 @@
     "newPassword": "Nové heslo",
     "confirmPassword": "Potvrdit nové heslo",
     "submit": "Změnit heslo",
-    "submitting": "Měním...",
     "toasts": {
       "success": "Heslo změněno úspěšně",
       "error": "Nepodařilo se změnit heslo. Zkontrolujte své aktuální heslo."
@@ -43,84 +44,73 @@
       "minLength": "Heslo musí mít alespoň 8 znaků",
       "confirmRequired": "Potvrdit nové heslo",
       "mismatch": "Hesla se neshodují"
-    }
+    },
+    "newPasswordHint": "Alespoň 8 znaků."
   },
   "instances": {
     "title": "Instance",
     "description": "Spravujte nastavení vašeho qBittorrent připojení",
     "addButton": "Přidat instanci",
-    "loading": "Načítám instance...",
-    "empty": "Žádné instance nakonfigurovány",
-    "addFirst": "Přidat svou první instanci",
     "titleBarSpeeds": {
-      "label": "Rychlost v titulku",
-      "description": "Zobrazit rychlost stahování a odesílání v titulku prohlížeče"
+      "label": "Zobrazit rychlosti přenosu v názvu karty"
     },
-    "addDialog": {
-      "title": "Přidat instanci",
-      "description": "Nastavte novou qBittorrent instanci",
-      "cancel": "Zrušit",
-      "submit": "Přidat instanci",
-      "adding": "Přidávám..."
-    },
-    "toasts": {
-      "reorderFailed": "Nepodařilo se změnit pořadí instance"
+    "browserTab": {
+      "title": "Karta prohlížeče"
     }
   },
   "integrations": {
-    "title": "ARR Integrace",
-    "description": "Nastavte Sonarr a Radarr instance pro vylepšené hledání křížového sdílení pomocí externích ID"
+    "title": "Sonarr a Radarr",
+    "description": "Křížové sdílení zde vyhledává ID z IMDb, TMDb a TVDb pro přesnější shody."
   },
   "clientApiKeys": {
-    "cardTitle": "Proxy klient API klíče",
-    "cardDescription": "Spravujte API klíče pro externí aplikace ke komunikaci s qBittorrent instancemi přes qui",
-    "createButton": "Vytvořit klient API klíč",
-    "loading": "Načítám klient API klíče...",
-    "loadFailed": "Nepodařilo se načíst klient API klíče",
-    "featureUnavailable": "Tato funkce nemusí být v této verzi dostupná",
+    "cardTitle": "Klíče klientské proxy",
+    "cardDescription": "Klíče, se kterými aplikace jako autobrr přistupují ke qBittorrentu přes qui.",
+    "createButton": "Vytvořit klíč",
     "unknownError": "Došlo k chybě",
     "instanceDeleted": "Instance smazána",
-    "empty": "Žádné klient API klíče vytvořeny",
     "idLabel": "ID: {{id}}",
     "labels": {
       "created": "Vytvořeno:",
       "lastUsed": "Poslední použití:",
-      "host": "Host:",
       "showHost": "Zobrazit hosta",
       "hideHost": "Skrýt hosta"
     },
     "createDialog": {
-      "title": "Vytvořit klient API klíč",
-      "description": "Vytvořte API klíč pro konkrétního klienta ke komunikaci s qBittorrent instancemi.",
+      "title": "Nový klíč proxy",
+      "description": "Klíč má přístup jen k instanci qBittorrentu, kterou vyberete.",
       "clientNameLabel": "Název klienta",
       "clientNamePlaceholder": "např. autobrr, tqm, sonarr, radarr, cross-seed",
       "instanceLabel": "qBittorrent instance",
-      "instancePlaceholder": "Vyberte instanci",
-      "creating": "Vytvářím..."
+      "instancePlaceholder": "Vyberte instanci"
     },
     "newKey": {
-      "title": "API klíč vytvořen",
-      "warning": "Tato informace je zobrazena pouze jednou. Uložte ji do svého správce hesel před zavřením dialogu.",
+      "title": "Klíč pro {{name}} byl vytvořen",
+      "warning": "Zkopírujte proxy URL hned. qui ji zobrazí jen jednou.",
       "proxyUrl": "Proxy URL",
       "showProxyUrl": "Zobrazit proxy URL",
       "hideProxyUrl": "Skrýt proxy URL",
       "done": "Hotovo"
     },
     "deleteDialog": {
-      "title": "Smazat klient API klíč?",
-      "description": "Tuto akci nelze vrátit zpět. Žádné aplikace používající tento klíč nebudou mít přístup k qBittorrent instanci.",
-      "cancel": "Zrušit",
-      "delete": "Smazat",
-      "deleteLabel": "Smazat API klíč {{name}}"
+      "title": "Odstranit klíč?",
+      "description": "{{name}} ztratí přístup ke qBittorrentu přes qui. Tuto akci nelze vrátit zpět.",
+      "delete": "Smazat"
     },
     "toasts": {
       "created": "Klient API klíč vytvořen úspěšně",
       "createFailed": "Nepodařilo se vytvořit klient API klíč",
       "deleted": "Klient API klíč smazán úspěšně",
-      "deleteFailed": "Nepodařilo se smazat klient API klíč: {{error}}",
+      "deleteFailed": "Nepodařilo se smazat klient API klíč: {{error}}"
+    },
+    "emptyTitle": "Zatím žádné klíče",
+    "emptyDescription": "Vytvořte jeden klíč pro každou aplikaci, která komunikuje s qBittorrentem.",
+    "lastUsed": "Naposledy použito {{date}}",
+    "neverUsed": "Nikdy nepoužito",
+    "validation": {
       "clientNameRequired": "Název klienta je povinný",
       "selectInstance": "Vyberte qBittorrent instanci"
-    }
+    },
+    "created": "Vytvořeno {{date}}"
   },
   "apiKeys": {
     "cardTitle": "API klíče",
@@ -221,19 +211,10 @@
   "externalPrograms": {
     "cardTitle": "Externí programy",
     "cardDescription": "Konfigurujte externí programy nebo skripty, které lze spustit z kontextového menu torrentu",
-    "createButton": "Vytvořit externí program",
-    "createTitle": "Vytvořit externí program",
+    "createButton": "Přidat program",
+    "createTitle": "Přidat externí program",
     "createDescription": "Konfigurujte externí program nebo skript, který lze spustit z kontextového menu torrentu.",
-    "loading": "Načítám externí programy...",
-    "loadFailed": "Nepodařilo se načíst externí programy",
     "unknownError": "Neznámá chyba",
-    "empty": "Žádné externí programy nakonfigurovány. Vytvořte jeden, abyste mohli začít.",
-    "enabled": "Povoleno",
-    "disabled": "Vypnuto",
-    "created": "Vytvořeno {{date}}",
-    "updated": "Aktualizováno {{date}}",
-    "programPath": "Programová cesta:",
-    "argumentsTemplate": "Argumenty šablony:",
     "editTitle": "Editovat externí program",
     "deleteTitle": "Smazat externí program",
     "delete": "Smazat",
@@ -241,32 +222,22 @@
     "deleteConflictDescription": "Pokud budete pokračovat, akce externího programu bude odebrána z těchto automatizačních pravidel.",
     "deleteDescription": "Jste si jisti, že chcete smazat \"{{name}}\"? Tuto akci nelze vrátit zpět.",
     "deleteAnyway": "Smazat i tak",
-    "nameLabel": "Název *",
+    "nameLabel": "Název",
     "namePlaceholder": "Můj externí program",
-    "pathLabel": "Programová cesta *",
+    "pathLabel": "Programová cesta",
     "pathPlaceholder": "/usr/bin/my-script.sh nebo C:\\Scripts\\my-script.bat",
-    "pathDescription": "Plná cesta k spustitelnému souboru",
     "argumentsLabel": "Argumenty šablony",
     "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
-    "argumentsDescription": "Plná cesta k skriptu s argumenty",
-    "availablePlaceholders": "Dostupné proměnné:",
+    "availablePlaceholders": "Dostupné proměnné",
     "pathMappings": "Cesty mapování",
-    "remotePathPlaceholder": "Vzdálená cesta (např. /mnt/remote-storage)",
-    "localPathPlaceholder": "Lokální cesta (např. /home/user/mounts/remote)",
+    "remotePathPlaceholder": "/mnt/remote-storage",
+    "localPathPlaceholder": "/home/user/mounts/remote",
     "removePathMapping": "Odebrat mapování cesty",
     "addPathMapping": "Přidat mapování cesty",
     "pathMappingsDescription": "Mapování cest převádějí vzdálené cesty na místní body připojení. Užitečné, když spouštíte externí programy na místním qui serveru, zatímco qBittorrent je vzdálený. Cesty jsou porovnávány podle nejdelší předpony. Použijte stejný styl oddělovače cesty jako vzdálená qBittorrent instance (/ pro Linux, \\ pro Windows).",
     "launchInTerminal": "Spustit v terminálovém okně",
     "launchInTerminalDescription": "Pokud je povoleno, program se otevře v novém terminálovém okně. Vypněte pro GUI aplikace nebo programy, které nepotřebují terminálový výstup.",
-    "enableProgram": "Povolit tento program",
-    "cancel": "Zrušit",
-    "saving": "Ukládám...",
-    "updateButton": "Aktualizovat",
-    "createSubmit": "Vytvořit",
-    "ariaLabels": {
-      "edit": "Editovat {{name}}",
-      "delete": "Smazat {{name}}"
-    },
+    "enableProgram": "Povoleno",
     "toasts": {
       "created": "Externí program vytvořen úspěšně",
       "createFailed": "Nepodařilo se vytvořit externí program: {{error}}",
@@ -290,29 +261,27 @@
       "size": "Velikost (bajtů)",
       "progress": "Progres (0-1)",
       "comment": "Komentář torrentu"
-    }
+    },
+    "remotePath": "Vzdálená cesta",
+    "localPath": "Místní cesta",
+    "save": "Uložit",
+    "emptyTitle": "Žádné externí programy",
+    "emptyDescription": "Přidejte program nebo skript a spouštějte ho z kontextové nabídky torrentu.",
+    "pathMappingsCount_one": "{{count}} mapování cesty",
+    "pathMappingsCount_few": "{{count}} mapování cest",
+    "pathMappingsCount_other": "{{count}} mapování cest"
   },
   "notifications": {
     "cardTitle": "Oznámení",
     "cardDescription": "Posílejte oznámení a aktualizace stavu přes jakoukoli podporovanou Shoutrrr službu",
-    "addButton": "Přidat cíl oznámení",
-    "loading": "Načítám cíle oznámení...",
-    "loadFailed": "Nepodařilo se načíst cíle oznámení",
-    "empty": "Žádné cíle oznámení nakonfigurovány. Přidejte jeden, abyste mohli začít.",
+    "addButton": "Přidat cíl",
     "allEvents": "Všechny události kromě systémového upozornění",
-    "showList": "Zobrazit seznam",
-    "hideList": "Skrýt seznam",
-    "badges": {
-      "enabled": "Povoleno",
-      "disabled": "Vypnuto"
-    },
     "groups": {
       "torrent": "Torrent",
       "maintenance": "Údržba",
       "crossSeed": "Křížové sdílení",
       "automations": "Automatizace",
-      "other": "Ostatní",
-      "unknown": "Neznámé"
+      "other": "Ostatní"
     },
     "form": {
       "name": "Název",
@@ -327,10 +296,8 @@
       },
       "enabled": "Povoleno",
       "events": "Události",
-      "selectAll": "Vybrat vše",
-      "select": "Vybrat",
-      "clear": "Vymazat",
-      "loadingEventTypes": "Načítám typy událostí..."
+      "allEvents": "Všechny události",
+      "selectGroup": "Všechny události: {{group}}"
     },
     "dialog": {
       "newTitle": "Nový cíl oznámení",
@@ -339,8 +306,6 @@
       "editDescription": "Aktualizujte doručení nastavení pro tento cíl.",
       "deleteTitle": "Smazat cíl oznámení?",
       "deleteDescription": "Toto odstraní {{name}}. Můžete jej přidat později, pokud je to potřeba.",
-      "cancel": "Zrušit",
-      "saving": "Ukládám...",
       "save": "Uložit",
       "delete": "Smazat"
     },
@@ -359,18 +324,17 @@
       "testSent": "Testovací oznámení odesláno úspěšně",
       "testFailed": "Nepodařilo se odeslat testovací oznámení"
     },
-    "ariaLabels": {
-      "sendTest": "Odeslat test do {{name}}",
-      "edit": "Editovat {{name}}",
-      "delete": "Smazat {{name}}"
+    "emptyTitle": "Zatím žádné cíle oznámení",
+    "emptyDescription": "Přidejte cíl a dostávejte upozornění na Discord, Telegram, Notifiarr nebo jinou službu Shoutrrr.",
+    "eventSummary": "Události: {{selected}} z {{total}}",
+    "actions": {
+      "sendTest": "Odeslat test"
     }
   },
   "dateTime": {
     "cardTitle": "Datum a čas",
     "cardDescription": "Nastavte časovou zónu, formát data a zobrazení času",
     "timezone": "Časová zóna",
-    "timezoneDescription": "Vyberte svou místní časovou zónu pro přesné zobrazení času",
-    "selectTimezone": "Vyberte časovou zónu",
     "detected": "Detekováno",
     "regions": {
       "UTC": "UTC",
@@ -380,23 +344,14 @@
       "Africa": "Afrika",
       "Oceania": "Oceánie"
     },
-    "timeFormat": "Formát času",
     "use12Hour": "Použít 12-hodinový formát (AM/PM)",
-    "use12HourDescription": "Přepnout mezi 12-hodinovým a 24-hodinovým formátem zobrazení času",
     "dateFormat": "Formát datumu",
-    "dateFormatDescription": "Vyberte, jak jsou data zobrazována v aplikaci",
-    "selectDateFormat": "Vyberte formát datumu",
     "isoFormat": "ISO 8601 (YYYY-MM-DD)",
     "usFormat": "US formát (MM/DD/YYYY)",
     "euFormat": "Evropský formát (DD/MM/YYYY)",
     "relativeFormat": "Relativní (např. \"2 hodiny zpět\")",
     "preview": "Náhled",
-    "previewDescription": "Jak budou data a časy zobrazovány v aplikaci",
-    "savePreferences": "Uložit nastavení",
-    "toasts": {
-      "success": "Nastavení data a času uložena",
-      "error": "Nepodařilo se uložit nastavení data a času"
-    }
+    "previewDescription": "Jak budou data a časy zobrazovány v aplikaci"
   },
   "statistics": {
     "cardTitle": "Statistiky",
@@ -430,7 +385,6 @@
       "confirmBefore": "qui smaže historii instance {{name}} před {{date}}. Pokud záznam začal před tímto datem, smažou se i bajty z doby před prvním záznamem a „Záznam od“ se posune na toto datum. Tuto akci nelze vrátit.",
       "sqliteSpace": "Soubor databáze si ponechá svou velikost. SQLite volné místo znovu použije pro novou historii.",
       "postgresSpace": "Smazání všeho u všech instancí vrátí místo na disk hned. Po jiném smazání Postgres volné místo znovu použije pro novou historii.",
-      "cancel": "Zrušit",
       "confirm": "Smazat",
       "deleted": "Historie smazána",
       "failed": "Historii se nepodařilo smazat",
@@ -442,7 +396,6 @@
         "manualDocs": "Zmenšit soubor ručně"
       }
     },
-    "loadFailed": "Nastavení statistik se nepodařilo načíst",
     "toasts": {
       "saved": "Nastavení statistik uloženo",
       "saveFailed": "Nastavení statistik se nepodařilo uložit"
@@ -455,7 +408,6 @@
     },
     "browserIntegration": {
       "title": "Integrace prohlížeče",
-      "description": "Nastavte, jak vaši prohlížeč zpracovává magnetové odkazy",
       "registerDescription": "Registrujte qui jako obslužný program magnetových odkazů. Tímto způsobem můžete otevřít magnetové odkazy přímo v qui.",
       "registerButton": "Registrovat jako obslužný program",
       "toasts": {
@@ -465,11 +417,9 @@
     }
   },
   "logs": {
-    "title": "Logy",
     "description": "Zobrazte živé logy a nastavte nastavení logů",
-    "settingsSrOnly": "Otevřít nastavení logů",
     "configuration": {
-      "title": "Nastavení",
+      "title": "Nastavení logu",
       "description": "Upravte úroveň logu, cestu výstupu a nastavení rotace.",
       "level": "Úroveň logu",
       "levelPlaceholder": "Vyberte úroveň logu",
@@ -477,40 +427,48 @@
       "pathPlaceholder": "Zanechte prázdné pouze pro stdout",
       "maxSize": "Maximální velikost (MB)",
       "maxBackups": "Maximální počet záloh",
-      "saving": "Ukládám...",
-      "saveSettings": "Uložit nastavení"
+      "saveSettings": "Uložit nastavení",
+      "lockedByEnv": "Nastaveno proměnnou prostředí",
+      "lockedByEmptyEnv": "Nastaveno prázdnou proměnnou prostředí",
+      "configFile": "Konfigurační soubor"
     },
     "viewer": {
       "connected": "Připojeno",
-      "disconnected": "Odpojeno",
       "searchPlaceholder": "Hledat logy...",
       "allLevels": "Všechny úrovně",
       "all": "Vše",
       "none": "Žádné",
-      "levelCount_one": "{{count}} Úroveň",
-      "levelCount_few": "{{count}} Úrovně",
-      "levelCount_other": "{{count}} Úrovně",
-      "mutedCount_one": "{{count}} Ztlumené",
-      "mutedCount_few": "{{count}} Ztlumené",
-      "mutedCount_other": "{{count}} Ztlumené",
+      "levelCount_one": "{{count}} úroveň",
+      "levelCount_few": "{{count}} úrovně",
+      "levelCount_other": "{{count}} úrovní",
+      "mutedCount_one": "{{count}} ztlumená",
+      "mutedCount_few": "{{count}} ztlumené",
+      "mutedCount_other": "{{count}} ztlumených",
       "mutedMessages": "Ztlumené zprávy",
       "clearAll": "Smazat vše",
       "clear": "Smazat",
-      "autoScroll": "Automatické posouvání",
       "noEntriesMatch": "Žádné záznamy neodpovídají aktuálnímu filtru",
       "waiting": "Čekám na logové záznamy...",
       "showing": "Zobrazuji {{shown}} z {{total}} záznamů ({{max}} {{mode}})",
       "maxLive": "max",
       "maxPaused": "max při pozastavení",
       "oldestEntriesDropped": "• nejstarší záznamy odstraněny",
-      "muteSimilarEntries": "Ztlumit podobné záznamy"
+      "muteSimilarEntries": "Ztlumit podobné záznamy",
+      "title": "Živý log",
+      "description": "Nové záznamy se zobrazují, jak je qui zapisuje.",
+      "pause": "Pozastavit",
+      "follow": "Sledovat",
+      "connecting": "Připojování…",
+      "reconnecting": "Spojení ztraceno. Opětovné připojování…",
+      "levels": "Úrovně",
+      "unmute": "Zrušit ztlumení: {{message}}"
     },
     "entryDialog": {
       "title": "Log záznam",
       "rawLine": "Nezpracovaný logový řádek",
       "copyRaw": "Kopírovat nezpracovaný řádek",
       "copyJson": "Kopírovat JSON",
-      "close": "Zavřít"
+      "mute": "Ztlumit podobné"
     },
     "toasts": {
       "settingsUpdated": "Nastavení logů aktualizována",
@@ -521,10 +479,17 @@
     },
     "files": {
       "title": "Soubory protokolu",
-      "downloadSrOnly": "Stáhnout {{filename}}",
       "toasts": {
         "downloadFailed": "Stažení souboru {{filename}} se nezdařilo"
-      }
+      },
+      "description": "Aktuální soubor logu a jeho rotované kopie.",
+      "emptyTitle": "Žádné soubory logu",
+      "emptyDescription": "Nastavte cestu k souboru logu, aby se log ukládal na disk.",
+      "download": "Stáhnout"
+    },
+    "validation": {
+      "maxSize": "Zadejte 1 nebo více",
+      "maxBackups": "Zadejte 0 nebo více"
     }
   },
   "themes": {
@@ -590,6 +555,9 @@
         "unlockDescription": "Zaplatíte kolik chcete (min $9.99) • Životní licence • Všechny motivy",
         "activeTitle": "Licence aktivní",
         "activeDescription": "Máte přístup ke všem aktuálním a budoucím motivům",
+        "supporterTitle": "Motivy odemčeny",
+        "supporterDescription": "Vaše podpora odemyká všechny současné i budoucí motivy. Zahrnuje doživotní licenci k motivům. Abyste si motivy ponechali i po skončení podpory, přidejte licenční klíč z licenčního portálu.",
+        "supportEndedDescription": "Vaše podpora zahrnovala doživotní licenci k motivům. Její klíč najdete v licenčním portálu. Přidejte ho sem.",
         "activationRequiredTitle": "Vyžaduje se aktivace licence",
         "activationRequiredDescription": "Vaše licence musí být aktivována na této stroji",
         "offlineTitle": "Licenční služba je nedostupná",
@@ -644,13 +612,11 @@
       "actions": {
         "addLicense": "Přidat licenci",
         "remove": "Odstranit",
-        "removing": "Odstraňuji...",
         "getPremium": "Získat licenci",
         "reactivate": "Reaktivovat licenci",
         "activating": "Aktivujeme...",
         "copyLicenseKey": "Kopírovat licenční klíč",
         "activate": "Aktivovat licenci",
-        "validating": "Ověřuji...",
         "openDodoCheckout": "Otevřít DodoPayments checkout",
         "openLicensePortal": "Otevřít licenční portál"
       },
@@ -704,6 +670,7 @@
       "failedCopyVerify": "Nepodařilo se zkopírovat příkaz ověření",
       "toasts": {
         "activationSuccessPremium": "Licence aktivována! Děkujeme!",
+        "activationSuccessSupporter": "Klíč podporovatele přidán. Děkujeme!",
         "paymentCompleted": "Platba dokončena. Přidejte svůj licenční klíč pro dokončení nastavení.",
         "paymentNotCompleted": "Platba nebyla dokončena úspěšně.",
         "returnedFromCheckout": "Vráceno z pokladny. Přidejte svůj licenční klíč, když budete připraveni.",
@@ -784,60 +751,38 @@
     }
   },
   "arrInstances": {
-    "addButton": "Přidat ARR instance",
+    "addButton": "Přidat instanci",
     "addDialog": {
-      "title": "Přidat ARR instance",
-      "description": "Nastavte Sonarr nebo Radarr instance pro vyhledávání ID během křížového sdílení."
+      "title": "Nová instance",
+      "description": "Server Sonarr nebo Radarr, od kterého křížové sdílení získává ID."
     },
     "editDialog": {
-      "title": "Upravit ARR instance"
+      "title": "Upravit instanci"
     },
     "deleteDialog": {
-      "title": "Odstranit ARR instance?",
-      "description": "Jste si jisti, že chcete odstranit \"{{name}}\"? Tato akce nemůže být vrácena."
+      "title": "Odstranit instanci?",
+      "description": "qui přestane používat {{name}} k vyhledávání ID. Tuto akci nelze vrátit zpět."
     },
-    "badges": {
-      "enabled": "Povoleno",
-      "disabled": "Vypnuto",
-      "connected": "Připojeno",
-      "failed": "Selhalo"
-    },
-    "loading": "Načítám ARR instance...",
-    "loadFailed": "Nepodařilo se načíst ARR instance",
-    "empty": "Žádné ARR instance nakonfigurovány. Přidejte Sonarr nebo Radarr instance pro povolení vyhledávání ID během křížového sdílení.",
-    "created": "Vytvořeno {{date}}",
-    "sonarrInstances": "Sonarr instance",
-    "radarrInstances": "Radarr instance",
     "unknownError": "Neznámá chyba",
     "actions": {
       "testConnection": "Testovat připojení",
-      "testing": "Testuji...",
-      "cancel": "Zrušit",
       "delete": "Odstranit",
-      "create": "Vytvořit",
-      "update": "Upravit",
-      "saving": "Ukládám..."
+      "save": "Uložit"
     },
     "form": {
-      "type": "Typ *",
-      "selectType": "Vyberte typ",
-      "name": "Jméno *",
+      "type": "Typ",
+      "name": "Jméno",
       "namePlaceholder": "Můj {{type}}",
-      "baseUrl": "Základní URL *",
-      "baseUrlDescription": "Základní URL vašeho {{type}} instance",
-      "apiKey": "API klíč *",
-      "apiKeyOptional": "API klíč (ponechte prázdné pro zachování aktuálního)",
+      "baseUrl": "Základní URL",
+      "apiKey": "API klíč",
       "apiKeyPlaceholder": "Zadejte API klíč",
       "apiKeyPlaceholderEdit": "••••••••",
       "apiKeyDescription": "Nalezeno v Nastavení > Obecné v {{type}}",
       "basicAuth": "Basic Autentizace",
       "basicAuthDescription": "Použijte HTTP basic autentizaci pro ARR za reverzním proxy.",
-      "basicUsername": "Basic Uživatelské jméno",
-      "basicUsernamePlaceholder": "Uživatelské jméno",
-      "basicPassword": "Basic Heslo",
-      "basicPasswordPlaceholder": "Heslo",
-      "basicPasswordPlaceholderEdit": "<redacted>",
-      "basicPasswordKeep": "Ponechte jako <redacted> pro zachování aktuálního hesla.",
+      "basicUsername": "Uživatelské jméno",
+      "basicPassword": "Heslo",
+      "basicPasswordKeep": "Ponechte beze změny pro zachování aktuálního hesla.",
       "priority": "Priorita",
       "priorityDescription": "Vysoké priority instance jsou dotazovány jako první",
       "timeoutSeconds": "Timeout (sekundy)",
@@ -847,7 +792,8 @@
         "radarr": "Radarr (filmy)",
         "sonarrShort": "Sonarr",
         "radarrShort": "Radarr"
-      }
+      },
+      "apiKeyKeep": "Ponechte prázdné pro zachování aktuálního klíče."
     },
     "validation": {
       "nameRequired": "Jméno je povinné",
@@ -859,11 +805,6 @@
       "basicPasswordRequiredSubmit": "Heslo je povinné",
       "basicPasswordKeepOrEnter": "Zadejte nové heslo nebo zachovejte aktuální"
     },
-    "ariaLabels": {
-      "testConnection": "Testovat připojení pro {{name}}",
-      "edit": "Upravit {{name}}",
-      "delete": "Odstranit {{name}}"
-    },
     "toasts": {
       "created": "ARR instance vytvořena úspěšně",
       "createFailed": "Nepodařilo se vytvořit ARR instance: {{error}}",
@@ -874,7 +815,14 @@
       "connectionSuccess": "Připojení úspěšné",
       "connectionFailed": "Připojení selhalo: {{error}}",
       "testFailed": "Nepodařilo se testovat připojení: {{error}}"
-    }
+    },
+    "status": {
+      "connected": "Připojeno",
+      "failed": "Test selhal"
+    },
+    "tested": "Poslední test: {{date}}",
+    "emptyTitle": "Zatím žádný Sonarr ani Radarr",
+    "emptyDescription": "Přidejte jeden, aby křížové sdílení mohlo hledat podle ID."
   },
   "indexers": {
     "title": "Torznab indexery",
@@ -883,7 +831,6 @@
     "deleteAllIndexers": "Odstranit všechny indexery",
     "deleteAllDescription": "Jste si jisti, že chcete odstranit všechny {{count}} indexery? Tato akce nemůže být vrácena.",
     "toast": {
-      "loadFailed": "Nepodařilo se načíst indexery",
       "deletedSuccess": "Indexer odstraněn",
       "deleteFailed": "Nepodařilo se odstranit indexer",
       "deleteAllSuccess": "Odstraněno všechny {{count}} indexery",
@@ -895,14 +842,17 @@
       "testAllPartial": "{{success}} úspěšný, {{failed}} selhalo",
       "failedIndexers": "Selhalo indexery: {{names}}",
       "capsSynced": "Schopnosti synchronizovány z backendu",
-      "failedToSyncCaps": "Nepodařilo se synchronizovat schopnosti"
+      "failedToSyncCaps": "Nepodařilo se synchronizovat schopnosti",
+      "testFailed": "Test připojení selhal"
     },
     "page": {
       "summary": "{{enabled}} povolený, {{capabilities}} s schopnostmi",
       "description": "Spravujte Torznab indexery powered by Jackett, Prowlarr, nebo nativní koncové bodytrackerů",
       "deleteAll": "Odstranit všechny",
-      "discover": "Najít",
-      "addSingle": "Přidat jeden"
+      "addMenu": {
+        "discover": "Najít v Jackettu nebo Prowlarru",
+        "manual": "Přidat jeden podle URL"
+      }
     },
     "dialog": {
       "addTitle": "Přidat indexer",
@@ -944,10 +894,7 @@
         "native": "Nativní Torznab"
       },
       "buttons": {
-        "save": "Uložit",
-        "add": "Přidat",
-        "saving": "Ukládám...",
-        "cancel": "Zrušit"
+        "save": "Uložit"
       },
       "toast": {
         "createdSuccess": "Indexer vytvořen úspěšně",
@@ -959,6 +906,15 @@
         "basicUsernameRequired": "Basic auth uživatelské jméno je povinné",
         "basicPasswordRequired": "Basic auth heslo je povinné",
         "basicPasswordRequiredOrKeep": "Basic auth heslo je povinné (nebo ponechte <redacted>)"
+      },
+      "validation": {
+        "nameRequired": "Zadejte název.",
+        "baseUrlRequired": "Zadejte základní URL.",
+        "baseUrlInvalid": "Zadejte úplnou URL, například {{example}}.",
+        "indexerIdRequired": "Zadejte ID indexeru v Prowlarru.",
+        "apiKeyRequired": "Zadejte klíč API.",
+        "priorityInvalid": "Zadejte celé číslo, 0 nebo více.",
+        "timeoutInvalid": "Zadejte celé číslo od 5 do 120."
       }
     },
     "autodiscovery": {
@@ -983,11 +939,8 @@
         "indexerUrl": "Prowlarr výchozím je http://localhost:9696, Jackett je http://localhost:9117."
       },
       "buttons": {
-        "cancel": "Zrušit",
         "discover": "Najít",
-        "discovering": "Nacházím...",
         "back": "Zpět",
-        "importing": "Importuji...",
         "import": "Import {{count}} indexeru",
         "importPlural": "Import {{count}} indexerů",
         "selectAll": "Vybrat vše",
@@ -997,13 +950,11 @@
       "noIndexersFound": "Žádné indexery nalezeny",
       "willUpdate": "Bude aktualizován",
       "typeLabel": "Typ:",
-      "backendLabel": "Backend:",
-      "notConfigured": "(Nekonfigurováno)",
+      "notConfigured": "Nekonfigurováno",
       "unknownError": "Neznámá chyba",
       "toast": {
         "urlRequired": "Indexer URL je povinný",
         "basicAuthRequired": "Basic auth vyžaduje uživatelské jméno a heslo",
-        "urlRequiredBeforeImport": "Zadejte indexer URL před importem",
         "discoveredWithExisting": "Nalezeno {{total}} indexerů ({{existing}} již existují)",
         "discovered": "Nalezeno {{count}} indexerů",
         "discoverFailed": "Nepodařilo se najít indexery: {{error}}",
@@ -1030,44 +981,32 @@
       "backend": "Backend",
       "priority": "Priorita",
       "status": "Stav",
-      "testStatus": "Testovací stav",
       "capabilities": "Schopnosti",
-      "timeout": "Časový limit",
-      "actions": "Akce",
-      "enabled": "Povoleno",
-      "disabled": "Vypnuto",
       "working": "Funkční",
       "failed": "Selhalo",
       "untested": "Neprovedený test",
       "testAll": "Test všech",
-      "filters": "Filtry",
       "clearFilters": "Vymazat filtry",
       "showingCount": "Zobrazuji {{shown}} z {{total}} indexerů",
-      "loading": "Načítám...",
-      "noIndexers": "Žádné indexery nakonfigurovány. Začněte přidáním jednoho indexeru.",
       "noMatch": "Žádné indexery odpovídají aktuálním filtům",
       "noCapabilities": "Žádné schopnosti",
-      "sync": "Synchronizovat",
-      "collapse": "Sbalit",
       "filterStatus": "Stav",
       "filterTestStatus": "Testovací stav",
       "filterBackend": "Backend",
       "filterAll": "Vše",
-      "filterEnabledOnly": "Povolené pouze",
-      "filterDisabledOnly": "Vypnuté pouze",
-      "filterWorkingOnly": "Funkční pouze",
-      "filterFailedOnly": "Selhalo pouze",
-      "filterUntestedOnly": "Neprovedený test pouze",
       "filterJackett": "Jackett",
       "filterProwlarr": "Prowlarr",
       "filterNative": "Nativní",
       "tooltipTest": "Testovat připojení",
       "tooltipSyncCaps": "Synchronizovat schopnosti",
-      "tooltipEdit": "Upravit",
       "tooltipDelete": "Odstranit",
-      "tooltipSyncCapsFromBackend": "Synchronizovat schopnosti z backendu",
-      "capability": "Schopnost: {{name}}",
-      "clickToShowAllCapabilities": "Klikněte pro zobrazení všech {{count}} schopností"
+      "sortBy": "Řadit podle",
+      "sortAscending": "Vzestupně",
+      "sortDescending": "Sestupně",
+      "sortAndFilter": "Řazení a filtry",
+      "order": "Pořadí",
+      "filterEnabled": "Povolené",
+      "filterDisabled": "Vypnuté"
     },
     "activity": {
       "title": "Aktivita plánovače",
@@ -1077,16 +1016,13 @@
       "noActiveTasks": "Žádné aktivní úlohy nebo omezení",
       "andMore": "...a {{count}} dalších",
       "workersStatus": "{{used}}/{{total}} pracovníků",
-      "runningCount": "{{count}} běží",
-      "queuedCount": "{{count}} v frontě",
-      "cooldownCount": "{{count}} čekání",
       "ready": "Připraveno",
-      "left": "{{time}} zbývá"
+      "left": "{{time}} zbývá",
+      "description": "Vyhledávání, která právě běží, čekají ve frontě nebo čekají na konec limitu."
     },
     "searchHistory": {
       "title": "Historie vyhledávání",
       "searches": "{{count}} vyhledávání",
-      "searchesWithErrors": "{{count}} vyhledávání, {{errors}} chyb",
       "noSearchesYet": "Žádné vyhledávání",
       "successful": "{{count}} úspěšné",
       "failed": "{{count}} selhalo",
@@ -1101,16 +1037,21 @@
         "added": "Přidáno {{count}}",
         "error": "Chyba",
         "searchParameters": "Hledací parametry",
-        "mode": "Režim:",
-        "type": "Typ:",
+        "mode": "Režim",
+        "type": "Typ",
         "job": "Úloha {{id}}",
         "statusSuccess": "Úspěch",
         "statusFailed": "Selhalo",
         "statusSkipped": "Přeskakováno",
         "statusRateLimited": "Omezeno",
         "season": "Sezóna",
-        "episode": "Epizoda"
-      }
+        "episode": "Epizoda",
+        "query": "Dotaz",
+        "finished": "Dokončeno"
+      },
+      "description": "Poslední vyhledávání, která qui odeslal vašim indexerům.",
+      "showAll": "Zobrazit vše ({{count}})",
+      "showFewer": "Zobrazit méně"
     },
     "priorityLabels": {
       "interactive": "Interaktivní",
@@ -1132,6 +1073,15 @@
       "app": "Aplikace",
       "game": "Hra",
       "unknown": "Neznámé"
+    },
+    "list": {
+      "testing": "Testuje se",
+      "priority": "Priorita {{priority}}",
+      "emptyTitle": "Zatím žádné indexery",
+      "emptyDescription": "Najděte je v Jackettu nebo Prowlarru, nebo jeden přidejte ručně.",
+      "capabilities_one": "{{count}} schopnost",
+      "capabilities_few": "{{count}} schopnosti",
+      "capabilities_other": "{{count}} schopností"
     }
   },
   "gazelle": {
@@ -1155,33 +1105,26 @@
     "configTitle": "Konfigurace mezipaměti",
     "configDescription": "Upravte, jak dlouho jsou výsledky vyhledávání uloženy.",
     "cacheTTL": "Mezipaměť TTL (minut)",
-    "saving": "Ukládám...",
     "saveTTL": "Uložit",
     "ttlHelper": "Minimum {{min}} minut. Vyšší hodnoty snižují zatížení indexerů.",
     "entries": "Záznamy",
     "hitCount": "Počet zásahů",
     "approxSize": "Přibližná velikost",
-    "ttl": "TTL",
     "newestEntry": "Nejnovější záznam",
     "lastUsed": "Poslední použití",
     "enabled": "Povoleno",
     "disabled": "Vypnuto",
-    "ttlValue": "{{minutes}} minut",
-    "timestamps": {
-      "justNow": "právě teď",
-      "ago": "{{duration}} před",
-      "inFuture": "{{duration}} později"
-    },
     "toasts": {
       "ttlUpdated": "Mezipaměť TTL aktualizována na {{minutes}} minut",
-      "ttlUpdateFailed": "Nepodařilo se aktualizovat mezipaměť TTL",
+      "ttlUpdateFailed": "Nepodařilo se aktualizovat mezipaměť TTL"
+    },
+    "validation": {
       "invalidNumber": "Zadejte platné číslo",
       "ttlMinimum": "TTL musí být alespoň {{min}} minut"
-    }
+    },
+    "status": "Stav"
   },
   "application": {
-    "loading": "Načítám...",
-    "loadFailed": "Nepodařilo se načíst informace o aplikaci",
     "build": {
       "title": "Build",
       "description": "Verze a detaily sestavení.",
@@ -1191,8 +1134,6 @@
       "buildDate": "Datum sestavení",
       "updateStatus": "Stav aktualizace",
       "statuses": {
-        "unknown": "Neznámý",
-        "unknownDetail": "Nepodařilo se určit stav aktualizace",
         "disabled": "Vypnuto",
         "disabledDetail": "Aktualizace jsou vypnuté",
         "devBuild": "Vývojová verze",
@@ -1204,6 +1145,16 @@
         "notCheckedYet": "Neprovedený test pouze",
         "lastChecked": "Poslední kontrola {{date}}"
       }
+    },
+    "support": {
+      "description": "qui je zdarma. Práci na něm platí podporovatelé a licence k motivům.",
+      "open": "Jak podpořit qui",
+      "openSupporter": "Vaše podpora",
+      "shortcut": "Zobrazit zkratku pro podporu",
+      "shortcutHelp": "Srdce v záhlaví a „Podpořit qui“ v nabídce na telefonu.",
+      "reminder": "Připomenout jednou za rok",
+      "reminderDescription": "Jedna připomínka za rok, nikdy víc. Vypnuto, dokud je zkratka pro podporu skrytá.",
+      "reminderSupporter": "qui podporovatelům nepřipomíná."
     },
     "restart": {
       "button": "Restartovat",
@@ -1271,15 +1222,13 @@
       "title": "Čas běhu",
       "description": "Informace o času běhu serveru.",
       "uptime": "Doba běhu",
-      "runtime": "Čas běhu"
+      "runtime": "Čas běhu",
+      "bindAddress": "Navázaná adresa"
     },
     "auth": {
       "title": "Autentizace",
       "description": "Konfigurace autentizace.",
       "currentSessionAuth": "Aktuální session",
-      "unknown": "Neznámý",
-      "loading": "Načítám...",
-      "unavailable": "Nepřístupné",
       "yes": "Ano",
       "no": "Ne",
       "oidcEnabled": "OIDC povolen",
@@ -1290,25 +1239,20 @@
       "title": "Úložiště",
       "description": "Cesty k databázi a souborovému systému.",
       "database": "Databáze",
-      "bind": "Navázaná adresa",
       "configDir": "Konfigurační adresář",
       "dataDir": "Adresář dat"
     }
   },
   "trackerCustomizations": {
     "cardTitle": "Úpravy trackerů",
-    "cardDescription": "Přejmenujte trackery a sloučte domény jednoho trackeru do jedné položky. qui zobrazuje zobrazovaný název všude, kde zobrazuje tracker.",
+    "cardDescription": "Přejmenujte trackery a sloučte domény jednoho trackeru do jedné položky.",
     "loading": "Načítání trackerů…",
-    "empty": "Zatím žádné trackery. Trackery se zde zobrazí, jakmile bude mít instance torrenty.",
-    "importTooltip": "Importovat vlastní nastavení",
-    "exportTooltip": "Exportovat vlastní nastavení",
     "mergedFrom": "Spojeno s: {{domains}}",
     "original": "Původní: {{domain}}",
     "mergeTooltip": "Spojit vybrané trackery do této skupiny",
     "mergeIntoGroup": "Spojit do skupiny",
     "addToMerge": "Přidat do spojení",
     "rename": "Přejmenovat",
-    "edit": "Editovat",
     "delete": "Smazat",
     "customizeDialog": {
       "editTitle": "Editovat název trackeru",
@@ -1323,8 +1267,6 @@
       "selectedTrackers": "Vybrané trackery",
       "primary": "Hlavní",
       "removeDomain": "Odebrat {{domain}}",
-      "cancel": "Zrušit",
-      "saving": "Ukládám...",
       "save": "Uložit",
       "renameAction": "Přejmenovat",
       "mergeAction": "Spojit"
@@ -1332,7 +1274,7 @@
     "importDialog": {
       "title": "Importovat vlastní nastavení trackerů",
       "description": "Vložte JSON pro import vlastních nastavení trackerů (přejmenování a spojení).",
-      "jsonData": "JSON Data",
+      "jsonData": "Data JSON",
       "invalidFormat": "Neplatný formát: předpokládám pole trackerCustomizations",
       "missingDisplayName": "Neplatná položka: chybí displayName",
       "invalidDomains": "Neplatná položka: domains musí být pole, které není prázdné",
@@ -1346,7 +1288,6 @@
       "conflictsWith": "Konflikt s: {{name}}",
       "skip": "Přeskočit",
       "overwrite": "Přepsat",
-      "cancel": "Zrušit",
       "importing": "Importujeme...",
       "import": "Importovat"
     },
@@ -1363,6 +1304,20 @@
       "importedCount_few": "Importována {{count}} vlastní nastavení trackerů",
       "importedCount_other": "Importováno {{count}} vlastních nastavení trackerů",
       "noCustomizationsImported": "Žádná vlastní nastavení nejsou importována"
+    },
+    "cardHelp": "qui zobrazuje zobrazovaný název všude, kde zobrazuje tracker.",
+    "emptyTitle": "Zatím žádné trackery",
+    "emptyDescription": "Trackery se zde zobrazí, jakmile bude mít instance torrenty.",
+    "importButton": "Importovat",
+    "exportButton": "Exportovat",
+    "selectionHint": "Vyberte trackery, které chcete přejmenovat nebo sloučit.",
+    "selectedCount_one": "{{count}} vybraný",
+    "selectedCount_few": "{{count}} vybrané",
+    "selectedCount_other": "{{count}} vybraných",
+    "clearSelection": "Zrušit výběr",
+    "deleteDialog": {
+      "title": "Smazat úpravu?",
+      "description": "Trackery {{name}} budou znovu zobrazovat své vlastní domény. Tuto akci nelze vrátit zpět."
     }
   }
 }

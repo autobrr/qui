@@ -7,24 +7,12 @@
       "disconnected": "Odpojeno"
     },
     "tooltips": {
-      "disableInstance": "Vypnout instanci",
-      "enableInstance": "Zapnout instanci",
       "moveUp": "Přesunout nahoru",
       "moveDown": "Přesunout dolů"
     },
     "actions": {
-      "edit": "Editovat",
       "testConnection": "Testovat připojení",
       "delete": "Smazat"
-    },
-    "labels": {
-      "username": "Uživatelské jméno:",
-      "basicAuth": "Základní autentizace:",
-      "tlsVerification": "TLS ověření:",
-      "tlsSkipped": "Přeskočit",
-      "tlsStrict": "Striktní",
-      "testingConnection": "Testuji připojení...",
-      "fileAccess": "Přístup k souborům:"
     },
     "deleteDialog": {
       "title": "Smazat instanci",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "Instance vypnutá",
-      "testDisabledDescription": "Povolte instanci před testováním připojení.",
       "testSuccessTitle": "Test připojení úspěšný",
       "testSuccessDescription": "Úspěšně připojeno k instanci qBittorrentu",
       "testFailedTitle": "Test připojení selhal",
@@ -55,7 +42,13 @@
     "passwordRequired": "Heslo je povinné",
     "decryptionDescription": "Nepodařilo se dešifrovat uložené heslo. To obvykle nastane, když se změní session secret.",
     "reenterPassword": "Znovu zadat heslo",
-    "recentErrors": "Poslední Chyby ({{count}})"
+    "recentErrors": "Poslední Chyby ({{count}})",
+    "errorTypes": {
+      "connection": "Připojení",
+      "authentication": "Ověření",
+      "ban": "Zákaz",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "Název instance je povinný",
-      "basicAuthPasswordRequired": "Basic auth heslo je povinné, když je basic auth povoleno"
+      "basicAuthPasswordRequired": "Basic auth heslo je povinné, když je basic auth povoleno",
+      "usernameRequired": "Uživatelské jméno je povinné",
+      "passwordRequired": "Heslo je povinné",
+      "apiKeyRequired": "Klíč API je povinný"
     },
     "buttons": {
-      "saving": "Ukládám...",
       "updateInstance": "Aktualizovat instanci",
-      "addInstance": "Přidat instanci",
-      "cancel": "Zrušit"
+      "addInstance": "Přidat instanci"
     },
     "toast": {
-      "missingCredentialsTitle": "Chybí přihlašovací údaje",
       "instanceUpdatedTitle": "Instance aktualizována",
       "instanceUpdatedDescription": "Instance aktualizována úspěšně. Testování připojení probíhá v pozadí...",
-      "updateFailedTitle": "Aktualizace selhala",
       "updateFailedDescription": "Nepodařilo se aktualizovat instanci",
       "instanceCreatedTitle": "Instance vytvořena",
       "instanceCreatedDescription": "Instance vytvořena úspěšně. Testování připojení probíhá v pozadí...",
-      "createFailedTitle": "Vytvoření selhalo",
       "createFailedDescription": "Nepodařilo se vytvořit instanci"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "Uživatelské jméno a heslo",
       "apiKey": "API klíč"
     },
-    "sshAfterSave": "Přístup přes SSH k souborům instance se nastavuje v nastavení instance po uložení."
+    "sshAfterSave": "Přístup přes SSH k souborům instance se nastavuje v nastavení instance po uložení.",
+    "addTitle": "Přidat instanci",
+    "addDescription": "Nastavte novou qBittorrent instanci",
+    "editTitle": "Upravit instanci"
   },
   "settingsButton": {
     "tooltip": "Nastavení instance"
@@ -562,6 +556,7 @@
         "externalProgram": "Externí program",
         "dryRun": "Zkušební běh",
         "exportToInstance": "Exportovat do instance",
+        "transferToInstance": "Přenést do instance",
         "ruleSkipped": "Pravidlo nespuštěno"
       },
       "shareLimit": {
@@ -632,7 +627,10 @@
         "exportedDryRun_other": "{{count}} torrentů by bylo exportováno",
         "exportFailed_one": "{{count}} torrent se nepodařilo exportovat",
         "exportFailed_few": "{{count}} torrenty se nepodařilo exportovat",
-        "exportFailed_other": "{{count}} torrentů se nepodařilo exportovat"
+        "exportFailed_other": "{{count}} torrentů se nepodařilo exportovat",
+        "transferredDryRun_one": "{{count}} torrent by byl přenesen",
+        "transferredDryRun_few": "{{count}} torrenty by byly přeneseny",
+        "transferredDryRun_other": "{{count}} torrentů by bylo přeneseno"
       },
       "deleteDialog": {
         "title": "Smazat pravidlo",
@@ -692,6 +690,7 @@
         "deleteActivityFailed": "Nepodařilo se smazat aktivitu"
       },
       "exported": "Exportováno",
+      "transferStarted": "Spuštěno",
       "skipped": "Přeskočeno"
     },
     "runWorkflowNow": {
@@ -1007,6 +1006,7 @@
         "auto_managed": "Automatická správa",
         "dry_run_no_match": "Zkušební běh (bez shody)",
         "exported_to_instance": "Exportováno do instance",
+        "transferred_to_instance": "Přenést do instance",
         "rule_skipped": "Pravidlo nespuštěno"
       }
     },
@@ -1185,6 +1185,11 @@
         "skipChecking": "Přeskočit ověření",
         "addPaused": "Přidat pozastaveno"
       },
+      "transfer": {
+        "title": "Přenést do instance",
+        "description": "Přesune každý odpovídající torrent i s jeho soubory do cílové instance a před odstraněním čehokoli ověří kopii. Stránka Přenosy ukazuje každý přenos.",
+        "remove": "Odebrat akci Přenést do instance"
+      },
       "priority": {
         "title": "Priorita torrentu",
         "description": "Kontroluje pořadí, v jakém jsou torrenty zpracovávány.",
@@ -1227,7 +1232,8 @@
         "category": "Kategorie",
         "move": "Přesunout",
         "externalProgram": "Spustit externí program",
-        "exportToInstance": "Exportovat do instance"
+        "exportToInstance": "Exportovat do instance",
+        "transferToInstance": "Přenést do instance"
       },
       "option": {
         "noChange": "Bez změny",
@@ -1336,9 +1342,24 @@
           "unsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows.",
           "qbitPathUnsupported": "Tato instance je starší než qBittorrent 5.3 a neumí hlásit volné místo pro cestu.",
           "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\".",
-          "filesystemAccessRequired": "Zdroj volného místa založený na cestě vyžaduje lokální přístup k souborovému systému nebo přístup přes SSH."
+          "filesystemAccessRequired": "Zdroj volného místa založený na cestě vyžaduje lokální přístup k souborovému systému nebo přístup přes SSH.",
+          "allowanceRequired": "Zadejte povolené místo větší než 0.",
+          "allowanceAccessRequired": "Zdroj povoleného místa vyžaduje lokální přístup k souborovému systému nebo SSH přístup se shellem."
         },
-        "pathSourceFilesystemAccessRequired": "Cesta na serveru (vyžaduje lokální nebo SSH přístup)"
+        "pathSourceFilesystemAccessRequired": "Cesta na serveru (vyžaduje lokální nebo SSH přístup)",
+        "allowanceSource": "Povolené místo na cestě",
+        "allowanceSourceWindowsUnsupported": "Povolené místo na cestě (nepodporováno na Windows)",
+        "allowanceSourceAccessRequired": "Povolené místo na cestě (vyžaduje lokální přístup nebo SSH přístup se shellem)",
+        "allowanceLabel": "Povolené místo",
+        "allowancePathLabel": "Složka k měření",
+        "allowanceUnitAria": "Jednotka povoleného místa",
+        "allowanceHelp": "Zadejte místo, které povoluje váš tarif, v jednotce, kterou používá váš poskytovatel. qui od něj odečte velikost souborů pod cestou. Většina poskytovatelů počítá po 1000 ({{decimalUnit}}), ne po 1024 ({{binaryUnit}}): rozdíl je asi 9 %.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
+        "allowancePathHelp": "Například váš domovský adresář"
       },
       "grouping": {
         "title": "Skupiny podmínek",
@@ -1483,6 +1504,7 @@
           "externalProgram": "Externí program",
           "noMatches": "Žádné shody",
           "exportedToInstance": "Exportováno do instance",
+          "transferredToInstance": "Přenést do instance",
           "ruleSkipped": "Pravidlo nespuštěno"
         },
         "actionFallback": "Neznámá akce ({{action}})",
@@ -2135,10 +2157,9 @@
     }
   },
   "access": {
-    "local": "Lokální",
-    "remote": "Přes SSH",
-    "none": "Žádný",
-    "localFull": "qui čte a zapisuje soubory této instance na tomto počítači.",
+    "local": "Místní soubory",
+    "remote": "Soubory přes SSH",
+    "none": "Bez přístupu k souborům",
     "limits": {
       "noIdentity": "Bez identity souborů: qui nepozná, že dvě cesty vedou ke stejnému souboru. Vyhledání sirotků zde nemůže mazat a existující cíl hardlinku zastaví přidání přes hardlink.",
       "noReflinks": "Na vzdálené instanci nejsou reflinky k dispozici.",
@@ -2149,5 +2170,17 @@
     "label": "Smazat i historii přenosů",
     "description": "Bez této volby qui ponechá historii pod názvem instance.",
     "failed": "Instance je smazaná, ale qui nedokázal smazat celou její historii. Podívejte se do Nastavení > Statistiky a smažte zbytek tam."
+  },
+  "list": {
+    "label": "Instance",
+    "emptyTitle": "Žádné instance nakonfigurovány",
+    "emptyDescription": "Přidejte klienta qBittorrent, aby qui mohl spravovat jeho torrenty.",
+    "tlsSkipped": "Bez kontroly TLS",
+    "reorderFailed": "Nepodařilo se změnit pořadí instance"
+  },
+  "publicPeerAddress": {
+    "label": "Veřejná adresa peeru",
+    "noResolvedAddress": "qui zatím nedokáže zjistit adresu",
+    "description": "Adresa a port, na kterých ostatní BitTorrent klienti dosáhnou na tento qBittorrent, pro Přenosy a Sdílení. Nechte prázdné, aby qui při každém použití vzal adresu zjištěnou z qBittorrentu. Nastavte ji, když qBittorrent běží v Dockeru nebo za NAT."
   }
 }

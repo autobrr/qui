@@ -238,12 +238,19 @@ func TestRunPlan_DeletionSelectionGetsNoOtherAction(t *testing.T) {
 }
 
 // fakeTargetLookup answers with the torrents in onTarget, and fails for the hashes in fail.
+// A slow lookup answers no check before the context of the check ends, as a target
+// behind a lost connection does.
 type fakeTargetLookup struct {
 	onTarget map[string]bool
 	fail     map[string]bool
+	slow     bool
 }
 
-func (f fakeTargetLookup) HasTorrentByAnyHash(_ context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+func (f fakeTargetLookup) HasTorrentByAnyHash(ctx context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+	if f.slow {
+		<-ctx.Done()
+		return nil, false, ctx.Err()
+	}
 	if f.fail[hashes[0]] {
 		return nil, false, errors.New("target offline")
 	}

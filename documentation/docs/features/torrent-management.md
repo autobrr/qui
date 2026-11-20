@@ -116,9 +116,11 @@ A view stores the sidebar filter selection only. It does not include search text
 | Ctrl/Cmd + A | Selects all torrents in the current view |
 | Arrow Up / Arrow Down | Moves the selection one row |
 | Enter | Opens the details panel for the focused row |
-| Escape | Closes the details panel and clears the selection |
+| Escape | Closes the details panel and clears the selection. If no row is selected and the panel is closed, Escape clears the search text of the list. |
 
 The arrow keys replace the selection with the focused row, the same as a plain click. When the details panel is open, it follows the arrow keys. If you type in an input field or open a dialog, hotkeys are inactive.
+
+On phones, swipe a card to the left to show two buttons for that torrent: **Pause** or **Resume**, and **Delete**. **Delete** opens the delete dialog. To hide the buttons, swipe the card to the right, or tap anywhere outside the buttons. A card does not swipe while torrents are selected.
 
 ## Table columns
 
@@ -126,11 +128,27 @@ The arrow keys replace the selection with the focused row, the same as a plain c
 
 Drag the edge of a column header to change the width of that column. The button next to **Toggle columns** decides how the Name column gets its width.
 
-Stretch mode is the default. In stretch mode, the Name column takes the width that the other columns leave, so the table fills the window. You cannot resize the Name column in stretch mode. In scroll mode, you set the width of the Name column, and the table scrolls sideways when the columns do not fit. If the visible columns leave no room for the Name column, qui scrolls anyway and the button turns gray until you hide a column. qui remembers the choice for each instance.
+Stretch mode is the default. In stretch mode, the Name column takes the width that the other columns leave, so the table fills the window. You cannot resize the Name column in stretch mode. In scroll mode, you set the width of the Name column, and the table scrolls sideways when the columns do not fit. If the visible columns leave no room for the Name column, qui scrolls anyway and the button turns gray until you hide a column.
+
+qui keeps the column setup in the [Display profile](./dashboard.md#display-profiles) of the browser. The column setup is which columns show, their order, their widths, and the stretch or scroll mode. The profile chip in the status bar under the table shows the icon and the name of the profile. Click the chip to use a different profile, or to make a new profile from the current setup. From 768 to 1023 px, the chip shows only the icon. To see the name, put the pointer on the chip. Below 768 px, qui shows the mobile layout, which has no table and no chip.
+
+The **Toggle columns** menu starts with a line that tells you where a change goes. Examples are **Columns in Laptop · every instance** and **Columns in Laptop · seedbox only**.
+
+### Same columns on every instance
+
+The switch **Same columns on every instance** decides if every instance uses one column setup. The switch is in the **Toggle columns** menu, under the first line, and in **Settings → Display profiles**. Each profile has its own switch.
+
+When the switch is on, every instance and the Unified view use the same column setup. The Instance column shows only in the Unified view. When the switch is off, each instance has its own column setup. The sort and the column filters stay separate for each instance, also when the switch is on.
+
+When you turn the switch on in the menu, every instance gets the column setup of the instance on the screen. In Settings, no instance is on the screen. There, qui uses the last instance that this browser showed, and the help line under the switch names it. When you turn the switch off, each instance starts with a copy of the shared column setup, so no table changes at that moment.
+
+Until you set the switch, qui selects its position. If you changed the columns of an instance in this profile, the switch starts off, so each instance keeps its own column setup. If you never changed the columns, the switch starts on.
 
 ## Group copies
 
-A copy is a torrent of the same release on another tracker or another instance. **Group copies** shows all copies of a release as one row. The switch is off by default. On a computer, it is the button next to the search bar. On phones, it is in the sort menu above the cards. qui saves the switch with your other settings, so it applies in each browser that you sign in to.
+A copy is a torrent of the same release on another tracker or another instance. **Group copies** shows all copies of a release as one row. The switch is off by default. On a computer, it is the button next to the search bar. On phones, it is in the sort menu above the cards.
+
+qui saves the switch with your other settings, so it applies in each browser that you sign in to. If a Display profile has [Own sort and filters](./dashboard.md#own-sort-and-filters) on, that profile keeps its own value of the switch.
 
 Two torrents are copies when qui matches them as cross-seeds and their files have the same sizes. Equal sizes keep a season pack apart from its episodes. A torrent with no file list, for example a magnet without metadata, stays a row of its own.
 

@@ -54,7 +54,7 @@ func (sm *SyncManager) ReadInstanceTorrents(ctx context.Context, instanceID int)
 	if err != nil {
 		return nil, err
 	}
-	return sm.instanceTorrentViews(client, instanceID, name, TorrentRefFilter{}.Select(snapshot)), nil
+	return sm.instanceTorrentViews(client, instanceID, name, snapshot), nil
 }
 
 // rideFacts is what ReadInstanceTorrents knows about an instance before it picks a path.

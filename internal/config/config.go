@@ -86,6 +86,7 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	if err := c.loadAllowedHosts(); err != nil {
 		return nil, err
 	}
+	c.Config.ExperimentalFeatures = c.getNormalizedStringSlice("experimentalFeatures")
 	c.Config.Version = c.version
 
 	// Resolve data directory after config is unmarshaled
@@ -123,6 +124,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("baseUrl", "/")
 	c.viper.SetDefault("corsAllowedOrigins", []string{})
 	c.viper.SetDefault("allowedHosts", []string{})
+	c.viper.SetDefault("experimentalFeatures", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "DEBUG")
 	c.viper.SetDefault("logPath", "")
@@ -144,6 +146,8 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("qbittorrentTimeout", 60)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("problemReports", true)
+	c.viper.SetDefault("problemReportsURL", "https://bin.getqui.com")
 	c.viper.SetDefault("disableSelfUpdate", false)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
@@ -232,6 +236,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
 	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
 	c.viper.BindEnv("allowedHosts", envPrefix+"ALLOWED_HOSTS")
+	c.viper.BindEnv("experimentalFeatures", envPrefix+"EXPERIMENTAL_FEATURES")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("sessionCookieSecure", envPrefix+"SESSION_COOKIE_SECURE")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
@@ -254,6 +259,8 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("qbittorrentTimeout", envPrefix+"QBITTORRENT_TIMEOUT")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("problemReports", envPrefix+"PROBLEM_REPORTS")
+	c.viper.BindEnv("problemReportsURL", envPrefix+"PROBLEM_REPORTS_URL")
 	c.viper.BindEnv("externalProgramMaxRunning", envPrefix+"EXTERNAL_PROGRAM_MAX_RUNNING")
 	c.viper.BindEnv("disableSelfUpdate", envPrefix+"DISABLE_SELF_UPDATE")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
@@ -428,6 +435,8 @@ func (c *AppConfig) hydrateConfigFromViper() {
 		c.Config.QbittorrentTimeout = 60
 	}
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.ProblemReports = c.viper.GetBool("problemReports")
+	c.Config.ProblemReportsURL = c.viper.GetString("problemReportsURL")
 	c.Config.DisableSelfUpdate = c.viper.GetBool("disableSelfUpdate")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")

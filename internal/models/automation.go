@@ -43,6 +43,10 @@ const (
 	// FreeSpaceSourcePath reads free space at a path through the instance's
 	// filesystem backend, local or SSH.
 	FreeSpaceSourcePath FreeSpaceSourceType = "path"
+	// FreeSpaceSourceAllowance is an allowance that the user sets, minus the
+	// size of the files under a path. It serves a shared host, where the free
+	// space of the disk is not the space that the user may fill.
+	FreeSpaceSourceAllowance FreeSpaceSourceType = "allowance"
 	// FreeSpaceSourceQbitPath reads free space at a path on the qBittorrent host.
 	// It needs Web API 2.15.2 and no filesystem access.
 	FreeSpaceSourceQbitPath FreeSpaceSourceType = "qbitPath"
@@ -50,8 +54,9 @@ const (
 
 // FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
 type FreeSpaceSource struct {
-	Type FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'. 'qbitPath' asks qBittorrent for the free space at 'path' on its own host."`
-	Path string              `json:"path,omitempty" doc:"With type 'path' or 'qbitPath': the path to read. Type 'path' needs filesystem access on the instance. Type 'qbitPath' needs qBittorrent with Web API 2.15.2 or later."`
+	Type           FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'. 'qbitPath' asks qBittorrent for the free space at 'path' on its own host. 'allowance' is 'allowanceBytes' minus the size of the files under 'path'."`
+	Path           string              `json:"path,omitempty" doc:"With type 'path' or 'qbitPath': the path to read. With type 'allowance': the folder to measure. Types 'path' and 'allowance' need filesystem access on the instance. Type 'qbitPath' needs qBittorrent with Web API 2.15.2 or later."`
+	AllowanceBytes int64               `json:"allowanceBytes,omitzero" doc:"With type 'allowance': the space that the user may fill, in bytes."`
 }
 
 // ScoreRuleType defines the type of score rule.
@@ -856,22 +861,23 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion    string                  `json:"schemaVersion" doc:"Must be '1'."`
-	Grouping         *GroupingConfig         `json:"grouping,omitempty" doc:"Group definitions for group-aware actions and conditions."`
-	SpeedLimits      *SpeedLimitAction       `json:"speedLimits,omitempty" doc:"Set upload and download speed limits."`
-	ShareLimits      *ShareLimitsAction      `json:"shareLimits,omitempty" doc:"Set ratio and seeding time limits."`
-	Pause            *PauseAction            `json:"pause,omitempty" doc:"Pause matching torrents."`
-	Resume           *ResumeAction           `json:"resume,omitempty" doc:"Resume matching torrents."`
-	Recheck          *RecheckAction          `json:"recheck,omitempty" doc:"Force a recheck of matching torrents."`
-	Reannounce       *ReannounceAction       `json:"reannounce,omitempty" doc:"Force a reannounce of matching torrents."`
-	Delete           *DeleteAction           `json:"delete,omitempty" doc:"Delete matching torrents. A rule with 'delete' has no other action."`
-	Tag              *TagAction              `json:"tag,omitempty" doc:"-"` // Legacy single-tag action (backward compatible alias for first entry in Tags)
-	Tags             []*TagAction            `json:"tags,omitempty" doc:"Tag actions. Each entry manages its own set of tags."`
-	Category         *CategoryAction         `json:"category,omitempty" doc:"Set the category of matching torrents."`
-	Move             *MoveAction             `json:"move,omitempty" doc:"Move matching torrents to a different save path."`
-	ExternalProgram  *ExternalProgramAction  `json:"externalProgram,omitempty" doc:"Run an external program for each matching torrent."`
-	AutoManagement   *AutoManagementAction   `json:"autoManagement,omitempty" doc:"Turn automatic torrent management on or off."`
-	ExportToInstance *ExportToInstanceAction `json:"exportToInstance,omitempty" doc:"Add matching torrents to a different qBittorrent instance."`
+	SchemaVersion      string                    `json:"schemaVersion" doc:"Must be '1'."`
+	Grouping           *GroupingConfig           `json:"grouping,omitempty" doc:"Group definitions for group-aware actions and conditions."`
+	SpeedLimits        *SpeedLimitAction         `json:"speedLimits,omitempty" doc:"Set upload and download speed limits."`
+	ShareLimits        *ShareLimitsAction        `json:"shareLimits,omitempty" doc:"Set ratio and seeding time limits."`
+	Pause              *PauseAction              `json:"pause,omitempty" doc:"Pause matching torrents."`
+	Resume             *ResumeAction             `json:"resume,omitempty" doc:"Resume matching torrents."`
+	Recheck            *RecheckAction            `json:"recheck,omitempty" doc:"Force a recheck of matching torrents."`
+	Reannounce         *ReannounceAction         `json:"reannounce,omitempty" doc:"Force a reannounce of matching torrents."`
+	Delete             *DeleteAction             `json:"delete,omitempty" doc:"Delete matching torrents. A rule with 'delete' has no other action."`
+	Tag                *TagAction                `json:"tag,omitempty" doc:"-"` // Legacy single-tag action (backward compatible alias for first entry in Tags)
+	Tags               []*TagAction              `json:"tags,omitempty" doc:"Tag actions. Each entry manages its own set of tags."`
+	Category           *CategoryAction           `json:"category,omitempty" doc:"Set the category of matching torrents."`
+	Move               *MoveAction               `json:"move,omitempty" doc:"Move matching torrents to a different save path."`
+	ExternalProgram    *ExternalProgramAction    `json:"externalProgram,omitempty" doc:"Run an external program for each matching torrent."`
+	AutoManagement     *AutoManagementAction     `json:"autoManagement,omitempty" doc:"Turn automatic torrent management on or off."`
+	ExportToInstance   *ExportToInstanceAction   `json:"exportToInstance,omitempty" doc:"Add matching torrents to a different qBittorrent instance."`
+	TransferToInstance *TransferToInstanceAction `json:"transferToInstance,omitempty" doc:"Move matching torrents with their files to a different qBittorrent instance. Needs qBittorrent 5.1 or newer on both instances."`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -1011,6 +1017,20 @@ type ExportToInstanceAction struct {
 	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
+// TransferToInstanceAction starts a Transfer of a torrent, with the torrents
+// that share its files, to a different qBittorrent instance.
+type TransferToInstanceAction struct {
+	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
+	TargetInstanceID int            `json:"targetInstanceId" doc:"The ID of the target instance in this qui. The ID is in the URL of the instance page, '/instances/ID'."`
+	SavePath         string         `json:"savePath" doc:"The save path on the target instance. Supports Go templates, with the variables of 'exportToInstance.savePath'."`
+	Category         string         `json:"category,omitempty" doc:"The category on the target instance."`
+	Tags             []string       `json:"tags,omitempty" doc:"The tags on the target instance."`
+	After            string         `json:"after,omitempty" doc:"What happens on the source instance after the Transfer: 'removeWithFiles' removes the torrent and its files, 'keepFiles' removes the torrent and keeps the files, and 'keepSeeding' keeps the torrent seeding. Default 'removeWithFiles'."`
+	LeaveStopped     bool           `json:"leaveStopped,omitzero" doc:"Leave the torrent stopped on the target instance."`
+	Way              string         `json:"way,omitempty" doc:"How the files reach the target instance: 'copy' copies them through qui, 'bittorrent' lets the two qBittorrent instances pass them, and 'auto' lets qui choose. Default 'auto'."`
+	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
+}
+
 // SkipCheckingEnabled returns the effective skip_checking value (defaults true).
 func (a *ExportToInstanceAction) SkipCheckingEnabled() bool {
 	if a.SkipChecking == nil {
@@ -1099,8 +1119,11 @@ func (ac *ActionConditions) Conditions() iter.Seq[ActionCondition] {
 		if ac.AutoManagement != nil && !emit("autoManagement", true, ac.AutoManagement.Condition) {
 			return
 		}
-		if ac.ExportToInstance != nil {
-			emit("exportToInstance", ac.ExportToInstance.Enabled, ac.ExportToInstance.Condition)
+		if ac.ExportToInstance != nil && !emit("exportToInstance", ac.ExportToInstance.Enabled, ac.ExportToInstance.Condition) {
+			return
+		}
+		if ac.TransferToInstance != nil {
+			emit("transferToInstance", ac.TransferToInstance.Enabled, ac.TransferToInstance.Condition)
 		}
 	}
 }

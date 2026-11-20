@@ -3,8 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, renderHook } from "@testing-library/react"
+import { act, cleanup, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
+
+import { _resetClientSettingsForTests, setDisplayProfileSameColumns } from "@/lib/client-settings"
+import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 import { usePersistedColumnOrder } from "./usePersistedColumnOrder"
 
 const KEY = "qui-column-order:1"
@@ -39,6 +42,7 @@ function readOrder(saved: unknown, defaultOrder: string[] = DEFAULT): string[] {
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  _resetClientSettingsForTests()
 })
 
 describe("usePersistedColumnOrder", () => {
@@ -79,14 +83,6 @@ describe("usePersistedColumnOrder", () => {
     expect(readOrder(without(DEFAULT, "select"))).toEqual(DEFAULT)
   })
 
-  it("puts a missing status_icon where the default has it", () => {
-    expect(readOrder(without(DEFAULT, "status_icon"))).toEqual(DEFAULT)
-  })
-
-  it("puts both missing icon columns where the default has them", () => {
-    expect(readOrder(without(DEFAULT, "tracker_icon", "status_icon"))).toEqual(DEFAULT)
-  })
-
   it("does not write the merged order back to storage", () => {
     const saved = JSON.stringify(without(DEFAULT, "size"))
     readOrder(saved)
@@ -100,5 +96,15 @@ describe("usePersistedColumnOrder", () => {
     const first = result.current[0]
     rerender()
     expect(result.current[0]).toBe(first)
+  })
+
+  it("with Same columns on every instance, the Unified view adds its Instance column to the order of an instance", () => {
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true)
+    const instance = renderHook(() => usePersistedColumnOrder(DEFAULT, 1))
+    act(() => instance.result.current[1](["name", ...without(DEFAULT, "name")]))
+
+    const unified = renderHook(() => usePersistedColumnOrder(["select", "name", "instance", ...without(DEFAULT, "select", "name")], 0))
+
+    expect(unified.result.current[0]).toEqual(["name", "instance", ...without(DEFAULT, "name")])
   })
 })

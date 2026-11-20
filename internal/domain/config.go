@@ -25,6 +25,8 @@ type Config struct {
 	CORSAllowedOrigins []string `toml:"corsAllowedOrigins" mapstructure:"corsAllowedOrigins"`
 	// Loaded once at startup, so mapstructure skips it on reload.
 	AllowedHosts []string `toml:"allowedHosts" mapstructure:"-"`
+	// Loaded once at startup, so mapstructure skips it on reload.
+	ExperimentalFeatures []string `toml:"experimentalFeatures" mapstructure:"-"`
 	//nolint:gosec // Config schema requires this field name; value is provided by runtime configuration.
 	SessionSecret            string `toml:"sessionSecret" mapstructure:"sessionSecret"`
 	SessionCookieSecure      bool   `toml:"sessionCookieSecure" mapstructure:"sessionCookieSecure"`
@@ -49,6 +51,8 @@ type Config struct {
 	QbittorrentTimeout       int    `toml:"qbittorrentTimeout" mapstructure:"qbittorrentTimeout"`
 	CheckForUpdates          bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
 	DisableSelfUpdate        bool   `toml:"disableSelfUpdate" mapstructure:"disableSelfUpdate"`
+	ProblemReports           bool   `toml:"problemReports" mapstructure:"problemReports"`
+	ProblemReportsURL        string `toml:"problemReportsURL" mapstructure:"problemReportsURL"`
 	PprofEnabled             bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
 	PprofAddr                string `toml:"pprofAddr" mapstructure:"pprofAddr"`
 	MetricsEnabled           bool   `toml:"metricsEnabled" mapstructure:"metricsEnabled"`

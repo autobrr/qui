@@ -332,6 +332,7 @@ func TestNeedsForSavePaths(t *testing.T) {
 		return &models.ActionConditions{Move: &models.MoveAction{Enabled: enabled, Path: path}}
 	}
 	exportPath := &models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "{{ .CategorySavePath }}"}}
+	transferPath := &models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{Enabled: true, SavePath: "{{ .CategorySavePath }}/archive"}}
 
 	tests := []struct {
 		name string
@@ -341,6 +342,8 @@ func TestNeedsForSavePaths(t *testing.T) {
 		{name: "move uses CategorySavePath", rule: rule(true, move(true, "{{.CategorySavePath}}/done")), want: true},
 		{name: "move uses DefaultSavePath", rule: rule(true, move(true, "{{.DefaultSavePath}}/archive")), want: true},
 		{name: "export uses CategorySavePath", rule: rule(true, exportPath), want: true},
+		// regression: #4242
+		{name: "transfer uses CategorySavePath", rule: rule(true, transferPath), want: true},
 		{name: "disabled rule", rule: rule(false, move(true, "{{.CategorySavePath}}/done"))},
 		{name: "disabled move action", rule: rule(true, move(false, "{{.CategorySavePath}}/done"))},
 		{name: "other variables only", rule: rule(true, move(true, "/data/{{.Category}}"))},

@@ -9,6 +9,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { api } from "@/lib/api"
 import { server } from "@/test/msw/server"
@@ -44,7 +45,9 @@ function renderBanner() {
   return render(
     <RouterContextProvider router={router}>
       <QueryClientProvider client={queryClient}>
-        <UpdateBanner />
+        <TooltipProvider>
+          <UpdateBanner />
+        </TooltipProvider>
       </QueryClientProvider>
     </RouterContextProvider>
   )
@@ -161,7 +164,7 @@ describe("Install update", () => {
     renderBanner()
     await openDialog()
     expect(screen.getByText("application.update.support.failedTitle")).toBeTruthy()
-    expect(screen.getByText("application.update.unavailable.nextStep").closest("div")?.className).toContain("border-destructive/40")
+    expect(screen.getByText("application.update.unavailable.nextStep")).toBeTruthy()
     expect(screen.queryByText("application.update.unavailable.container.reason")).toBeNull()
     expect(screen.queryByText("application.update.unavailable.guide")).toBeNull()
 

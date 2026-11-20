@@ -7,11 +7,13 @@
 
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
+import { execFileSync } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { defineConfig } from "vite"
 import { nodePolyfills } from "vite-plugin-node-polyfills"
 import { VitePWA } from "vite-plugin-pwa"
+import { releaseDays } from "./src/lib/release-days"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const nodeMajor = Number(process.versions.node.split(".")[0] ?? 0)
@@ -27,13 +29,29 @@ const demoBoot = `<script>
       localStorage.setItem('qui-torrent-desktop-view-mode', 'dense');
     </script>`
 
+// A checkout without the release tags, such as a shallow clone, gives no release days.
+function releaseTags(): string {
+  try {
+    return execFileSync("git", ["for-each-ref", "--format=%(refname:short) %(creatordate:unix)", "refs/tags/v*"], {
+      cwd: __dirname,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+  } catch {
+    return ""
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const demo = mode === "demo"
   return {
   base: demo ? "/demo/" : "/",
-  // Defined for every build so src/lib/demo.ts folds to a constant.
-  define: { "import.meta.env.VITE_DEMO": JSON.stringify(demo ? "1" : "") },
+  define: {
+    // Defined for every build so src/lib/demo.ts folds to a constant.
+    "import.meta.env.VITE_DEMO": JSON.stringify(demo ? "1" : ""),
+    "import.meta.env.VITE_RELEASE_DAYS": JSON.stringify(releaseDays(releaseTags(), Date.now() / 1000)),
+  },
   plugins: [
     demo && {
       name: "qui-demo-html",

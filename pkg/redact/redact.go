@@ -5,10 +5,15 @@
 package redact
 
 import (
+	"cmp"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // sensitiveParams lists query parameter names that should be redacted (case-insensitive).
@@ -27,9 +32,10 @@ var proxyPathRegex = regexp.MustCompile(`(/proxy/)([^/]+)(/|$)`)
 // spaces, or are shorter than this.
 var pathTokenRegex = regexp.MustCompile(`^[A-Za-z0-9_-]{24,}$`)
 
-// urlInTextRegex finds http(s) and magnet URLs embedded in free text
-// (typically error messages) so each can be redacted individually.
-var urlInTextRegex = regexp.MustCompile(`https?://[^\s"'<>]+|magnet:\?[^\s"'<>]+`)
+// urlInTextRegex finds URLs of the announce schemes (http, https, udp, ws,
+// wss) and magnet links embedded in free text (typically error messages) so
+// each can be redacted individually.
+var urlInTextRegex = regexp.MustCompile(`(?:https?|udp|wss?)://[^\s"'<>]+|magnet:\?[^\s"'<>]+`)
 
 // URLString redacts sensitive query parameter values in a URL string.
 // Also redacts userinfo passwords (user:pass@host), proxy path segments,
@@ -154,6 +160,118 @@ func String(s string) string {
 	}
 	result := urlInTextRegex.ReplaceAllStringFunc(s, URLString)
 	return regexRedact(result)
+}
+
+// sensitiveFieldName matches a field name that holds key, pass, token, secret or
+// auth (apiKey, password, client_secret, X-Api-Key, authToken).
+const sensitiveFieldName = `[A-Za-z0-9_.-]*(?i:key|pass|token|secret|auth)[A-Za-z0-9_.-]*`
+
+// sensitiveJSONFieldName also allows a space, for a quoted JSON name such as
+// "API Key".
+const sensitiveJSONFieldName = `[A-Za-z0-9_. -]*(?i:key|pass|token|secret|auth)[A-Za-z0-9_. -]*`
+
+// escapedQuotedValue matches a quoted value inside a JSON string, \"...\",
+// up to the first escaped quote that is not itself escaped.
+const escapedQuotedValue = `\\"(?:[^"\\]|\\[^"\\]|\\\\(?:\\\\|\\"|[^"\\]))*\\"`
+
+// flatJSONItem matches one part of a flat list or object: a character, an
+// escape such as \n, or a whole quoted string, so that a bracket inside a
+// string does not end the list.
+const flatJSONItem = `(?:[^\[\]{}"\\]|\\[^"\[\]{}]|"(?:[^"\\]|\\.)*"|` + escapedQuotedValue + `)`
+
+var (
+	jsonSecretFlatRegex    = regexp.MustCompile(`((\\?)"` + sensitiveJSONFieldName + `\\?"\s*:\s*)(?:\[` + flatJSONItem + `*\]|\{` + flatJSONItem + `*\})`)
+	jsonSecretStringRegex  = regexp.MustCompile(`("` + sensitiveJSONFieldName + `"\s*:\s*)"(?:[^"\\]|\\.)*"`)
+	jsonSecretScalarRegex  = regexp.MustCompile(`(\\?"` + sensitiveJSONFieldName + `\\?"\s*:\s*)[^\s,}\]"{\[\\]+`)
+	escapedJSONSecretRegex = regexp.MustCompile(`(\\"` + sensitiveJSONFieldName + `\\"\s*:\s*)` + escapedQuotedValue)
+	authorizationRegex     = regexp.MustCompile(`(?i)(authorization:[ \t]*)(?:[^\s"\\]|\\.)(?:="[^"\r\n]*"|[^\r\n"\\]|\\.)*`)
+	keyValueSecretRegex    = regexp.MustCompile(`(^|[^A-Za-z0-9_.\-/@])(` + sensitiveFieldName + `:[ \t]*)(?:\[` + flatJSONItem + `*\]|\{` + flatJSONItem + `*\}|"(?:[^"\\\r\n]|\\.)*"|'(?:[^'\\\r\n]|\\.)*'|` + escapedQuotedValue + `|[^\s,;"'}\]]+)`)
+)
+
+// Text redacts what String does, plus the value of each JSON field and
+// `key: value` pair whose name holds key, pass, token, secret or auth (any
+// case), and the value of an Authorization header of any scheme. It is meant
+// for log lines and text that a user pastes, so it may redact a value that
+// is not a secret.
+func Text(s string) string {
+	if s == "" {
+		return s
+	}
+	// The field passes run before String, because a query parameter pattern
+	// in String would also take the quote that ends a field value.
+	result := jsonSecretFlatRegex.ReplaceAllString(s, `${1}${2}"REDACTED${2}"`)
+	result = jsonSecretStringRegex.ReplaceAllString(result, `${1}"REDACTED"`)
+	result = jsonSecretScalarRegex.ReplaceAllString(result, `${1}REDACTED`)
+	result = escapedJSONSecretRegex.ReplaceAllString(result, `${1}\"REDACTED\"`)
+	// URLs are redacted before the key: value pass, because that pass stops
+	// at a comma and would cut a URL whose password holds one.
+	result = urlInTextRegex.ReplaceAllStringFunc(result, URLString)
+	result = authorizationRegex.ReplaceAllString(result, `${1}REDACTED`)
+	result = keyValueSecretRegex.ReplaceAllString(result, `${1}${2}REDACTED`)
+	return String(result)
+}
+
+// minSecretLength is the shortest value that Secrets removes. A shorter value
+// also matches common words.
+const minSecretLength = 6
+
+// Secrets replaces each exact occurrence of each given secret in s with
+// REDACTED, wherever it appears, also as a JSON string writes it. It skips
+// secrets shorter than 6 characters.
+func Secrets(s string, secrets []string) string {
+	if s == "" {
+		return s
+	}
+	if replacer := SecretsReplacer(secrets); replacer != nil {
+		return replacer.Replace(s)
+	}
+	return s
+}
+
+// SecretsReplacer returns the replacer that Secrets uses, for a caller that
+// cleans many texts with the same secrets. It returns nil when no secret is
+// 6 characters or longer.
+func SecretsReplacer(secrets []string) *strings.Replacer {
+	values := make([]string, 0, len(secrets))
+	for _, secret := range secrets {
+		if utf8.RuneCountInString(secret) >= minSecretLength {
+			values = append(values, secret)
+			values = append(values, jsonEscapedForms(secret)...)
+		}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	// Longest first, so a secret that holds another secret is removed whole.
+	slices.SortFunc(values, func(a, b string) int {
+		return cmp.Or(cmp.Compare(len(b), len(a)), strings.Compare(a, b))
+	})
+	values = slices.Compact(values)
+
+	pairs := make([]string, 0, 2*len(values))
+	for _, value := range values {
+		pairs = append(pairs, value, "REDACTED")
+	}
+	return strings.NewReplacer(pairs...)
+}
+
+// jsonEscapedForms returns how a JSON string writes secret, when that differs
+// from secret: a log line of zerolog escapes a quote or a backslash, and
+// encoding/json also escapes <, >, & and the line separators U+2028 and U+2029.
+func jsonEscapedForms(secret string) []string {
+	var forms []string
+	for _, escapeHTML := range []bool{false, true} {
+		for _, escapeJS := range []bool{false, true} {
+			quoted, err := json.Marshal(secret, jsontext.EscapeForHTML(escapeHTML), jsontext.EscapeForJS(escapeJS))
+			if err != nil {
+				return nil // invalid UTF-8, which a JSON string does not hold as is
+			}
+			if form := string(quoted[1 : len(quoted)-1]); form != secret {
+				forms = append(forms, form)
+			}
+		}
+	}
+	return forms
 }
 
 // regexRedact redacts sensitive query params, userinfo passwords, and proxy

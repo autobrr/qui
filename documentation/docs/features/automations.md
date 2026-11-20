@@ -149,7 +149,7 @@ A torrent without metadata, such as a new magnet link, has no Private value. It 
 
 **Tracker** matches every tracker the torrent announces to, including trackers that do not work. qui ignores the DHT, PeX, and LSD pseudo-trackers.
 
-If you configured [Tracker Customizations](./tracker-customizations.md) (**Settings** → **Tracker Customizations**), the condition can also match the display name in addition to the raw URL or domain. A merged tracker group matches by its group name.
+If you configured [Tracker Customizations](./tracker-customizations.md) (**Settings** → **Tracker customizations**), the condition can also match the display name in addition to the raw URL or domain. A merged tracker group matches by its group name.
 
 On qBittorrent versions before 5.1, qui cannot read the full tracker list. **Tracker** then sees only the one tracker in the qBittorrent tracker field. That is the last tracker that answered, also when that tracker is down now. If no tracker answered yet, the field is empty. When qui finds no tracker at all, positive operators such as **is** and **contains** match nothing, and negative operators such as **is not** match every torrent.
 
@@ -748,7 +748,7 @@ If multiple rules match the same torrent with Auto Management actions, the **las
 
 ### External Program
 
-When torrents match the automation rule, run a configured external program. This action uses the programs from **Settings → External Programs**.
+When torrents match the automation rule, run a configured external program. This action uses the programs from **Settings → External programs**.
 
 | Field | Description |
 | --- | --- |
@@ -762,7 +762,7 @@ When torrents match the automation rule, run a configured external program. This
 - qui logs activity with the rule name, torrent details, and success or failure status.
 
 :::note
-To appear in the automation dropdown, the program must be enabled in **Settings → External Programs**.
+To appear in the automation dropdown, the program must be enabled in **Settings → External programs**.
 :::
 
 :::note
@@ -780,11 +780,23 @@ The executable path of the program must be in the allowlist. Disabled programs a
 - Trigger media library scans after category changes.
 - Run cleanup scripts for old or stalled torrents.
 
+### Transfer to Instance
+
+Move each matching torrent with its files to a different qBittorrent instance. The action starts a [Transfer](./transfers.md): qui copies the files that the target does not have, checks every piece, adds the torrent on the target, and then removes or keeps the torrent on the source. Transfer needs qBittorrent 5.1 or newer on both instances.
+
+The fields are **Target instance**, **Save path**, **Category**, **Tags**, **After the Transfer**, **Leave the torrent stopped on the target**, and **Way**. [Transfers](./transfers.md#start-a-transfer) describes each field. The save path accepts the [save path templates](#save-path-templates) of Export to Instance.
+
+- You cannot combine it with Delete. In one run, a Delete action of another rule wins over the Transfer, and a Move action makes the Transfer wait.
+- If an Export to Instance action sends the same torrent to a different instance, the Transfer waits. The Transfer also waits for the Export of a cross-seed that moves in the same Transfer. The Transfer starts in a later run, when that instance has the torrent. If the Export fails in each run, the Transfer does not start.
+- A dry run lists the Transfers that the rule starts in a live run. It does not start them.
+- Each Transfer shows on the **Transfers** page. The activity log of the rule shows when the Transfer started.
+- With a [Transfer torrent](./transfers.md#transfer-torrent), the rule starts one Transfer for a set of cross-seeds that have the same files through hardlinks. It skips the other torrents of the set.
+
 ### Export to Instance
 
 Export a torrent's `.torrent` file from the current instance and add it to a different qBittorrent instance. Use this action to migrate torrents between instances, for example from a seedbox to a local instance for long-term seeding.
 
-The action assumes the data already exists on the target (moved with rclone, Quickdrop for Deluge, or another tool) and uses `skip_checking=true` by default.
+The action assumes the data already exists on the target (moved with rclone, Quickdrop for Deluge, or another tool) and uses `skip_checking=true` by default. To move the files too, use [Transfer to Instance](#transfer-to-instance).
 
 | Field | Description |
 | --- | --- |
@@ -1296,6 +1308,7 @@ By default, Free Space uses qBittorrent's reported free space, based on its defa
 | Default (qBittorrent) | Uses qBittorrent's reported free space for its default download location |
 | Path on server | qui reads free space at a path on the qui host, or on the remote machine through SSH access |
 | Path on the qBittorrent host | qBittorrent measures free space at a path on its own host |
+| Allowance on a path | Subtracts the size of the files under a path from an allowance that you enter |
 
 :::note
 Path on server requires filesystem access on the instance: "Local Filesystem Access", or [SSH access](./ssh-access.md) for a remote instance. With SSH access, qui reads the free space on the remote machine, and the server must report free space (see [Read the test result](./ssh-access.md#read-the-test-result)). If qui cannot reach the remote machine, the run fails and sends a notification. qui does not use the value from qBittorrent instead, because that value can come from a different disk.
@@ -1308,6 +1321,21 @@ Enter the path the way the qBittorrent host writes it. A qBittorrent on Windows 
 If you want to manage multiple disks, create one workflow per disk and set a different path for each workflow.
 
 If qBittorrent cannot measure the path, qui treats the read as failed. Free Space never falls back to zero, so an unreadable path cannot trigger a delete.
+
+##### Allowance on a path
+
+On a shared seedbox, the free space of the disk is not the space that you may fill: the disk belongs to all users, and your plan gives you a part of it. Select "Allowance on a path", enter the space that your plan allows, and enter the folder that holds your files, for example your home directory. Free Space is then the allowance minus the size of the files under that folder.
+
+- Enter the allowance in the unit that your provider uses. Most providers count in steps of 1000 (MB, GB, TB), not 1024 (MiB, GiB, TiB). A plan of 1.5 TB is 1.364 TiB.
+- qui measures the folder at the start of each run. It counts hidden files, counts a hardlinked file one time, and does not follow symlinks.
+- When the files take more space than the allowance, the rule first has to free the excess. For example, with 50 GiB above the allowance, a rule "Free Space below 100 GiB" frees 150 GiB.
+- Match only torrents that are stored under the folder. A delete of a torrent that is stored elsewhere frees no space under the folder, but qui counts it as freed.
+- A delete frees no space while another hardlink to the same files stays under the folder, for example a cross-seed that shares the files. qui still counts the size of the torrent as freed, so a run can stop before it reaches the target. The next run measures the folder again and continues.
+- If qui cannot read a folder or a file under the path, the run fails and sends a notification.
+
+:::note
+Allowance on a path needs "Local Filesystem Access", or a remote instance where qui can run commands on the host (see [SSH access](./ssh-access.md#read-the-test-result)). On a remote instance where qui only has SFTP, qui cannot tell a hardlinked file from a second copy, so the source is not available. It is also not available on Windows with local access.
+:::
 
 :::note
 When qui runs on Windows, Path on server works only for a remote instance. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them. Path on the qBittorrent host works on every qui host.

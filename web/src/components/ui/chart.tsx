@@ -20,6 +20,9 @@ export type ChartConfig = {
   )
 }
 
+// recharts waits this long after the first change before it draws again. It is longer than the 300 ms slide of the sidebar.
+const CHART_RESIZE_DELAY_MS = 350
+
 function ChartContainer({
   id,
   className,
@@ -38,13 +41,16 @@ function ChartContainer({
       data-slot="chart"
       data-chart={chartId}
       className={cn(
-        "[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border flex aspect-video justify-center text-xs [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_[class*='recharts-zIndex-layer']]:outline-hidden [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
+        "[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border flex aspect-video justify-center overflow-x-clip text-xs [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_[class*='recharts-zIndex-layer']]:outline-hidden [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
         className
       )}
       {...props}
     >
       <ChartStyle id={chartId} config={config} />
-      <RechartsPrimitive.ResponsiveContainer>
+      {/* A chart draws again once, at the end of a change in its width, such as the slide of the sidebar. Drawn at each
+          frame of the slide, the charts of a full page take longer than a frame. Until then, the box cuts off the part
+          of the old chart that is wider than the box. */}
+      <RechartsPrimitive.ResponsiveContainer debounce={CHART_RESIZE_DELAY_MS}>
         {children}
       </RechartsPrimitive.ResponsiveContainer>
     </div>

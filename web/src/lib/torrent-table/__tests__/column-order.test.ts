@@ -11,10 +11,12 @@ describe("reorderColumns", () => {
     expect(reorderColumns(["a", "b", "c"], "a", "c", ["a", "b", "c"])).toEqual(["b", "c", "a"])
   })
 
-  it("drops ids that are no longer present in the table's columns", () => {
-    const result = reorderColumns(["a", "stale", "b", "c"], "a", "b", ["a", "b", "c"])
-    expect(result).not.toContain("stale")
-    expect(result).toEqual(["b", "a", "c"])
+  it("keeps the place of a column that the table does not show, such as instance in the order of every instance", () => {
+    const shared = ["name", "instance", "size", "ratio"]
+
+    const result = reorderColumns(shared, "ratio", "size", ["name", "size", "ratio"])
+
+    expect(result).toEqual(["name", "instance", "ratio", "size"])
   })
 
   it("appends newly-present columns to the end during normalization", () => {
@@ -22,15 +24,15 @@ describe("reorderColumns", () => {
     expect(reorderColumns(["a", "b"], "missing", "b", ["a", "b", "c"])).toEqual(["a", "b", "c"])
   })
 
-  it("returns the sanitized order (not the raw input) when a dragged id is missing", () => {
-    const currentOrder = ["a", "stale"]
+  it("returns the order with the appended columns (not the raw input) when a dragged id is missing", () => {
+    const currentOrder = ["a", "unseen"]
     const result = reorderColumns(currentOrder, "a", "nope", ["a", "b"])
     expect(result).not.toEqual(currentOrder) // proves normalization still persists
-    expect(result).toEqual(["a", "b"])
+    expect(result).toEqual(["a", "unseen", "b"])
   })
 
-  it("computes indices against the sanitized order, not the raw input (off-by-one guard)", () => {
-    // raw "c" is at index 3 / "a" at index 1; sanitized they are at 2 / 0
-    expect(reorderColumns(["stale", "a", "b", "c"], "c", "a", ["a", "b", "c"])).toEqual(["c", "a", "b"])
+  it("computes indices against the normalized order, not the raw input (off-by-one guard)", () => {
+    // raw "c" is at index 2 / "a" at index 0; after "a" is appended they are at 1 / 2
+    expect(reorderColumns(["unseen", "c", "b"], "c", "a", ["a", "b", "c"])).toEqual(["unseen", "b", "a", "c"])
   })
 })

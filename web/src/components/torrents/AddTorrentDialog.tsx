@@ -895,7 +895,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           })}
                           data-drag-active={isDragActive ? "" : undefined}
                         >
-                          <input {...getInputProps({ id: "torrentFiles" })} />
+                          <input type="file" {...getInputProps({ id: "torrentFiles" })} />
                           {hasFiles ? (
                             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                               <Plus className="h-4 w-4" />

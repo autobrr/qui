@@ -69,6 +69,41 @@ type TorrentsHandler struct {
 	archiveExporter   torrentArchiveExporter
 	deleteMatches     deleteMatchFinder
 	deleter           torrentDeleter
+	// held is nil until start-up sets it.
+	held heldTorrents
+}
+
+// heldTorrents names the torrents that the UI must not delete, move, or
+// rename: the torrents that a Transfer holds, and the helper torrents. Hold
+// returns the reason, or nil for a torrent that qui does not hold.
+type heldTorrents interface {
+	Hold(instanceID int, hash string) error
+}
+
+func (h *TorrentsHandler) SetHeldTorrents(held heldTorrents) {
+	h.held = held
+}
+
+// bulkActionMoves holds the bulk actions that delete or can move a torrent. A
+// category or Auto TMM moves a torrent that qBittorrent manages.
+var bulkActionMoves = []string{"delete", "deleteWithFiles", "setLocation", "setCategory", "toggleAutoTMM"}
+
+// respondIfHeld writes a 409 with the reason when qui holds one of the
+// torrents. qBittorrent reads "|" in a hash as a list separator, so each part
+// counts.
+func (h *TorrentsHandler) respondIfHeld(w http.ResponseWriter, instanceID int, hashes ...string) bool {
+	if h.held == nil {
+		return false
+	}
+	for _, list := range hashes {
+		for hash := range strings.SplitSeq(list, "|") {
+			if err := h.held.Hold(instanceID, hash); err != nil {
+				RespondError(w, http.StatusConflict, err.Error())
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // truncateExpr truncates long filter expressions for cleaner logging
@@ -1354,6 +1389,14 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	}
 	slices.Sort(targetInstanceIDs)
 
+	if slices.Contains(bulkActionMoves, req.Action) {
+		for _, targetInstanceID := range targetInstanceIDs {
+			if h.respondIfHeld(w, targetInstanceID, targetsByInstance[targetInstanceID]...) {
+				return
+			}
+		}
+	}
+
 	for _, targetInstanceID := range targetInstanceIDs {
 		hashes := targetsByInstance[targetInstanceID]
 		if len(hashes) == 0 {
@@ -2136,6 +2179,10 @@ func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if h.respondIfHeld(w, instanceID, hash) {
+		return
+	}
+
 	if err := h.syncManager.RenameTorrent(r.Context(), instanceID, hash, req.Name); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:rename") {
 			return
@@ -2177,6 +2224,10 @@ func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if h.respondIfHeld(w, instanceID, hash) {
+		return
+	}
+
 	if err := h.syncManager.RenameTorrentFile(r.Context(), instanceID, hash, req.OldPath, req.NewPath); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:renameFile") {
 			return
@@ -2215,6 +2266,10 @@ func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Req
 
 	if strings.TrimSpace(req.OldPath) == "" || strings.TrimSpace(req.NewPath) == "" {
 		RespondError(w, http.StatusBadRequest, "Both oldPath and newPath are required")
+		return
+	}
+
+	if h.respondIfHeld(w, instanceID, hash) {
 		return
 	}
 

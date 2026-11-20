@@ -7,7 +7,6 @@ import (
 	"errors"
 	"runtime"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -149,9 +148,6 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 			usesFreeSpace: true,
 			wantErr:       true,
 		},
-		// Note: "path source with local access" validation is platform-dependent
-		// On Windows it returns 400 (not supported), on other platforms it's valid
-		// See TestValidateFreeSpaceSource_PlatformSpecific for platform-aware tests
 		{
 			name:          "path source without path returns 400",
 			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: ""},
@@ -188,9 +184,44 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 			wantErr:       false,
 		},
 		{
+			name:          "allowance source with shell access is valid",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user", AllowanceBytes: 1500},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec},
+			usesFreeSpace: true,
+			wantErr:       false,
+		},
+		{
 			name:          "qbitPath source without path returns 400",
 			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: "   "},
 			instance:      &models.Instance{HasLocalFilesystemAccess: true},
+			usesFreeSpace: true,
+			wantErr:       true,
+		},
+		{
+			name:          "allowance source with file transfer only returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user", AllowanceBytes: 1500},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierSFTP},
+			usesFreeSpace: true,
+			wantErr:       true,
+		},
+		{
+			name:          "allowance source without filesystem access returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user", AllowanceBytes: 1500},
+			instance:      &models.Instance{},
+			usesFreeSpace: true,
+			wantErr:       true,
+		},
+		{
+			name:          "allowance source without an allowance returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user"},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec},
+			usesFreeSpace: true,
+			wantErr:       true,
+		},
+		{
+			name:          "allowance source with relative path returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "home/user", AllowanceBytes: 1500},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec},
 			usesFreeSpace: true,
 			wantErr:       true,
 		},
@@ -210,27 +241,6 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 				t.Errorf("validateFreeSpaceSource() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-// TestValidateFreeSpaceSource_PlatformSpecific tests path source validation on different platforms.
-// On Windows, path-based free space is not supported and returns an error.
-// On other platforms, it's valid when local filesystem access is enabled.
-func TestValidateFreeSpaceSource_PlatformSpecific(t *testing.T) {
-	source := &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
-	instance := &models.Instance{HasLocalFilesystemAccess: true}
-	isWindows := runtime.GOOS == "windows"
-
-	msg, err := validateFreeSpaceSource(source, instance, true)
-
-	// Expected outcomes based on platform
-	wantErr := isWindows
-
-	if (err != nil) != wantErr {
-		t.Errorf("validateFreeSpaceSource() error = %v, wantErr %v (isWindows=%v)", err, wantErr, isWindows)
-	}
-	if isWindows && !strings.Contains(msg, "Windows") {
-		t.Errorf("validateFreeSpaceSource() on Windows: message should mention Windows, got: %s", msg)
 	}
 }
 
@@ -325,117 +335,6 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "speed limits enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				SpeedLimits: &models.SpeedLimitAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "share limits enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				ShareLimits: &models.ShareLimitsAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "pause enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				Pause: &models.PauseAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "tag enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				Tag: &models.TagAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "category enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				Category: &models.CategoryAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "external program disabled returns false",
-			conditions: &models.ActionConditions{
-				ExternalProgram: &models.ExternalProgramAction{
-					Enabled:   false,
-					ProgramID: 1,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "external program enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				ExternalProgram: &models.ExternalProgramAction{
-					Enabled:   true,
-					ProgramID: 1,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "external program enabled without FREE_SPACE returns false",
-			conditions: &models.ActionConditions{
-				ExternalProgram: &models.ExternalProgramAction{
-					Enabled:   true,
-					ProgramID: 1,
-					Condition: &RuleCondition{
-						Field: FieldSize,
-					},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "autoManagement enabled with FREE_SPACE returns true",
-			conditions: &models.ActionConditions{
-				AutoManagement: &models.AutoManagementAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldFreeSpace,
-					},
-				},
-			},
-			want: true,
-		},
-		{
 			name: "autoManagement disabled with FREE_SPACE returns true (presence semantics)",
 			conditions: &models.ActionConditions{
 				AutoManagement: &models.AutoManagementAction{
@@ -447,25 +346,13 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 			},
 			want: true,
 		},
-		{
-			name: "autoManagement enabled without FREE_SPACE returns false",
-			conditions: &models.ActionConditions{
-				AutoManagement: &models.AutoManagementAction{
-					Enabled: true,
-					Condition: &RuleCondition{
-						Field: FieldSize,
-					},
-				},
-			},
-			want: false,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := conditionsUseFreeSpace(tt.conditions)
+			got := actionConditionsUseField(tt.conditions, FieldFreeSpace)
 			if got != tt.want {
-				t.Errorf("conditionsUseFreeSpace() = %v, want %v", got, tt.want)
+				t.Errorf("actionConditionsUseField() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1025,6 +912,17 @@ func TestValidateRule(t *testing.T) {
 		{name: "free space path source without instance", edit: freeSpacePath, wantMsg: errMsgPathSourceAccessRequired},
 		{name: "free space path source with local access", edit: freeSpacePath, instance: local, wantMsg: localFreeSpacePathMsg},
 		{name: "free space path source with SSH access", edit: freeSpacePath, instance: remote},
+		// regression: #4092
+		{name: "free space only in the sorting still checks the path source", instance: &models.Instance{}, wantMsg: errMsgPathSourceAccessRequired,
+			edit: func(r *models.Automation) {
+				r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Field: FieldFreeSpace, Direction: models.SortDirectionASC}
+				r.FreeSpaceSource = &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
+			}},
+		{name: "free space only in the sorting still checks the source", instance: remote, wantMsg: errMsgAllowanceSourceAccessRequired,
+			edit: func(r *models.Automation) {
+				r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Field: FieldFreeSpace, Direction: models.SortDirectionASC}
+				r.FreeSpaceSource = &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user", AllowanceBytes: 1500}
+			}},
 	}
 
 	for _, tt := range tests {
@@ -1112,4 +1010,38 @@ func TestValidateRule_MovePathSkippedWhenRuleDisabled(t *testing.T) {
 	}}
 
 	require.NoError(t, ValidateRule(rule, nil))
+}
+
+func TestValidateRuleTransferToInstance(t *testing.T) {
+	seeded := &models.RuleCondition{Field: models.FieldSeedingTime, Operator: models.OperatorGreaterThan, Value: "7776000"}
+	transfer := func(enabled bool, target int) *models.TransferToInstanceAction {
+		return &models.TransferToInstanceAction{Enabled: enabled, TargetInstanceID: target, SavePath: "/data", Condition: seeded}
+	}
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		wantMsg    string
+	}{
+		{name: "action off", conditions: &models.ActionConditions{
+			TransferToInstance: transfer(false, 0), Pause: &models.PauseAction{Enabled: true, Condition: seeded},
+		}},
+		{name: "no target", conditions: &models.ActionConditions{TransferToInstance: transfer(true, 0)}, wantMsg: "Transfer to instance requires a target instance"},
+		{name: "target is the source", conditions: &models.ActionConditions{TransferToInstance: transfer(true, 1)}, wantMsg: "Transfer target cannot be the same as the source instance"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rule := &models.Automation{InstanceID: 1, Name: "Move old seeds", TrackerPattern: "*", Enabled: true, Conditions: tt.conditions}
+
+			err := ValidateRule(rule, nil)
+
+			if tt.wantMsg == "" {
+				require.NoError(t, err)
+				return
+			}
+			ruleErr, ok := errors.AsType[*RuleError](err)
+			require.True(t, ok, "want a RuleError, got %v", err)
+			require.Equal(t, tt.wantMsg, ruleErr.Message)
+		})
+	}
 }

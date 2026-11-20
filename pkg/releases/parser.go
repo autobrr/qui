@@ -8,9 +8,11 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/autobrr/go-cache/ttlcache"
 	"github.com/autobrr/rls"
@@ -66,7 +68,8 @@ func NewDefaultParser() *Parser {
 // leaks a ttlcache goroutine.
 var DefaultParser = NewDefaultParser()
 
-// Parse returns the parsed release metadata for name.
+// Parse returns the parsed release metadata for name. A KG listing reads as
+// the release in its bracketed download name.
 func (p *Parser) Parse(name string) *rls.Release {
 	if p == nil {
 		return &rls.Release{}
@@ -86,6 +89,10 @@ func (p *Parser) Parse(name string) *rls.Release {
 
 	if cached, ok := p.cache.Get(key); ok {
 		return cached
+	}
+	if release := p.listingRelease(key); release != nil {
+		p.cache.Set(key, release, ttlcache.DefaultTTL)
+		return release
 	}
 
 	// The cache keeps each release, so its tag list gets the exact size.
@@ -404,4 +411,49 @@ func (p *Parser) Clear(name string) {
 		return
 	}
 	p.cache.Delete(key)
+}
+
+// listingYear matches what a KG listing puts before its bracket: the site
+// title, the year, and the country, which can be empty.
+var listingYear = regexp.MustCompile(`\S (\d{4}) [^\d\[\]]*$`)
+
+// listingRelease reads a Prowlarr or Jackett KG listing,
+// "<site title> <year> <country> [<download name>]", as the release in the
+// dotted download name, because rls keeps the year and the country in the
+// title. Each word of the download name's title must be in the site title. A
+// download name without a year takes the year of the listing. It returns nil
+// for other names, such as a "[Multi-Subs]", "[ABCD1234]", or "2019 [H.264]"
+// tag.
+func (p *Parser) listingRelease(name string) *rls.Release {
+	rest, ok := strings.CutSuffix(name, "]")
+	if !ok {
+		return nil
+	}
+	title, inner, ok := strings.CutLast(rest, "[")
+	if !ok || !strings.Contains(inner, ".") || strings.ContainsFunc(inner, unicode.IsSpace) {
+		return nil
+	}
+	match := listingYear.FindStringSubmatchIndex(title)
+	if match == nil {
+		return nil
+	}
+	release := p.Parse(inner)
+	listing := titleWords(title[:match[2]])
+	words := titleWords(release.Title)
+	if len(words) == 0 || slices.ContainsFunc(words, func(word string) bool { return !slices.Contains(listing, word) }) {
+		return nil
+	}
+	if release.Year == 0 && release.Series == 0 {
+		withYear := *release
+		withYear.Year, _ = strconv.Atoi(title[match[2]:match[3]])
+		return &withYear
+	}
+	return release
+}
+
+// titleWords splits name into its folded words, without punctuation.
+func titleWords(name string) []string {
+	return strings.FieldsFunc(stringutils.NormalizeForMatching(name), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
 }

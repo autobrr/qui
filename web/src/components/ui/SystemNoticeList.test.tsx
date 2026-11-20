@@ -10,6 +10,7 @@ import type { ReactNode } from "react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { systemNoticesQueryKey } from "@/hooks/useSystemNotices"
 import "@/i18n"
 import { server } from "@/test/msw/server"
@@ -48,7 +49,9 @@ function renderList(notices: SystemNotice[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
-      <SystemNoticeList />
+      <TooltipProvider>
+        <SystemNoticeList />
+      </TooltipProvider>
     </QueryClientProvider>
   )
   return queryClient
@@ -163,7 +166,9 @@ describe("SystemNoticeList", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={queryClient}>
-        <SystemNoticeList />
+        <TooltipProvider>
+          <SystemNoticeList />
+        </TooltipProvider>
       </QueryClientProvider>
     )
 

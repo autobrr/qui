@@ -14,6 +14,7 @@
   "customRange": {
     "from": "第一天",
     "to": "最后一天",
+    "pick": "选择日期",
     "apply": "应用",
     "range": "{{from}} 至 {{to}}"
   },
@@ -140,6 +141,10 @@
     "seededValue": "{{value}}x",
     "total": "合计",
     "shown": "{{shown}} / {{total}}",
+    "range": "{{from}}–{{to}} / {{total}}",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "showMore": "显示更多",
     "showAll": "显示全部",
     "showFewer": "显示更少",
     "noCategory": "无分类",

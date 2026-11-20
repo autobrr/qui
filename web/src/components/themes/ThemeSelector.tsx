@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog"
+import { Section } from "@/components/kit/Section"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,16 +23,6 @@ import { useThemeTargetHint } from "@/hooks/useThemeTargetHint"
 import { ThemeMenuDialog } from "@/components/themes/ThemeMenuDialog"
 import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
 import { CustomThemeEditor, type CustomThemeEditorTarget } from "@/components/themes/CustomThemeEditor"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
 import { CopyButton } from "@/components/ui/copy-button"
 import {
   DropdownMenu,
@@ -46,7 +37,7 @@ import { useDefaultThemeVisit } from "@/lib/theme-storage"
 import { buildThemePrompt } from "@/lib/theme-prompt"
 import { cn, copyTextToClipboard } from "@/lib/utils"
 import { refreshCustomThemes } from "@/hooks/useCustomThemes"
-import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Plus, Sparkles, Pencil, Trash2, Info, MoreVertical, Search, ListChecks, MonitorSmartphone, ChevronDown, ChevronUp } from "lucide-react"
+import { Lock, Check, AlertTriangle, WifiOff, RefreshCw, Plus, Sparkles, Pencil, Trash2, Info, MoreVertical, Search, ListChecks, ChevronDown, ChevronUp } from "lucide-react"
 import { useId, useLayoutEffect, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
@@ -374,15 +365,9 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Palette className="size-4" />
-            {t("themes.selector.title")}
-          </CardTitle>
-          <CardDescription>{t("themes.selector.loadingDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent className="animate-pulse space-y-4">
+      // Not a Section query: Section would show a failed license check as a load error, and this tab shows the themes then.
+      <Section title={t("themes.selector.title")} description={t("themes.selector.loadingDescription")}>
+        <div className="animate-pulse space-y-4">
           <div className="flex items-center gap-4">
             <div className="aspect-[16/10] w-24 shrink-0 rounded-md bg-muted sm:w-48" />
             <div className="w-full max-w-64 space-y-2">
@@ -396,25 +381,20 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
               <div key={i} className="aspect-[16/12] rounded-lg bg-muted max-sm:[&:nth-child(n+7)]:hidden" />
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </Section>
     )
   }
 
   return (
     <>
-      <Card>
-        <CardHeader className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-          <div className="space-y-1.5">
-            <CardTitle className="flex items-center gap-2">
-              <Palette className="size-4" />
-              {t("themes.selector.title")}
-            </CardTitle>
-            <CardDescription>{t("themes.selector.description")}</CardDescription>
-          </div>
+      <Section
+        title={t("themes.selector.title")}
+        description={t("themes.selector.description")}
+        actions={
           <ThemeMenuDialog
             trigger={
-              <Button variant="outline" size="sm" className="max-sm:min-h-11">
+              <Button variant="outline" size="sm">
                 <ListChecks />
                 {t("themes.menu.button")}
               </Button>
@@ -428,8 +408,9 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
             openRequested={openMenu}
             onOpenRequestHandled={onMenuOpened}
           />
-        </CardHeader>
-        <CardContent className="space-y-4">
+        }
+      >
+        <div className="space-y-4">
           {defaultThemeVisit && (
             <Alert role="status">
               <Info className="h-4 w-4" />
@@ -560,32 +541,18 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </Section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MonitorSmartphone className="size-4" />
-            {t("themes.layout.title")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ThemeLayoutSettings />
-        </CardContent>
-      </Card>
+      <Section id="theme-sync" title={t("themes.layout.title")}>
+        <ThemeLayoutSettings />
+      </Section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FolderOpen className="size-4" />
-            {t("themes.custom.title")}
-          </CardTitle>
-          <CardDescription>
-            {hasPremiumAccess ? t("themes.custom.description") : t("themes.custom.lockedDescription")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <Section
+        title={t("themes.custom.title")}
+        description={hasPremiumAccess ? t("themes.custom.description") : t("themes.custom.lockedDescription")}
+      >
+        <div className="space-y-3">
           {!hasPremiumAccess ? (
             <Button variant="outline" size="sm" onClick={scrollToLicenseManager}>
               <Lock className="h-3 w-3" />
@@ -661,8 +628,8 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
               )}
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </Section>
 
       {editorTarget && (
         <CustomThemeEditor
@@ -672,34 +639,16 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
         />
       )}
 
-      <AlertDialog
+      <ConfirmDialog
         open={removeTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !removeTheme.isPending) setRemoveTarget(null)
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+        title={t("themes.custom.removeTitle", { theme: removeTarget?.label ?? "" })}
+        description={t("themes.custom.removeDescription")}
+        confirmLabel={t("themes.custom.removeConfirm")}
+        onConfirm={() => {
+          if (removeTarget) return removeTheme.mutateAsync(removeTarget)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("themes.custom.removeTitle", { theme: removeTarget?.label ?? "" })}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("themes.custom.removeDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={removeTheme.isPending}>{t("common:actions.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={removeTheme.isPending}
-              onClick={(event) => {
-                event.preventDefault()
-                if (removeTarget) removeTheme.mutate(removeTarget)
-              }}
-            >
-              {t("themes.custom.removeConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      />
     </>
   )
 }

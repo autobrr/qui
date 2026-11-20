@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/experimental"
 )
 
 func TestApplicationHandler_GetInfo(t *testing.T) {
@@ -48,7 +49,10 @@ func TestApplicationHandler_GetInfo(t *testing.T) {
 	buildinfo.Date = "2026-03-02T10:00:00Z"
 
 	startedAt := time.Now().Add(-42 * time.Second).UTC()
-	handler := NewApplicationHandler(appCfg, startedAt)
+	handler := NewApplicationHandler(appCfg, experimental.NewWithKnown(
+		[]experimental.Feature{"testAlpha", "testBravo"},
+		[]string{"testBravo", "nothing"},
+	), startedAt)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/application/info", nil)
 	rec := httptest.NewRecorder()
@@ -74,6 +78,21 @@ func TestApplicationHandler_GetInfo(t *testing.T) {
 	require.Equal(t, appCfg.GetDatabasePath(), resp.Database.Target)
 	require.Positive(t, resp.UptimeSeconds)
 	require.Equal(t, startedAt.Format(time.RFC3339), resp.StartedAt)
+	require.Equal(t, []string{"testBravo"}, resp.ExperimentalFeatures)
+}
+
+func TestApplicationHandler_GetInfoListsNoExperimentalFeatureAsEmptyList(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, config.WriteDefaultConfig(configPath))
+	appCfg, err := config.New(configPath, "test-version")
+	require.NoError(t, err)
+	handler := NewApplicationHandler(appCfg, experimental.NewWithKnown([]experimental.Feature{"testAlpha"}, nil), time.Now())
+
+	rec := httptest.NewRecorder()
+	handler.GetInfo(rec, httptest.NewRequest(http.MethodGet, "/api/application/info", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"experimentalFeatures":[]`)
 }
 
 func TestPostgresTarget_DSNRemovesCredentials(t *testing.T) {

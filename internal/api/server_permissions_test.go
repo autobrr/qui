@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -66,6 +67,8 @@ func newPermissionRig(t *testing.T, setup ...func(*Dependencies)) *permissionRig
 	var err error
 	deps.Config, err = config.New(t.TempDir(), "test")
 	require.NoError(t, err)
+	// The walk covers the routes of every Experimental feature.
+	deps.Experimental = experimental.New([]string{string(experimental.ProblemReports)})
 	for _, f := range setup {
 		f(deps)
 	}

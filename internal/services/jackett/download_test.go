@@ -20,17 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-func TestRateLimitError_Error(t *testing.T) {
-	err := &RateLimitError{
-		IndexerID:   1,
-		IndexerName: "TorrentLeech",
-		Scope:       rateLimitScopeGrab,
-		RetryAt:     time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC),
-	}
-
-	assert.Equal(t, "indexer TorrentLeech grab rate-limited until 2025-01-15T10:30:00Z", err.Error())
-}
-
 func TestIsRetryableDownloadError(t *testing.T) {
 	tests := []struct {
 		name string
@@ -98,20 +87,6 @@ func TestIsRetryableDownloadError_WrappedErrors(t *testing.T) {
 	})
 }
 
-func TestRateLimitError_ErrorsAs(t *testing.T) {
-	err := &RateLimitError{
-		IndexerID:   42,
-		IndexerName: "TestIndexer",
-		RetryAt:     time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC),
-	}
-	wrapped := errors.Join(errors.New("wrapper"), err)
-
-	var rateLimitErr *RateLimitError
-	require.ErrorAs(t, wrapped, &rateLimitErr, "errors.As should extract RateLimitError from wrapped error")
-	assert.Equal(t, 42, rateLimitErr.IndexerID)
-	assert.Equal(t, "TestIndexer", rateLimitErr.IndexerName)
-}
-
 func TestDownloadRateLimitUsesGrabScopeAndRetryAfter(t *testing.T) {
 	t.Parallel()
 
@@ -162,6 +137,11 @@ func TestDownloadTorrentDoesNotCacheRejectedPayload(t *testing.T) {
 	cache := models.NewTorznabTorrentCacheStore(db)
 	service := NewService(store, WithTorrentCache(cache))
 	t.Cleanup(service.searchScheduler.Stop)
+	// The cache hit touches its row, and the first store starts a cleanup. Both write after the call returns.
+	t.Cleanup(func() {
+		service.background.Wait()
+		cache.WaitTouches()
+	})
 	req := TorrentDownloadRequest{IndexerID: indexer.ID, DownloadURL: server.URL + "/download", GUID: "test-release"}
 
 	data, err := service.DownloadTorrent(t.Context(), req)

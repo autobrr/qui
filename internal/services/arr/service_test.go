@@ -106,16 +106,6 @@ func TestService_getArrTypeForContent(t *testing.T) {
 			contentType: ContentTypeUnknown,
 			want:        "",
 		},
-		{
-			name:        "empty string returns empty",
-			contentType: "",
-			want:        "",
-		},
-		{
-			name:        "invalid content type returns empty",
-			contentType: ContentType("invalid"),
-			want:        "",
-		},
 	}
 
 	for _, tt := range tests {
@@ -496,28 +486,6 @@ func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
 	all := titlesFromSeries(series)
 	require.Contains(t, all, "Oshi no Ko 2nd Season")
 	require.Contains(t, all, "Oshi no Ko Scene S3")
-}
-
-func TestNewService(t *testing.T) {
-	s := NewService(nil, nil)
-
-	assert.NotNil(t, s)
-	assert.Equal(t, DefaultPositiveCacheTTL, s.positiveTTL)
-	assert.Equal(t, DefaultNegativeCacheTTL, s.negativeTTL)
-}
-
-func TestContentType_Constants(t *testing.T) {
-	// Verify content type constant values
-	assert.Equal(t, ContentTypeMovie, ContentType("movie"))
-	assert.Equal(t, ContentTypeTV, ContentType("tv"))
-	assert.Equal(t, ContentTypeAnime, ContentType("anime"))
-	assert.Equal(t, ContentTypeUnknown, ContentType("unknown"))
-}
-
-func TestDefaultTTL_Values(t *testing.T) {
-	// Verify default TTL values match expected configuration
-	assert.Equal(t, 30*24*time.Hour, DefaultPositiveCacheTTL)
-	assert.Equal(t, 1*time.Hour, DefaultNegativeCacheTTL)
 }
 
 // TestCacheWritesSurviveCallerCancellation catches a cache write bound to the

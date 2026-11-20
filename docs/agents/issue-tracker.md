@@ -30,7 +30,7 @@ In the triage workflow, `./.github/scripts/discussion-write.sh` wraps these writ
 - **List**: `gh issue list --state open --label ready-for-agent --json number,title,body,labels`.
 - **Comment**: `gh issue comment <number> --body "..."`.
 - **Labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`.
-- **Close**: `gh issue close <number> --comment "..."`.
+- **Close**: `gh issue close <number> --comment "..."`. Keep a parent issue open while one of its sub-issues is open. This also applies to a `Closes #<number>` line in a pull request. `gh api --paginate repos/autobrr/qui/issues/<number>/sub_issues --jq '.[] | select(.state == "open") | .html_url'` prints nothing and exits with status 0 when the parent can close. If it fails, keep the parent open. If the parent lists its children in a task list instead, read the state of each listed issue. A pull request that closes each open sub-issue can also close the parent. Before that pull request merges, check the sub-issues again, and remove `Closes #<parent>` if a new one is open.
 
 ## Pull requests as a triage surface
 

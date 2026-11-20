@@ -20,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -51,6 +52,7 @@ func TestGetInstanceCapabilitiesPreservesBackoffMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil, nil)
+	t.Cleanup(handler.connectionTests.Wait)
 	router := chi.NewRouter()
 	router.Get("/api/instances/{instanceID}/capabilities", handler.GetInstanceCapabilities)
 
@@ -67,33 +69,6 @@ func TestGetInstanceCapabilitiesPreservesBackoffMessage(t *testing.T) {
 	require.Contains(t, body.Error, "health-check backoff")
 	require.Contains(t, body.Error, "retrying in")
 	require.NotEqual(t, "Failed to load instance capabilities", body.Error)
-}
-
-func TestInstanceCapabilitiesClientErrorMessagePreservesHealthBlocker(t *testing.T) {
-	err := fmt.Errorf("failed to get client: %w", &internalqbittorrent.InstanceHealthBlockerError{
-		Kind:       internalqbittorrent.InstanceHealthBlockerBackoff,
-		InstanceID: 7,
-		RetryAfter: 12 * time.Second,
-	})
-
-	message := instanceCapabilitiesClientErrorMessage(err)
-
-	require.Contains(t, message, "health-check backoff")
-	require.Contains(t, message, "retrying in 12s")
-	require.NotEqual(t, "Failed to load instance capabilities", message)
-}
-
-func TestInstanceCapabilitiesClientErrorMessagePreservesInFlightProbe(t *testing.T) {
-	err := fmt.Errorf("failed to get client: %w", &internalqbittorrent.InstanceHealthBlockerError{
-		Kind:       internalqbittorrent.InstanceHealthBlockerHealthCheckInProgress,
-		InstanceID: 7,
-	})
-
-	message := instanceCapabilitiesClientErrorMessage(err)
-
-	require.Contains(t, message, "already running a health check")
-	require.Contains(t, message, "retry shortly")
-	require.NotEqual(t, "Failed to load instance capabilities", message)
 }
 
 func TestInstanceCapabilitiesClientErrorMessageFallsBack(t *testing.T) {
@@ -136,6 +111,7 @@ func TestUpdateInstanceClearsConnectionBackoff(t *testing.T) {
 	require.NoError(t, err)
 
 	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil, nil)
+	t.Cleanup(handler.connectionTests.Wait)
 	router := chi.NewRouter()
 	router.Put("/api/instances/{instanceID}", handler.UpdateInstance)
 	update := func(host string) {
@@ -173,4 +149,82 @@ func TestUpdateInstanceClearsConnectionBackoff(t *testing.T) {
 	errs, err := errorStore.GetRecentErrors(t.Context(), instance.ID, 10)
 	require.NoError(t, err)
 	require.Empty(t, errs)
+}
+
+// An update that saves another setting keeps an empty public peer address
+// empty, and the list shows the address that qui works out from the last sync
+// apart from the address that the user set. The list itself sends no sync.
+func TestUpdateInstanceKeepsThePublicPeerAddress(t *testing.T) {
+	stub := qbtstub.New(t, t.TempDir())
+	stub.ListenPort = 51413
+	stub.SetExternalAddress("203.0.113.7", "")
+
+	db := testdb.NewMigratedSQLite(t, t.Name())
+	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	clientPool, err := internalqbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+	instance, err := instanceStore.Create(t.Context(), "seedbox", stub.URL, "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+
+	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, internalqbittorrent.NewSyncManager(clientPool, nil), nil, nil, nil)
+	t.Cleanup(handler.connectionTests.Wait)
+	router := chi.NewRouter()
+	router.Get("/api/instances", handler.ListInstances)
+	router.Put("/api/instances/{instanceID}", handler.UpdateInstance)
+	update := func(fields string) *httptest.ResponseRecorder {
+		t.Helper()
+		body := fmt.Sprintf(`{"name":"seedbox","host":%q,"username":""%s}`, stub.URL, fields)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPut, fmt.Sprintf("/api/instances/%d", instance.ID), strings.NewReader(body)))
+		return rec
+	}
+	type addresses struct {
+		PublicPeerAddress         string `json:"publicPeerAddress"`
+		ResolvedPublicPeerAddress string `json:"resolvedPublicPeerAddress"`
+	}
+	read := func() addresses {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances", nil))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var got []addresses
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+		require.Len(t, got, 1)
+		return got[0]
+	}
+	list := func() addresses {
+		t.Helper()
+		// An update drops the client: connect again, as the async test does.
+		// The list reads the last sync, so sync the new client first.
+		client, err := clientPool.GetClient(t.Context(), instance.ID)
+		require.NoError(t, err)
+		require.NoError(t, client.SyncOwner().Sync(t.Context()))
+		return read()
+	}
+
+	rec := update(`,"tlsSkipVerify":true`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, addresses{ResolvedPublicPeerAddress: "203.0.113.7:51413"}, list())
+	syncs := stub.Calls("sync/maindata")
+	read()
+	require.Equal(t, syncs, stub.Calls("sync/maindata"), "the list sends no sync")
+
+	rec = update(`,"publicPeerAddress":"seedbox.example.org:6881"`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, addresses{PublicPeerAddress: "seedbox.example.org:6881", ResolvedPublicPeerAddress: "seedbox.example.org:6881"}, list())
+
+	rec = update(`,"tlsSkipVerify":false`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "seedbox.example.org:6881", list().PublicPeerAddress, "an update without the field keeps the stored value")
+
+	for _, bad := range []string{"seedbox.example.org", "seedbox.example.org:0", "seedbox.example.org:70000", ":6881"} {
+		rec = update(fmt.Sprintf(`,"publicPeerAddress":%q`, bad))
+		require.Equal(t, http.StatusBadRequest, rec.Code, bad)
+	}
+
+	rec = update(`,"publicPeerAddress":""`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, addresses{ResolvedPublicPeerAddress: "203.0.113.7:51413"}, list())
 }

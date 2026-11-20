@@ -10,6 +10,9 @@ export interface ApplicationDatabaseInfo {
   target: string
 }
 
+/** The names of the Experimental features that qui knows. Mirrors `known` in internal/experimental/experimental.go. */
+export type ExperimentalFeature = "problemReports"
+
 export interface ApplicationInfo {
   version: string
   commit?: string
@@ -31,6 +34,8 @@ export interface ApplicationInfo {
   oidcIssuerHost?: string
   checkForUpdates: boolean
   database: ApplicationDatabaseInfo
+  experimentalFeatures: ExperimentalFeature[]
+  problemReports: boolean
 }
 
 export interface VersionInfo {

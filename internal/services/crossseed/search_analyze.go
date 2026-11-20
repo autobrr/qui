@@ -97,7 +97,7 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	if contentMismatch && !titleMismatch && fileContent.ContentType == "tv" &&
 		(sourceContent.ContentType == "movie" || sourceContent.ContentType == "music") {
 		if largestRelease.Episode > 0 || largestRelease.Series > 0 {
-			log.Debug().
+			log.Trace().
 				Str("torrentName", torrentName).
 				Str("largestFile", largestFile.Name).
 				Int("episode", largestRelease.Episode).
@@ -111,7 +111,7 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 		return sourceRelease, false
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("torrentName", torrentName).
 		Str("largestFile", largestFile.Name).
 		Str("fileContentType", fileContent.ContentType).

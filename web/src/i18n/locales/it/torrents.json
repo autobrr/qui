@@ -67,6 +67,8 @@
     "externalPrograms": "Programmi esterni",
     "exportTorrent": "Esporta torrent",
     "exportTorrents": "Esporta torrent ({{count}})",
+    "transferToInstance": "Trasferisci a un'istanza…",
+    "shareWithSomeone": "Condividi con qualcuno…",
     "copy": "Copia...",
     "copyName": "Copia nome",
     "copyHash": "Copia hash",
@@ -1511,19 +1513,11 @@
     "incognito": "Incognito",
     "add": "Aggiungi",
     "tasks": "Attività",
-    "done": "Fatto",
     "actionsForCount": "Azioni per {{count}} torrent",
     "actionsForAll": "Azioni per tutti i {{count}} torrent",
     "selection": {
       "selectedCount": "{{count}} selezionati",
       "allSelectedCount": "Tutti i {{count}} selezionati"
-    },
-    "searchModal": {
-      "title": "Cerca torrent",
-      "description": "Cerca per nome, categoria o tag. Supporta pattern glob come *.mkv o *1080p*.",
-      "placeholder": "Cerca torrent...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Ricerca automatica durante la digitazione"
     },
     "ratio": "Rapporto:",
     "added": "Aggiunto {{time}}"
@@ -1604,6 +1598,9 @@
     "trackerDown": "Tracker non raggiungibile",
     "unregistered": "Non registrato",
     "trackerError": "Errore tracker",
+    "helperTransfer": "Helper di trasferimento",
+    "helperShare": "Helper di condivisione",
+    "helperHint": "qui ha aggiunto questo torrent per un trasferimento o una condivisione. I suoi file appartengono a un altro torrent.",
     "now": "adesso",
     "yes": "Sì",
     "no": "No"
@@ -1730,6 +1727,137 @@
       "title": "Raggruppa i tuoi cross-seed",
       "description": "Mostra le copie di un torrent in un'unica riga.",
       "action": "Prova"
+    },
+    "displayProfiles": {
+      "title": "Profili di visualizzazione",
+      "description": "Dai a ogni schermo colonne, densità delle righe e barre laterali proprie. Scegli qui il profilo di questo browser.",
+      "action": "Crea un profilo"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Profilo di visualizzazione: {{name}}",
+    "menuLabel": "Profilo di visualizzazione",
+    "defaultName": "Predefinito",
+    "manage": "Gestisci profili…",
+    "sheetDescription": "Ogni browser sceglie il proprio profilo.",
+    "settings": {
+      "title": "Profili di visualizzazione",
+      "holds": "Contiene: colonne · densità delle righe · barre laterali · sezioni dei filtri · alberi delle categorie · filtri vuoti",
+      "holdsHelp": "Un profilo contiene l’aspetto dell’elenco dei torrent: quali colonne sono visibili, il loro ordine e la loro larghezza, l’estensione della colonna Nome, la densità delle righe, le barre laterali e le sezioni dei filtri aperte, gli alberi delle categorie compressi e se i filtri vuoti sono visibili. Contiene anche quali righe delle istanze della Dashboard sono aperte. Ogni browser usa un profilo, e solo quel browser ricorda la scelta. Un browser che non ne ha mai scelto uno, e una finestra privata, usano Default. Tutti i profili condividono le altre impostazioni.",
+      "thisBrowser": "Questo browser",
+      "use": "Usa in questo browser",
+      "makeProfile": "Crea un profilo per un portatile o un telefono",
+      "themesSync": "I temi si sincronizzano per conto loro: <sync>Sincronizzazione del tema</sync>",
+      "renameAriaLabel": "Rinomina {{name}}",
+      "saveName": "Salva il nome",
+      "cancelRename": "Annulla la rinomina",
+      "editAriaLabel": "Modifica {{name}}",
+      "editTitle": "Modifica il profilo",
+      "delete": "Elimina…",
+      "deleteTitle": "Eliminare {{name}}?",
+      "deleteDescription": "Gli altri browser che lo usano passano a {{defaultName}}.",
+      "deleteConfirm": "Elimina",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Righe di tabella",
+        "dense": "Righe dense",
+        "stacked": "Schede impilate"
+      },
+      "filterSidebarOpen": "barra dei filtri aperta",
+      "filterSidebarClosed": "barra dei filtri chiusa"
+    },
+    "nameErrors": {
+      "empty": "Inserisci un nome.",
+      "tooLong": "Usa al massimo {{max}} caratteri.",
+      "duplicate": "Un altro profilo ha già questo nome."
+    },
+    "ownSortAndFilters": {
+      "label": "Ordinamento e filtri propri",
+      "help": "<lead>Quando è attiva, questo profilo mantiene i propri:</lead><list><item>ordinamento dell'elenco dei torrent</item><item>filtri delle colonne e filtri della barra laterale</item><item>istanze mostrate dalla vista unificata</item><item>Raggruppa le copie, attivo o no</item><item>ultima scheda aperta del pannello dei dettagli</item><item>istanza mostrata dalle pagine Backup e RSS</item></list><note>Una modifica a questi valori in questo profilo non raggiunge gli altri profili. Quando è disattivata, questo profilo li condivide con tutti gli altri profili che non hanno i propri. Disattivandola, i valori propri di questo profilo vengono eliminati.</note>",
+      "offWarning": "Disattivandola, l'ordinamento e i filtri propri di {{name}} vengono eliminati.",
+      "defaultShares": "Condivide sempre ordinamento e filtri",
+      "defaultSharesHelp": "Default condivide sempre l'ordinamento, i filtri e le altre scelte di visualizzazione con tutti i profili che non hanno i propri. Per averne di propri, crea un altro profilo e attiva Ordinamento e filtri propri."
+    },
+    "deletedToast": "Il profilo {{name}} è stato eliminato. Questo browser ora usa {{defaultName}}.",
+    "newProfile": "Nuovo profilo da questa configurazione…",
+    "newDialog": {
+      "title": "Nuovo profilo",
+      "copies": "Copia <profile>{{name}}</profile>: colonne, densità, barre laterali e filtri. Poi questo browser lo usa.",
+      "name": "Nome",
+      "namePlaceholder": "Per esempio, Portatile",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Annulla",
+      "create": "Crea"
+    },
+    "iconPicker": {
+      "trigger": "Icona: {{icon}}. Cambia l’icona e il colore",
+      "letter": "Prima lettera del nome",
+      "color": "Colore"
+    },
+    "iconGroups": {
+      "devices": "Dispositivi",
+      "places": "Luoghi",
+      "use": "Uso",
+      "mood": "Umore"
+    },
+    "icons": {
+      "appWindow": "Finestra app",
+      "monitor": "Monitor",
+      "laptop": "Portatile",
+      "tablet": "Tablet",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Server",
+      "gamepad": "Gamepad",
+      "house": "Casa",
+      "briefcase": "Valigetta",
+      "building": "Edificio",
+      "sofa": "Divano",
+      "bed": "Letto",
+      "coffee": "Caffè",
+      "plane": "Aereo",
+      "train": "Treno",
+      "rows": "Righe",
+      "table": "Tabella",
+      "list": "Elenco",
+      "eye": "Occhio",
+      "gauge": "Indicatore",
+      "zap": "Fulmine",
+      "download": "Download",
+      "upload": "Upload",
+      "sprout": "Germoglio",
+      "bookmark": "Segnalibro",
+      "moon": "Luna",
+      "sun": "Sole",
+      "star": "Stella",
+      "heart": "Cuore",
+      "flame": "Fiamma",
+      "rocket": "Razzo"
+    },
+    "colors": {
+      "none": "Nessuno (colore del testo)",
+      "sky": "Cielo",
+      "emerald": "Smeraldo",
+      "amber": "Ambra",
+      "rose": "Rosa",
+      "violet": "Viola",
+      "orange": "Arancione",
+      "teal": "Verde acqua",
+      "pink": "Rosa acceso"
+    },
+    "columns": {
+      "headingEveryInstance": "Colonne in {{profile}} · ogni istanza",
+      "headingOneInstance": "Colonne in {{profile}} · solo {{instance}}",
+      "unifiedView": "Vista unificata",
+      "thisInstance": "questa istanza"
+    },
+    "sameColumns": {
+      "label": "Stesse colonne su ogni istanza",
+      "menuHelp": "Ordinamento e filtri delle colonne restano per istanza.",
+      "helpOn": "Una sola configurazione delle colonne per {{instances}}.",
+      "helpOff": "Ogni istanza mantiene la propria. Attivandolo, ogni istanza riceve le colonne di {{instance}}.",
+      "helpOffNoInstance": "Ogni istanza mantiene la propria.",
+      "unifiedViewInList": "la vista unificata"
     }
   }
 }

@@ -48,6 +48,8 @@ export function CopyButton({ value, label, className, iconClassName = "size-3.5"
   const name = t("actions.copyValue", { label })
   return (
     <Button
+      // The button often sits in a form, for example in the Facts of an editor, and a copy saves nothing.
+      type="button"
       variant="ghost"
       size="icon"
       className={cn("shrink-0", className)}

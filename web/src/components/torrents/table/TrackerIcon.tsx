@@ -29,7 +29,7 @@ export const TrackerIcon = memo(({ title, fallback, src, size = "md", className 
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
 
   return (
-    <div className={cn("flex items-center justify-center", className)} title={title}>
+    <div className={cn("flex items-center justify-center", className)} role={title ? "img" : undefined} aria-label={title || undefined}>
       <div
         className={cn(
           "flex items-center justify-center rounded-sm border border-border/40 bg-muted font-medium uppercase leading-none select-none",

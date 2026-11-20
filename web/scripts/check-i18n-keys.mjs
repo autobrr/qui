@@ -162,7 +162,7 @@ const hardcodedStringChecks = [
     ],
   },
   {
-    file: "src/components/settings/DateTimePreferencesForm.tsx",
+    file: "src/components/settings/TimeLanguageSettings.tsx",
     literals: [
       "\"Select your local timezone for accurate time display\"",
       "\"Select timezone\"",

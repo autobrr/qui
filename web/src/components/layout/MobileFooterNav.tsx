@@ -3,8 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { openCommandPalette } from "@/components/command-palette/open"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
+import { openSupport } from "@/components/support/open"
+import { useSupportShortcutHidden } from "@/components/support/reminder"
+import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -32,7 +36,9 @@ import { useAuth } from "@/hooks/useAuth"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { useTransferQueue } from "@/hooks/useTransferQueue"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import { useHasPremiumAccess } from "@/hooks/useLicense"
 import type { Theme } from "@/config/themes"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
@@ -65,6 +71,7 @@ import { navigateWithSearch } from "@/lib/router-search"
 import { themeArea } from "@/lib/theme-areas"
 import {
   Archive,
+  ArrowRightLeft,
   ChartColumn,
   Check,
   Code,
@@ -73,6 +80,7 @@ import {
   FileText,
   GitBranch,
   HardDrive,
+  Heart,
   Home,
   ListChecks,
   Loader2,
@@ -131,6 +139,7 @@ export function MobileFooterNav() {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
+  const transferQueue = useTransferQueue()
   const isSelectionMode = hasSelection(useTorrentSelectionContext().selection)
   const { isFooterVisible } = useMobileScroll()
   const isMobile = useIsMobile()
@@ -142,6 +151,8 @@ export function MobileFooterNav() {
   useBuiltinThemes()
   const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
+  const supportShortcutHidden = useSupportShortcutHidden()
+  const { isSupporter } = useHasPremiumAccess()
   const appVersion = getAppVersion()
 
   const { data: instances, isPending: isLoadingInstances } = useQuery({
@@ -273,7 +284,7 @@ export function MobileFooterNav() {
         {!isDemo && <Link
           to="/dashboard"
           className={cn(
-            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
             location.pathname === "/dashboard" ? "text-primary" : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -281,19 +292,29 @@ export function MobileFooterNav() {
             "h-5 w-5",
             location.pathname === "/dashboard" && "text-primary"
           )} />
-          <span className="truncate">{t("mobileNav.dashboard")}</span>
+          <span className="max-w-full truncate">{t("mobileNav.dashboard")}</span>
         </Link>}
 
         {!isDemo && <Link
           to="/statistics"
           className={cn(
-            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
             location.pathname === "/statistics" ? "text-primary" : "text-muted-foreground hover:text-foreground"
           )}
         >
           <ChartColumn className="h-5 w-5" />
-          <span className="truncate">{t("mobileNav.statistics")}</span>
+          <span className="max-w-full truncate">{t("mobileNav.statistics")}</span>
         </Link>}
+
+        {/* Command palette. A phone shows no search field for the torrent list, so the palette opens with the search of the list. */}
+        <button
+          type="button"
+          onClick={() => openCommandPalette(isOnInstancePage ? String(routeSearch?.q ?? "") : "")}
+          className="flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground hover:cursor-pointer"
+        >
+          <SearchIcon className="h-5 w-5" />
+          <span className="max-w-full truncate">{t("actions.search")}</span>
+        </button>
 
         {/* Clients access */}
         {hasClientScopeEntry ? (
@@ -302,7 +323,7 @@ export function MobileFooterNav() {
               <button
                 type="button"
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
+                  "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
                   isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -319,7 +340,7 @@ export function MobileFooterNav() {
                   </Badge>
                 </div>
                 <span
-                  className="block max-w-[7.5rem] truncate text-center"
+                  className="block max-w-full truncate text-center"
                   title={currentInstanceLabel ?? t("mobileNav.clients")}
                 >
                   {currentInstanceLabel ?? t("mobileNav.clients")}
@@ -413,21 +434,21 @@ export function MobileFooterNav() {
           </DropdownMenu>
         ) : isLoadingInstances ? (
           <button
-            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            className="flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
             type="button"
             disabled
           >
             <HardDrive className="h-5 w-5 animate-pulse" />
-            <span className="block max-w-[7.5rem] truncate text-center text-xs">{t("mobileNav.loading")}</span>
+            <span className="block max-w-full truncate text-center text-xs">{t("mobileNav.loading")}</span>
           </button>
         ) : (
           <button
-            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            className="flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
             type="button"
             disabled
           >
             <HardDrive className="h-5 w-5" />
-            <span className="block max-w-[7.5rem] truncate text-center">{t("mobileNav.noActiveClients")}</span>
+            <span className="block max-w-full truncate text-center">{t("mobileNav.noActiveClients")}</span>
           </button>
         )}
 
@@ -436,7 +457,7 @@ export function MobileFooterNav() {
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
-                "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
+                "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
                 location.pathname === "/settings" ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -457,7 +478,7 @@ export function MobileFooterNav() {
                   </Badge>
                 )}
               </div>
-              <span className="truncate">{t("mobileNav.settings")}</span>
+              <span className="max-w-full truncate">{t("mobileNav.settings")}</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className={cn("mb-2", systemNotices.length > 0 ? "w-72" : "w-56")}>
@@ -499,6 +520,21 @@ export function MobileFooterNav() {
                   >
                     <Zap className="h-4 w-4" />
                     {t("nav.automations")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/transfers"
+                    className="flex items-center gap-2"
+                  >
+                    <ArrowRightLeft className="h-4 w-4" />
+                    {t("nav.transfers")}
+                    <BetaBadge />
+                    {transferQueue > 0 && (
+                      <Badge variant="default" className="ml-auto" aria-label={t("nav.transfersQueued", { count: transferQueue })}>
+                        {transferQueue}
+                      </Badge>
+                    )}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
@@ -557,6 +593,12 @@ export function MobileFooterNav() {
               <Palette className="h-4 w-4" />
               {t("nav.appearance")}
             </DropdownMenuItem>
+            {!supportShortcutHidden && (
+              <DropdownMenuItem onClick={openSupport}>
+                <Heart className="h-4 w-4 fill-current text-red-500" />
+                {isSupporter ? t("support.supporter.title") : t("support.title")}
+              </DropdownMenuItem>
+            )}
 
             <DropdownMenuSeparator />
 

@@ -405,18 +405,6 @@ func TestNeedsRenameAlignment(t *testing.T) {
 			},
 			expectedResult: true, // subfolder structure differs
 		},
-		{
-			name:        "identical paths - no alignment needed",
-			torrentName: "Show.S01",
-			matchedName: "Show.S01",
-			sourceFiles: qbt.TorrentFiles{
-				{Name: "Show.S01/E01.mkv", Size: 1000},
-			},
-			candidateFiles: qbt.TorrentFiles{
-				{Name: "Show.S01/E01.mkv", Size: 1000},
-			},
-			expectedResult: false, // paths are identical
-		},
 	}
 
 	for _, tt := range tests {

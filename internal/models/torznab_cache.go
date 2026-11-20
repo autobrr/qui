@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -32,7 +33,8 @@ type TorznabTorrentCacheEntry struct {
 
 // TorznabTorrentCacheStore manages cached Torznab torrent files.
 type TorznabTorrentCacheStore struct {
-	db dbinterface.Querier
+	db      dbinterface.Querier
+	touches sync.WaitGroup
 }
 
 // NewTorznabTorrentCacheStore constructs a new cache store.
@@ -74,13 +76,19 @@ func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cac
 	}
 
 	// Update last_used timestamp, ignoring failures so we don't block serving cached data
-	go func() { //nolint:gosec // G118: cache touch must outlive the read that triggered it
+	s.touches.Go(func() { //nolint:gosec // G118: cache touch must outlive the read that triggered it
 		ctx, cancel := context.WithTimeout(context.Background(), cacheMaintenanceTimeout)
 		defer cancel()
 		s.touchEntry(ctx, id)
-	}()
+	})
 
 	return data, true, nil
+}
+
+// WaitTouches waits for the last_used touches that Fetch started. A test calls
+// it before it closes the database.
+func (s *TorznabTorrentCacheStore) WaitTouches() {
+	s.touches.Wait()
 }
 
 // Store inserts or updates a cached torrent payload.

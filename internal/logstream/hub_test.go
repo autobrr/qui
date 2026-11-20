@@ -5,23 +5,13 @@ package logstream
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 )
-
-func TestHub_Write(t *testing.T) {
-	hub := NewHub(10)
-
-	// Write some lines
-	for i := range 5 {
-		hub.Write("line " + string(rune('0'+i)))
-	}
-
-	if hub.Count() != 5 {
-		t.Errorf("expected count 5, got %d", hub.Count())
-	}
-}
 
 func TestHub_RingBuffer(t *testing.T) {
 	hub := NewHub(5)
@@ -29,11 +19,6 @@ func TestHub_RingBuffer(t *testing.T) {
 	// Write more lines than buffer size
 	for i := range 10 {
 		hub.Write("line " + string(rune('0'+i)))
-	}
-
-	// Should only have last 5 lines
-	if hub.Count() != 5 {
-		t.Errorf("expected count 5, got %d", hub.Count())
 	}
 
 	history := hub.History(10) // Request more than available
@@ -99,15 +84,7 @@ func TestHub_Unsubscribe(t *testing.T) {
 
 	sub := hub.Subscribe(ctx)
 
-	if hub.SubscriberCount() != 1 {
-		t.Errorf("expected 1 subscriber, got %d", hub.SubscriberCount())
-	}
-
 	hub.Unsubscribe(sub)
-
-	if hub.SubscriberCount() != 0 {
-		t.Errorf("expected 0 subscribers, got %d", hub.SubscriberCount())
-	}
 
 	// Channel should be closed
 	_, ok := <-sub.Channel()
@@ -122,10 +99,6 @@ func TestHub_ContextCancel(t *testing.T) {
 
 	sub := hub.Subscribe(ctx)
 
-	if hub.SubscriberCount() != 1 {
-		t.Errorf("expected 1 subscriber, got %d", hub.SubscriberCount())
-	}
-
 	cancel()
 
 	// The auto-unsubscribe closes the channel. No line was written.
@@ -136,10 +109,6 @@ func TestHub_ContextCancel(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for the auto-unsubscribe")
-	}
-
-	if hub.SubscriberCount() != 0 {
-		t.Errorf("expected 0 subscribers after context cancel, got %d", hub.SubscriberCount())
 	}
 
 	// Verify Done channel is closed
@@ -201,9 +170,8 @@ func TestHub_ConcurrentWrite(t *testing.T) {
 
 	wg.Wait()
 
-	// Verify count
-	if hub.Count() != 1000 {
-		t.Errorf("expected count 1000, got %d", hub.Count())
+	if got := len(hub.History(0)); got != 1000 {
+		t.Errorf("expected 1000 lines, got %d", got)
 	}
 }
 
@@ -224,7 +192,49 @@ func TestHub_DefaultSize(t *testing.T) {
 		hub.Write("line")
 	}
 
-	if hub.Count() != DefaultBufferSize {
-		t.Errorf("expected count %d, got %d", DefaultBufferSize, hub.Count())
+	if got := len(hub.History(0)); got != DefaultBufferSize {
+		t.Errorf("expected %d lines, got %d", DefaultBufferSize, got)
+	}
+}
+
+func TestHub_HistoryFrom(t *testing.T) {
+	lines := []string{
+		`{"level":"debug","message":"d1"}`,
+		`{"level":"warn","message":"w1"}`,
+		`{"level":"info","message":"i1"}`,
+		`{"level":"error","message":"e1"}`,
+		"2026-11-17T10:00:00Z \x1b[33mWRN\x1b[0m w2",
+		"2026-11-17T10:00:01Z \x1b[32mINF\x1b[0m i2",
+		"2026-11-17T10:00:02Z ERR e2",
+		"2026-11-17T10:00:03Z DBG d2",
+		`not a log line`,
+		`{"message":"no level"}`,
+	}
+
+	hub := NewHub(100)
+	for _, line := range lines {
+		hub.Write(line)
+	}
+
+	got := hub.HistoryFrom(zerolog.WarnLevel, 0)
+	want := []string{lines[1], lines[3], lines[4], lines[6], lines[8], lines[9]}
+	if !slices.Equal(got, want) {
+		t.Fatalf("HistoryFrom(warn, 0) = %q, want %q", got, want)
+	}
+}
+
+func TestHub_HistoryFromFiltersBeforeLastN(t *testing.T) {
+	hub := NewHub(10)
+	hub.Write(`{"level":"error","message":"e1"}`)
+	hub.Write(`{"level":"warn","message":"w1"}`)
+	for range 5 {
+		hub.Write(`{"level":"info","message":"noise"}`)
+	}
+	hub.Write(`{"level":"warn","message":"w2"}`)
+
+	got := hub.HistoryFrom(zerolog.WarnLevel, 2)
+	want := []string{`{"level":"warn","message":"w1"}`, `{"level":"warn","message":"w2"}`}
+	if !slices.Equal(got, want) {
+		t.Fatalf("HistoryFrom(warn, 2) = %q, want %q", got, want)
 	}
 }

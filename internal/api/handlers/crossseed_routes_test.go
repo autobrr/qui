@@ -76,6 +76,7 @@ func newRouteFixtureWithBackend(t *testing.T, backend fsops.Backend) *routeFixtu
 	sshPool := sshpool.NewPool(sshpool.NewDialer(instances))
 	t.Cleanup(sshPool.Close)
 	instancesHandler := NewInstancesHandler(instances, nil, nil, clientPool, nil, nil, sshpool.NewDialer(instances), sshPool)
+	t.Cleanup(instancesHandler.connectionTests.Wait)
 	instancesHandler.SetCrossSeedRoutes(routes)
 	router.Route("/api/instances/{instanceID}", func(r chi.Router) {
 		r.Put("/", instancesHandler.UpdateInstance)

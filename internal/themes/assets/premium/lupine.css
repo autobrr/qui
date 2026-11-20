@@ -1,0 +1,83 @@
+/* @name: Lupine
+ * @description: Port of the Omarchy Lupine theme (basecamp/omarchy, MIT), with a deep blue-violet dark companion palette
+ */
+
+:root {
+  --background: oklch(0.9851 0 0);
+  --foreground: oklch(0.2478 0 0);
+  --card: oklch(1.0000 0 0);
+  --card-foreground: oklch(0.2478 0 0);
+  --popover: oklch(1.0000 0 0);
+  --popover-foreground: oklch(0.2478 0 0);
+  --primary: oklch(0.5520 0.2111 264.7612);
+  --primary-foreground: oklch(0.9851 0 0);
+  --secondary: oklch(0.8576 0 0);
+  --secondary-foreground: oklch(0.2478 0 0);
+  --muted: oklch(0.9431 0 0);
+  --muted-foreground: oklch(0.4900 0 0);
+  --accent: oklch(0.9330 0.0318 264.7612);
+  --accent-foreground: oklch(0.3484 0.1061 252.9075);
+  --destructive: oklch(0.5500 0.2500 329.7139);
+  --destructive-foreground: oklch(0.9851 0 0);
+  --border: oklch(0.8576 0 0);
+  --input: oklch(0.9006 0 0);
+  --ring: oklch(0.5520 0.2111 264.7612);
+  --chart-1: oklch(0.5520 0.2111 264.7612);
+  --chart-2: oklch(0.4564 0.2287 279.9365);
+  --chart-3: oklch(0.5391 0.1978 258.5918);
+  --chart-4: oklch(0.5575 0.2065 300.6728);
+  --chart-5: oklch(0.5810 0.2651 329.7139);
+  --sidebar: oklch(0.9702 0 0);
+  --sidebar-foreground: oklch(0.2478 0 0);
+  --sidebar-primary: oklch(0.5520 0.2111 264.7612);
+  --sidebar-primary-foreground: oklch(0.9851 0 0);
+  --sidebar-accent: oklch(0.9330 0.0318 264.7612);
+  --sidebar-accent-foreground: oklch(0.3484 0.1061 252.9075);
+  --sidebar-border: oklch(0.8576 0 0);
+  --sidebar-ring: oklch(0.5520 0.2111 264.7612);
+  --ratio-bad: oklch(0.5835 0.2663 329.7139);
+  --ratio-almost: oklch(0.5575 0.2065 300.6728);
+  --ratio-good: oklch(0.5520 0.2111 264.7612);
+  --ratio-best: oklch(0.6100 0.1900 258.5918);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.2050 0.0220 275.0000);
+  --foreground: oklch(0.9060 0.0140 275.0000);
+  --card: oklch(0.1750 0.0220 275.0000);
+  --card-foreground: oklch(0.9060 0.0140 275.0000);
+  --popover: oklch(0.2420 0.0230 275.0000);
+  --popover-foreground: oklch(0.9060 0.0140 275.0000);
+  --primary: oklch(0.6900 0.1580 264.7612);
+  --primary-foreground: oklch(0.1750 0.0220 275.0000);
+  --secondary: oklch(0.3250 0.0250 275.0000);
+  --secondary-foreground: oklch(0.9060 0.0140 275.0000);
+  --muted: oklch(0.2760 0.0230 275.0000);
+  --muted-foreground: oklch(0.7150 0.0230 275.0000);
+  --accent: oklch(0.2520 0.0400 272.0000);
+  --accent-foreground: oklch(0.7600 0.1220 265.9370);
+  --destructive: oklch(0.6800 0.2100 329.7139);
+  --destructive-foreground: oklch(0.1750 0.0220 275.0000);
+  --border: oklch(0.3250 0.0250 275.0000);
+  --input: oklch(0.1900 0.0220 275.0000);
+  --ring: oklch(0.6900 0.1580 264.7612);
+  --chart-1: oklch(0.6900 0.1580 264.7612);
+  --chart-2: oklch(0.6300 0.1900 279.9365);
+  --chart-3: oklch(0.7400 0.1347 258.5918);
+  --chart-4: oklch(0.6619 0.2252 304.5645);
+  --chart-5: oklch(0.6900 0.2300 329.7139);
+  --sidebar: oklch(0.1750 0.0220 275.0000);
+  --sidebar-foreground: oklch(0.9060 0.0140 275.0000);
+  --sidebar-primary: oklch(0.6900 0.1580 264.7612);
+  --sidebar-primary-foreground: oklch(0.1750 0.0220 275.0000);
+  --sidebar-accent: oklch(0.2520 0.0400 272.0000);
+  --sidebar-accent-foreground: oklch(0.7600 0.1220 265.9370);
+  --sidebar-border: oklch(0.3250 0.0250 275.0000);
+  --sidebar-ring: oklch(0.6900 0.1580 264.7612);
+  --ratio-bad: oklch(0.6800 0.2100 329.7139);
+  --ratio-almost: oklch(0.6619 0.2252 304.5645);
+  --ratio-good: oklch(0.6900 0.1580 264.7612);
+  --ratio-best: oklch(0.7900 0.1067 258.5918);
+  --radius: 0.5rem;
+}

@@ -69,6 +69,9 @@ type Scanner struct {
 
 	// Identities of files already seeding, for skipping them.
 	seenFileIDs *seedingIndex
+	// ignorePaths are folders that the walk skips, such as the folders of
+	// running Transfers.
+	ignorePaths []string
 }
 
 // NewScanner creates a new directory scanner.
@@ -97,9 +100,10 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 
 	walkCtx, cancelWalk := context.WithCancel(ctx)
 	ch, err := s.backend.WalkDir(walkCtx, rootPath, fsops.WalkOptions{
-		SkipHidden: true,
-		WantFileID: true,
-		FollowRoot: true,
+		SkipHidden:  true,
+		IgnorePaths: s.ignorePaths,
+		WantFileID:  true,
+		FollowRoot:  true,
 	})
 	if err != nil {
 		cancelWalk()

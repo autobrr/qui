@@ -161,6 +161,16 @@ const (
 	sizeEvidenceStrictScoreBonus   = 4.0
 )
 
+// policy is the Match policy that classifySearchCandidate decides with.
+func (input searchCandidateInput) policy() matchPolicy {
+	return matchPolicy{
+		TitleRescue:                input.RescueTitleMismatches,
+		IndividualEpisodes:         input.FindIndividualEpisodes,
+		SizeTolerancePercent:       input.TolerancePercent,
+		AllowMissingCandidateGroup: input.AllowMissingCandidateGroup,
+	}
+}
+
 // classifySearchCandidate asks the Match verdict about one search result and
 // adds the score and the provenance that apply keeps.
 func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandidateDecision {
@@ -171,12 +181,7 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 		CandidateTitles: input.CandidateTitles,
 		EpisodeMap:      input.EpisodeMap,
 	}
-	policy := matchPolicy{
-		TitleRescue:                input.RescueTitleMismatches,
-		IndividualEpisodes:         input.FindIndividualEpisodes,
-		SizeTolerancePercent:       input.TolerancePercent,
-		AllowMissingCandidateGroup: input.AllowMissingCandidateGroup,
-	}
+	policy := input.policy()
 	verdict := m.hybridToleranceVerdict(input, evidence, policy, m.matchVerdict(input.Source, input.Candidate, evidence, policy))
 	decision := searchCandidateDecision{
 		Class:                 searchCandidateClassRejected,

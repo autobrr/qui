@@ -7,24 +7,12 @@
       "disconnected": "已斷開"
     },
     "tooltips": {
-      "disableInstance": "停用實例",
-      "enableInstance": "啟用實例",
       "moveUp": "上移",
       "moveDown": "下移"
     },
     "actions": {
-      "edit": "編輯",
       "testConnection": "測試連線",
       "delete": "刪除"
-    },
-    "labels": {
-      "username": "使用者名稱：",
-      "basicAuth": "基本認證：",
-      "tlsVerification": "TLS 驗證：",
-      "tlsSkipped": "已跳過",
-      "tlsStrict": "嚴格",
-      "testingConnection": "正在測試連線...",
-      "fileAccess": "檔案存取："
     },
     "deleteDialog": {
       "title": "刪除實例",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "實例已停用",
-      "testDisabledDescription": "請先啟用實例，再測試連線。",
       "testSuccessTitle": "連線測試成功",
       "testSuccessDescription": "已成功連線到 qBittorrent 實例",
       "testFailedTitle": "連線測試失敗",
@@ -55,7 +42,13 @@
     "passwordRequired": "需要密碼",
     "decryptionDescription": "無法解密已儲存的密碼。這通常是因為工作階段金鑰已更改。",
     "reenterPassword": "重新輸入密碼",
-    "recentErrors": "近期錯誤（{{count}}）"
+    "recentErrors": "近期錯誤（{{count}}）",
+    "errorTypes": {
+      "connection": "連線",
+      "authentication": "身分驗證",
+      "ban": "封鎖",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "實例名稱為必填項",
-      "basicAuthPasswordRequired": "啟用基本認證時，基本認證密碼為必填項"
+      "basicAuthPasswordRequired": "啟用基本認證時，基本認證密碼為必填項",
+      "usernameRequired": "必須填寫使用者名稱",
+      "passwordRequired": "必須填寫密碼",
+      "apiKeyRequired": "必須填寫 API 金鑰"
     },
     "buttons": {
-      "saving": "儲存中...",
       "updateInstance": "更新實例",
-      "addInstance": "新增實例",
-      "cancel": "取消"
+      "addInstance": "新增實例"
     },
     "toast": {
-      "missingCredentialsTitle": "缺少憑據",
       "instanceUpdatedTitle": "實例已更新",
       "instanceUpdatedDescription": "實例更新成功。正在後臺測試連線...",
-      "updateFailedTitle": "更新失敗",
       "updateFailedDescription": "無法更新實例",
       "instanceCreatedTitle": "實例已建立",
       "instanceCreatedDescription": "實例建立成功。正在後臺測試連線...",
-      "createFailedTitle": "建立失敗",
       "createFailedDescription": "無法建立實例"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "使用者名稱和密碼",
       "apiKey": "API 金鑰"
     },
-    "sshAfterSave": "儲存後，可在實例設定中設定透過 SSH 存取該實例的檔案。"
+    "sshAfterSave": "儲存後，可在實例設定中設定透過 SSH 存取該實例的檔案。",
+    "addTitle": "新增實例",
+    "addDescription": "配置一個新的 qBittorrent 實例",
+    "editTitle": "編輯實例"
   },
   "settingsButton": {
     "tooltip": "實例設定"
@@ -560,6 +554,7 @@
         "externalProgram": "外部程式",
         "dryRun": "模擬執行",
         "exportToInstance": "匯出到實例",
+        "transferToInstance": "傳輸到實例",
         "ruleSkipped": "規則未執行"
       },
       "shareLimit": {
@@ -596,7 +591,8 @@
         "deleteLabelCondition": "條件",
         "exported_other": "已匯出 {{count}} 個種子",
         "exportedDryRun_other": "將匯出 {{count}} 個種子",
-        "exportFailed_other": "{{count}} 個種子匯出失敗"
+        "exportFailed_other": "{{count}} 個種子匯出失敗",
+        "transferredDryRun_other": "將傳輸 {{count}} 個種子"
       },
       "deleteDialog": {
         "title": "刪除規則",
@@ -656,6 +652,7 @@
         "deleteActivityFailed": "刪除活動失敗"
       },
       "exported": "已匯出",
+      "transferStarted": "已開始",
       "skipped": "已略過"
     },
     "runWorkflowNow": {
@@ -945,6 +942,7 @@
         "auto_managed": "自動管理",
         "dry_run_no_match": "模擬執行（無匹配）",
         "exported_to_instance": "匯出到實例",
+        "transferred_to_instance": "傳輸到實例",
         "rule_skipped": "規則未執行"
       }
     },
@@ -1121,6 +1119,11 @@
         "skipChecking": "跳過檢查",
         "addPaused": "以暫停狀態新增"
       },
+      "transfer": {
+        "title": "傳輸到實例",
+        "description": "將每個符合的種子連同檔案移到目標實例，並在移除任何內容之前核實副本。傳輸頁面會顯示每次傳輸。",
+        "remove": "移除「傳輸到實例」"
+      },
       "priority": {
         "title": "種子優先順序",
         "description": "控制種子的處理順序。",
@@ -1163,7 +1166,8 @@
         "category": "分類",
         "move": "移動",
         "externalProgram": "執行外部程式",
-        "exportToInstance": "匯出到實例"
+        "exportToInstance": "匯出到實例",
+        "transferToInstance": "傳輸到實例"
       },
       "option": {
         "noChange": "不更改",
@@ -1272,9 +1276,24 @@
           "unsupportedWindows": "Windows 不支援基於路徑的可用空間來源。",
           "qbitPathUnsupported": "此執行個體的版本早於 qBittorrent 5.3，無法回報某個路徑的可用空間。",
           "pathRequired": "使用\"伺服器路徑\"時，路徑為必填項。",
-          "filesystemAccessRequired": "基於路徑的可用空間來源需要本機或 SSH 檔案系統存取權限。"
+          "filesystemAccessRequired": "基於路徑的可用空間來源需要本機或 SSH 檔案系統存取權限。",
+          "allowanceRequired": "請輸入大於 0 的允許空間。",
+          "allowanceAccessRequired": "允許空間來源需要本機檔案系統存取權限，或具有 shell 的 SSH 存取權限。"
         },
-        "pathSourceFilesystemAccessRequired": "伺服器路徑（需要本機或 SSH 存取）"
+        "pathSourceFilesystemAccessRequired": "伺服器路徑（需要本機或 SSH 存取）",
+        "allowanceSource": "路徑上的允許空間",
+        "allowanceSourceWindowsUnsupported": "路徑上的允許空間（Windows 不支援）",
+        "allowanceSourceAccessRequired": "路徑上的允許空間（需要本機存取，或具有 shell 的 SSH 存取）",
+        "allowanceLabel": "允許空間",
+        "allowancePathLabel": "要統計的資料夾",
+        "allowanceUnitAria": "允許空間單位",
+        "allowanceHelp": "依供應商使用的單位輸入方案允許使用的空間。qui 會減去該路徑下檔案的大小。多數供應商以 1000 進位（{{decimalUnit}}），而不是 1024（{{binaryUnit}}），兩者相差約 9%。",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
+        "allowancePathHelp": "例如你的家目錄"
       },
       "grouping": {
         "title": "分組條件組",
@@ -1419,6 +1438,7 @@
           "externalProgram": "外部程式",
           "noMatches": "無匹配",
           "exportedToInstance": "匯出到實例",
+          "transferredToInstance": "傳輸到實例",
           "ruleSkipped": "規則未執行"
         },
         "actionFallback": "未知操作（{{action}}）",
@@ -2069,10 +2089,9 @@
     }
   },
   "access": {
-    "local": "本機",
-    "remote": "透過 SSH",
-    "none": "無",
-    "localFull": "qui 在本機讀寫此實例的檔案。",
+    "local": "本機檔案",
+    "remote": "透過 SSH 存取檔案",
+    "none": "無檔案存取",
     "limits": {
       "noIdentity": "無檔案識別資訊：qui 無法判斷兩個路徑是否指向同一檔案。孤立項目掃描在此無法刪除，且已存在的硬連結目標會阻止硬連結新增。",
       "noReflinks": "遠端實例不支援引用連結。",
@@ -2083,5 +2102,17 @@
     "label": "同時刪除其傳輸歷史",
     "description": "不勾選時，qui 會以該實例的名稱保留歷史。",
     "failed": "實例已刪除，但 qui 未能刪除其全部歷史。請在設定 > 統計中查看並刪除其餘部分。"
+  },
+  "list": {
+    "label": "實例",
+    "emptyTitle": "尚未配置任何實例",
+    "emptyDescription": "新增一個 qBittorrent 用戶端，讓 qui 管理它的種子。",
+    "tlsSkipped": "已關閉 TLS 驗證",
+    "reorderFailed": "重新排序實例失敗"
+  },
+  "publicPeerAddress": {
+    "label": "公開節點位址",
+    "noResolvedAddress": "qui 暫時無法判斷位址",
+    "description": "其他 BitTorrent 用戶端連到此 qBittorrent 所用的位址和連接埠，用於轉移和分享。留空則每次使用時由 qui 從 qBittorrent 推斷位址。當 qBittorrent 在 Docker 中執行或位於 NAT 之後時，請設定此項。"
   }
 }

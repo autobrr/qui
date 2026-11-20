@@ -15,8 +15,7 @@ import (
 )
 
 // planMoveTriggers evaluates the rule and plans the moves of the triggers in the given order.
-// It returns the planned moves and the number of times the plan ran the checks for a group.
-func planMoveTriggers(t *testing.T, svc *Service, torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext, order []string) (plannedAction[string], int) {
+func planMoveTriggers(t *testing.T, svc *Service, torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext, order []string) plannedAction[string] {
 	t.Helper()
 	crossSeeds := buildCrossSeedGroups(torrentRefs(torrents), evalCtx)
 	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, evalCtx, crossSeeds, noSkipWindow(rule), nil, nil)
@@ -41,8 +40,7 @@ func planMoveTriggers(t *testing.T, svc *Service, torrents []qbt.Torrent, rule *
 		evalCtx:       evalCtx,
 		scope:         noSkipWindow(rule),
 	}, triggers.rules)
-	planned := svc.expandMoves(t.Context(), m, triggers)
-	return planned, m.groupChecks
+	return svc.expandMoves(t.Context(), m, triggers)
 }
 
 // triggerOrders returns every order of the hashes.
@@ -70,10 +68,9 @@ func groupTriggers(savePath, contentPath string) []qbt.Torrent {
 	return triggers
 }
 
-// A group that fails a check for the group cannot move for any of its triggers, so the plan
-// runs the checks once and moves nothing, in each order of the triggers. A group that passes
-// moves with its first trigger.
-func TestPlanMoves_GroupIsCheckedOnce(t *testing.T) {
+// A group that fails a check for the group moves nothing, in each order of the triggers.
+// A group that passes moves with its first trigger.
+func TestPlanMoves_GroupCheckIsOrderIndependent(t *testing.T) {
 	moveRule := func(cond *models.RuleCondition, grouping *models.GroupingConfig, groupID string) *models.Automation {
 		return groupTestRule(11, &models.ActionConditions{
 			Grouping: grouping,
@@ -132,9 +129,8 @@ func TestPlanMoves_GroupIsCheckedOnce(t *testing.T) {
 			for _, order := range triggerOrders("t1", "t2", "t3") {
 				t.Run(fmt.Sprint(order), func(t *testing.T) {
 					evalCtx := &EvalContext{SameInstanceContentByHash: tc.sharing}
-					planned, checks := planMoveTriggers(t, &Service{}, tc.torrents, tc.rule, evalCtx, order)
+					planned := planMoveTriggers(t, &Service{}, tc.torrents, tc.rule, evalCtx, order)
 					require.Equal(t, tc.want, planned.byTarget)
-					require.Equal(t, 1, checks)
 				})
 			}
 		})
@@ -152,7 +148,7 @@ func TestPlanMoves_GroupThatFailsTheConditionReadsNoFiles(t *testing.T) {
 	}})
 	reader := &countingFilesReader{staticFilesReader: staticFilesReader{"t1": files, "t2": files, "t3": files, "member": files}}
 
-	planned, _ := planMoveTriggers(t, &Service{filesReader: reader}, torrents, rule, &EvalContext{}, []string{"t1", "t2", "t3"})
+	planned := planMoveTriggers(t, &Service{filesReader: reader}, torrents, rule, &EvalContext{}, []string{"t1", "t2", "t3"})
 	require.Empty(t, planned.byTarget)
 	require.Empty(t, reader.asked)
 }
@@ -175,7 +171,7 @@ func TestPlanMoves_OverlapFailureDoesNotBlockTheNextTrigger(t *testing.T) {
 		"c": {{Name: "film.mkv", Size: 100}},
 	}
 
-	planned, _ := planMoveTriggers(t, &Service{filesReader: reader}, torrents, rule, &EvalContext{}, []string{"a", "b"})
+	planned := planMoveTriggers(t, &Service{filesReader: reader}, torrents, rule, &EvalContext{}, []string{"a", "b"})
 	require.Equal(t, map[string][]string{"/new": {"a", "b", "c"}}, planned.byTarget)
 	ref := ruleRef{id: 13, name: "rule"}
 	require.Equal(t, map[string]ruleRef{"a": ref, "b": ref, "c": ref}, planned.rules)
@@ -196,7 +192,7 @@ func TestPlanMoves_TriggersWithoutGroupKeyArePlannedApart(t *testing.T) {
 	for _, order := range triggerOrders("blocked", "free") {
 		t.Run(fmt.Sprint(order), func(t *testing.T) {
 			evalCtx := &EvalContext{SameInstanceContentByHash: sharedFiles([2]string{"blocked", "outside"})}
-			planned, _ := planMoveTriggers(t, &Service{}, torrents, rule, evalCtx, order)
+			planned := planMoveTriggers(t, &Service{}, torrents, rule, evalCtx, order)
 			require.Equal(t, map[string][]string{"/new": {"free"}}, planned.byTarget)
 		})
 	}

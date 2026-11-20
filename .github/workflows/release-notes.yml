@@ -1,16 +1,13 @@
 name: Release notes
 
 # Writes the release notes page for one release and opens a PR to main.
-# GoReleaser publishes the release with GITHUB_TOKEN, and an event from
-# GITHUB_TOKEN starts no workflow, so "release: published" never runs here.
-# workflow_run fires when the Release build of a tag ends. "edited" fires when
-# Highlights are added to the release by hand, and updates the open PR.
+# GoReleaser leaves a draft. The maintainer adds the Highlights and publishes
+# it, so "published" runs when the text is final. "edited" fires when the
+# published text changes, and updates the open PR. GitHub starts no workflow
+# for an edit of a draft.
 on:
-  workflow_run:
-    workflows: [Release]
-    types: [completed]
   release:
-    types: [edited]
+    types: [published, edited]
   workflow_dispatch:
     inputs:
       tag:
@@ -23,18 +20,11 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: release-notes-${{ github.event.release.tag_name || github.event.workflow_run.head_branch || inputs.tag || 'latest' }}
+  group: release-notes-${{ github.event.release.tag_name || inputs.tag || 'latest' }}
 
 jobs:
   release-notes:
     runs-on: ubuntu-latest
-    # workflow_run: only a successful build of a tag push. head_branch is the
-    # tag name for a tag push.
-    if: >
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
     steps:
       - name: Checkout main
         uses: actions/checkout@v7.0.1
@@ -44,7 +34,7 @@ jobs:
       - name: Write the page
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name || github.event.workflow_run.head_branch || inputs.tag }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           set -euo pipefail
           if [[ -z $TAG ]]; then

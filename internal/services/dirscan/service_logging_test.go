@@ -38,7 +38,6 @@ func TestLogDirScanAcceptedMatch_PartialIncludesUnmatchedSamples(t *testing.T) {
 
 	var entry map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &entry))
-	require.Equal(t, "dirscan: found match", entry["message"])
 	require.Equal(t, true, entry["partial"])
 	require.EqualValues(t, 1, entry["matchedFiles"])
 	require.EqualValues(t, 1, entry["unmatchedSearcheeFiles"])

@@ -93,6 +93,7 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `oidcDisableBuiltInLogin` | `QUI__OIDC_DISABLE_BUILT_IN_LOGIN` | bool | `false` | If OIDC is enabled, this hides the local username and password form. Restart required. |
 | `oidcAllowedSubject` | `QUI__OIDC_ALLOWED_SUBJECT` | string | empty | Only the OIDC account with this subject identifier (`sub`) can log in. The match is exact. Set this key or `oidcAllowedEmail`, not both. Applies on save, without a restart. See [OIDC](./oidc.md). |
 | `oidcAllowedEmail` | `QUI__OIDC_ALLOWED_EMAIL` | string | empty | Only an OIDC account with this email can log in, and only when the provider marks the email as verified. The match ignores letter case. Set this key or `oidcAllowedSubject`, not both. Applies on save, without a restart. See [OIDC](./oidc.md). |
+| `experimentalFeatures` | `QUI__EXPERIMENTAL_FEATURES` | string[] | empty list | Turns on features that are not finished. Names are case-sensitive. In the environment variable, separate the names with commas. A feature that you turn on here can change, break, or go away in any release. qui ignores a name that it does not know and logs a warning. Restart required. |
 
 ## Authentication
 
@@ -146,6 +147,7 @@ The web UI signs in with a browser session cookie. These rules apply to that coo
 - Cookie-authenticated `POST`, `PUT`, `PATCH`, and `DELETE` requests must send an `X-Requested-With` header. The web UI and the Swagger UI do this. Scripts and other clients must use an [API key](../api/overview.md) instead of the cookie.
 - `/api/auth/setup` and `/api/auth/login` accept only `Content-Type: application/json`. Other media types get HTTP 415.
 - After five failed password logins in one minute, qui rejects password logins with HTTP 429 until the minute passes. This limit is process-wide and does not apply to OIDC or API keys.
+- The routes under `/api/auth` that need no session take one request at a time, and one more request can wait for up to one second. Each other request at the same time gets HTTP 429, also when its password is correct. This limit does not apply to `/api/auth/me`, `/api/auth/logout`, and `/api/auth/change-password`.
 - A password change ends every session, including the browser that changed it. Sign in again with the new password.
 
 ## Allowed Hosts

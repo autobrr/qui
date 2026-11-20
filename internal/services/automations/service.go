@@ -71,6 +71,8 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionMoved:               "Moved torrents",
 	models.ActivityActionExportedToInstance:  "Export to instance",
 	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
+
+	models.ActivityActionTransferredToInstance: "Transfer to instance",
 }
 
 type automationSummary struct {
@@ -653,8 +655,12 @@ type Service struct {
 	externalProgramService    *externalprograms.Service // for executing external programs
 	crossMatcher              CrossMatcher
 	backendPool               *fsops.Pool
-	activityRuns              *activityRunStore
-	releaseParser             *releases.Parser
+	// previewUsage holds the usage that a preview measured for an allowance
+	// source. The mutex also makes one preview measure at a time.
+	previewUsageMu sync.Mutex
+	previewUsage   map[previewUsageKey]previewUsageReading
+	activityRuns   *activityRunStore
+	releaseParser  *releases.Parser
 
 	lastApplied           map[int]map[string]time.Time // the Skip window stamps, instanceID -> hash -> time. rule_scope.go owns them
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
@@ -668,6 +674,17 @@ type Service struct {
 	crossSeedRoutes   *crossseedroute.Service
 	// routedTorrents reads the torrents of a Cross-seed instance for the hardlink index.
 	routedTorrents crossseedroute.TorrentReader
+	// held is nil until start-up sets it.
+	held heldTorrents
+	// exportRunner runs Export to Instance on the Transfer module.
+	exportRunner exportRunner
+	// transferRunner starts the Transfers of Transfer to Instance.
+	transferRunner transferRunner
+	// transferHolds holds, by "instanceID:hash", the time until which a rule
+	// does not ask again for a Transfer that the module refused.
+	transferHolds map[string]time.Time
+	// clock reads the time of the Transfer holds. Nil is time.Now.
+	clock func() time.Time
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -1170,6 +1187,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
+	torrents = s.leaveOutHeld(instanceID, torrents)
 	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
 		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
@@ -1186,7 +1204,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, err
 	}
-	evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, []*models.Automation{rule}, previewView == "eligible")
+	evalCtx.freeSpaceLedgers, err = s.buildFreeSpaceLedgers(ctx, instance, []*models.Automation{rule}, previewView == "eligible", s.previewUsageUnder)
 	if err != nil {
 		return nil, err
 	}
@@ -1422,6 +1440,7 @@ func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *mod
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
+	torrents = s.leaveOutHeld(instanceID, torrents)
 	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
 		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
@@ -1440,7 +1459,7 @@ func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *mod
 	}
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 
-	evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, []*models.Automation{rule}, false)
+	evalCtx.freeSpaceLedgers, err = s.buildFreeSpaceLedgers(ctx, instance, []*models.Automation{rule}, false, s.previewUsageUnder)
 	if err != nil {
 		return nil, err
 	}
@@ -1662,6 +1681,7 @@ var actionRunOrder = []string{
 	"externalProgram",
 	"exportToInstance",
 	"delete",
+	"transferToInstance",
 }
 
 func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, force bool, rules []*models.Automation, dryRun bool) ([]*models.AutomationActivity, error) {
@@ -1745,6 +1765,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.notifyAutomationFailure(ctx, instanceID, err)
 		return nil, err
 	}
+	torrents = s.leaveOutHeld(instanceID, torrents)
 
 	// After the fetch: a full sync update reads the qBittorrent version again.
 	eligibleRules, skipped := s.skipRulesWithUnknownFields(ctx, instanceID, eligibleRules, now)
@@ -1886,6 +1907,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
 			Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
 			Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
+			Int("transferToInstanceNoMatch", stats.TransferConditionNotMet).
 			Msg("automations: rule matched trackers but applied no actions")
 	}
 
@@ -2070,6 +2092,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 			}
 		}
+	}
+
+	// A Transfer reads the Shared-file group of its torrent, so it starts after the deletes.
+	if len(plan.transfers) > 0 {
+		s.startTransfers(ctx, instanceID, plan.transfers, summary)
 	}
 
 	// Collect export results before notification.
@@ -3542,6 +3569,10 @@ func (s *Service) recordDryRunActivities(
 		})
 	}
 
+	if len(plan.transfers) > 0 {
+		s.recordDryRunTransfers(ctx, r, plan.transfers)
+	}
+
 	if recordNoMatch && len(r.activities) == 0 {
 		return s.recordDryRunNoMatch(ctx, instanceID)
 	}
@@ -3917,7 +3948,7 @@ func (s *Service) reserveExports(exports []pendingExportToInstance) []pendingExp
 // executeExportToInstance exports torrents from the source instance and adds them to target instances.
 // Returns a channel of activities that is closed when all exports complete.
 // The caller should drain the channel and record activities into the summary before notifying.
-func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID int, executions []pendingExportToInstance) <-chan *models.AutomationActivity {
+func (s *Service) executeExportToInstance(ctx context.Context, sourceInstanceID int, executions []pendingExportToInstance) <-chan *models.AutomationActivity {
 	ch := make(chan *models.AutomationActivity, len(executions))
 	if len(executions) == 0 {
 		close(ch)
@@ -3935,10 +3966,6 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 		Int("executions", len(executions)).
 		Interface("targetCounts", targetCounts).
 		Msg("automations: exporting torrents to instances")
-
-	const maxConcurrentExports = 5
-	const exportTimeout = 2 * time.Minute
-	sem := make(chan struct{}, maxConcurrentExports)
 
 	var wg sync.WaitGroup
 
@@ -3972,200 +3999,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			continue
 		}
 
-		wg.Add(1)
-		// Use context.Background() since parent context may be cancelled before execution completes
-		go func() { //nolint:gosec // G118 - intentional: goroutine outlives request context
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			defer wg.Done()
-			defer func() {
-				flightKey := fmt.Sprintf("%d:%s", exec.action.TargetInstanceID, exec.hash)
-				s.mu.Lock()
-				delete(s.inFlightExports, flightKey)
-				s.mu.Unlock()
-			}()
-
-			ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
-			defer cancel()
-
-			// Another run can export the torrent after this run planned it.
-			if _, exists, err := s.targetLookup.HasTorrentByAnyHash(ctx, exec.action.TargetInstanceID, []string{exec.hash}); err == nil && exists {
-				log.Debug().
-					Str("hash", exec.hash).
-					Int("targetInstanceID", exec.action.TargetInstanceID).
-					Msg("automations: torrent reached target instance after the plan, skipping export")
-				return
-			}
-
-			// Fallback tracker domain from cached sync data; overridden by ExportTorrent if available
-			trackerDomain := exec.trackerDomain
-
-			buildActivity := func(outcome, reason string) *models.AutomationActivity {
-				ruleID := exec.ruleID
-				detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // int and string fields cannot fail to encode
-					Count            int    `json:"count"`
-					SavePath         string `json:"savePath"`
-					TargetInstanceID int    `json:"targetInstanceId"`
-				}{1, exec.resolvedSavePath, exec.action.TargetInstanceID})
-				return &models.AutomationActivity{
-					InstanceID:    sourceInstanceID,
-					Hash:          exec.hash,
-					TorrentName:   exec.torrent.Name,
-					TrackerDomain: trackerDomain,
-					Action:        models.ActivityActionExportedToInstance,
-					RuleID:        &ruleID,
-					RuleName:      exec.ruleName,
-					Outcome:       outcome,
-					Reason:        reason,
-					Details:       detailsJSON,
-				}
-			}
-
-			recordAndSend := func(activity *models.AutomationActivity) {
-				if s.activityStore != nil {
-					if err := s.activityStore.Create(context.Background(), activity); err != nil {
-						log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
-					}
-				}
-				ch <- activity
-			}
-
-			// removeFromTarget deletes a failed export from the target, keeping its files,
-			// so it does not block a re-export on the next run.
-			removeFromTarget := func(ctx context.Context, cause string) {
-				actor := qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: exec.ruleName}
-				if err := s.deleter.DeleteTorrents(ctx, exec.action.TargetInstanceID, []string{exec.hash}, false, actor); err != nil {
-					log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).Str("cause", cause).
-						Msg("automations: failed to clean up torrent from target")
-					return
-				}
-				log.Info().Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
-					Msg("automations: cleaned up failed export torrent from target")
-			}
-
-			// 1. Export .torrent from source instance
-			torrentBytes, _, exportTracker, err := s.syncManager.ExportTorrent(ctx, sourceInstanceID, exec.hash)
-			if exportTracker != "" {
-				trackerDomain = exportTracker
-			}
-			if err != nil {
-				log.Error().Err(err).
-					Int("sourceInstanceID", sourceInstanceID).
-					Int("targetInstanceID", exec.action.TargetInstanceID).
-					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
-					Msg("automations: export torrent failed")
-				recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Export failed: "+err.Error()))
-				return
-			}
-
-			// Guard against empty torrent data
-			if len(torrentBytes) == 0 {
-				log.Error().
-					Int("sourceInstanceID", sourceInstanceID).
-					Int("targetInstanceID", exec.action.TargetInstanceID).
-					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
-					Msg("automations: export returned empty torrent data")
-				recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Export returned empty torrent data"))
-				return
-			}
-
-			// 2. Build options for AddTorrent on target
-			options := map[string]string{}
-			if exec.resolvedSavePath != "" {
-				// Explicit save path: disable autoTMM so qBittorrent uses the provided path
-				options["autoTMM"] = "false"
-				options["savepath"] = exec.resolvedSavePath
-			} else if exec.action.Category != "" {
-				// No save path but category set: enable autoTMM so qBittorrent uses the category's configured path
-				options["autoTMM"] = "true"
-			}
-			if exec.action.Category != "" {
-				options["category"] = exec.action.Category
-			}
-			if len(exec.action.Tags) > 0 {
-				options["tags"] = strings.Join(exec.action.Tags, ",")
-			}
-			if exec.action.Paused {
-				options["paused"] = "true"
-				options["stopped"] = "true"
-			}
-			if exec.action.SkipCheckingEnabled() {
-				options["skip_checking"] = "true"
-			}
-			if exec.action.ContentLayout != "" {
-				options["contentLayout"] = exec.action.ContentLayout
-			}
-
-			// 3. Add to target instance
-			if _, err := s.syncManager.AddTorrent(ctx, exec.action.TargetInstanceID, torrentBytes, options); err != nil {
-				log.Error().Err(err).
-					Int("sourceInstanceID", sourceInstanceID).
-					Int("targetInstanceID", exec.action.TargetInstanceID).
-					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
-					Msg("automations: add torrent to target instance failed")
-				recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Add to target failed: "+err.Error()))
-				return
-			}
-
-			// qBittorrent does not hash-check a torrent that was added stopped.
-			// Ask it to recheck; it runs the torrent only for the check and stops it again.
-			if exec.action.Paused && !exec.action.SkipCheckingEnabled() {
-				err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), exec.action.TargetInstanceID, []string{exec.hash}, "recheck")
-
-				// The post-add retry detaches from ctx and can use up its deadline, so verify and clean up under a fresh one.
-				var verifyCancel context.CancelFunc
-				ctx, verifyCancel = context.WithTimeout(context.WithoutCancel(ctx), exportTimeout)
-				defer verifyCancel()
-
-				if err != nil {
-					log.Error().Err(err).
-						Int("sourceInstanceID", sourceInstanceID).
-						Int("targetInstanceID", exec.action.TargetInstanceID).
-						Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
-						Msg("automations: recheck on target failed")
-					removeFromTarget(ctx, "recheck failed")
-					recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Recheck on target failed: "+err.Error()))
-					return
-				}
-			}
-
-			// 4. Post-add verification: confirm torrent is healthy on target
-			if reason := s.verifyExportOnTarget(ctx, exec.action.TargetInstanceID, exec.hash, exec.action.SkipCheckingEnabled()); reason != "" {
-				log.Error().
-					Int("sourceInstanceID", sourceInstanceID).
-					Int("targetInstanceID", exec.action.TargetInstanceID).
-					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
-					Str("reason", reason).
-					Str("configuredSavePath", exec.resolvedSavePath).
-					Str("configuredCategory", exec.action.Category).
-					Bool("autoTMM", exec.resolvedSavePath == "" && exec.action.Category != "").
-					Msg("automations: export verification failed on target")
-
-				// Re-check before cleanup — the torrent may have become healthy after verification timed out
-				if torrent, found, recheckErr := s.syncManager.HasTorrentByAnyHash(ctx, exec.action.TargetInstanceID, []string{exec.hash}); recheckErr == nil && found &&
-					torrent.State != qbt.TorrentStateMissingFiles && torrent.State != qbt.TorrentStateError && torrent.Progress >= 1.0 {
-					log.Info().
-						Int("sourceInstanceID", sourceInstanceID).
-						Int("targetInstanceID", exec.action.TargetInstanceID).
-						Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
-						Msg("automations: torrent recovered after verification timeout, reporting success")
-					recordAndSend(buildActivity(models.ActivityOutcomeSuccess, ""))
-					return
-				}
-
-				removeFromTarget(ctx, "verification failed")
-				recordAndSend(buildActivity(models.ActivityOutcomeFailed, reason))
-				return
-			}
-
-			log.Info().
-				Int("sourceInstanceID", sourceInstanceID).
-				Int("targetInstanceID", exec.action.TargetInstanceID).
-				Str("hash", exec.hash).Str("name", exec.torrent.Name).
-				Str("savePath", exec.resolvedSavePath).Str("rule", exec.ruleName).
-				Msg("automations: exported torrent to instance")
-			recordAndSend(buildActivity(models.ActivityOutcomeSuccess, ""))
-		}()
+		wg.Go(func() { s.exportOnTransfers(ctx, sourceInstanceID, exec, ch) })
 	}
 
 	// Close channel when all workers complete
@@ -4175,106 +4009,6 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 	}()
 
 	return ch
-}
-
-// exportVerifyMaxAttempts and exportVerifyPollInterval bound post-add verification. Tests shorten them.
-var (
-	exportVerifyMaxAttempts  = 10
-	exportVerifyPollInterval = 3 * time.Second
-)
-
-// verifyExportOnTarget polls the target instance to confirm the exported torrent is healthy.
-// When skipChecking is false, a torrent still in a checking state after retries is treated as
-// success (the add worked, hash check is in progress).
-// Returns empty string on success, or a failure reason string.
-func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash string, skipChecking bool) string {
-	syncMgr, err := s.syncManager.GetSyncOwner(ctx, targetInstanceID)
-	if err != nil {
-		return fmt.Sprintf("Verification failed: unable to get sync manager: %v", err)
-	}
-
-	var lastErr error
-	var lastStateChecking bool
-
-	for attempt := range exportVerifyMaxAttempts {
-		// Force a cache refresh so we see newly added torrents
-		if err := syncMgr.Sync(ctx); err != nil {
-			lastErr = err
-			lastStateChecking = false
-			log.Debug().Err(err).
-				Int("targetInstanceID", targetInstanceID).
-				Str("hash", hash).Int("attempt", attempt+1).
-				Msg("automations: sync failed during verification, retrying")
-		} else {
-			torrent, found, lookupErr := s.syncManager.HasTorrentByAnyHash(ctx, targetInstanceID, []string{hash})
-
-			switch {
-			case lookupErr != nil:
-				lastErr = lookupErr
-				lastStateChecking = false
-				log.Debug().Err(lookupErr).
-					Int("targetInstanceID", targetInstanceID).
-					Str("hash", hash).Int("attempt", attempt+1).
-					Msg("automations: verification poll failed, retrying")
-			case !found:
-				lastErr = nil
-				lastStateChecking = false
-				log.Debug().
-					Int("targetInstanceID", targetInstanceID).
-					Str("hash", hash).Int("attempt", attempt+1).
-					Msg("automations: torrent not yet visible on target, retrying")
-			default:
-				// Successful lookup — clear transient error state
-				lastErr = nil
-
-				switch torrent.State { //nolint:exhaustive // only failure and transient states need special handling
-				case qbt.TorrentStateMissingFiles:
-					log.Warn().
-						Int("targetInstanceID", targetInstanceID).
-						Str("hash", hash).
-						Str("savePath", torrent.SavePath).
-						Str("contentPath", torrent.ContentPath).
-						Msg("automations: torrent has missingFiles state on target")
-					return fmt.Sprintf("Files missing on target instance (savePath: %s)", torrent.SavePath)
-				case qbt.TorrentStateError:
-					return "Torrent in error state on target instance"
-				case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData:
-					lastStateChecking = true
-					log.Debug().
-						Int("targetInstanceID", targetInstanceID).
-						Str("hash", hash).Str("state", string(torrent.State)).Int("attempt", attempt+1).
-						Msg("automations: torrent still checking on target, retrying")
-				default:
-					lastStateChecking = false
-					if torrent.Progress >= 1.0 {
-						return "" // success
-					}
-					// Progress < 1.0 but not in a checking/error state — might still be initializing
-					log.Debug().
-						Int("targetInstanceID", targetInstanceID).
-						Str("hash", hash).Float64("progress", torrent.Progress).
-						Str("state", string(torrent.State)).Int("attempt", attempt+1).
-						Msg("automations: torrent not yet complete on target, retrying")
-				}
-			}
-		}
-
-		// Wait before next retry
-		select {
-		case <-ctx.Done():
-			return "Verification cancelled: " + ctx.Err().Error()
-		case <-time.After(exportVerifyPollInterval):
-		}
-	}
-
-	// When skip_checking is false, a torrent still hash-checking is expected — treat as success
-	if lastStateChecking && !skipChecking {
-		return ""
-	}
-	if lastErr != nil {
-		return fmt.Sprintf("Verification failed: %v", lastErr)
-	}
-	return fmt.Sprintf("Verification timed out after %d attempts (%v)", exportVerifyMaxAttempts, time.Duration(exportVerifyMaxAttempts)*exportVerifyPollInterval)
 }
 
 func SortTorrentsWithFallback(torrents []*qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext, instanceID int, ruleName string) {

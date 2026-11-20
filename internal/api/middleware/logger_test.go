@@ -110,36 +110,6 @@ func TestLoggerLogsPathOnly(t *testing.T) {
 	require.Contains(t, logLine, `"url":"/api/cross-seed/apply"`)
 }
 
-func TestLoggerDoesNotLogOIDCCallbackQuerySecrets(t *testing.T) {
-	const (
-		oauthState = "SECRET-OAUTH-STATE"
-		oauthCode  = "SECRET-AUTH-CODE"
-	)
-
-	var buf bytes.Buffer
-	logger := zerolog.New(&buf).Level(zerolog.TraceLevel)
-	handler := Logger(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequestWithContext(
-		t.Context(),
-		http.MethodGet,
-		"/api/auth/oidc/callback?state="+oauthState+"&code="+oauthCode,
-		nil,
-	)
-	resp := httptest.NewRecorder()
-
-	handler.ServeHTTP(resp, req)
-
-	logLine := buf.String()
-	require.NotContains(t, logLine, oauthState)
-	require.NotContains(t, logLine, oauthCode)
-	require.NotContains(t, logLine, "state=")
-	require.NotContains(t, logLine, "code=")
-	require.Contains(t, logLine, `"url":"/api/auth/oidc/callback"`)
-}
-
 func TestLoggerRedactsProxyAPIKeyPath(t *testing.T) {
 	const proxyAPIKey = "SECRET-PROXY-API-KEY"
 

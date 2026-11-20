@@ -121,7 +121,7 @@ func sameJSON(a, b any) bool {
 
 // checkJSONShape compares a value decoded with UseNumber against the Go type that it decodes into.
 // Like encoding/json, it accepts null for every type. It also runs checkCondition on each condition
-// and checks the action enums (contentLayout, tag and delete mode, share limit action and mode),
+// and checks the action enums (contentLayout, Transfer after and way, tag and delete mode, share limit action and mode),
 // except under the top-level keys in unchanged.
 func checkJSONShape(problems []string, path string, v any, t reflect.Type, unchanged []string) []string {
 	if v == nil {
@@ -209,6 +209,9 @@ func checkRuleValues(problems []string, path string, obj map[string]any, t refle
 		problems = checkCondition(problems, path, obj)
 	case reflect.TypeFor[models.ExportToInstanceAction]():
 		problems = checkEnumKey(problems, path, obj, "contentLayout", automations.ContentLayouts)
+	case reflect.TypeFor[models.TransferToInstanceAction]():
+		problems = checkEnumKey(problems, path, obj, "after", automations.TransferAfters)
+		problems = checkEnumKey(problems, path, obj, "way", automations.TransferWays)
 	case reflect.TypeFor[models.TagAction]():
 		problems = checkEnumKey(problems, path, obj, "mode", automations.TagModes)
 	case reflect.TypeFor[models.DeleteAction]():

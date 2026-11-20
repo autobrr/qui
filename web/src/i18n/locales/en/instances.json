@@ -7,71 +7,64 @@
       "disconnected": "Disconnected"
     },
     "tooltips": {
-      "disableInstance": "Disable instance",
-      "enableInstance": "Enable instance",
       "moveUp": "Move up",
       "moveDown": "Move down"
     },
     "actions": {
-      "edit": "Edit",
-      "testConnection": "Test Connection",
+      "testConnection": "Test connection",
       "delete": "Delete"
     },
-    "labels": {
-      "username": "Username:",
-      "basicAuth": "Basic Auth:",
-      "tlsVerification": "TLS Verification:",
-      "tlsSkipped": "Skipped",
-      "tlsStrict": "Strict",
-      "testingConnection": "Testing connection...",
-      "fileAccess": "File access:"
-    },
     "deleteDialog": {
-      "title": "Delete Instance",
+      "title": "Delete instance",
       "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
       "cancel": "Cancel",
       "confirm": "Delete"
     },
     "toast": {
-      "instanceDisabledTitle": "Instance Disabled",
-      "testDisabledDescription": "Enable the instance before testing the connection.",
-      "testSuccessTitle": "Test Connection Successful",
+      "instanceDisabledTitle": "Instance disabled",
+      "testSuccessTitle": "Connection test passed",
       "testSuccessDescription": "Successfully connected to qBittorrent instance",
-      "testFailedTitle": "Test Connection Failed",
+      "testFailedTitle": "Connection test failed",
       "testFailedDescription": "Could not connect to qBittorrent instance",
       "connectionFailed": "Connection failed",
-      "instanceEnabledTitle": "Instance Enabled",
+      "instanceEnabledTitle": "Instance enabled",
       "instanceEnabledDescription": "qui will resume connecting to this qBittorrent instance.",
       "instanceDisabledDescription": "qui will stop attempting to reach this qBittorrent instance.",
-      "statusUpdateFailedTitle": "Status Update Failed",
+      "statusUpdateFailedTitle": "Status update failed",
       "statusUpdateFailedDescription": "Failed to update instance status",
-      "instanceDeletedTitle": "Instance Deleted",
+      "instanceDeletedTitle": "Instance deleted",
       "instanceDeletedDescription": "Successfully deleted \"{{name}}\"",
-      "deleteFailedTitle": "Delete Failed",
+      "deleteFailedTitle": "Delete failed",
       "deleteFailedDescription": "Failed to delete instance"
     }
   },
   "errorDisplay": {
-    "passwordRequired": "Password Required",
+    "passwordRequired": "Password required",
     "decryptionDescription": "Unable to decrypt saved password. This usually happens when the session secret has changed.",
-    "reenterPassword": "Re-enter Password",
-    "recentErrors": "Recent Errors ({{count}})"
+    "reenterPassword": "Re-enter password",
+    "recentErrors": "Recent errors ({{count}})",
+    "errorTypes": {
+      "connection": "Connection",
+      "authentication": "Authentication",
+      "ban": "Ban",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
-      "instanceName": "Instance Name",
+      "instanceName": "Name",
       "url": "URL",
-      "skipTlsVerification": "Skip TLS Certificate Verification",
+      "skipTlsVerification": "Skip TLS certificate check",
       "skipTlsDescription": "Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates.",
-      "localFilesystemAccess": "Local Filesystem Access",
+      "localFilesystemAccess": "Local file access",
       "localFilesystemDescription": "Enable if qui can access this instance's download paths (required for hardlink detection in automations).",
       "username": "Username",
       "password": "Password",
-      "httpBasicAuth": "HTTP Basic Authentication",
+      "httpBasicAuth": "HTTP basic auth",
       "httpBasicAuthDescription": "Enable if your qBittorrent is behind a reverse proxy with Basic Auth",
-      "basicAuthUsername": "Basic Auth Username",
-      "basicAuthPassword": "Basic Auth Password",
-      "authType": "Authentication Type",
+      "basicAuthUsername": "Basic auth username",
+      "basicAuthPassword": "Basic auth password",
+      "authType": "Authentication",
       "authTypeDescription": "Select how qui should authenticate to qBittorrent."
     },
     "placeholders": {
@@ -87,37 +80,38 @@
     },
     "validation": {
       "nameRequired": "Instance name is required",
-      "basicAuthPasswordRequired": "Basic auth password is required when basic auth is enabled"
+      "basicAuthPasswordRequired": "Basic auth password is required when basic auth is enabled",
+      "usernameRequired": "Username is required",
+      "passwordRequired": "Password is required",
+      "apiKeyRequired": "API key is required"
     },
     "buttons": {
-      "saving": "Saving...",
-      "updateInstance": "Update Instance",
-      "addInstance": "Add Instance",
-      "cancel": "Cancel"
+      "updateInstance": "Update instance",
+      "addInstance": "Add instance"
     },
     "toast": {
-      "missingCredentialsTitle": "Missing Credentials",
-      "instanceUpdatedTitle": "Instance Updated",
+      "instanceUpdatedTitle": "Instance updated",
       "instanceUpdatedDescription": "Instance updated successfully. Connection testing in background...",
-      "updateFailedTitle": "Update Failed",
       "updateFailedDescription": "Failed to update instance",
-      "instanceCreatedTitle": "Instance Created",
+      "instanceCreatedTitle": "Instance created",
       "instanceCreatedDescription": "Instance created successfully. Connection testing in background...",
-      "createFailedTitle": "Create Failed",
       "createFailedDescription": "Failed to create instance"
     },
     "authType": {
       "none": "None",
-      "usernamePassword": "Username and Password",
-      "apiKey": "API Key"
+      "usernamePassword": "Username and password",
+      "apiKey": "API key"
     },
-    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save."
+    "sshAfterSave": "SSH access to the instance's files is set up in the instance's settings after you save.",
+    "addTitle": "Add instance",
+    "addDescription": "Configure a new qBittorrent instance",
+    "editTitle": "Edit instance"
   },
   "settingsButton": {
     "tooltip": "Instance Settings"
   },
   "passwordBanner": {
-    "title": "Password Issues Detected",
+    "title": "Password issues detected",
     "description": "Some instances cannot decrypt their saved passwords, likely due to a configuration change. Check the affected instances below to resolve this issue."
   },
   "preferences": {
@@ -561,6 +555,7 @@
         "externalProgram": "External program",
         "dryRun": "Dry-run",
         "exportToInstance": "Export to instance",
+        "transferToInstance": "Transfer to instance",
         "ruleSkipped": "Rule not run"
       },
       "shareLimit": {
@@ -614,7 +609,9 @@
         "exportedDryRun_one": "{{count}} torrent would be exported",
         "exportedDryRun_other": "{{count}} torrents would be exported",
         "exportFailed_one": "{{count}} torrent failed to export",
-        "exportFailed_other": "{{count}} torrents failed to export"
+        "exportFailed_other": "{{count}} torrents failed to export",
+        "transferredDryRun_one": "{{count}} torrent would be transferred",
+        "transferredDryRun_other": "{{count}} torrents would be transferred"
       },
       "deleteDialog": {
         "title": "Delete Rule",
@@ -674,6 +671,7 @@
         "deleteActivityFailed": "Failed to delete activity"
       },
       "exported": "Exported",
+      "transferStarted": "Started",
       "skipped": "Skipped"
     },
     "runWorkflowNow": {
@@ -973,6 +971,7 @@
         "auto_managed": "Auto managed",
         "dry_run_no_match": "Dry-run (no match)",
         "exported_to_instance": "Export to instance",
+        "transferred_to_instance": "Transfer to instance",
         "rule_skipped": "Rule not run"
       }
     },
@@ -1150,6 +1149,11 @@
         "skipChecking": "Skip checking",
         "addPaused": "Add paused"
       },
+      "transfer": {
+        "title": "Transfer to instance",
+        "description": "Moves each matching torrent with its files to the target instance, and proves the copy before it removes anything. The Transfers page shows each Transfer.",
+        "remove": "Remove Transfer to instance"
+      },
       "priority": {
         "title": "Torrent Priority",
         "description": "Controls the order in which torrents are processed.",
@@ -1192,7 +1196,8 @@
         "category": "Category",
         "move": "Move",
         "externalProgram": "Run external program",
-        "exportToInstance": "Export to instance"
+        "exportToInstance": "Export to instance",
+        "transferToInstance": "Transfer to instance"
       },
       "option": {
         "noChange": "No change",
@@ -1301,9 +1306,24 @@
           "unsupportedWindows": "Path-based free space source is not supported on Windows.",
           "qbitPathUnsupported": "This instance is older than qBittorrent 5.3 and cannot report free space at a path.",
           "pathRequired": "Path is required when using \"Path on server\".",
-          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access.",
+          "allowanceRequired": "Enter an allowance above 0.",
+          "allowanceAccessRequired": "The allowance source requires local filesystem access, or SSH access with a shell."
         },
-        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)",
+        "allowanceSource": "Allowance on a path",
+        "allowanceSourceWindowsUnsupported": "Allowance on a path (not supported on Windows)",
+        "allowanceSourceAccessRequired": "Allowance on a path (requires local access, or SSH access with a shell)",
+        "allowanceLabel": "Allowance",
+        "allowancePathLabel": "Folder to measure",
+        "allowanceUnitAria": "Allowance unit",
+        "allowanceHelp": "Enter the space that your plan allows, in the unit that your provider uses. qui subtracts the size of the files under the path. Most providers count in steps of 1000 ({{decimalUnit}}), not 1024 ({{binaryUnit}}): the two differ by about 9%.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
+        "allowancePathHelp": "For example, your home directory"
       },
       "grouping": {
         "title": "Grouped condition groups",
@@ -1448,6 +1468,7 @@
           "externalProgram": "External program",
           "noMatches": "No matches",
           "exportedToInstance": "Export to instance",
+          "transferredToInstance": "Transfer to instance",
           "ruleSkipped": "Rule not run"
         },
         "actionFallback": "Unknown action ({{action}})",
@@ -2099,10 +2120,9 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Over SSH",
-    "none": "None",
-    "localFull": "qui reads and writes this instance's files on this machine.",
+    "local": "Local files",
+    "remote": "Files over SSH",
+    "none": "No file access",
     "limits": {
       "noIdentity": "No file identity: qui cannot tell when two paths are the same file. Orphan scan cannot delete here, and an existing hardlink target stops a hardlink add.",
       "noReflinks": "No reflinks on a remote instance.",
@@ -2113,5 +2133,17 @@
     "label": "Also delete its transfer history",
     "description": "Without this, qui keeps the history under the name of the instance.",
     "failed": "The instance is deleted, but qui could not delete all of its history. Look in Settings > Statistics, and delete the rest there."
+  },
+  "list": {
+    "label": "Instances",
+    "emptyTitle": "No instances yet",
+    "emptyDescription": "Add a qBittorrent client so qui can manage its torrents.",
+    "tlsSkipped": "TLS check off",
+    "reorderFailed": "Could not reorder the instances"
+  },
+  "publicPeerAddress": {
+    "label": "Public peer address",
+    "noResolvedAddress": "qui cannot work out an address yet",
+    "description": "The address and port at which other BitTorrent clients reach this qBittorrent, for Transfers and Shares. Leave it empty to use the address that qui works out from qBittorrent at each use. Set it when qBittorrent runs in Docker or behind NAT."
   }
 }

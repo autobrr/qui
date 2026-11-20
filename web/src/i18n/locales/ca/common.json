@@ -5,6 +5,9 @@
     "search": "Cerca",
     "crossSeed": "Cross-Seed",
     "automations": "Automatitzacions",
+    "transfers": "Transferències",
+    "transfersQueued_one": "{{count}} element en curs o en espera",
+    "transfersQueued_other": "{{count}} elements en curs o en espera",
     "backups": "Còpies de seguretat",
     "rss": "RSS",
     "settings": "Configuració",
@@ -28,8 +31,29 @@
     "rssRunning": "RSS de cross-seed en execució",
     "rssEnabled": "RSS de cross-seed activat",
     "scanRunning": "Exploració en curs",
-    "showSidebar": "Mostra la barra lateral",
-    "hideSidebar": "Amaga la barra lateral"
+    "collapseToIcons": "Redueix a icones",
+    "expandSidebar": "Amplia la barra lateral"
+  },
+  "problemReports": {
+    "reportProblem": "Informa d'un problema",
+    "description": "Descriu el problema. qui hi afegeix les dades de sota, n'elimina els secrets i envia l'informe als mantenidors de qui.",
+    "textLabel": "Què ha fallat?",
+    "factsLabel": "Dades que afegeix qui",
+    "loadingFacts": "S'estan carregant les dades...",
+    "factsFailed": "No s'han pogut carregar les dades: {{message}}",
+    "send": "Envia",
+    "sending": "S'està enviant...",
+    "sent": "Informe enviat",
+    "errors": {
+      "anonymousFull": "Els informes anònims d'avui estan plens. Inicia la sessió per enviar-lo ara, o torna-ho a provar demà.",
+      "signInRequired": "Inicia la sessió per enviar aquest informe.",
+      "accountLimit": "Has enviat molts informes en l'última hora. Torna-ho a provar més tard.",
+      "reporterFull": "Els teus informes ocupen tot l'espai que brrbin dona a una persona. Esborra un informe antic a Informes enviats i torna a enviar.",
+      "tooLarge": "L'informe és massa gran. Tria menys línies de registre o una imatge més petita.",
+      "tokenRejected": "La sessió ha acabat. Torna a iniciar la sessió i envia.",
+      "unavailable": "brrbin no pot rebre informes ara mateix. Torna-ho a provar més tard.",
+      "sendFailed": "No s'ha pogut enviar l'informe: {{message}}"
+    }
   },
   "header": {
     "currentInstance": "Instància actual: {{name}}. Fes clic per canviar d'instància.",
@@ -59,12 +83,8 @@
     "smartSearchEnter": "Prem Retorn per cercar a l'instant",
     "smartSearchAuto": "Cerca automàticament després d'una pausa de 500 ms",
     "smartSearchShortcut": "Prem {{shortcutKey}} per anar a la cerca",
+    "smartSearchPalette": "Prem {{shortcutKey}} per obrir la paleta d'ordres",
     "torrentCreationTasksTitle": "Tasques de creació de torrents",
-    "updateAvailable": "Actualització disponible",
-    "updateVersion": "Versió {{version}}",
-    "rssRunning": "RSS de cross-seed en execució",
-    "rssEnabled": "RSS de cross-seed activat",
-    "scanRunning": "Exploració en curs",
     "allScope": "TOTES",
     "unified": "Unificat"
   },
@@ -76,6 +96,33 @@
     "collapseScope": "Redueix l'àmbit unificat",
     "expandScope": "Amplia l'àmbit unificat",
     "allActive": "Totes les actives ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Paleta d'ordres",
+    "placeholder": "Cerca pàgines, configuració i torrents...",
+    "placeholderIn": "Cerca a {{name}}...",
+    "groups": {
+      "pages": "Pàgines",
+      "actions": "Accions"
+    },
+    "current": "Actual",
+    "statisticsNote": "Historial de pujada i baixada de les teves instàncies",
+    "searchTorrentsFor": "Cerca \"{{query}}\" als torrents",
+    "torrentMatches_one": "{{count}} torrent coincideix",
+    "torrentMatches_other": "{{count}} torrents coincideixen",
+    "noTorrentMatches": "Cap torrent coincideix",
+    "searching": "S'està cercant...",
+    "searchFailed": "La cerca de torrents ha fallat",
+    "listFiltersApply": "S'apliquen els filtres de la llista",
+    "noMatchIn": "No hi ha cap coincidència a {{name}}",
+    "moreOf": "Més opcions de {{name}}",
+    "hints": {
+      "navigate": "Navega",
+      "open": "Obre",
+      "more": "Més",
+      "searchTorrents": "Cerca torrents",
+      "back": "Enrere"
+    }
   },
   "mobileNav": {
     "dashboard": "Tauler",
@@ -223,6 +270,28 @@
         "fix": "Si la clau és incorrecta, crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Orpheus i enganxa-la a la configuració Gazelle (OPS/RED) de qui. Si Orpheus ha bloquejat la IP de qui, una clau nova no ajuda: contacta amb l'equip de Orpheus.",
         "menuFix": "Enganxa una clau nova a la configuració",
         "action": "Obre la configuració Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Programació de l'exploració bloquejada",
+        "title": "La programació de l'exploració de la biblioteca no es pot executar",
+        "effect": "qui no pot iniciar l'execució programada de l'exploració de la biblioteca. Ho torna a provar cada hora.",
+        "fix": "Comprova la configuració de l'exploració de la biblioteca. qui ho torna a provar cada hora.",
+        "menuFix": "Comprova la configuració de l'exploració",
+        "action": "Obre la configuració de l'exploració de la biblioteca",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab està desactivat a la configuració de l'exploració de la biblioteca, i no hi ha cap clau API de RED ni d'OPS. Activa Torznab, o afegeix una clau de RED o d'OPS a la configuració Gazelle (OPS/RED). qui ho torna a provar cada hora.",
+            "menuFix": "Activa Torznab, o afegeix una clau de RED o d'OPS"
+          },
+          "no_indexer": {
+            "fix": "No hi ha cap indexador activat. Activa un indexador Torznab, o afegeix una clau de RED o d'OPS a la configuració Gazelle (OPS/RED). qui ho torna a provar cada hora.",
+            "menuFix": "Activa un indexador"
+          },
+          "instance_missing": {
+            "fix": "La instància de la configuració desada de l'exploració de la biblioteca no existeix. Tria una instància a la configuració de l'exploració de la biblioteca i desa. qui ho torna a provar cada hora.",
+            "menuFix": "Tria una instància i desa"
+          }
+        }
       }
     },
     "actions": {
@@ -321,14 +390,77 @@
   },
   "support": {
     "title": "Fes costat a qui",
-    "description": "Ja tens els temes i vols fer-hi encara més un cop de mà? Tot el que hi ha a qui ja és teu. Una subscripció no desbloqueja funcions: finança el temps que es dedica a construir-les.",
-    "perkPrefix": "Els mecenes reben el rol",
-    "perkSuffix": "a Discord i el nostre agraïment etern.",
-    "yearly": "{{price}} / any",
-    "monthly": "{{price}} / mes",
-    "notLicense": "La llicència dels temes és una compra única a part."
+    "description": "Les maneres de donar suport a qui i els seus preus.",
+    "heading": "Ajuda a mantenir qui",
+    "intro": "qui és gratuït i funciona igual tant si pagues com si no. El suport paga el temps i les eines que s'hi dediquen.",
+    "licensed": "Gràcies per la teva llicència dels temes.",
+    "releases_one": "qui ha publicat {{count}} versió en els darrers 12 mesos.",
+    "releases_other": "qui ha publicat {{count}} versions en els darrers 12 mesos.",
+    "releaseMap": "Les darreres 52 setmanes, un quadrat per a cada dia. Un quadrat brillant és un dia amb una versió nova.",
+    "releaseDay": "Un dia amb una versió nova",
+    "plans": {
+      "yearly": "{{price}} l'any",
+      "yearlyNote": "{{price}} al mes, pagament anual",
+      "yearlyNoteWithLicense": "{{price}} al mes, pagament anual. Inclou la llicència dels temes.",
+      "license": "Llicència dels temes, des de {{price}}",
+      "licenseNote": "Tots els temes prèmium actuals i futurs, de per vida",
+      "onePayment": "un sol pagament"
+    },
+    "checkout": "Continua al pagament",
+    "fromPrice": "des de {{price}}",
+    "terms": {
+      "yearly": "Pagues {{price}} avui i després {{price}} cada any fins que cancel·lis.",
+      "license": "Un sol pagament de {{price}} o més, que tries en pagar. Sense subscripció."
+    },
+    "perks": {
+      "yearly": "Els mecenes reben la insígnia Mecenes a qui i el rol de mecenes a Discord. Després del pagament, afegeix la teva clau de mecenes a aquest servidor.",
+      "license": "La llicència desbloqueja els temes prèmium. Després del pagament, afegeix la teva clau de llicència a aquest servidor."
+    },
+    "existing": "Ja ets mecenes?",
+    "addKey": "Afegeix la clau de mecenes",
+    "key": {
+      "help": "La clau de mecenes és a la pàgina de pagament i al correu amb el rebut.",
+      "label": "Clau de mecenes",
+      "submit": "Afegeix la clau",
+      "back": "Enrere"
+    },
+    "ended": "La clau de mecenes d'aquest servidor ja no és vàlida. qui la torna a comprovar cada dia. Si el teu suport ha acabat, conserves la llicència dels temes. Troba'n la clau al <portal>portal de llicències</portal> i afegeix-la a Configuració, a Temes.",
+    "removeKey": "Elimina la clau de mecenes d'aquest servidor",
+    "supporter": {
+      "badge": "Mecenes",
+      "title": "Fas costat a qui",
+      "thanks": "Gràcies. El teu suport paga el temps i les eines que es dediquen a qui.",
+      "detail": "Tens la insígnia Mecenes a qui i el rol de mecenes a Discord. El teu suport també desbloqueja els temes prèmium i inclou una llicència dels temes de per vida. Troba la clau de llicència al <portal>portal de llicències</portal>.",
+      "manage": "Gestiona o cancel·la el suport"
+    },
+    "reminder": {
+      "title_one": "{{count}} dia de qui en aquest servidor",
+      "title_other": "{{count}} dies de qui en aquest servidor",
+      "tooltip": "Comptat en aquest servidor i mai enviat. qui ho demana un cop l'any.",
+      "subtitle": "Fes costat a qui. qui ho demana un cop l'any.",
+      "notNow": "Ara no",
+      "serverDays_one": "Aquest servidor fa {{count}} dia que executa qui. qui ho compta en aquest servidor i no ho envia mai.",
+      "serverDays_other": "Aquest servidor fa {{count}} dies que executa qui. qui ho compta en aquest servidor i no ho envia mai.",
+      "notNowToast": "qui ho tornarà a demanar d'aquí a un any",
+      "dontAskAgain": "No ho tornis a demanar",
+      "offToast": "qui no ho tornarà a demanar",
+      "offToastDescription": "La drecera de suport es manté. Torna a activar el recordatori a Configuració, a Aplicació.",
+      "undo": "Desfés",
+      "hiddenToast": "La drecera de suport està amagada",
+      "hiddenToastDescription": "qui no ho tornarà a demanar. Recupera la drecera a Configuració, a Aplicació.",
+      "notForYou": "No és per a tu? <reminder>Desactiva el recordatori anual</reminder> o <heart>amaga el cor</heart>. La configuració els recupera tots dos.",
+      "notForYouHeart": "No és per a tu? <heart>Amaga el cor</heart>. La configuració el recupera."
+    }
   },
   "labels": {
-    "path": "Camí"
+    "path": "Camí",
+    "beta": "Beta"
+  },
+  "kit": {
+    "loadFailed": "Aquesta secció no s'ha pogut carregar.",
+    "retry": "Torna-ho a provar",
+    "edit": "Edita",
+    "moreActions": "Més accions",
+    "enabled": "Activat"
   }
 }

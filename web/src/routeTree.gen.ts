@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AddRouteImport } from './routes/add'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedTransfersRouteImport } from './routes/_authenticated/transfers'
 import { Route as AuthenticatedStatisticsRouteImport } from './routes/_authenticated/statistics'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSearchRouteImport } from './routes/_authenticated/search'
@@ -49,6 +50,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedTransfersRoute = AuthenticatedTransfersRouteImport.update({
+  id: '/transfers',
+  path: '/transfers',
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedStatisticsRoute = AuthenticatedStatisticsRouteImport.update({
   id: '/statistics',
@@ -123,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/search': typeof AuthenticatedSearchRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/statistics': typeof AuthenticatedStatisticsRoute
+  '/transfers': typeof AuthenticatedTransfersRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/instances/': typeof AuthenticatedInstancesIndexRoute
 }
@@ -139,6 +146,7 @@ export interface FileRoutesByTo {
   '/search': typeof AuthenticatedSearchRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/statistics': typeof AuthenticatedStatisticsRoute
+  '/transfers': typeof AuthenticatedTransfersRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/instances': typeof AuthenticatedInstancesIndexRoute
 }
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/_authenticated/search': typeof AuthenticatedSearchRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/statistics': typeof AuthenticatedStatisticsRoute
+  '/_authenticated/transfers': typeof AuthenticatedTransfersRoute
   '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/_authenticated/instances/': typeof AuthenticatedInstancesIndexRoute
 }
@@ -177,6 +186,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/statistics'
+    | '/transfers'
     | '/instances/$instanceId'
     | '/instances/'
   fileRoutesByTo: FileRoutesByTo
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/statistics'
+    | '/transfers'
     | '/instances/$instanceId'
     | '/instances'
   id:
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/_authenticated/search'
     | '/_authenticated/settings'
     | '/_authenticated/statistics'
+    | '/_authenticated/transfers'
     | '/_authenticated/instances/$instanceId'
     | '/_authenticated/instances/'
   fileRoutesById: FileRoutesById
@@ -259,6 +271,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/transfers': {
+      id: '/_authenticated/transfers'
+      path: '/transfers'
+      fullPath: '/transfers'
+      preLoaderRoute: typeof AuthenticatedTransfersRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/statistics': {
       id: '/_authenticated/statistics'
@@ -367,6 +386,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSearchRoute: typeof AuthenticatedSearchRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStatisticsRoute: typeof AuthenticatedStatisticsRoute
+  AuthenticatedTransfersRoute: typeof AuthenticatedTransfersRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -379,6 +399,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSearchRoute: AuthenticatedSearchRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStatisticsRoute: AuthenticatedStatisticsRoute,
+  AuthenticatedTransfersRoute: AuthenticatedTransfersRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

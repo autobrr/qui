@@ -1456,13 +1456,20 @@ func (s *TransferHistoryStore) moveRecentTorrentDays(ctx context.Context, before
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Postgres deletes the rows in the order of its join plan. Locking them
+	// first in key order, the order of Write, keeps the two from deadlocking.
+	lockRows := ""
+	if dbinterface.DialectOf(s.db) == "postgres" {
+		lockRows = "FOR UPDATE"
+	}
 	rows, err := tx.QueryContext(ctx, `
 		DELETE FROM transfer_history_recent_torrent_days
 		WHERE (day, torrent_id) IN (
 			SELECT day, torrent_id FROM transfer_history_recent_torrent_days
 			WHERE day < ?
 			ORDER BY day, torrent_id
-			LIMIT ?)
+			LIMIT ?
+			`+lockRows+`)
 		RETURNING torrent_id, day, uploaded, downloaded`, beforeDay, recentMoveRows)
 	if err != nil {
 		return fmt.Errorf("read transfer history days to move: %w", err)

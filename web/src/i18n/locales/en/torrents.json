@@ -67,6 +67,8 @@
     "externalPrograms": "External Programs",
     "exportTorrent": "Export Torrent",
     "exportTorrents": "Export Torrents ({{count}})",
+    "transferToInstance": "Transfer to instance…",
+    "shareWithSomeone": "Share with someone…",
     "copy": "Copy...",
     "copyName": "Copy Name",
     "copyHash": "Copy Hash",
@@ -1511,19 +1513,11 @@
     "incognito": "Incognito",
     "add": "Add",
     "tasks": "Tasks",
-    "done": "Done",
     "actionsForCount": "Actions for {{count}} torrent(s)",
     "actionsForAll": "Actions for all {{count}} torrent(s)",
     "selection": {
       "selectedCount": "{{count}} selected",
       "allSelectedCount": "All {{count}} selected"
-    },
-    "searchModal": {
-      "title": "Search Torrents",
-      "description": "Search by name, category, or tags. Supports glob patterns like *.mkv or *1080p*.",
-      "placeholder": "Search torrents...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Auto-searches after typing"
     },
     "ratio": "Ratio:",
     "added": "Added {{time}}"
@@ -1604,6 +1598,9 @@
     "trackerDown": "Tracker Down",
     "unregistered": "Unregistered",
     "trackerError": "Tracker Error",
+    "helperTransfer": "Transfer helper",
+    "helperShare": "Share helper",
+    "helperHint": "qui added this torrent for a Transfer or a Share. Its files belong to another torrent.",
     "now": "now",
     "yes": "Yes",
     "no": "No"
@@ -1730,6 +1727,137 @@
       "title": "Group your cross-seeds",
       "description": "Show the copies of one torrent as a single row.",
       "action": "Try it"
+    },
+    "displayProfiles": {
+      "title": "Display profiles",
+      "description": "Give each screen its own columns, row density, and sidebars. Pick the profile of this browser here.",
+      "action": "Create a profile"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Display profile: {{name}}",
+    "menuLabel": "Display profile",
+    "defaultName": "Default",
+    "manage": "Manage profiles…",
+    "sheetDescription": "Each browser picks its own profile.",
+    "settings": {
+      "title": "Display profiles",
+      "holds": "Holds: Columns · Row density · Sidebars · Filter sections · Category trees · Empty filters",
+      "holdsHelp": "A profile holds how the torrent list looks: which columns show, their order and widths, Name stretch, the row density, the open sidebars and filter sections, the collapsed category trees, and whether empty filters show. It also holds which instance rows of the Dashboard are open. Each browser uses one profile, and only that browser remembers the pick. A browser that never picked one, and a private window, use Default. Every profile shares the other settings.",
+      "thisBrowser": "This browser",
+      "use": "Use in this browser",
+      "makeProfile": "Make a profile for a laptop or phone",
+      "themesSync": "Themes sync on their own: <sync>Theme sync</sync>",
+      "renameAriaLabel": "Rename {{name}}",
+      "saveName": "Save the name",
+      "cancelRename": "Cancel the rename",
+      "editAriaLabel": "Edit {{name}}",
+      "editTitle": "Edit profile",
+      "delete": "Delete…",
+      "deleteTitle": "Delete {{name}}?",
+      "deleteDescription": "Other browsers that use it move to {{defaultName}}.",
+      "deleteConfirm": "Delete",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Table rows",
+        "dense": "Dense rows",
+        "stacked": "Stacked cards"
+      },
+      "filterSidebarOpen": "filter sidebar open",
+      "filterSidebarClosed": "filter sidebar closed"
+    },
+    "nameErrors": {
+      "empty": "Enter a name.",
+      "tooLong": "Use {{max}} characters or fewer.",
+      "duplicate": "Another profile has this name."
+    },
+    "ownSortAndFilters": {
+      "label": "Own sort and filters",
+      "help": "<lead>When this is on, this profile keeps its own:</lead><list><item>sort order of the torrent list</item><item>column filters and sidebar filters</item><item>instances that the Unified view shows</item><item>Group copies, on or off</item><item>last open tab of the details panel</item><item>instance that the Backups and RSS pages show</item></list><note>A change to these in this profile does not reach other profiles. When this is off, this profile shares them with every other profile that does not keep its own. Turning it off deletes this profile's own values.</note>",
+      "offWarning": "Turning this off deletes the own sort and filters of {{name}}.",
+      "defaultShares": "Always shares sort and filters",
+      "defaultSharesHelp": "Default always shares the sort, the filters, and the other view choices with every profile that does not keep its own. To keep your own, make another profile and turn on Own sort and filters."
+    },
+    "deletedToast": "The {{name}} profile was deleted. This browser now uses {{defaultName}}.",
+    "newProfile": "New profile from this setup…",
+    "newDialog": {
+      "title": "New profile",
+      "copies": "Copies <profile>{{name}}</profile>: columns, density, sidebars, and filters. This browser then uses it.",
+      "name": "Name",
+      "namePlaceholder": "For example, Laptop",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Cancel",
+      "create": "Create"
+    },
+    "iconPicker": {
+      "trigger": "Icon: {{icon}}. Change the icon and the color",
+      "letter": "First letter of the name",
+      "color": "Color"
+    },
+    "iconGroups": {
+      "devices": "Devices",
+      "places": "Places",
+      "use": "Use",
+      "mood": "Mood"
+    },
+    "icons": {
+      "appWindow": "App window",
+      "monitor": "Monitor",
+      "laptop": "Laptop",
+      "tablet": "Tablet",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Server",
+      "gamepad": "Gamepad",
+      "house": "House",
+      "briefcase": "Briefcase",
+      "building": "Building",
+      "sofa": "Sofa",
+      "bed": "Bed",
+      "coffee": "Coffee",
+      "plane": "Plane",
+      "train": "Train",
+      "rows": "Rows",
+      "table": "Table",
+      "list": "List",
+      "eye": "Eye",
+      "gauge": "Gauge",
+      "zap": "Lightning",
+      "download": "Download",
+      "upload": "Upload",
+      "sprout": "Sprout",
+      "bookmark": "Bookmark",
+      "moon": "Moon",
+      "sun": "Sun",
+      "star": "Star",
+      "heart": "Heart",
+      "flame": "Flame",
+      "rocket": "Rocket"
+    },
+    "colors": {
+      "none": "None (text color)",
+      "sky": "Sky",
+      "emerald": "Emerald",
+      "amber": "Amber",
+      "rose": "Rose",
+      "violet": "Violet",
+      "orange": "Orange",
+      "teal": "Teal",
+      "pink": "Pink"
+    },
+    "columns": {
+      "headingEveryInstance": "Columns in {{profile}} · every instance",
+      "headingOneInstance": "Columns in {{profile}} · {{instance}} only",
+      "unifiedView": "Unified view",
+      "thisInstance": "this instance"
+    },
+    "sameColumns": {
+      "label": "Same columns on every instance",
+      "menuHelp": "Sort and column filters stay per instance.",
+      "helpOn": "One Column setup for {{instances}}.",
+      "helpOff": "Each instance keeps its own. Turning this on gives every instance the {{instance}} columns.",
+      "helpOffNoInstance": "Each instance keeps its own.",
+      "unifiedViewInList": "the Unified view"
     }
   }
 }

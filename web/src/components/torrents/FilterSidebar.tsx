@@ -1860,7 +1860,7 @@ const FilterSidebarComponent = ({
             <div className="flex items-center gap-2 min-w-0">
               <h3 className="font-semibold">{t("filterSidebar.title")}</h3>
               <Tooltip>
-                <TooltipTrigger asChild>
+                <TooltipTrigger asChild openOnTap>
                   <button
                     type="button"
                     className="text-muted-foreground hover:text-foreground"
@@ -2140,7 +2140,7 @@ const FilterSidebarComponent = ({
                         {t("filterSidebar.uncategorized")}
                       </span>
                       <Tooltip>
-                        <TooltipTrigger asChild>
+                        <TooltipTrigger asChild openOnTap>
                           <span
                             className={cn(
                               "text-xs tabular-nums shrink-0",
@@ -2270,7 +2270,7 @@ const FilterSidebarComponent = ({
                                       {displayName}
                                     </TruncatedText>
                                     <Tooltip>
-                                      <TooltipTrigger asChild>
+                                      <TooltipTrigger asChild openOnTap>
                                         <span
                                           className={cn(
                                             "text-xs tabular-nums shrink-0",
@@ -2382,7 +2382,7 @@ const FilterSidebarComponent = ({
                                 {displayName}
                               </TruncatedText>
                               <Tooltip>
-                                <TooltipTrigger asChild>
+                                <TooltipTrigger asChild openOnTap>
                                   <span
                                     className={cn(
                                       "text-xs tabular-nums shrink-0",
@@ -2550,7 +2550,7 @@ const FilterSidebarComponent = ({
                         {t("filterSidebar.untagged")}
                       </span>
                       <Tooltip>
-                        <TooltipTrigger asChild>
+                        <TooltipTrigger asChild openOnTap>
                           <span
                             className={cn(
                               "text-xs tabular-nums shrink-0",
@@ -2647,7 +2647,7 @@ const FilterSidebarComponent = ({
                                       {tag}
                                     </TruncatedText>
                                     <Tooltip>
-                                      <TooltipTrigger asChild>
+                                      <TooltipTrigger asChild openOnTap>
                                         <span
                                           className={cn(
                                             "text-xs tabular-nums shrink-0",
@@ -2730,7 +2730,7 @@ const FilterSidebarComponent = ({
                                 {tag}
                               </TruncatedText>
                               <Tooltip>
-                                <TooltipTrigger asChild>
+                                <TooltipTrigger asChild openOnTap>
                                   <span
                                     className={cn(
                                       "text-xs tabular-nums shrink-0",

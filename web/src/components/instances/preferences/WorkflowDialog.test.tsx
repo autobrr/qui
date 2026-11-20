@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { Automation, FilesystemCapabilities, RuleCondition } from "@/types"
+import type { Automation, FilesystemCapabilities, RuleCondition, TransferToInstanceAction } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string) => key
@@ -192,10 +192,10 @@ describe("WorkflowDialog tracker pattern", () => {
   })
 })
 
-function renderDialog(dialogRule: Automation | null) {
+function renderDialog(dialogRule: Automation | null, instances: unknown[] = []) {
   // Radix scrolls focused select options; jsdom has no layout.
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
-  mocks.instancesQuery.data = []
+  mocks.instancesQuery.data = instances
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
@@ -214,7 +214,7 @@ async function optionLabels(trigger: HTMLElement) {
 }
 
 // Labels in actionRunOrder, without delete.
-const combinableLabels = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance"]
+const combinableLabels = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance", "transferToInstance"]
   .map(action => key(`actions.${action}`))
 
 describe("WorkflowDialog action order", () => {
@@ -235,10 +235,11 @@ describe("WorkflowDialog action order", () => {
         move: { enabled: true, path: "/moved" },
         externalProgram: { enabled: true, programId: 1 },
         exportToInstance: { enabled: true, targetInstanceId: 2, savePath: "" },
+        transferToInstance: { enabled: true, targetInstanceId: 3, savePath: "" },
       },
     })
 
-    const headings = ["actions.speedLimits", "actions.shareLimits", "actions.pause", "actions.resume", "actions.recheck", "actions.reannounce", "actions.autoManagement", "tag.title", "actions.category", "actions.move", "actions.externalProgram", "export.title"]
+    const headings = ["actions.speedLimits", "actions.shareLimits", "actions.pause", "actions.resume", "actions.recheck", "actions.reannounce", "actions.autoManagement", "tag.title", "actions.category", "actions.move", "actions.externalProgram", "export.title", "transfer.title"]
       .map(suffix => screen.getByText(key(suffix)))
     const inDomOrder = [...headings].sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)
     expect(inDomOrder.map(heading => heading.textContent)).toEqual(headings.map(heading => heading.textContent))
@@ -258,23 +259,53 @@ describe("WorkflowDialog action order", () => {
     expect(await optionLabels(screen.getByText(key("actions.addAction")))).toEqual(combinableLabels.filter(label => label !== key("actions.pause")))
     client.clear()
   })
+})
 
-  it("explains the run order on the Actions label", () => {
-    // The tooltip opens on tap only where "ontouchstart" exists; jsdom has no touch support.
-    const touchWindow = window as Window & { ontouchstart?: unknown }
-    touchWindow.ontouchstart = null
-    const client = renderDialog(rule)
-    try {
-      const trigger = within(screen.getByText(key("actions.title"))).getByRole("button", { name: "fieldHelp.trigger" })
-      fireEvent.pointerDown(trigger, { pointerType: "touch" })
-      fireEvent.pointerUp(trigger, { pointerType: "touch" })
-      fireEvent.click(trigger)
+describe("WorkflowDialog Transfer to Instance", () => {
+  const renderRule = (conditions: Automation["conditions"]) => {
+    mocks.instancesQuery.data = [{ id: 1, name: "Source", capabilities: noCapabilities }, { id: 2, name: "Archive", capabilities: noCapabilities }]
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={{ ...rule, conditions }} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    return client
+  }
+  afterEach(() => {
+    mocks.instancesQuery.data = []
+  })
 
-      expect(screen.getAllByText(key("actions.runOrderHelp")).length).toBeGreaterThan(0)
-    } finally {
-      delete touchWindow.ontouchstart
-      client.clear()
+  it("saves each field of the action as the rule has it", async () => {
+    mocks.save.mockResolvedValue({})
+    const transferToInstance: TransferToInstanceAction = {
+      enabled: true, targetInstanceId: 2, savePath: "/archive/{{ .Category }}", category: "linux", tags: ["moved", "old"],
+      after: "keepFiles", leaveStopped: true, way: "copy",
     }
+    const client = renderRule({ schemaVersion: "1", transferToInstance })
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    expect(mocks.save.mock.calls[0][2].conditions.transferToInstance).toEqual(transferToInstance)
+    client.clear()
+  })
+
+  it("asks for a target instance before a save", async () => {
+    // Radix scrolls focused select options; jsdom has no layout.
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
+    const client = renderRule({ schemaVersion: "1", pause: { enabled: true } })
+
+    fireEvent.keyDown(screen.getByText(key("actions.addAction")), { key: "ArrowDown" })
+    fireEvent.click(await screen.findByRole("option", { name: key("actions.transferToInstance") }))
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    expect(mocks.error).toHaveBeenCalledWith(key("toast.selectTargetInstance"))
+    expect(mocks.save).not.toHaveBeenCalled()
+    client.clear()
   })
 })
 
@@ -815,6 +846,60 @@ describe("WorkflowDialog switched-off actions", () => {
     const conditions = await save("create")
 
     expect(conditions).toEqual({ schemaVersion: "1", pause: { enabled: true } })
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog free space source", () => {
+  const localInstance = { id: 1, hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true } }
+  const source = { type: "allowance" as const, path: "/home/user", allowanceBytes: 1024 ** 4 }
+  const allowanceRule = (conditions: Automation["conditions"], extra: Partial<Automation> = {}): Automation => ({ ...rule, conditions, freeSpaceSource: source, ...extra })
+  const saved = async () => {
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(1))
+    return mocks.save.mock.calls[0][2]
+  }
+
+  beforeEach(() => {
+    mocks.save.mockResolvedValue(rule)
+  })
+
+  // regression: #4092
+  it("keeps a saved allowance source while the capabilities load", async () => {
+    // The capabilities query has no data yet: mocks.query.data is undefined.
+    const client = renderDialog(allowanceRule({
+      schemaVersion: "1",
+      pause: { enabled: true, condition: { field: "FREE_SPACE", operator: "LESS_THAN", value: "1000" } },
+    }), [localInstance])
+
+    expect((await saved()).freeSpaceSource).toEqual(source)
+    client.clear()
+  })
+
+  it("shows the source when only the sorting reads Free Space", async () => {
+    const client = renderDialog(allowanceRule({ schemaVersion: "1", pause: { enabled: true } }, {
+      sortingConfig: { schemaVersion: "1", type: "simple", field: "FREE_SPACE", direction: "ASC" },
+    }), [localInstance])
+
+    expect(screen.getByText(key("freeSpace.allowanceLabel"))).toBeTruthy()
+    expect((await saved()).freeSpaceSource).toEqual(source)
+    client.clear()
+  })
+
+  // regression: #4092
+  it("refuses an allowance that rounds to zero bytes", async () => {
+    const client = renderDialog(allowanceRule({
+      schemaVersion: "1",
+      pause: { enabled: true, condition: { field: "FREE_SPACE", operator: "LESS_THAN", value: "1000" } },
+    }), [localInstance])
+
+    // This figure is 0.1 bytes in TiB. A save would send no source, and the rule would read qBittorrent's free space.
+    fireEvent.change(screen.getByLabelText(key("freeSpace.allowanceLabel")), { target: { value: "0.0000000000001" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    expect(await screen.findByText(key("freeSpace.errors.allowanceRequired"))).toBeTruthy()
+    expect(mocks.save).not.toHaveBeenCalled()
     client.clear()
   })
 })

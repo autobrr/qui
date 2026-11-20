@@ -5,6 +5,8 @@
     "search": "搜索",
     "crossSeed": "辅种",
     "automations": "自动化",
+    "transfers": "传输",
+    "transfersQueued_other": "{{count}} 项正在运行或等待",
     "backups": "备份",
     "rss": "RSS",
     "settings": "设置",
@@ -28,8 +30,29 @@
     "rssRunning": "辅种 RSS 运行中",
     "rssEnabled": "辅种 RSS 已启用",
     "scanRunning": "扫描运行中",
-    "showSidebar": "显示侧边栏",
-    "hideSidebar": "隐藏侧边栏"
+    "collapseToIcons": "收起为图标",
+    "expandSidebar": "展开侧边栏"
+  },
+  "problemReports": {
+    "reportProblem": "报告问题",
+    "description": "描述问题。qui 会添加下方的信息，移除密钥等机密，然后把报告发送给 qui 维护者。",
+    "textLabel": "出了什么问题？",
+    "factsLabel": "qui 添加的信息",
+    "loadingFacts": "正在加载信息...",
+    "factsFailed": "无法加载信息：{{message}}",
+    "send": "发送",
+    "sending": "正在发送...",
+    "sent": "报告已发送",
+    "errors": {
+      "anonymousFull": "今天的匿名报告已满。请登录后立即发送，或明天再试。",
+      "signInRequired": "请登录后发送此报告。",
+      "accountLimit": "你在过去一小时内发送了很多报告。请稍后再试。",
+      "reporterFull": "你的报告已用完 brrbin 给每个人的全部空间。请在已发送的报告中删除一份旧报告，然后再发送。",
+      "tooLarge": "报告太大。请选择更少的日志行或更小的图片。",
+      "tokenRejected": "你的登录已结束。请重新登录后再发送。",
+      "unavailable": "brrbin 现在无法接收报告。请稍后再试。",
+      "sendFailed": "无法发送报告：{{message}}"
+    }
   },
   "header": {
     "currentInstance": "当前实例：{{name}}。点击切换实例。",
@@ -59,12 +82,8 @@
     "smartSearchEnter": "按回车键立即搜索",
     "smartSearchAuto": "暂停输入 500 毫秒后自动搜索",
     "smartSearchShortcut": "按 {{shortcutKey}} 跳转到搜索框",
+    "smartSearchPalette": "按 {{shortcutKey}} 打开命令面板",
     "torrentCreationTasksTitle": "种子创建任务",
-    "updateAvailable": "有可用更新",
-    "updateVersion": "版本 {{version}}",
-    "rssRunning": "辅种 RSS 运行中",
-    "rssEnabled": "辅种 RSS 已启用",
-    "scanRunning": "扫描运行中",
     "allScope": "全部",
     "unified": "统一视图"
   },
@@ -76,6 +95,32 @@
     "collapseScope": "折叠统一视图",
     "expandScope": "展开统一视图",
     "allActive": "全部活动 ({{count}})"
+  },
+  "commandPalette": {
+    "title": "命令面板",
+    "placeholder": "搜索页面、设置和种子...",
+    "placeholderIn": "在 {{name}} 中搜索...",
+    "groups": {
+      "pages": "页面",
+      "actions": "操作"
+    },
+    "current": "当前",
+    "statisticsNote": "实例的上传和下载历史",
+    "searchTorrentsFor": "搜索种子「{{query}}」",
+    "torrentMatches_other": "{{count}} 个种子匹配",
+    "noTorrentMatches": "没有匹配的种子",
+    "searching": "正在搜索...",
+    "searchFailed": "种子搜索失败",
+    "listFiltersApply": "已应用列表筛选器",
+    "noMatchIn": "{{name}} 中没有匹配项",
+    "moreOf": "{{name}} 的更多选项",
+    "hints": {
+      "navigate": "导航",
+      "open": "打开",
+      "more": "更多",
+      "searchTorrents": "搜索种子",
+      "back": "返回"
+    }
   },
   "mobileNav": {
     "dashboard": "仪表盘",
@@ -223,6 +268,28 @@
         "fix": "如果密钥有误，请在您的 Orpheus 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。如果 Orpheus 封禁了 qui 的 IP，新密钥也无济于事：请联系 Orpheus 的管理团队。",
         "menuFix": "在设置中粘贴新密钥",
         "action": "打开 Gazelle (OPS/RED) 设置"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "做种库扫描计划受阻",
+        "title": "做种库扫描计划无法运行",
+        "effect": "qui 无法启动做种库扫描的计划运行。它会每小时重试一次。",
+        "fix": "请检查做种库扫描设置。qui 会每小时重试一次。",
+        "menuFix": "检查做种库扫描设置",
+        "action": "打开做种库扫描设置",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "做种库扫描设置中的 Torznab 已关闭，且未设置 RED 或 OPS API 密钥。请打开 Torznab，或在 Gazelle (OPS/RED) 设置中添加 RED 或 OPS 密钥。qui 会每小时重试一次。",
+            "menuFix": "打开 Torznab，或添加 RED 或 OPS 密钥"
+          },
+          "no_indexer": {
+            "fix": "没有启用的索引器。请启用一个 Torznab 索引器，或在 Gazelle (OPS/RED) 设置中添加 RED 或 OPS 密钥。qui 会每小时重试一次。",
+            "menuFix": "启用一个索引器"
+          },
+          "instance_missing": {
+            "fix": "已保存的做种库扫描设置中的实例不存在。请在做种库扫描设置中选择一个实例，然后保存。qui 会每小时重试一次。",
+            "menuFix": "选择一个实例，然后保存"
+          }
+        }
       }
     },
     "actions": {
@@ -314,14 +381,74 @@
   },
   "support": {
     "title": "支持 qui",
-    "description": "已经有主题了，还想再出一份力？qui 的一切已经属于你。订阅不会解锁功能，它资助的是开发这些功能所投入的时间。",
-    "perkPrefix": "赞助者可在 Discord 获得",
-    "perkSuffix": "身份组，以及我们永远的感谢。",
-    "yearly": "{{price}} / 年",
-    "monthly": "{{price}} / 月",
-    "notLicense": "主题许可证是单独的一次性购买。"
+    "description": "支持 qui 的方式及其价格。",
+    "heading": "帮助 qui 持续维护",
+    "intro": "qui 是免费的，无论您是否付费，功能都完全相同。支持款项用于支付投入 qui 的时间和工具。",
+    "licensed": "感谢您购买主题许可证。",
+    "releases_other": "qui 在过去 12 个月发布了 {{count}} 个版本。",
+    "releaseMap": "过去 52 周，每天一个方块。亮色方块表示当天有新版本发布。",
+    "releaseDay": "有新版本发布的日子",
+    "plans": {
+      "yearly": "每年 {{price}}",
+      "yearlyNote": "每月 {{price}}，按年支付",
+      "yearlyNoteWithLicense": "每月 {{price}}，按年支付。包含主题许可证。",
+      "license": "主题许可证，{{price}} 起",
+      "licenseNote": "所有当前和未来的高级主题，终身有效",
+      "onePayment": "一次性付款"
+    },
+    "checkout": "前往结账",
+    "fromPrice": "{{price}} 起",
+    "terms": {
+      "yearly": "您今天支付 {{price}}，之后每年支付 {{price}}，直到您取消。",
+      "license": "一次性支付 {{price}} 或更多，金额在结账时设定。不是订阅。"
+    },
+    "perks": {
+      "yearly": "赞助者可在 qui 中获得赞助者徽章，并在 Discord 获得赞助者身份组。结账后，请将您的赞助者密钥添加到此服务器。",
+      "license": "许可证可解锁高级主题。结账后，请将您的许可证密钥添加到此服务器。"
+    },
+    "existing": "已经是赞助者？",
+    "addKey": "添加赞助者密钥",
+    "key": {
+      "help": "您的赞助者密钥显示在结账页面上，也在附有收据的邮件中。",
+      "label": "赞助者密钥",
+      "submit": "添加密钥",
+      "back": "返回"
+    },
+    "ended": "此服务器上的赞助者密钥已失效。qui 每天都会重新检查它。如果您的支持已结束，您的主题许可证仍然保留。请在<portal>许可证门户</portal>中找到它的密钥，然后在设置的主题页中添加。",
+    "removeKey": "从此服务器移除赞助者密钥",
+    "supporter": {
+      "badge": "赞助者",
+      "title": "您正在支持 qui",
+      "thanks": "谢谢。您的支持用于支付投入 qui 的时间和工具。",
+      "detail": "您拥有 qui 中的赞助者徽章和 Discord 中的赞助者身份组。您的支持还会解锁高级主题，并包含一份终身主题许可证。请在<portal>许可证门户</portal>中找到许可证密钥。",
+      "manage": "管理或取消支持"
+    },
+    "reminder": {
+      "title_other": "qui 已在此服务器上运行 {{count}} 天",
+      "tooltip": "仅在此服务器上计算，从不发送。qui 每年只询问一次。",
+      "subtitle": "支持 qui。qui 每年只询问一次。",
+      "notNow": "以后再说",
+      "serverDays_other": "此服务器已运行 qui {{count}} 天。qui 只在此服务器上计算这个数字，从不发送。",
+      "notNowToast": "qui 将在一年后再次询问",
+      "dontAskAgain": "不再询问",
+      "offToast": "qui 不会再询问",
+      "offToastDescription": "支持快捷方式会保留。可在设置的应用页中重新开启提醒。",
+      "undo": "撤销",
+      "hiddenToast": "支持快捷方式已隐藏",
+      "hiddenToastDescription": "qui 不会再询问。可在设置的应用页中恢复快捷方式。",
+      "notForYou": "不感兴趣？<reminder>关闭年度提醒</reminder>，或<heart>隐藏爱心</heart>。可在设置中恢复两者。",
+      "notForYouHeart": "不感兴趣？<heart>隐藏爱心</heart>。可在设置中恢复。"
+    }
   },
   "labels": {
-    "path": "路径"
+    "path": "路径",
+    "beta": "测试版"
+  },
+  "kit": {
+    "loadFailed": "此部分加载失败。",
+    "retry": "重试",
+    "edit": "编辑",
+    "moreActions": "更多操作",
+    "enabled": "已启用"
   }
 }

@@ -97,6 +97,9 @@ type Service struct {
 	indexerOutcomes *IndexerOutcomeStore
 
 	activityPublisher activity.Publisher
+	// background tracks the cache touches and cleanups that outlive their call.
+	// A test waits for them before it closes the database.
+	background sync.WaitGroup
 }
 
 // ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
@@ -1256,11 +1259,11 @@ func (s *Service) fetchCacheEntry(ctx context.Context, sig *searchCacheSignature
 	if entry == nil || len(coverage) == 0 {
 		return nil, nil, false
 	}
-	go func(entryID int64) { //nolint:gosec // G118: cache touch must outlive the lookup, bounded by its own timeout
+	s.background.Go(func() { //nolint:gosec // G118: cache touch must outlive the lookup, bounded by its own timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		s.searchCache.Touch(ctx, entryID)
-	}(entry.ID)
+		s.searchCache.Touch(ctx, entry.ID)
+	})
 	complete := len(coverage) == len(requestedIndexerIDs)
 	return entry, coverage, complete
 }
@@ -1534,7 +1537,7 @@ func (s *Service) maybeScheduleSearchCacheCleanup() {
 	s.nextSearchCacheCleanup = time.Now().Add(searchCacheCleanupInterval)
 	s.searchCacheCleanupMu.Unlock()
 
-	go func() {
+	s.background.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -1543,7 +1546,7 @@ func (s *Service) maybeScheduleSearchCacheCleanup() {
 		} else if deleted > 0 {
 			log.Debug().Int64("deleted", deleted).Msg("Cleaned up expired torznab search cache entries")
 		}
-	}()
+	})
 }
 
 func (s *Service) maybeScheduleTorrentCacheCleanup() {
@@ -1559,7 +1562,7 @@ func (s *Service) maybeScheduleTorrentCacheCleanup() {
 	s.nextTorrentCacheCleanup = time.Now().Add(torrentCacheCleanupInterval)
 	s.torrentCacheCleanupMu.Unlock()
 
-	go func() {
+	s.background.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -1568,7 +1571,7 @@ func (s *Service) maybeScheduleTorrentCacheCleanup() {
 		} else if deleted > 0 {
 			log.Debug().Int64("deleted", deleted).Msg("Cleaned up torznab torrent cache entries")
 		}
-	}()
+	})
 }
 
 func (s *Service) maybeScheduleLatencyCleanup() {
@@ -1584,7 +1587,7 @@ func (s *Service) maybeScheduleLatencyCleanup() {
 	s.nextLatencyCleanup = time.Now().Add(latencyCleanupInterval)
 	s.latencyCleanupMu.Unlock()
 
-	go func() {
+	s.background.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -1593,7 +1596,7 @@ func (s *Service) maybeScheduleLatencyCleanup() {
 		} else if deleted > 0 {
 			log.Debug().Int64("deleted", deleted).Msg("Cleaned up torznab indexer latency records")
 		}
-	}()
+	})
 }
 
 // InvalidateSearchCache clears cached searches referencing the provided indexers.
@@ -1944,7 +1947,8 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		}
 
 		// Apply the Prowlarr query workaround after capability processing so that
-		// ID-driven searches which lose IDs can still restore the original query.
+		// ID-driven searches which lose IDs can still restore the original query,
+		// and so that a request which keeps an ID has no year left to move into q.
 		s.applyProwlarrWorkaround(idx, paramsMap, meta)
 
 		if opts.logSearchActivity {
@@ -2406,11 +2410,15 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
 
-	// Drop the category filter for an ID-driven search, but only while this indexer
-	// still has an ID to search by. applyCapabilitySpecificParams above prunes
-	// unsupported IDs and restores the title query; that fallback keeps its category.
-	if meta != nil && meta.omitCategoriesForIDs && hasTorznabIDParams(params) {
-		delete(params, "cat")
+	// While this indexer still has an ID to search by, the ID alone identifies the
+	// release: drop the year, which can differ by one between metadata providers, and
+	// the category filter of an ID-driven search. applyCapabilitySpecificParams above
+	// prunes unsupported IDs and restores the title query; that fallback keeps both.
+	if hasTorznabIDParams(params) {
+		delete(params, "year")
+		if meta != nil && meta.omitCategoriesForIDs {
+			delete(params, "cat")
+		}
 	}
 
 	// Debug log parameters after capability/category restrictions. Backend-specific
@@ -2479,9 +2487,11 @@ func indexerKeepsRequestIDParams(idx *models.TorznabIndexer, req *TorznabSearchR
 
 // IndexerIDsWithIDSearchCaps returns the subset of the request's indexers that
 // would search by one of its ID parameters instead of falling back to the
-// title query. Callers use it to target only ID-queried indexers when retrying
-// a mixed-mode search by title.
+// title query, and so receive no year. A request without IDs returns none.
 func (s *Service) IndexerIDsWithIDSearchCaps(ctx context.Context, req *TorznabSearchRequest) []int {
+	if req.IMDbID == "" && req.TVDbID == "" && req.TMDbID <= 0 && req.TVMazeID <= 0 {
+		return nil
+	}
 	detectedType := detectContentTypeFromCategories(req.Categories)
 	if detectedType == contentTypeUnknown {
 		detectedType = s.detectContentType(req)
@@ -2619,13 +2629,6 @@ func (s *Service) applyProwlarrWorkaround(idx *models.TorznabIndexer, params map
 
 	yearStr, exists := params["year"]
 	if !exists || yearStr == "" {
-		return
-	}
-
-	hasIDs := params["imdbid"] != "" || params["tvdbid"] != "" || params["tmdbid"] != "" || params["tvmazeid"] != ""
-	if hasIDs {
-		// For ID-driven searches we intentionally omit q; avoid injecting year-only queries.
-		delete(params, "year")
 		return
 	}
 

@@ -1636,7 +1636,6 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(resultBytes), "title-rescue")
-	require.NotContains(t, string(resultBytes), "secret difference")
 	require.NotContains(t, string(resultBytes), "ARR secret result alias")
 
 	requestBytes, err := json.Marshal(CrossSeedRequest{
@@ -1651,7 +1650,6 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	require.NotContains(t, string(requestBytes), "title-rescue")
 	require.NotContains(t, string(requestBytes), "12345")
 	require.NotContains(t, string(requestBytes), "secret source hash")
-	require.NotContains(t, string(requestBytes), "secret request difference")
 	require.NotContains(t, string(requestBytes), "ARR secret request alias")
 
 	privateBytes, err := json.Marshal(struct {

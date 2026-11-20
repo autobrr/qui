@@ -1,0 +1,83 @@
+/* @name: Ethereal
+ * @description: Port of the Omarchy Ethereal theme (basecamp/omarchy, MIT), with a pale apricot light companion palette
+ */
+
+:root {
+  --background: oklch(0.9640 0.0150 62.0000);
+  --foreground: oklch(0.2800 0.0600 268.9052);
+  --card: oklch(0.9820 0.0090 62.0000);
+  --card-foreground: oklch(0.2800 0.0600 268.9052);
+  --popover: oklch(0.9930 0.0042 62.0000);
+  --popover-foreground: oklch(0.2800 0.0600 268.9052);
+  --primary: oklch(0.4900 0.1500 279.5798);
+  --primary-foreground: oklch(0.9820 0.0090 62.0000);
+  --secondary: oklch(0.9150 0.0250 272.0934);
+  --secondary-foreground: oklch(0.2800 0.0600 268.9052);
+  --muted: oklch(0.9150 0.0250 272.0934);
+  --muted-foreground: oklch(0.5100 0.0350 272.0934);
+  --accent: oklch(0.9200 0.0330 279.5798);
+  --accent-foreground: oklch(0.2800 0.0600 268.9052);
+  --destructive: oklch(0.5350 0.1750 23.8142);
+  --destructive-foreground: oklch(0.9820 0.0090 62.0000);
+  --border: oklch(0.8760 0.0330 272.0934);
+  --input: oklch(0.8760 0.0330 272.0934);
+  --ring: oklch(0.4900 0.1500 279.5798);
+  --chart-1: oklch(0.4900 0.1500 279.5798);
+  --chart-2: oklch(0.5000 0.0420 146.6576);
+  --chart-3: oklch(0.5300 0.1084 85.6559);
+  --chart-4: oklch(0.5425 0.1100 331.8882);
+  --chart-5: oklch(0.5400 0.1350 49.2181);
+  --sidebar: oklch(0.9420 0.0180 62.0000);
+  --sidebar-foreground: oklch(0.2800 0.0600 268.9052);
+  --sidebar-primary: oklch(0.4900 0.1500 279.5798);
+  --sidebar-primary-foreground: oklch(0.9820 0.0090 62.0000);
+  --sidebar-accent: oklch(0.9200 0.0330 279.5798);
+  --sidebar-accent-foreground: oklch(0.2800 0.0600 268.9052);
+  --sidebar-border: oklch(0.8760 0.0330 272.0934);
+  --sidebar-ring: oklch(0.4900 0.1500 279.5798);
+  --ratio-bad: oklch(0.5350 0.1750 23.8142);
+  --ratio-almost: oklch(0.5700 0.1150 85.6559);
+  --ratio-good: oklch(0.4900 0.1500 279.5798);
+  --ratio-best: oklch(0.5000 0.0420 146.6576);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.1568 0.0413 268.9052);
+  --foreground: oklch(0.8860 0.0708 55.5756);
+  --card: oklch(0.1382 0.0324 266.2576);
+  --card-foreground: oklch(0.8860 0.0708 55.5756);
+  --popover: oklch(0.1930 0.0490 268.9052);
+  --popover-foreground: oklch(0.8860 0.0708 55.5756);
+  --primary: oklch(0.6404 0.1293 279.5798);
+  --primary-foreground: oklch(0.1239 0.0255 264.3378);
+  --secondary: oklch(0.3148 0.0724 272.0934);
+  --secondary-foreground: oklch(0.8860 0.0708 55.5756);
+  --muted: oklch(0.2311 0.0622 271.4838);
+  --muted-foreground: oklch(0.7920 0.0316 68.9457);
+  --accent: oklch(0.2150 0.0480 279.5798);
+  --accent-foreground: oklch(0.8333 0.0614 282.9306);
+  --destructive: oklch(0.6618 0.1811 23.8142);
+  --destructive-foreground: oklch(0.1239 0.0255 264.3378);
+  --border: oklch(0.3148 0.0724 272.0934);
+  --input: oklch(0.1239 0.0255 264.3378);
+  --ring: oklch(0.6404 0.1293 279.5798);
+  --chart-1: oklch(0.6404 0.1293 279.5798);
+  --chart-2: oklch(0.7019 0.0335 146.6576);
+  --chart-3: oklch(0.8134 0.1346 85.6559);
+  --chart-4: oklch(0.7468 0.0702 331.8882);
+  --chart-5: oklch(0.7283 0.1366 49.2181);
+  --sidebar: oklch(0.1382 0.0324 266.2576);
+  --sidebar-foreground: oklch(0.8860 0.0708 55.5756);
+  --sidebar-primary: oklch(0.6404 0.1293 279.5798);
+  --sidebar-primary-foreground: oklch(0.1239 0.0255 264.3378);
+  --sidebar-accent: oklch(0.2150 0.0480 279.5798);
+  --sidebar-accent-foreground: oklch(0.8333 0.0614 282.9306);
+  --sidebar-border: oklch(0.3148 0.0724 272.0934);
+  --sidebar-ring: oklch(0.6404 0.1293 279.5798);
+  --ratio-bad: oklch(0.6618 0.1811 23.8142);
+  --ratio-almost: oklch(0.8134 0.1346 85.6559);
+  --ratio-good: oklch(0.6404 0.1293 279.5798);
+  --ratio-best: oklch(0.7019 0.0335 146.6576);
+  --radius: 0.5rem;
+}

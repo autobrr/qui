@@ -120,6 +120,11 @@ type ActivateResponse struct {
 	ID         string     `json:"id,omitempty"`
 	InstanceID string     `json:"instance_id,omitempty"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	Product    Product    `json:"product"`
+}
+
+type Product struct {
+	ProductID string `json:"product_id"`
 }
 
 type ValidateRequest struct {

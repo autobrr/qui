@@ -27,7 +27,7 @@ The default categories are different. qui adds `.cross` to the category of the m
 
 qui cannot import the settings or the history of the standalone app. Do these steps:
 
-1. Add your indexers in **Settings → Indexers**. Click **Discover** to import them from Prowlarr or Jackett. See [Add indexers](../search.md#add-indexers).
+1. Add your indexers in **Settings → Indexers**. To import them from Prowlarr or Jackett, click **Add indexer**, then **Discover in Jackett or Prowlarr**. See [Add indexers](../search.md#add-indexers).
 2. If you used `linkDirs`, turn on hardlink or reflink mode for each instance and set the base directories. See [Hardlink mode](./hardlink-mode.md) and [Link directories](./link-directories.md).
 3. If autobrr sends announces to the standalone app (`/api/announce`), change the autobrr action to the qui endpoints. See [autobrr integration](./autobrr.md).
 4. Set the rules and the discovery methods in qui. Use the table below.

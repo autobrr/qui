@@ -12,5 +12,10 @@ export function PeerClientIcon({ client, peerIdClient }: { client?: string; peer
   const { icon, letter } = matchPeerClient(client, peerIdClient)
   // The demo has no server, so each peer shows its letter.
   const src = icon && !isDemo ? withBasePath(`/api/peer-client-icons/${icon}`) : null
-  return <TrackerIcon title={peerClientTitle(client, peerIdClient)} fallback={letter} src={src} size="sm" className="shrink-0" />
+  const title = peerClientTitle(client, peerIdClient)
+  return (
+    <div className="shrink-0" title={title}>
+      <TrackerIcon title={title} fallback={letter} src={src} size="sm" />
+    </div>
+  )
 }

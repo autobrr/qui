@@ -4,6 +4,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
@@ -47,9 +49,12 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
+	"github.com/autobrr/qui/internal/services/problemreport"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/share"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/update"
@@ -59,11 +64,12 @@ import (
 )
 
 type Server struct {
-	server  *http.Server
-	logger  zerolog.Logger
-	config  *config.AppConfig
-	version string
-	started time.Time
+	server       *http.Server
+	logger       zerolog.Logger
+	config       *config.AppConfig
+	experimental *experimental.Features
+	version      string
+	started      time.Time
 
 	authService                      *auth.Service
 	sessionManager                   *scs.SessionManager
@@ -108,9 +114,13 @@ type Server struct {
 	discScanStore                    *models.DiscScanStore
 	discScanService                  *discscan.Service
 	transferHistory                  *transferhistory.Module
+	transfers                        *transfer.Store
+	transferService                  *transfer.Service
+	shareService                     *share.Service
 	liveSamples                      *livesamples.Recorder
 	systemNotices                    *systemnotice.Module
 	databaseShrink                   *dbshrink.Service
+	problemReports                   *problemreport.Service
 	backendPool                      *fsops.Pool
 	sshPool                          *sshpool.Pool
 	dirScanService                   *dirscan.Service
@@ -123,6 +133,7 @@ type Server struct {
 
 type Dependencies struct {
 	Config                           *config.AppConfig
+	Experimental                     *experimental.Features
 	Version                          string
 	AuthService                      *auth.Service
 	SessionManager                   *scs.SessionManager
@@ -170,12 +181,21 @@ type Dependencies struct {
 	LiveSamples                      *livesamples.Recorder
 	SystemNotices                    *systemnotice.Module
 	DatabaseShrink                   *dbshrink.Service
-	BackendPool                      *fsops.Pool
-	SSHPool                          *sshpool.Pool
-	DirScanService                   *dirscan.Service
-	ArrInstanceStore                 *models.ArrInstanceStore
-	ArrService                       *arr.Service
-	ActivityHub                      *activity.Hub
+	ProblemReports                   *problemreport.Service
+	// StartedAt is when qui started. Zero means when NewServer runs.
+	StartedAt        time.Time
+	BackendPool      *fsops.Pool
+	SSHPool          *sshpool.Pool
+	DirScanService   *dirscan.Service
+	ArrInstanceStore *models.ArrInstanceStore
+	ArrService       *arr.Service
+	ActivityHub      *activity.Hub
+	// Transfers holds the Transfer records and the helper registry.
+	Transfers *transfer.Store
+	// TransferService runs Transfers.
+	TransferService *transfer.Service
+	// ShareService runs Shares.
+	ShareService *share.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -205,8 +225,9 @@ func NewServer(deps *Dependencies) *Server {
 		},
 		logger:                           log.Logger.With().Str("module", "api").Logger(),
 		config:                           deps.Config,
+		experimental:                     deps.Experimental,
 		version:                          deps.Version,
-		started:                          time.Now().UTC(),
+		started:                          cmp.Or(deps.StartedAt, time.Now()).UTC(),
 		authService:                      deps.AuthService,
 		sessionManager:                   deps.SessionManager,
 		instanceStore:                    deps.InstanceStore,
@@ -253,18 +274,38 @@ func NewServer(deps *Dependencies) *Server {
 		liveSamples:                      deps.LiveSamples,
 		systemNotices:                    deps.SystemNotices,
 		databaseShrink:                   deps.DatabaseShrink,
+		problemReports:                   deps.ProblemReports,
 		backendPool:                      deps.BackendPool,
 		sshPool:                          deps.SSHPool,
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
 		activityHub:                      deps.ActivityHub,
+		transfers:                        deps.Transfers,
+		transferService:                  deps.TransferService,
+		shareService:                     deps.ShareService,
 		shuttingDown:                     streamsCtx.Done(),
 	}
 	// Shutdown runs this callback on every call; a CancelFunc tolerates repeats where close would panic.
 	s.server.RegisterOnShutdown(stopStreams)
 
 	return &s
+}
+
+// transferRoutes adds the Transfer and Share routes.
+func (s *Server) transferRoutes(r chi.Router) {
+	r.Route("/transfers", handlers.NewTransfersHandler(s.transferService, s.transfers, s.automationStore).Routes)
+	r.Route("/shares", handlers.NewSharesHandler(s.shareService).Routes)
+}
+
+// newTorrentsHandler builds the handler of the torrent routes. It refuses to
+// change a torrent that a Transfer holds, and a helper torrent.
+func (s *Server) newTorrentsHandler() *handlers.TorrentsHandler {
+	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
+	if s.transfers != nil {
+		torrentsHandler.SetHeldTorrents(s.transfers)
+	}
+	return torrentsHandler
 }
 
 // ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
@@ -409,14 +450,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore), s.sshPool)
 	instancesHandler.SetOrphanScan(s.orphanScanService)
 	instancesHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
-	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
+	torrentsHandler := s.newTorrentsHandler()
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService, s.version, s.updateAvailability)
 	systemHandler := handlers.NewSystemHandler(s.updateAvailability, s.restarter, s.selfUpdater)
-	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
+	applicationHandler := handlers.NewApplicationHandler(s.config, s.experimental, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
@@ -436,6 +477,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		s.syncManager,
 	)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
+	automationsHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
 	transferHistoryHandler := handlers.NewTransferHistoryHandler(s.transferHistory)
@@ -862,6 +904,16 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.With(allInstances, settings.Read).Get("/database/shrink", databaseShrinkHandler.Status)
 			r.With(browserOnly).Post("/database/shrink", databaseShrinkHandler.Request)
 			r.With(allInstances, settings.Write).Delete("/database/shrink/result", databaseShrinkHandler.DismissResult)
+			s.transferRoutes(r.With(browserOnly))
+
+			r.Route("/problem-reports", func(r chi.Router) {
+				r.Use(s.experimental.Require(experimental.ProblemReports), browserOnly, handlers.RequireProblemReports(func() bool {
+					return s.config.Config.ProblemReports
+				}))
+				problemReportHandler := handlers.NewProblemReportHandler(s.problemReports)
+				r.Get("/facts", problemReportHandler.Facts)
+				r.Post("/", problemReportHandler.Send)
+			})
 		})
 	})
 

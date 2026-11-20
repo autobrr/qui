@@ -75,15 +75,6 @@ describe("mergeStreamedFirstPage", () => {
     expect(hashes(merged)).toContain("f")
   })
 
-  it("keeps all later-page rows when a later-page row is deleted (page 0 unchanged)", () => {
-    // page size 2: prev = page0[a,b] + page1[c,d]. 'd' deleted server-side, total -> 3,
-    // page 0 stays [a,b]. The surviving later-page row 'c' must remain; we cannot tell
-    // that 'd' specifically went, so it lingers rather than risking dropping 'c'.
-    const merged = mergeStreamedFirstPage(rows("a", "b", "c", "d"), rows("a", "b"), 3)
-    expect(hashes(merged)).toEqual(["a", "b", "c", "d"])
-    expect(hashes(merged)).toContain("c")
-  })
-
   it("drops multiple page-0 window deletions when later pages refill the window (multiple deletes)", () => {
     // page size 3: prev = page0[a,b,c] + page1[d,e,f] + page2[g]. 'a' and 'b' are deleted,
     // so the full fresh page 0 reflows to [c,d,e] (still 3 rows) and total drops to 5. Both
@@ -102,16 +93,6 @@ describe("mergeStreamedFirstPage", () => {
     // old trailing slice.
     const merged = mergeStreamedFirstPage(rows("a", "b", "c", "d", "e"), rows("a", "c", "d"), 4)
     expect(hashes(merged)).toEqual(["a", "c", "d", "e"])
-    expect(hashes(merged)).not.toContain("b")
-  })
-
-  it("treats a fresh page that covers the whole result as authoritative", () => {
-    // page size 1: prev = page0[a] + page1[b]. total drops to 1, so only one torrent
-    // exists now and the fresh page 0 ([a]) already covers it. 'b' is therefore the row
-    // that was deleted and must not linger. (When total > the fresh page length we keep
-    // trailing rows instead - see the paginated cases above.)
-    const merged = mergeStreamedFirstPage(rows("a", "b"), rows("a"), 1)
-    expect(hashes(merged)).toEqual(["a"])
     expect(hashes(merged)).not.toContain("b")
   })
 

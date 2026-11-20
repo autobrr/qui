@@ -36,6 +36,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `externalProgram` | object |  | Run an external program for each matching torrent. See `conditions.externalProgram`. |
 | `autoManagement` | object |  | Turn automatic torrent management on or off. See `conditions.autoManagement`. |
 | `exportToInstance` | object |  | Add matching torrents to a different qBittorrent instance. See `conditions.exportToInstance`. |
+| `transferToInstance` | object |  | Move matching torrents with their files to a different qBittorrent instance. Needs qBittorrent 5.1 or newer on both instances. See `conditions.transferToInstance`. |
 
 ### `conditions.grouping`
 
@@ -176,12 +177,27 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `contentLayout` | string | `Original`, `Subfolder`, `NoSubfolder` | The content layout on the target instance. Leave it out to use the default layout of the target instance. |
 | `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
+### `conditions.transferToInstance`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `targetInstanceId` | integer |  | The ID of the target instance in this qui. The ID is in the URL of the instance page, `/instances/ID`. |
+| `savePath` | string |  | The save path on the target instance. Supports Go templates, with the variables of `exportToInstance.savePath`. |
+| `category` | string |  | The category on the target instance. |
+| `tags` | array of string |  | The tags on the target instance. |
+| `after` | string | `removeWithFiles`, `keepFiles`, `keepSeeding` | What happens on the source instance after the Transfer: `removeWithFiles` removes the torrent and its files, `keepFiles` removes the torrent and keeps the files, and `keepSeeding` keeps the torrent seeding. Default `removeWithFiles`. |
+| `leaveStopped` | boolean |  | Leave the torrent stopped on the target instance. |
+| `way` | string | `auto`, `copy`, `bittorrent` | How the files reach the target instance: `copy` copies them through qui, `bittorrent` lets the two qBittorrent instances pass them, and `auto` lets qui choose. Default `auto`. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
+
 ### `freeSpaceSource`
 
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
-| `type` | string | `qbittorrent`, `path`, `qbitPath` | `qbittorrent` uses the free space that qBittorrent reports. `path` reads the free space at `path`. `qbitPath` asks qBittorrent for the free space at `path` on its own host. |
-| `path` | string |  | With type `path` or `qbitPath`: the path to read. Type `path` needs filesystem access on the instance. Type `qbitPath` needs qBittorrent with Web API 2.15.2 or later. |
+| `type` | string | `qbittorrent`, `path`, `qbitPath`, `allowance` | `qbittorrent` uses the free space that qBittorrent reports. `path` reads the free space at `path`. `qbitPath` asks qBittorrent for the free space at `path` on its own host. `allowance` is `allowanceBytes` minus the size of the files under `path`. |
+| `path` | string |  | With type `path` or `qbitPath`: the path to read. With type `allowance`: the folder to measure. Types `path` and `allowance` need filesystem access on the instance. Type `qbitPath` needs qBittorrent with Web API 2.15.2 or later. |
+| `allowanceBytes` | integer |  | With type `allowance`: the space that the user may fill, in bytes. |
 
 ### `sortingConfig`
 

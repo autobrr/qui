@@ -52,6 +52,14 @@ type Service struct {
 	historyCap       int
 
 	activityPublisher activity.Publisher
+	helpers           helperTorrents
+}
+
+// helperTorrents is the helper registry: it names the torrents that qui added
+// for a Transfer or a Share. A tag proves nothing.
+type helperTorrents interface {
+	IsHelper(instanceID int, hash string) bool
+	qbittorrent.HelperTorrents
 }
 
 type reannounceJob struct {
@@ -165,6 +173,16 @@ func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 		return
 	}
 	s.activityPublisher = publisher
+}
+
+// SetHelperTorrents leaves the helper torrents out: reannounce neither watches
+// nor reannounces one. Call it one time at start-up.
+func (s *Service) SetHelperTorrents(helpers helperTorrents) {
+	s.helpers = helpers
+}
+
+func (s *Service) isHelper(instanceID int, hash string) bool {
+	return s.helpers != nil && s.helpers.IsHelper(instanceID, hash)
 }
 
 // Start launches the background monitoring loop.
@@ -619,16 +637,16 @@ func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []s
 		return result
 	}
 	for _, hash := range hashes {
-		if torrent, ok := snapshot.Torrent(hash); ok {
+		if torrent, ok := snapshot.Torrent(hash); ok && !s.isHelper(instanceID, torrent.Hash) {
 			result[strings.ToUpper(torrent.Hash)] = torrent
 		}
 	}
 	return result
 }
 
-// cachedTorrents returns all torrents of the Sync snapshot. The callers keep
-// the stalled ones through torrentMatchesFilters. The torrents are shared:
-// never change one.
+// cachedTorrents returns the torrents of the Sync snapshot that are no helper
+// torrents. The callers keep the stalled ones through torrentMatchesFilters.
+// The torrents are shared: never change one.
 func (s *Service) cachedTorrents(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
 	sync, err := s.syncManager.GetSyncOwner(ctx, instanceID)
 	if err != nil {
@@ -638,7 +656,7 @@ func (s *Service) cachedTorrents(ctx context.Context, instanceID int) ([]*qbt.To
 	if snapshot == nil {
 		return nil, nil
 	}
-	return snapshot.Torrents(), nil
+	return qbittorrent.WithoutHelpers(snapshot, s.helpers, instanceID), nil
 }
 
 func (s *Service) getSettings(ctx context.Context, instanceID int) *models.InstanceReannounceSettings {

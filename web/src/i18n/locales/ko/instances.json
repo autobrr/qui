@@ -7,24 +7,12 @@
       "disconnected": "연결 끊김"
     },
     "tooltips": {
-      "disableInstance": "인스턴스 비활성화",
-      "enableInstance": "인스턴스 활성화",
       "moveUp": "위로 이동",
       "moveDown": "아래로 이동"
     },
     "actions": {
-      "edit": "편집",
       "testConnection": "연결 테스트",
       "delete": "삭제"
-    },
-    "labels": {
-      "username": "사용자 이름:",
-      "basicAuth": "기본 인증:",
-      "tlsVerification": "TLS 검증:",
-      "tlsSkipped": "건너뜀",
-      "tlsStrict": "엄격",
-      "testingConnection": "연결 테스트 중...",
-      "fileAccess": "파일 접근:"
     },
     "deleteDialog": {
       "title": "인스턴스 삭제",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "인스턴스 비활성화됨",
-      "testDisabledDescription": "연결을 테스트하기 전에 인스턴스를 활성화하세요.",
       "testSuccessTitle": "연결 테스트 성공",
       "testSuccessDescription": "qBittorrent 인스턴스에 성공적으로 연결되었습니다",
       "testFailedTitle": "연결 테스트 실패",
@@ -55,7 +42,13 @@
     "passwordRequired": "비밀번호 필요",
     "decryptionDescription": "저장된 비밀번호를 해독할 수 없습니다. 일반적으로 세션 시크릿이 변경되었을 때 발생합니다.",
     "reenterPassword": "비밀번호 다시 입력",
-    "recentErrors": "최근 오류 ({{count}})"
+    "recentErrors": "최근 오류 ({{count}})",
+    "errorTypes": {
+      "connection": "연결",
+      "authentication": "인증",
+      "ban": "차단",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "인스턴스 이름은 필수입니다",
-      "basicAuthPasswordRequired": "기본 인증이 활성화된 경우 기본 인증 비밀번호는 필수입니다"
+      "basicAuthPasswordRequired": "기본 인증이 활성화된 경우 기본 인증 비밀번호는 필수입니다",
+      "usernameRequired": "사용자 이름이 필요합니다",
+      "passwordRequired": "비밀번호가 필요합니다",
+      "apiKeyRequired": "API 키가 필요합니다"
     },
     "buttons": {
-      "saving": "저장 중...",
       "updateInstance": "인스턴스 업데이트",
-      "addInstance": "인스턴스 추가",
-      "cancel": "취소"
+      "addInstance": "인스턴스 추가"
     },
     "toast": {
-      "missingCredentialsTitle": "자격 증명 누락",
       "instanceUpdatedTitle": "인스턴스 업데이트됨",
       "instanceUpdatedDescription": "인스턴스가 업데이트되었습니다. 백그라운드에서 연결 테스트 중...",
-      "updateFailedTitle": "업데이트 실패",
       "updateFailedDescription": "인스턴스를 업데이트하지 못했습니다",
       "instanceCreatedTitle": "인스턴스 생성됨",
       "instanceCreatedDescription": "인스턴스가 생성되었습니다. 백그라운드에서 연결 테스트 중...",
-      "createFailedTitle": "생성 실패",
       "createFailedDescription": "인스턴스를 생성하지 못했습니다"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "사용자 이름 및 비밀번호",
       "apiKey": "API 키"
     },
-    "sshAfterSave": "인스턴스 파일에 대한 SSH 접근은 저장 후 인스턴스 설정에서 구성합니다."
+    "sshAfterSave": "인스턴스 파일에 대한 SSH 접근은 저장 후 인스턴스 설정에서 구성합니다.",
+    "addTitle": "인스턴스 추가",
+    "addDescription": "새 qBittorrent 인스턴스를 구성합니다",
+    "editTitle": "인스턴스 편집"
   },
   "settingsButton": {
     "tooltip": "인스턴스 설정"
@@ -560,6 +554,7 @@
         "externalProgram": "외부 프로그램",
         "dryRun": "모의 실행",
         "exportToInstance": "인스턴스로 내보내기",
+        "transferToInstance": "인스턴스로 전송",
         "ruleSkipped": "규칙 실행 안 됨"
       },
       "shareLimit": {
@@ -596,7 +591,8 @@
         "deleteLabelCondition": "조건",
         "exported_other": "토렌트 {{count}}개 내보냄",
         "exportedDryRun_other": "토렌트 {{count}}개 내보낼 예정",
-        "exportFailed_other": "토렌트 {{count}}개 내보내기 실패"
+        "exportFailed_other": "토렌트 {{count}}개 내보내기 실패",
+        "transferredDryRun_other": "토렌트 {{count}}개 전송 예정"
       },
       "deleteDialog": {
         "title": "규칙 삭제",
@@ -656,6 +652,7 @@
         "deleteActivityFailed": "활동을 삭제하지 못했습니다"
       },
       "exported": "내보냄",
+      "transferStarted": "시작됨",
       "skipped": "건너뜀"
     },
     "runWorkflowNow": {
@@ -945,6 +942,7 @@
         "auto_managed": "자동 관리됨",
         "dry_run_no_match": "모의 실행(일치 없음)",
         "exported_to_instance": "인스턴스로 내보내기",
+        "transferred_to_instance": "인스턴스로 전송",
         "rule_skipped": "규칙 실행 안 됨"
       }
     },
@@ -1121,6 +1119,11 @@
         "skipChecking": "확인 건너뛰기",
         "addPaused": "일시 정지 상태로 추가"
       },
+      "transfer": {
+        "title": "인스턴스로 전송",
+        "description": "일치하는 각 토렌트를 파일과 함께 대상 인스턴스로 옮기고, 무엇이든 제거하기 전에 복사본을 확인합니다. 전송 페이지에 각 전송이 표시됩니다.",
+        "remove": "인스턴스로 전송 제거"
+      },
       "priority": {
         "title": "토렌트 우선순위",
         "description": "토렌트가 처리되는 순서를 제어합니다.",
@@ -1163,7 +1166,8 @@
         "category": "카테고리",
         "move": "이동",
         "externalProgram": "외부 프로그램 실행",
-        "exportToInstance": "인스턴스로 내보내기"
+        "exportToInstance": "인스턴스로 내보내기",
+        "transferToInstance": "인스턴스로 전송"
       },
       "option": {
         "noChange": "변경 없음",
@@ -1272,9 +1276,24 @@
           "unsupportedWindows": "경로 기반 여유 공간 소스는 Windows에서 지원되지 않습니다.",
           "qbitPathUnsupported": "이 인스턴스는 qBittorrent 5.3 이전 버전이라 경로의 여유 공간을 알려줄 수 없습니다.",
           "pathRequired": "\"서버의 경로\"를 사용할 때는 경로가 필요합니다.",
-          "filesystemAccessRequired": "경로 기반 여유 공간 소스에는 로컬 또는 SSH 파일시스템 접근이 필요합니다."
+          "filesystemAccessRequired": "경로 기반 여유 공간 소스에는 로컬 또는 SSH 파일시스템 접근이 필요합니다.",
+          "allowanceRequired": "0보다 큰 허용 용량을 입력하세요.",
+          "allowanceAccessRequired": "허용 용량 소스에는 로컬 파일시스템 접근 또는 셸이 있는 SSH 접근이 필요합니다."
         },
-        "pathSourceFilesystemAccessRequired": "서버의 경로(로컬 또는 SSH 접근 필요)"
+        "pathSourceFilesystemAccessRequired": "서버의 경로(로컬 또는 SSH 접근 필요)",
+        "allowanceSource": "경로의 허용 용량",
+        "allowanceSourceWindowsUnsupported": "경로의 허용 용량(Windows에서 지원되지 않음)",
+        "allowanceSourceAccessRequired": "경로의 허용 용량(로컬 접근 또는 셸이 있는 SSH 접근 필요)",
+        "allowanceLabel": "허용 용량",
+        "allowancePathLabel": "측정할 폴더",
+        "allowanceUnitAria": "허용 용량 단위",
+        "allowanceHelp": "요금제에서 허용하는 용량을 제공업체가 사용하는 단위로 입력하세요. qui가 경로 아래 파일의 크기를 뺍니다. 대부분의 제공업체는 1024({{binaryUnit}})가 아닌 1000({{decimalUnit}}) 단위로 계산하며, 두 단위는 약 9% 차이가 납니다.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
+        "allowancePathHelp": "예: 홈 디렉터리"
       },
       "grouping": {
         "title": "그룹화된 조건 그룹",
@@ -1419,6 +1438,7 @@
           "externalProgram": "외부 프로그램",
           "noMatches": "일치 없음",
           "exportedToInstance": "인스턴스로 내보내기",
+          "transferredToInstance": "인스턴스로 전송",
           "ruleSkipped": "규칙 실행 안 됨"
         },
         "actionFallback": "알 수 없는 작업 ({{action}})",
@@ -2069,10 +2089,9 @@
     }
   },
   "access": {
-    "local": "로컬",
-    "remote": "SSH 경유",
-    "none": "없음",
-    "localFull": "qui가 이 인스턴스의 파일을 이 컴퓨터에서 읽고 씁니다.",
+    "local": "로컬 파일",
+    "remote": "SSH를 통한 파일 접근",
+    "none": "파일 접근 없음",
     "limits": {
       "noIdentity": "파일 식별 정보 없음: qui는 두 경로가 같은 파일인지 구분할 수 없습니다. 여기서는 고아 항목 스캔이 삭제할 수 없고, 이미 존재하는 하드링크 대상이 있으면 하드링크 추가가 중단됩니다.",
       "noReflinks": "원격 인스턴스에서는 리플링크를 사용할 수 없습니다.",
@@ -2083,5 +2102,17 @@
     "label": "전송 기록도 삭제",
     "description": "선택하지 않으면 qui가 인스턴스 이름으로 기록을 유지합니다.",
     "failed": "인스턴스는 삭제되었지만 qui가 기록을 모두 삭제하지 못했습니다. 설정 > 통계에서 확인하고 나머지를 삭제하세요."
+  },
+  "list": {
+    "label": "인스턴스",
+    "emptyTitle": "아직 구성된 인스턴스가 없습니다",
+    "emptyDescription": "qui가 토렌트를 관리할 수 있도록 qBittorrent 클라이언트를 추가하세요.",
+    "tlsSkipped": "TLS 검증 꺼짐",
+    "reorderFailed": "인스턴스 순서를 변경하지 못했습니다"
+  },
+  "publicPeerAddress": {
+    "label": "공개 피어 주소",
+    "noResolvedAddress": "qui가 아직 주소를 확인할 수 없습니다",
+    "description": "다른 BitTorrent 클라이언트가 이 qBittorrent에 접속하는 주소와 포트로, 전송과 공유에 사용됩니다. 비워 두면 qui가 사용할 때마다 qBittorrent에서 확인한 주소를 사용합니다. qBittorrent가 Docker에서 실행되거나 NAT 뒤에 있을 때 설정하세요."
   }
 }

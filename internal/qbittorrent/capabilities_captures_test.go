@@ -222,7 +222,8 @@ func torrentCaptures(t *testing.T, testdata string) []capture {
 		}
 		readCaptureJSON(t, file, &source)
 		var full struct {
-			Torrents map[string]map[string]any `json:"torrents"`
+			Torrents    map[string]map[string]any `json:"torrents"`
+			ServerState map[string]any            `json:"server_state"`
 		}
 		readCaptureJSON(t, filepath.Join(dir, release+"-full.json"), &full)
 		require.Len(t, full.Torrents, 1, "torrents in the %s maindata capture", release)
@@ -240,6 +241,7 @@ func torrentCaptures(t *testing.T, testdata string) []capture {
 			return true
 		}
 		_, trackers := withTrackers[0]["trackers"]
+		_, externalAddress := full.ServerState["last_external_address_v4"]
 		captures = append(captures, capture{kind: "torrents", release: release, webAPI: source.WebAPIVersion, checks: []captureCheck{
 			showsEntry(CapLiveReannounce, has("reannounce")),
 			showsEntry(CapListFieldsV5, has("popularity", "private", "comment")),
@@ -247,6 +249,7 @@ func torrentCaptures(t *testing.T, testdata string) []capture {
 			showsEntry(CapAnnounceFlags, has("has_tracker_error", "has_tracker_warning", "has_other_announce_error")),
 			showsEntry(CapTorrentTmpPath, has("download_path")),
 			showsEntry(CapTrackerHealth, trackers),
+			showsEntry(CapTransferAndShare, externalAddress),
 		}})
 	}
 	return captures
