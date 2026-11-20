@@ -25,6 +25,7 @@ function fakeWindow() {
 }
 
 describe("keepDocumentAtTop", () => {
+  // regression: #4298
   it("scrolls the document back to the top after a rotation back to portrait", () => {
     const win = fakeWindow()
     keepDocumentAtTop(win as unknown as Window)
