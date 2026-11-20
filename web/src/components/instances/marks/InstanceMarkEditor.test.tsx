@@ -104,6 +104,7 @@ describe("InstanceMarkEditor", () => {
 
     fireEvent.keyDown(screen.getByRole("radio", { name: "No color" }), { key: "ArrowRight" })
 
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Sky" }))
     expect(setMark.mock.calls).toEqual([[{ icon: null, color: INSTANCE_MARK_COLORS[0], letters: "" }]])
   })
 
