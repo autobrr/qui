@@ -153,7 +153,8 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 				_, _ = w.Write([]byte(`{"status":"failure","error":"bad hash parameter"}`))
 				return
 			}
-			_, _ = fmt.Fprintf(w, `{"status":"success","response":{"group":{"id":3,"name":"Different catalog listing"},"torrent":{"id":7,"size":%d,"infoHash":%q}}}`, total, targetMeta.HashV1)
+			t.Errorf("a filename match must not fetch target metadata: %s", r.URL.RawQuery)
+			http.Error(w, "unexpected metadata request", http.StatusBadRequest)
 		case "browse":
 			query = q.Get("filelist")
 			found := false
@@ -188,7 +189,7 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 	require.Equal(t, "gazelle:size", match.MatchReason)
 	require.Equal(t, searchCandidateClassFileEvidence, match.SearchDecision.Class)
 	require.Equal(t, source.Hash, match.SearchDecision.SourceHash)
-	require.Equal(t, targetMeta.HashV1, match.InfoHashV1)
+	require.Empty(t, match.InfoHashV1, "a filename match carries no target hash")
 	require.Equal(t, []int{3000}, resp.SourceTorrent.SearchCategories)
 	if automatic {
 		result, err := svc.executeCrossSeedSearchAttempt(t.Context(), 1, defaultsFor(triggerSeededSearch, settings), source, match, time.Now())

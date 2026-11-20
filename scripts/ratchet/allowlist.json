@@ -76,7 +76,7 @@
     "internal/services/crossseed/ensemble_season.go": 2,
     "internal/services/crossseed/errored_recovery.go": 1,
     "internal/services/crossseed/find_and_add.go": 4,
-    "internal/services/crossseed/gazellemusic/match.go": 2,
+    "internal/services/crossseed/gazellemusic/match.go": 1,
     "internal/services/crossseed/indexer_domain.go": 2,
     "internal/services/crossseed/interactive_apply.go": 1,
     "internal/services/crossseed/library_scan.go": 5,

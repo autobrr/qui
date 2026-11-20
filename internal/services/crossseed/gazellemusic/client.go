@@ -117,7 +117,6 @@ type TorrentDetails struct {
 	ID       int64  `json:"id"`
 	InfoHash string `json:"infoHash"`
 	Size     int64  `json:"size"`
-	FileList string `json:"fileList"`
 }
 
 type SearchResponse struct {
@@ -380,22 +379,6 @@ func (c *Client) SearchByFilename(ctx context.Context, filename string) ([]Torre
 		}
 	}
 	return results, nil
-}
-
-func (c *Client) GetTorrent(ctx context.Context, torrentID int64) (*TorrentResponse, error) {
-	params := url.Values{}
-	params.Set("id", strconv.FormatInt(torrentID, 10))
-
-	resp, err := c.ajax(ctx, "torrent", params)
-	if err != nil {
-		return nil, err
-	}
-
-	var torrentResp TorrentResponse
-	if err := json.Unmarshal(resp.Response, &torrentResp); err != nil {
-		return nil, err
-	}
-	return &torrentResp, nil
 }
 
 func (c *Client) DownloadTorrent(ctx context.Context, torrentID int64) ([]byte, error) {

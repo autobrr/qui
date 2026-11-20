@@ -30,13 +30,11 @@ type catalogFileEvidence struct {
 	QueriedHash    string
 	Total          int64
 	SourceSnapshot [32]byte
-	RemoteSnapshot [32]byte
 	Family         rls.Type
 }
 
 func (e catalogFileEvidence) valid() bool {
-	hash, err := hex.DecodeString(e.TargetHash)
-	if err != nil || len(hash) != 20 || e.TorrentID <= 0 || e.Total <= 0 || e.SourceSnapshot == [32]byte{} {
+	if e.TorrentID <= 0 || e.Total <= 0 || e.SourceSnapshot == [32]byte{} {
 		return false
 	}
 	if e.Family != rls.Music && e.Family != rls.Book {
@@ -47,11 +45,11 @@ func (e catalogFileEvidence) valid() bool {
 	}
 	switch e.Kind {
 	case gazellemusic.MatchHash:
-		return strings.EqualFold(e.QueriedHash, e.TargetHash)
+		hash, err := hex.DecodeString(e.TargetHash)
+		return err == nil && len(hash) == 20 && strings.EqualFold(e.QueriedHash, e.TargetHash)
 	case gazellemusic.MatchSize:
-		return true
-	case gazellemusic.MatchFileList:
-		return e.RemoteSnapshot != [32]byte{}
+		// The torrent ID of the download URL names the target.
+		return e.TargetHash == ""
 	}
 	return false
 }
@@ -130,7 +128,7 @@ func catalogFileFamily(files qbt.TorrentFiles) rls.Type {
 // gazelleDecision returns no decision for content other than music and books,
 // so Add matches that result by name, like a result from before file evidence.
 func (s *Service) gazelleDecision(instanceID int, source *qbt.Torrent, files qbt.TorrentFiles, match *gazellemusic.Match) (searchDecisionProvenance, error) {
-	snapshot, total, err := fullFileSnapshot(files)
+	snapshot, _, err := fullFileSnapshot(files)
 	if err != nil {
 		return searchDecisionProvenance{}, err
 	}
@@ -139,12 +137,6 @@ func (s *Service) gazelleDecision(instanceID int, source *qbt.Torrent, files qbt
 		return searchDecisionProvenance{}, nil
 	}
 	e := catalogFileEvidence{Kind: match.Kind, Host: match.Host, TorrentID: match.TorrentID, TargetHash: normalizeHash(match.TargetHash), QueriedHash: match.QueriedHash, Total: match.Size, SourceSnapshot: snapshot, Family: family}
-	if match.Kind == gazellemusic.MatchFileList {
-		if len(match.RemoteFiles) == 0 || fileMapTotal(match.RemoteFiles) != total {
-			return searchDecisionProvenance{}, errors.New("incomplete remote file evidence")
-		}
-		e.RemoteSnapshot = gazellemusic.FileListFingerprint(match.RemoteFiles)
-	}
 	sourceRead := s.matcher().readName(source.Name)
 	candidateRead := s.matcher().readName(match.Title)
 	verdict := s.matcher().matchVerdict(sourceRead, candidateRead, matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: match.Size, SourceFiles: files, Catalog: e}, matchPolicy{CatalogFiles: true})
@@ -152,17 +144,6 @@ func (s *Service) gazelleDecision(instanceID int, source *qbt.Torrent, files qbt
 		return searchDecisionProvenance{}, fmt.Errorf("no admissible file evidence: %s", verdict.RejectReason)
 	}
 	return searchDecisionProvenance{Class: verdict.Class, SearchCandidateName: match.Title, SourceInstanceID: instanceID, SourceHash: normalizeHash(source.Hash), Relaxed: verdict.Relaxed, Catalog: e}, nil
-}
-
-func fileMapTotal(files map[string]int64) int64 {
-	var total int64
-	for _, size := range files {
-		if size < 0 || size > math.MaxInt64-total {
-			return 0
-		}
-		total += size
-	}
-	return total
 }
 
 func validateCatalogTarget(decision searchDecisionProvenance, hash string, files qbt.TorrentFiles) error {
@@ -174,14 +155,11 @@ func validateCatalogTarget(decision searchDecisionProvenance, hash string, files
 	if err != nil {
 		return err
 	}
-	if normalizeHash(hash) != e.TargetHash || total != e.Total {
+	if (e.Kind == gazellemusic.MatchHash && normalizeHash(hash) != e.TargetHash) || total != e.Total {
 		return errors.New("selected target hash or full size changed")
 	}
 	if catalogFileFamily(files) != e.Family {
 		return errors.New("selected target content family changed")
-	}
-	if e.Kind == gazellemusic.MatchFileList && gazellemusic.FileListFingerprint(buildFileSizeMap(files)) != e.RemoteSnapshot {
-		return errors.New("selected target remote file list changed")
 	}
 	return nil
 }

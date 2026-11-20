@@ -42,9 +42,10 @@ func TestCatalogApplyObligations(t *testing.T) {
 			r.sourceFilter = sourceFilter{categories: []string{"other"}}
 		}, wantErr: "bound source incomplete or ineligible"},
 		{name: "source renamed", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.files[m.source.Hash][0].Name = "changed/track.flac" }, wantErr: "bound source file table, full size or content family changed"},
-		{name: "target changed", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SearchDecision.Catalog.TargetHash = adderV1 }, wantErr: "selected target hash or full size changed"},
+		{name: "target changed", kind: gazellemusic.MatchHash, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) {
+			r.SearchDecision.Catalog.TargetHash, r.SearchDecision.Catalog.QueriedHash = adderV1, adderV1
+		}, wantErr: "selected target hash or full size changed"},
 		{name: "size exact path skips check", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
-		{name: "filelist exact path skips check", kind: gazellemusic.MatchFileList, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "hash exact path exemption", kind: gazellemusic.MatchHash, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "renames honor skip recheck", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "renames require check", kind: gazellemusic.MatchSize, wantCheck: true, wantAdd: true},
@@ -65,15 +66,15 @@ func TestCatalogApplyObligations(t *testing.T) {
 			svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, "source", meta.Name, files, meta.HashV1, meta.Files)
 			source := candidate.Torrents[0]
 			source.Size, source.TotalSize = 110, 110
-			remote := make(map[string]int64, len(meta.Files))
-			for _, file := range meta.Files {
-				remote[strings.TrimPrefix(file.Name, meta.Name+"/")] = file.Size
-			}
 			listing := "Different listing"
 			if tt.listing != "" {
 				listing = tt.listing
 			}
-			p, err := svc.gazelleDecision(1, source, files, &gazellemusic.Match{Kind: tt.kind, Host: "orpheus.network", TorrentID: 7, Size: 110, Title: listing, TargetHash: meta.HashV1, QueriedHash: meta.HashV1, RemoteFiles: remote})
+			match := &gazellemusic.Match{Kind: tt.kind, Host: "orpheus.network", TorrentID: 7, Size: 110, Title: listing}
+			if tt.kind == gazellemusic.MatchHash {
+				match.TargetHash, match.QueriedHash = meta.HashV1, meta.HashV1
+			}
+			p, err := svc.gazelleDecision(1, source, files, match)
 			require.NoError(t, err)
 			if tt.listing != "" {
 				require.True(t, p.Relaxed.has(differenceGroup), "actual discovery must record the parsed group difference")

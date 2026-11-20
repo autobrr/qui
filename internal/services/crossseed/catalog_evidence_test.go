@@ -165,15 +165,16 @@ func TestCatalogAdmissionAndSnapshots(t *testing.T) {
 	s := &Service{releaseCache: NewReleaseCache()}
 	files := qbt.TorrentFiles{{Name: "Album/01.flac", Size: 100, Progress: 1}, {Name: "Album/booklet.pdf", Size: 10, Progress: 1}}
 	source := &qbt.Torrent{Hash: "source", Name: "Mira Calder - Beneath Quiet Skies - 2001 [WEB 2011 FLAC 24-96] - HDtracks", Size: 50, TotalSize: 110}
-	match := &gazellemusic.Match{Kind: gazellemusic.MatchSize, Host: "orpheus.network", TorrentID: 7, Size: 110, TargetHash: adderV1, Title: "Other Artist - Different Album (2002) [FLAC]-OTHER"}
+	match := &gazellemusic.Match{Kind: gazellemusic.MatchSize, Host: "orpheus.network", TorrentID: 7, Size: 110, Title: "Other Artist - Different Album (2002) [FLAC]-OTHER"}
 	p, err := s.gazelleDecision(1, source, files, match)
 	require.NoError(t, err)
 	require.Equal(t, searchCandidateClassFileEvidence, p.Class)
 	require.False(t, searchDecisionRequiresVerification(p))
 	require.Equal(t, p, p.bindSource(2, "another"))
 	require.Equal(t, p, p.clone())
-	require.Error(t, validateCatalogTarget(p, adderV2, files))
 	require.NoError(t, validateCatalogTarget(p, adderV1, files))
+	require.NoError(t, validateCatalogTarget(p, adderV2, files), "the torrent ID, not a hash, names a size match")
+	require.Error(t, validateCatalogTarget(p, adderV1, files[:1]), "a target of another full size fails")
 	require.NoError(t, validateCatalogSource(p, source, files))
 	changed := append(qbt.TorrentFiles(nil), files...)
 	changed[0].Name = "Album/renamed.flac"
@@ -198,11 +199,14 @@ func TestCatalogAdmissionAndSnapshots(t *testing.T) {
 		require.True(t, permitted.Relaxed.has(difference), "difference %v lost", difference)
 	}
 	require.False(t, s.matcher().matchVerdict(sourceRead, targetRead, evidence, matchPolicy{}).Matched)
-	match.Kind, match.RemoteFiles = gazellemusic.MatchFileList, buildFileSizeMap(files)
-	remote, err := s.gazelleDecision(1, source, files, match)
+	match.Kind, match.TargetHash, match.QueriedHash = gazellemusic.MatchHash, adderV1, adderV1
+	hashed, err := s.gazelleDecision(1, source, files, match)
 	require.NoError(t, err)
-	require.NoError(t, validateCatalogTarget(remote, adderV1, files))
-	require.Error(t, validateCatalogTarget(remote, adderV1, changed))
+	require.NoError(t, validateCatalogTarget(hashed, adderV1, files))
+	require.Error(t, validateCatalogTarget(hashed, adderV2, files))
+	sized := p
+	sized.Catalog.TargetHash = adderV1
+	require.False(t, sized.Catalog.valid(), "a size match carries no target hash")
 	match.Size = 50
 	_, err = s.gazelleDecision(1, source, files, match)
 	require.Error(t, err, "wanted bytes cannot authorize a full torrent")
