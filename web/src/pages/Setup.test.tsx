@@ -80,6 +80,7 @@ describe("Setup", () => {
 
     await vi.waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: "/login" }))
     expect(createAccount()).toBeNull()
+    expect(queryClient.getQueryData(["setup-required"])).toBe(false)
   })
 
   it("shows the account form on a fresh install", async () => {
