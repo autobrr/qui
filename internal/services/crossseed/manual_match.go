@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -386,11 +387,11 @@ func (s *Service) manualMatchEffectiveSavePath(
 }
 
 // previewLinkBaseDir picks the configured link base directory on the same
-// filesystem as samplePath, in LinkIntoMatchingBaseDir order but without its
-// MkdirAll side effect. Falls back to the best-ranked directory. The dialect
+// filesystem as samplePath, in the order of the link tree module but without
+// a write. Falls back to the best-ranked directory. The dialect
 // is the backend's, or the host's when the backend cannot be read.
 func (s *Service) previewLinkBaseDir(ctx context.Context, instance *models.Instance, samplePath string) (string, fsops.PathDialect) {
-	dirs := splitBaseDirs(instance.HardlinkBaseDir)
+	dirs := linktree.ParseBaseDirs(instance.HardlinkBaseDir)
 	if len(dirs) == 0 {
 		return "", fsops.HostPaths
 	}

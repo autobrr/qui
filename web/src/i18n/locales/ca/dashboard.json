@@ -108,6 +108,7 @@
   },
   "storage": {
     "title": "Emmagatzematge",
+    "help": "Una o més barres aquí són estimacions. Quan qui no pot llegir el disc d'una instància, la part plena mostra els seus torrents i la part buida mostra l'espai lliure. Per veure l'ús real del disc, activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància.",
     "free": "{{size}} lliures"
   },
   "library": {

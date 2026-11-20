@@ -91,6 +91,7 @@ function stats(id: number, extra: Partial<DashboardInstanceStats> = {}, instance
     isDashboardStatsFallbackActive: false,
     cacheMetadata: null,
     instanceMeta: null,
+    disk: null,
     ...extra,
   }
 }
@@ -436,6 +437,46 @@ describe("DashboardOverview instances", () => {
     expect(items.map(item => `${item.getAttribute("data-tone")} ${item.textContent}`)).toEqual([
       `red attention.lowDisk name=instance 1 free=${formatBytes(4 * GiB)}`,
     ])
+  })
+
+  // regression: #4305
+  it("judges two instances on one disk by the size of the disk, not by their own torrents", () => {
+    const disk = { freeBytes: 60 * GiB, totalBytes: 2000 * GiB }
+    const big = { ...stats(0).stats!, uniqueSize: 1900 * GiB }
+    renderOverview([
+      stats(1, { disk, stats: big }, {}, { free_space_on_disk: 60 * GiB }),
+      stats(2, { disk }, {}, { free_space_on_disk: 60 * GiB }),
+      stats(3, { disk: { freeBytes: 400 * GiB, totalBytes: 1000 * GiB } }, {}, { free_space_on_disk: 4 * GiB }),
+    ])
+
+    const items = [...screen.getByTestId("attention-list").querySelectorAll("li[data-tone]")]
+    expect(items.map(item => item.textContent)).toEqual([
+      `attention.lowDisk name=instance 1 free=${formatBytes(60 * GiB)}`,
+      `attention.lowDisk name=instance 2 free=${formatBytes(60 * GiB)}`,
+    ])
+  })
+
+  // regression: #4305
+  it("waits for the free space of qBittorrent before it warns about a measured disk", () => {
+    const disk = { freeBytes: 10 * GiB, totalBytes: 1000 * GiB }
+    renderOverview([
+      stats(1, { disk }, {}, { free_space_on_disk: -1 }),
+      stats(2, { disk }, {}, { free_space_on_disk: 10 * GiB }),
+    ])
+
+    const items = [...screen.getByTestId("attention-list").querySelectorAll("li[data-tone]")]
+    expect(items.map(item => item.textContent)).toEqual([`attention.lowDisk name=instance 2 free=${formatBytes(10 * GiB)}`])
+  })
+
+  // regression: #4305
+  it("explains the Storage bars only while one of them is an estimate", () => {
+    const disk = { freeBytes: 400 * GiB, totalBytes: 1000 * GiB }
+    const measured = renderOverview([stats(1, { disk }), stats(2, { disk })])
+    expect(within(screen.getByRole("region", { name: "storage.title" })).queryByRole("button", { name: "fieldHelp.trigger" })).toBeNull()
+    measured.unmount()
+
+    renderOverview([stats(1, { disk }), stats(2)])
+    expect(within(screen.getByRole("region", { name: "storage.title" })).getByRole("button", { name: "fieldHelp.trigger" })).toBeTruthy()
   })
 
   // regression: #4179

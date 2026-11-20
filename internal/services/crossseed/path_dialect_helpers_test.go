@@ -11,6 +11,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -55,7 +56,8 @@ func TestPathDialect_DestDirHelpers(t *testing.T) {
 				candidate := CrossSeedCandidate{InstanceName: "qbt1"}
 				req := &CrossSeedRequest{IndexerName: "Tracker"}
 
-				_, got := linkDestDir(d, s.linkPresetDir(t.Context(), d, instance, conv(tt.baseDir), candidate, "", req), "Name", tt.files)
+				presetDir := s.linkPresetDir(t.Context(), d, instance, conv(tt.baseDir), candidate, "", req)
+				_, got := linkDestDir(d, presetDir, "Name", tt.files)
 				require.Equal(t, conv(tt.wantDest), got)
 
 				// pathcmp keys the category path with "/" on every host.
@@ -63,7 +65,7 @@ func TestPathDialect_DestDirHelpers(t *testing.T) {
 				if tt.preset == "flat" {
 					wantCategory = conv(tt.wantCategory)
 				}
-				require.Equal(t, wantCategory, s.buildCategorySavePath(t.Context(), d, instance, conv(tt.baseDir), "", candidate, req))
+				require.Equal(t, wantCategory, linkCategorySavePath(d, &linktree.Tree{BaseDir: conv(tt.baseDir), PresetDir: presetDir}, nil))
 
 				// A season pack's own root folder isolates it, so its dest dir is the category path unnormalized.
 				require.Equal(t, conv(tt.wantCategory), s.seasonPackDestDir(t.Context(), d, instance, instance.Name, conv(tt.baseDir), nil, "Tracker"))

@@ -108,6 +108,7 @@
   },
   "storage": {
     "title": "Speicher",
+    "help": "Ein oder mehrere Balken hier sind Schätzwerte. Wenn qui den Datenträger einer Instanz nicht auslesen kann, zeigt der gefüllte Teil ihre Torrents und der leere Teil den freien Speicherplatz. Um die tatsächliche Datenträgerbelegung zu sehen, aktiviere in den Instanzeinstellungen „Lokaler Dateisystemzugriff“ oder richte dort SSH-Zugriff ein.",
     "free": "{{size}} frei"
   },
   "library": {

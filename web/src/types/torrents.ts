@@ -395,6 +395,12 @@ export interface ServerState {
   last_external_address_v6?: string
 }
 
+/** The disk of the default save path of an instance. Both fields are null when qui cannot read the disk. */
+export interface InstanceDisk {
+  freeBytes: number | null
+  totalBytes: number | null
+}
+
 export interface TransferInfo {
   connection_status: string
   dht_nodes: number

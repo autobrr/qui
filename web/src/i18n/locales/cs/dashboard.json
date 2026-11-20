@@ -112,6 +112,7 @@
   },
   "storage": {
     "title": "Úložiště",
+    "help": "Jeden nebo více pruhů zde představuje odhad. Když qui nemůže přečíst disk instance, vyplněná část zobrazuje její torrenty a prázdná část volné místo. Pro skutečné využití disku povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance.",
     "free": "Volno {{size}}"
   },
   "library": {
