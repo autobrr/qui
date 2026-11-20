@@ -11,6 +11,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -109,18 +110,17 @@ func completeCatalogPairing(incoming, existing qbt.TorrentFiles, incomingRoot, e
 	return pairs, nil
 }
 
-func catalogLinkPlan(d fsops.PathDialect, rootDir string, pairs []catalogFilePair, existing []hardlinktree.ExistingFile) (*hardlinktree.TreePlan, error) {
-	plan := &hardlinktree.TreePlan{RootDir: rootDir}
+func catalogLinks(d fsops.PathDialect, pairs []catalogFilePair, existing []hardlinktree.ExistingFile) ([]linktree.Link, error) {
+	links := make([]linktree.Link, 0, len(pairs))
 	seen := make(map[string]struct{}, len(pairs))
 	for _, pair := range pairs {
 		if pair.candidateIndex < 0 || pair.candidateIndex >= len(existing) || existing[pair.candidateIndex].RelPath != pair.candidatePath {
 			return nil, errors.New("validated link source changed")
 		}
-		one, err := hardlinktree.BuildSingleFilePlan(d, rootDir, pair.sourcePath, existing[pair.candidateIndex].AbsPath)
-		if err != nil {
+		if err := hardlinktree.ValidateRelativePath(d, pair.sourcePath); err != nil {
 			return nil, err
 		}
-		key := d.Clean(one.Files[0].TargetPath)
+		key := d.Clean(d.FromSlash(pair.sourcePath))
 		if d.Separator() == `\` {
 			key = strings.ToLower(key)
 		}
@@ -128,7 +128,7 @@ func catalogLinkPlan(d fsops.PathDialect, rootDir string, pairs []catalogFilePai
 			return nil, errors.New("validated target paths collide")
 		}
 		seen[key] = struct{}{}
-		plan.Files = append(plan.Files, one.Files...)
+		links = append(links, linktree.Link{TorrentPath: pair.sourcePath, SourcePath: existing[pair.candidateIndex].AbsPath})
 	}
 	for key := range seen {
 		for parent := d.Dir(key); parent != d.Dir(parent); parent = d.Dir(parent) {
@@ -137,5 +137,5 @@ func catalogLinkPlan(d fsops.PathDialect, rootDir string, pairs []catalogFilePai
 			}
 		}
 	}
-	return plan, nil
+	return links, nil
 }
