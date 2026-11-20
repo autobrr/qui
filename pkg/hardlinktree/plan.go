@@ -6,10 +6,12 @@
 package hardlinktree
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -274,6 +276,42 @@ func BuildSingleFilePlan(d PathDialect, rootDir, relativePath, sourcePath string
 			TargetPath: targetPath,
 		}},
 	}, nil
+}
+
+// BuildLinkPlan creates a plan that links each file's AbsPath to its RelPath,
+// a torrent path, under rootDir. It does no matching and no I/O, and refuses
+// a torrent path that is unsafe or that the destination cannot store.
+func BuildLinkPlan(d PathDialect, rootDir string, files []ExistingFile) (*TreePlan, error) {
+	if rootDir == "" {
+		return nil, errors.New("destination directory is required")
+	}
+	if len(files) == 0 {
+		return nil, errors.New("no files to link")
+	}
+	plan := &TreePlan{RootDir: rootDir, Files: make([]FilePlan, 0, len(files))}
+	for _, f := range files {
+		if f.AbsPath == "" {
+			return nil, errors.New("source path is required for: " + f.RelPath)
+		}
+		if err := validateCandidatePath(d, f.RelPath); err != nil {
+			return nil, err
+		}
+		targetPath := computeTargetPath(d, f.RelPath, LayoutOriginal, "", rootDir)
+		if err := validateTargetInsideBase(d, targetPath, rootDir); err != nil {
+			return nil, err
+		}
+		plan.Files = append(plan.Files, FilePlan{SourcePath: f.AbsPath, TargetPath: targetPath})
+	}
+	slices.SortFunc(plan.Files, func(a, b FilePlan) int {
+		return cmp.Compare(a.TargetPath, b.TargetPath)
+	})
+	return plan, nil
+}
+
+// ValidateTorrentPath reports why name, a slash path from a torrent, is unsafe
+// or cannot be stored by the destination dialect d, nil when it is fine.
+func ValidateTorrentPath(d PathDialect, name string) error {
+	return validateCandidatePath(d, name)
 }
 
 type existingEntry struct {

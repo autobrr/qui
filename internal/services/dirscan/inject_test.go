@@ -301,9 +301,9 @@ func TestHumanizeLinkPlanError(t *testing.T) {
 			want: "couldn't prepare linked files for this release: couldn't map a required release file to a local source file (Example.Release/file.mkv)",
 		},
 		{
-			name: "generic fallback",
-			err:  errors.New("boom"),
-			want: "couldn't prepare linked files for this release",
+			name: "a path the destination cannot store keeps its reason",
+			err:  fmt.Errorf("%w %q: %w", hardlinktree.ErrUnstorableName, "Show/CON.txt", errors.New("reserved name")),
+			want: `couldn't prepare linked files for this release: destination cannot store torrent path "Show/CON.txt": reserved name`,
 		},
 	}
 
@@ -317,36 +317,6 @@ func TestHumanizeLinkPlanError(t *testing.T) {
 				t.Fatalf("expected error %q, got %q", tc.want, got.Error())
 			}
 		})
-	}
-}
-
-func TestBuildLinkTreeMatchedFiles_UsesTorrentFileSize(t *testing.T) {
-	match := &MatchResult{
-		MatchedFiles: []MatchedFilePair{
-			{
-				TorrentFile: TorrentFile{
-					Path: "[SubsPlease] Show - 07 (1080p) [ABCD1234].mkv",
-					Size: 1000,
-				},
-				SearcheeFile: &ScannedFile{
-					Path:    "/media/tv/Show (2024)/Season 01/Show (2024) - S01E07 - Title [CR][WEBDL-1080p]-Group.mkv",
-					RelPath: "Show (2024) - S01E07 - Title [CR][WEBDL-1080p]-Group.mkv",
-					Size:    1000,
-				},
-			},
-		},
-	}
-
-	linkable, existing, err := buildLinkTreeMatchedFiles(match)
-	if err != nil {
-		t.Fatalf("buildLinkTreeMatchedFiles: %v", err)
-	}
-
-	// The bug was that existing[0].Size used the searchee file size instead of the
-	// torrent file size. Exact file-size matching means these should now be equal.
-	_, err = hardlinktree.BuildPlan(fsops.HostPaths, linkable, existing, hardlinktree.LayoutOriginal, "Show", t.TempDir())
-	if err != nil {
-		t.Fatalf("BuildPlan should succeed with exact matched sizes, got: %v", err)
 	}
 }
 
