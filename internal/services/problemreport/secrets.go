@@ -302,6 +302,14 @@ func instanceAddress(host string) []string {
 // apiKeyRegex matches a qui API key: 64 hex characters.
 var apiKeyRegex = regexp.MustCompile(`\b[0-9a-f]{64}\b`)
 
+// licensePathRegex matches a license API path and the segment after it. The
+// web app removes a license with its key in that segment, and qui no longer
+// stores the key once a retry removed it.
+var licensePathRegex = regexp.MustCompile(`/api/license/[^/?#\s"'<>\\]+`)
+
+// licenseRoutes are the fixed words of the license API, which hold no key.
+var licenseRoutes = map[string]bool{"licensed": true, "licenses": true, "activate": true, "validate": true, "refresh": true}
+
 // cleaner removes keys, the stored secrets and the instance addresses from
 // a text part.
 type cleaner struct {
@@ -330,6 +338,12 @@ func (c cleaner) clean(text string) string {
 			return match
 		})
 	}
+	text = licensePathRegex.ReplaceAllStringFunc(text, func(match string) string {
+		if segment := strings.TrimPrefix(match, "/api/license/"); licenseRoutes[segment] {
+			return match
+		}
+		return "/api/license/REDACTED"
+	})
 	return redact.Text(text)
 }
 

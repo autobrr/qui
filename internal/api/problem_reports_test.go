@@ -381,23 +381,47 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 }
 
 func TestProblemReportSendCleansALicenseKeyFromAFailedRequest(t *testing.T) {
-	rig := newReportRig(t, reportRigOptions{})
-	const licenseKey = "QUI-LICENSE-0123-4567-89AB"
-	now := time.Now()
-	require.NoError(t, database.NewLicenseRepo(rig.db).StoreLicense(t.Context(), &models.ProductLicense{
-		LicenseKey: licenseKey, ProductName: "premium", Status: "active", ActivatedAt: now, LastValidated: now, CreatedAt: now, UpdatedAt: now,
-	}))
-	_, facts := rig.facts("startedFrom=menu")
-	report := menuReport("Removing my license fails.", facts, "none", nil)
-	// The web app removes a license with the key in the path.
-	report["failedRequests"] = []any{map[string]any{"method": "DELETE", "path": "/api/license/" + licenseKey, "status": 500, "error": "remove failed", "time": now.UTC().Format(time.RFC3339)}}
+	tests := []struct {
+		name string
+		// removed: a retry removed the license before Send, so qui no longer stores the key.
+		removed bool
+	}{
+		{name: "the key is still stored"},
+		{name: "a retry removed the license", removed: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rig := newReportRig(t, reportRigOptions{})
+			const licenseKey = "QUI-LICENSE-0123-4567-89AB"
+			now := time.Now()
+			licenses := database.NewLicenseRepo(rig.db)
+			require.NoError(t, licenses.StoreLicense(t.Context(), &models.ProductLicense{
+				LicenseKey: licenseKey, ProductName: "premium", Status: "active", ActivatedAt: now, LastValidated: now, CreatedAt: now, UpdatedAt: now,
+			}))
+			if tt.removed {
+				require.NoError(t, licenses.DeleteLicense(t.Context(), licenseKey))
+			}
+			_, facts := rig.facts("startedFrom=menu")
+			text := "Removing my license fails."
+			if !tt.removed {
+				text = "Removing my license " + licenseKey + " fails."
+			}
+			report := menuReport(text, facts, "none", nil)
+			// The web app removes a license with the key in the path.
+			report["failedRequests"] = []any{
+				map[string]any{"method": "DELETE", "path": "/api/license/" + licenseKey, "status": 500, "error": "remove failed", "time": now.UTC().Format(time.RFC3339)},
+				map[string]any{"method": "POST", "path": "/api/license/activate", "status": 403, "error": "activation failed", "time": now.UTC().Format(time.RFC3339)},
+			}
 
-	status, answer := rig.send(report, nil)
-	require.Equal(t, http.StatusCreated, status, answer)
+			status, answer := rig.send(report, nil)
+			require.Equal(t, http.StatusCreated, status, answer)
 
-	raw := string(rig.fake.Requests()[0].Report)
-	assert.NotContains(t, raw, licenseKey)
-	assert.Contains(t, raw, "/api/license/", "the rest of the path stays")
+			raw := string(rig.fake.Requests()[0].Report)
+			assert.NotContains(t, raw, licenseKey)
+			assert.Contains(t, raw, "/api/license/REDACTED", "the rest of the path stays")
+			assert.Contains(t, raw, "/api/license/activate", "a route word is no key")
+		})
+	}
 }
 
 func TestProblemReportSendLogScopes(t *testing.T) {
