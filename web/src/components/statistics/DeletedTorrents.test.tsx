@@ -46,6 +46,11 @@ let deletesOf: Map<number, TransferHistoryDeleteEvent[]>
 let requests: DeletesRequest[]
 // While set, the route waits for it before it answers.
 let hold: Promise<void> | undefined
+// Answers the held requests. The teardown calls it too, so a test that fails before it answers them still ends.
+let release: () => void
+// The client of the rendered table. A test ends only after its requests answered, as a request that is still on its way
+// reaches the route of the next test.
+let client: QueryClient | undefined
 
 function event(instanceId: number, index: number, time: number, kind: TransferHistoryCauseKind, name?: string): TransferHistoryDeleteEvent {
   return {
@@ -67,6 +72,7 @@ function instance(instanceId: number, name: string): TransferHistoryInstance {
 
 function renderTable(instances: TransferHistoryInstance[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client = queryClient
   const table = (to: number) => (
     <QueryClientProvider client={queryClient}>
       <DeletedTorrents scope="30d" instances={instances} period={{ from: new Date(0), to: new Date(to) }} displayGroup={group => `group:${group}`} />
@@ -103,6 +109,7 @@ beforeEach(() => {
   mocks.incognitoMode = [false, () => {}]
   requests = []
   hold = undefined
+  release = () => {}
   deletesOf = new Map()
   server.use(http.get("*/api/instances/:id/transfer-history/deletes", async ({ params, request }) => {
     const url = new URL(request.url)
@@ -124,12 +131,18 @@ beforeEach(() => {
   }))
 })
 
-afterEach(() => {
-  cleanup()
-  vi.unstubAllGlobals()
-  vi.restoreAllMocks()
-  // A test of Show fewer stubs it, as jsdom has no layout.
-  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+afterEach(async () => {
+  release()
+  try {
+    await vi.waitFor(() => expect(client?.isFetching() ?? 0).toBe(0))
+  } finally {
+    client = undefined
+    cleanup()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+    // A test of Show fewer stubs it, as jsdom has no layout.
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+  }
 })
 
 describe("DeletedTorrents", () => {
@@ -253,7 +266,6 @@ describe("DeletedTorrents", () => {
     const { moveTo } = renderTable([instance(1, "Seedbox")])
     await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.0-GRP"]))
 
-    let release = () => {}
     hold = new Promise(resolve => {
       release = resolve
     })
@@ -340,7 +352,6 @@ describe("DeletedTorrents", () => {
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
     await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
-    let release = () => {}
     hold = new Promise(resolve => { release = resolve })
     // A window that gets the focus again loads the page again.
     act(() => {
@@ -395,7 +406,6 @@ describe("DeletedTorrents", () => {
   // regression: #4179
   it("keeps the rows of the last filter, dimmed, until the rows of the next filter load", async () => {
     deletesOf.set(1, [event(1, 0, 5_000, "user"), event(1, 1, 4_000, "automation")])
-    let release = () => {}
     let preloading = false
     const automation = new Promise<void>(resolve => {
       release = resolve
@@ -433,7 +443,8 @@ describe("DeletedTorrents", () => {
     const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
 
     fireEvent.mouseDown(trigger("deletes.filters.user"), { button: 0 })
-    await vi.waitFor(() => expect(trigger("deletes.filters.user").getAttribute("aria-selected")).toBe("true"))
+    // The rows of the other filter show. Until they load, the earlier rows stay and keep their count.
+    await vi.waitFor(() => expect(document.querySelector("table")!.closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("false"))
     fireEvent.mouseDown(trigger("deletes.filters.all"), { button: 0 })
 
     await vi.waitFor(() => expect(trigger("deletes.filters.all").getAttribute("aria-selected")).toBe("true"))
