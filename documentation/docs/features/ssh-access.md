@@ -89,7 +89,7 @@ The test shows a tier and a list of checks.
 | **Tier: SFTP + commands** | qui can run commands on the host. qui can read file identity there, which tells qui when two paths are the same file. |
 | **Tier: SFTP** | qui only has SFTP. qui cannot read file identity. |
 | **SFTP** | The server has SFTP. qui needs it for all file access. |
-| **Free space (statvfs)** | The server reports free disk space. The automation setting **Path on server** and the **Storage** bars on the Dashboard need it. |
+| **Free space (statvfs)** | The server reports free disk space. The automation setting **Path on server** and the real disk usage in the **Storage** bars on the Dashboard need it. Without it, the bars show an estimate. |
 | **Hardlinks (hardlink@openssh.com)** | The server can create hardlinks. Cross-seed hardlink mode needs it. |
 | **Limits extension** | The server reports its SFTP limits. No feature needs it. |
 | **Commands** | The login can run a shell. |
