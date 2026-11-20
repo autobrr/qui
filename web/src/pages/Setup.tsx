@@ -20,6 +20,16 @@ import { useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 
+function readSetupCompleted(): boolean {
+  try {
+    const completed = sessionStorage.getItem(SETUP_COMPLETED_KEY) === "1"
+    sessionStorage.removeItem(SETUP_COMPLETED_KEY)
+    return completed
+  } catch {
+    return false
+  }
+}
+
 export function Setup() {
   const { t } = useTranslation("auth")
   const navigate = useNavigate()
@@ -58,17 +68,11 @@ export function Setup() {
     }
 
     if (oidcConfig.enabled || !setupRequired) {
-      let completed = false
-      try {
-        completed = sessionStorage.getItem(SETUP_COMPLETED_KEY) === "1"
-        sessionStorage.removeItem(SETUP_COMPLETED_KEY)
-      } catch {
-        // Without storage, the redirect stays as it was.
+      const completed = readSetupCompleted()
+      if (completed) {
+        navigate({ to: "/dashboard" })
+        return
       }
-      if (completed) return
-      // Login reads its own infinite-stale copy of this answer. Write the
-      // result we just observed there before redirecting, so Login cannot send
-      // the visitor back here with stale data.
       queryClient.setQueryData(["setup-required"], setupRequired)
       navigate({ to: "/login" })
     }
