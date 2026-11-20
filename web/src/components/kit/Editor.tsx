@@ -43,15 +43,7 @@ type EditorProps = EditorSubmit & {
   size?: "default" | "wide"
   /** Where focus goes on close, when the element that opened the editor can be gone by then. The opener by default. */
   returnFocusTo?: RefObject<HTMLElement | null>
-  /**
-   * A selector for the element that takes the focus on open in place of the first field, for example the current choice
-   * of a picker. A phone and a touch screen still focus the editor itself.
-   */
   initialFocus?: string
-  /**
-   * Content between the title and the fields that stays in place while the fields scroll, for example a preview of the
-   * choice. Unlike a sticky element among the fields, it cannot hide the field that has the focus.
-   */
   pinned?: ReactNode
   /** The fields. With onSubmit, the editor is the form, so the children hold no form element: call the form library in onSubmit. */
   children: ReactNode
@@ -103,7 +95,6 @@ export function Editor({ open, onOpenChange, title, description, submitLabel, on
           {error}
         </p>
       )}
-      {/* A phone stacks the secondary actions over Cancel and Save. Without Save, Close joins their row when it fits. */}
       <div className={cn("flex shrink-0 gap-2 border-t pt-3", phone ? cn("px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]", onSubmit ? "flex-col" : "flex-wrap *:grow") : "items-center px-6 pb-4")}>
         {secondaryActions && <div className={cn("flex gap-2", phone && "flex-wrap *:h-11 *:flex-1")}>{secondaryActions}</div>}
         <div className={cn("flex gap-2", phone ? "*:h-11 *:flex-1" : "ml-auto")}>

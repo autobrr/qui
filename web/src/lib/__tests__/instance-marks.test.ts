@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest"
 
-import { autoLettersFor, normalizeInstanceMarkLetters, parseInstanceMark } from "@/lib/instance-marks"
+import { autoLettersFor, INSTANCE_MARK_HUES, normalizeInstanceMarkLetters, parseInstanceMark } from "@/lib/instance-marks"
 
 describe("normalizeInstanceMarkLetters", () => {
   it("keeps the first two characters in upper case", () => {
@@ -59,5 +59,18 @@ describe("autoLettersFor", () => {
 
   it("gives a disabled instance the initials it would have in its place in the list", () => {
     expect(autoLettersFor(instances, 2)).toBe("SR")
+  })
+})
+
+describe("INSTANCE_MARK_HUES", () => {
+  const defaultThemeDestructiveHues = [27.325, 22.216]
+  const hueDistance = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b))
+
+  it("keeps each color at least 20 degrees from the red of the default theme's destructive color in index.css", () => {
+    for (const hue of Object.values(INSTANCE_MARK_HUES)) {
+      for (const problemHue of defaultThemeDestructiveHues) {
+        expect(hueDistance(hue, problemHue)).toBeGreaterThanOrEqual(20)
+      }
+    }
   })
 })
