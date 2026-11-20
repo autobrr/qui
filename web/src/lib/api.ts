@@ -10,6 +10,7 @@ import type {
   AddRSSFolderRequest,
   AddTorrentResponse,
   ApplicationInfo,
+  ListedProblemReport,
   ProblemReportFacts,
   ProblemReportPayload,
   ProblemReportStartedFrom,
@@ -2558,6 +2559,16 @@ class ApiClient {
     }
 
     return response.json()
+  }
+
+  /** Sent reports, the newest first. The server asks brrbin for fresh Report statuses first. */
+  async getSentProblemReports(): Promise<ListedProblemReport[]> {
+    return this.request<ListedProblemReport[]>("/problem-reports")
+  }
+
+  /** Throws an APIError whose message is `unavailable` when brrbin cannot delete the report. */
+  async deleteProblemReport(id: string): Promise<void> {
+    await this.request<void>(`/problem-reports/${encodeURIComponent(id)}`, { method: "DELETE" })
   }
 
   async getVersion(): Promise<VersionInfo> {

@@ -108,4 +108,27 @@ func checkProblemReportStore(t *testing.T, db dbinterface.Querier) {
 		reports[i].StatusChangedAt = reports[i].StatusChangedAt.UTC()
 	}
 	assert.Equal(t, []models.SentProblemReport{second, first}, reports, "newest first, one row per submission")
+
+	reason := "Already fixed in v1.36.0."
+	closed := second
+	closed.Status, closed.IssueNumber, closed.IssueURL, closed.IssueClosed, closed.CloseReason = models.ProblemReportClosed, nil, nil, false, &reason
+	closed.StatusChangedAt = sentAt.Add(2 * time.Hour)
+	require.NoError(t, store.UpdateSentReportStatus(ctx, closed))
+	reports, err = store.SentReports(ctx)
+	require.NoError(t, err)
+	require.Len(t, reports, 2)
+	reports[0].SentAt, reports[0].StatusChangedAt = reports[0].SentAt.UTC(), reports[0].StatusChangedAt.UTC()
+	assert.Equal(t, closed, reports[0], "the issue fields are cleared")
+
+	found, err := store.HasSentReport(ctx, "r1")
+	require.NoError(t, err)
+	assert.True(t, found)
+	require.NoError(t, store.DeleteSentReport(ctx, "r1"))
+	found, err = store.HasSentReport(ctx, "r1")
+	require.NoError(t, err)
+	assert.False(t, found)
+	reports, err = store.SentReports(ctx)
+	require.NoError(t, err)
+	require.Len(t, reports, 1)
+	assert.Equal(t, "r2", reports[0].BrrbinID)
 }

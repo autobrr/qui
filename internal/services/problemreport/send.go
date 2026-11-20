@@ -47,15 +47,17 @@ const (
 	titleLength         = 80
 )
 
-// RefusalError is a Send that brrbin refused or could not take. Status is the
-// status that qui answers with. qui stores no Sent reports row for it.
+// RefusalError is a brrbin answer that qui passes on to the browser: a Send
+// that brrbin refused or could not take, for which qui stores no Sent reports
+// row, or a Delete that brrbin could not do. Status is the status that qui
+// answers with.
 type RefusalError struct {
 	Status int
 	Reason string
 }
 
 func (r *RefusalError) Error() string {
-	return "brrbin did not take the report: " + r.Reason
+	return "brrbin refused the request: " + r.Reason
 }
 
 // Report is the report that the browser sends. The parts other than the

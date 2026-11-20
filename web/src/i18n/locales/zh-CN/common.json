@@ -114,6 +114,23 @@
       "tokenRejected": "你的登录已结束。请重新登录后再发送。",
       "unavailable": "brrbin 现在无法接收报告。请稍后再试。",
       "sendFailed": "无法发送报告：{{message}}"
+    },
+    "sentReports": {
+      "title": "已发送的报告",
+      "subtitle": "每次打开此列表时，qui 都会检查报告状态。",
+      "changed_other": "{{count}} 条状态已变更",
+      "status": {
+        "received": "已收到",
+        "issue": "已转为 Issue #{{number}}",
+        "issueClosed": "Issue #{{number}} 已关闭",
+        "closed": "已关闭：{{reason}}",
+        "closedNoReason": "已关闭"
+      },
+      "delete": "删除报告",
+      "deleteUnavailable": "brrbin 现在无法删除报告。请稍后再试。",
+      "deleteFailed": "无法删除报告：{{message}}",
+      "empty": "没有已发送的报告。",
+      "back": "返回报告"
     }
   },
   "header": {

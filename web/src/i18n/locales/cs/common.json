@@ -128,6 +128,25 @@
       "tokenRejected": "Vaše přihlášení skončilo. Přihlaste se znovu a pak odešlete.",
       "unavailable": "brrbin teď nemůže přijímat hlášení. Zkuste to později.",
       "sendFailed": "Hlášení se nepodařilo odeslat: {{message}}"
+    },
+    "sentReports": {
+      "title": "Odeslaná hlášení",
+      "subtitle": "qui kontroluje stav hlášení pokaždé, když tento seznam otevřete.",
+      "changed_one": "{{count}} stav se změnil",
+      "changed_few": "{{count}} stavy se změnily",
+      "changed_other": "{{count}} stavů se změnilo",
+      "status": {
+        "received": "Přijato",
+        "issue": "Převedeno na issue #{{number}}",
+        "issueClosed": "Issue #{{number}} uzavřeno",
+        "closed": "Uzavřeno: {{reason}}",
+        "closedNoReason": "Uzavřeno"
+      },
+      "delete": "Smazat hlášení",
+      "deleteUnavailable": "brrbin teď nemůže mazat hlášení. Zkuste to později.",
+      "deleteFailed": "Hlášení se nepodařilo smazat: {{message}}",
+      "empty": "Žádná odeslaná hlášení.",
+      "back": "Zpět na hlášení"
     }
   },
   "header": {

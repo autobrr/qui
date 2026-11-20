@@ -251,6 +251,8 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Problem reports
 
 - **Problem report**: A message that a user sends to the qui maintainers from inside qui: the user's text, plus the facts that qui adds. qui's server sends it to brrbin, and it is never public. _Avoid_: feedback, bug report, ticket.
+- **Sent reports**: The list in the report dialog of the Problem reports that this qui sent, each with its Report status, plus a draft that could not be sent. _Avoid_: history, inbox.
+- **Report status**: Where a Problem report stands: Received, Became issue #N, Issue #N closed, Closed with a reason, or Not sent. qui reads it from brrbin when the user opens the report dialog or Sent reports. _Avoid_: state.
 - **Install key**: The secret that tells brrbin which qui install sent a Problem report. qui makes it, stores it encrypted, and never shows it. _Avoid_: install ID, device ID, client token.
 
 ## Running on Windows
