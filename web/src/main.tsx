@@ -6,12 +6,14 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import App from "./App.tsx"
+import { keepDocumentAtTop } from "@/lib/document-scroll"
 import { setupLaunchQueueConsumer } from "@/lib/launch-queue"
 import { initI18n } from "./i18n"
 import "./index.css"
 import "./spreadsheet-chrome.css"
 
 setupLaunchQueueConsumer()
+keepDocumentAtTop()
 
 // Wait for the active language's resources (lazily loaded for non-English) before
 // mounting, so the first paint is already in the user's chosen language.
