@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/autobrr/qui/scripts/comments/gocomments"
@@ -96,11 +97,28 @@ func strip(listPath string) error {
 		}
 		deleted += len(blocks) - len(missed)
 		lost += len(missed)
-		//nolint:gosec // the caller's list names the file
-		if err := os.WriteFile(path, out, 0o600); err != nil {
+		if err := replaceFile(path, out); err != nil {
 			return err
 		}
 	}
 	fmt.Printf("comments: deleted %d blocks, skipped %d\n", deleted, lost)
 	return nil
+}
+
+func replaceFile(path string, data []byte) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	_, err = tmp.Write(data)
+	err = errors.Join(err, tmp.Chmod(info.Mode().Perm()), tmp.Sync(), tmp.Close())
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return os.Rename(tmp.Name(), path)
 }

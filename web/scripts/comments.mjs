@@ -157,6 +157,17 @@ function list() {
   }
 }
 
+function replaceFile(target, output) {
+  const temp = path.join(path.dirname(target), `.${path.basename(target)}.${process.pid}.tmp`)
+  try {
+    fs.writeFileSync(temp, output, { flush: true })
+    fs.chmodSync(temp, fs.statSync(target).mode)
+    fs.renameSync(temp, target)
+  } finally {
+    fs.rmSync(temp, { force: true })
+  }
+}
+
 function stripListed(listPath) {
   const doomed = new Map()
   for (const line of fs.readFileSync(listPath, "utf8").split("\n")) {
@@ -181,7 +192,7 @@ function stripListed(listPath) {
     for (const block of result.missed) console.log(`${block.file}:${block.line}: no comment block with this text starts here, skipped`)
     deleted += listed.length - result.missed.length
     skipped += result.missed.length
-    fs.writeFileSync(target, result.output)
+    replaceFile(target, result.output)
   }
   console.log(`comments: deleted ${deleted} blocks, skipped ${skipped}`)
 }
