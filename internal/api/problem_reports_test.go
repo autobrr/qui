@@ -161,6 +161,7 @@ func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 			APIKeys:       models.NewAPIKeyStore(db),
 			ClientAPIKeys: deps.ClientAPIKeyStore,
 			Notifications: deps.NotificationTargetStore,
+			Licenses:      database.NewLicenseRepo(db),
 			Config:        func() []string { return []string{"session-secret-value"} },
 		},
 	})
@@ -377,6 +378,26 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 	assert.NotContains(t, report, "search")
 	assert.NotContains(t, report, "matchPolicy")
 	assert.NotContains(t, report, "searchScope")
+}
+
+func TestProblemReportSendCleansALicenseKeyFromAFailedRequest(t *testing.T) {
+	rig := newReportRig(t, reportRigOptions{})
+	const licenseKey = "QUI-LICENSE-0123-4567-89AB"
+	now := time.Now()
+	require.NoError(t, database.NewLicenseRepo(rig.db).StoreLicense(t.Context(), &models.ProductLicense{
+		LicenseKey: licenseKey, ProductName: "premium", Status: "active", ActivatedAt: now, LastValidated: now, CreatedAt: now, UpdatedAt: now,
+	}))
+	_, facts := rig.facts("startedFrom=menu")
+	report := menuReport("Removing my license fails.", facts, "none", nil)
+	// The web app removes a license with the key in the path.
+	report["failedRequests"] = []any{map[string]any{"method": "DELETE", "path": "/api/license/" + licenseKey, "status": 500, "error": "remove failed", "time": now.UTC().Format(time.RFC3339)}}
+
+	status, answer := rig.send(report, nil)
+	require.Equal(t, http.StatusCreated, status, answer)
+
+	raw := string(rig.fake.Requests()[0].Report)
+	assert.NotContains(t, raw, licenseKey)
+	assert.Contains(t, raw, "/api/license/", "the rest of the path stays")
 }
 
 func TestProblemReportSendLogScopes(t *testing.T) {

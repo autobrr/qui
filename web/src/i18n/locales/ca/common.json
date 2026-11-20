@@ -36,17 +36,85 @@
   },
   "problemReports": {
     "reportProblem": "Informa d'un problema",
-    "description": "Descriu el problema. qui hi afegeix les dades de sota, n'elimina els secrets i envia l'informe als mantenidors de qui.",
-    "textLabel": "Què ha fallat?",
-    "factsLabel": "Dades que afegeix qui",
-    "loadingFacts": "S'estan carregant les dades...",
-    "factsFailed": "No s'han pogut carregar les dades: {{message}}",
+    "subtitle": "El teu informe va als mantenidors de qui.",
+    "textLabel": "El teu informe",
+    "placeholders": {
+      "menu": "Què ha passat i què esperaves?",
+      "notice": "Què estaves fent quan ha passat això?",
+      "search": "Quina coincidència esperaves i en quin indexador?"
+    },
+    "sentWithIt": "Inclòs amb l'informe",
+    "summary_one": "qui {{version}} i {{count}} instància",
+    "summary_other": "qui {{version}} i {{count}} instàncies",
+    "details": "Detalls",
+    "view": "Mostra",
+    "whatGetsSent": "Què s'envia",
+    "whatGetsSentNote": "qui omple això. Res surt de qui fins que enviïs l'informe.",
+    "loadingFacts": "S'estan carregant els detalls...",
+    "factsFailed": "No s'han pogut carregar els detalls: {{message}}",
+    "facts": {
+      "version": "Versió",
+      "system": "Sistema",
+      "appContainer": "En un contenidor",
+      "database": "Base de dades",
+      "logLevel": "Nivell de registre",
+      "started": "Iniciat",
+      "experimentalFeatures": "Experimental",
+      "instance": "Instància {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "desconeguda",
+      "states": {
+        "connected": "Connectat",
+        "offline": "Fora de línia",
+        "disabled": "Desactivat"
+      },
+      "torrentCount_one": "{{count}} torrent",
+      "torrentCount_other": "{{count}} torrents",
+      "notices": "Avisos del sistema",
+      "openCount_one": "{{count}} obert",
+      "openCount_other": "{{count}} oberts",
+      "page": "Pàgina",
+      "browser": "Navegador",
+      "screen": "{{width}} × {{height}}, relació de píxels {{ratio}}",
+      "failedRequests": "Peticions fallides",
+      "failedCount_one": "{{count}} en aquesta sessió",
+      "failedCount_other": "{{count}} en aquesta sessió",
+      "noAnswer": "sense resposta",
+      "none": "Cap"
+    },
+    "logs": {
+      "title": "Registres",
+      "scopeLabel": "Línies de registre a incloure",
+      "scopes": {
+        "warnings": "Avisos i errors",
+        "all": "Tot el recent",
+        "none": "Omet"
+      },
+      "notes": {
+        "warnings_one": "{{count}} avís o error recent. qui elimina claus i secrets.",
+        "warnings_other": "{{count}} avisos i errors recents. qui elimina claus i secrets.",
+        "all_one": "{{count}} línia recent al nivell de registre {{level}}. qui elimina claus i secrets.",
+        "all_other": "{{count}} línies recents al nivell de registre {{level}}. qui elimina claus i secrets.",
+        "none": "No s'inclou cap línia de registre a l'informe."
+      },
+      "empty": "No hi ha línies de registre.",
+      "debugMissing": "El nivell de registre és {{level}}, així que qui no desa línies de depuració. Per incloure-les, posa Nivell de registre a DEBUG a Configuració > Registres, reprodueix el problema i torna a informar."
+    },
+    "privacy": {
+      "anonymous": "Anònim: sense nom ni compte. brrbin no guarda cap adreça IP.",
+      "link": "Política de privadesa"
+    },
+    "newerRelease": "Fas servir {{running}}. Ja ha sortit <release>{{newer}}</release>.",
     "send": "Envia",
-    "sending": "S'està enviant...",
+    "sendAnyway": "Envia igualment",
+    "sending": "S'està enviant",
     "sent": "Informe enviat",
     "errors": {
-      "anonymousFull": "Els informes anònims d'avui estan plens. Inicia la sessió per enviar-lo ara, o torna-ho a provar demà.",
-      "signInRequired": "Inicia la sessió per enviar aquest informe.",
+      "anonymousFull": {
+        "title": "Els informes anònims d'avui estan plens",
+        "body": "Inicia la sessió per enviar-lo ara, o torna-ho a provar demà. El teu text queda aquí com a esborrany."
+      },
+      "signInRequired": "Inicia la sessió per enviar aquest informe. El teu text queda aquí com a esborrany.",
       "accountLimit": "Has enviat molts informes en l'última hora. Torna-ho a provar més tard.",
       "reporterFull": "Els teus informes ocupen tot l'espai que brrbin dona a una persona. Esborra un informe antic a Informes enviats i torna a enviar.",
       "tooLarge": "L'informe és massa gran. Tria menys línies de registre o una imatge més petita.",

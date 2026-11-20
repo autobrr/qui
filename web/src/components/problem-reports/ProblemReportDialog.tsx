@@ -5,23 +5,32 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { TFunction } from "i18next"
-import { MessageSquareWarning } from "lucide-react"
-import { useId, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { ChevronRight, Loader2, MessageSquareWarning } from "lucide-react"
+import { memo, useMemo, useState } from "react"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { closeProblemReport, openProblemReport, useProblemReportOpenState } from "@/components/problem-reports/open"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { CopyButton } from "@/components/ui/copy-button"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
-import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { useProblemReportsAvailable } from "@/hooks/useProblemReportsAvailable"
-import { api } from "@/lib/api"
-import type { ProblemReportFacts } from "@/types"
+import { api, APIError } from "@/lib/api"
+import { failedRequests, type FailedRequest } from "@/lib/failed-requests"
+import { cn } from "@/lib/utils"
+import type { ProblemReportBrowserFacts, ProblemReportFacts, ProblemReportLogScope, ProblemReportStartedFrom } from "@/types"
+
+const PRIVACY_URL = "https://bin.getqui.com/privacy"
+const WIDE_QUERY = "(min-width: 1024px)"
 
 /** The icon button that opens the report dialog. Renders nothing while Problem reports are unavailable. */
-export function ProblemReportButton({ className, onOpen }: { className?: string; onOpen: () => void }) {
+export function ProblemReportButton({ className }: { className?: string }) {
   const { t } = useTranslation("common")
   const available = useProblemReportsAvailable()
   if (!available) return null
@@ -29,7 +38,7 @@ export function ProblemReportButton({ className, onOpen }: { className?: string;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" className={className} onClick={onOpen} aria-label={t("problemReports.reportProblem")}>
+        <Button variant="ghost" size="icon" className={className} onClick={() => openProblemReport("menu")} aria-label={t("problemReports.reportProblem")}>
           <MessageSquareWarning className="h-3.5 w-3.5" />
         </Button>
       </TooltipTrigger>
@@ -41,136 +50,496 @@ export function ProblemReportButton({ className, onOpen }: { className?: string;
 }
 
 /** The menu row that opens the report dialog. Renders nothing while Problem reports are unavailable. */
-export function ProblemReportMenuItem({ onOpen }: { onOpen: () => void }) {
+export function ProblemReportMenuItem() {
   const { t } = useTranslation("common")
   const available = useProblemReportsAvailable()
   if (!available) return null
 
   return (
-    <DropdownMenuItem onSelect={onOpen}>
+    <DropdownMenuItem onSelect={() => openProblemReport("menu")}>
       <MessageSquareWarning className="h-4 w-4" />
       {t("problemReports.reportProblem")}
     </DropdownMenuItem>
   )
 }
 
-export function ProblemReportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+/** The one report dialog of the app. Every entry point opens it through `openProblemReport`. */
+export function ProblemReportDialogRoot() {
+  const { open, startedFrom } = useProblemReportOpenState()
+  const wide = useMediaQuery(WIDE_QUERY)
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(next) => !next && closeProblemReport()}>
+      <DialogContent
+        className={cn(
+          "gap-0 p-0",
+          wide ? "flex h-[min(44rem,calc(100dvh-4rem))] flex-col overflow-hidden sm:max-w-4xl xl:max-w-5xl" : "max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
+        )}
+      >
         {/* The dialog unmounts its content when it closes, so each open starts a new report. */}
-        <ProblemReportForm onSent={() => onOpenChange(false)} />
+        <ProblemReportForm startedFrom={startedFrom} wide={wide} />
       </DialogContent>
     </Dialog>
   )
 }
 
-function ProblemReportForm({ onSent }: { onSent: () => void }) {
+function ProblemReportForm({ startedFrom, wide }: { startedFrom: ProblemReportStartedFrom; wide: boolean }) {
   const { t } = useTranslation("common")
-  const textId = useId()
   const [text, setText] = useState("")
+  const [logScope, setLogScope] = useState<ProblemReportLogScope>("warnings")
   // One id for each open, so that a retry of the same report stores no second row.
   const [submissionId] = useState(newSubmissionId)
-  // Read once, so that the preview shows the values that Send posts.
+  // Read once, so that what the dialog shows is what Send posts.
   const [browser] = useState(browserFacts)
+  const [failed] = useState(failedRequests)
 
   const factsQuery = useQuery({
-    queryKey: ["problem-reports", "facts", "menu"],
-    queryFn: () => api.getProblemReportFacts("menu"),
+    queryKey: ["problem-reports", "facts", startedFrom],
+    queryFn: () => api.getProblemReportFacts(startedFrom),
     gcTime: 0,
   })
   const sendMutation = useMutation({
     mutationFn: (facts: ProblemReportFacts) => api.sendProblemReport({
       submissionId,
       text,
-      startedFrom: "menu",
-      ...reportFacts(facts),
+      startedFrom,
+      qui: facts.qui,
+      instances: facts.instances,
+      notices: facts.notices,
       browser,
-      failedRequests: [],
+      failedRequests: [...failed],
+      logs: { scope: logScope, lines: logLines(facts, logScope) },
     }),
     onSuccess: () => toast.success(t("problemReports.sent")),
   })
 
   const facts = factsQuery.data
-  // Typing re-renders the form, so the facts text is built once per load.
-  const factsText = useMemo(() => facts && JSON.stringify({ ...reportFacts(facts), browser }, null, 2), [facts, browser])
   const canSend = facts !== undefined && text.trim() !== "" && !sendMutation.isPending
+  const send = () => {
+    if (canSend) sendMutation.mutate(facts, { onSuccess: closeProblemReport })
+  }
+
+  const report: Report = { startedFrom, text, setText, logScope, setLogScope, facts, browser, failed, sending: sendMutation.isPending, send }
+  const notes = (
+    <>
+      {factsQuery.isError && (
+        <p role="alert" className="text-xs text-destructive">{t("problemReports.factsFailed", { message: factsQuery.error.message })}</p>
+      )}
+      {sendMutation.isError ? <Refusal error={sendMutation.error} /> : <PrivacyLine />}
+      {facts?.qui.newerRelease && <NewerRelease running={facts.qui.version} newer={facts.qui.newerRelease} />}
+    </>
+  )
+  const actionBar = <ActionBar canSend={canSend} sending={sendMutation.isPending} newerRelease={facts?.qui.newerRelease !== undefined} onSend={send} />
+
+  if (wide) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,25rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,32rem)]">
+          <div className="flex min-h-0 flex-col overflow-y-auto">
+            <Header />
+            <div className="flex flex-1 flex-col gap-3 px-4 pb-4 pl-11 pt-3">
+              <ReportText report={report} className="min-h-32 flex-1" />
+              {notes}
+            </div>
+          </div>
+          <WhatGetsSent report={report} loading={factsQuery.isPending} />
+        </div>
+        {actionBar}
+      </div>
+    )
+  }
 
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>{t("problemReports.reportProblem")}</DialogTitle>
-        <DialogDescription>{t("problemReports.description")}</DialogDescription>
-      </DialogHeader>
-
-      <div className="grid gap-2">
-        <Label htmlFor={textId}>{t("problemReports.textLabel")}</Label>
-        <Textarea
-          id={textId}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          disabled={sendMutation.isPending}
-          className="max-h-48"
-          required
-        />
+    <div>
+      <Header />
+      <div className="space-y-3 px-4 pb-4 pl-11 pt-3">
+        <ReportText report={report} className="min-h-24" />
+        <SentWithIt report={report} loading={factsQuery.isPending} />
+        {notes}
       </div>
+      {actionBar}
+    </div>
+  )
+}
 
-      <div className="grid min-w-0 gap-2">
-        <p className="text-sm font-medium">{t("problemReports.factsLabel")}</p>
-        {factsText ? (
-          <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs">{factsText}</pre>
-        ) : factsQuery.isError ? (
-          <p role="alert" className="text-sm text-destructive">{t("problemReports.factsFailed", { message: factsQuery.error.message })}</p>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t("problemReports.loadingFacts")}</p>
-        )}
+interface Report {
+  startedFrom: ProblemReportStartedFrom
+  text: string
+  setText: (text: string) => void
+  logScope: ProblemReportLogScope
+  setLogScope: (scope: ProblemReportLogScope) => void
+  facts: ProblemReportFacts | undefined
+  browser: ProblemReportBrowserFacts
+  failed: readonly FailedRequest[]
+  sending: boolean
+  send: () => void
+}
+
+function Header() {
+  const { t } = useTranslation("common")
+  return (
+    <div className="flex items-start gap-3 px-4 pr-10 pt-4">
+      <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <DialogTitle className="text-sm font-semibold leading-snug">{t("problemReports.reportProblem")}</DialogTitle>
+        <DialogDescription className="mt-0.5 text-xs text-muted-foreground">{t("problemReports.subtitle")}</DialogDescription>
       </div>
+    </div>
+  )
+}
 
-      {sendMutation.isError && (
-        <p role="alert" className="text-sm text-destructive">{sendErrorMessage(t, sendMutation.error)}</p>
+function ReportText({ report, className }: { report: Report; className?: string }) {
+  const { t } = useTranslation("common")
+  return (
+    <Textarea
+      autoFocus
+      required
+      aria-label={t("problemReports.textLabel")}
+      value={report.text}
+      onChange={(event) => report.setText(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) report.send()
+      }}
+      placeholder={t(`problemReports.placeholders.${report.startedFrom}`)}
+      disabled={report.sending}
+      className={cn("resize-none text-[13px] leading-relaxed", className)}
+    />
+  )
+}
+
+function ActionBar({ canSend, sending, newerRelease, onSend }: { canSend: boolean; sending: boolean; newerRelease: boolean; onSend: () => void }) {
+  const { t } = useTranslation("common")
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-t px-4 py-2.5 pl-11">
+      <Button size="sm" className="h-7 px-2.5 text-xs" disabled={!canSend} onClick={onSend}>
+        {sending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+        {sending ? t("problemReports.sending") : newerRelease ? t("problemReports.sendAnyway") : t("problemReports.send")}
+      </Button>
+    </div>
+  )
+}
+
+function PrivacyLine() {
+  const { t } = useTranslation("common")
+  return (
+    <p className="text-xs leading-5 text-muted-foreground text-pretty">
+      {t("problemReports.privacy.anonymous")}{" "}
+      <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
+        {t("problemReports.privacy.link")}
+      </a>
+    </p>
+  )
+}
+
+function NewerRelease({ running, newer }: { running: string; newer: { version: string; url: string } }) {
+  return (
+    <p className="text-xs leading-5 text-muted-foreground text-pretty">
+      <Trans
+        i18nKey="problemReports.newerRelease"
+        ns="common"
+        values={{ running: withV(running), newer: newer.version }}
+        components={{
+          release: <a href={newer.url} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline underline-offset-2" />,
+        }}
+      />
+    </p>
+  )
+}
+
+function Refusal({ error }: { error: Error }) {
+  const { t } = useTranslation("common")
+  const { title, body } = refusalMessage(t, error)
+  return (
+    <div role="alert" className="relative">
+      <span className="absolute -left-6 top-1.5 inline-flex h-2 w-2 rounded-full bg-yellow-500 ring-[3px] ring-yellow-500/20" />
+      {title && <p className="text-sm font-semibold leading-snug">{title}</p>}
+      <p className={cn("text-[13px] leading-relaxed", title ? "mt-0.5 text-muted-foreground" : "text-foreground")}>{body}</p>
+    </div>
+  )
+}
+
+function SentWithIt({ report, loading }: { report: Report; loading: boolean }) {
+  const { t } = useTranslation("common")
+  const [open, setOpen] = useState<null | "details" | "logs">(null)
+  const toggle = (part: "details" | "logs") => setOpen(open === part ? null : part)
+  const rows = useFactRows(report)
+  const { facts } = report
+  const logsOpen = open === "logs" && report.logScope !== "none"
+
+  return (
+    <div className="space-y-1.5 text-[13px]">
+      <p className="text-xs text-muted-foreground">{t("problemReports.sentWithIt")}</p>
+      {loading ? (
+        <p className="text-xs text-muted-foreground">{t("problemReports.loadingFacts")}</p>
+      ) : facts && (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1">{t("problemReports.summary", { version: withV(facts.qui.version), count: facts.instances.length })}</span>
+            <Disclose open={open === "details"} onClick={() => toggle("details")} label={t("problemReports.details")} />
+          </div>
+          {open === "details" && <CauseBox value={rowsText(rows)} copyLabel={t("problemReports.details")} />}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cn("min-w-0 flex-1", report.logScope === "none" && "text-muted-foreground line-through")}>{t("problemReports.logs.title")}</span>
+            <LogScope report={report} />
+            <Disclose open={logsOpen} onClick={() => toggle("logs")} label={t("problemReports.view")} disabled={report.logScope === "none"} />
+          </div>
+          {logsOpen && <LogBox lines={logLines(facts, report.logScope)} />}
+          <LogNotes facts={facts} logScope={report.logScope} />
+        </>
       )}
+    </div>
+  )
+}
 
-      <DialogFooter>
-        <Button disabled={!canSend} onClick={() => facts && sendMutation.mutate(facts, { onSuccess: onSent })}>
-          {sendMutation.isPending ? t("problemReports.sending") : t("problemReports.send")}
-        </Button>
-      </DialogFooter>
+function WhatGetsSent({ report, loading }: { report: Report; loading: boolean }) {
+  const { t } = useTranslation("common")
+  const rows = useFactRows(report)
+  const { facts } = report
+
+  return (
+    <aside aria-label={t("problemReports.whatGetsSent")} className="min-h-0 overflow-y-auto border-l bg-muted/30 pb-4">
+      <div className="px-4 pr-10 pt-4">
+        <p className="text-sm font-semibold leading-snug">{t("problemReports.whatGetsSent")}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("problemReports.whatGetsSentNote")}</p>
+      </div>
+      {loading ? (
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t("problemReports.loadingFacts")}</p>
+      ) : facts && (
+        <>
+          <Rows rows={rows} className="mt-3" />
+          <div className="space-y-2 px-4 pt-4">
+            <div className="flex items-center gap-2 text-[13px]">
+              <span className={cn("min-w-0 flex-1 font-medium", report.logScope === "none" && "text-muted-foreground line-through")}>{t("problemReports.logs.title")}</span>
+              <LogScope report={report} />
+            </div>
+            {report.logScope !== "none" && <LogBox lines={logLines(facts, report.logScope)} />}
+            <LogNotes facts={facts} logScope={report.logScope} />
+          </div>
+        </>
+      )}
+    </aside>
+  )
+}
+
+function LogScope({ report }: { report: Report }) {
+  const { t } = useTranslation("common")
+  return (
+    <Select value={report.logScope} onValueChange={(value) => report.setLogScope(value as ProblemReportLogScope)} disabled={report.sending}>
+      <SelectTrigger size="sm" aria-label={t("problemReports.logs.scopeLabel")} className="h-7 gap-1 px-2 text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
+        <SelectItem value="warnings" className="text-xs">{t("problemReports.logs.scopes.warnings")}</SelectItem>
+        <SelectItem value="all" className="text-xs">{t("problemReports.logs.scopes.all")}</SelectItem>
+        <SelectItem value="none" className="text-xs">{t("problemReports.logs.scopes.none")}</SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
+
+function LogNotes({ facts, logScope }: { facts: ProblemReportFacts; logScope: ProblemReportLogScope }) {
+  const { t } = useTranslation("common")
+  const count = logLines(facts, logScope).length
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">
+        {logScope === "warnings"
+          ? t("problemReports.logs.notes.warnings", { count })
+          : logScope === "all"
+            ? t("problemReports.logs.notes.all", { count, level: facts.qui.logLevel })
+            : t("problemReports.logs.notes.none")}
+      </p>
+      {!logsHoldDebug(facts.qui.logLevel) && (
+        <p className="text-xs text-muted-foreground">{t("problemReports.logs.debugMissing", { level: facts.qui.logLevel })}</p>
+      )}
     </>
   )
 }
 
-/** The part of the facts that a menu report carries: the warning lines, not the whole log. */
-function reportFacts(facts: ProblemReportFacts) {
-  return {
-    qui: facts.qui,
-    instances: facts.instances,
-    notices: facts.notices,
-    logs: { scope: "warnings" as const, lines: facts.logs.warnings },
+/**
+ * The cause box of a System notice, with one block per log line, so that a wrapped line hangs under its own start.
+ * Memoized: each keystroke in the text re-renders the form, and the box can hold 1,000 lines.
+ */
+const LogBox = memo(function LogBox({ lines }: { lines: string[] }) {
+  const { t } = useTranslation("common")
+  if (lines.length === 0) {
+    return <p className="text-xs text-muted-foreground">{t("problemReports.logs.empty")}</p>
+  }
+  return (
+    <div className="flex items-start gap-1 rounded-md border bg-muted/40 py-1 pl-2.5 pr-1">
+      <code className="max-h-52 min-w-0 flex-1 overflow-y-auto py-0.5 font-mono text-[11px] leading-relaxed text-muted-foreground">
+        {lines.map((line, index) => <span key={index} className="block break-words pl-4 -indent-4">{line}</span>)}
+      </code>
+      <CopyButton value={lines.join("\n")} label={t("problemReports.logs.title")} className="size-6" iconClassName="size-3" />
+    </div>
+  )
+})
+
+function CauseBox({ value, copyLabel }: { value: string; copyLabel: string }) {
+  return (
+    <div className="flex items-start gap-1 rounded-md border bg-muted/40 py-1 pl-2.5 pr-1">
+      <code className="min-w-0 flex-1 break-words whitespace-pre-wrap py-0.5 font-mono text-[11px] leading-relaxed text-muted-foreground">{value}</code>
+      <CopyButton value={value} label={copyLabel} className="size-6" iconClassName="size-3" />
+    </div>
+  )
+}
+
+function Disclose({ open, onClick, label, disabled }: { open: boolean; onClick: () => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      disabled={disabled}
+      className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+    >
+      {label}
+      <ChevronRight className={cn("h-3 w-3 transition-transform", open && "rotate-90")} />
+    </button>
+  )
+}
+
+interface FactRow {
+  label: string
+  value: string
+  secondary?: string
+  mono?: boolean
+  lines?: string[]
+}
+
+function Rows({ rows, className }: { rows: FactRow[]; className?: string }) {
+  return (
+    <dl className={cn("divide-y border-y", className)}>
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-baseline gap-3 px-4 py-2">
+          <dt className="w-28 shrink-0 text-xs uppercase text-muted-foreground xl:w-36">{row.label}</dt>
+          <dd className="min-w-0 flex-1">
+            <p className={cn("break-words", row.mono ? "font-mono text-xs" : "text-[13px] font-medium")}>{row.value}</p>
+            {row.secondary && <p className="break-words text-xs text-muted-foreground">{row.secondary}</p>}
+            {row.lines?.map((line, index) => <p key={index} className="break-words font-mono text-[11px] text-muted-foreground">{line}</p>)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function rowsText(rows: FactRow[]): string {
+  return rows.flatMap((row) => [
+    `${row.label}: ${row.value}${row.secondary ? `, ${row.secondary}` : ""}`,
+    ...(row.lines ?? []).map((line) => `  ${line}`),
+  ]).join("\n")
+}
+
+function useFactRows({ facts, browser, failed }: Report): FactRow[] {
+  const { t } = useTranslation("common")
+  const { formatISOTimestamp } = useDateTimeFormatters()
+  return useMemo(() => {
+    if (!facts) return []
+    const { qui } = facts
+    const none = t("problemReports.facts.none")
+
+    return [
+      { label: t("problemReports.facts.version"), value: withV(qui.version), secondary: qui.commit, mono: true },
+      {
+        label: t("problemReports.facts.system"),
+        value: `${qui.os}/${qui.arch}`,
+        secondary: qui.appContainer ? t("problemReports.facts.appContainer") : undefined,
+        mono: true,
+      },
+      { label: t("problemReports.facts.database"), value: qui.database, mono: true },
+      { label: t("problemReports.facts.logLevel"), value: qui.logLevel, mono: true },
+      { label: t("problemReports.facts.started"), value: formatISOTimestamp(qui.startedAt) },
+      {
+        label: t("problemReports.facts.experimentalFeatures"),
+        value: qui.experimentalFeatures.length > 0 ? qui.experimentalFeatures.join(", ") : none,
+        mono: qui.experimentalFeatures.length > 0,
+      },
+      ...facts.instances.map((instance, index) => ({
+        label: t("problemReports.facts.instance", { number: index + 1 }),
+        value: t("problemReports.facts.versions", {
+          qbittorrent: instance.qbittorrentVersion ?? t("problemReports.facts.unknownVersion"),
+          libtorrent: instance.libtorrentVersion ?? t("problemReports.facts.unknownVersion"),
+        }),
+        secondary: [
+          t(`problemReports.facts.states.${instance.state}`),
+          instance.torrentCount !== undefined && t("problemReports.facts.torrentCount", { count: instance.torrentCount }),
+        ].filter(Boolean).join(", "),
+      })),
+      {
+        label: t("problemReports.facts.notices"),
+        value: facts.notices.length > 0 ? t("problemReports.facts.openCount", { count: facts.notices.length }) : none,
+        lines: facts.notices.map((notice) => [
+          t([`systemNotice.kinds.${notice.kind}.title`, "systemNotice.unknown.title"]),
+          formatISOTimestamp(notice.openedAt),
+          notice.cause,
+        ].join(" · ")),
+      },
+      { label: t("problemReports.facts.page"), value: browser.route, mono: true },
+      {
+        label: t("problemReports.facts.browser"),
+        value: browser.userAgent,
+        secondary: t("problemReports.facts.screen", { width: browser.viewportWidth, height: browser.viewportHeight, ratio: browser.devicePixelRatio }),
+        mono: true,
+      },
+      {
+        label: t("problemReports.facts.failedRequests"),
+        value: failed.length > 0 ? t("problemReports.facts.failedCount", { count: failed.length }) : none,
+        lines: failed.map((request) => [
+          `${request.method} ${request.path}`,
+          request.status ?? t("problemReports.facts.noAnswer"),
+          request.error,
+          formatISOTimestamp(request.time),
+        ].join(" · ")),
+      },
+    ]
+  }, [facts, browser, failed, t, formatISOTimestamp])
+}
+
+function logLines(facts: ProblemReportFacts, scope: ProblemReportLogScope): string[] {
+  switch (scope) {
+    case "warnings":
+      return facts.logs.warnings
+    case "all":
+      return facts.logs.all
+    case "none":
+      return []
   }
 }
 
-function sendErrorMessage(t: TFunction<"common">, error: Error): string {
-  switch (error.message) {
+/** True when the Log level writes debug lines. qui reads an unknown level as INFO. */
+function logsHoldDebug(level: string): boolean {
+  const normalized = level.trim().toLowerCase()
+  return normalized === "debug" || normalized === "trace"
+}
+
+function withV(version: string): string {
+  return /^\d/.test(version) ? `v${version}` : version
+}
+
+function refusalMessage(t: TFunction<"common">, error: Error): { title?: string; body: string } {
+  const reason = error instanceof APIError ? error.message : undefined
+  switch (reason) {
     case "anonymous_full":
-      return t("problemReports.errors.anonymousFull")
+      return { title: t("problemReports.errors.anonymousFull.title"), body: t("problemReports.errors.anonymousFull.body") }
     case "sign_in_required":
-      return t("problemReports.errors.signInRequired")
+      return { body: t("problemReports.errors.signInRequired") }
     case "account_limit":
-      return t("problemReports.errors.accountLimit")
+      return { body: t("problemReports.errors.accountLimit") }
     case "reporter_full":
-      return t("problemReports.errors.reporterFull")
+      return { body: t("problemReports.errors.reporterFull") }
     case "too_large":
-      return t("problemReports.errors.tooLarge")
+      return { body: t("problemReports.errors.tooLarge") }
     case "token_rejected":
-      return t("problemReports.errors.tokenRejected")
+      return { body: t("problemReports.errors.tokenRejected") }
     case "unavailable":
-      return t("problemReports.errors.unavailable")
+      return { body: t("problemReports.errors.unavailable") }
     default:
-      return t("problemReports.errors.sendFailed", { message: error.message })
+      return { body: t("problemReports.errors.sendFailed", { message: error.message }) }
   }
 }
 
-function browserFacts() {
+function browserFacts(): ProblemReportBrowserFacts {
   return {
     route: window.location.pathname,
     userAgent: navigator.userAgent,

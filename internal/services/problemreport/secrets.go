@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/redact"
@@ -41,6 +42,7 @@ type StoreSecrets struct {
 	APIKeys       *models.APIKeyStore
 	ClientAPIKeys *models.ClientAPIKeyStore
 	Notifications *models.NotificationTargetStore
+	Licenses      *database.LicenseRepo
 	// Config returns the secrets of the config, see ConfigSecrets.
 	Config func() []string
 }
@@ -65,7 +67,7 @@ func (s StoreSecrets) ReportSecrets(ctx context.Context) (Secrets, error) {
 		c.add(s.Config()...)
 	}
 	for _, read := range []func(context.Context, *secretCollector) error{
-		s.instanceSecrets, s.indexerSecrets, s.arrSecrets, s.crossSeedSecrets, s.keyHashes, s.notificationSecrets,
+		s.instanceSecrets, s.indexerSecrets, s.arrSecrets, s.crossSeedSecrets, s.keyHashes, s.notificationSecrets, s.licenseSecrets,
 	} {
 		if err := read(ctx, c); err != nil {
 			return Secrets{}, err
@@ -205,6 +207,22 @@ func (s StoreSecrets) notificationSecrets(ctx context.Context, c *secretCollecto
 	}
 	for _, target := range targets {
 		c.add(notificationURLSecrets(target.URL)...)
+	}
+	return nil
+}
+
+// licenseSecrets adds the license keys. The web app removes a license with
+// its key in the path, so a failed request can hold one.
+func (s StoreSecrets) licenseSecrets(ctx context.Context, c *secretCollector) error {
+	if s.Licenses == nil {
+		return nil
+	}
+	licenses, err := s.Licenses.GetAllLicenses(ctx)
+	if err != nil {
+		return fmt.Errorf("list licenses: %w", err)
+	}
+	for _, license := range licenses {
+		c.add(license.LicenseKey)
 	}
 	return nil
 }

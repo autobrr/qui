@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { NAV_ITEMS } from "@/components/layout/navigation"
-import { ProblemReportButton, ProblemReportDialog, ProblemReportMenuItem } from "@/components/problem-reports/ProblemReportDialog"
+import { ProblemReportButton, ProblemReportMenuItem } from "@/components/problem-reports/ProblemReportDialog"
 import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { Logo } from "@/components/ui/Logo"
@@ -57,7 +57,7 @@ import {
   Rss,
   SearchCode
 } from "lucide-react"
-import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from "react"
+import { useCallback, useMemo, type ReactElement, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 const rowClassName = "relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm font-medium short:py-1 short:text-[13px]/5"
@@ -90,7 +90,6 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
   const { theme } = useTheme()
   const transferQueue = useTransferQueue()
   const settingsSettled = useClientSettingsSettled()
-  const [problemReportOpen, setProblemReportOpen] = useState(false)
 
   const { data: instances } = useQuery({
     queryKey: ["instances"],
@@ -450,7 +449,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
                   {t("sidebar.viewOnGitHub")}
                 </a>
               </DropdownMenuItem>
-              <ProblemReportMenuItem onOpen={() => setProblemReportOpen(true)} />
+              <ProblemReportMenuItem />
               {!isDemo && (
                 <DropdownMenuItem onClick={() => logout()}>
                   <LogOut className="h-4 w-4" />
@@ -460,7 +459,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
             </DropdownMenuContent>
           </DropdownMenu>
           <div inert={iconOnly} className={cn("flex shrink-0 items-center gap-0.5", labelClassName)}>
-            <ProblemReportButton className={footerButtonClassName} onOpen={() => setProblemReportOpen(true)} />
+            <ProblemReportButton className={footerButtonClassName} />
             <DropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -519,7 +518,6 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
           </div>
         </div>
       </div>
-      <ProblemReportDialog open={problemReportOpen} onOpenChange={setProblemReportOpen} />
     </div>
   )
 }
