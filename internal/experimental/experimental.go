@@ -16,10 +16,10 @@ import (
 // Feature is the name of an Experimental feature, as the user writes it in experimentalFeatures.
 type Feature string
 
-// known lists every Experimental feature. Each name carries a comment with the
-// number of the issue that deletes it.
+// known lists every Experimental feature. Each name carries a comment that
+// says when it goes away.
 var known = []Feature{
-	ProblemReports, // deleted by #4297
+	ProblemReports, // goes away when the maintainer decides, with no ticket
 }
 
 // ProblemReports is Report a problem: Problem reports that qui's server sends to brrbin.
