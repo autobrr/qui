@@ -301,9 +301,9 @@ func TestHumanizeLinkPlanError(t *testing.T) {
 			want: "couldn't prepare linked files for this release: couldn't map a required release file to a local source file (Example.Release/file.mkv)",
 		},
 		{
-			name: "generic fallback",
-			err:  errors.New("boom"),
-			want: "couldn't prepare linked files for this release",
+			name: "a path the destination cannot store keeps its reason",
+			err:  fmt.Errorf("%w %q: %w", hardlinktree.ErrUnstorableName, "Show/CON.txt", errors.New("reserved name")),
+			want: `couldn't prepare linked files for this release: destination cannot store torrent path "Show/CON.txt": reserved name`,
 		},
 	}
 

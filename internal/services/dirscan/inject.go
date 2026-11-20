@@ -528,7 +528,7 @@ func humanizeLinkPlanError(err error) error {
 
 	var linkErr *hardlinktree.LinkPlanError
 	if !errors.As(err, &linkErr) {
-		return errors.New(prefix)
+		return fmt.Errorf("%s: %w", prefix, err)
 	}
 
 	switch {
