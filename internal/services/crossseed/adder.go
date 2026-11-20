@@ -211,7 +211,8 @@ func (f AddFacts) Verdict() AddVerdict {
 
 	v := AddVerdict{
 		// A rename-only add with Skip recheck on must not run before its renames land.
-		// Dir Scan renames the paths of an alignment before qBittorrent uses them.
+		// Dir Scan and a mapped-file add rename the paths of an alignment before
+		// qBittorrent uses them.
 		paused: !f.StartRunning || verify || disc || linkRecheck || f.alignmentPauses(),
 		// qBittorrent blocks renames while it checks a torrent, so an add that aligns
 		// skips the check and Settle rechecks after the renames.
