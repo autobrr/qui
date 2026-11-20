@@ -231,3 +231,39 @@ func (s *ProblemReportStore) SentReports(ctx context.Context) ([]SentProblemRepo
 	}
 	return reports, rows.Err()
 }
+
+// UpdateSentReportStatus stores the Report status of the row with the brrbin
+// id of report, and the time it changed.
+func (s *ProblemReportStore) UpdateSentReportStatus(ctx context.Context, report SentProblemReport) error {
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE problem_reports
+		SET status = ?, issue_number = ?, issue_url = ?, issue_closed = ?, close_reason = ?, status_changed_at = ?
+		WHERE brrbin_id = ?`,
+		report.Status, report.IssueNumber, report.IssueURL, BoolToSQLite(report.IssueClosed), report.CloseReason, report.StatusChangedAt,
+		report.BrrbinID,
+	); err != nil {
+		return fmt.Errorf("store report status: %w", err)
+	}
+	return nil
+}
+
+// HasSentReport reports whether a Sent reports row has the brrbin id.
+func (s *ProblemReportStore) HasSentReport(ctx context.Context, brrbinID string) (bool, error) {
+	var found int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM problem_reports WHERE brrbin_id = ?`, brrbinID).Scan(&found)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("find sent report: %w", err)
+	}
+	return true, nil
+}
+
+// DeleteSentReport removes the Sent reports row with the brrbin id.
+func (s *ProblemReportStore) DeleteSentReport(ctx context.Context, brrbinID string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM problem_reports WHERE brrbin_id = ?`, brrbinID); err != nil {
+		return fmt.Errorf("delete sent report: %w", err)
+	}
+	return nil
+}

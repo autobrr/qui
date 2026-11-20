@@ -7458,6 +7458,88 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - Problem Reports
+      summary: List Sent reports
+      description: >-
+        Returns the Sent reports of this qui, the newest first, each with its Report status. When at least one report
+        exists, qui first asks brrbin once for the statuses of the reports sent in the last 90 days, and stores each
+        status that changed with the time of the change. A report that brrbin no longer has keeps its last status.
+        When brrbin fails, the route returns the stored statuses. It answers 404 while the problemReports Experimental
+        feature is off, and 403 while `problemReports` is false in the config. Only a signed-in browser can use this
+        route.
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Sent reports, the newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ListedProblemReport'
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+        '500':
+          description: Failed to read or store Sent reports
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/problem-reports/{id}:
+    delete:
+      tags:
+        - Problem Reports
+      summary: Delete a Sent report
+      description: >-
+        Deletes the report from brrbin, so the maintainers can no longer read it, then removes its Sent reports row.
+        When brrbin no longer has the report, qui removes only the row. When brrbin fails, the row stays. It answers
+        404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in the
+        config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The brrbin id of the report
+      responses:
+        '204':
+          description: The report and its row are deleted
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No Sent reports row has this id, or the problemReports Experimental feature is off
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to read or delete the row
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: brrbin did not answer, or answered with an error (unavailable). The row stays.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/shares:
     post:
       tags:
@@ -11058,6 +11140,45 @@ components:
         text:
           type: string
           description: The text as qui sent it, after cleaning
+
+    ListedProblemReport:
+      type: object
+      description: One Sent report with its last known Report status
+      required: [id, title, sentAt, status, statusChangedAt]
+      properties:
+        id:
+          type: string
+          description: The brrbin id of the report
+        title:
+          type: string
+          description: The first line of the text, at most 80 characters
+        sentAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [received, issue, closed]
+          description: received while brrbin holds the report, issue once it became a GitHub issue or discussion, closed once the maintainers closed it
+        issue:
+          type: object
+          description: The GitHub issue or discussion. Present while the status is issue.
+          required: [number, url, closed]
+          properties:
+            number:
+              type: integer
+            url:
+              type: string
+              description: The https URL of the issue or discussion. Empty when brrbin sent no https URL.
+            closed:
+              type: boolean
+              description: true once the issue is closed
+        reason:
+          type: string
+          description: Why the maintainers closed the report. Can be present while the status is closed.
+        statusChangedAt:
+          type: string
+          format: date-time
+          description: When qui last saw the status change. A new report has its sentAt.
 
     VersionResponse:
       type: object

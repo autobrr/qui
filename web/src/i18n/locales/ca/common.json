@@ -121,6 +121,24 @@
       "tokenRejected": "La sessió ha acabat. Torna a iniciar la sessió i envia.",
       "unavailable": "brrbin no pot rebre informes ara mateix. Torna-ho a provar més tard.",
       "sendFailed": "No s'ha pogut enviar l'informe: {{message}}"
+    },
+    "sentReports": {
+      "title": "Informes enviats",
+      "subtitle": "qui comprova l'estat dels informes cada vegada que obres aquesta llista.",
+      "changed_one": "{{count}} estat ha canviat",
+      "changed_other": "{{count}} estats han canviat",
+      "status": {
+        "received": "Rebut",
+        "issue": "Convertit en incidència #{{number}}",
+        "issueClosed": "Incidència #{{number}} tancada",
+        "closed": "Tancat: {{reason}}",
+        "closedNoReason": "Tancat"
+      },
+      "delete": "Esborra l'informe",
+      "deleteUnavailable": "brrbin no pot esborrar informes ara mateix. Torna-ho a provar més tard.",
+      "deleteFailed": "No s'ha pogut esborrar l'informe: {{message}}",
+      "empty": "No hi ha informes enviats.",
+      "back": "Torna a l'informe"
     }
   },
   "header": {

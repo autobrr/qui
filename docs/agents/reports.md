@@ -44,7 +44,7 @@ The decisions in `docs/agents/triage.md` that belong to a human stay with the ma
 | A confirmed `bug` with no open issue | Draft an issue as "Issue from a report" describes. After the OK, create it and link the report. |
 | The same problem as an open issue or discussion | Link the report to it. Link each later report of the same fault to the same issue. |
 | Fixed in a release | Close with the reason. |
-| Fixed on `develop`, not released | Close with the reason. A report linked to a closed issue can end before qui shows its status. |
+| Fixed on `develop`, not released | Close with the reason. A report linked to a closed issue shows only "Issue #N closed", so close the report with the reason. |
 | Already implemented | Close with the reason. |
 | Matches a concept in `.out-of-scope/` | Close with the reason. |
 | A bug in another program | Close with the reason. |

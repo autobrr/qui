@@ -121,6 +121,24 @@
       "tokenRejected": "Deine Anmeldung ist abgelaufen. Melde dich erneut an und sende dann.",
       "unavailable": "brrbin kann gerade keine Meldungen annehmen. Versuche es später erneut.",
       "sendFailed": "Die Meldung konnte nicht gesendet werden: {{message}}"
+    },
+    "sentReports": {
+      "title": "Gesendete Meldungen",
+      "subtitle": "qui prüft den Status der Meldungen jedes Mal, wenn du diese Liste öffnest.",
+      "changed_one": "{{count}} Status geändert",
+      "changed_other": "{{count}} Status geändert",
+      "status": {
+        "received": "Eingegangen",
+        "issue": "Wurde zu Issue #{{number}}",
+        "issueClosed": "Issue #{{number}} geschlossen",
+        "closed": "Geschlossen: {{reason}}",
+        "closedNoReason": "Geschlossen"
+      },
+      "delete": "Meldung löschen",
+      "deleteUnavailable": "brrbin kann gerade keine Meldungen löschen. Versuche es später erneut.",
+      "deleteFailed": "Die Meldung konnte nicht gelöscht werden: {{message}}",
+      "empty": "Keine gesendeten Meldungen.",
+      "back": "Zurück zur Meldung"
     }
   },
   "header": {

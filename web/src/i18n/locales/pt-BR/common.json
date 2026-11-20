@@ -121,6 +121,24 @@
       "tokenRejected": "Sua sessão terminou. Entre de novo e envie.",
       "unavailable": "O brrbin não pode receber relatos agora. Tente de novo mais tarde.",
       "sendFailed": "Não foi possível enviar o relato: {{message}}"
+    },
+    "sentReports": {
+      "title": "Relatos enviados",
+      "subtitle": "O qui verifica o status dos relatos toda vez que você abre esta lista.",
+      "changed_one": "{{count}} status alterado",
+      "changed_other": "{{count}} status alterados",
+      "status": {
+        "received": "Recebido",
+        "issue": "Virou a issue #{{number}}",
+        "issueClosed": "Issue #{{number}} fechada",
+        "closed": "Fechado: {{reason}}",
+        "closedNoReason": "Fechado"
+      },
+      "delete": "Excluir relato",
+      "deleteUnavailable": "O brrbin não pode excluir relatos agora. Tente de novo mais tarde.",
+      "deleteFailed": "Não foi possível excluir o relato: {{message}}",
+      "empty": "Nenhum relato enviado.",
+      "back": "Voltar para o relato"
     }
   },
   "header": {

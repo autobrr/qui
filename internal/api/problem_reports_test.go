@@ -17,6 +17,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -694,14 +696,222 @@ func TestProblemReportRoutesWhenOff(t *testing.T) {
 			status, _ := rig.facts("startedFrom=menu")
 			assert.Equal(t, tc.status, status)
 
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, rig.srv.URL+"/api/problem-reports", strings.NewReader("{}"))
-			require.NoError(t, err)
-			status, body := rig.do(req)
-			assert.Equal(t, tc.status, status)
-			if tc.status == http.StatusForbidden {
-				assert.Contains(t, string(body), "Problem reports are off in the qui config.")
+			for _, route := range []routeKey{
+				{http.MethodPost, "/api/problem-reports"},
+				{http.MethodGet, "/api/problem-reports"},
+				{http.MethodDelete, "/api/problem-reports/r1"},
+			} {
+				req, err := http.NewRequestWithContext(t.Context(), route.Method, rig.srv.URL+route.Path, strings.NewReader("{}"))
+				require.NoError(t, err)
+				status, body := rig.do(req)
+				assert.Equal(t, tc.status, status, "%s %s", route.Method, route.Path)
+				if tc.status == http.StatusForbidden {
+					assert.Contains(t, string(body), "Problem reports are off in the qui config.")
+				}
 			}
 			assert.Empty(t, rig.fake.Requests())
 		})
 	}
+}
+
+// sendReport sends a menu report with its own submission id and returns the
+// brrbin id.
+func (rig *reportRig) sendReport(submissionID, text string) string {
+	rig.t.Helper()
+	_, facts := rig.facts("startedFrom=menu")
+	report := menuReport(text, facts, "none", nil)
+	report["submissionId"] = submissionID
+	status, answer := rig.send(report, nil)
+	require.Equal(rig.t, http.StatusCreated, status, answer)
+	return answer["id"].(string)
+}
+
+func (rig *reportRig) sentReports() []problemreport.ListedReport {
+	rig.t.Helper()
+	req, err := http.NewRequestWithContext(rig.t.Context(), http.MethodGet, rig.srv.URL+"/api/problem-reports", nil)
+	require.NoError(rig.t, err)
+	status, body := rig.do(req)
+	require.Equal(rig.t, http.StatusOK, status, string(body))
+	var reports []problemreport.ListedReport
+	require.NoError(rig.t, json.Unmarshal(body, &reports), string(body))
+	require.NotNil(rig.t, reports, "an empty list is [], not null")
+	return reports
+}
+
+func (rig *reportRig) deleteReport(id string) (int, string) {
+	rig.t.Helper()
+	req, err := http.NewRequestWithContext(rig.t.Context(), http.MethodDelete, rig.srv.URL+"/api/problem-reports/"+id, nil)
+	require.NoError(rig.t, err)
+	status, body := rig.do(req)
+	return status, string(body)
+}
+
+// brrbinRequests returns the requests that the fake received after the first skip.
+func (rig *reportRig) brrbinRequests(skip int) []fakebrrbin.Request {
+	rig.t.Helper()
+	requests := rig.fake.Requests()
+	require.GreaterOrEqual(rig.t, len(requests), skip)
+	return requests[skip:]
+}
+
+func TestProblemReportSentReportsWithNoRowsAsksBrrbinNothing(t *testing.T) {
+	rig := newReportRig(t, reportRigOptions{})
+
+	assert.Empty(t, rig.sentReports())
+	assert.Empty(t, rig.fake.Requests())
+}
+
+func TestProblemReportSentReportsStatuses(t *testing.T) {
+	rig := newReportRig(t, reportRigOptions{})
+	first := rig.sendReport("11111111-1111-4111-8111-111111111111", "Torrents vanish\nafter a restart")
+	second := rig.sendReport("22222222-2222-4222-8222-222222222222", "Uploads stall")
+	old := rig.sendReport("33333333-3333-4333-8333-333333333333", "An old report")
+	installKey := rig.fake.Requests()[0].Header.Get("X-Install-Key")
+	oldSentAt := time.Now().UTC().Add(-91 * 24 * time.Hour)
+	_, err := rig.db.ExecContext(t.Context(), `UPDATE problem_reports SET sent_at = ?, status_changed_at = ? WHERE brrbin_id = ?`, oldSentAt, oldSentAt, old)
+	require.NoError(t, err)
+
+	const issueURL = "https://github.com/autobrr/qui/issues/4321"
+	rig.fake.SetStatus(first, fakebrrbin.Status{Status: "closed", Reason: "Already fixed in v1.36.0. Update qui to get the fix."})
+	rig.fake.SetStatus(second, fakebrrbin.Status{Status: "issue", Issue: &fakebrrbin.Issue{Number: 4321, URL: issueURL}})
+	rig.fake.SetStatus(old, fakebrrbin.Status{Status: "issue", Issue: &fakebrrbin.Issue{Number: 9999, URL: issueURL}})
+
+	sent := len(rig.fake.Requests())
+	reports := rig.sentReports()
+
+	requests := rig.brrbinRequests(sent)
+	require.Len(t, requests, 1, "one request for all reports")
+	assert.Equal(t, http.MethodGet, requests[0].Method)
+	asked, err := url.Parse(requests[0].Path)
+	require.NoError(t, err)
+	assert.Equal(t, "/api/install/reports", asked.Path)
+	assert.ElementsMatch(t, []string{first, second}, strings.Split(asked.Query().Get("ids"), ","), "only the reports of the last 90 days")
+	assert.Equal(t, installKey, requests[0].Header.Get("X-Install-Key"))
+
+	require.Len(t, reports, 3)
+	assert.Equal(t, []string{second, first, old}, []string{reports[0].ID, reports[1].ID, reports[2].ID}, "newest first")
+	assert.Equal(t, "Uploads stall", reports[0].Title)
+	assert.Equal(t, "issue", reports[0].Status)
+	assert.Equal(t, &problemreport.Issue{Number: 4321, URL: issueURL}, reports[0].Issue)
+	assert.True(t, reports[0].StatusChangedAt.After(reports[0].SentAt), "the change is stamped")
+	assert.Equal(t, "closed", reports[1].Status)
+	assert.Equal(t, "Already fixed in v1.36.0. Update qui to get the fix.", reports[1].Reason)
+	assert.Nil(t, reports[1].Issue)
+	assert.Equal(t, "received", reports[2].Status, "a report older than 90 days keeps its status")
+	assert.True(t, reports[2].StatusChangedAt.Equal(reports[2].SentAt))
+
+	// The same answer again changes no status.
+	again := rig.sentReports()
+	assert.True(t, again[0].StatusChangedAt.Equal(reports[0].StatusChangedAt), "an unchanged status keeps its time")
+
+	rig.fake.SetStatus(second, fakebrrbin.Status{Status: "issue", Issue: &fakebrrbin.Issue{Number: 4321, URL: issueURL, Closed: true}})
+	closed := rig.sentReports()
+	assert.Equal(t, &problemreport.Issue{Number: 4321, URL: issueURL, Closed: true}, closed[0].Issue)
+	assert.False(t, closed[0].StatusChangedAt.Equal(reports[0].StatusChangedAt), "a closed issue is a change")
+
+	// A report that brrbin no longer has keeps its last status.
+	rig.fake.Forget(second)
+	forgotten := rig.sentReports()
+	assert.Equal(t, closed[0], forgotten[0])
+
+	// A brrbin failure shows the stored statuses.
+	rig.fake.Unavailable(true)
+	asked2 := len(rig.fake.Requests())
+	down := rig.sentReports()
+	assert.Len(t, rig.brrbinRequests(asked2), 1)
+	assert.Equal(t, forgotten, down)
+}
+
+// holdFirstStatusRead holds the first status read before it reaches brrbin,
+// until release closes.
+type holdFirstStatusRead struct {
+	held, release chan struct{}
+	started       atomic.Bool
+}
+
+func (h *holdFirstStatusRead) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path == "/api/install/reports" && h.started.CompareAndSwap(false, true) {
+		close(h.held)
+		<-h.release
+	}
+	return http.DefaultTransport.RoundTrip(req)
+}
+
+// regression: #4302
+func TestProblemReportSentReportsStampsAChangeWhenBrrbinAnswers(t *testing.T) {
+	hold := &holdFirstStatusRead{held: make(chan struct{}), release: make(chan struct{})}
+	rig := newReportRig(t, reportRigOptions{client: &http.Client{Transport: hold}})
+	release := sync.OnceFunc(func() { close(hold.release) })
+	t.Cleanup(release) // before the rig closes its server, which waits for the held list
+	first := rig.sendReport("11111111-1111-4111-8111-111111111111", "Torrents vanish")
+	second := rig.sendReport("22222222-2222-4222-8222-222222222222", "Uploads stall")
+
+	// A list in a second browser starts first, and reads brrbin last.
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rig.srv.URL+"/api/problem-reports", nil)
+	require.NoError(t, err)
+	req.AddCookie(rig.cookie)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	slow := make(chan error, 1)
+	go func() {
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+		slow <- err
+	}()
+	<-hold.held
+
+	rig.fake.SetStatus(first, fakebrrbin.Status{Status: "closed"})
+	shown := rig.sentReports()
+	seenAt := slices.MaxFunc(shown, func(a, b problemreport.ListedReport) int {
+		return a.StatusChangedAt.Compare(b.StatusChangedAt)
+	}).StatusChangedAt
+	rig.fake.SetStatus(second, fakebrrbin.Status{Status: "issue", Issue: &fakebrrbin.Issue{Number: 4321, URL: "https://github.com/autobrr/qui/issues/4321"}})
+	release()
+	require.NoError(t, <-slow)
+
+	reports := rig.sentReports()
+	require.Equal(t, second, reports[0].ID)
+	assert.Equal(t, "issue", reports[0].Status)
+	assert.False(t, reports[0].StatusChangedAt.Before(seenAt), "a change that the shown list did not hold is stamped no earlier than the newest change it showed")
+}
+
+func TestProblemReportDelete(t *testing.T) {
+	rig := newReportRig(t, reportRigOptions{})
+	id := rig.sendReport("11111111-1111-4111-8111-111111111111", "Torrents vanish")
+	installKey := rig.fake.Requests()[0].Header.Get("X-Install-Key")
+
+	sent := len(rig.fake.Requests())
+	status, body := rig.deleteReport(id)
+	require.Equal(t, http.StatusNoContent, status, body)
+	requests := rig.brrbinRequests(sent)
+	require.Len(t, requests, 1)
+	assert.Equal(t, http.MethodDelete, requests[0].Method)
+	assert.Equal(t, "/api/reports/"+id, requests[0].Path)
+	assert.Equal(t, installKey, requests[0].Header.Get("X-Install-Key"))
+	assert.Empty(t, rig.sentReports())
+
+	// A report that brrbin no longer has loses only its row.
+	gone := rig.sendReport("22222222-2222-4222-8222-222222222222", "Uploads stall")
+	rig.fake.Forget(gone)
+	status, body = rig.deleteReport(gone)
+	require.Equal(t, http.StatusNoContent, status, body)
+	assert.Empty(t, rig.sentReports())
+
+	// A brrbin failure keeps the row.
+	kept := rig.sendReport("33333333-3333-4333-8333-333333333333", "Search finds nothing")
+	rig.fake.Unavailable(true)
+	status, body = rig.deleteReport(kept)
+	assert.Equal(t, http.StatusBadGateway, status)
+	assert.Contains(t, body, "unavailable")
+	reports := rig.sentReports()
+	require.Len(t, reports, 1)
+	assert.Equal(t, kept, reports[0].ID)
+
+	// An id with no row never reaches brrbin.
+	rig.fake.Unavailable(false)
+	asked := len(rig.fake.Requests())
+	status, _ = rig.deleteReport("r404")
+	assert.Equal(t, http.StatusNotFound, status)
+	assert.Empty(t, rig.brrbinRequests(asked))
 }

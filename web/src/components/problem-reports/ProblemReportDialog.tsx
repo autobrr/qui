@@ -6,11 +6,13 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { TFunction } from "i18next"
 import { ChevronRight, Loader2, MessageSquareWarning } from "lucide-react"
-import { memo, useMemo, useState } from "react"
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { closeProblemReport, openProblemReport, useProblemReportOpenState } from "@/components/problem-reports/open"
+import { useSentReports } from "@/components/problem-reports/sent-reports"
+import { SentReportsEntry, SentReportsView } from "@/components/problem-reports/SentReports"
 import { Button } from "@/components/ui/button"
 import { CopyButton } from "@/components/ui/copy-button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -24,7 +26,7 @@ import { useProblemReportsAvailable } from "@/hooks/useProblemReportsAvailable"
 import { api, APIError } from "@/lib/api"
 import { failedRequests, type FailedRequest } from "@/lib/failed-requests"
 import { cn } from "@/lib/utils"
-import type { ProblemReportBrowserFacts, ProblemReportFacts, ProblemReportLogScope, ProblemReportStartedFrom } from "@/types"
+import type { ListedProblemReport, ProblemReportBrowserFacts, ProblemReportFacts, ProblemReportLogScope, ProblemReportStartedFrom } from "@/types"
 
 const PRIVACY_URL = "https://bin.getqui.com/privacy"
 const WIDE_QUERY = "(min-width: 1024px)"
@@ -65,26 +67,31 @@ export function ProblemReportMenuItem() {
 
 /** The one report dialog of the app. Every entry point opens it through `openProblemReport`. */
 export function ProblemReportDialogRoot() {
-  const { open, startedFrom } = useProblemReportOpenState()
+  const { open, startedFrom, view } = useProblemReportOpenState()
   const wide = useMediaQuery(WIDE_QUERY)
+  const sent = view === "sent"
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && closeProblemReport()}>
       <DialogContent
         className={cn(
           "gap-0 p-0",
-          wide ? "flex h-[min(44rem,calc(100dvh-4rem))] flex-col overflow-hidden sm:max-w-4xl xl:max-w-5xl" : "max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
+          wide && !sent ? "flex h-[min(44rem,calc(100dvh-4rem))] flex-col overflow-hidden sm:max-w-4xl xl:max-w-5xl" : "max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
         )}
       >
-        {/* The dialog unmounts its content when it closes, so each open starts a new report. */}
-        <ProblemReportForm startedFrom={startedFrom} wide={wide} />
+        {/* The dialog unmounts its content when it closes, so each open starts a new report. Sent reports only hides the form, so it keeps its text. */}
+        <div className={sent ? "hidden" : "contents"}>
+          <ProblemReportForm startedFrom={startedFrom} wide={wide} hidden={sent} />
+        </div>
+        {sent && <SentReportsView />}
       </DialogContent>
     </Dialog>
   )
 }
 
-function ProblemReportForm({ startedFrom, wide }: { startedFrom: ProblemReportStartedFrom; wide: boolean }) {
+function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: ProblemReportStartedFrom; wide: boolean; hidden: boolean }) {
   const { t } = useTranslation("common")
+  const textRef = useRef<HTMLTextAreaElement>(null)
   const [text, setText] = useState("")
   const [logScope, setLogScope] = useState<ProblemReportLogScope>("warnings")
   // One id for each open, so that a retry of the same report stores no second row.
@@ -112,6 +119,8 @@ function ProblemReportForm({ startedFrom, wide }: { startedFrom: ProblemReportSt
     }),
     onSuccess: () => toast.success(t("problemReports.sent")),
   })
+  // Here, and not in the action bar, because a change of layout mounts the action bar again.
+  const sentReports = useSentReports()
 
   const facts = factsQuery.data
   const canSend = facts !== undefined && text.trim() !== "" && !sendMutation.isPending
@@ -119,7 +128,14 @@ function ProblemReportForm({ startedFrom, wide }: { startedFrom: ProblemReportSt
     if (canSend) sendMutation.mutate(facts, { onSuccess: closeProblemReport })
   }
 
-  const report: Report = { startedFrom, text, setText, logScope, setLogScope, facts, browser, failed, sending: sendMutation.isPending, send }
+  // autoFocus works only on mount, so the text takes the focus back after Sent reports.
+  const wasHidden = useRef(hidden)
+  useEffect(() => {
+    if (wasHidden.current && !hidden) textRef.current?.focus()
+    wasHidden.current = hidden
+  }, [hidden])
+
+  const report: Report = { startedFrom, text, setText, logScope, setLogScope, facts, browser, failed, sending: sendMutation.isPending, send, textRef }
   const notes = (
     <>
       {factsQuery.isError && (
@@ -129,14 +145,16 @@ function ProblemReportForm({ startedFrom, wide }: { startedFrom: ProblemReportSt
       {facts?.qui.newerRelease && <NewerRelease running={facts.qui.version} newer={facts.qui.newerRelease} />}
     </>
   )
-  const actionBar = <ActionBar canSend={canSend} sending={sendMutation.isPending} newerRelease={facts?.qui.newerRelease !== undefined} onSend={send} />
+  const actionBar = (
+    <ActionBar canSend={canSend} sending={sendMutation.isPending} newerRelease={facts?.qui.newerRelease !== undefined} onSend={send} sentReports={sentReports.data} />
+  )
 
   if (wide) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,25rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,32rem)]">
           <div className="flex min-h-0 flex-col overflow-y-auto">
-            <Header />
+            <Header asTitle={!hidden} />
             <div className="flex flex-1 flex-col gap-3 px-4 pb-4 pl-11 pt-3">
               <ReportText report={report} className="min-h-32 flex-1" />
               {notes}
@@ -151,7 +169,7 @@ function ProblemReportForm({ startedFrom, wide }: { startedFrom: ProblemReportSt
 
   return (
     <div>
-      <Header />
+      <Header asTitle={!hidden} />
       <div className="space-y-3 px-4 pb-4 pl-11 pt-3">
         <ReportText report={report} className="min-h-24" />
         <SentWithIt report={report} loading={factsQuery.isPending} />
@@ -173,16 +191,20 @@ interface Report {
   failed: readonly FailedRequest[]
   sending: boolean
   send: () => void
+  textRef: RefObject<HTMLTextAreaElement | null>
 }
 
-function Header() {
+/** asTitle is false while Sent reports shows, which then holds the one title of the dialog. */
+function Header({ asTitle }: { asTitle: boolean }) {
   const { t } = useTranslation("common")
+  const Title = asTitle ? DialogTitle : "p"
+  const Description = asTitle ? DialogDescription : "p"
   return (
     <div className="flex items-start gap-3 px-4 pr-10 pt-4">
       <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
-        <DialogTitle className="text-sm font-semibold leading-snug">{t("problemReports.reportProblem")}</DialogTitle>
-        <DialogDescription className="mt-0.5 text-xs text-muted-foreground">{t("problemReports.subtitle")}</DialogDescription>
+        <Title className="text-sm font-semibold leading-snug">{t("problemReports.reportProblem")}</Title>
+        <Description className="mt-0.5 text-xs text-muted-foreground">{t("problemReports.subtitle")}</Description>
       </div>
     </div>
   )
@@ -192,6 +214,7 @@ function ReportText({ report, className }: { report: Report; className?: string 
   const { t } = useTranslation("common")
   return (
     <Textarea
+      ref={report.textRef}
       autoFocus
       required
       aria-label={t("problemReports.textLabel")}
@@ -207,7 +230,13 @@ function ReportText({ report, className }: { report: Report; className?: string 
   )
 }
 
-function ActionBar({ canSend, sending, newerRelease, onSend }: { canSend: boolean; sending: boolean; newerRelease: boolean; onSend: () => void }) {
+function ActionBar({ canSend, sending, newerRelease, onSend, sentReports }: {
+  canSend: boolean
+  sending: boolean
+  newerRelease: boolean
+  onSend: () => void
+  sentReports: ListedProblemReport[] | undefined
+}) {
   const { t } = useTranslation("common")
   return (
     <div className="flex shrink-0 items-center gap-2 border-t px-4 py-2.5 pl-11">
@@ -215,6 +244,7 @@ function ActionBar({ canSend, sending, newerRelease, onSend }: { canSend: boolea
         {sending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
         {sending ? t("problemReports.sending") : newerRelease ? t("problemReports.sendAnyway") : t("problemReports.send")}
       </Button>
+      <SentReportsEntry reports={sentReports} />
     </div>
   )
 }

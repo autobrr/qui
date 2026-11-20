@@ -111,3 +111,20 @@ export interface SentProblemReport {
   /** The text after the server removed secrets from it. */
   text: string
 }
+
+/** Where a Problem report stands, as brrbin last answered. */
+export type ProblemReportStatus = "received" | "issue" | "closed"
+
+/** One row of Sent reports, as GET /api/problem-reports returns it. */
+export interface ListedProblemReport {
+  id: string
+  title: string
+  sentAt: string
+  status: ProblemReportStatus
+  /** Present while the status is issue. The URL is empty when brrbin sent no https URL. */
+  issue?: { number: number; url: string; closed: boolean }
+  /** Can be present while the status is closed. */
+  reason?: string
+  /** When qui last saw the status change. A new report has its sentAt. */
+  statusChangedAt: string
+}

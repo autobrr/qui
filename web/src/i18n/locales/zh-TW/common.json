@@ -114,6 +114,23 @@
       "tokenRejected": "你的登入已結束。請重新登入後再傳送。",
       "unavailable": "brrbin 現在無法接收回報。請稍後再試。",
       "sendFailed": "無法傳送回報：{{message}}"
+    },
+    "sentReports": {
+      "title": "已傳送的回報",
+      "subtitle": "每次開啟此清單時，qui 都會檢查回報狀態。",
+      "changed_other": "{{count}} 則狀態已變更",
+      "status": {
+        "received": "已收到",
+        "issue": "已轉為 Issue #{{number}}",
+        "issueClosed": "Issue #{{number}} 已關閉",
+        "closed": "已關閉：{{reason}}",
+        "closedNoReason": "已關閉"
+      },
+      "delete": "刪除回報",
+      "deleteUnavailable": "brrbin 現在無法刪除回報。請稍後再試。",
+      "deleteFailed": "無法刪除回報：{{message}}",
+      "empty": "沒有已傳送的回報。",
+      "back": "返回回報"
     }
   },
   "header": {

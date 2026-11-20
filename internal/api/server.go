@@ -913,6 +913,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				problemReportHandler := handlers.NewProblemReportHandler(s.problemReports)
 				r.Get("/facts", problemReportHandler.Facts)
 				r.Post("/", problemReportHandler.Send)
+				r.Get("/", problemReportHandler.SentReports)
+				r.Delete("/{id}", problemReportHandler.Delete)
 			})
 		})
 	})

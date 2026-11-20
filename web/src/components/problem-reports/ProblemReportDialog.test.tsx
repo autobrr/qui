@@ -4,21 +4,23 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { closeProblemReport } from "@/components/problem-reports/open"
 import { ProblemReportButton, ProblemReportDialogRoot, ProblemReportMenuItem } from "@/components/problem-reports/ProblemReportDialog"
+import { SENT_REPORTS_KEY } from "@/components/problem-reports/sent-reports"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import { api } from "@/lib/api"
+import { _resetClientSettingsForTests, parseJsonNumber, readClientSetting, writeClientSetting } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
-import type { ApplicationInfo, ProblemReportFacts, ProblemReportPayload } from "@/types"
+import type { ApplicationInfo, ListedProblemReport, ProblemReportFacts, ProblemReportPayload } from "@/types"
 
-const toastSuccess = vi.hoisted(() => vi.fn())
-vi.mock("sonner", () => ({ toast: { success: toastSuccess } }))
+const { toastSuccess, toastError } = vi.hoisted(() => ({ toastSuccess: vi.fn(), toastError: vi.fn() }))
+vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }))
 
 const baseFacts: ProblemReportFacts = {
   qui: {
@@ -39,8 +41,19 @@ const baseFacts: ProblemReportFacts = {
 function serve(facts: ProblemReportFacts = baseFacts, info: Partial<ApplicationInfo> = { experimentalFeatures: ["problemReports"], problemReports: true }) {
   server.use(
     http.get("*/api/application/info", () => HttpResponse.json(info)),
-    http.get("*/api/problem-reports/facts", () => HttpResponse.json(facts))
+    http.get("*/api/problem-reports/facts", () => HttpResponse.json(facts)),
+    http.get("*/api/problem-reports", () => HttpResponse.json([]))
   )
+}
+
+/** Answers the list route with reports, and counts its calls. */
+function serveSentReports(reports: ListedProblemReport[]) {
+  const calls = { count: 0 }
+  server.use(http.get("*/api/problem-reports", () => {
+    calls.count++
+    return HttpResponse.json(reports)
+  }))
+  return calls
 }
 
 function withQui(qui: Partial<ProblemReportFacts["qui"]>): ProblemReportFacts {
@@ -115,6 +128,9 @@ afterEach(() => {
   closeProblemReport()
   cleanup()
   toastSuccess.mockReset()
+  toastError.mockReset()
+  localStorage.clear()
+  _resetClientSettingsForTests()
 })
 
 describe("Problem report entry point", () => {
@@ -370,5 +386,234 @@ describe("ProblemReportDialog", () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Report sent"))
     expect(screen.queryByRole("dialog")).not.toBeNull()
     expect(second.textField.value).toBe("Another problem")
+  })
+})
+
+const sentAt = "2026-11-10T09:00:00Z"
+
+function listed(report: Partial<ListedProblemReport> & Pick<ListedProblemReport, "id" | "title">): ListedProblemReport {
+  return { sentAt, status: "received", statusChangedAt: sentAt, ...report }
+}
+
+const issueURL = "https://github.com/autobrr/qui/issues/4321"
+const SEEN_AT_KEY = "qui-problem-reports-seen-at"
+
+describe("Sent reports", () => {
+  it("asks qui once when the dialog opens, and shows no entry while no report exists", async () => {
+    serve()
+    const calls = serveSentReports([])
+    mount()
+
+    await openDialog()
+
+    await waitFor(() => expect(calls.count).toBe(1))
+    expect(screen.queryByRole("button", { name: /^Sent reports/ })).toBeNull()
+  })
+
+  it("shows each Report status, and links an issue to its URL", async () => {
+    serve()
+    const calls = serveSentReports([
+      listed({ id: "r4", title: "Uploads stall" }),
+      listed({ id: "r3", title: "Search finds nothing", status: "issue", issue: { number: 4321, url: issueURL, closed: false } }),
+      listed({ id: "r2", title: "Torrents vanish", status: "issue", issue: { number: 4300, url: "https://github.com/autobrr/qui/discussions/4300", closed: true } }),
+      listed({ id: "r1", title: "Pin an instance", status: "closed", reason: "Already in v1.36.0: Settings, Instances." }),
+    ])
+    mount()
+
+    await openDialog()
+    fireEvent.click(await screen.findByRole("button", { name: /^Sent reports/ }))
+
+    const list = await screen.findByRole("list")
+    expect(screen.getByRole("heading", { name: "Sent reports" })).not.toBeNull()
+    expect(Array.from(list.querySelectorAll("li"), (row) => row.textContent?.includes("Received") ?? false)).toEqual([true, false, false, false])
+    const issue = screen.getByRole("link", { name: "Became issue #4321" })
+    expect(issue.getAttribute("href")).toBe(issueURL)
+    const closedIssue = screen.getByRole("link", { name: "Issue #4300 closed" })
+    expect(closedIssue.getAttribute("href")).toBe("https://github.com/autobrr/qui/discussions/4300")
+    expect(screen.getByText("Closed: Already in v1.36.0: Settings, Instances.")).not.toBeNull()
+    expect(calls.count).toBe(2)
+  })
+
+  it("counts each status that changed since Sent reports last opened, and opening it clears the number", async () => {
+    serve()
+    const changedAt = "2026-11-19T10:00:00Z"
+    serveSentReports([
+      listed({ id: "r3", title: "New and unchanged" }),
+      listed({ id: "r2", title: "Became an issue", status: "issue", issue: { number: 4321, url: issueURL, closed: false }, statusChangedAt: changedAt }),
+      listed({ id: "r1", title: "Closed", status: "closed", reason: "Fixed for the next qui release.", statusChangedAt: changedAt }),
+    ])
+    mount()
+
+    await openDialog()
+
+    const entry = await screen.findByRole("button", { name: "Sent reports 2 statuses changed" })
+    fireEvent.click(entry)
+    await screen.findByRole("list")
+    fireEvent.click(screen.getByRole("button", { name: "Back to report" }))
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Sent reports/ }).textContent).toBe("Sent reports"))
+  })
+
+  it("counts a status that changed after Sent reports last opened, also when the clock of the browser runs ahead", async () => {
+    serve()
+    const reports = [listed({ id: "r1", title: "Uploads stall", status: "issue", issue: { number: 4321, url: issueURL, closed: false }, statusChangedAt: "2026-11-19T10:00:00Z" })]
+    serveSentReports(reports)
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2027-11-19T10:00:00Z"))
+    try {
+      mount()
+      await openDialog()
+      fireEvent.click(await screen.findByRole("button", { name: /^Sent reports/ }))
+      await screen.findByRole("list")
+      act(() => closeProblemReport())
+      reports[0] = listed({ id: "r1", title: "Uploads stall", status: "closed", reason: "Fixed for the next qui release.", statusChangedAt: "2026-11-20T10:00:00Z" })
+
+      await openDialog()
+
+      expect(await screen.findByRole("button", { name: "Sent reports 1 status changed" })).not.toBeNull()
+    } finally {
+      now.mockRestore()
+    }
+  })
+
+  // regression: #4302
+  it("keeps a newer seen time that another browser stored when Sent reports shows older statuses", async () => {
+    serve()
+    serveSentReports([listed({ id: "r1", title: "Uploads stall", status: "issue", issue: { number: 4321, url: issueURL, closed: false }, statusChangedAt: "2026-11-19T10:00:00Z" })])
+    const seenElsewhere = Date.parse("2026-11-20T10:00:00Z")
+    writeClientSetting(SEEN_AT_KEY, seenElsewhere)
+    mount()
+
+    await openDialog()
+    fireEvent.click(await screen.findByRole("button", { name: /^Sent reports/ }))
+    await screen.findByRole("list")
+
+    expect(readClientSetting(SEEN_AT_KEY, { defaultValue: null, parse: parseJsonNumber })).toBe(seenElsewhere)
+  })
+
+  it("asks qui once for each open, also when the layout changes", async () => {
+    const matchMedia = window.matchMedia
+    let wide = false
+    const listeners = new Set<() => void>()
+    window.matchMedia = ((query: string) => ({
+      matches: wide && query === "(min-width: 1024px)",
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+    })) as unknown as typeof window.matchMedia
+    const list = vi.spyOn(api, "getSentProblemReports")
+    try {
+      serve()
+      serveSentReports([listed({ id: "r1", title: "Uploads stall" })])
+      mount()
+      await openDialog()
+      await screen.findByRole("button", { name: /^Sent reports/ })
+
+      wide = true
+      act(() => listeners.forEach((listener) => listener()))
+
+      await screen.findByRole("complementary", { name: "What gets sent" })
+      expect(screen.getByRole("button", { name: /^Sent reports/ })).not.toBeNull()
+      expect(list).toHaveBeenCalledTimes(1)
+    } finally {
+      window.matchMedia = matchMedia
+      list.mockRestore()
+    }
+  })
+
+  it("keeps the text of the report across Sent reports", async () => {
+    serve()
+    serveSentReports([listed({ id: "r1", title: "Uploads stall" })])
+    mount()
+
+    const { textField } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(await screen.findByRole("button", { name: /^Sent reports/ }))
+    await screen.findByRole("list")
+    fireEvent.click(screen.getByRole("button", { name: "Back to report" }))
+
+    expect((screen.getByRole("textbox", { name: "Your report" }) as HTMLTextAreaElement).value).toBe("Torrents vanish")
+  })
+
+  it("deletes a report and removes its row, and keeps a row that brrbin could not delete", async () => {
+    serve()
+    serveSentReports([listed({ id: "r2", title: "Uploads stall" }), listed({ id: "r1", title: "Torrents vanish" })])
+    const deleted: string[] = []
+    server.use(http.delete("*/api/problem-reports/:id", ({ params }) => {
+      deleted.push(params.id as string)
+      return params.id === "r2" ? new HttpResponse(null, { status: 204 }) : HttpResponse.json({ error: "unavailable" }, { status: 502 })
+    }))
+    mount()
+
+    await openDialog()
+    fireEvent.click(await screen.findByRole("button", { name: /^Sent reports/ }))
+    const list = await screen.findByRole("list")
+    const [first, second] = Array.from(list.querySelectorAll("li"))
+    fireEvent.click(first.querySelector("button") as HTMLButtonElement)
+
+    await waitFor(() => expect(screen.queryByText("Uploads stall")).toBeNull())
+    expect(deleted).toEqual(["r2"])
+
+    fireEvent.click(second.querySelector("button") as HTMLButtonElement)
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("brrbin cannot delete reports right now. Try again later."))
+    expect(screen.getByText("Torrents vanish")).not.toBeNull()
+  })
+
+  // regression: #4302
+  it("keeps a deleted row gone when a list that Sent reports asked for during the Delete answers later", async () => {
+    serve()
+    const rows = [listed({ id: "r2", title: "Uploads stall" }), listed({ id: "r1", title: "Torrents vanish" })]
+    let releaseList = () => {}
+    const heldList = new Promise<void>((resolve) => { releaseList = resolve })
+    let lists = 0
+    server.use(http.get("*/api/problem-reports", async () => {
+      // The third list, from the second open of Sent reports, read its rows before the Delete ended.
+      if (++lists === 3) await heldList
+      return HttpResponse.json(rows)
+    }))
+    let releaseDelete = () => {}
+    const heldDelete = new Promise<void>((resolve) => { releaseDelete = resolve })
+    server.use(http.delete("*/api/problem-reports/:id", async () => {
+      await heldDelete
+      return new HttpResponse(null, { status: 204 })
+    }))
+    const queryClient = mount()
+
+    await openDialog()
+    fireEvent.click(await screen.findByRole("button", { name: /^Sent reports/ }))
+    fireEvent.click((await screen.findByRole("list")).querySelector("button") as HTMLButtonElement)
+    fireEvent.click(screen.getByRole("button", { name: "Back to report" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Sent reports/ }))
+    await screen.findByRole("list")
+    await waitFor(() => expect(lists).toBe(3))
+
+    releaseDelete()
+    await waitFor(() => expect(screen.queryByText("Uploads stall")).toBeNull())
+    releaseList()
+    await waitFor(() => expect(queryClient.getQueryState(SENT_REPORTS_KEY)?.fetchStatus).toBe("idle"))
+
+    expect(screen.queryByText("Uploads stall")).toBeNull()
+    expect(screen.getByText("Torrents vanish")).not.toBeNull()
+  })
+
+  it("keeps the Delete of a row busy while the Delete of another row runs", async () => {
+    serve()
+    serveSentReports([listed({ id: "r2", title: "Uploads stall" }), listed({ id: "r1", title: "Torrents vanish" })])
+    let release = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    server.use(http.delete("*/api/problem-reports/:id", async () => {
+      await held
+      return new HttpResponse(null, { status: 204 })
+    }))
+    mount()
+
+    await openDialog()
+    fireEvent.click(await screen.findByRole("button", { name: /^Sent reports/ }))
+    const [first, second] = Array.from((await screen.findByRole("list")).querySelectorAll("button"))
+    fireEvent.click(first)
+    fireEvent.click(second)
+
+    await waitFor(() => expect(second.disabled).toBe(true))
+    expect(first.disabled).toBe(true)
+    release()
+    await waitFor(() => expect(screen.queryByText("Uploads stall") ?? screen.queryByText("Torrents vanish")).toBeNull())
   })
 })

@@ -135,6 +135,26 @@
       "tokenRejected": "Ваш вхід завершився. Увійдіть знову, а потім надішліть.",
       "unavailable": "brrbin зараз не може приймати звіти. Спробуйте пізніше.",
       "sendFailed": "Не вдалося надіслати звіт: {{message}}"
+    },
+    "sentReports": {
+      "title": "Надіслані звіти",
+      "subtitle": "qui перевіряє статус звітів щоразу, коли ви відкриваєте цей список.",
+      "changed_one": "{{count}} статус змінився",
+      "changed_few": "{{count}} статуси змінилися",
+      "changed_many": "{{count}} статусів змінилося",
+      "changed_other": "{{count}} статусу змінилося",
+      "status": {
+        "received": "Отримано",
+        "issue": "Перетворено на issue #{{number}}",
+        "issueClosed": "Issue #{{number}} закрито",
+        "closed": "Закрито: {{reason}}",
+        "closedNoReason": "Закрито"
+      },
+      "delete": "Видалити звіт",
+      "deleteUnavailable": "brrbin зараз не може видаляти звіти. Спробуйте пізніше.",
+      "deleteFailed": "Не вдалося видалити звіт: {{message}}",
+      "empty": "Немає надісланих звітів.",
+      "back": "Назад до звіту"
     }
   },
   "header": {

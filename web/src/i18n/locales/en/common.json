@@ -121,6 +121,24 @@
       "tokenRejected": "Your sign-in ended. Sign in again, then send.",
       "unavailable": "brrbin cannot take reports right now. Try again later.",
       "sendFailed": "Could not send the report: {{message}}"
+    },
+    "sentReports": {
+      "title": "Sent reports",
+      "subtitle": "qui checks report statuses each time you open this list.",
+      "changed_one": "{{count}} status changed",
+      "changed_other": "{{count}} statuses changed",
+      "status": {
+        "received": "Received",
+        "issue": "Became issue #{{number}}",
+        "issueClosed": "Issue #{{number}} closed",
+        "closed": "Closed: {{reason}}",
+        "closedNoReason": "Closed"
+      },
+      "delete": "Delete report",
+      "deleteUnavailable": "brrbin cannot delete reports right now. Try again later.",
+      "deleteFailed": "Could not delete the report: {{message}}",
+      "empty": "No sent reports.",
+      "back": "Back to report"
     }
   },
   "header": {

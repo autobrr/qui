@@ -121,6 +121,24 @@
       "tokenRejected": "Votre connexion a pris fin. Reconnectez-vous, puis envoyez.",
       "unavailable": "brrbin ne peut pas recevoir de rapports pour le moment. Réessayez plus tard.",
       "sendFailed": "Impossible d'envoyer le rapport : {{message}}"
+    },
+    "sentReports": {
+      "title": "Rapports envoyés",
+      "subtitle": "qui vérifie le statut des rapports chaque fois que vous ouvrez cette liste.",
+      "changed_one": "{{count}} statut modifié",
+      "changed_other": "{{count}} statuts modifiés",
+      "status": {
+        "received": "Reçu",
+        "issue": "Devenu le ticket #{{number}}",
+        "issueClosed": "Ticket #{{number}} fermé",
+        "closed": "Fermé : {{reason}}",
+        "closedNoReason": "Fermé"
+      },
+      "delete": "Supprimer le rapport",
+      "deleteUnavailable": "brrbin ne peut pas supprimer de rapports pour le moment. Réessayez plus tard.",
+      "deleteFailed": "Impossible de supprimer le rapport : {{message}}",
+      "empty": "Aucun rapport envoyé.",
+      "back": "Retour au rapport"
     }
   },
   "header": {

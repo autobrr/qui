@@ -13,6 +13,7 @@ import { useSystemNotices } from "@/hooks/useSystemNotices"
 import { api } from "@/lib/api"
 import {
   parseJsonBoolean,
+  parseJsonNumber,
   readClientSetting,
   useClientSetting,
   useClientSettingsLoaded,
@@ -31,14 +32,7 @@ export const REMINDER_OFF_KEY = "qui-support-reminder-off"
 export const REMINDER_DUE_KEY = "qui-support-reminder-due"
 
 const FLAG = { defaultValue: false, parse: parseJsonBoolean }
-const DUE_TIME = {
-  defaultValue: null as number | null,
-  parse: (raw: string) => {
-    const value: unknown = JSON.parse(raw)
-    if (typeof value !== "number") throw new Error("not a number")
-    return value
-  },
-}
+const DUE_TIME = { defaultValue: null as number | null, parse: parseJsonNumber }
 
 /** The first due time: 7 to 14 days from now, and not before the server is 30 days old. */
 export function firstDueTime(now: number, setupAt: number, random: () => number = Math.random): number {

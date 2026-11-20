@@ -121,6 +121,24 @@
       "tokenRejected": "Il tuo accesso è scaduto. Accedi di nuovo, poi invia.",
       "unavailable": "brrbin non può ricevere segnalazioni in questo momento. Riprova più tardi.",
       "sendFailed": "Impossibile inviare la segnalazione: {{message}}"
+    },
+    "sentReports": {
+      "title": "Segnalazioni inviate",
+      "subtitle": "qui controlla lo stato delle segnalazioni ogni volta che apri questo elenco.",
+      "changed_one": "{{count}} stato cambiato",
+      "changed_other": "{{count}} stati cambiati",
+      "status": {
+        "received": "Ricevuta",
+        "issue": "Diventata issue #{{number}}",
+        "issueClosed": "Issue #{{number}} chiusa",
+        "closed": "Chiusa: {{reason}}",
+        "closedNoReason": "Chiusa"
+      },
+      "delete": "Elimina segnalazione",
+      "deleteUnavailable": "brrbin non può eliminare segnalazioni in questo momento. Riprova più tardi.",
+      "deleteFailed": "Impossibile eliminare la segnalazione: {{message}}",
+      "empty": "Nessuna segnalazione inviata.",
+      "back": "Torna alla segnalazione"
     }
   },
   "header": {

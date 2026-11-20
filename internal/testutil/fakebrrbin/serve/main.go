@@ -5,8 +5,10 @@
 //
 //	go run ./internal/testutil/fakebrrbin/serve -addr 127.0.0.1:0
 //
-// It prints its URL. GET /fake/requests lists what it received, and
-// POST /fake/refuse with {"status":429,"reason":"anonymous_full"} sets a refusal.
+// It prints its URL. GET /fake/requests lists what it received,
+// POST /fake/refuse with {"status":429,"reason":"anonymous_full"} sets a refusal,
+// POST /fake/status with {"id":"r1","status":"issue","issue":{"number":4321,"url":"https://github.com/autobrr/qui/issues/4321","closed":false}}
+// sets a Report status, and POST /fake/forget with {"id":"r1"} drops a report.
 package main
 
 import (

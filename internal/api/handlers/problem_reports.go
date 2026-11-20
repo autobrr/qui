@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/services/problemreport"
@@ -139,6 +140,36 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "send the report: "+err.Error())
 	default:
 		RespondJSON(w, http.StatusCreated, sent)
+	}
+}
+
+// SentReports handles GET /api/problem-reports: Sent reports, the newest
+// first, with the Report statuses that brrbin answers now.
+func (h *ProblemReportHandler) SentReports(w http.ResponseWriter, r *http.Request) {
+	reports, err := h.service.SentReports(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list Sent reports")
+		RespondError(w, http.StatusInternalServerError, "list the sent reports: "+err.Error())
+		return
+	}
+	RespondJSON(w, http.StatusOK, reports)
+}
+
+// Delete handles DELETE /api/problem-reports/{id}.
+func (h *ProblemReportHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	err := h.service.Delete(r.Context(), chi.URLParam(r, "id"))
+	if refusal, ok := errors.AsType[*problemreport.RefusalError](err); ok {
+		RespondError(w, refusal.Status, refusal.Reason)
+		return
+	}
+	switch {
+	case errors.Is(err, problemreport.ErrNotFound):
+		RespondError(w, http.StatusNotFound, err.Error())
+	case err != nil:
+		log.Error().Err(err).Msg("Failed to delete a Problem report")
+		RespondError(w, http.StatusInternalServerError, "delete the report: "+err.Error())
+	default:
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
