@@ -1548,6 +1548,29 @@ paths:
         '501':
           description: Instance does not support free space at a path
 
+  /api/instances/{instanceID}/disk:
+    get:
+      tags:
+        - Instances
+      summary: Get the disk of the default save path
+      description: >-
+        Read the free and total bytes of the disk that holds the instance's default
+        save path. qui reads the disk itself, through the instance's Local Filesystem
+        Access or SSH access. Both fields are null when qui cannot read the disk.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: The disk of the default save path
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceDisk'
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+
   /api/instances/{instanceID}/getDirectoryContent:
     get:
       tags:
@@ -10289,6 +10312,23 @@ components:
       required:
         - path
         - bytes
+
+    InstanceDisk:
+      type: object
+      properties:
+        freeBytes:
+          type: integer
+          format: int64
+          nullable: true
+          description: Free bytes on the disk. Null when qui cannot read the disk.
+        totalBytes:
+          type: integer
+          format: int64
+          nullable: true
+          description: Size of the disk in bytes. Null when qui cannot read the disk.
+      required:
+        - freeBytes
+        - totalBytes
 
     TransferInfo:
       type: object

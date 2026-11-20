@@ -8,6 +8,7 @@ import { barBytes, buildBars, foldOther, sumBytes, topGroups } from "@/lib/stati
 import { TRACKER_HEALTH_DISPLAY } from "@/lib/torrent-table/row-display"
 import type {
   CacheMetadata,
+  InstanceDisk,
   InstanceMeta,
   InstanceResponse,
   LiveSamples,
@@ -34,6 +35,7 @@ export interface DashboardInstanceStats {
   isDashboardStatsFallbackActive: boolean
   cacheMetadata: CacheMetadata | null | undefined
   instanceMeta: InstanceMeta | null
+  disk: InstanceDisk | null
 }
 
 export type InstanceHealth = "ok" | "loading" | "offline"
@@ -88,8 +90,23 @@ export function instanceIssues(d: DashboardInstanceStats): InstanceIssue[] {
   })
 }
 
-/** The share of the disk that is free, out of the free space and the Unique size of the instance, or undefined without a free space. */
+function diskFreeShare(d: DashboardInstanceStats): number | undefined {
+  const { freeBytes, totalBytes } = d.disk ?? {}
+  return freeBytes != null && totalBytes ? freeBytes / totalBytes : undefined
+}
+
+/** True when qui cannot read the size of the disk, so the free share is an estimate from the torrents of the instance. */
+export function isFreeShareEstimated(d: DashboardInstanceStats): boolean {
+  return diskFreeShare(d) === undefined
+}
+
+/**
+ * The share of the disk that is free. When qui cannot read the size of the disk, the share is out of the free space
+ * and the Unique size of the instance, or undefined without a free space.
+ */
 export function freeShare(d: DashboardInstanceStats): number | undefined {
+  const measured = diskFreeShare(d)
+  if (measured !== undefined) return measured
   const free = d.serverState?.free_space_on_disk
   if (free === undefined || free < 0) return undefined
   const total = free + resolveDashboardSizes([d.stats]).totalSize

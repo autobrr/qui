@@ -83,11 +83,15 @@ This list shows each item that needs an action:
 
 If no item needs an action, the page does not show the list.
 
-A disk is almost full when the free space is less than 5% of the free space plus the Unique size of the instance. A System notice is not in this list. qui shows a System notice in the sidebar and the mobile footer.
+A disk is almost full when the free space is less than 5% of the size of the disk. When qui cannot read the disk, qui uses 5% of the free space plus the [Unique size](#unique-size) of the instance as the limit. See [Storage and Library](#storage-and-library) for how qui reads the size of the disk. A System notice is not in this list. qui shows a System notice in the sidebar and the mobile footer.
 
 ## Storage and Library
 
-**Storage** shows the free disk space of each instance at the default save path of qBittorrent.
+**Storage** shows a row for each instance with its name, the free space at the default save path of qBittorrent, and a bar. qBittorrent reports the free space in each row, not the size of the disk.
+
+When an instance has [Local Filesystem Access](./instance-settings.md#local-filesystem-access) or [SSH access](./ssh-access.md), qui reads the size and the free space of the disk at that path. The filled part of the bar shows the real used share of the disk. Two instances on one disk get the same bar. With SSH access, the server must report free disk space.
+
+Without that access, or when qui cannot read the disk, qui estimates the bar. The filled part is the [Unique size](#unique-size) of the instance out of that size plus the free space. When at least one bar is an estimate, qui shows an info icon next to the **Storage** heading. Its text explains the estimate and names **Local Filesystem Access** and SSH access. When no bar is an estimate, qui does not show the icon.
 
 **Library** shows the torrent count, the total size, the seeding size, and the count of connected instances. The total size and the seeding size are the [Unique size](#unique-size).
 

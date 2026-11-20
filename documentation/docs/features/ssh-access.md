@@ -89,7 +89,7 @@ The test shows a tier and a list of checks.
 | **Tier: SFTP + commands** | qui can run commands on the host. qui can read file identity there, which tells qui when two paths are the same file. |
 | **Tier: SFTP** | qui only has SFTP. qui cannot read file identity. |
 | **SFTP** | The server has SFTP. qui needs it for all file access. |
-| **Free space (statvfs)** | The server reports free disk space. The automation setting **Path on server** needs it. |
+| **Free space (statvfs)** | The server reports free disk space. The automation setting **Path on server** and the **Storage** bars on the Dashboard need it. |
 | **Hardlinks (hardlink@openssh.com)** | The server can create hardlinks. Cross-seed hardlink mode needs it. |
 | **Limits extension** | The server reports its SFTP limits. No feature needs it. |
 | **Commands** | The login can run a shell. |
@@ -122,6 +122,7 @@ qui tests again each time that it connects, and the tier follows the result. In 
 | Removal of [leftover folders](./torrent-management.md#deleting-and-moving-torrents) after a delete or a move | Yes | Yes | Yes |
 | Automations: [Path on server](./automations.md#free-space-source) for free space | Yes | Yes | Yes |
 | Automations: Has Missing Files condition | Yes | Yes | Yes |
+| Dashboard: real disk usage in [Storage](./dashboard.md#storage-and-library) | Yes | Yes | Yes |
 | Automations: Hardlink Scope conditions, hardlink grouping, and **Include hardlinked copies** | Yes | No | No |
 | Detection of hardlinked cross-seeds in the delete dialog | Yes | No | No |
 | [Transfer](./transfers.md#cross-seeds-on-hardlinks): cross-seeds on hardlinks move with the torrent | Yes | No | No |

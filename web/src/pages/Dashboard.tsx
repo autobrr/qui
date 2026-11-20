@@ -92,6 +92,7 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
 })
 
 const STREAM_REFRESH_INTERVAL_MS = 2000
+const DISK_REFRESH_INTERVAL_MS = 60_000
 
 type InstanceUpdateResult =
   | InstanceStreamData
@@ -532,6 +533,16 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
     }
   }, [])
 
+  const diskQueries = useQueries({
+    queries: instances.map(instance => ({
+      queryKey: ["instance-disk", instance.id],
+      queryFn: () => api.getInstanceDisk(instance.id),
+      enabled: streamEnabled && instance.filesystemMode !== "none",
+      staleTime: DISK_REFRESH_INTERVAL_MS,
+      refetchInterval: DISK_REFRESH_INTERVAL_MS,
+    })),
+  })
+
   return instances.map<DashboardInstanceStats>((instance, index) => {
     const cachedState = getCachedInstanceData(instance.id, instanceData[instance.id])
     const state =
@@ -583,6 +594,7 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
       isDashboardStatsFallbackActive: isFallbackActive,
       cacheMetadata,
       instanceMeta: state.instanceMeta,
+      disk: diskQueries[index]?.data ?? null,
     }
   })
 }
