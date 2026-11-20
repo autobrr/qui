@@ -11,7 +11,6 @@ import (
 	"testing"
 )
 
-// readUmask returns the current process umask without changing it.
 func readUmask() int {
 	cur := syscall.Umask(0)
 	syscall.Umask(cur)

@@ -27,8 +27,6 @@ import (
 // WalkDir (on entries), Remove, and Statfs alike. Remote backends must map
 // their transport's errors onto the same sentinels.
 type Backend interface {
-	// --- Read ---
-
 	// Stat returns metadata for a single path, following symlinks — FileID
 	// and Nlinks describe the target, so symlinked torrent data keeps its
 	// identity. Returns a non-nil error wrapping fs.ErrNotExist if the path
@@ -37,10 +35,8 @@ type Backend interface {
 	// cannot fail callers that only need metadata.
 	Stat(ctx context.Context, path string) (*LstatInfo, error)
 
-	// Lstat is like Stat but does not follow symlinks.
 	Lstat(ctx context.Context, path string) (*LstatInfo, error)
 
-	// ReadDir returns directory entries.
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 
 	// WalkDir walks a directory tree and streams entries on the returned channel.
@@ -56,14 +52,11 @@ type Backend interface {
 	// valid, so delete preflights can fail closed on unverifiable paths.
 	WalkDir(ctx context.Context, root string, opts WalkOptions) (<-chan WalkEntry, error)
 
-	// Statfs returns free/total bytes for the filesystem containing path.
 	Statfs(ctx context.Context, path string) (*StatfsResult, error)
 
 	// SameFilesystem returns true if both paths reside on the same filesystem
 	// (same device ID on Unix, same volume serial on Windows).
 	SameFilesystem(ctx context.Context, p1, p2 string) (bool, error)
-
-	// --- Write (mutating) ---
 
 	// MkdirAll creates a directory and all parents. Equivalent to os.MkdirAll.
 	// For torrent content and link-tree dirs, pass fsutil.ContentDirMode
@@ -75,38 +68,13 @@ type Backend interface {
 	// succeeds. Link trees use it to reserve a folder name.
 	Mkdir(ctx context.Context, path string, perm fs.FileMode) error
 
-	// Remove removes a file or directory. If opts.Recursive is true, removes
-	// the entire tree (like os.RemoveAll).
 	Remove(ctx context.Context, path string, opts RemoveOptions) error
 
-	// --- High-level (atomic, server-orchestrated) ---
-
-	// HardlinkTree creates a hardlink tree from plan. Rolls back what it
-	// created on partial failure. The result records the files and dirs this
-	// call made, for a later RemoveTree.
-	//
-	// Every implementation owes the same answer to a target that already
-	// exists: skip it when it is provably the same file as its source, and
-	// refuse the whole plan with hardlinktree.ErrTargetExists otherwise. A
-	// skipped target is counted in SkippedExists and never recorded in Files,
-	// because it belongs to whoever made it first; see
-	// TestHardlinkTree_ExecTierSkippedLinkSurvivesLaterFailure. A backend that
-	// cannot prove identity refuses.
 	HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*TreeCreateResult, error)
 
-	// ReflinkTree creates a reflink (CoW) tree from plan. Rolls back what it
-	// created on partial failure. The result records the files and dirs this
-	// call made, for a later RemoveTree.
 	ReflinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*TreeCreateResult, error)
 
-	// RemoveTree removes exactly the files and dirs recorded in created —
-	// never the whole plan, which could delete links shared with sibling
-	// torrents (discussion #2282). A plan root that already existed before
-	// the create is therefore NOT removed; callers own pruning it. Safe to
-	// call with a nil result.
 	RemoveTree(ctx context.Context, created *TreeCreateResult) error
-
-	// --- File bytes ---
 
 	// OpenRead opens the file at path for reading from offset on. The ctx
 	// covers the open, not the reads.
@@ -118,18 +86,13 @@ type Backend interface {
 	// new file. The ctx covers the open, not the writes.
 	OpenWrite(ctx context.Context, path string, offset int64) (FileWriter, error)
 
-	// --- Capabilities ---
-
 	// Paths is the dialect of this backend's filesystem. Every Join, Dir,
 	// IsAbs or Rel on a path that goes to or comes from this backend uses it.
 	Paths() PathDialect
 
-	// SupportsReflink returns whether the filesystem at path supports CoW
-	// reflinks. The string return is a human-readable reason when unsupported.
 	SupportsReflink(ctx context.Context, path string) (bool, string, error)
 }
 
-// FileWriter writes one file from the offset that OpenWrite gave.
 type FileWriter interface {
 	io.WriteCloser
 	// Flush asks for the bytes written so far to reach stable storage, and
@@ -139,8 +102,6 @@ type FileWriter interface {
 	Flush() (confirmed bool, err error)
 }
 
-// Connector is a Backend that reaches its instance on several connections,
-// so that a copy can read on all of them at once.
 type Connector interface {
 	// Connections returns up to n backends of the instance, each bound to a
 	// connection of its own. A host that refuses extra connections gives
@@ -149,18 +110,11 @@ type Connector interface {
 	Connections(ctx context.Context, n int) ([]Backend, error)
 }
 
-// BatchStater is a Backend that answers many paths in one request, so a
-// remote host costs a few round trips per batch and not a few per path.
 type BatchStater interface {
-	// StatBatch is Stat for each path: infos[i] and errs[i] answer paths[i].
 	StatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
-	// LstatBatch is Lstat for each path: infos[i] and errs[i] answer paths[i].
 	LstatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
 }
 
-// StatAll is Stat for each path: infos[i] and errs[i] answer paths[i]. A
-// BatchStater answers in one call, and any other backend gets one Stat per
-// path.
 func StatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo, errs []error) {
 	if batch, ok := b.(BatchStater); ok {
 		return batch.StatBatch(ctx, paths)
@@ -168,9 +122,6 @@ func StatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo
 	return statEach(ctx, paths, b.Stat)
 }
 
-// LstatAll is Lstat for each path: infos[i] and errs[i] answer paths[i]. A
-// BatchStater answers in one call, and any other backend gets one Lstat per
-// path.
 func LstatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo, errs []error) {
 	if batch, ok := b.(BatchStater); ok {
 		return batch.LstatBatch(ctx, paths)

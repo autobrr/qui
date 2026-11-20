@@ -51,13 +51,8 @@ const (
 	maxConnections = 4
 )
 
-// Pool keeps one SSH connection per instance, with one SFTP session and at
-// most execSessions exec sessions on it. For a caller that copies on several
-// connections, it keeps up to maxConnections-1 extra ones, with an SFTP
-// session each and no exec sessions.
 type Pool struct {
-	dialer *Dialer
-	// newSFTP opens the sftp session on a new connection.
+	dialer  *Dialer
 	newSFTP func(*ssh.Client, *sftpCalls) (*sftp.Client, error)
 
 	mu     sync.Mutex
@@ -65,8 +60,6 @@ type Pool struct {
 	closed bool
 }
 
-// ErrPoolClosed answers a caller that arrives after shutdown began: nothing
-// may dial once Close has run.
 var ErrPoolClosed = errors.New("ssh pool is closed")
 
 // ErrNotRemote answers a dial for an instance whose row is not in remote
@@ -74,7 +67,6 @@ var ErrPoolClosed = errors.New("ssh pool is closed")
 // doing anything, and the next dial reads it again.
 var ErrNotRemote = errors.New("instance is not in remote filesystem mode")
 
-// entry is one instance's connection state.
 type entry struct {
 	// sem serialises dial and reconnect for this instance only. It is a channel
 	// rather than a mutex so a caller waiting behind another caller's dial can
@@ -82,21 +74,19 @@ type entry struct {
 	sem    chan struct{}
 	client *ssh.Client
 	sftp   *sftp.Client
-	calls  *sftpCalls     // the sftp calls running on client
-	tier   models.SSHTier // what the probe of client found
+	calls  *sftpCalls
+	tier   models.SSHTier
 	// slots bounds the exec sessions on client. It outlives a reconnect,
 	// which is harmless: a session on a dead client fails and frees its slot.
-	slots   chan struct{}
-	parked  atomic.Int32  // slots kept taken at the host's session limit; see Conn.open
-	err     error         // memoised failure; nil when connected
-	retryAt time.Time     // when a dial may be attempted again; unused for a refusal
-	backoff time.Duration // delay for the next failure, doubling to backoffMax
-	// lastUsed is read by the keepalive loop to close an idle connection.
+	slots    chan struct{}
+	parked   atomic.Int32 // slots kept taken at the host's session limit; see Conn.open
+	err      error
+	retryAt  time.Time // when a dial may be attempted again; unused for a refusal
+	backoff  time.Duration
 	lastUsed atomic.Int64
 	extras   []*extra
 }
 
-// extra is a connection beyond the entry's first one.
 type extra struct {
 	client   *ssh.Client
 	sftp     *sftp.Client
@@ -149,8 +139,6 @@ func (p *Pool) Exec(ctx context.Context, inst *models.Instance) (*Conn, error) {
 	return &Conn{client: live.client, slots: entry.slots, parked: &entry.parked, used: entry.touch}, nil
 }
 
-// live is one connection and what its probe found, and the extra
-// connections handed to the caller.
 type live struct {
 	client *ssh.Client
 	sftp   *sftp.Client
@@ -158,8 +146,6 @@ type live struct {
 	extras []*sftp.Client
 }
 
-// take holds the instance's connection, dialing it when there is none, and
-// opens extra connections until the instance has extras of them.
 func (p *Pool) take(ctx context.Context, inst *models.Instance, extras int) (live, *entry, error) {
 	p.mu.Lock()
 	if p.closed {
@@ -196,7 +182,6 @@ func (p *Pool) take(ctx context.Context, inst *models.Instance, extras int) (liv
 	return entry.live(extras), entry, nil
 }
 
-// connect makes sure the entry holds a connection. Callers hold the entry.
 func (p *Pool) connect(ctx context.Context, inst *models.Instance, entry *entry) error {
 	switch {
 	case entry.sftp != nil:
@@ -264,8 +249,6 @@ func (p *Pool) row(ctx context.Context, instanceID int) (*models.Instance, error
 	return row, nil
 }
 
-// open dials row and opens an sftp session on the new connection, with both
-// pipes counted by calls.
 func (p *Pool) open(ctx context.Context, row *models.Instance, calls *sftpCalls) (*ssh.Client, *sftp.Client, error) {
 	client, err := p.dialer.Connect(ctx, row)
 	if err != nil {
@@ -305,8 +288,6 @@ func (p *Pool) open(ctx context.Context, row *models.Instance, calls *sftpCalls)
 	return nil, nil, err
 }
 
-// grow opens extra connections, all at once, until the entry holds want of
-// them. Callers hold the entry.
 func (p *Pool) grow(ctx context.Context, inst *models.Instance, entry *entry, want int) error {
 	missing := want - len(entry.extras)
 	if missing <= 0 {
@@ -379,8 +360,6 @@ func (p *Pool) Invalidate(instanceID int) {
 	log.Debug().Int("instanceID", instanceID).Msg("sshpool: connection invalidated")
 }
 
-// Remove is Invalidate for an instance that no longer exists: the entry goes
-// with the connection.
 func (p *Pool) Remove(instanceID int) {
 	if p == nil {
 		return
@@ -423,8 +402,6 @@ func newEntry() *entry {
 	return &entry{sem: make(chan struct{}, 1), slots: make(chan struct{}, execSessions)}
 }
 
-// live is the connection the entry holds, with up to extras of its extra
-// connections. Callers hold the entry.
 func (e *entry) live(extras int) live {
 	l := live{client: e.client, sftp: e.sftp, tier: e.tier}
 	for _, x := range e.extras[:min(extras, len(e.extras))] {
@@ -434,10 +411,8 @@ func (e *entry) live(extras int) live {
 	return l
 }
 
-// touch marks the connection used, which keeps it from the idle close.
 func (e *entry) touch() { e.lastUsed.Store(time.Now().UnixNano()) }
 
-// lock takes the entry, or returns ctx's error if it is done first.
 func (e *entry) lock(ctx context.Context) error {
 	select {
 	case e.sem <- struct{}{}:
@@ -466,16 +441,13 @@ func (e *entry) memoise(inst *models.Instance, err error) {
 	log.Debug().Int("instanceID", inst.ID).Err(err).Dur("retryIn", jittered).Msg("sshpool: dial failed")
 }
 
-// isRefusal tells a memo that no amount of waiting clears from a backoff.
 func isRefusal(err error) bool {
 	_, mismatch := errors.AsType[*MismatchError](err)
 	return mismatch || errors.Is(err, ErrPinUnusable)
 }
 
-// refused reports whether the memo is a host-key refusal. Callers hold the entry.
 func (e *entry) refused() bool { return e.err != nil && isRefusal(e.err) }
 
-// forget ends every connection and the memo. Callers hold the entry.
 func (e *entry) forget() {
 	for _, x := range e.extras {
 		_ = x.client.Close()
@@ -522,8 +494,6 @@ func (e *entry) watch(instanceID int, client *ssh.Client, done chan struct{}) {
 	}
 }
 
-// watchExtra drops x from the entry once its client is gone, so the next
-// caller that wants it dials again.
 func (e *entry) watchExtra(instanceID int, x *extra, done chan struct{}) {
 	err := x.client.Wait()
 	close(done)
@@ -543,7 +513,6 @@ func (e *entry) keepalive(instanceID int, client *ssh.Client, calls *sftpCalls, 
 	})
 }
 
-// keepalive runs the keepalive loop of an extra connection.
 func (x *extra) keepalive(instanceID int, done <-chan struct{}, interval time.Duration) {
 	keepalive(instanceID, x.client, x.calls, done, interval, func() bool { return unused(x.calls, &x.lastUsed) })
 }

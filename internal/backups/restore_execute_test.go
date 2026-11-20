@@ -17,8 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// captureTorrentWriter records the options passed to AddTorrent so restore
-// placement decisions can be asserted without a live qBittorrent instance.
 type captureTorrentWriter struct {
 	stubBackupSyncManager
 	addOptions []map[string]string
@@ -90,8 +88,6 @@ func runRestoreAdd(t *testing.T, manifest ManifestItem) (map[string]string, []st
 	require.NoError(t, err)
 	require.Empty(t, errs)
 	require.Len(t, writer.addOptions, 1)
-	// Metadata rides on the add options; a post-add mutation raced the sync
-	// cache and failed for a torrent qBittorrent had accepted (#2259).
 	require.Empty(t, writer.postAdd, "added torrents must not get post-add category/tag calls")
 
 	return writer.addOptions[0], warnings

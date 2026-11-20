@@ -19,16 +19,8 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// ErrReflinkUnsupported is returned when reflink operations are not supported
-// on the current platform or filesystem.
 var ErrReflinkUnsupported = errors.New("reflink not supported on this platform or filesystem")
 
-// Create materializes a reflink tree plan on disk.
-// Creates necessary directories and reflinks files from source to target paths.
-// On failure, attempts best-effort rollback of created files and returns a nil handle.
-//
-// On success, returns a handle recording what this call created; rolling back
-// that handle removes exactly those files and directories (discussion #2282).
 func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 	if plan == nil {
 		return nil, errors.New("plan is nil")
@@ -40,10 +32,8 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 		return nil, errors.New("plan has no files")
 	}
 
-	// Track created items for rollback
 	created := &hardlinktree.Created{}
 
-	// Cleanup on failure
 	rollbackOnError := func(err error) error {
 		rollbackErr := created.Rollback()
 		if rollbackErr != nil {
@@ -52,7 +42,6 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 		return err
 	}
 
-	// Create root directory if needed
 	rootDirs, err := hardlinktree.MkdirAllTracked(plan.RootDir)
 	created.Dirs = append(created.Dirs, rootDirs...)
 	if err != nil {
@@ -66,9 +55,7 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 		return nil, rollbackOnError(fmt.Errorf("%w: %s", ErrReflinkUnsupported, reason))
 	}
 
-	// Process each file in the plan
 	for _, fp := range plan.Files {
-		// Create parent directory if needed
 		parentDir := filepath.Dir(fp.TargetPath)
 		parentDirs, err := hardlinktree.MkdirAllTracked(parentDir)
 		created.Dirs = append(created.Dirs, parentDirs...)
@@ -76,7 +63,6 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 			return nil, rollbackOnError(fmt.Errorf("create directory %s: %w", parentDir, err))
 		}
 
-		// Check if target already exists
 		if _, err := os.Lstat(fp.TargetPath); err == nil {
 			// File exists at target - this is an error for reflinks
 			// (unlike hardlinks, we can't easily check if it's the same content)
@@ -85,7 +71,6 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 			return nil, rollbackOnError(fmt.Errorf("check target %s: %w", fp.TargetPath, err))
 		}
 
-		// Create reflink
 		if err := cloneFile(fp.SourcePath, fp.TargetPath); err != nil {
 			return nil, rollbackOnError(fmt.Errorf("reflink %s -> %s: %w", fp.SourcePath, fp.TargetPath, err))
 		}

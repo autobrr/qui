@@ -26,9 +26,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// liveCreds is fakeCreds for a real host: the key comes from a file and the
-// pin is learned on first contact, since nothing in qui reaches these methods
-// until #2942 and a hand-run test is the only route to a seedbox.
 type liveCreds struct {
 	key  string
 	pin  []byte
@@ -143,8 +140,6 @@ func TestLive_WriteOperations(t *testing.T) {
 			require.ErrorIs(t, err, fs.ErrNotExist)
 		})
 		step("hardlinktree forced failure", func() {
-			// The second target is pre-created, so the first link must be
-			// rolled back and the stranger left alone.
 			require.NoError(t, b.MkdirAll(ctx, path.Dir(plan.Files[1].TargetPath), fsutil.ContentDirMode))
 			writeRemote(plan.Files[1].TargetPath)
 			_, err := b.HardlinkTree(ctx, plan)

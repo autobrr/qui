@@ -36,8 +36,6 @@ type Request struct {
 	FirstDownloaderOnly *bool
 }
 
-// RefusalError is why qui does not start a Share, or does not do what the
-// user asked of one, for the user.
 type RefusalError struct{ Reason string }
 
 func (r *RefusalError) Error() string { return r.Reason }
@@ -46,9 +44,6 @@ func refuse(format string, args ...any) error {
 	return &RefusalError{Reason: fmt.Sprintf(format, args...)}
 }
 
-// Start makes the Share torrent of one torrent, adds it to the user's client
-// on the same files, and returns the Share with the .torrent of the
-// recipient. A *RefusalError says why qui does not start it.
 func (s *Service) Start(ctx context.Context, req Request) (*Share, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -118,7 +113,6 @@ func (s *Service) fail(ctx context.Context, sh *Share, reason string) {
 	}
 }
 
-// prepared is a Share before its row, with what the add needs.
 type prepared struct {
 	Share
 	instanceName string
@@ -127,7 +121,6 @@ type prepared struct {
 	ownerTorrent []byte
 }
 
-// prepare runs the entry checks and builds the Share torrent.
 func (s *Service) prepare(ctx context.Context, req Request) (*prepared, error) {
 	hash := lower(req.Hash)
 	if hash == "" {
@@ -219,8 +212,6 @@ func (s *Service) prepare(ctx context.Context, req Request) (*prepared, error) {
 	}, nil
 }
 
-// admit refuses a Share that the instance, the Shares that run, or the
-// limits do not allow.
 func (s *Service) admit(ctx context.Context, inst *models.Instance, hash string, options Options, kind TrackerKind) error {
 	if err := s.supported(ctx, inst); err != nil {
 		return err
@@ -282,7 +273,6 @@ func (s *Service) supported(ctx context.Context, inst *models.Instance) error {
 	return nil
 }
 
-// source is the real torrent as one fresh read found it.
 type source struct {
 	torrent qbt.Torrent
 	names   []string
@@ -290,8 +280,6 @@ type source struct {
 	export  []byte
 }
 
-// readTorrent reads the torrent, its files, and its .torrent, and refuses a
-// torrent that a Share cannot give whole.
 func (s *Service) readTorrent(ctx context.Context, inst *models.Instance, hash string) (*source, error) {
 	torrents, err := s.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
 	if err != nil {

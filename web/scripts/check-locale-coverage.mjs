@@ -39,7 +39,6 @@ const namespaces = [
   "shares",
 ]
 
-// These technical terms, brand names, and abbreviations can stay untranslated.
 const passthroughTerms = new Set([
   "qBittorrent", "BitTorrent", "libtorrent", "autobrr", "qui", "GitHub", "WebUI",
   "Prowlarr", "Jackett", "Sonarr", "Radarr", "Shoutrrr",
@@ -56,10 +55,6 @@ const passthroughTerms = new Set([
   "AM", "PM", "N/A", "I/O", "Pread/pwrite",
   "GPL-2.0-or-later",
 ])
-
-// ---------------------------------------------------------------------------
-// Utility functions
-// ---------------------------------------------------------------------------
 
 function flattenKeys(obj, prefix = "") {
   const result = new Map()
@@ -113,8 +108,6 @@ function isPassthroughValue(value) {
   if (/^[\d\s.,/:;()\-+%#*]+$/.test(value)) return true
   if (/^https?:\/\//.test(value)) return true
 
-  // Check if the value is composed entirely of passthrough terms, whitespace,
-  // and common punctuation / interpolation markers.
   const stripped = value
     .replace(/\{\{[^}]+\}\}/g, "")
     .replace(/[().,;:!?/\-\s]+/g, " ")
@@ -163,10 +156,6 @@ function comparableEnKey(key, enFlat, rule) {
 
   return null
 }
-
-// ---------------------------------------------------------------------------
-// Check functions
-// ---------------------------------------------------------------------------
 
 function checkMissingKeys(enFlat, localeFlat, namespace, rule, pluralBases) {
   const errors = []
@@ -278,7 +267,6 @@ function classifyUntranslated(key, value) {
   if (/^\s*\/\s*(s|min|h|d)\s*$/.test(value.replace(/\{\{[^}]*\}\}/g, ""))) return "rate"
   if (passthroughTerms.has(value)) return "technical"
 
-  // Check if composed of technical terms + connectors
   const stripped = value.replace(/[().,;:!?/\-\s]+/g, " ").trim()
   const words = stripped.split(/\s+/)
   if (words.length <= 4 && words.every((w) => passthroughTerms.has(w) || /^\d+$/.test(w) || w.length <= 2)) return "technical"
@@ -365,7 +353,6 @@ function checkPunctuation(localeFlat, namespace) {
   for (const [key, value] of localeFlat) {
     if (!containsCJK(value)) continue
 
-    // Strip interpolation and HTML before checking punctuation.
     const cleaned = stripHtmlTags(stripInterpolation(value))
 
     for (const [half, full] of Object.entries(halfToFull)) {
@@ -378,7 +365,6 @@ function checkPunctuation(localeFlat, namespace) {
   return warnings
 }
 
-// English is the same for every locale, so a run over all of them parses each namespace once.
 const englishCache = new Map()
 
 function loadEnglish(ns) {
@@ -400,10 +386,6 @@ function loadEnglish(ns) {
   englishCache.set(ns, english)
   return english
 }
-
-// ---------------------------------------------------------------------------
-// Report
-// ---------------------------------------------------------------------------
 
 function printSection(label, items, severity) {
   if (items.length === 0) return
@@ -459,10 +441,6 @@ function report(locale, errors, warnings) {
 
   return totalErrors
 }
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
 
 function checkLocale(locale) {
   const rule = localeRules[locale]

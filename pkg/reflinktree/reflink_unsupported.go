@@ -5,13 +5,10 @@
 
 package reflinktree
 
-// SupportsReflink returns false on unsupported platforms.
-// FreeBSD do not have a standard reflink mechanism that we support.
 func SupportsReflink(_ string) (supported bool, reason string) {
 	return false, "reflink is not supported on this operating system"
 }
 
-// cloneFile is not implemented on unsupported platforms.
 func cloneFile(_, _ string) error {
 	return ErrReflinkUnsupported
 }

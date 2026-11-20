@@ -13,7 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// fakeHelpers is the helper registry: the helper torrents of one instance.
 type fakeHelpers struct {
 	instanceID int
 	hashes     map[string]bool
@@ -26,9 +25,6 @@ func (f fakeHelpers) HelperCheck(instanceID int) func(hash string) bool {
 	return func(hash string) bool { return f.hashes[hash] }
 }
 
-// A backup holds no helper torrent, and a restore neither changes nor removes
-// one. A torrent of the user with the helper tag and no registry row stays in
-// both.
 func TestBackupsLeaveOutHelperTorrents(t *testing.T) {
 	t.Parallel()
 

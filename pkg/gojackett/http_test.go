@@ -47,7 +47,6 @@ func TestRetryDoStopsWhenContextEnds(t *testing.T) {
 	require.Less(t, elapsed, time.Second, "retry loop kept running after the context ended")
 }
 
-// A 5xx response must not leave its connection open until Client.Timeout (#2817).
 func TestRetryDoReleasesConnectionOn5xx(t *testing.T) {
 	t.Parallel()
 
@@ -103,7 +102,6 @@ func TestRetryDoReleasesConnectionOn5xx(t *testing.T) {
 	}
 }
 
-// A 5xx body that never ends must not hold the caller until the client timeout.
 func TestRetryDoReturnsOn5xxWithoutReadingBody(t *testing.T) {
 	t.Parallel()
 

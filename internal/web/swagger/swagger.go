@@ -29,7 +29,7 @@ type Handler struct {
 
 func NewHandler(baseURL string) (*Handler, error) {
 	if len(openapiYAML) == 0 {
-		return nil, nil // Return nil handler if no spec embedded
+		return nil, nil
 	}
 
 	var spec map[string]any
@@ -37,7 +37,6 @@ func NewHandler(baseURL string) (*Handler, error) {
 		return nil, err
 	}
 
-	// Normalize baseURL: ensures leading slash, no trailing slash, "" for root
 	baseURL = httphelpers.NormalizeBasePath(baseURL)
 
 	return &Handler{
@@ -54,7 +53,6 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 func (h *Handler) ServeSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	// Replace URLs in the HTML with base URL aware paths
 	openAPIPath := h.baseURL + "/api/openapi.json"
 	faviconPath := h.baseURL + "/qui.png"
 
@@ -64,7 +62,6 @@ func (h *Handler) ServeSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(html))
 }
 
-// GetOpenAPISpec returns the embedded OpenAPI spec for testing
 func GetOpenAPISpec() ([]byte, error) {
 	if len(openapiYAML) == 0 {
 		return nil, nil
@@ -75,7 +72,6 @@ func GetOpenAPISpec() ([]byte, error) {
 func (h *Handler) ServeOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Create a copy of the spec to modify
 	spec := make(map[string]any)
 	maps.Copy(spec, h.spec)
 
@@ -93,7 +89,6 @@ func (h *Handler) ServeOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 
-		// Keep existing servers as fallback
 		if existingServers, ok := spec["servers"].([]any); ok {
 			for _, s := range existingServers {
 				if server, ok := s.(map[string]any); ok {

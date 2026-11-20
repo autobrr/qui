@@ -24,7 +24,6 @@ func (u *Updater) newSelfUpdater(backup string) (*selfupdate.Updater, *archiveSo
 
 	source := u.source
 	if source == nil {
-		// The go-selfupdate default.
 		if source, err = selfupdate.NewGitHubSource(selfupdate.GitHubConfig{}); err != nil {
 			return nil, nil, fmt.Errorf("could not create GitHub source: %w", err)
 		}

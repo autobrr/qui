@@ -14,8 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// openWithFreePages returns the path of a closed SQLite database whose file
-// holds about 4 MB of free pages.
 func openWithFreePages(t *testing.T, markShrink bool) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "qui.db")

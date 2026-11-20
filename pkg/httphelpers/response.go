@@ -8,7 +8,6 @@ import (
 	"net/http"
 )
 
-// DrainAndClose consumes the remaining response body and closes it to allow connection reuse.
 func DrainAndClose(resp *http.Response) {
 	if resp == nil || resp.Body == nil {
 		return

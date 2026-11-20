@@ -27,48 +27,40 @@ func TestNormalizeUnicode(t *testing.T) {
 		input    string
 		expected string
 	}{
-		// Macrons (Japanese romanization)
 		{"macron o", "Shōgun", "Shogun"},
 		{"macron u", "Shippūden", "Shippuden"},
 		{"macron multiple", "Tōkyō", "Tokyo"},
 		{"jujutsu kaisen", "Jūjutsu Kaisen", "Jujutsu Kaisen"},
 
-		// Accents (European)
 		{"acute e", "Amélie", "Amelie"},
 		{"acute e lowercase", "Pokémon", "Pokemon"},
 		{"acute multiple", "Léon", "Leon"},
 		{"tilde n", "Señorita", "Senorita"},
 		{"tilde n el nino", "El Niño", "El Nino"},
 
-		// Umlauts (German/Nordic)
 		{"umlaut o", "Björk", "Bjork"},
 		{"umlaut u", "Mötley Crüe", "Motley Crue"},
 		{"umlaut a", "Händel", "Handel"},
 
-		// Diaeresis
 		{"diaeresis a", "Nausicaä", "Nausicaa"},
 		{"diaeresis i", "naïve", "naive"},
 		{"diaeresis e", "Noël", "Noel"},
 		{"diaeresis o", "Zoë", "Zoe"},
 
-		// Ligatures (NFKD decomposes these)
 		{"ligature ae", "Encyclopædia", "Encyclopaedia"},
 		{"ligature oe", "Cœur", "Coeur"},
 		{"ligature fi", "ﬁlm", "film"},
 		{"ligature fl", "ﬂower", "flower"},
 
-		// Nordic characters
 		{"slashed o", "Ørsted", "Orsted"},
 		{"ring a", "Ångström", "Angstrom"},
 		{"eszett", "Straße", "Strasse"},
 		{"eth", "Iðunn", "Idunn"},
 		{"thorn", "Þór", "THor"},
 
-		// Mixed
 		{"mixed accents", "Café Amélie", "Cafe Amelie"},
 		{"full title", "The Shōgun S01E01 1080p", "The Shogun S01E01 1080p"},
 
-		// No change needed
 		{"plain ascii", "Hello World", "Hello World"},
 		{"numbers", "2001 A Space Odyssey", "2001 A Space Odyssey"},
 		{"empty string", "", ""},
@@ -88,19 +80,16 @@ func TestNormalizeForMatching(t *testing.T) {
 		input    string
 		expected string
 	}{
-		// Unicode normalization
 		{"macron", "Shōgun S01", "shogun s01"},
 		{"accent", "Amélie 2001", "amelie 2001"},
 		{"umlaut", "Mötley Crüe The Dirt", "motley crue the dirt"},
 
-		// Apostrophe handling
 		{"straight apostrophe", "Bob's Burgers", "bobs burgers"},
 		{"curly apostrophe right", "Don\u2019t Stop", "dont stop"},
 		{"curly apostrophe left", "\u2018Tis Fine", "tis fine"},
 		{"modifier letter apostrophe", "Haibara\u02bcs Teenage New Game", "haibaras teenage new game"},
 		{"backtick", "Rock`n Roll", "rockn roll"},
 
-		// Colon handling
 		{"colon", "CSI: Miami", "csi miami"},
 		{"colon with space", "City: Downtown", "city downtown"},
 		{"colon without space", "Re:Start Isekai Life", "re start isekai life"},
@@ -109,37 +98,30 @@ func TestNormalizeForMatching(t *testing.T) {
 		{"trailing ellipsis", "Madame K...", "madame k"},
 		{"period without space", "Mr.Robot", "mr robot"},
 
-		// Hyphen handling
 		{"hyphen", "Spider-Man", "spider man"},
 		{"multiple hyphens", "X-Men: Days of Future Past", "x men days of future past"},
 
-		// Decorative anime title symbols
 		{"star separator", "Classic★Stars", "classic stars"},
 		{"hollow star separator", "Idol☆Time", "idol time"},
 		{"middle dot separator", "Kaguya・Sama", "kaguya sama"},
 		{"music note separator", "Love♪Live", "love live"},
 
-		// Ampersand handling
 		{"ampersand", "His & Hers", "his and hers"},
 		{"ampersand no spaces", "Law&Order", "law and order"},
 		{"ampersand with spaces", "Will & Grace", "will and grace"},
 
-		// Combined
 		{"all punctuation", "Bob's Place: Spider-Man", "bobs place spider man"},
 		{"unicode and punctuation", "Shōgun: The Warrior's Way", "shogun the warriors way"},
 
-		// Whitespace
 		{"extra spaces", "The   Show", "the show"},
 		{"trim whitespace", "  Trimmed  ", "trimmed"},
 		{"tabs and spaces", "Hello\t  World", "hello world"},
 
-		// Real-world examples
 		{"shogun full", "Shōgun S01E01 1080p DSNP WEB-DL", "shogun s01e01 1080p dsnp web dl"},
 		{"pokemon", "Pokémon Journeys S01", "pokemon journeys s01"},
 		{"leon", "Léon: The Professional 1994", "leon the professional 1994"},
 		{"naruto", "Naruto Shippūden S01E01", "naruto shippuden s01e01"},
 
-		// Edge cases
 		{"empty string", "", ""},
 		{"only spaces", "   ", ""},
 		{"only punctuation", "'-:", ""},
@@ -154,7 +136,6 @@ func TestNormalizeForMatching(t *testing.T) {
 }
 
 func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
-	// Test that real-world release name variations normalize to the same value
 	pairs := []struct {
 		name   string
 		input1 string
@@ -191,13 +172,11 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"CSI Miami S01",
 		},
 		{
-			// A file name cannot hold a colon, so the on-disk name spaces it.
 			"colon without space vs on-disk name",
 			"Re:Start Isekai Life S04E15",
 			"Re Start Isekai Life S04E15",
 		},
 		{
-			// Sonarr series title versus a tracker's spelling of the same title.
 			"sonarr colon space comma vs tracker colon hyphens",
 			"Re: START, Isekai Life Again",
 			"Re:START -Isekai Life Again-",

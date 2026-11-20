@@ -5,8 +5,6 @@
 
 package fsops
 
-// isPlatformDirNotEmpty has no additional native error outside Windows.
-// syscall.ENOTEMPTY is handled by IsDirNotEmpty itself.
 func isPlatformDirNotEmpty(error) bool {
 	return false
 }

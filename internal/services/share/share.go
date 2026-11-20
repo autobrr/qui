@@ -1,9 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package share runs Shares: it gives the files of one torrent to someone
-// whose client qui does not manage, through a Share torrent that the user's
-// client seeds, and owns qui's own Share tracker.
 package share
 
 import (
@@ -11,7 +8,6 @@ import (
 	"time"
 )
 
-// State is the state of a Share.
 type State string
 
 const (
@@ -19,15 +15,12 @@ const (
 	// StateEnding: qui removes the Share torrent from the client, and retries
 	// while the client is offline.
 	StateEnding State = "ending"
-	// StateEnded: the Share torrent is gone from the client.
-	StateEnded State = "ended"
+	StateEnded  State = "ended"
 )
 
-// TrackerKind is the Share tracker of a Share.
 type TrackerKind string
 
 const (
-	// TrackerOwn is qui's own Share tracker.
 	TrackerOwn TrackerKind = "own"
 	// TrackerOutside is the tracker URL of the settings. qui receives no
 	// announces from it.
@@ -60,8 +53,7 @@ type Share struct {
 	EndReason           string
 	Activity
 	CreatedAt time.Time
-	// EndedAt is zero until the Share has ended.
-	EndedAt time.Time
+	EndedAt   time.Time
 }
 
 // Activity is what qui learned of the recipient: the addresses that
@@ -73,8 +65,6 @@ type Activity struct {
 	Uploaded   int64
 }
 
-// Peer is one address that announced, or one connected peer of the user's
-// client with an outside tracker.
 type Peer struct {
 	Address  string    `json:"address"`
 	Progress float64   `json:"progress"`

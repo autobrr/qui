@@ -18,18 +18,15 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// Repository handles database operations for torrent file caching
 type Repository struct {
 	db dbinterface.Querier
 }
 
-// Use a conservative batch size to stay under SQLite parameter limits (900 default).
 const maxBatchItems = 800
 
 // Use a conservative batch size for file inserts to stay under SQLite parameter limits (999 default).
 const fileBatchSize = 80
 
-// fileRow represents a single row to insert into torrent_files_cache
 type fileRow struct {
 	instanceID      int
 	hashID          int64
@@ -83,12 +80,10 @@ type cacheEntryRows struct {
 	syncedAt time.Time
 }
 
-// NewRepository creates a new files repository
 func NewRepository(db dbinterface.Querier) *Repository {
 	return &Repository{db: db}
 }
 
-// GetFilesBatch retrieves cached files for multiple torrents at once.
 func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string][]CachedFile, error) {
 	cleaned := dedupeHashes(hashes)
 	if len(cleaned) == 0 {
@@ -216,14 +211,6 @@ func (r *Repository) getEntriesBatch(ctx context.Context, instanceID int, hashes
 	return results, nil
 }
 
-// UpsertCache writes file rows and sync rows in one transaction, so a reader
-// never sees a print with a list from another write.
-//
-// On Postgres every cache writer locks in one order: the instance row, the sync
-// rows in hash order, then the file rows. A write, an invalidation, the orphan
-// cleanup and an instance delete then cannot deadlock (SQLSTATE 40P01). The
-// sync rows come first so that a second writer of a hash waits for the first
-// one to commit before it compares its files with the stored ones.
 func (r *Repository) UpsertCache(ctx context.Context, files []CachedFile, infos []SyncInfo) error {
 	if len(files) == 0 && len(infos) == 0 {
 		return nil
@@ -332,7 +319,6 @@ func upsertFiles(ctx context.Context, tx dbinterface.TxQuerier, files []CachedFi
 	return upsertFileRows(ctx, tx, allRows)
 }
 
-// upsertFileRows writes rows to torrent_files_cache in batches.
 func upsertFileRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fileRow) error {
 	// Pre-build the full query for full batches.
 	//
@@ -367,21 +353,17 @@ func upsertFileRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fileRo
 	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 12, fileBatchSize)
 	t := time.Now()
 
-	// Pre-allocate args slice to reuse across batches
 	args := make([]any, 0, fileBatchSize*12)
 
-	// Batch insert files
 	for i := 0; i < len(rows); i += fileBatchSize {
 		end := min(i+fileBatchSize, len(rows))
 		batch := rows[i:end]
 
-		// Reset args for this batch
 		args = args[:0]
 		var query string
 		if len(batch) == fileBatchSize {
 			query = fullBatchQuery
 		} else {
-			// Build query for partial final batch
 			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 12, len(batch))
 		}
 
@@ -410,7 +392,6 @@ func upsertFileRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fileRo
 	return nil
 }
 
-// dropUnchangedRows returns the rows that are new or differ from the stored row.
 func dropUnchangedRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fileRow) ([]fileRow, error) {
 	type torrentKey struct {
 		instanceID int
@@ -480,23 +461,18 @@ func dropUnchangedRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fil
 	return changed, nil
 }
 
-// DeleteFiles removes all cached files for a torrent.
-// Returns nil if successful or if no cache existed for the given torrent.
 func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash string) error {
-	// Start a transaction
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Get the hash ID without creating it if it doesn't exist
 	hashIDs, err := dbinterface.GetStringID(ctx, tx, hash)
 	if err != nil {
 		return fmt.Errorf("failed to get torrent_hash ID: %w", err)
 	}
 
-	// If the hash doesn't exist in the string pool, there's nothing to delete
 	if len(hashIDs) == 0 || !hashIDs[0].Valid {
 		return tx.Commit()
 	}
@@ -510,7 +486,6 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	// Log how many rows were deleted for observability
 	if rowsAffected, err := result.RowsAffected(); err == nil && rowsAffected > 0 {
 		log.Debug().Int("instanceID", instanceID).Str("hash", hash).Int64("files", rowsAffected).
 			Msg("Deleted cached files")
@@ -538,7 +513,6 @@ func decodeNullableBoolFromInt(value sql.NullInt64) *bool {
 	return &result
 }
 
-// GetSyncInfoBatch retrieves sync metadata for multiple torrents in a single query.
 func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashes []string) (map[string]*SyncInfo, error) {
 	cleaned := dedupeHashes(hashes)
 	if len(cleaned) == 0 {
@@ -644,7 +618,6 @@ func upsertSyncRows(ctx context.Context, tx dbinterface.TxQuerier, infos []SyncI
 	return nil
 }
 
-// DeleteTorrentCache removes all cache data for multiple torrents (both files and sync info)
 func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, hashes []string) error {
 	if len(hashes) == 0 {
 		return nil
@@ -655,7 +628,6 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 		return nil
 	}
 
-	// Start a transaction
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("DeleteTorrentCache: failed to begin transaction: %w", err)
@@ -670,13 +642,11 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 		return fmt.Errorf("DeleteTorrentCache: %w", err)
 	}
 
-	// Get hash IDs for all hashes
 	hashIDs, err := dbinterface.GetStringID(ctx, tx, hashes...)
 	if err != nil {
 		return fmt.Errorf("DeleteTorrentCache: failed to get torrent_hash IDs: %w", err)
 	}
 
-	// Filter out invalid hashes
 	validHashIDs := make([]int64, 0, len(hashIDs))
 	for _, id := range hashIDs {
 		if id.Valid {
@@ -685,7 +655,6 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 	}
 
 	if len(validHashIDs) == 0 {
-		// No valid hashes to delete
 		if commitErr := tx.Commit(); commitErr != nil {
 			return fmt.Errorf("DeleteTorrentCache: commit failed when no valid hashes: %w", commitErr)
 		}
@@ -706,7 +675,6 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 		}
 	}
 
-	// Delete files for all valid hashes
 	for batch := range slices.Chunk(validHashIDs, maxBatchItems) {
 		args := make([]any, 0, len(batch)+1)
 		args = append(args, instanceID)
@@ -727,14 +695,12 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 	return nil
 }
 
-// DeleteCacheForRemovedTorrents removes cache entries for torrents that no longer exist
 func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instanceID int, currentHashes []string) (int, error) {
 	if len(currentHashes) == 0 {
 		// If no current hashes provided, don't delete anything to be safe
 		return 0, nil
 	}
 
-	// Deduplicate current hashes
 	currentHashes = dedupeHashes(currentHashes)
 	if len(currentHashes) == 0 {
 		return 0, nil
@@ -750,13 +716,11 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 		return 0, err
 	}
 
-	// Create a temporary table for current hashes
 	_, err = tx.ExecContext(ctx, `CREATE TEMP TABLE current_hashes (hash TEXT PRIMARY KEY)`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
-	// Insert current hashes into temp table in batches
 	queryTemplate := `INSERT INTO current_hashes (hash) VALUES %s ON CONFLICT(hash) DO NOTHING`
 	const hashBatchSize = 900 // Keep under SQLite's 999 variable limit
 	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 1, hashBatchSize)
@@ -767,13 +731,11 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 		end := min(i+hashBatchSize, len(currentHashes))
 		batch := currentHashes[i:end]
 
-		// Reset args for this batch
 		args = args[:0]
 		var query string
 		if len(batch) == hashBatchSize {
 			query = fullBatchQuery
 		} else {
-			// Build query for partial final batch
 			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 1, len(batch))
 		}
 
@@ -823,7 +785,6 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 		return 0, fmt.Errorf("failed to delete files for removed torrents: %w", err)
 	}
 
-	// Drop the temporary table
 	_, err = tx.ExecContext(ctx, `DROP TABLE current_hashes`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to drop temp table: %w", err)
@@ -837,7 +798,6 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 	return int(rowsAffected), nil
 }
 
-// GetCacheStats returns statistics about the cache for an instance
 func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheStats, error) {
 	var stats CacheStats
 	var (

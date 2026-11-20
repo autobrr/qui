@@ -11,8 +11,6 @@ import (
 	"syscall"
 )
 
-// sameFilesystem checks if two paths are on the same filesystem on Unix.
-// Uses stat(2) to compare device IDs.
 func sameFilesystem(path1, path2 string) (bool, error) {
 	stat1, err := os.Stat(path1)
 	if err != nil {

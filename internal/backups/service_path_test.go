@@ -143,7 +143,6 @@ func TestDeleteRunKeepsBlobReferencedUnderOtherSpelling(t *testing.T) {
 		return run
 	}
 
-	// Both spellings resolve to the same blob file (see TestResolveBackupPath).
 	canonical := makeRun("backups/torrents/aa/bb/cc/shared.torrent")
 	makeRun("torrents/aa/bb/cc/shared.torrent")
 

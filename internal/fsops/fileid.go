@@ -47,8 +47,6 @@ func remoteFileKey(id hardlink.FileID, instance *models.Instance) (FileKey, bool
 	return key, true
 }
 
-// SameFile reports whether two IDs name one file. IDs of different kinds
-// never match, and an ID with no key matches nothing.
 func SameFile(a hardlink.FileID, aInstance *models.Instance, b hardlink.FileID, bInstance *models.Instance) bool {
 	aKey, aOK := FileKeyOf(a, aInstance)
 	bKey, bOK := FileKeyOf(b, bInstance)

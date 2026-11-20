@@ -13,9 +13,6 @@ import (
 	"strings"
 )
 
-// TxQuerier is the interface for database transaction operations.
-// It is implemented by *database.Tx and provides transaction-specific query
-// methods with prepared statement caching, plus transaction control methods.
 type TxQuerier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -24,9 +21,6 @@ type TxQuerier interface {
 	Rollback() error
 }
 
-// Querier is the centralized interface for database operations.
-// It is implemented by *database.DB and provides all database capabilities
-// including queries, transactions, and string interning.
 type Querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -42,8 +36,6 @@ type deferForeignKeysTx interface {
 	DeferForeignKeyChecks(ctx context.Context) error
 }
 
-// DialectOf returns the SQL dialect for a querier when available.
-// Defaults to sqlite for backward compatibility with legacy implementations.
 func DialectOf(q any) string {
 	if q == nil {
 		return "sqlite"
@@ -59,9 +51,6 @@ func DialectOf(q any) string {
 	return strings.ToLower(dialect)
 }
 
-// DeferForeignKeyChecks defers foreign key constraint checks for the given transaction
-// until the end of the transaction. This allows operations that would normally violate
-// foreign key constraints due to ordering.
 func DeferForeignKeyChecks(ctx context.Context, tx TxQuerier) error {
 	if txWithCapabilities, ok := tx.(deferForeignKeysTx); ok {
 		return txWithCapabilities.DeferForeignKeyChecks(ctx)
@@ -71,10 +60,6 @@ func DeferForeignKeyChecks(ctx context.Context, tx TxQuerier) error {
 	return err
 }
 
-// BuildQueryWithPlaceholders builds a SQL query string with repeated placeholders
-// queryTemplate should contain %s where the placeholders will be inserted
-// placeholdersPerRow is the number of ? per row (e.g., 12 for file inserts)
-// numRows is how many rows to repeat the placeholders for
 func BuildQueryWithPlaceholders(queryTemplate string, placeholdersPerRow int, numRows int) string {
 	if placeholdersPerRow <= 0 {
 		return fmt.Sprintf(queryTemplate, "")
@@ -83,7 +68,6 @@ func BuildQueryWithPlaceholders(queryTemplate string, placeholdersPerRow int, nu
 		return fmt.Sprintf(queryTemplate, "")
 	}
 	var sb strings.Builder
-	// Estimate size: each row has 2*placeholdersPerRow chars for ?, plus 2 for (), plus comma space
 	totalLen := numRows*(2*placeholdersPerRow+2) + (numRows-1)*2
 	sb.Grow(totalLen)
 	for i := range numRows {

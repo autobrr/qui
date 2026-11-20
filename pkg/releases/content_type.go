@@ -10,7 +10,6 @@ import (
 	"github.com/autobrr/rls"
 )
 
-// ContentType is a content type returned by DetermineContentType.
 type ContentType string
 
 const (
@@ -42,9 +41,7 @@ var ContentTypes = []ContentType{
 	ContentTypeUnknown,
 }
 
-// ContentTypeInfo contains all information about a torrent's detected content type.
 type ContentTypeInfo struct {
-	// ContentType is one of ContentTypes.
 	ContentType ContentType
 }
 
@@ -58,7 +55,6 @@ func normalizeReleaseTypeForContent(release *rls.Release) *rls.Release {
 	}
 
 	if looksLikeVideoRelease(&normalized) {
-		// Preserve episode metadata when present so TV content keeps season info.
 		if normalized.Series > 0 || normalized.Episode > 0 {
 			normalized.Type = rls.Episode
 		} else {
@@ -131,7 +127,6 @@ func containsVideoTokens(value string, tokens []string) bool {
 	return false
 }
 
-// isAdultContent checks if a release appears to be adult/pornographic content.
 func isAdultContent(release *rls.Release) bool {
 	titleLower := strings.ToLower(release.Title)
 	subtitleLower := strings.ToLower(release.Subtitle)
@@ -142,7 +137,6 @@ func isAdultContent(release *rls.Release) bool {
 		return true
 	}
 
-	// JAV code patterns (4 letters - 3-4 digits), but exclude if it's a valid RIAJ media code.
 	if reJAV.MatchString(release.Title) {
 		if detectRIAJMediaType(release.Title) == "" {
 			return true
@@ -228,7 +222,6 @@ func detectRIAJMediaType(title string) string {
 	return ""
 }
 
-// DetermineContentType analyzes a parsed release and returns a best-effort content type.
 func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	var info ContentTypeInfo
 
@@ -247,7 +240,6 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 func ClassifyAs(release *rls.Release, releaseType rls.Type) ContentTypeInfo {
 	var info ContentTypeInfo
 
-	// Adult detection first; if JAV-like token appears, attempt re-parse without it.
 	if isAdultContent(release) {
 		if reJAV.MatchString(release.Title) && detectRIAJMediaType(release.Title) == "" {
 			newTitle := reJAV.ReplaceAllString(release.Title, "")
@@ -287,10 +279,8 @@ func ClassifyAs(release *rls.Release, releaseType rls.Type) ContentTypeInfo {
 		// the fallback.
 		info.ContentType = ContentTypeUnknown
 	case rls.Unknown:
-		// Fall back below.
 	}
 
-	// Fallback logic based on series/episode/year detection for unknown types.
 	if info.ContentType == "" {
 		switch {
 		case release.Series > 0 || release.Episode > 0:
@@ -302,7 +292,6 @@ func ClassifyAs(release *rls.Release, releaseType rls.Type) ContentTypeInfo {
 		}
 	}
 
-	// Last resort: infer from RIAJ media type.
 	if info.ContentType == ContentTypeUnknown {
 		switch detectRIAJMediaType(release.Title) {
 		case "cd", "cd-single", "sacd", "md", "cassette-single", "cassette-album", "cd-g", "vinyl-lp", "vinyl-ep", "cd-video", "dvd-audio", "dvd-music":

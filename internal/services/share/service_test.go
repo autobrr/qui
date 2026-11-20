@@ -39,8 +39,6 @@ import (
 
 const showName = "Show.S01.1080p-GRP"
 
-// ownerAddress is the public peer address of the user's client: the
-// external address and the listen port that the stub reports.
 var ownerAddress = netip.MustParseAddrPort("203.0.113.10:51413")
 
 type clock struct {
@@ -60,9 +58,6 @@ func (c *clock) advance(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
-// rig is one instance with a stub qBittorrent that seeds the torrent of
-// Show.S01.1080p-GRP from dir, and a Share service with qui's own tracker on
-// 127.0.0.1.
 type rig struct {
 	t               *testing.T
 	db              dbinterface.Querier
@@ -80,8 +75,6 @@ type rig struct {
 	svc             *share.Service
 }
 
-// slowPeers answers the next lookup of the public peer address of an
-// instance once hold returns.
 type slowPeers struct {
 	share.PeerAddresses
 	hold atomic.Pointer[func()]
@@ -126,8 +119,6 @@ func newRig(t *testing.T) *rig {
 	return r
 }
 
-// seed writes the files of a complete torrent under name, and seeds the
-// torrent in the stub.
 func (r *rig) seed(name string) string {
 	r.t.Helper()
 	files := map[string][]byte{
@@ -145,8 +136,6 @@ func (r *rig) seed(name string) string {
 	return r.stub.Seed(data, r.dir)
 }
 
-// newService builds a Share service on the database of the rig, as qui does
-// at each start.
 func (r *rig) newService() *share.Service {
 	svc := share.NewService(share.Deps{
 		Store:           share.NewStore(r.db),
@@ -196,9 +185,6 @@ func (r *rig) check() {
 	require.NoError(r.t, r.svc.Check(r.t.Context()))
 }
 
-// requireEnded checks that the Share ended for reason, with its code, that
-// the Share torrent left the client, and that the files of the real torrent
-// stayed.
 func (r *rig) requireEnded(id int64, code, reason string) {
 	r.t.Helper()
 	sh := r.get(id)
@@ -212,8 +198,6 @@ func (r *rig) requireEnded(id int64, code, reason string) {
 	}
 }
 
-// announce sends one announce to the Share tracker, from 127.0.0.1 with the
-// port and the bytes left of a client, and returns the peers of the answer.
 func (r *rig) announce(announceURL, infoHash string, port, left int, event string) []netip.AddrPort {
 	r.t.Helper()
 	peers, failure := r.sendAnnounce("", announceURL, infoHash, port, left, event)
@@ -245,7 +229,6 @@ func (r *rig) sendAnnounce(from, announceURL, infoHash string, port, left int, e
 	return peers, answer.Failure
 }
 
-// announceRequest is the request of one announce.
 func (r *rig) announceRequest(from, announceURL, infoHash string, port, left int, event string) *http.Request {
 	r.t.Helper()
 	hash, err := metainfo.NewHashFromHex(infoHash)
@@ -268,7 +251,6 @@ func (r *rig) announceRequest(from, announceURL, infoHash string, port, left int
 	return req
 }
 
-// torrentOf decodes a .torrent and returns its announce URL and infohash.
 func torrentOf(t *testing.T, data []byte) (announce, infoHash string, private bool) {
 	t.Helper()
 	mi, err := metainfo.Load(bytes.NewReader(data))
@@ -278,7 +260,6 @@ func torrentOf(t *testing.T, data []byte) (announce, infoHash string, private bo
 	return mi.Announce, mi.HashInfoBytes().HexString(), info.Private != nil && *info.Private
 }
 
-// clientTorrent returns the .torrent of the Share torrent in the user's client.
 func (r *rig) clientTorrent(hash string) []byte {
 	r.t.Helper()
 	data, _, _, err := r.sync.ExportTorrent(r.t.Context(), r.instance.ID, hash)
@@ -397,8 +378,6 @@ func TestAShareWithoutTheEndAtTheFirstDownloadRunsOn(t *testing.T) {
 	require.Equal(t, share.StateActive, r.get(sh.ID).State)
 }
 
-// A Share with no end reason has no code. A reason without a code keeps its
-// text and gets the code other.
 // regression: #4231
 func TestAnEndReasonWithoutACodeIsOther(t *testing.T) {
 	t.Parallel()
@@ -508,10 +487,8 @@ func TestAShareEndsBeforeQuiChangesTheRealTorrent(t *testing.T) {
 	}
 }
 
-// outsideTracker is a tracker URL that no test contacts.
 const outsideTracker = "https://tracker.example/announce"
 
-// useOutsideTracker clears qui's own tracker and sets an outside tracker URL.
 func (r *rig) useOutsideTracker() {
 	r.t.Helper()
 	require.NoError(r.t, r.trackerSettings.SaveSettings(r.t.Context(), sharetracker.Settings{}))
@@ -572,8 +549,6 @@ func TestAShareStaysEndingWhileTheClientKeepsTheShareTorrent(t *testing.T) {
 	r.requireEnded(sh.ID, "stopped", "Stopped by the user.")
 }
 
-// failWrites makes each write of column in the row of a Share fail with
-// "<column> write failed" until the returned func runs.
 func (r *rig) failWrites(column string) (stop func()) {
 	r.t.Helper()
 	_, err := r.db.ExecContext(r.t.Context(), fmt.Sprintf(`
@@ -586,7 +561,6 @@ func (r *rig) failWrites(column string) (stop func()) {
 	}
 }
 
-// stored reads a Share from the database, as qui does after a restart.
 func (r *rig) stored(id int64) *share.Share {
 	r.t.Helper()
 	sh, err := share.NewStore(r.db).Get(r.t.Context(), id)
@@ -801,7 +775,6 @@ func TestEndedSharesLeaveTheList(t *testing.T) {
 	require.False(t, r.helpers.IsHelper(r.instance.ID, kept.HelperHash))
 }
 
-// ids lists the ids of the Shares, the newest first.
 func (r *rig) ids() []int64 {
 	r.t.Helper()
 	list, err := r.svc.List(r.t.Context())
@@ -929,7 +902,6 @@ func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
 	r.svc.Close()
 	r.svc = r.newService()
 	require.NoError(t, r.svc.Resume(t.Context()))
-	// qui cannot read the Share settings from now on.
 	_, err := r.db.ExecContext(t.Context(), `ALTER TABLE share_settings RENAME TO share_settings_gone`)
 	require.NoError(t, err)
 	require.NoError(t, r.svc.Unlock(t.Context(), sh.ID))
@@ -939,9 +911,6 @@ func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "Unlock after a restart lets the next downloader in")
 }
 
-// An announce that took the lock before Unlock, and reports after the next
-// downloader took it, leaves the lock with the next downloader, also after a
-// restart of qui.
 // regression: #4231
 func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing.T) {
 	r := newRig(t)
@@ -1008,8 +977,6 @@ func TestTheCheckStoresTheLockHolderAfterAFailedWrite(t *testing.T) {
 	require.Equal(t, netip.MustParseAddr(first), r.stored(sh.ID).Holder, "the lock holder outlives a restart of qui")
 }
 
-// A recipient that the lock keeps out cannot end the Share, also with the
-// announce that stops it: only the progress of the first downloader counts.
 // regression: #4231
 func TestALockedOutDownloaderDoesNotEndTheShare(t *testing.T) {
 	for _, event := range []string{"completed", "stopped"} {

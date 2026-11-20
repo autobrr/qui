@@ -10,7 +10,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Fastresume represents a qBittorrent fastresume file
 type Fastresume struct {
 	ActiveTime                int64      `bencode:"active_time"`
 	AddedTime                 int64      `bencode:"added_time"`
@@ -77,7 +76,6 @@ type Fastresume struct {
 	MappedFiles               []string   `bencode:"mapped_files,omitempty"`
 }
 
-// Encode qBittorrent fastresume file
 func (fr *Fastresume) Encode(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
 		return errors.Wrapf(err, "could not create directory for: %s", path)
@@ -102,7 +100,6 @@ func (fr *Fastresume) Encode(path string) error {
 	return file.Close()
 }
 
-// ConvertFilePriority for each file set priority
 func (fr *Fastresume) ConvertFilePriority(numFiles int) {
 	newPrioList := make([]int, 0, numFiles)
 

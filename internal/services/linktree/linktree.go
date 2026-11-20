@@ -22,19 +22,15 @@ import (
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
-// Request is everything one add gives the module.
 type Request struct {
-	Backend fsops.Backend
-	Config  Config
-	// TrackerFolder and InstanceFolder are the folder names of the By Tracker
-	// and By Instance presets.
+	Backend        fsops.Backend
+	Config         Config
 	TrackerFolder  string
 	InstanceFolder string
 	Torrent        Torrent
 	Links          []Link
 }
 
-// Torrent is the incoming torrent.
 type Torrent struct {
 	InfoHash string
 	Name     string
@@ -42,13 +38,11 @@ type Torrent struct {
 	Files []string
 }
 
-// Link pairs a torrent path with the source file it links to.
 type Link struct {
 	TorrentPath string
 	SourcePath  string
 }
 
-// TreePlan is where a Link tree will go. Plan builds it without writing to disk.
 type TreePlan struct {
 	// BaseDir, PresetDir, and SavePath are the expected Link base directory,
 	// Preset directory, and save path. Create can pick others after a taken
@@ -64,7 +58,6 @@ type TreePlan struct {
 	planLost error
 }
 
-// Tree is a Link tree that Create made.
 type Tree struct {
 	Kind      LinkKind
 	BaseDir   string
@@ -84,9 +77,6 @@ type LinkedFile struct {
 	Created     bool
 }
 
-// Plan picks the Link base directories on the filesystem of the source files,
-// ranked by the path they share with the first source. It writes nothing. The
-// error is a *Error.
 func Plan(ctx context.Context, req Request) (*TreePlan, error) {
 	if len(req.Links) == 0 {
 		return nil, &Error{Kind: InvalidPlan, Err: errors.New("no files to link")}
@@ -148,9 +138,6 @@ func Plan(ctx context.Context, req Request) (*TreePlan, error) {
 // remote instance each check is a round trip.
 const sourceChecks = 8
 
-// sourceProbe returns one source file to compare the Link base directories
-// with, after it checks that every source folder is on its filesystem. The
-// backend gets one question for each distinct source folder.
 func (p *TreePlan) sourceProbe(ctx context.Context) (string, error) {
 	b := p.req.Backend
 	d := b.Paths()
@@ -244,7 +231,6 @@ func (p *TreePlan) topFolder(presetDir string) string {
 	return d.Join(presetDir, pathutil.IsolationFolder(p.req.Torrent.Name))
 }
 
-// destination is the save path of a tree whose top folder is free.
 func (p *TreePlan) destination(presetDir string) string {
 	if p.root != "" {
 		return presetDir
@@ -357,9 +343,6 @@ func (p *TreePlan) checkReflink(ctx context.Context, baseDir string) *Error {
 	return nil
 }
 
-// release frees the folder that the failed create reserved. When the folder
-// cannot be removed, a partial tree can remain, and the walk stops. A lost
-// connection during the removal wins over the kind of the failure.
 func (p *TreePlan) release(ctx context.Context, reserved string, failure *Error) *Error {
 	if reserved != "" {
 		if err := p.req.Backend.Remove(context.WithoutCancel(ctx), reserved, fsops.RemoveOptions{}); err != nil {
@@ -405,7 +388,6 @@ func (t *Tree) Rollback(ctx context.Context) error {
 	return t.backend.RemoveTree(context.WithoutCancel(ctx), t.created)
 }
 
-// commonRoot returns the top folder that every file shares, or "".
 func commonRoot(files []string) string {
 	var root string
 	for i, name := range files {

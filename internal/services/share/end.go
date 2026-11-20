@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// The reasons why a Share ends, for the user.
 const (
 	reasonDownloaded = "The recipient has the files."
 	reasonExpired    = "The Share expired."
@@ -42,9 +41,6 @@ var reasonCodes = map[string]string{
 	reasonGone:       "share_torrent_gone",
 }
 
-// EndReasonCode returns the code of the end reason of sh, for the UI to
-// translate: "" while sh has no end reason, and "other" for a reason with no
-// code.
 func (sh *Share) EndReasonCode() string {
 	code, ok := reasonCodes[sh.EndReason]
 	if !ok && sh.EndReason != "" {
@@ -97,12 +93,6 @@ func (s *Service) removeTorrent(ctx context.Context, sh *Share) error {
 	return nil
 }
 
-// Check ends each active Share whose end condition holds, stores again a
-// lock holder whose write failed, retries the removal of each ending Share,
-// starts or stops qui's own tracker for the active Shares, which retries a
-// start that failed, and removes the rows of the Shares that ended more than
-// 30 days ago, with the registry rows of their Share torrents. Run calls it
-// at each tick.
 func (s *Service) Check(ctx context.Context) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -137,8 +127,6 @@ func (s *Service) Check(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// clientView is one fresh read of the torrents of the Shares on an
-// instance. err is set while the client is offline.
 type clientView struct {
 	torrents map[string]*qbt.Torrent
 	err      error
@@ -159,7 +147,6 @@ func (s *Service) readClient(ctx context.Context, instanceID int, shares []Share
 	return view
 }
 
-// endReason returns why the active Share ends now, or "".
 func (s *Service) endReason(ctx context.Context, sh *Share, view *clientView) string {
 	s.mu.Lock()
 	completed := s.live[sh.ID] != nil && s.live[sh.ID].completed
@@ -250,7 +237,6 @@ func (s *Service) saveActivity(ctx context.Context, id int64) error {
 	return nil
 }
 
-// removeOld removes the Shares that ended more than 30 days ago.
 func (s *Service) removeOld(ctx context.Context) error {
 	ids, err := s.deps.Store.EndedBefore(ctx, s.deps.Now().Add(-keepEnded))
 	if err != nil {
@@ -264,8 +250,6 @@ func (s *Service) removeOld(ctx context.Context) error {
 	return nil
 }
 
-// removeRow removes the row of an ended Share and the registry rows of its
-// Share torrent.
 func (s *Service) removeRow(ctx context.Context, id int64) error {
 	sh, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
@@ -280,8 +264,6 @@ func (s *Service) removeRow(ctx context.Context, id int64) error {
 	return s.deps.Store.Remove(ctx, id)
 }
 
-// gone reports whether a fresh read of the client does not list the Share
-// torrent.
 func (s *Service) gone(ctx context.Context, sh *Share) (bool, error) {
 	left, err := s.deps.Sync.GetTorrentRefsFresh(ctx, sh.InstanceID, qbittorrent.TorrentRefFilter{Hashes: []string{sh.HelperHash}})
 	return len(left) == 0, err
@@ -291,8 +273,6 @@ func sortedPeers(peers iter.Seq[Peer]) []Peer {
 	return slices.SortedFunc(peers, func(a, b Peer) int { return cmp.Compare(a.Address, b.Address) })
 }
 
-// changeReasons gives the end reason of a Share for each change of its real
-// torrent.
 var changeReasons = map[qbittorrent.TorrentChange]string{
 	qbittorrent.TorrentChangeDelete: reasonDeleted,
 	qbittorrent.TorrentChangeMove:   reasonMoved,

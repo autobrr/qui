@@ -15,7 +15,6 @@ interface TransfersPageProps {
   onTabChange: (tab: TransfersSection | undefined, options: { replace: boolean }) => void
 }
 
-/** The Transfers page: the Transfers and Export runs, and the Shares, each in its own section. */
 export function TransfersPage({ activeTab, onTabChange }: TransfersPageProps) {
   const { t } = useTranslation("transfers")
   const navGroups: SectionNavGroup<TransfersSection>[] = TRANSFERS_NAV_GROUPS.map(group => ({

@@ -5,12 +5,10 @@ package proxy
 
 import "sync"
 
-// BufferPool provides a thread-safe pool of byte slices for the reverse proxy
 type BufferPool struct {
 	pool sync.Pool
 }
 
-// NewBufferPool creates a new buffer pool with 32KB buffers
 func NewBufferPool() *BufferPool {
 	return &BufferPool{
 		pool: sync.Pool{
@@ -27,12 +25,10 @@ func NewBufferPool() *BufferPool {
 	}
 }
 
-// Get returns a buffer from the pool
 func (p *BufferPool) Get() []byte {
 	return *p.pool.Get().(*[]byte)
 }
 
-// Put returns a buffer to the pool
 func (p *BufferPool) Put(buf []byte) {
 	p.pool.Put(&buf)
 }

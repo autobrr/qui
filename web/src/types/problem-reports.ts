@@ -5,7 +5,6 @@
 
 import type { CrossSeedGazelleLookupReason, CrossSeedGazelleLookupStatus } from "./crossseed"
 
-/** The rules that the cross-seed search matched with. */
 export interface ProblemReportMatchPolicy {
   titleRescue: boolean
   individualEpisodes: boolean
@@ -23,11 +22,9 @@ export interface ProblemReportMatchPolicy {
 export interface ProblemReportIndexer {
   id: number
   name: string
-  /** Why the search skips the indexer. */
   reason?: string
 }
 
-/** The Torznab indexers and RED/OPS sites that the search asks or skips. */
 export interface ProblemReportSearchScope {
   torznabIndexers: ProblemReportIndexer[]
   torznabSkipped: ProblemReportIndexer[]
@@ -68,7 +65,6 @@ export interface ProblemReportNoticeFacts {
   openedAt: string
 }
 
-/** The server facts that GET /api/problem-reports/facts returns for a starting point. */
 export interface ProblemReportFacts {
   qui: ProblemReportQuiFacts
   instances: ProblemReportInstanceFacts[]
@@ -86,7 +82,6 @@ export interface ProblemReportBrowserFacts {
   devicePixelRatio: number
 }
 
-/** The `report` part of POST /api/problem-reports. */
 export interface ProblemReportPayload {
   submissionId: string
   text: string
@@ -115,7 +110,6 @@ export interface SentProblemReport {
 /** Where a Problem report stands, as brrbin last answered. */
 export type ProblemReportStatus = "received" | "issue" | "closed"
 
-/** One row of Sent reports, as GET /api/problem-reports returns it. */
 export interface ListedProblemReport {
   id: string
   title: string

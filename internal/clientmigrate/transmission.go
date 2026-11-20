@@ -82,14 +82,12 @@ func (i *TransmissionImport) Migrate() error {
 
 		torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
 
-		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
 			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentID)
 			skipped++
 			continue
 		}
 
-		// check for FILE.resume
 		resumeFilePath := filepath.Join(i.opts.SourceDir, "resume", baseName+".resume")
 
 		resumeFile, err := i.decodeResumeFile(resumeFilePath)
@@ -127,7 +125,6 @@ func (i *TransmissionImport) Migrate() error {
 
 		newFastResume := transmissionFastresume(resumeFile, file, &metaInfo, pieces)
 
-		// copy torrent file
 		fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
 		if err = newFastResume.Encode(fastResumeOutFile); err != nil {
 			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s", fastResumeOutFile)
@@ -151,8 +148,6 @@ func (i *TransmissionImport) Migrate() error {
 	return nil
 }
 
-// prepareDirs checks that the transmission torrents dir is a directory and
-// creates the qBittorrent dir unless this is a dry run
 func (i *TransmissionImport) prepareDirs(torrentsDir string) error {
 	sourceDirInfo, err := os.Stat(torrentsDir)
 	if err != nil {
@@ -176,8 +171,6 @@ func (i *TransmissionImport) prepareDirs(torrentsDir string) error {
 	return nil
 }
 
-// transmissionFastresume builds the qBittorrent fastresume for a complete
-// transmission torrent
 func transmissionFastresume(resumeFile *TransmissionResumeFile, file *metainfo.MetaInfo, metaInfo *metainfo.Info, pieces string) Fastresume {
 	// completed-torrent timestamps: done-date is legitimately 0 for
 	// torrents Transmission adopted from existing data, fall back to
@@ -245,13 +238,11 @@ func transmissionFastresume(resumeFile *TransmissionResumeFile, file *metainfo.M
 	// destination is the parent directory in every Transmission version:
 	// file subpaths already start with the torrent name
 	if metaInfo.IsDir() {
-		// legacy and should be removed sometime with 4.3.X
 		newFastResume.QbtHasRootFolder = 1
 	} else {
 		newFastResume.QbtHasRootFolder = 0
 	}
 
-	// handle trackers
 	newFastResume.Trackers = file.UpvertedAnnounceList()
 
 	// renames live only in the resume file; the .torrent keeps the
@@ -263,7 +254,6 @@ func transmissionFastresume(resumeFile *TransmissionResumeFile, file *metainfo.M
 	// pieces overlapping only deselected files stay unset
 	newFastResume.Pieces = pieces
 
-	// Set 20 byte SHA1 hash
 	newFastResume.InfoHash = file.HashInfoBytes().Bytes()
 
 	return newFastResume
@@ -349,8 +339,6 @@ func transmissionPieces(resume *TransmissionResumeFile, info *metainfo.Info) (st
 	return string(pieces), complete
 }
 
-// transmissionFilePriorities maps transmission per-file state to qBittorrent
-// priorities: dnd files become 0 (skip), high priority becomes 6
 func transmissionFilePriorities(resume *TransmissionResumeFile, fileCount int) []int {
 	prios := make([]int, fileCount)
 	for i := range prios {
@@ -376,8 +364,6 @@ func transmissionFilePriorities(resume *TransmissionResumeFile, fileCount int) [
 	return prios
 }
 
-// transmissionName returns the renamed torrent name, or "" when the torrent
-// keeps its metainfo name
 func transmissionName(resume *TransmissionResumeFile, info *metainfo.Info) string {
 	if resume.Name == info.BestName() {
 		return ""

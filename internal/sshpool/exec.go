@@ -17,17 +17,13 @@ import (
 )
 
 const (
-	// execTimeout bounds one command that Output runs. Exec has no timeout of
-	// its own: a find over a large tree runs for as long as its ctx allows.
 	execTimeout = 30 * time.Second
 	// execOutputLimit caps what Output keeps. A command that prints more
 	// fails, so a caller never parses a cut answer.
 	execOutputLimit = 1 << 20
 	// execSessions is how many exec channels one connection runs at a time.
 	// sshd allows ten sessions per connection by default, and sftp holds one.
-	execSessions = 4
-	// refusalRetries and refusalRetryDelay bound the retries of a refused
-	// session open when no other session holds a slot; see Conn.open.
+	execSessions      = 4
 	refusalRetries    = 3
 	refusalRetryDelay = 50 * time.Millisecond
 )
@@ -37,17 +33,15 @@ const (
 // written.
 var ErrNoExec = errors.New("the connection does not have the exec tier")
 
-// ErrOutputLimit answers a command that printed more than Output keeps.
 var ErrOutputLimit = errors.New("command output exceeds the limit")
 
 // Command is one remote command. String quotes every word and puts "--"
 // between the options and the paths, so a raw path never reaches the shell
 // and a path that starts with "-" is never read as an option.
 type Command struct {
-	Name    string
-	Options []string
-	Paths   []string
-	// Expression comes after the paths, for find.
+	Name       string
+	Options    []string
+	Paths      []string
 	Expression []string
 }
 
@@ -69,15 +63,10 @@ func (c Command) String() string {
 	return strings.Join(words, " ")
 }
 
-// shellQuote puts s in single quotes, where a POSIX shell reads every byte
-// as itself. A single quote in s closes the quote, adds an escaped quote and
-// opens a new one.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// Output runs cmd and returns its standard output, at most execOutputLimit
-// bytes, within execTimeout.
 func (c *Conn) Output(ctx context.Context, cmd Command) ([]byte, error) {
 	return c.output(ctx, cmd.String(), execTimeout, execOutputLimit)
 }
@@ -206,7 +195,6 @@ func (c *Conn) park(busy bool) bool {
 	}
 }
 
-// othersOpen reports whether a session other than the caller's holds a slot.
 func (c *Conn) othersOpen(parked int) bool {
 	return len(c.slots)-parked > 1
 }

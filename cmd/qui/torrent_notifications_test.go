@@ -190,13 +190,10 @@ func TestNotifyTorrentsAddedAfterSkipsWaitWithNoListener(t *testing.T) {
 	require.Less(t, time.Since(start), 10*time.Second)
 }
 
-// fakeHelpers is the helper registry: the helper torrents of instance 1.
 type fakeHelpers map[string]bool
 
 func (f fakeHelpers) IsHelper(instanceID int, hash string) bool { return instanceID == 1 && f[hash] }
 
-// A torrent of the user with the helper tag and no registry row notifies as
-// before.
 func TestTorrentNotificationsSkipHelperTorrents(t *testing.T) {
 	t.Parallel()
 

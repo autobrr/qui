@@ -30,7 +30,6 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 		manager:        manager,
 	}
 
-	// Parse basic auth users
 	if authConfigured {
 		for cred := range strings.SplitSeq(basicAuthUsersConfig, ",") {
 			username, password, ok := strings.Cut(strings.TrimSpace(cred), ":")
@@ -44,17 +43,14 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 
 	router := chi.NewRouter()
 
-	// Add standard middleware
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP) //nolint:staticcheck // SA1019: the metrics listener uses RemoteAddr for logging only
 	router.Use(middleware.Recoverer)
 
-	// Add basic auth if configured
 	if authConfigured {
 		router.Use(middleware.BasicAuth("metrics", s.basicAuthUsers))
 	}
 
-	// Create metrics handler
 	handler := promhttp.HandlerFor(
 		manager.GetRegistry(),
 		promhttp.HandlerOpts{

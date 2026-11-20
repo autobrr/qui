@@ -18,9 +18,6 @@ var (
 	getVolumeSerialFn = getVolumeSerial
 )
 
-// sameFilesystem checks if two paths are on the same volume on Windows.
-// Hardlinks on Windows require the same volume.
-// Compares volume serial numbers using GetVolumeInformation.
 func sameFilesystem(path1, path2 string) (bool, error) {
 	resolvedPath1, err := evalSymlinksFn(path1)
 	if err != nil {
@@ -45,15 +42,12 @@ func sameFilesystem(path1, path2 string) (bool, error) {
 	return vol1 == vol2, nil
 }
 
-// getVolumeSerial returns the volume serial number for the volume containing the given path.
 func getVolumeSerial(path string) (uint32, error) {
-	// Get absolute path
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return 0, fmt.Errorf("abs path: %w", err)
 	}
 
-	// Get volume path name (e.g., "C:\" or "\\?\Volume{GUID}\")
 	volumePath := make([]uint16, windows.MAX_PATH+1)
 	pathPtr, err := windows.UTF16PtrFromString(absPath)
 	if err != nil {
@@ -65,7 +59,6 @@ func getVolumeSerial(path string) (uint32, error) {
 		return 0, fmt.Errorf("get volume path name: %w", err)
 	}
 
-	// Get volume information
 	volumePathStr := windows.UTF16ToString(volumePath)
 	if !strings.HasSuffix(volumePathStr, `\`) {
 		volumePathStr += `\`
@@ -79,11 +72,11 @@ func getVolumeSerial(path string) (uint32, error) {
 	var volumeSerial uint32
 	err = windows.GetVolumeInformation(
 		volumePathPtr,
-		nil, 0, // volume name buffer
+		nil, 0,
 		&volumeSerial,
-		nil,    // max component length
-		nil,    // file system flags
-		nil, 0, // file system name buffer
+		nil,
+		nil,
+		nil, 0,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("get volume information: %w", err)

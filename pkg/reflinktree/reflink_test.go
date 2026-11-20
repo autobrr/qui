@@ -43,13 +43,11 @@ func TestCreate_EmptyFiles(t *testing.T) {
 func TestCreate_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Check if reflink is supported
 	supported, reason := SupportsReflink(tmpDir)
 	if !supported {
 		t.Skipf("reflink not supported: %s", reason)
 	}
 
-	// Create source file
 	srcDir := filepath.Join(tmpDir, "src")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		t.Fatalf("failed to create src dir: %v", err)
@@ -61,7 +59,6 @@ func TestCreate_Success(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	// Create reflink tree
 	dstDir := filepath.Join(tmpDir, "dst")
 	plan := &hardlinktree.TreePlan{
 		RootDir: dstDir,
@@ -78,7 +75,6 @@ func TestCreate_Success(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	// Verify file exists and has correct content
 	dstContent, err := os.ReadFile(filepath.Join(dstDir, "test.txt"))
 	if err != nil {
 		t.Fatalf("failed to read destination file: %v", err)
@@ -92,13 +88,11 @@ func TestCreate_Success(t *testing.T) {
 func TestRollback(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Check if reflink is supported
 	supported, reason := SupportsReflink(tmpDir)
 	if !supported {
 		t.Skipf("reflink not supported: %s", reason)
 	}
 
-	// Create source file
 	srcDir := filepath.Join(tmpDir, "src")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		t.Fatalf("failed to create src dir: %v", err)
@@ -109,7 +103,6 @@ func TestRollback(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	// Create reflink tree
 	dstDir := filepath.Join(tmpDir, "dst")
 	plan := &hardlinktree.TreePlan{
 		RootDir: dstDir,
@@ -126,22 +119,18 @@ func TestRollback(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	// Verify files exist
 	if _, err := os.Stat(filepath.Join(dstDir, "subdir", "test.txt")); err != nil {
 		t.Fatalf("file should exist before rollback: %v", err)
 	}
 
-	// Rollback
 	if err := created.Rollback(); err != nil {
 		t.Fatalf("Rollback failed: %v", err)
 	}
 
-	// Verify file was removed
 	if _, err := os.Stat(filepath.Join(dstDir, "subdir", "test.txt")); !os.IsNotExist(err) {
 		t.Error("file should not exist after rollback")
 	}
 
-	// Create made dstDir and subdir, so rollback removes both
 	if _, err := os.Stat(dstDir); !os.IsNotExist(err) {
 		t.Error("created root dir should be removed after rollback")
 	}

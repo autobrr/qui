@@ -8,9 +8,6 @@ import (
 	"strings"
 )
 
-// videoCodecAliases maps equivalent video codec names to a canonical form.
-// x264, H.264, H264, and AVC all refer to the same underlying codec (AVC/H.264).
-// x265, H.265, H265, and HEVC all refer to the same underlying codec (HEVC/H.265).
 var videoCodecAliases = map[string]string{
 	"X264":  "AVC",
 	"H.264": "AVC",
@@ -22,8 +19,6 @@ var videoCodecAliases = map[string]string{
 	"HEVC":  "HEVC",
 }
 
-// NormalizeVideoCodec converts a video codec string to its canonical form.
-// Returns the original (uppercased) string if no alias mapping exists.
 func NormalizeVideoCodec(codec string) string {
 	upper := strings.ToUpper(strings.TrimSpace(codec))
 	if canonical, ok := videoCodecAliases[upper]; ok {
@@ -32,8 +27,6 @@ func NormalizeVideoCodec(codec string) string {
 	return upper
 }
 
-// JoinNormalizedCodecSlice converts a codec slice to a normalized string for comparison.
-// Applies codec aliasing so that x264, H.264, H264, and AVC are treated as equivalent.
 func JoinNormalizedCodecSlice(slice []string) string {
 	if len(slice) == 0 {
 		return ""
@@ -63,8 +56,6 @@ var sourceAliases = map[string]string{
 	"WEB":     "WEB",
 }
 
-// NormalizeSource converts a source string to its canonical form.
-// Returns the original (uppercased) string if no alias mapping exists.
 func NormalizeSource(source string) string {
 	upper := strings.ToUpper(strings.TrimSpace(source))
 	if canonical, ok := sourceAliases[upper]; ok {

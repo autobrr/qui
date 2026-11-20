@@ -1,8 +1,6 @@
 // Copyright (c) 2025, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package externalprograms provides a unified service for executing external programs
-// with torrent data. It is used by automations, cross-seed, and the API handler.
 package externalprograms
 
 import (
@@ -28,8 +26,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// Activity action constant for external program execution.
-// Success/failure is indicated via the Outcome field, following the same pattern as other actions.
 const ActivityActionExternalProgram = "external_program"
 
 const (
@@ -44,15 +40,13 @@ var (
 	errHelperTorrent      = errors.New("not started: qui added this torrent for a Transfer or a Share")
 )
 
-// Service provides unified external program execution for all consumers.
 type Service struct {
 	programStore  *models.ExternalProgramStore
 	activityStore *models.AutomationActivityStore
 	config        *domain.Config
 
 	// slots is a process-wide counting semaphore; see executeAsync for how long a run holds one.
-	slots chan struct{}
-	// admitted counts runs that hold or wait for a slot.
+	slots    chan struct{}
 	admitted atomic.Int32
 	// waiting holds a waitKey for each run that waits for a slot, so a rule that matches
 	// the same torrent on every pass queues it only once.
@@ -75,8 +69,6 @@ func (s *Service) SetHelperTorrents(helpers helperTorrents) {
 	s.helpers = helpers
 }
 
-// NewService creates a new external programs service.
-// activityStore may be nil if activity logging is not needed.
 func NewService(
 	programStore *models.ExternalProgramStore,
 	activityStore *models.AutomationActivityStore,
@@ -102,30 +94,22 @@ type waitKey struct {
 	hash       string
 }
 
-// Slot ownership and dispatch reporting differ for GUI programs and shell wrappers.
 type executionPolicy struct {
 	releaseOnStart  bool
 	reportAfterExit bool
 }
 
-// ExecuteRequest contains all parameters needed to execute an external program.
 type ExecuteRequest struct {
-	// ProgramID is used to fetch the program from the store.
-	// Either ProgramID or Program must be provided.
 	ProgramID int
-	// Program is an optional pre-loaded program configuration.
-	// When provided, ProgramID is ignored and no database lookup is performed.
-	Program *models.ExternalProgram
+	Program   *models.ExternalProgram
 
 	Torrent    *qbt.Torrent
 	InstanceID int
 
-	// Optional: automation context for activity logging
 	RuleID   *int
 	RuleName string
 }
 
-// Validate checks that the request has all required fields.
 func (r ExecuteRequest) Validate() error {
 	if r.Program == nil && r.ProgramID <= 0 {
 		return errors.New("either programID or program must be provided")
@@ -139,32 +123,21 @@ func (r ExecuteRequest) Validate() error {
 	return nil
 }
 
-// ExecuteResult contains the result of an execution attempt.
 type ExecuteResult struct {
 	Success bool
 	Message string
 	Error   error
 }
 
-// SuccessResult creates a successful execution result.
 func SuccessResult(message string) ExecuteResult {
 	return ExecuteResult{Success: true, Message: message}
 }
 
-// FailureResult creates a failed execution result.
 func FailureResult(err error) ExecuteResult {
 	return ExecuteResult{Success: false, Error: err}
 }
 
-// Execute runs an external program asynchronously with the given torrent data.
-// It returns immediately after admitting the program (fire-and-forget); the
-// program starts when a slot is free, or gives up after the wait timeout.
-//
-// The program can be provided in two ways:
-//   - By ID: Set ProgramID to fetch the program from the store
-//   - Directly: Set Program to use a pre-loaded program configuration
 func (s *Service) Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
-	// Validate request first
 	if err := req.Validate(); err != nil {
 		return FailureResult(err)
 	}
@@ -174,7 +147,6 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) ExecuteResult
 
 	program := req.Program
 
-	// If no pre-loaded program, fetch by ID
 	if program == nil {
 		if s == nil || s.programStore == nil {
 			return FailureResult(errors.New("external program service not initialized"))
@@ -193,7 +165,6 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) ExecuteResult
 	return s.executeProgram(ctx, program, req)
 }
 
-// executeProgram is the internal implementation that runs a program with a pre-loaded configuration.
 func (s *Service) executeProgram(ctx context.Context, program *models.ExternalProgram, req ExecuteRequest) ExecuteResult {
 	if program == nil {
 		return FailureResult(errors.New("program is nil"))
@@ -203,7 +174,6 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 		return FailureResult(errors.New("torrent is nil"))
 	}
 
-	// Check if program is enabled
 	if !program.Enabled {
 		log.Debug().
 			Int("programId", program.ID).
@@ -213,16 +183,13 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 		return FailureResult(errors.New("program is disabled"))
 	}
 
-	// Validate against allowlist
 	if !s.IsPathAllowed(program.Path) {
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, "path not allowed by allowlist")
 		return FailureResult(errors.New("program path is not allowed by allowlist"))
 	}
 
-	// Build torrent data map for variable substitution
 	torrentData := buildTorrentData(req.Torrent, program.PathMappings)
 
-	// Build command arguments
 	args := extargs.BuildArguments(program.ArgsTemplate, torrentData)
 
 	// Build and execute command
@@ -250,7 +217,6 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 		return FailureResult(errExecutionQueueFull)
 	}
 
-	// Log the command being executed
 	log.Debug().
 		Str("program", program.Name).
 		Str("path", program.Path).
@@ -259,8 +225,6 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 		Str("full_command", fmt.Sprintf("%v", cmd.Args)).
 		Msg("executing external program")
 
-	// Execute in goroutine (fire-and-forget)
-	// Activity logging happens inside executeAsync after cmd.Start() succeeds
 	go s.executeAsync(cmd, policy, key, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
 
 	message := "Program execution initiated"
@@ -314,7 +278,6 @@ func (s *Service) executeAsync(
 			Str("hash", req.Torrent.Hash).
 			Str("command", fmt.Sprintf("%v", cmd.Args)).
 			Msg("external program failed to start")
-		// Log failure activity
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("failed to start: %v", execErr))
 		return
 	}
@@ -328,7 +291,6 @@ func (s *Service) executeAsync(
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 	}
 
-	// Wait for the process to prevent zombie processes
 	waitErr := cmd.Wait()
 	if policy.reportAfterExit {
 		if waitErr != nil {
@@ -353,8 +315,6 @@ func (s *Service) executeAsync(
 		Msg("external program execution completed")
 }
 
-// buildCommand creates the appropriate exec.Cmd based on platform and settings.
-// The policy controls slot lifetime and when dispatch activity can be reported.
 func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, executionPolicy) {
 	if program.UseTerminal {
 		return s.buildTerminalCommand(ctx, program, args)
@@ -362,7 +322,6 @@ func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProg
 	return s.buildDirectCommand(ctx, program, args)
 }
 
-// shellJoin single-quotes each argument for a POSIX shell and joins them with spaces.
 func shellJoin(args []string) string {
 	quoted := make([]string, len(args))
 	for i, arg := range args {
@@ -371,15 +330,11 @@ func shellJoin(args []string) string {
 	return strings.Join(quoted, " ")
 }
 
-// terminalCandidate represents a terminal emulator to check for availability.
 type terminalCandidate struct {
 	name string
 }
 
-// getTerminalCandidates returns terminal emulators in priority order for the current platform.
-// Priority: cross-platform CLI terminals → Linux terminals → macOS native terminals.
 func getTerminalCandidates() []terminalCandidate {
-	// Cross-platform terminals (highest priority, checked on all platforms)
 	candidates := []terminalCandidate{
 		{"wezterm"},
 		{"hyper"},
@@ -387,7 +342,6 @@ func getTerminalCandidates() []terminalCandidate {
 		{"alacritty"},
 	}
 
-	// Linux terminal emulators (not checked on macOS)
 	if runtime.GOOS != "darwin" {
 		candidates = append(candidates,
 			terminalCandidate{"gnome-terminal"},
@@ -399,7 +353,6 @@ func getTerminalCandidates() []terminalCandidate {
 		)
 	}
 
-	// macOS native terminals (lower priority than CLI terminals)
 	if runtime.GOOS == "darwin" {
 		candidates = append(candidates,
 			terminalCandidate{"iterm2"},
@@ -410,8 +363,6 @@ func getTerminalCandidates() []terminalCandidate {
 	return candidates
 }
 
-// escapeAppleScript escapes a string for use in AppleScript.
-// AppleScript requires backslashes, double quotes, and control characters to be escaped.
 func escapeAppleScript(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "\"", "\\\"")
@@ -421,8 +372,6 @@ func escapeAppleScript(s string) string {
 	return s
 }
 
-// detectTerminalFromEnv checks the TERM_PROGRAM environment variable to detect the current terminal.
-// Returns the terminal name and true if a known terminal is detected, empty string and false otherwise.
 func detectTerminalFromEnv() (string, bool) {
 	termProgram := os.Getenv("TERM_PROGRAM")
 	if termProgram == "" {
@@ -447,14 +396,10 @@ func detectTerminalFromEnv() (string, bool) {
 	}
 }
 
-// buildTerminalArgs constructs the command name and arguments for a specific terminal.
-// Returns the executable name and arguments to spawn a terminal with the given command.
 func buildTerminalArgs(terminal, cmdLine string) (string, []string) {
-	// Command suffix to keep terminal open after execution
 	keepOpen := cmdLine + "; exec bash"
 
 	switch terminal {
-	// macOS native terminals (use osascript/AppleScript)
 	case "iterm2":
 		script := fmt.Sprintf(`tell application "iTerm"
 	create window with default profile
@@ -471,7 +416,6 @@ end tell`, escapeAppleScript(keepOpen))
 end tell`, escapeAppleScript(keepOpen))
 		return "osascript", []string{"-e", script}
 
-	// Cross-platform terminals
 	case "wezterm":
 		return "wezterm", []string{"start", "--", "bash", "-c", keepOpen}
 	case "hyper":
@@ -481,7 +425,6 @@ end tell`, escapeAppleScript(keepOpen))
 	case "alacritty":
 		return "alacritty", []string{"-e", "bash", "-c", keepOpen}
 
-	// Linux terminal emulators
 	case "gnome-terminal":
 		return "gnome-terminal", []string{"--", "bash", "-c", keepOpen}
 	case "konsole":
@@ -503,18 +446,14 @@ end tell`, escapeAppleScript(keepOpen))
 	}
 }
 
-// isTerminalAvailable checks if a terminal is available on the system.
 func isTerminalAvailable(terminal string) bool {
 	switch terminal {
 	case "iterm2":
-		// Check if iTerm2 app bundle exists
 		_, err := os.Stat("/Applications/iTerm.app")
 		return err == nil
 	case "apple-terminal":
-		// Terminal.app is always available on macOS
 		return runtime.GOOS == "darwin"
 	default:
-		// Check if executable is in PATH
 		_, err := exec.LookPath(terminal)
 		return err == nil
 	}
@@ -523,7 +462,6 @@ func isTerminalAvailable(terminal string) bool {
 // createTerminalCommand creates a command that spawns a terminal window on Unix/Linux/macOS.
 // With no terminal emulator it falls back to sh -c, which is not a launcher.
 func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) (cmd *exec.Cmd, launcher bool) {
-	// Priority 1: Check TERM_PROGRAM env var (user's current terminal)
 	if terminal, found := detectTerminalFromEnv(); found {
 		if isTerminalAvailable(terminal) {
 			cmdName, args := buildTerminalArgs(terminal, cmdLine)
@@ -538,7 +476,6 @@ func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) (cm
 		}
 	}
 
-	// Priority 2: Try terminal candidates in order
 	for _, tc := range getTerminalCandidates() {
 		if isTerminalAvailable(tc.name) {
 			cmdName, args := buildTerminalArgs(tc.name, cmdLine)
@@ -553,14 +490,12 @@ func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) (cm
 		}
 	}
 
-	// Fallback: if no terminal emulator found, just run in background
 	log.Warn().
 		Str("command", cmdLine).
 		Msg("no terminal emulator found, running command in background")
 	return exec.CommandContext(ctx, "sh", "-c", cmdLine), false //nolint:gosec // intentional external program execution
 }
 
-// IsPathAllowed checks if the program path is allowed by the allowlist.
 func (s *Service) IsPathAllowed(programPath string) bool {
 	programPath = strings.TrimSpace(programPath)
 	if programPath == "" {
@@ -587,12 +522,10 @@ func (s *Service) IsPathAllowed(programPath string) bool {
 
 		normalizedAllowedPath := normalizePath(allowed)
 
-		// Exact match
 		if normalizedProgramPath == normalizedAllowedPath {
 			return true
 		}
 
-		// Prefix match with path separator boundary
 		allowedPrefix := normalizedAllowedPath
 		if !strings.HasSuffix(allowedPrefix, sep) {
 			allowedPrefix += sep
@@ -607,7 +540,6 @@ func (s *Service) IsPathAllowed(programPath string) bool {
 	return false
 }
 
-// buildTorrentData creates a map of torrent data for variable substitution.
 func buildTorrentData(torrent *qbt.Torrent, pathMappings []models.PathMapping) map[string]string {
 	savePath := extargs.ApplyPathMappings(torrent.SavePath, pathMappings)
 	contentPath := extargs.ApplyPathMappings(torrent.ContentPath, pathMappings)
@@ -626,7 +558,6 @@ func buildTorrentData(torrent *qbt.Torrent, pathMappings []models.PathMapping) m
 	}
 }
 
-// logActivity logs an execution attempt to the activity store.
 func (s *Service) logActivity(
 	ctx context.Context,
 	instanceID int,
@@ -667,7 +598,6 @@ func (s *Service) logActivity(
 	}
 }
 
-// normalizePath normalizes a file path for comparison.
 func normalizePath(p string) string {
 	cleaned, err := filepath.Abs(p)
 	if err != nil {
@@ -686,7 +616,6 @@ func normalizePath(p string) string {
 	return normalizePathCase(cleaned)
 }
 
-// normalizePathCase normalizes path case for the current platform.
 func normalizePathCase(p string) string {
 	if runtime.GOOS == "windows" {
 		return strings.ToLower(p)

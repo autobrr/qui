@@ -11,15 +11,10 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// noopBackend implements Backend by returning ErrNoFilesystemAccess for every
-// operation. Used for instances that have no filesystem access configured.
-// Context cancellation takes precedence over ErrNoFilesystemAccess so callers
-// get the correct error when a request is cancelled.
 type noopBackend struct{}
 
 var _ Backend = noopBackend{}
 
-// noopErr returns the context error if cancelled, otherwise ErrNoFilesystemAccess.
 func noopErr(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -11,12 +11,8 @@ import (
 
 var errFull = errors.New("this Share has as many peers as it takes")
 
-// peerLife is how long the tracker keeps a client that stopped announcing.
 const peerLife = 2 * Interval
 
-// swarm is what the tracker knows of the clients of one Share. holder is the
-// address of the first downloader while a Share with FirstDownloaderOnly is
-// locked.
 type swarm struct {
 	ownerSeen  time.Time
 	recipients map[netip.AddrPort]time.Time
@@ -117,8 +113,6 @@ func (t *Tracker) Unlock(shareID int64) {
 	s.holder = netip.Addr{}
 }
 
-// Holder returns the address that holds the lock of the Share, or the zero
-// address.
 func (t *Tracker) Holder(shareID int64) netip.Addr {
 	t.mu.Lock()
 	defer t.mu.Unlock()

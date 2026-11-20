@@ -27,7 +27,6 @@ export interface StreamEntry {
 export const DEMO_TICK_MS = 2000
 export const DEMO_HEARTBEAT_MS = 5000
 
-// The open demo sources by connection id.
 const openSources = new Map<string, { change: (add: StreamEntry[], remove: string[]) => void }>()
 let nextConnectionId = 0
 

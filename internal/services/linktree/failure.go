@@ -11,7 +11,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// FailureKind says why Plan or Create gave no tree.
 type FailureKind int
 
 const (
@@ -22,22 +21,17 @@ const (
 	// NotSupported: the filesystem has no reflinks, or the question failed.
 	NotSupported
 	TargetExists
-	// CrossDevice: every Link base directory gave a cross-device error.
 	CrossDevice
 	ConnectionLost
 	CreateFailed
 )
 
-// Error is the error of Plan and Create. Err keeps the cause for
-// errors.Is and errors.As.
 type Error struct {
-	Kind FailureKind
-	// Partial is set when a part of the tree can remain in Dir.
+	Kind    FailureKind
 	Partial bool
 	Dir     string
 	Err     error
 
-	// skip lets Create try the next Link base directory.
 	skip bool
 }
 
@@ -68,7 +62,6 @@ func (f *Error) Error() string {
 
 func (f *Error) Unwrap() error { return f.Err }
 
-// classify gives a create error its kind.
 func classify(err error) *Error {
 	kind := CreateFailed
 	switch {

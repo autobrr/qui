@@ -33,7 +33,6 @@ func rollbackTx(tx rollbacker) {
 	}
 }
 
-// GetLicenseByKey retrieves a license by its key
 func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
 	query := `
 		SELECT id, license_key, product_name,  status, activated_at, expires_at,
@@ -74,7 +73,6 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 	return license, nil
 }
 
-// GetAllLicenses retrieves all licenses
 func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLicense, error) {
 	query := `
 		SELECT id, license_key, product_name, status, activated_at, expires_at,
@@ -127,7 +125,6 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 	return licenses, nil
 }
 
-// HasPremiumAccess reports whether a valid license unlocks the premium themes: a theme license, or a supporter key.
 func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
 	return r.hasActiveLicense(ctx, `
 		SELECT COUNT(*)
@@ -138,7 +135,6 @@ func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
 	`)
 }
 
-// IsSupporter reports whether a supporter key is valid.
 func (r *LicenseRepo) IsSupporter(ctx context.Context) (bool, error) {
 	return r.hasActiveLicense(ctx, `
 		SELECT COUNT(*)
@@ -149,7 +145,6 @@ func (r *LicenseRepo) IsSupporter(ctx context.Context) (bool, error) {
 	`)
 }
 
-// ServerSetupTime returns when this server first ran: the time of its first database migration.
 func (r *LicenseRepo) ServerSetupTime(ctx context.Context) (time.Time, error) {
 	var setupAt time.Time
 	err := r.db.QueryRowContext(ctx, "SELECT applied_at FROM migrations ORDER BY applied_at LIMIT 1").Scan(&setupAt)
@@ -166,7 +161,6 @@ func (r *LicenseRepo) hasActiveLicense(ctx context.Context, query string) (bool,
 	return count > 0, nil
 }
 
-// DeleteLicense removes a license from the database
 func (r *LicenseRepo) DeleteLicense(ctx context.Context, licenseKey string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -289,7 +283,6 @@ func (r *LicenseRepo) UpdateLicenseValidation(ctx context.Context, license *mode
 	return nil
 }
 
-// UpdateLicenseActivation updates a license with activation details
 func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *models.ProductLicense) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -371,7 +364,6 @@ func stringToNullString(value string) sql.Null[string] {
 	return sql.Null[string]{V: value, Valid: true}
 }
 
-// Helper function to mask license keys in logs
 func maskLicenseKey(key string) string {
 	if len(key) <= 8 {
 		return "***"

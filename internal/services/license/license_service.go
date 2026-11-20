@@ -37,7 +37,6 @@ var (
 	ErrLicenseNotActive        = errors.New("license is not active")
 )
 
-// Service handles license operations
 type Service struct {
 	licenseRepo *database.LicenseRepo
 	dodoClient  *dodo.Client
@@ -45,7 +44,6 @@ type Service struct {
 	setupAt     atomic.Pointer[time.Time]
 }
 
-// NewLicenseService creates a new license service
 func NewLicenseService(repo *database.LicenseRepo, dodoClient *dodo.Client, configDir string) *Service {
 	return &Service{
 		licenseRepo: repo,
@@ -54,9 +52,7 @@ func NewLicenseService(repo *database.LicenseRepo, dodoClient *dodo.Client, conf
 	}
 }
 
-// ActivateAndStoreLicense activates a license key and stores it if valid
 func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string, username string) (*models.ProductLicense, error) {
-	// Check if license already exists in database
 	existingLicense, err := s.licenseRepo.GetLicenseByKey(ctx, licenseKey)
 	if err != nil && !errors.Is(err, models.ErrLicenseNotFound) {
 		return nil, fmt.Errorf("failed to check existing license: %w", err)
@@ -73,9 +69,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 	return s.activateWithDodo(ctx, licenseKey, username, fingerprint, existingLicense)
 }
 
-// ValidateAndStoreLicense validates a license key and stores it if valid
 func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string, username string) (*models.ProductLicense, error) {
-	// Check if license already exists
 	existingLicense, err := s.licenseRepo.GetLicenseByKey(ctx, licenseKey)
 	if err != nil {
 		return nil, err
@@ -93,7 +87,6 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 	return existingLicense, nil
 }
 
-// activateWithDodo stores a key of a supporter product as a supporter key, and each other key as premium access.
 func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fingerprint string, existingLicense *models.ProductLicense) (*models.ProductLicense, error) {
 	if s.dodoClient == nil {
 		return nil, ErrDodoClientNotConfigured
@@ -250,12 +243,10 @@ func (s *Service) ensureDodoActivation(ctx context.Context, license *models.Prod
 	return nil
 }
 
-// HasPremiumAccess checks if the user has premium access
 func (s *Service) HasPremiumAccess(ctx context.Context) (bool, error) {
 	return s.licenseRepo.HasPremiumAccess(ctx)
 }
 
-// IsSupporter reports whether a supporter key on this server is valid.
 func (s *Service) IsSupporter(ctx context.Context) (bool, error) {
 	return s.licenseRepo.IsSupporter(ctx)
 }
@@ -273,7 +264,6 @@ func (s *Service) ServerSetupTime(ctx context.Context) (time.Time, error) {
 	return setupAt, nil
 }
 
-// RefreshAllLicenses validates all stored licenses against the Dodo API
 func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	licenses, err := s.licenseRepo.GetAllLicenses(ctx)
 	if err != nil {
@@ -377,7 +367,6 @@ func revalidates(license *models.ProductLicense) bool {
 		license.ProductName == ProductNameSupporter
 }
 
-// ValidateLicenses validates all stored licenses against the Dodo API
 func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	licenses, err := s.licenseRepo.GetAllLicenses(ctx)
 	if err != nil {
@@ -545,7 +534,6 @@ func (s *Service) DeleteLicense(ctx context.Context, licenseKey string) error {
 	return s.licenseRepo.DeleteLicense(deleteCtx, licenseKey)
 }
 
-// Helper function to mask license keys in logs
 func maskLicenseKey(key string) string {
 	if len(key) <= 8 {
 		return "***"

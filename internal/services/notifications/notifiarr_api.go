@@ -174,8 +174,6 @@ func ValidateNotifiarrAPIKey(ctx context.Context, rawURL string) error {
 	return nil
 }
 
-// BuildNotifiarrTestPayload formats a synthetic event for the manual payload generator.
-// It uses no stores or network services and returns nil for events with no title or message.
 func BuildNotifiarrTestPayload(event Event) (json.RawMessage, error) {
 	var s Service
 	ctx := context.Background()

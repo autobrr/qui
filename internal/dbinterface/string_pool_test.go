@@ -41,14 +41,12 @@ func TestInternStringsBatch(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Begin transaction for testing
 	tx, err := db.Begin()
 	if err != nil {
 		t.Fatalf("Failed to begin transaction: %v", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Test batch interning
 	values := []string{"hash1", "hash2", "hash1", "hash3", "hash2", "name1", "name2"}
 
 	ids, err := InternStrings(ctx, tx, values...)
@@ -56,29 +54,23 @@ func TestInternStringsBatch(t *testing.T) {
 		t.Fatalf("InternStrings failed: %v", err)
 	}
 
-	// Should return IDs in the same order as input
 	if len(ids) != len(values) {
 		t.Errorf("Expected %d IDs, got %d", len(values), len(ids))
 	}
 
-	// Verify all IDs are positive
 	for i, id := range ids {
 		if id <= 0 {
 			t.Errorf("Invalid ID at index %d: %d", i, id)
 		}
 	}
 
-	// Verify duplicates get same ID
-	// values[0] and values[2] are both "hash1"
 	if ids[0] != ids[2] {
 		t.Errorf("Duplicate values should have same ID: ids[0]=%d, ids[2]=%d", ids[0], ids[2])
 	}
-	// values[1] and values[4] are both "hash2"
 	if ids[1] != ids[4] {
 		t.Errorf("Duplicate values should have same ID: ids[1]=%d, ids[4]=%d", ids[1], ids[4])
 	}
 
-	// Test that calling again returns same IDs
 	ids2, err := InternStrings(ctx, tx, values...)
 	if err != nil {
 		t.Fatalf("Second InternStrings failed: %v", err)
@@ -90,7 +82,6 @@ func TestInternStringsBatch(t *testing.T) {
 		}
 	}
 
-	// Test empty input
 	emptyIDs, err := InternStrings(ctx, tx)
 	if err != nil {
 		t.Fatalf("InternStrings with empty input failed: %v", err)
@@ -99,7 +90,6 @@ func TestInternStringsBatch(t *testing.T) {
 		t.Errorf("Expected empty result for empty input, got %d items", len(emptyIDs))
 	}
 
-	// Test single value
 	singleIDs, err := InternStrings(ctx, tx, "single_value")
 	if err != nil {
 		t.Fatalf("InternStrings with single value failed: %v", err)
@@ -111,14 +101,12 @@ func TestInternStringsBatch(t *testing.T) {
 		t.Errorf("Invalid ID for single value: %d", singleIDs[0])
 	}
 
-	// Commit to verify everything works end-to-end
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("Failed to commit transaction: %v", err)
 	}
 }
 
 func TestInternStringsLargeBatch(t *testing.T) {
-	// Test that we can handle batches larger than SQLite's parameter limit
 	db := newStringPoolTestDB(t)
 
 	ctx := context.Background()
@@ -128,7 +116,6 @@ func TestInternStringsLargeBatch(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Create 2000 unique values (well over the 900 chunk limit)
 	largeValues := make([]string, 2000)
 	for i := range 2000 {
 		largeValues[i] = fmt.Sprintf("value_%d", i)
@@ -143,7 +130,6 @@ func TestInternStringsLargeBatch(t *testing.T) {
 		t.Errorf("Expected %d IDs, got %d", len(largeValues), len(ids))
 	}
 
-	// Verify all IDs are positive and unique
 	seenIDs := make(map[int64]bool)
 	for i, id := range ids {
 		if id <= 0 {
@@ -217,14 +203,12 @@ func TestGetStringID(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Begin transaction for testing
 	tx, err := db.Begin()
 	if err != nil {
 		t.Fatalf("Failed to begin transaction: %v", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Test getting IDs for non-existent strings
 	nullIDs, err := GetStringID(ctx, tx, "nonexistent1", "nonexistent2")
 	if err != nil {
 		t.Fatalf("GetStringID failed for non-existent strings: %v", err)
@@ -238,14 +222,12 @@ func TestGetStringID(t *testing.T) {
 		}
 	}
 
-	// Intern some strings first
 	ids, err := InternStrings(ctx, tx, "test_hash1", "test_hash2")
 	if err != nil {
 		t.Fatalf("InternStrings failed: %v", err)
 	}
 	expectedID1, expectedID2 := ids[0], ids[1]
 
-	// Test getting IDs for existing strings
 	resultIDs, err := GetStringID(ctx, tx, "test_hash1", "test_hash2", "nonexistent3")
 	if err != nil {
 		t.Fatalf("GetStringID failed for mixed strings: %v", err)
@@ -254,7 +236,6 @@ func TestGetStringID(t *testing.T) {
 		t.Errorf("Expected 3 results, got %d", len(resultIDs))
 	}
 
-	// Check existing strings
 	if !resultIDs[0].Valid || resultIDs[0].Int64 != expectedID1 {
 		t.Errorf("Expected ID %d for test_hash1, got %v", expectedID1, resultIDs[0])
 	}
@@ -262,12 +243,10 @@ func TestGetStringID(t *testing.T) {
 		t.Errorf("Expected ID %d for test_hash2, got %v", expectedID2, resultIDs[1])
 	}
 
-	// Check non-existent string
 	if resultIDs[2].Valid {
 		t.Errorf("Expected invalid NullInt64 for nonexistent3, got valid: %v", resultIDs[2])
 	}
 
-	// Test empty strings
 	emptyIDs, err := GetStringID(ctx, tx, "", "test_hash1", "")
 	if err != nil {
 		t.Fatalf("GetStringID failed for strings with empties: %v", err)
@@ -287,19 +266,16 @@ func TestGetStringID(t *testing.T) {
 }
 
 func TestInternEmptyString(t *testing.T) {
-	// Fresh table, so the empty string does not exist yet
 	db := newStringPoolTestDB(t)
 
 	ctx := context.Background()
 
-	// Begin transaction for testing
 	tx, err := db.Begin()
 	if err != nil {
 		t.Fatalf("Failed to begin transaction: %v", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Test 1: Creates empty string when it doesn't exist
 	id1, err := InternEmptyString(ctx, tx)
 	if err != nil {
 		t.Fatalf("InternEmptyString failed: %v", err)
@@ -308,7 +284,6 @@ func TestInternEmptyString(t *testing.T) {
 		t.Errorf("Expected positive ID, got %d", id1)
 	}
 
-	// Verify empty string was inserted
 	var value string
 	err = tx.QueryRow("SELECT value FROM string_pool WHERE id = ?", id1).Scan(&value)
 	if err != nil {
@@ -318,7 +293,6 @@ func TestInternEmptyString(t *testing.T) {
 		t.Errorf("Expected empty string value, got %q", value)
 	}
 
-	// Test 2: Returns existing ID when empty string already exists (idempotency)
 	id2, err := InternEmptyString(ctx, tx)
 	if err != nil {
 		t.Fatalf("Second InternEmptyString failed: %v", err)
@@ -327,7 +301,6 @@ func TestInternEmptyString(t *testing.T) {
 		t.Errorf("Expected same ID on second call: first=%d, second=%d", id1, id2)
 	}
 
-	// Test 3: Multiple calls return the same ID
 	id3, err := InternEmptyString(ctx, tx)
 	if err != nil {
 		t.Fatalf("Third InternEmptyString failed: %v", err)
@@ -336,7 +309,6 @@ func TestInternEmptyString(t *testing.T) {
 		t.Errorf("Expected same ID on third call: first=%d, third=%d", id1, id3)
 	}
 
-	// Verify only one empty string exists in the table
 	var count int
 	err = tx.QueryRow("SELECT COUNT(*) FROM string_pool WHERE value = ''").Scan(&count)
 	if err != nil {
@@ -393,7 +365,6 @@ func TestInternStringsDoesNotConsumeIDsForExistingValues(t *testing.T) {
 	firstIDs := intern("hash1", "hash2", "hash3", "name1")
 	seqAfterFirst := readSeq()
 
-	// Re-interning the same values (batch path) must not touch the sequence
 	secondIDs := intern("hash1", "hash2", "hash3", "name1")
 	if seq := readSeq(); seq != seqAfterFirst {
 		t.Errorf("Batch re-intern advanced sequence from %d to %d; expected no inserts for existing values", seqAfterFirst, seq)
@@ -404,7 +375,6 @@ func TestInternStringsDoesNotConsumeIDsForExistingValues(t *testing.T) {
 		}
 	}
 
-	// A single-value call must not touch the sequence either
 	singleIDs := intern("hash2")
 	if seq := readSeq(); seq != seqAfterFirst {
 		t.Errorf("Single re-intern advanced sequence from %d to %d", seqAfterFirst, seq)
@@ -413,7 +383,6 @@ func TestInternStringsDoesNotConsumeIDsForExistingValues(t *testing.T) {
 		t.Errorf("Single re-intern returned %d, expected %d", singleIDs[0], firstIDs[1])
 	}
 
-	// Mixed batch: only the genuinely new value may consume an ID
 	mixedIDs := intern("hash1", "newvalue", "hash3")
 	if mixedIDs[0] != firstIDs[0] || mixedIDs[2] != firstIDs[2] {
 		t.Errorf("Existing values changed IDs in mixed batch: got %v", mixedIDs)
@@ -422,7 +391,6 @@ func TestInternStringsDoesNotConsumeIDsForExistingValues(t *testing.T) {
 		t.Errorf("New value got ID %d, expected %d (exactly one ID consumed)", mixedIDs[1], seqAfterFirst+1)
 	}
 
-	// InternEmptyString: second call must not touch the sequence
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatalf("Failed to begin transaction: %v", err)

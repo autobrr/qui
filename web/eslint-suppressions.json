@@ -1,0 +1,3587 @@
+{
+  "eslint.config.js": {
+    "qui/no-comments": {
+      "count": 33
+    }
+  },
+  "scripts/check-i18n-keys-lib.mjs": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "scripts/check-legacy-plural-keys.mjs": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "scripts/check-locale-coverage.mjs": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "scripts/check-locale-coverage.test.mjs": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "scripts/find-hardcoded-i18n-literals.mjs": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "scripts/find-raw-backend-values.mjs": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "scripts/find-unused-i18n-keys.mjs": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "scripts/theme-check.mjs": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "scripts/theme-check.test.mjs": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/MagnetHandlerBanner.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/automations/tabs.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/command-palette/CommandPalette.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/command-palette/CommandPaletteContent.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/command-palette/CommandPaletteContent.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/components/command-palette/open.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/command-palette/palette.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/command-palette/palette.ts": {
+    "qui/no-comments": {
+      "count": 21
+    }
+  },
+  "src/components/command-palette/useDestinations.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/command-palette/useThemeEntry.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/command-palette/useTorrentResults.ts": {
+    "qui/no-comments": {
+      "count": 19
+    }
+  },
+  "src/components/command-palette/useVisibleHeight.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/command-palette/useVisibleHeight.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/cross-seed/CategoriesTab.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/cross-seed/CategoryMappingRulesEditor.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/cross-seed/CrossSeedRouteForm.tsx": {
+    "qui/no-comments": {
+      "count": 33
+    }
+  },
+  "src/components/cross-seed/DirScanTab.tsx": {
+    "qui/no-comments": {
+      "count": 26
+    }
+  },
+  "src/components/cross-seed/HardlinkModeSettings.tsx": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/components/cross-seed/LibraryTab.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/components/cross-seed/RouteProtectionConfirm.tsx": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/components/cross-seed/RssRunItem.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/cross-seed/RssTab.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/cross-seed/RunFooter.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/cross-seed/SeasonPackCategoryRulesEditor.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/cross-seed/SeasonPackRunsPanel.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/cross-seed/SourceCardFields.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/cross-seed/__tests__/CategoriesTab.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/cross-seed/__tests__/CrossSeedRouteForm.test.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/components/cross-seed/__tests__/HardlinkModeSettings.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/cross-seed/__tests__/LibraryTab.test.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/cross-seed/__tests__/RouteProtectionConfirm.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/cross-seed/__tests__/RssRunItem.test.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/cross-seed/__tests__/RunFooter.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/cross-seed/__tests__/SeasonPackCategoryRulesEditor.test.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/cross-seed/__tests__/SeasonPackRunsPanel.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/cross-seed/__tests__/SeasonPacksTab.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/cross-seed/tabs.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/dashboard/DashboardOverview.test.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/components/dashboard/DashboardOverview.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/components/dashboard/InstanceList.tsx": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/components/dashboard/SidePanels.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/dashboard/StreamChart.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/components/dashboard/TopTrackerGroups.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/dashboard/pointed-layer.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/database/DatabaseShrinkProvider.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/database/DatabaseShrinkProvider.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/database/ShrinkFailedActions.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/display-profiles/ColumnsMenuHeader.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/display-profiles/DisplayProfileChip.test.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/display-profiles/DisplayProfileChip.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/display-profiles/DisplayProfileEditor.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/display-profiles/DisplayProfileIconPicker.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/display-profiles/DisplayProfileList.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/display-profiles/DisplayProfileSheet.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/display-profiles/DisplayProfileThumbnail.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/display-profiles/DisplayProfileTile.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/display-profiles/DisplayProfilesSettings.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/display-profiles/DisplayProfilesSettings.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/display-profiles/NewDisplayProfileDialog.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/display-profiles/OwnSortAndFiltersSetting.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/display-profiles/SameColumns.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/display-profiles/SameColumnsSwitch.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/display-profiles/StableText.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/display-profiles/display-profile-icons.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/display-profiles/display-profile-names.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/feature-notice/FeatureNotice.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/feature-notice/FeatureNotice.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/feature-notice/due-notice.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/feature-notice/notices.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/indexers/AutodiscoveryDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/indexers/AutodiscoveryDialog.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/indexers/IndexerActivityPanel.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/indexers/IndexerDialog.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/indexers/IndexerToolbar.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/indexers/IndexersPage.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/indexers/IndexersPage.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/indexers/SearchHistoryPanel.tsx": {
+    "qui/no-comments": {
+      "count": 24
+    }
+  },
+  "src/components/indexers/indexer-view.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/DeleteHistoryCheckbox.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/InstanceErrorDisplay.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/InstanceForm.tsx": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/instances/InstanceList.deleteHistory.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/instances/InstanceList.status.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/InstanceList.test.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/instances/InstanceList.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/instances/InstanceSettingsButton.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/PublicPeerAddressField.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/instances/RemoteAccessIndicator.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/instances/preferences/CompletionOverview.tsx": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/instances/preferences/InstancePreferencesDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 21
+    }
+  },
+  "src/components/instances/preferences/InstancePreferencesDialog.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/instances/preferences/InstanceSSHPanel.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/InstanceSSHPanel.tsx": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/components/instances/preferences/InstanceSettingsPanel.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/instances/preferences/OrphanScanOverview.filesystemMode.test.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/instances/preferences/OrphanScanOverview.preview.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/instances/preferences/OrphanScanOverview.runItem.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/instances/preferences/OrphanScanOverview.test.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/instances/preferences/OrphanScanOverview.tsx": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/components/instances/preferences/OrphanScanPreviewDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/instances/preferences/OrphanScanPreviewDialog.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/OrphanScanRemoteLimits.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/OrphanScanSettingsForm.test.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/instances/preferences/OrphanScanSettingsForm.tsx": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/components/instances/preferences/PreferenceWidgets.tsx": {
+    "qui/no-comments": {
+      "count": 22
+    }
+  },
+  "src/components/instances/preferences/PreferencesForm.tsx": {
+    "qui/no-comments": {
+      "count": 17
+    }
+  },
+  "src/components/instances/preferences/ReannounceOverview.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/instances/preferences/ReannounceOverview.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/components/instances/preferences/RunWorkflowNowDialog.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/SettingsSummary.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/SettingsSummary.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/TrackerReannounceForm.tsx": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/components/instances/preferences/WorkflowDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/components/instances/preferences/WorkflowDialog.tsx": {
+    "qui/no-comments": {
+      "count": 181
+    }
+  },
+  "src/components/instances/preferences/WorkflowJsonEditDialog.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/WorkflowPreviewDialog.tsx": {
+    "qui/no-comments": {
+      "count": 20
+    }
+  },
+  "src/components/instances/preferences/WorkflowsOverview.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/WorkflowsOverview.tsx": {
+    "qui/no-comments": {
+      "count": 36
+    }
+  },
+  "src/components/instances/preferences/labels/advanced.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/labels/downloads.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/labels/index.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/labels/labels.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/labels/types.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/instances/preferences/preferenceView.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/kit/ConfirmDialog.tsx": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/kit/Editor.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/kit/Editor.tsx": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/components/kit/EmptyTile.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/kit/Facts.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/kit/Field.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/kit/ResourceList.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/kit/ResourceList.tsx": {
+    "qui/no-comments": {
+      "count": 22
+    }
+  },
+  "src/components/kit/Section.tsx": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/components/kit/SwitchRow.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/kit/use-pending-ids.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/kit/use-return-focus.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/layout/Header.tsx": {
+    "qui/no-comments": {
+      "count": 42
+    }
+  },
+  "src/components/layout/MobileFooterNav.tsx": {
+    "qui/no-comments": {
+      "count": 18
+    }
+  },
+  "src/components/layout/Page.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/components/layout/SectionedPage.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/layout/SectionedPage.tsx": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/components/layout/Sidebar.tsx": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/components/layout/SystemNoticeMenuItems.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/layout/SystemNoticeMenuItems.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/layout/UnifiedScopeDropdownSection.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/layout/navigation.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/layout/shown-section.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/magicui/shine-border.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/problem-reports/ProblemReportDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/problem-reports/ProblemReportDialog.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/components/problem-reports/SentReports.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/components/problem-reports/open.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/problem-reports/sent-reports.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/query-builder/ConditionGroup.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/components/query-builder/FieldCombobox.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/query-builder/LeafCondition.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/query-builder/LeafCondition.tsx": {
+    "qui/no-comments": {
+      "count": 52
+    }
+  },
+  "src/components/query-builder/QueryBuilder.tsx": {
+    "qui/no-comments": {
+      "count": 17
+    }
+  },
+  "src/components/query-builder/constants.test.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/query-builder/constants.ts": {
+    "qui/no-comments": {
+      "count": 32
+    }
+  },
+  "src/components/query-builder/fields.generated.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/search/SearchResultCard.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/settings/ApiKeysManager.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/settings/ApiKeysManager.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/settings/ApplicationSettings.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/settings/ArrInstancesManager.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/components/settings/ClientApiKeysManager.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/settings/ClientApiKeysManager.tsx": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/settings/ExternalProgramsManager.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/settings/ExternalProgramsManager.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/components/settings/GazelleSettingsCard.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/settings/GazelleSettingsCard.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/settings/InstallUpdateButton.test.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/settings/InstallUpdateButton.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/settings/InstancesSettings.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/settings/LogSettingsPanel.tsx": {
+    "qui/no-comments": {
+      "count": 37
+    }
+  },
+  "src/components/settings/NotificationsManager.switch.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/settings/NotificationsManager.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/components/settings/RestartButton.test.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/components/settings/RestartOverlay.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/settings/SearchCacheSettings.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/settings/SecuritySettings.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/settings/StatisticsDeleteHistory.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/settings/StatisticsSettingsCard.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/settings/StatisticsSettingsCard.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/settings/TimeLanguageSettings.tsx": {
+    "qui/no-comments": {
+      "count": 110
+    }
+  },
+  "src/components/settings/TrackerCustomizationsManager.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/settings/TrackerCustomizationsManager.tsx": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/components/settings/notification-targets.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/settings/tabs.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/shares/ShareDialog.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/shares/ShareOptionFields.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/shares/ShareSettingsForm.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/shares/ShareSettingsForm.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/shares/SharesTab.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/shares/SharesTab.tsx": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/components/spreadsheet/SpreadsheetFormulaBar.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/spreadsheet/SpreadsheetRibbonTabs.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/spreadsheet/SpreadsheetSheetTabs.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/statistics/DeletedTorrents.test.tsx": {
+    "qui/no-comments": {
+      "count": 17
+    }
+  },
+  "src/components/statistics/DeletedTorrents.tsx": {
+    "qui/no-comments": {
+      "count": 25
+    }
+  },
+  "src/components/statistics/EventsChart.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/Facts.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/GroupChart.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/statistics/GroupChart.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/statistics/GroupTable.tsx": {
+    "qui/no-comments": {
+      "count": 24
+    }
+  },
+  "src/components/statistics/LibraryGrowthChart.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/LibraryGrowthChart.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/Pager.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/statistics/RowLimit.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/statistics/StatisticsControls.tsx": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/statistics/TopTorrents.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/statistics/TransferChart.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/statistics/TransferChart.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/statistics/YearView.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/components/statistics/useBucketFormat.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/useTapTooltip.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/statistics/useTapTooltip.ts": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/support/SupportButton.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/support/SupportDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/support/SupportDialog.tsx": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/components/support/SupportReminder.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/support/SupportSettings.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/support/open.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/support/reminder.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/support/reminder.ts": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/components/themes/BuiltinThemesLoader.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/themes/CustomThemeEditor.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/themes/CustomThemeEditor.visit.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/themes/LicenseError.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/themes/LicenseManager.tsx": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/components/themes/QuickThemeRow.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/themes/ThemeLayoutSettings.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/themes/ThemeLayoutSettings.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/themes/ThemeMenuDialog.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/components/themes/ThemeSelector.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/themes/ThemeSelector.tsx": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/components/themes/ThemeThumbnail.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/torrents/AddTorrentDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 17
+    }
+  },
+  "src/components/torrents/AddTorrentDialog.tsx": {
+    "qui/no-comments": {
+      "count": 36
+    }
+  },
+  "src/components/torrents/AddTorrentPickers.tsx": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/components/torrents/CategorySubmenu.tsx": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/components/torrents/CategoryTree.tsx": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/components/torrents/ColumnFilterPopover.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/ColumnOrderMenu.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/torrents/CrossSeedDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/CrossSeedDialog.tsx": {
+    "qui/no-comments": {
+      "count": 25
+    }
+  },
+  "src/components/torrents/CrossSeedWarning.tsx": {
+    "qui/no-comments": {
+      "count": 17
+    }
+  },
+  "src/components/torrents/DeleteTorrentDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/DeleteTorrentDialog.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/torrents/DestinationFreeSpace.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/torrents/DestinationFreeSpace.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/torrents/DiscScanToasts.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/torrents/DraggableTableHeader.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/torrents/FilePrioritySelect.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/torrents/FilterSidebar.tsx": {
+    "qui/no-comments": {
+      "count": 135
+    }
+  },
+  "src/components/torrents/FilterViewsSection.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/torrents/FilterViewsSection.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/torrents/ManualCrossSeedDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/torrents/ManualCrossSeedDialog.tsx": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/components/torrents/SearchScopeEntries.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/SelectAllHotkey.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/TagCategoryManagement.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/components/torrents/TorrentCardsMobile.test.tsx": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/components/torrents/TorrentCardsMobile.tsx": {
+    "qui/no-comments": {
+      "count": 91
+    }
+  },
+  "src/components/torrents/TorrentContextMenu.tsx": {
+    "qui/no-comments": {
+      "count": 20
+    }
+  },
+  "src/components/torrents/TorrentCreationTasks.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/torrents/TorrentCreatorDialog.tsx": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/components/torrents/TorrentDetailsPanel.tabs.test.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/torrents/TorrentDetailsPanel.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/TorrentDetailsPanel.tsx": {
+    "qui/no-comments": {
+      "count": 77
+    }
+  },
+  "src/components/torrents/TorrentDialogs.test.tsx": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/torrents/TorrentDialogs.tsx": {
+    "qui/no-comments": {
+      "count": 49
+    }
+  },
+  "src/components/torrents/TorrentDiscReportDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentDiscReportDialog.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/components/torrents/TorrentFileTree.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/components/torrents/TorrentListEmptyState.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentManagementBar.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/torrents/TorrentTableColumns.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/TorrentTableColumns.tsx": {
+    "qui/no-comments": {
+      "count": 18
+    }
+  },
+  "src/components/torrents/TorrentTableOptimized.tsx": {
+    "qui/no-comments": {
+      "count": 93
+    }
+  },
+  "src/components/torrents/TorrentTableResponsive.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/bulk-actions/BulkActionProvider.tsx": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/components/torrents/bulk-actions/__tests__/BulkActionProvider.test.tsx": {
+    "qui/no-comments": {
+      "count": 17
+    }
+  },
+  "src/components/torrents/bulk-actions/__tests__/bulk-action-requests.test.ts": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/components/torrents/bulk-actions/bulk-action-requests.ts": {
+    "qui/no-comments": {
+      "count": 32
+    }
+  },
+  "src/components/torrents/bulk-actions/bulk-action-state.ts": {
+    "qui/no-comments": {
+      "count": 27
+    }
+  },
+  "src/components/torrents/bulk-actions/bulk-actions-context.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/torrents/details/CrossSeedTable.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/torrents/details/GeneralTabHorizontal.tsx": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/components/torrents/details/MobileDetails.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/torrents/details/PeerClientIcon.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/details/PeersTable.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/details/PeersTable.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/details/PieceBar.tsx": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/torrents/details/TorrentFileTable.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/components/torrents/details/TrackerContextMenu.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/details/TrackersTable.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/torrents/details/WebSeedsTable.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/piece-size.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/CompactRow.tsx": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/components/torrents/table/CopyGroupMenuItems.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/CopyGroupPill.tsx": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/torrents/table/GroupCopiesNoticePicture.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/GroupCopiesToolbar.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/TableColumnHeader.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/torrents/table/TorrentTableRow.tsx": {
+    "qui/no-comments": {
+      "count": 31
+    }
+  },
+  "src/components/torrents/table/TrackerIcon.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/torrents/table/__tests__/CompactRow.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/__tests__/TableColumnHeader.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/table/__tests__/TorrentTableOptimized.smoke.test.tsx": {
+    "qui/no-comments": {
+      "count": 57
+    }
+  },
+  "src/components/torrents/table/__tests__/TorrentTableRow.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/torrentLimitDialogHelpers.ts": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/components/torrents/torrentSortOptions.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/transfer-share-offer.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/transfers/BetaBadge.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/transfers/RowActions.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/components/transfers/TransferDetailsDialog.tsx": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/transfers/TransferDialog.test.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/components/transfers/TransferDialog.tsx": {
+    "qui/no-comments": {
+      "count": 26
+    }
+  },
+  "src/components/transfers/TransferForm.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/transfers/TransferHints.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/transfers/TransferSelectionBar.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/components/transfers/TransferState.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/transfers/TransfersTab.test.tsx": {
+    "qui/no-comments": {
+      "count": 23
+    }
+  },
+  "src/components/transfers/TransfersTab.tsx": {
+    "qui/no-comments": {
+      "count": 31
+    }
+  },
+  "src/components/transfers/tabs.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/transfers/transfer-display.ts": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/components/transfers/transfer-form-value.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/transfers/transfer-selection.ts": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/components/transfers/use-incognito-display.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/transfers/use-instance-name.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/ui/SystemNotice.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/ui/SystemNoticeList.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/ui/SystemNoticeList.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/ui/ThemeToggle.api.test.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/components/ui/ThemeToggle.test.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/ui/ThemeToggle.tsx": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/components/ui/UpdateBanner.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/ui/button.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/ui/chart.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/ui/command.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/ui/copy-button.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/ui/field-help.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/ui/field-help.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/ui/input.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/ui/json-editor-codemirror.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/ui/json-editor.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/ui/multi-select.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/ui/multi-select.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/components/ui/path-cell.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/ui/responsive-command-popover.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/ui/scroll-to-top-button.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/ui/scroll-to-top-button.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/components/ui/sheet.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/ui/table.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/ui/tap-menu.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/ui/tap-menu.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/components/ui/textarea.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/components/ui/tooltip.test.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/components/ui/tooltip.tsx": {
+    "qui/no-comments": {
+      "count": 21
+    }
+  },
+  "src/components/ui/torrent-name.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/ui/truncated-text.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/components/ui/truncated-text.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/config/themes.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/config/themes.ts": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/contexts/MobileScrollContext.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/contexts/MobileScrollContext.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/contexts/SyncStreamContext.test.tsx": {
+    "qui/no-comments": {
+      "count": 75
+    }
+  },
+  "src/contexts/SyncStreamContext.tsx": {
+    "qui/no-comments": {
+      "count": 141
+    }
+  },
+  "src/contexts/TorrentSelectionContext.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/demo/api.ts": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/demo/main.tsx": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/demo/store.ts": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/demo/stream.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/hooks/torrent-table/__tests__/useColumnDnd.test.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/torrent-table/__tests__/useCompactViewSort.test.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/torrent-table/__tests__/useRevealRow.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/torrent-table/__tests__/useTorrentSelectionDerivations.test.ts": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/hooks/torrent-table/__tests__/useTorrentTableArrowNavigation.test.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/hooks/torrent-table/__tests__/useTorrentTableFilterExpr.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/torrent-table/__tests__/useTorrentTableNotifications.test.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/torrent-table/__tests__/useTorrentTableVirtualization.test.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/torrent-table/__tests__/useTrackerIconCache.test.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/torrent-table/useColumnDnd.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/torrent-table/useCompactViewSort.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/torrent-table/useEffectiveServerState.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/torrent-table/useRevealRow.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/torrent-table/useTorrentSelection.ts": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/hooks/torrent-table/useTorrentSelectionDerivations.ts": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableArrowNavigation.ts": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableColumns.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableFilterExpr.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableHotkeys.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableNotifications.ts": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableVirtualization.ts": {
+    "qui/no-comments": {
+      "count": 19
+    }
+  },
+  "src/hooks/torrent-table/useTrackerIconCache.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/useAuth.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/useBuiltinThemes.test.tsx": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/hooks/useBuiltinThemes.ts": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/hooks/useClientSettingsSync.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/hooks/useCopyGroupRows.ts": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/hooks/useCrossSeedFilter.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useCrossSeedInstanceOf.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useCrossSeedInstanceState.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/useCrossSeedRoutes.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/useCrossSeedSearch.test.tsx": {
+    "qui/no-comments": {
+      "count": 50
+    }
+  },
+  "src/hooks/useCrossSeedSearch.tsx": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/hooks/useCrossSeedSettings.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/useCrossSeedWarning.test.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/hooks/useCrossSeedWarning.ts": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/hooks/useCustomThemes.ts": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/hooks/useDashboardChartView.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDashboardOpenInstances.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDatabaseShrink.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useDateTimeFormatters.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDateTimeFormatters.ts": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/hooks/useDelayedVisibility.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDiscScans.ts": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/hooks/useDynamicFavicon.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/hooks/useExperimentalFeature.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useFileRangeSelection.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useFileRangeSelection.ts": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/hooks/useFilterViews.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useGazelleLookupText.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useIndexerTrackerDomains.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useInstanceBackups.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useInstanceCapabilities.ts": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/hooks/useInstanceMetadata.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useInstanceMetadata.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/hooks/useInstancePreferences.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/useInstanceTrackers.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useInstances.ts": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/hooks/useIsAuthed.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useItemPartition.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useKeyboardNavigation.ts": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/hooks/useLicense.ts": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/hooks/useLiveSamples.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useManualRunCooldown.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useMediaQuery.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/useMobileDetailsHistory.test.tsx": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/hooks/useMobileDetailsHistory.ts": {
+    "qui/no-comments": {
+      "count": 17
+    }
+  },
+  "src/hooks/useNow.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useOrphanScan.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePathAutocomplete.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePathAutocomplete.ts": {
+    "qui/no-comments": {
+      "count": 22
+    }
+  },
+  "src/hooks/usePersistedAccordion.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/hooks/usePersistedColumnOrder.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePersistedColumnOrder.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePersistedColumnSizing.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePersistedCrossSeedBlocklist.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePersistedDeleteFiles.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/usePersistedFilters.test.tsx": {
+    "qui/no-comments": {
+      "count": 22
+    }
+  },
+  "src/hooks/usePersistedFilters.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePersistedGroupCopies.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePersistedInstanceSelection.test.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/usePersistedInstanceSelection.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePersistedLogExclusions.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/usePersistedLogLevels.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedShowEmptyState.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedStretchMode.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedStretchMode.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedThemeVariation.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedUnifiedInstanceFilter.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePreferenceValues.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePreferenceValues.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/useProblemReportsAvailable.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useQBittorrentAppInfo.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useRSS.ts": {
+    "qui/no-comments": {
+      "count": 20
+    }
+  },
+  "src/hooks/useRouteTitle.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useSSHSetup.ts": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/hooks/useSearchHistory.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useSelfUpdate.ts": {
+    "qui/no-comments": {
+      "count": 24
+    }
+  },
+  "src/hooks/useSeriesColors.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useStatisticsPeriod.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useSwipeActions.ts": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/hooks/useSwipeToClose.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useSwipeToClose.ts": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/hooks/useSystemNoticeDescription.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/useSystemNotices.ts": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/hooks/useTheme.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/hooks/useThemeSettingsSync.test.tsx": {
+    "qui/no-comments": {
+      "count": 17
+    }
+  },
+  "src/hooks/useThemeSettingsSync.ts": {
+    "qui/no-comments": {
+      "count": 32
+    }
+  },
+  "src/hooks/useThemeSettingsSync.visit.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useThemeTargetHint.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useThemeVisibility.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useTitleBarSpeeds.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/useTopTorrents.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useTorrentDetailTab.test.tsx": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/hooks/useTorrentDetailTab.ts": {
+    "qui/no-comments": {
+      "count": 45
+    }
+  },
+  "src/hooks/useTorrentExporter.test.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/hooks/useTorrentExporter.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/hooks/useTorrentListController.test.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/hooks/useTorrentListController.ts": {
+    "qui/no-comments": {
+      "count": 19
+    }
+  },
+  "src/hooks/useTorrentListEmptyMessage.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useTorrentListEscape.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/hooks/useTorrentsList.test.tsx": {
+    "qui/no-comments": {
+      "count": 89
+    }
+  },
+  "src/hooks/useTorrentsList.ts": {
+    "qui/no-comments": {
+      "count": 159
+    }
+  },
+  "src/hooks/useTrackerCustomizations.ts": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/hooks/useTrackerGroupName.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/hooks/useTrackerIcons.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/hooks/useTransferHistoryLibrary.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useTransferHistoryRows.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/hooks/useTransferQueue.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/i18n/index.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/i18n/index.ts": {
+    "qui/no-comments": {
+      "count": 20
+    }
+  },
+  "src/i18n/plurals.test.ts": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/index-html-favicon.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/index-html-theme-visit.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/layouts/AppLayout.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/__tests__/activity-invalidation.test.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/lib/__tests__/api.addTorrentStatusPrefix.test.ts": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/lib/__tests__/api.crossseed.test.ts": {
+    "qui/no-comments": {
+      "count": 20
+    }
+  },
+  "src/lib/__tests__/api.errorMessages.test.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/__tests__/api.export.test.ts": {
+    "qui/no-comments": {
+      "count": 21
+    }
+  },
+  "src/lib/__tests__/api.instances.test.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/__tests__/api.mutations.test.ts": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/lib/__tests__/api.torrents.test.ts": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/lib/__tests__/client-settings.test.ts": {
+    "qui/no-comments": {
+      "count": 31
+    }
+  },
+  "src/lib/__tests__/column-filter-utils.test.ts": {
+    "qui/no-comments": {
+      "count": 72
+    }
+  },
+  "src/lib/__tests__/cross-instance-torrents.test.ts": {
+    "qui/no-comments": {
+      "count": 29
+    }
+  },
+  "src/lib/__tests__/cross-seed-utils.test.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/__tests__/dashboard-overview.test.ts": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/lib/__tests__/dateTimeUtils.test.ts": {
+    "qui/no-comments": {
+      "count": 41
+    }
+  },
+  "src/lib/__tests__/failed-requests.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/__tests__/file-selection.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/__tests__/keyboard.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/__tests__/load-more-window.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/__tests__/peer-client-icons.test.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/__tests__/scoped-speeds.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/__tests__/search-derived-params.test.ts": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/lib/__tests__/speedUnits.test.ts": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/lib/__tests__/statistics-torrent-bars.test.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/__tests__/statistics-year-view.test.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/lib/__tests__/statistics.test.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/lib/__tests__/stream-merge.test.ts": {
+    "qui/no-comments": {
+      "count": 45
+    }
+  },
+  "src/lib/__tests__/stream-status.test.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/__tests__/tag-editor.test.ts": {
+    "qui/no-comments": {
+      "count": 24
+    }
+  },
+  "src/lib/__tests__/theme-thumbnail.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/__tests__/torrent-state-utils.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/__tests__/torrent-utils.test.ts": {
+    "qui/no-comments": {
+      "count": 36
+    }
+  },
+  "src/lib/__tests__/unit-format.lazy-bundle.test.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/lib/__tests__/unit-format.test.ts": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/lib/__tests__/workflow-utils.test.ts": {
+    "qui/no-comments": {
+      "count": 41
+    }
+  },
+  "src/lib/activity-invalidation.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/add-intent.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/add-torrent-tags.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/api-key-permissions.generated.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/api-key-permissions.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/api.ts": {
+    "qui/no-comments": {
+      "count": 129
+    }
+  },
+  "src/lib/base-url.ts": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/lib/category-utils.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/client-settings.ts": {
+    "qui/no-comments": {
+      "count": 118
+    }
+  },
+  "src/lib/column-constants.ts": {
+    "qui/no-comments": {
+      "count": 19
+    }
+  },
+  "src/lib/column-filter-utils.ts": {
+    "qui/no-comments": {
+      "count": 31
+    }
+  },
+  "src/lib/copy-groups.ts": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/lib/cross-instance-torrents.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/cross-instance-torrents.ts": {
+    "qui/no-comments": {
+      "count": 45
+    }
+  },
+  "src/lib/cross-seed-utils.ts": {
+    "qui/no-comments": {
+      "count": 16
+    }
+  },
+  "src/lib/css-outside-files.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/css-outside-files.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/csv-export.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/custom-theme-editor.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/custom-theme-preview.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/custom-themes.test.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/custom-themes.ts": {
+    "qui/no-comments": {
+      "count": 18
+    }
+  },
+  "src/lib/dashboard-overview.ts": {
+    "qui/no-comments": {
+      "count": 21
+    }
+  },
+  "src/lib/dashboard-stream.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/lib/dateTimeUtils.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/dateTimeUtils.ts": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/lib/demo.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/discovery-connections.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/display-profiles.ts": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/lib/document-scroll.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/document-scroll.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/dodo-constants.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/failed-requests.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/file-priority.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/lib/file-selection.ts": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/lib/file-tree-expansion.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/file-tree.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/file-tree.ts": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/lib/filter-views.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/format-error-message.test.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/format-error-message.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/free-space-source.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/gazelle-lookup.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/incognito.ts": {
+    "qui/no-comments": {
+      "count": 43
+    }
+  },
+  "src/lib/instance-validation.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/instances.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/keyboard.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/lib/license-checkout.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/license-errors.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/linkUtils.tsx": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/lib/load-more-window.ts": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/lib/magnet.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/manual-cross-seed.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/lib/move-path.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/password-manager.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/paths.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/paths.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/peer-client-icons.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/lib/piece-bar.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/protocol-handler.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/release-days.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/remote-access.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/router-search.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/rss-events.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/run-state.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/lib/save-path.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/save-path.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/scoped-speeds.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/search-derived-params.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/shares-api.ts": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/lib/speedUnits.ts": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/lib/spreadsheet-disguise.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/lib/statistics-events.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/statistics-library.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/statistics.ts": {
+    "qui/no-comments": {
+      "count": 51
+    }
+  },
+  "src/lib/stream-merge.ts": {
+    "qui/no-comments": {
+      "count": 9
+    }
+  },
+  "src/lib/stream-status.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/sync-stream-state.ts": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/lib/system-notice.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/lib/theme-areas.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/theme-catalog.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/theme-prompt.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/theme-prompt.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/theme-storage.ts": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/lib/theme-storage.visit.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/theme-thumbnail.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/torrent-field-request.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/lib/torrent-filters.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/torrent-peer-address.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-peer-flags.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-selection.ts": {
+    "qui/no-comments": {
+      "count": 44
+    }
+  },
+  "src/lib/torrent-state-utils.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/lib/torrent-table/__tests__/column-order.test.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/torrent-table/__tests__/default-columns.test.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/torrent-table/__tests__/row-display.test.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-table/backend-sort-field.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/torrent-table/column-label.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-table/column-order.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-table/default-columns.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/torrent-table/row-display.ts": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/lib/torrent-table/row-height.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-table/tracker-icon-equality.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-utils.test.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/lib/torrent-utils.ts": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/lib/tracker-customizations-manage.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/lib/tracker-customizations.ts": {
+    "qui/no-comments": {
+      "count": 18
+    }
+  },
+  "src/lib/tracker-icons.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/tracker-utils.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/transfers-api.ts": {
+    "qui/no-comments": {
+      "count": 20
+    }
+  },
+  "src/lib/unit-format.ts": {
+    "qui/no-comments": {
+      "count": 31
+    }
+  },
+  "src/lib/utils.ts": {
+    "qui/no-comments": {
+      "count": 18
+    }
+  },
+  "src/lib/workflow-save-flow.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/lib/workflow-utils.ts": {
+    "qui/no-comments": {
+      "count": 36
+    }
+  },
+  "src/main.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/pages/CrossSeedPage.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/pages/Dashboard.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/pages/Dashboard.tsx": {
+    "qui/no-comments": {
+      "count": 10
+    }
+  },
+  "src/pages/InstanceBackups.tsx": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/pages/Login.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/pages/Search.test.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/pages/Search.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/pages/Settings.sections.test.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/pages/Settings.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/pages/Statistics.test.tsx": {
+    "qui/no-comments": {
+      "count": 12
+    }
+  },
+  "src/pages/Statistics.tsx": {
+    "qui/no-comments": {
+      "count": 17
+    }
+  },
+  "src/pages/Torrents.tsx": {
+    "qui/no-comments": {
+      "count": 21
+    }
+  },
+  "src/pwa.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/router.tsx": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/routes/__root.tsx": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/routes/_authenticated.tsx": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/routes/add.tsx": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/test/mockFilters.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/test/mockListFacts.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/test/mockServerState.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/test/mockTorrent.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/test/msw/handlers.ts": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/test/msw/server.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/test/setup.ts": {
+    "qui/no-comments": {
+      "count": 11
+    }
+  },
+  "src/test/stubPhone.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/types/activity.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  },
+  "src/types/app.ts": {
+    "qui/no-comments": {
+      "count": 14
+    }
+  },
+  "src/types/automation.ts": {
+    "qui/no-comments": {
+      "count": 38
+    }
+  },
+  "src/types/crossseed.ts": {
+    "qui/no-comments": {
+      "count": 20
+    }
+  },
+  "src/types/dir-scan.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/types/instances.ts": {
+    "qui/no-comments": {
+      "count": 13
+    }
+  },
+  "src/types/launch-queue.d.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/types/notifications.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/types/orphan-scan.ts": {
+    "qui/no-comments": {
+      "count": 3
+    }
+  },
+  "src/types/problem-reports.ts": {
+    "qui/no-comments": {
+      "count": 6
+    }
+  },
+  "src/types/rss.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/types/statistics-settings.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/types/statistics.ts": {
+    "qui/no-comments": {
+      "count": 15
+    }
+  },
+  "src/types/torrents.ts": {
+    "qui/no-comments": {
+      "count": 30
+    }
+  },
+  "src/utils/fontLoader.test.ts": {
+    "qui/no-comments": {
+      "count": 7
+    }
+  },
+  "src/utils/fontLoader.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/utils/pwaNativeTheme.ts": {
+    "qui/no-comments": {
+      "count": 5
+    }
+  },
+  "src/utils/theme.test.ts": {
+    "qui/no-comments": {
+      "count": 8
+    }
+  },
+  "src/utils/theme.ts": {
+    "qui/no-comments": {
+      "count": 32
+    }
+  },
+  "src/utils/theme.visit.test.ts": {
+    "qui/no-comments": {
+      "count": 2
+    }
+  },
+  "src/utils/themeLoader.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/utils/themeParser.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/vite-env.d.ts": {
+    "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "vitest.config.ts": {
+    "qui/no-comments": {
+      "count": 4
+    }
+  }
+}

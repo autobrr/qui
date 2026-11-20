@@ -85,7 +85,6 @@ func TestParseIDHeader(t *testing.T) {
 	require.Equal(t, "tokyo-night", parse("/* @name: Tokyo Night\n */\n", "tokyo_night", true).ID)
 	require.Equal(t, "nord", parse("/* @id: nord */\n", "x", true).ID)
 
-	// An empty @id line, or "@id:" inside another header value, keeps the name slug.
 	require.Equal(t, "nord", parse("/* @name: Nord\n * @id:\n * @description: Cold\n */\n", "x", true).ID)
 	require.Equal(t, "nord", parse("/* @name: Nord\n * @description: Use @id: other\n */\n", "x", true).ID)
 }
@@ -153,7 +152,6 @@ func TestExtractPreviewVars(t *testing.T) {
 	require.Equal(t, "blue", light["--secondary"])
 	require.NotContains(t, light, "--accent", "cyclic reference must drop the swatch")
 
-	// The dark block resolves through :root for variables it does not redefine.
 	dark := extractPreviewVars(css, ".dark")
 	require.Equal(t, "oklch(0.55 0.25 297)", dark["--primary"])
 	require.Equal(t, "navy", dark["--secondary"])

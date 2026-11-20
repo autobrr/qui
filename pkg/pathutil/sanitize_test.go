@@ -197,7 +197,6 @@ func TestHashedIsolationFolder(t *testing.T) {
 		t.Errorf("HashedIsolationFolder = %q, want %q", got, "Movie--abcdef12")
 	}
 
-	// A cut name keeps room for the hash inside the 255-byte limit.
 	got := HashedIsolationFolder("abcdef1234567890", strings.Repeat("é", 200))
 	if want := strings.Repeat("é", 122) + "--abcdef12"; got != want {
 		t.Errorf("HashedIsolationFolder = %q (%d bytes), want %q", got, len(got), want)

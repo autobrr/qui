@@ -25,16 +25,12 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// keepEnded is how long the row of an ended Share stays.
 const keepEnded = 30 * 24 * time.Hour
 
-// Config bounds the waits of the Share service.
 type Config struct {
-	// Polls and PollInterval bound the wait for the add of a Share torrent.
 	Polls        int
 	PollInterval time.Duration
-	// Tick is how often Run checks the end conditions of the Shares.
-	Tick time.Duration
+	Tick         time.Duration
 }
 
 func DefaultConfig() Config {
@@ -60,9 +56,8 @@ type Deps struct {
 	// TrackerHost is the address that qui's own tracker listens on; empty
 	// listens on every address.
 	TrackerHost string
-	// Now is time.Now when nil.
-	Now    func() time.Time
-	Config Config
+	Now         func() time.Time
+	Config      Config
 }
 
 // Service runs the Shares and owns qui's own Share tracker. It listens only
@@ -81,10 +76,8 @@ type Service struct {
 
 	table atomic.Pointer[sharetracker.Table]
 
-	mu sync.Mutex
-	// live holds the unfinished Shares and what the tracker reported of them.
-	live map[int64]*live
-	// active holds the ids of the active Shares of each real torrent.
+	mu     sync.Mutex
+	live   map[int64]*live
 	active map[torrentKey][]int64
 }
 
@@ -93,8 +86,6 @@ type torrentKey struct {
 	hash       string
 }
 
-// live is an unfinished Share in memory: what Announced needs, and the
-// activity that Check writes.
 type live struct {
 	instanceID         int
 	size               int64
@@ -102,9 +93,8 @@ type live struct {
 	peers              map[string]Peer
 	downloaded         int64
 	uploaded           int64
-	// completed: a recipient reported the end of its download.
-	completed bool
-	dirty     bool
+	completed          bool
+	dirty              bool
 }
 
 func (l *live) activity() Activity {
@@ -128,8 +118,6 @@ func NewService(deps Deps) *Service {
 	return s
 }
 
-// Run resumes the Shares after a start of qui, and then checks their end
-// conditions until ctx ends.
 func (s *Service) Run(ctx context.Context) {
 	if err := s.Resume(ctx); err != nil {
 		log.Error().Err(err).Msg("share: cannot resume the Shares")
@@ -148,15 +136,12 @@ func (s *Service) Run(ctx context.Context) {
 	}
 }
 
-// Resume reads the unfinished Shares and starts qui's own tracker again for
-// the active Shares on it.
 func (s *Service) Resume(ctx context.Context) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	return s.refresh(ctx)
 }
 
-// Close stops qui's own tracker.
 func (s *Service) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -225,13 +210,10 @@ func (s *Service) refresh(ctx context.Context) error {
 	return s.tracker.Start(ctx, trackerSettings)
 }
 
-// ActiveShares returns the active Shares on qui's own tracker.
 func (s *Service) ActiveShares() *sharetracker.Table {
 	return s.table.Load()
 }
 
-// PublicPeerAddress answers the lookup of the tracker: the public peer
-// address of the instance of the Share.
 func (s *Service) PublicPeerAddress(ctx context.Context, shareID int64) (netip.AddrPort, error) {
 	s.mu.Lock()
 	l := s.live[shareID]

@@ -24,8 +24,6 @@ func (s *Service) SetHelperTorrents(helpers helperTorrents) {
 	s.reader = withoutHelpers{backupReader: s.reader, helpers: helpers}
 }
 
-// withoutHelpers leaves the helper torrents out of the torrents that backups
-// and restores read.
 type withoutHelpers struct {
 	backupReader
 	helpers helperTorrents

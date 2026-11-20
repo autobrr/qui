@@ -1,10 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package sshpool dials an instance's SSH endpoint with its stored credentials
-// and reports how the presented host key relates to the pinned one. Nothing
-// here writes to the database: pinning is the caller's decision, taken on the
-// report this package returns.
 package sshpool
 
 import (
@@ -31,7 +27,6 @@ import (
 // connect and then stalls.
 const dialTimeout = 15 * time.Second
 
-// credentialSource is the part of the instance store the dialer needs.
 type credentialSource interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 	GetDecryptedSSHKey(*models.Instance) (string, error)
@@ -39,8 +34,6 @@ type credentialSource interface {
 	SetSSHProbe(ctx context.Context, probed *models.Instance, tier models.SSHTier, hardlink bool) error
 }
 
-// Dialer opens SSH connections: one-shot ones for Test and Confirm, and the
-// long-lived ones Pool keeps through Connect.
 type Dialer struct {
 	creds   credentialSource
 	timeout time.Duration
@@ -50,7 +43,6 @@ func NewDialer(creds credentialSource) *Dialer {
 	return &Dialer{creds: creds, timeout: dialTimeout}
 }
 
-// Status is how the host key the server presented relates to the stored pin.
 type Status string
 
 const (
@@ -73,7 +65,6 @@ type Report struct {
 	Capabilities *Capabilities // nil on mismatch and pin_unreadable: no session is opened
 }
 
-// Capabilities is what the server lets us do, probed read-only.
 type Capabilities struct {
 	SFTP     bool
 	Statvfs  bool
@@ -90,9 +81,6 @@ type Capabilities struct {
 	GNUUserland bool
 }
 
-// errPinUnreadable aborts the handshake once the presented key is recorded: a
-// pin that will not decrypt is tampering, not first contact, and nothing —
-// not even authentication — runs against a host we cannot check.
 var errPinUnreadable = errors.New("stored host key pin is unreadable")
 
 // ErrConnect marks a failure to reach the host or complete the handshake, as
@@ -114,9 +102,6 @@ func (e *MismatchError) Error() string {
 		e.Pinned.Type(), ssh.FingerprintSHA256(e.Pinned))
 }
 
-// Test dials the instance and reports the host key, its relation to the pin,
-// and — unless the key mismatched or the pin is unreadable — what the server
-// can do.
 func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, error) {
 	pin, err := d.creds.GetHostKeyPin(inst)
 	unreadable := err != nil && !errors.Is(err, models.ErrSSHHostKeyNotPinned)
@@ -151,8 +136,6 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 			return &Report{Status: StatusMismatch, HostKey: mismatch.Presented, PinnedKey: mismatch.Pinned}, nil
 		}
 		if errors.Is(err, errPinUnreadable) {
-			// The key is shown so the user can replace the pin deliberately;
-			// the handshake was aborted before authentication.
 			return &Report{Status: StatusPinUnreadable, HostKey: presented}, nil
 		}
 		if unreadable && errors.Is(err, ErrConnect) {
@@ -239,7 +222,6 @@ func (d *Dialer) Connect(ctx context.Context, inst *models.Instance) (*ssh.Clien
 	return d.dialExpecting(ctx, inst, expected, true)
 }
 
-// dialExpecting dials and succeeds only if the host presents expected.
 func (d *Dialer) dialExpecting(ctx context.Context, inst *models.Instance, expected ssh.PublicKey, keepOpen bool) (*ssh.Client, error) {
 	callback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
 		return matchKey(key, expected)
@@ -280,8 +262,6 @@ func hostKeyAlgorithms(pinned ssh.PublicKey) []string {
 	return preferHostKeyAlgorithms(pinned.Type())
 }
 
-// preferHostKeyAlgorithms puts preferred at the front of the host-key
-// algorithms x/crypto considers secure.
 func preferHostKeyAlgorithms(preferred ...string) []string {
 	algorithms := slices.Clone(preferred)
 	for _, algorithm := range ssh.SupportedAlgorithms().HostKeys {

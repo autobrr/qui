@@ -13,9 +13,9 @@ const (
 type Icon struct {
 	Name        string
 	URL         string // raw URL pinned to a full commit SHA
-	SHA256      string // hex hash of the file at URL
+	SHA256      string
 	ContentType string
-	Fill        string // optional #rrggbb added to the root <svg> element
+	Fill        string
 }
 
 // Icons is the list that the server serves. A new hash makes each server

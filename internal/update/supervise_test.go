@@ -18,8 +18,6 @@ const (
 	superviseRunsFileEnv = "QUI_TEST_SUPERVISE_RUNS_FILE"
 )
 
-// The supervisor starts the child again after each Restart request, and exits
-// with the first other exit code. The child sees the same argv each time.
 func TestSupervisorRestartsUntilOtherExitCode(t *testing.T) {
 	if os.Getenv(supervisedEnv) == "1" {
 		superviseChild(t)
@@ -44,7 +42,6 @@ func TestSupervisorRestartsUntilOtherExitCode(t *testing.T) {
 	require.Equal(t, "run\nrun\nrun\n", string(runs), "two Restarts, then exit code 3")
 }
 
-// superviseChild asks for a Restart twice, then exits with 3.
 func superviseChild(t *testing.T) {
 	runsFile := os.Getenv(superviseRunsFileEnv)
 	f, err := os.OpenFile(runsFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
@@ -93,7 +90,6 @@ func TestExitMessage(t *testing.T) {
 			want:   "qui stopped with exit code 1:\n\nqui supervisor: job failed",
 		},
 		{
-			// A kill from Task Manager: the last line has nothing to do with it.
 			name:   "last line is not fatal",
 			code:   1,
 			stderr: `{"level":"info","message":"Sync complete"}` + "\n",

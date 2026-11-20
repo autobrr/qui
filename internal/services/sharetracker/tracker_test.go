@@ -44,8 +44,6 @@ func share() sharetracker.Share {
 	return sharetracker.Share{ID: shareID, InfoHash: infoHash, OwnerSecret: ownerSecret, RecipientSecret: recipientSecret}
 }
 
-// shares is the owner of the table of active Shares in a test, as the Share
-// service is in qui.
 type shares struct {
 	table atomic.Pointer[sharetracker.Table]
 	hold  atomic.Pointer[hold]
@@ -54,9 +52,6 @@ type shares struct {
 	address map[int64]netip.AddrPort
 }
 
-// hold keeps the next caller of ActiveShares after it read the table: read
-// closes when it has the table, and the caller goes on when the test closes
-// release.
 type hold struct {
 	read    chan struct{}
 	release chan struct{}
@@ -166,8 +161,6 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-// client is a BitTorrent client that announces to the tracker. from is the
-// address that the trusted proxy forwards; empty sends no X-Forwarded-For.
 type client struct {
 	secret string
 	from   string
@@ -242,7 +235,6 @@ func (r *rig) announce(c client, a announce) answer {
 	return r.get("/announce/"+c.secret+"?"+c.query(a).Encode(), header)
 }
 
-// peers decodes the compact peer lists of BEP 23 and BEP 7.
 func (a answer) peers(t *testing.T) []netip.AddrPort {
 	t.Helper()
 	require.Equal(t, http.StatusOK, a.Status, "body %q", a.Body)
@@ -301,7 +293,6 @@ func TestTheRecipientGetsNoAddressForTheUsersClientWithoutAPublicPeerAddress(t *
 	require.Empty(t, got.peers(t))
 }
 
-// bare is a 404 with no body and no Server header.
 func requireBare404(t *testing.T, got answer) {
 	t.Helper()
 	require.Equal(t, http.StatusNotFound, got.Status)

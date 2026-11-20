@@ -1,8 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package peerclienticons downloads the logos of peer clients from a fixed
-// list, checks their hash, and keeps them in the data directory.
 package peerclienticons
 
 import (
@@ -28,7 +26,7 @@ import (
 const (
 	dirName          = "peer-client-icons"
 	failuresFileName = "fetch-failures.json"
-	maxIconBytes     = 1 << 20 // 1 MiB
+	maxIconBytes     = 1 << 20
 	fetchTimeout     = 15 * time.Second
 
 	// The same waits as tracker icons: doubled after each failure, capped.
@@ -36,7 +34,6 @@ const (
 	maxFailureCooldown  = 24 * time.Hour
 )
 
-// errNotFound covers every reason the server has no icon to serve.
 var errNotFound = errors.New("peer client icon not found")
 
 type failureState struct {
@@ -44,7 +41,6 @@ type failureState struct {
 	LastFailure time.Time `json:"lastFailure"`
 }
 
-// Service serves the icons of one list from disk, and downloads a missing one.
 type Service struct {
 	dir          string
 	client       *http.Client
@@ -57,7 +53,6 @@ type Service struct {
 	failures  map[string]failureState
 }
 
-// NewService prepares the icon directory in dataDir. Fetching starts enabled.
 func NewService(dataDir, userAgent string, icons []Icon) (*Service, error) {
 	dir := filepath.Join(dataDir, dirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -92,12 +87,10 @@ func NewService(dataDir, userAgent string, icons []Icon) (*Service, error) {
 	return s, nil
 }
 
-// SetFetchEnabled turns downloads on or off. Files on disk are served either way.
 func (s *Service) SetFetchEnabled(enabled bool) {
 	s.fetchEnabled.Store(enabled)
 }
 
-// GetIcon returns the bytes and content type of the named icon.
 func (s *Service) GetIcon(ctx context.Context, name string) ([]byte, string, error) {
 	icon, ok := s.icons[name]
 	if !ok {

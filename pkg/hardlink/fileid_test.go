@@ -46,7 +46,6 @@ func TestFileIDRoundTripsThroughBytes(t *testing.T) {
 func TestFileIDKindsNeverCollide(t *testing.T) {
 	t.Parallel()
 
-	// Same raw bytes under different tags are different files.
 	unix := UnixFileID(1, 2)
 	var identifier [16]byte
 	identifier[7] = 2

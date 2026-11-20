@@ -35,7 +35,6 @@ func TestMkdirAll_WalksUpOverExistingPrefix(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 
-	// Idempotent, like os.MkdirAll.
 	require.NoError(t, b.MkdirAll(t.Context(), target, fsutil.ContentDirMode))
 
 	// The created list is what rollback removes, so a pre-existing prefix
@@ -108,7 +107,6 @@ func TestRemove_File(t *testing.T) {
 
 	b, _ := newBackend(t)
 	dir := t.TempDir()
-	// Option-like and shell-metacharacter names are bytes to sftp, nothing more.
 	file := remotePath(dir, "-rf; rm $HOME `x`")
 	writeFile(t, file, "x")
 
@@ -209,12 +207,10 @@ func TestRemove_Missing(t *testing.T) {
 
 	b, _ := newBackend(t)
 	missing := remotePath(t.TempDir(), "nope")
-	// Like os.RemoveAll and os.Remove respectively.
 	require.NoError(t, b.Remove(t.Context(), missing, fsops.RemoveOptions{Recursive: true}))
 	require.ErrorIs(t, b.Remove(t.Context(), missing, fsops.RemoveOptions{}), fs.ErrNotExist)
 }
 
-// linkPlan is a two-file plan rooted under dir, with one nested target.
 func linkPlan(t *testing.T, dir string) *hardlinktree.TreePlan {
 	t.Helper()
 	src1 := remotePath(dir, "src", "one.mkv")
@@ -236,7 +232,6 @@ func TestHardlinkTree_CreateAndRemoveTree(t *testing.T) {
 
 	b, _ := newBackend(t)
 	dir := t.TempDir()
-	// A pre-existing prefix must not be recorded as created.
 	require.NoError(t, os.MkdirAll(remotePath(dir, "links"), 0o755))
 	plan := linkPlan(t, dir)
 
@@ -328,7 +323,6 @@ func TestHardlinkTree_ServerWithoutExtension(t *testing.T) {
 	_, err = os.Lstat(plan.RootDir)
 	require.ErrorIs(t, err, fs.ErrNotExist, "nothing is created before the gate")
 
-	// Every other operation still works on that server.
 	require.NoError(t, b.MkdirAll(t.Context(), remotePath(dir, "plain"), fsutil.ContentDirMode))
 }
 
@@ -351,9 +345,6 @@ func TestRemove_RefusedUnlinkNeverReportsMissing(t *testing.T) {
 	require.NoError(t, err, "the link is still there")
 }
 
-// cancelHeldWrite cancels once the server holds a write, then lets the server
-// answer it. The caller checks that the held write landed before the call
-// returned.
 func cancelHeldWrite(t *testing.T, server *sshtest.Server, cancel context.CancelFunc, done <-chan error) error {
 	t.Helper()
 	select {
@@ -418,9 +409,8 @@ func TestRemove_CancelledRemoveCompletes(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name string
-		opts fsops.RemoveOptions
-		// remove is the path removed, held the entry whose remove is held.
+		name         string
+		opts         fsops.RemoveOptions
 		remove, held string
 	}{
 		{name: "file", remove: "f", held: "f"},
@@ -478,8 +468,6 @@ func TestHardlinkTree_ExecTierSkipsOwnLink(t *testing.T) {
 	}
 }
 
-// A stranger's file at the target is still the collision link mode refuses,
-// on the exec tier as on sftp: identity is what tells the two apart.
 func TestHardlinkTree_ExecTierStrangerStillRefuses(t *testing.T) {
 	t.Parallel()
 
@@ -514,8 +502,6 @@ func TestHardlinkTree_ExecTierSymlinkAtTargetRefuses(t *testing.T) {
 	require.ErrorIs(t, err, hardlinktree.ErrTargetExists)
 }
 
-// A skipped link survives a later failure in the same plan: it was never
-// recorded, so rollback never reaches it.
 func TestHardlinkTree_ExecTierSkippedLinkSurvivesLaterFailure(t *testing.T) {
 	t.Parallel()
 
@@ -625,7 +611,7 @@ func TestHardlinkTree_StaleStoredTierStillReusesOnExecHost(t *testing.T) {
 		t.Skip("the fake exec handler runs the local GNU stat")
 	}
 
-	b, _ := newBackend(t) // row says sftp; the fake answers exec
+	b, _ := newBackend(t)
 	require.NotEqual(t, models.SSHTierExec, b.inst.SSHTier)
 	dir := t.TempDir()
 	plan := linkPlan(t, dir)
@@ -637,8 +623,6 @@ func TestHardlinkTree_StaleStoredTierStillReusesOnExecHost(t *testing.T) {
 	assert.Equal(t, 1, created.SkippedExists)
 }
 
-// When Link fails and the lstat that follows fails too for a reason other
-// than an absent target, that reason is the error, not the Link failure.
 func TestHardlinkTree_LstatFailureAfterLinkIsReported(t *testing.T) {
 	t.Parallel()
 	// Host directory modes cannot inject this failure on Windows or as root.

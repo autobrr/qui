@@ -24,7 +24,6 @@ const (
 	defaultTimeout = 15 * time.Second
 )
 
-// Client is an HTTP client for communicating with Sonarr/Radarr v3 API
 type Client struct {
 	instanceType models.ArrInstanceType
 	baseURL      string
@@ -34,7 +33,6 @@ type Client struct {
 	httpClient   *http.Client
 }
 
-// NewClient creates a new ARR API client
 func NewClient(baseURL, apiKey string, basicUsername, basicPassword *string, instanceType models.ArrInstanceType, timeoutSeconds int) *Client {
 	timeout := defaultTimeout
 	if timeoutSeconds > 0 {
@@ -53,7 +51,6 @@ func NewClient(baseURL, apiKey string, basicUsername, basicPassword *string, ins
 	}
 }
 
-// Ping tests connectivity to the ARR instance via GET /api/v3/system/status
 func (c *Client) Ping(ctx context.Context) error {
 	endpoint := c.baseURL + "/api/v3/system/status"
 
@@ -84,7 +81,6 @@ func (c *Client) Ping(ctx context.Context) error {
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	// Validate we got a valid response with app name
 	if status.AppName == "" {
 		return errors.New("invalid response: missing appName")
 	}
@@ -92,9 +88,6 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// ParseTitle calls the parse endpoint to resolve a title to external IDs
-// For Sonarr: GET /api/v3/parse?title=<title>
-// For Radarr: GET /api/v3/parse?title=<title>
 func (c *Client) ParseTitle(ctx context.Context, title string) (*models.ExternalIDs, error) {
 	result, err := c.ParseTitleLookupResult(ctx, title)
 	if result == nil {
@@ -103,11 +96,9 @@ func (c *Client) ParseTitle(ctx context.Context, title string) (*models.External
 	return result.IDs, err
 }
 
-// ParseTitleLookupResult calls the parse endpoint to resolve a title to IDs and ARR title aliases.
 func (c *Client) ParseTitleLookupResult(ctx context.Context, title string) (*ExternalIDsLookupResult, error) {
 	endpoint := c.baseURL + "/api/v3/parse"
 
-	// Build URL with query parameter
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse endpoint URL: %w", err)
@@ -138,7 +129,6 @@ func (c *Client) ParseTitleLookupResult(ctx context.Context, title string) (*Ext
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse based on instance type
 	switch c.instanceType {
 	case models.ArrInstanceTypeSonarr:
 		return c.parseSonarrResponse(ctx, resp.Body)
@@ -149,9 +139,6 @@ func (c *Client) ParseTitleLookupResult(ctx context.Context, title string) (*Ext
 	}
 }
 
-// LookupByTerm queries the ARR title-search endpoint (Radarr /api/v3/movie/lookup,
-// Sonarr /api/v3/series/lookup) and returns IDs/titles from the best-matching
-// candidate, or nil when no candidate matches term (and year, when known).
 func (c *Client) LookupByTerm(ctx context.Context, term string, year int) (*ExternalIDsLookupResult, error) {
 	params := url.Values{}
 	params.Set("term", term)
@@ -174,8 +161,6 @@ func (c *Client) LookupByTerm(ctx context.Context, term string, year int) (*Exte
 	}
 }
 
-// hydrateSonarrSeries merges the full series record (alternate titles) into result
-// when the series is in the library.
 func (c *Client) hydrateSonarrSeries(ctx context.Context, result *ExternalIDsLookupResult, series *SonarrSeries) *ExternalIDsLookupResult {
 	if series == nil || series.ID <= 0 {
 		return result
@@ -272,7 +257,6 @@ func mergeExternalIDs(base, hydrated *models.ExternalIDs) *models.ExternalIDs {
 	return &ids
 }
 
-// ParseSonarrTitle returns the full Sonarr parse response for TV lookups that need the series ID.
 func (c *Client) ParseSonarrTitle(ctx context.Context, title string) (*SonarrParseResponse, error) {
 	if c.instanceType != models.ArrInstanceTypeSonarr {
 		return nil, fmt.Errorf("unsupported instance type for Sonarr parse: %s", c.instanceType)
@@ -291,7 +275,6 @@ func (c *Client) ParseSonarrTitle(ctx context.Context, title string) (*SonarrPar
 	return &parseResp, nil
 }
 
-// GetSonarrSeasonEpisodes fetches episodes for a specific Sonarr series season.
 func (c *Client) GetSonarrSeasonEpisodes(ctx context.Context, seriesID, seasonNumber int) ([]SonarrEpisodeResource, error) {
 	if c.instanceType != models.ArrInstanceTypeSonarr {
 		return nil, fmt.Errorf("unsupported instance type for Sonarr episodes: %s", c.instanceType)
@@ -343,7 +326,6 @@ func (c *Client) getJSON(ctx context.Context, path string, params url.Values, ta
 	return nil
 }
 
-// parseSonarrResponse parses a Sonarr parse response and extracts external IDs
 func (c *Client) parseSonarrResponse(ctx context.Context, body io.Reader) (*ExternalIDsLookupResult, error) {
 	var parseResp SonarrParseResponse
 	if err := json.NewDecoder(body).Decode(&parseResp); err != nil {
@@ -353,7 +335,6 @@ func (c *Client) parseSonarrResponse(ctx context.Context, body io.Reader) (*Exte
 	return c.hydrateSonarrSeries(ctx, parseResp.ExtractLookupResult(), parseResp.Series), nil
 }
 
-// parseRadarrResponse parses a Radarr parse response and extracts external IDs
 func (c *Client) parseRadarrResponse(ctx context.Context, body io.Reader) (*ExternalIDsLookupResult, error) {
 	var parseResp RadarrParseResponse
 	if err := json.NewDecoder(body).Decode(&parseResp); err != nil {
@@ -363,7 +344,6 @@ func (c *Client) parseRadarrResponse(ctx context.Context, body io.Reader) (*Exte
 	return c.radarrMovieLookupResult(ctx, &parseResp), nil
 }
 
-// setHeaders sets the required headers for ARR API requests
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("X-Api-Key", c.apiKey)
 	req.Header.Set("User-Agent", buildinfo.UserAgent)

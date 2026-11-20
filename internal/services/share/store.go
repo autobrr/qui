@@ -17,11 +17,9 @@ import (
 
 var (
 	ErrNotFound = errors.New("no such Share")
-	// ErrNotEnded refuses to remove the row of a Share that has not ended.
 	ErrNotEnded = errors.New("the Share has not ended")
 )
 
-// Store keeps the Shares in the database.
 type Store struct {
 	db dbinterface.Querier
 }
@@ -30,7 +28,6 @@ func NewStore(db dbinterface.Querier) *Store {
 	return &Store{db: db}
 }
 
-// Create stores s and sets its ID.
 func (s *Store) Create(ctx context.Context, sh *Share) error {
 	files, err := json.Marshal(sh.Files)
 	if err != nil {
@@ -98,7 +95,6 @@ func scanShare(row scanner, extra ...any) (*Share, error) {
 	return &sh, nil
 }
 
-// Get returns the Share with id and its .torrent, or ErrNotFound.
 func (s *Store) Get(ctx context.Context, id int64) (*Share, error) {
 	var torrent []byte
 	sh, err := scanShare(s.db.QueryRowContext(ctx, `SELECT `+columns+`, torrent_file FROM shares WHERE id = ?`, id), &torrent)
@@ -112,13 +108,10 @@ func (s *Store) Get(ctx context.Context, id int64) (*Share, error) {
 	return sh, nil
 }
 
-// List returns every Share, the newest first, without its .torrent.
 func (s *Store) List(ctx context.Context) ([]Share, error) {
 	return s.query(ctx, `SELECT `+columns+` FROM shares ORDER BY id DESC`)
 }
 
-// Unfinished returns the active and the ending Shares, the oldest first,
-// without their .torrent.
 func (s *Store) Unfinished(ctx context.Context) ([]Share, error) {
 	return s.query(ctx, `SELECT `+columns+` FROM shares WHERE state <> ? ORDER BY id`, string(StateEnded))
 }
@@ -140,8 +133,6 @@ func (s *Store) query(ctx context.Context, query string, args ...any) ([]Share, 
 	return list, rows.Err()
 }
 
-// SetState writes the state of a Share and why it ends. endedAt is zero
-// until the Share has ended.
 func (s *Store) SetState(ctx context.Context, id int64, state State, reason string, endedAt time.Time) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE shares SET state = ?, end_reason = ?, ended_at = ? WHERE id = ?`,
 		string(state), reason, nullTime(endedAt), id); err != nil {
@@ -150,8 +141,6 @@ func (s *Store) SetState(ctx context.Context, id int64, state State, reason stri
 	return nil
 }
 
-// SetHolder writes the address that holds the lock of a Share. The zero
-// address clears it.
 func (s *Store) SetHolder(ctx context.Context, id int64, holder netip.Addr) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE shares SET holder = ? WHERE id = ?`, string(holder.AppendTo(nil)), id); err != nil {
 		return fmt.Errorf("save holder of share %d: %w", id, err)
@@ -159,7 +148,6 @@ func (s *Store) SetHolder(ctx context.Context, id int64, holder netip.Addr) erro
 	return nil
 }
 
-// SaveActivity writes what the Share tracker or the user's client reported.
 func (s *Store) SaveActivity(ctx context.Context, id int64, a Activity) error {
 	peers, err := json.Marshal(peersOrEmpty(a.Peers))
 	if err != nil {
@@ -172,7 +160,6 @@ func (s *Store) SaveActivity(ctx context.Context, id int64, a Activity) error {
 	return nil
 }
 
-// Remove deletes the row of an ended Share, or returns ErrNotEnded.
 func (s *Store) Remove(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx, `DELETE FROM shares WHERE id = ? AND state = ?`, id, string(StateEnded))
 	if err != nil {
@@ -189,7 +176,6 @@ func (s *Store) Remove(ctx context.Context, id int64) error {
 	return nil
 }
 
-// EndedBefore returns the ids of the Shares that ended before t.
 func (s *Store) EndedBefore(ctx context.Context, t time.Time) ([]int64, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id FROM shares WHERE state = ? AND ended_at < ? ORDER BY id`, string(StateEnded), t.UTC())
 	if err != nil {

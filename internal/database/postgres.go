@@ -65,7 +65,6 @@ func newPostgres(dsn string, opts OpenOptions) (*DB, error) {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
-	// Separate pool for readers to preserve existing architecture.
 	readerPool := openPostgresDB(connConfig)
 	readerPool.SetMaxOpenConns(maxOpenConns)
 	readerPool.SetMaxIdleConns(maxIdleConns)
@@ -122,8 +121,6 @@ func openPostgresDB(config *pgx.ConnConfig) *sql.DB {
 	return stdlib.OpenDB(*config, stdlib.OptionAfterConnect(registerUTCTimestampCodec))
 }
 
-// openPostgresPool opens a pgx pool with the same session zone and timestamp
-// codec as the pools of the app.
 func openPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -185,7 +182,6 @@ func (p utcTimestampEncodePlan) Encode(value any, buf []byte) ([]byte, error) {
 func (db *DB) migratePostgres() error {
 	ctx := context.Background()
 
-	// Prevent concurrent migrators on the same DB.
 	tx, err := db.writerConn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin migration tx: %w", err)
@@ -214,7 +210,6 @@ func (db *DB) migratePostgres() error {
 
 	entries, err := postgresMigrationsFS.ReadDir("postgres_migrations")
 	if err != nil {
-		// No postgres migrations embedded: keep existing schema as-is.
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit empty migration tx: %w", err)
 		}

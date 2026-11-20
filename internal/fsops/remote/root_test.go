@@ -36,9 +36,6 @@ func create(t *testing.T, root fsops.Root, name, content string) {
 	require.NoError(t, w.Close())
 }
 
-// The rename into place never replaces a file: with hardlink@openssh.com it
-// links and removes, and without it, it renames only a name that is free,
-// also on a server whose plain rename replaces a file.
 func TestRoot_RenameNeverReplaces(t *testing.T) {
 	t.Parallel()
 
@@ -155,8 +152,6 @@ func TestRoot_StaysInsideItsFolder(t *testing.T) {
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
-// A resumed copy writes the missing pieces into the file that it wrote
-// before, and keeps the bytes that are there.
 func TestRoot_OpenWriteWritesIntoAnExistingFile(t *testing.T) {
 	t.Parallel()
 
@@ -212,7 +207,6 @@ func TestRoot_LinksAndRemoves(t *testing.T) {
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
-// Link makes the missing folders of the new name, as Create does.
 func TestRoot_LinkMakesTheFoldersOfTheNewName(t *testing.T) {
 	t.Parallel()
 
