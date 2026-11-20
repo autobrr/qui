@@ -288,7 +288,7 @@ check-i18n:
 
 # Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
 lint-ratchet: lint-version
-	go run ./scripts/ratchet
+	go run ./scripts/ratchet -base "$$(git merge-base origin/develop HEAD)"
 
 # Lint with JSON output (for AI agent consumption)
 lint-json:

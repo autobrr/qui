@@ -30,6 +30,11 @@
 ## Mutations
 
 - `isPending` of a `useMutation` follows only the latest call. When one mutation sends two or more requests at the same time, keep a pending flag of your own that clears when all of them settle. Without it, the dialog shows as idle while a request still runs, and the user can submit again.
+- A mutation that removes a row from a cached list cancels the list queries of the feature in `onSuccess`, before it removes the row from the cache. A list request that started before the delete finished still holds the row, and without the cancel its answer brings the deleted row back.
+
+## Client settings
+
+- A synced value that marks how far the user has seen, for example the time the user last opened a list, only moves forward: write it only when the new value is later than the stored one. Another browser can hold a later value, and a write that moves it back shows the changes that the user saw there as new again.
 
 ## Tables
 
