@@ -4,6 +4,7 @@
  */
 
 import { api } from "@/lib/api"
+import { BYTES_PER_UNIT } from "@/lib/unit-format"
 import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, RuleCondition, SortingConfig } from "@/types"
 import type { QueryClient } from "@tanstack/react-query"
 
@@ -308,4 +309,45 @@ export function parseImportJSON(jsonString: string): { data: WorkflowImport; err
  */
 export function toExportJSON(data: WorkflowExport): string {
   return JSON.stringify(data, null, 2)
+}
+
+/** The Free space source fields of the workflow dialog. `allowanceUnit` is a byte multiplier. */
+export interface FreeSpaceSourceInput {
+  type: FreeSpaceSource["type"]
+  path: string
+  allowance: string
+  allowanceUnit: number
+}
+
+const ALLOWANCE_DECIMALS = 3
+
+/** The units of a plan that counts in steps of 1000, as most providers do. */
+export const ALLOWANCE_DECIMAL_UNITS = { MB: 1000 ** 2, GB: 1000 ** 3, TB: 1000 ** 4 } as const
+
+function allowanceBytesOf(allowance: string, unit: number): number {
+  return Math.round((parseFloat(allowance) || 0) * unit)
+}
+
+/** The `freeSpaceSource` of a rule payload. Undefined means the default source, also for a source that is not complete. */
+export function freeSpaceSourceOf(input: FreeSpaceSourceInput): FreeSpaceSource | undefined {
+  const path = input.path.trim()
+  if (input.type === "qbittorrent" || path === "") return undefined
+  if (input.type === "path" || input.type === "qbitPath") return { type: input.type, path }
+  const allowanceBytes = allowanceBytesOf(input.allowance, input.allowanceUnit)
+  return allowanceBytes > 0 ? { type: "allowance", path, allowanceBytes } : undefined
+}
+
+/** The figure and unit that show a saved allowance without a change to its bytes, so a save of an untouched rule keeps the figure. */
+export function allowanceInputOf(allowanceBytes: number): Pick<FreeSpaceSourceInput, "allowance" | "allowanceUnit"> {
+  const { TB, GB, MB } = ALLOWANCE_DECIMAL_UNITS
+  for (const allowanceUnit of [BYTES_PER_UNIT.TiB, BYTES_PER_UNIT.GiB, BYTES_PER_UNIT.MiB, TB, GB, MB]) {
+    const allowance = String(Number((allowanceBytes / allowanceUnit).toFixed(ALLOWANCE_DECIMALS)))
+    // A figure below 1 reads better in the next unit down: 500 GB, not 0.5 TB.
+    if (Number(allowance) >= 1 && allowanceBytesOf(allowance, allowanceUnit) === allowanceBytes) {
+      return { allowance, allowanceUnit }
+    }
+  }
+  // No short figure holds these bytes, for example a value set through the API.
+  // A division by a power of two is exact, so the full MiB figure is.
+  return { allowance: String(allowanceBytes / BYTES_PER_UNIT.MiB), allowanceUnit: BYTES_PER_UNIT.MiB }
 }

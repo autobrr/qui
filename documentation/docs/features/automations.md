@@ -1308,6 +1308,7 @@ By default, Free Space uses qBittorrent's reported free space, based on its defa
 | Default (qBittorrent) | Uses qBittorrent's reported free space for its default download location |
 | Path on server | qui reads free space at a path on the qui host, or on the remote machine through SSH access |
 | Path on the qBittorrent host | qBittorrent measures free space at a path on its own host |
+| Allowance on a path | Subtracts the size of the files under a path from an allowance that you enter |
 
 :::note
 Path on server requires filesystem access on the instance: "Local Filesystem Access", or [SSH access](./ssh-access.md) for a remote instance. With SSH access, qui reads the free space on the remote machine, and the server must report free space (see [Read the test result](./ssh-access.md#read-the-test-result)). If qui cannot reach the remote machine, the run fails and sends a notification. qui does not use the value from qBittorrent instead, because that value can come from a different disk.
@@ -1320,6 +1321,21 @@ Enter the path the way the qBittorrent host writes it. A qBittorrent on Windows 
 If you want to manage multiple disks, create one workflow per disk and set a different path for each workflow.
 
 If qBittorrent cannot measure the path, qui treats the read as failed. Free Space never falls back to zero, so an unreadable path cannot trigger a delete.
+
+##### Allowance on a path
+
+On a shared seedbox, the free space of the disk is not the space that you may fill: the disk belongs to all users, and your plan gives you a part of it. Select "Allowance on a path", enter the space that your plan allows, and enter the folder that holds your files, for example your home directory. Free Space is then the allowance minus the size of the files under that folder.
+
+- Enter the allowance in the unit that your provider uses. Most providers count in steps of 1000 (MB, GB, TB), not 1024 (MiB, GiB, TiB). A plan of 1.5 TB is 1.364 TiB.
+- qui measures the folder at the start of each run. It counts hidden files, counts a hardlinked file one time, and does not follow symlinks.
+- When the files take more space than the allowance, the rule first has to free the excess. For example, with 50 GiB above the allowance, a rule "Free Space below 100 GiB" frees 150 GiB.
+- Match only torrents that are stored under the folder. A delete of a torrent that is stored elsewhere frees no space under the folder, but qui counts it as freed.
+- A delete frees no space while another hardlink to the same files stays under the folder, for example a cross-seed that shares the files. qui still counts the size of the torrent as freed, so a run can stop before it reaches the target. The next run measures the folder again and continues.
+- If qui cannot read a folder or a file under the path, the run fails and sends a notification.
+
+:::note
+Allowance on a path needs "Local Filesystem Access", or a remote instance where qui can run commands on the host (see [SSH access](./ssh-access.md#read-the-test-result)). On a remote instance where qui only has SFTP, qui cannot tell a hardlinked file from a second copy, so the source is not available. It is also not available on Windows with local access.
+:::
 
 :::note
 When qui runs on Windows, Path on server works only for a remote instance. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them. Path on the qBittorrent host works on every qui host.

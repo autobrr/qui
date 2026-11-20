@@ -1306,9 +1306,24 @@
           "unsupportedWindows": "Função não existe se instalada em Windows.",
           "qbitPathUnsupported": "Esta instância é anterior ao qBittorrent 5.3 e não informa o espaço livre de um caminho.",
           "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD.",
-          "filesystemAccessRequired": "A origem de espaço livre por caminho requer acesso ao sistema de arquivos local ou via SSH."
+          "filesystemAccessRequired": "A origem de espaço livre por caminho requer acesso ao sistema de arquivos local ou via SSH.",
+          "allowanceRequired": "Informe um espaço permitido maior que 0.",
+          "allowanceAccessRequired": "A origem de espaço permitido requer acesso ao sistema de arquivos local, ou acesso SSH com shell."
         },
-        "pathSourceFilesystemAccessRequired": "Localização Manual Exata (requer acesso local ou SSH)"
+        "pathSourceFilesystemAccessRequired": "Localização Manual Exata (requer acesso local ou SSH)",
+        "allowanceSource": "Espaço permitido em um caminho",
+        "allowanceSourceWindowsUnsupported": "Espaço permitido em um caminho (não suportado no Windows)",
+        "allowanceSourceAccessRequired": "Espaço permitido em um caminho (requer acesso local, ou acesso SSH com shell)",
+        "allowanceLabel": "Espaço permitido",
+        "allowancePathLabel": "Pasta a medir",
+        "allowanceUnitAria": "Unidade do espaço permitido",
+        "allowanceHelp": "Informe o espaço que o seu plano permite, na unidade que o seu provedor usa. O qui subtrai o tamanho dos arquivos sob o caminho. A maioria dos provedores conta em passos de 1000 ({{decimalUnit}}), não de 1024 ({{binaryUnit}}): a diferença é de cerca de 9%.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
+        "allowancePathHelp": "Por exemplo, o seu diretório pessoal"
       },
       "grouping": {
         "title": "Grupos Personalizados (Para GROUP_SIZE)",

@@ -43,6 +43,10 @@ const (
 	// FreeSpaceSourcePath reads free space at a path through the instance's
 	// filesystem backend, local or SSH.
 	FreeSpaceSourcePath FreeSpaceSourceType = "path"
+	// FreeSpaceSourceAllowance is an allowance that the user sets, minus the
+	// size of the files under a path. It serves a shared host, where the free
+	// space of the disk is not the space that the user may fill.
+	FreeSpaceSourceAllowance FreeSpaceSourceType = "allowance"
 	// FreeSpaceSourceQbitPath reads free space at a path on the qBittorrent host.
 	// It needs Web API 2.15.2 and no filesystem access.
 	FreeSpaceSourceQbitPath FreeSpaceSourceType = "qbitPath"
@@ -50,8 +54,9 @@ const (
 
 // FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
 type FreeSpaceSource struct {
-	Type FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'. 'qbitPath' asks qBittorrent for the free space at 'path' on its own host."`
-	Path string              `json:"path,omitempty" doc:"With type 'path' or 'qbitPath': the path to read. Type 'path' needs filesystem access on the instance. Type 'qbitPath' needs qBittorrent with Web API 2.15.2 or later."`
+	Type           FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'. 'qbitPath' asks qBittorrent for the free space at 'path' on its own host. 'allowance' is 'allowanceBytes' minus the size of the files under 'path'."`
+	Path           string              `json:"path,omitempty" doc:"With type 'path' or 'qbitPath': the path to read. With type 'allowance': the folder to measure. Types 'path' and 'allowance' need filesystem access on the instance. Type 'qbitPath' needs qBittorrent with Web API 2.15.2 or later."`
+	AllowanceBytes int64               `json:"allowanceBytes,omitzero" doc:"With type 'allowance': the space that the user may fill, in bytes."`
 }
 
 // ScoreRuleType defines the type of score rule.

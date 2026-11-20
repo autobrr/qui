@@ -1306,9 +1306,24 @@
           "unsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows.",
           "qbitPathUnsupported": "Questa istanza è precedente a qBittorrent 5.3 e non può riportare lo spazio libero di un percorso.",
           "pathRequired": "Il percorso è obbligatorio quando si usa \"Percorso sul server\".",
-          "filesystemAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'accesso al filesystem locale o via SSH."
+          "filesystemAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'accesso al filesystem locale o via SSH.",
+          "allowanceRequired": "Inserisci uno spazio consentito maggiore di 0.",
+          "allowanceAccessRequired": "L'origine dello spazio consentito richiede l'accesso al filesystem locale, o l'accesso SSH con shell."
         },
-        "pathSourceFilesystemAccessRequired": "Percorso sul server (richiede accesso locale o SSH)"
+        "pathSourceFilesystemAccessRequired": "Percorso sul server (richiede accesso locale o SSH)",
+        "allowanceSource": "Spazio consentito su un percorso",
+        "allowanceSourceWindowsUnsupported": "Spazio consentito su un percorso (non supportato su Windows)",
+        "allowanceSourceAccessRequired": "Spazio consentito su un percorso (richiede accesso locale, o accesso SSH con shell)",
+        "allowanceLabel": "Spazio consentito",
+        "allowancePathLabel": "Cartella da misurare",
+        "allowanceUnitAria": "Unità dello spazio consentito",
+        "allowanceHelp": "Inserisci lo spazio consentito dal tuo piano, nell'unità usata dal tuo provider. qui sottrae la dimensione dei file sotto il percorso. La maggior parte dei provider conta a passi di 1000 ({{decimalUnit}}), non di 1024 ({{binaryUnit}}): la differenza è di circa il 9%.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
+        "allowancePathHelp": "Ad esempio, la tua directory home"
       },
       "grouping": {
         "title": "Gruppi di condizioni raggruppate",
