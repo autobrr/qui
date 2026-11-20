@@ -457,6 +457,18 @@ describe("DashboardOverview instances", () => {
   })
 
   // regression: #4305
+  it("waits for the free space of qBittorrent before it warns about a measured disk", () => {
+    const disk = { freeBytes: 10 * GiB, totalBytes: 1000 * GiB }
+    renderOverview([
+      stats(1, { disk }, {}, { free_space_on_disk: -1 }),
+      stats(2, { disk }, {}, { free_space_on_disk: 10 * GiB }),
+    ])
+
+    const items = [...screen.getByTestId("attention-list").querySelectorAll("li[data-tone]")]
+    expect(items.map(item => item.textContent)).toEqual([`attention.lowDisk name=instance 2 free=${formatBytes(10 * GiB)}`])
+  })
+
+  // regression: #4305
   it("explains the Storage bars only while one of them is an estimate", () => {
     const disk = { freeBytes: 400 * GiB, totalBytes: 1000 * GiB }
     const measured = renderOverview([stats(1, { disk }), stats(2, { disk })])

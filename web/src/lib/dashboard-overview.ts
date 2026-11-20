@@ -124,8 +124,13 @@ export function allTimeTransfer(statsData: DashboardInstanceStats[]): { uploaded
 // A disk is almost full below this share of free space.
 const LOW_DISK_SHARE = 0.05
 
+/** True when qBittorrent reports its free space. It reports -1 when it cannot read it, for example right after a start. */
+export function reportsFreeSpace(d: DashboardInstanceStats): boolean {
+  return (d.serverState?.free_space_on_disk ?? -1) >= 0
+}
+
 export function isLowDisk(d: DashboardInstanceStats): boolean {
-  return (freeShare(d) ?? 1) < LOW_DISK_SHARE
+  return reportsFreeSpace(d) && (freeShare(d) ?? 1) < LOW_DISK_SHARE
 }
 
 export function connectionStatusOf(d: DashboardInstanceStats): string {
