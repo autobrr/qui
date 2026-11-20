@@ -543,7 +543,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           // it sent the first inits, so a request gets the init grace. After
           // that, the request fails and the catch reopens the stream.
           const abort = new AbortController()
-          const timer = window.setTimeout(() => abort.abort(), STREAM_INITIAL_TIMEOUT_MS)
+          // A timeout is a failure, so the failed-request list of a Problem report keeps it.
+          const timer = window.setTimeout(
+            () => abort.abort(new DOMException("The stream subscription change timed out.", "TimeoutError")),
+            STREAM_INITIAL_TIMEOUT_MS
+          )
           try {
             await api.changeStreamSubscriptions(connectionId, add, remove, abort.signal)
           } catch (err) {

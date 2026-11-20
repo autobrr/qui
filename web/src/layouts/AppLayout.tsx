@@ -8,6 +8,7 @@ import { CommandPalette } from "@/components/command-palette/CommandPalette"
 import { MobileFooterNav } from "@/components/layout/MobileFooterNav"
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
+import { ProblemReportDialogRoot } from "@/components/problem-reports/ProblemReportDialog"
 import { SupportDialogRoot } from "@/components/support/SupportDialog"
 import { ReminderBar } from "@/components/support/SupportReminder"
 import { LayoutRouteProvider, useLayoutRoute } from "@/contexts/LayoutRouteContext"
@@ -59,6 +60,7 @@ function AppLayoutContent() {
 
       <CommandPalette />
       <SupportDialogRoot />
+      <ProblemReportDialogRoot />
     </div>
   )
 }

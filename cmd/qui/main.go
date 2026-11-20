@@ -1042,6 +1042,7 @@ func (app *Application) runServer() {
 			APIKeys:       models.NewAPIKeyStore(db),
 			ClientAPIKeys: clientAPIKeyStore,
 			Notifications: notificationTargetStore,
+			Licenses:      licenseRepo,
 			Config: func() []string {
 				return problemreport.ConfigSecrets(cfg.Config)
 			},

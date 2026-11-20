@@ -2072,7 +2072,7 @@ describe("subscription changes on an open stream", () => {
   })
 
   it.each([false, true])("reopens the stream when a change request gets no answer, retry=%s", async retry => {
-    vi.spyOn(api, "changeStreamSubscriptions").mockImplementation((_id, _add, _remove, signal) =>
+    const change = vi.spyOn(api, "changeStreamSubscriptions").mockImplementation((_id, _add, _remove, signal) =>
       new Promise((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason))))
     const { source, select } = renderTableWithDetails()
     select("aaa")
@@ -2088,6 +2088,8 @@ describe("subscription changes on an open stream", () => {
     }
     expect(source.closed).toBe(true)
     expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("aaa"))].sort())
+    // A timeout, not a cancel, so the failed-request list of a Problem report keeps it.
+    expect((change.mock.calls[0][3]?.reason as Error | undefined)?.name).toBe("TimeoutError")
   })
 
   it("keeps the stream while the server holds a change until the first inits are sent", async () => {

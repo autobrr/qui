@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/redact"
@@ -41,6 +42,7 @@ type StoreSecrets struct {
 	APIKeys       *models.APIKeyStore
 	ClientAPIKeys *models.ClientAPIKeyStore
 	Notifications *models.NotificationTargetStore
+	Licenses      *database.LicenseRepo
 	// Config returns the secrets of the config, see ConfigSecrets.
 	Config func() []string
 }
@@ -65,7 +67,7 @@ func (s StoreSecrets) ReportSecrets(ctx context.Context) (Secrets, error) {
 		c.add(s.Config()...)
 	}
 	for _, read := range []func(context.Context, *secretCollector) error{
-		s.instanceSecrets, s.indexerSecrets, s.arrSecrets, s.crossSeedSecrets, s.keyHashes, s.notificationSecrets,
+		s.instanceSecrets, s.indexerSecrets, s.arrSecrets, s.crossSeedSecrets, s.keyHashes, s.notificationSecrets, s.licenseSecrets,
 	} {
 		if err := read(ctx, c); err != nil {
 			return Secrets{}, err
@@ -209,6 +211,22 @@ func (s StoreSecrets) notificationSecrets(ctx context.Context, c *secretCollecto
 	return nil
 }
 
+// licenseSecrets adds the license keys. The web app removes a license with
+// its key in the path, so a failed request can hold one.
+func (s StoreSecrets) licenseSecrets(ctx context.Context, c *secretCollector) error {
+	if s.Licenses == nil {
+		return nil
+	}
+	licenses, err := s.Licenses.GetAllLicenses(ctx)
+	if err != nil {
+		return fmt.Errorf("list licenses: %w", err)
+	}
+	for _, license := range licenses {
+		c.add(license.LicenseKey)
+	}
+	return nil
+}
+
 // hostCredentialSchemes are the notification URL schemes whose host is a
 // credential and not a server: the Notifiarr API key, the Pushover user key,
 // the Pushbullet token, the IFTTT webhook key and the WeCom webhook key.
@@ -284,6 +302,14 @@ func instanceAddress(host string) []string {
 // apiKeyRegex matches a qui API key: 64 hex characters.
 var apiKeyRegex = regexp.MustCompile(`\b[0-9a-f]{64}\b`)
 
+// licensePathRegex matches a license API path and the segment after it. The
+// web app removes a license with its key in that segment, and qui no longer
+// stores the key once a retry removed it.
+var licensePathRegex = regexp.MustCompile(`/api/license/[^/?#\s"'<>\\]+`)
+
+// licenseRoutes are the fixed words of the license API, which hold no key.
+var licenseRoutes = map[string]bool{"licensed": true, "licenses": true, "activate": true, "validate": true, "refresh": true}
+
 // cleaner removes keys, the stored secrets and the instance addresses from
 // a text part.
 type cleaner struct {
@@ -312,6 +338,12 @@ func (c cleaner) clean(text string) string {
 			return match
 		})
 	}
+	text = licensePathRegex.ReplaceAllStringFunc(text, func(match string) string {
+		if segment := strings.TrimPrefix(match, "/api/license/"); licenseRoutes[segment] {
+			return match
+		}
+		return "/api/license/REDACTED"
+	})
 	return redact.Text(text)
 }
 

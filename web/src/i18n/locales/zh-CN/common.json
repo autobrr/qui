@@ -35,17 +35,79 @@
   },
   "problemReports": {
     "reportProblem": "报告问题",
-    "description": "描述问题。qui 会添加下方的信息，移除密钥等机密，然后把报告发送给 qui 维护者。",
-    "textLabel": "出了什么问题？",
-    "factsLabel": "qui 添加的信息",
-    "loadingFacts": "正在加载信息...",
-    "factsFailed": "无法加载信息：{{message}}",
+    "subtitle": "你的报告会发送给 qui 维护者。",
+    "textLabel": "你的报告",
+    "placeholders": {
+      "menu": "发生了什么？你原本预期是什么结果？",
+      "notice": "发生这件事时你正在做什么？",
+      "search": "你预期匹配哪条结果，以及在哪个索引器上？"
+    },
+    "sentWithIt": "随报告附带的信息",
+    "summary_other": "qui {{version}} 和 {{count}} 个实例",
+    "details": "详情",
+    "view": "查看",
+    "whatGetsSent": "将发送的内容",
+    "whatGetsSentNote": "由 qui 自动填写。在你发送报告之前，不会有任何内容离开 qui。",
+    "loadingFacts": "正在加载报告详情...",
+    "factsFailed": "无法加载报告详情：{{message}}",
+    "facts": {
+      "version": "版本",
+      "system": "系统",
+      "appContainer": "在容器中",
+      "database": "数据库",
+      "logLevel": "日志级别",
+      "started": "启动时间",
+      "experimentalFeatures": "实验性功能",
+      "instance": "实例 {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "未知",
+      "states": {
+        "connected": "已连接",
+        "offline": "离线",
+        "disabled": "已禁用"
+      },
+      "torrentCount_other": "{{count}} 个种子",
+      "notices": "系统通知",
+      "openCount_other": "{{count}} 条未关闭",
+      "page": "页面",
+      "browser": "浏览器",
+      "screen": "{{width}} × {{height}}，像素比 {{ratio}}",
+      "failedRequests": "失败的请求",
+      "failedCount_other": "本次会话 {{count}} 次",
+      "noAnswer": "无响应",
+      "none": "无"
+    },
+    "logs": {
+      "title": "日志",
+      "scopeLabel": "要包含的日志行",
+      "scopes": {
+        "warnings": "警告和错误",
+        "all": "最近全部",
+        "none": "不包含"
+      },
+      "notes": {
+        "warnings_other": "最近 {{count}} 条警告和错误。qui 会移除密钥和机密信息。",
+        "all_other": "日志级别 {{level}} 下最近的 {{count}} 行。qui 会移除密钥和机密信息。",
+        "none": "报告中不包含日志行。"
+      },
+      "empty": "没有日志行。",
+      "debugMissing": "当前日志级别为 {{level}}，因此 qui 不会记录调试日志。如需包含，请在 设置 > 日志 中将日志级别设为 DEBUG，复现问题后再重新报告。"
+    },
+    "privacy": {
+      "anonymous": "匿名：无姓名，无账号。brrbin 不保留 IP 地址。",
+      "link": "隐私政策"
+    },
+    "newerRelease": "当前运行 {{running}}。新版本 <release>{{newer}}</release> 已发布。",
     "send": "发送",
-    "sending": "正在发送...",
+    "sendAnyway": "仍然发送",
+    "sending": "正在发送",
     "sent": "报告已发送",
     "errors": {
-      "anonymousFull": "今天的匿名报告已满。请登录后立即发送，或明天再试。",
-      "signInRequired": "请登录后发送此报告。",
+      "anonymousFull": {
+        "title": "今天的匿名报告已满",
+        "body": "请登录后立即发送，或明天再试。你输入的内容会作为草稿保留在这里。"
+      },
+      "signInRequired": "请登录后发送此报告。你输入的内容会作为草稿保留在这里。",
       "accountLimit": "你在过去一小时内发送了很多报告。请稍后再试。",
       "reporterFull": "你的报告已用完 brrbin 给每个人的全部空间。请在已发送的报告中删除一份旧报告，然后再发送。",
       "tooLarge": "报告太大。请选择更少的日志行或更小的图片。",
