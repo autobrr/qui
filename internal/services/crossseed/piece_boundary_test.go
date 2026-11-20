@@ -15,8 +15,6 @@ import (
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
-
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func mustLoadTorrent(t *testing.T, torrentData []byte) (metainfo.MetaInfo, metainfo.Info) {
@@ -70,7 +68,8 @@ func buildMultiFileTorrent(t *testing.T, rootName string, pieceLength int64, fil
 }
 
 func fileDisplayPath(info *metainfo.Info, file metainfo.FileInfo) string {
-	return torrentDisplayPath(info, &file)
+	path, _ := torrentDisplayPath(info, &file)
+	return path
 }
 
 func TestPieceBoundariesSpanFiles_InRealTorrentFixtures(t *testing.T) {
@@ -561,7 +560,8 @@ func TestBuildFilesForBoundaryCheck_MatchesQbtFileNames(t *testing.T) {
 		},
 	}
 
-	qbtFiles := BuildTorrentFilesFromInfo(stringutils.SanitizeUTF8(info.Name), info)
+	qbtFiles, err := BuildTorrentFilesFromInfo(info.Name, info)
+	require.NoError(t, err)
 	boundaryFiles := BuildFilesForBoundaryCheck(&info, func(string) bool { return true })
 
 	require.Len(t, boundaryFiles, len(qbtFiles))

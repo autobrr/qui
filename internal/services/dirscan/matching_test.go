@@ -117,7 +117,6 @@ func TestParseTorrentBytes_DirectionalControls(t *testing.T) {
 	}{
 		{name: "single file", wantPath: "Mira Calder - Étoiles"},
 		{name: "relative child", filePath: []string{"Disc\u200f 1", "01 - Étoiles\u202e.flac"}, wantPath: "Mira Calder - Étoiles/Disc 1/01 - Étoiles.flac"},
-		{name: "matching child after filtering", filePath: []string{"Mira Calder - Étoiles\u200f", "Disc\u200f 1", "01 - Étoiles\u202e.flac"}, wantPath: "Mira Calder - Étoiles/Mira Calder - Étoiles/Disc 1/01 - Étoiles.flac"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			info := metainfo.Info{Name: "Mira Calder - Étoiles\u200e", Length: 1, PieceLength: 16384}

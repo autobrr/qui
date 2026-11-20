@@ -10,7 +10,6 @@ import (
 	"github.com/autobrr/go-torrent/metainfo"
 
 	"github.com/autobrr/qui/pkg/pathutil"
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // PieceBoundarySafetyResult contains the outcome of a piece-boundary safety check.
@@ -156,7 +155,7 @@ func BuildFilesForBoundaryCheck(
 
 	// Single-file torrent
 	if len(info.Files) == 0 {
-		name := pathutil.StripTorrentPathControls(stringutils.SanitizeUTF8(info.Name))
+		name := pathutil.TorrentPathName(info.Name)
 		return []TorrentFileForBoundaryCheck{
 			{
 				Path:      name,
@@ -171,9 +170,10 @@ func BuildFilesForBoundaryCheck(
 	// - When info.IsDir(): rootName + "/" + displayPath
 	// - Otherwise: displayPath
 	files := make([]TorrentFileForBoundaryCheck, 0, len(info.Files))
-	rootName := pathutil.StripTorrentPathControls(stringutils.SanitizeUTF8(info.Name))
+	rootName := pathutil.TorrentPathName(info.Name)
 	for i := range info.Files {
-		displayPath := torrentDisplayPath(info, &info.Files[i])
+		// ParseTorrentMetadataWithInfo has already refused a path that filtering empties.
+		displayPath, _ := torrentDisplayPath(info, &info.Files[i])
 		var path string
 		switch {
 		case info.IsDir() && displayPath != "":

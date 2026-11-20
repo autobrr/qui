@@ -5,7 +5,6 @@ package dirscan
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -374,10 +373,10 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		return nil, fmt.Errorf("unmarshal info: %w", err)
 	}
 
-	rawName := stringutils.SanitizeUTF8(info.BestName())
-	name := pathutil.StripTorrentPathControls(rawName)
-	if rawName != "" && name == "" {
-		return nil, errors.New("torrent name is empty after removing directional characters")
+	name := pathutil.TorrentPathName(info.BestName())
+	root, err := pathutil.TorrentPathComponent(info.BestName())
+	if err != nil {
+		return nil, err
 	}
 
 	parsed := &ParsedTorrent{
@@ -403,16 +402,15 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	} else {
 		// Multi-file torrent
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
-		root := pathutil.TorrentPathComponent(name)
 		for i := range info.Files {
 			f := &info.Files[i]
 			rawPathParts := f.BestPath()
 			pathParts := make([]string, 0, len(rawPathParts)+1)
 			pathParts = append(pathParts, root)
 			for _, part := range rawPathParts {
-				component := pathutil.TorrentPathComponent(stringutils.SanitizeUTF8(part))
-				if component == "" {
-					return nil, errors.New("torrent path is empty after removing directional characters")
+				component, err := pathutil.TorrentPathComponent(part)
+				if err != nil {
+					return nil, err
 				}
 				pathParts = append(pathParts, component)
 			}

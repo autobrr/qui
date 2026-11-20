@@ -5,9 +5,12 @@
 package pathutil
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // illegalCharsRegex matches characters that are illegal in Windows filenames.
@@ -73,27 +76,37 @@ func IsWindowsDeviceName(component string) bool {
 	}
 }
 
+// errFilteredEmptyPath refuses a name that only directional-character removal
+// emptied: libtorrent 1.2 and 2.0 place such a name differently.
+var errFilteredEmptyPath = errors.New("torrent path is empty after removing directional characters")
+
 // TorrentPathComponent maps one component of a torrent's file path to the name
-// libtorrent, and therefore qBittorrent, puts on disk for it.
+// libtorrent, and therefore qBittorrent, puts on disk for it. It returns an error
+// when the component is not empty but TorrentPathName empties it.
 //
 // libtorrent's sanitize_append_path_element replaces an empty component with "_"
 // instead of dropping it, on every release line qBittorrent ships (1.1, 1.2, 2.0).
 // Go's path.Join drops it, which would place a link tree one directory above where
 // qBittorrent looks for the data. This and directional-character removal are
 // mirrored; dot-component handling differs between libtorrent 1.x and 2.0.
-func TorrentPathComponent(component string) string {
+func TorrentPathComponent(component string) (string, error) {
 	if component == "" {
-		return "_"
+		return "_", nil
 	}
-	return StripTorrentPathControls(component)
+	name := TorrentPathName(component)
+	if name == "" {
+		return "", errFilteredEmptyPath
+	}
+	return name, nil
 }
 
-// StripTorrentPathControls removes the directional characters libtorrent filters
-// from torrent names and file paths, preserving other Unicode characters. An empty
-// result must be refused: libtorrent 1.2 and 2.0 place filtered-empty names differently.
-func StripTorrentPathControls(name string) string {
-	// Every filtered rune starts with 0xe2; malformed UTF-8 still needs Map.
-	if strings.IndexByte(name, '\xe2') < 0 && utf8.ValidString(name) {
+// TorrentPathName returns a torrent name or path component as qBittorrent shows it:
+// malformed UTF-8 replaced and the directional characters libtorrent filters removed.
+// A caller must refuse a nonempty name that comes back empty.
+func TorrentPathName(name string) string {
+	name = stringutils.SanitizeUTF8(name)
+	// Every filtered rune starts with 0xe2.
+	if strings.IndexByte(name, '\xe2') < 0 {
 		return name
 	}
 	// Both libtorrent 1.2 and 2.0 use this set in filter_path_character:

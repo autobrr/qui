@@ -16,7 +16,6 @@ import (
 
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/releases"
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // ContentTypeInfo contains all information about a torrent's detected content type
@@ -296,7 +295,7 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 		return TorrentMetadata{}, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name := pathutil.StripTorrentPathControls(stringutils.SanitizeUTF8(infoVal.Name))
+	name := pathutil.TorrentPathName(infoVal.Name)
 	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
 	var hashV2 string
 	if infoVal.HasV2() {
@@ -308,9 +307,9 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 		return TorrentMetadata{}, errors.New("torrent has no name")
 	}
 
-	files := BuildTorrentFilesFromInfo(name, infoVal)
-	if len(files) == 0 {
-		return TorrentMetadata{}, errors.New("torrent path is empty after removing directional characters")
+	files, err := BuildTorrentFilesFromInfo(name, infoVal)
+	if err != nil {
+		return TorrentMetadata{}, err
 	}
 
 	return TorrentMetadata{
@@ -322,9 +321,10 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 	}, nil
 }
 
-// BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info
-func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentFiles {
-	rootName = pathutil.StripTorrentPathControls(rootName)
+// BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info.
+// It returns an error for a path component that directional-character removal empties.
+func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) (qbt.TorrentFiles, error) {
+	rootName = pathutil.TorrentPathName(rootName)
 	var files qbt.TorrentFiles
 	pieceLength := info.PieceLength
 	if pieceLength <= 0 {
@@ -358,15 +358,15 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 			Progress:     1,
 			Size:         info.Length,
 		}
-		return files
+		return files, nil
 	}
 
 	files = make(qbt.TorrentFiles, len(info.Files))
 	var offset int64
 	for i, f := range info.Files {
-		displayPath := torrentDisplayPath(&info, &f)
-		if displayPath == "" && len(f.BestPath()) > 0 {
-			return nil
+		displayPath, err := torrentDisplayPath(&info, &f)
+		if err != nil {
+			return nil, err
 		}
 		name := rootName
 		if info.IsDir() && displayPath != "" {
@@ -408,25 +408,27 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 		offset += f.Length
 	}
 
-	return files
+	return files, nil
 }
 
 // torrentDisplayPath sanitizes UTF-8 and applies libtorrent's empty-component and
-// directional-control rules to metainfo.FileInfo.DisplayPath.
-func torrentDisplayPath(info *metainfo.Info, f *metainfo.FileInfo) string {
+// directional-control rules to metainfo.FileInfo.DisplayPath. It returns an error
+// for a component that directional-character removal empties.
+func torrentDisplayPath(info *metainfo.Info, f *metainfo.FileInfo) (string, error) {
 	if !info.IsDir() {
-		return pathutil.StripTorrentPathControls(stringutils.SanitizeUTF8(info.BestName()))
+		return pathutil.TorrentPathName(info.BestName()), nil
 	}
 
 	parts := f.BestPath()
 	components := make([]string, len(parts))
 	for i, part := range parts {
-		components[i] = pathutil.TorrentPathComponent(stringutils.SanitizeUTF8(part))
-		if components[i] == "" {
-			return ""
+		component, err := pathutil.TorrentPathComponent(part)
+		if err != nil {
+			return "", err
 		}
+		components[i] = component
 	}
-	return strings.Join(components, "/")
+	return strings.Join(components, "/"), nil
 }
 
 // ParseTorrentAnnounceDomain extracts the primary announce URL's domain from torrent bytes.

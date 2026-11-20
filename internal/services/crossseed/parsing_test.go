@@ -596,7 +596,8 @@ func TestParseTorrentMetadata_DirectionalControls(t *testing.T) {
 			require.Equal(t, wantPath, meta.Files[0].Name)
 			require.Equal(t, int64(1), meta.Files[0].Size)
 
-			files := BuildTorrentFilesFromInfo(rawName, info)
+			files, err := BuildTorrentFilesFromInfo(rawName, info)
+			require.NoError(t, err)
 			require.Equal(t, meta.Files, files)
 			boundaries := BuildFilesForBoundaryCheck(&info, func(path string) bool { return path == wantPath })
 			require.Len(t, boundaries, 1)
@@ -608,8 +609,9 @@ func TestParseTorrentMetadata_DirectionalControls(t *testing.T) {
 	t.Run("control-only component refused", func(t *testing.T) {
 		data := buildMultiFileTorrent(t, "Example Album", 16384, map[string][]byte{controls + "/track.flac": {1}})
 		_, info := mustLoadTorrent(t, data)
-		require.Empty(t, BuildTorrentFilesFromInfo(info.Name, info))
-		_, err := ParseTorrentMetadataWithInfo(data)
+		_, err := BuildTorrentFilesFromInfo(info.Name, info)
+		require.Error(t, err)
+		_, err = ParseTorrentMetadataWithInfo(data)
 		require.Error(t, err)
 	})
 }
@@ -627,7 +629,8 @@ func TestBuildTorrentFilesFromInfo_EmptyPathComponents(t *testing.T) {
 		},
 	}
 
-	files := BuildTorrentFilesFromInfo("Release", info)
+	files, err := BuildTorrentFilesFromInfo("Release", info)
+	require.NoError(t, err)
 
 	require.Len(t, files, 2)
 	assert.Equal(t, "Release/_/file.mkv", files[0].Name)
