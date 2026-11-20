@@ -183,7 +183,11 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 	t.Cleanup(server.Close)
 	previousClient, previousFind := newGazelleClient, findGazelleMatch
 	newGazelleClient = func(host, _, key string) (*gazellemusic.Client, error) {
-		return gazellemusic.NewClient(host, server.URL, key)
+		client, err := gazellemusic.NewClient(host, server.URL, key)
+		if err == nil {
+			client.SetUnlimitedForTest()
+		}
+		return client, err
 	}
 	findGazelleMatch = gazellemusic.FindMatch
 	t.Cleanup(func() { newGazelleClient, findGazelleMatch = previousClient, previousFind })
