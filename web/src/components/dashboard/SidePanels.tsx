@@ -6,14 +6,17 @@
 import { IssueIcon, IssueLink } from "@/components/dashboard/InstanceList"
 import { SizeCalculatingMark } from "@/components/dashboard/UniqueSize"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { FieldHelp } from "@/components/ui/field-help"
 import {
   allTimeTransfer,
   freeShare,
   instanceHealth,
   instanceIssues,
   isFirewalled,
+  isFreeShareEstimated,
   issueClass,
   isLowDisk,
+  reportsFreeSpace,
   type DashboardInstanceStats
 } from "@/lib/dashboard-overview"
 import { resolveDashboardSizes } from "@/lib/dashboard-stream"
@@ -25,11 +28,12 @@ import { HardDrive, ShieldAlert, Unplug } from "lucide-react"
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
-function Section({ id, title, className, children }: { id: string; title: string; className?: string; children: ReactNode }) {
+function Section({ id, title, help, className, children }: { id: string; title: string; help?: string; className?: string; children: ReactNode }) {
   return (
     <Card {...themeArea("dashboard-card")} role="region" aria-labelledby={id} className={cn("gap-3 py-4", className)}>
-      <CardHeader className="px-4 lg:px-6">
+      <CardHeader className="flex items-center gap-1.5 px-4 lg:px-6">
         <CardTitle id={id}>{title}</CardTitle>
+        {help && <FieldHelp>{help}</FieldHelp>}
       </CardHeader>
       <CardContent className="px-4 lg:px-6">{children}</CardContent>
     </Card>
@@ -87,12 +91,11 @@ export function NeedsAttention({ statsData, className }: { statsData: DashboardI
 /** The free disk space of each instance that answers. */
 export function Storage({ statsData, className }: { statsData: DashboardInstanceStats[]; className?: string }) {
   const { t } = useTranslation("dashboard")
-  // qBittorrent reports -1 when it cannot read the free space.
-  const rows = statsData.filter(d => instanceHealth(d) === "ok" && (d.serverState?.free_space_on_disk ?? -1) >= 0)
+  const rows = statsData.filter(d => instanceHealth(d) === "ok" && reportsFreeSpace(d))
   if (rows.length === 0) return null
 
   return (
-    <Section id="dashboard-storage" title={t("storage.title")} className={className}>
+    <Section id="dashboard-storage" title={t("storage.title")} help={rows.some(isFreeShareEstimated) ? t("storage.help") : undefined} className={className}>
       <ul className="space-y-3">
         {rows.map(d => {
           const low = isLowDisk(d)

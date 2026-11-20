@@ -88,6 +88,7 @@ import type {
   IndexerResponse,
   InstanceCapabilities,
   InstanceCrossSeedCompletionSettings,
+  InstanceDisk,
   InstanceFormData,
   InstanceReannounceActivity,
   InstanceResponse,
@@ -889,6 +890,10 @@ class ApiClient {
 
   async getTransferInfo(id: number): Promise<TransferInfo> {
     return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
+  }
+
+  async getInstanceDisk(id: number): Promise<InstanceDisk> {
+    return this.request<InstanceDisk>(`/instances/${id}/disk`)
   }
 
   // bytes is null when qBittorrent cannot measure the path.

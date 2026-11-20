@@ -251,7 +251,7 @@
   },
   "src/components/dashboard/SidePanels.tsx": {
     "qui/no-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/dashboard/StreamChart.tsx": {
@@ -2881,7 +2881,7 @@
   },
   "src/lib/dashboard-overview.ts": {
     "qui/no-comments": {
-      "count": 19
+      "count": 21
     }
   },
   "src/lib/dashboard-stream.ts": {
@@ -3531,7 +3531,7 @@
   },
   "src/types/torrents.ts": {
     "qui/no-comments": {
-      "count": 29
+      "count": 30
     }
   },
   "src/utils/fontLoader.test.ts": {
