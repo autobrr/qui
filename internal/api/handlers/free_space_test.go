@@ -50,6 +50,7 @@ func newFreeSpaceRouter(t *testing.T, name, apiVersion, body string, status int)
 	t.Cleanup(func() { _ = clientPool.Close() })
 
 	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, quiqbt.NewSyncManager(clientPool, nil), nil, nil, nil)
+	t.Cleanup(handler.connectionTests.Wait)
 	router := chi.NewRouter()
 	router.Get("/api/instances/{instanceID}/free-space", handler.GetFreeSpaceAtPath)
 

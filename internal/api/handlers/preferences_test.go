@@ -128,6 +128,7 @@ func newPreferencesRig(t *testing.T, fake *fakePreferencesQbit) *preferencesRig 
 	preferences := NewPreferencesHandler(syncManager)
 	rss := NewRSSHandler(syncManager)
 	instances := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil, nil)
+	t.Cleanup(instances.connectionTests.Wait)
 	router := chi.NewRouter()
 	router.Get("/api/instances/{instanceID}/capabilities", instances.GetInstanceCapabilities)
 	router.Get("/api/instances/{instanceID}/preferences", preferences.GetPreferences)

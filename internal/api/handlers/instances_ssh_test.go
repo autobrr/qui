@@ -69,6 +69,7 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 	sshPool := sshpool.NewPool(sshpool.NewDialer(store))
 	t.Cleanup(sshPool.Close)
 	handler := NewInstancesHandler(store, nil, nil, clientPool, nil, nil, sshpool.NewDialer(store), sshPool)
+	t.Cleanup(handler.connectionTests.Wait)
 	// With no saved route, the route check changes no answer of these tests.
 	handler.SetCrossSeedRoutes(crossseedroute.NewService(models.NewCrossSeedRouteStore(db), store, clientPool, fsops.NewPool(store, local.NewBackend())))
 
