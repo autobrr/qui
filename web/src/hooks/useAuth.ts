@@ -37,6 +37,12 @@ export function useAuth() {
       api.setup(username, password),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
+      // Both entry points cache `setup-required` for the process lifetime, so
+      // a later visit to either route must see that the first account exists.
+      queryClient.setQueryData(["setup-required"], false)
+      queryClient.setQueryData(["setup-required-page"], false)
+      queryClient.invalidateQueries({ queryKey: ["setup-required"] })
+      queryClient.invalidateQueries({ queryKey: ["setup-required-page"] })
       queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
       navigateAfterAuth(navigate)
     },
