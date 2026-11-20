@@ -44,7 +44,7 @@ test("strip deletes a JSX comment with its braces", () => {
 test("strip refuses a JSX comment that separates two texts", () => {
   const source = "export const A = () => (\n  <p>\n    left\n    {/* gap */}\n    right\n  </p>\n)\n"
 
-  assert.throws(() => strip("web/src/a.tsx", source, [{ line: 4, text: "/* gap */" }]), /the emitted code changed/)
+  assert.throws(() => strip("web/src/a.tsx", source, [{ line: 4, text: "/* gap */" }]), /the code changed/)
 })
 
 test("strip deletes each of two equal comments on one line", () => {
@@ -53,6 +53,12 @@ test("strip deletes each of two equal comments on one line", () => {
 
   assert.deepEqual(missed, [])
   assert.equal(output, "export const n = 1 + 2\n")
+})
+
+test("strip refuses a deletion that joins two type names", () => {
+  const source = "type Model = { a: number }\ntype keyofModel = boolean\nexport type Keys = keyof/* note */Model\n"
+
+  assert.throws(() => strip("web/src/a.ts", source, [{ line: 3, text: "/* note */" }]), /the code changed/)
 })
 
 test("strip skips a block whose text moved", () => {

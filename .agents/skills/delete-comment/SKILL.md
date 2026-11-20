@@ -74,10 +74,10 @@ go run ./scripts/comments strip "$W/doomed.jsonl"
 (cd web && node scripts/comments.mjs strip "$W/doomed.jsonl")
 ```
 
-Both commands delete a block only when its text still starts on its line, and write a file only when its code is the same without the comments: the same Go tokens, or the same emitted JavaScript. Act on each line that they print:
+Both commands delete a block only when its text still starts on its line, and write a file only when its code is the same without the comments: the same Go tokens, or the same TypeScript tokens and emitted JavaScript. Act on each line that they print:
 
 - `skipped`: the file changed after the inventory. List that file again and give the block a new verdict.
-- `the emitted code changed`: a JSX comment separates two texts, so the page would change. Change those verdicts to `constraint` and run the command again.
+- `the code changed`: a JSX comment separates two texts, so the page would change, or a comment separates two words that would join. Change those verdicts to `constraint` and run the command again.
 
 Then lower the counts:
 

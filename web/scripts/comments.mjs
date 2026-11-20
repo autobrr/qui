@@ -103,17 +103,22 @@ function remove(source, spans) {
   return kept + source.slice(pos)
 }
 
-function tokens(source) {
-  const scanner = ts.createScanner(ts.ScriptTarget.ESNext, true, ts.LanguageVariant.Standard, source)
+function tokens(file, source) {
+  const { ast } = tseslint.parser.parseForESLint(source, { filePath: file, tokens: true, ecmaFeatures: { jsx: /\.[jt]sx$/.test(file) } })
   const found = []
-  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-    found.push(`${token}:${scanner.getTokenText()}`)
+  for (const { type, value } of ast.tokens) {
+    if (type === "JSXText") continue
+    if (value === "}" && found.at(-1) === "Punctuator:{") {
+      found.pop()
+      continue
+    }
+    found.push(`${type}:${value}`)
   }
   return found.join("\n")
 }
 
 function emitted(file, source) {
-  if (file.endsWith(".d.ts")) return tokens(source)
+  if (file.endsWith(".d.ts")) return ""
   return ts.transpileModule(source, {
     fileName: file,
     compilerOptions: { removeComments: true, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext },
@@ -121,7 +126,7 @@ function emitted(file, source) {
 }
 
 export function sameCode(file, before, after) {
-  return emitted(file, before) === emitted(file, after)
+  return tokens(file, before) === tokens(file, after) && emitted(file, before) === emitted(file, after)
 }
 
 export function strip(file, source, doomed) {
@@ -138,7 +143,7 @@ export function strip(file, source, doomed) {
     spans.push(...match.comments.map(comment => cut(source, comment)))
   }
   const output = remove(source, spans.sort((a, b) => a.start - b.start))
-  if (!sameCode(file, source, output)) throw new Error(`${file}: the emitted code changed`)
+  if (!sameCode(file, source, output)) throw new Error(`${file}: the code changed`)
   return { output, missed }
 }
 
