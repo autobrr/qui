@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Generic warning response for operations that succeed with caveats
 export interface WarningResponse {
   warning?: string
 }

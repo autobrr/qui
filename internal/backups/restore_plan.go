@@ -15,7 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// RestoreMode controls how a snapshot should be applied to a live qBittorrent instance.
 type RestoreMode string
 
 const (
@@ -24,36 +23,30 @@ const (
 	RestoreModeComplete    RestoreMode = "complete"
 )
 
-// CategorySpec captures the desired state for a category during restore.
 type CategorySpec struct {
 	Name     string `json:"name"`
 	SavePath string `json:"savePath,omitempty"`
 }
 
-// CategoryUpdate captures the changes required to align an existing category with the snapshot.
 type CategoryUpdate struct {
 	Name        string `json:"name"`
 	CurrentPath string `json:"currentPath"`
 	DesiredPath string `json:"desiredPath"`
 }
 
-// TagSpec encapsulates a tag that should be present after restore.
 type TagSpec struct {
 	Name string `json:"name"`
 }
 
-// TagUpdate captures tag mutations required for overwrite/complete restores.
 type TagUpdate struct {
 	Name    string `json:"name"`
 	Present bool   `json:"present"`
 }
 
-// TorrentSpec describes a torrent that should exist after the restore completes.
 type TorrentSpec struct {
 	Manifest ManifestItem `json:"manifest"`
 }
 
-// TorrentUpdate captures adjustments required for an existing torrent.
 type TorrentUpdate struct {
 	Hash    string          `json:"hash"`
 	Current LiveTorrent     `json:"current"`
@@ -61,7 +54,6 @@ type TorrentUpdate struct {
 	Changes []DiffChange    `json:"changes"`
 }
 
-// DiffChange captures a single field difference between snapshot and live state.
 type DiffChange struct {
 	Field     string `json:"field"`
 	Supported bool   `json:"supported"`
@@ -70,27 +62,23 @@ type DiffChange struct {
 	Message   string `json:"message,omitempty"`
 }
 
-// CategoryPlan bundles create/update/delete intents for categories.
 type CategoryPlan struct {
 	Create []CategorySpec   `json:"create,omitempty"`
 	Update []CategoryUpdate `json:"update,omitempty"`
 	Delete []string         `json:"delete,omitempty"`
 }
 
-// TagPlan bundles create/delete intents for tags.
 type TagPlan struct {
 	Create []TagSpec `json:"create,omitempty"`
 	Delete []string  `json:"delete,omitempty"`
 }
 
-// TorrentPlan bundles add/update/delete intents for torrents.
 type TorrentPlan struct {
 	Add    []TorrentSpec   `json:"add,omitempty"`
 	Update []TorrentUpdate `json:"update,omitempty"`
 	Delete []string        `json:"delete,omitempty"`
 }
 
-// RestorePlan is the full set of actions required to align the live instance with the snapshot.
 type RestorePlan struct {
 	Mode       RestoreMode  `json:"mode"`
 	RunID      int64        `json:"runId"`
@@ -100,12 +88,10 @@ type RestorePlan struct {
 	Torrents   TorrentPlan  `json:"torrents"`
 }
 
-// RestorePlanOptions controls post-processing applied to a generated plan.
 type RestorePlanOptions struct {
 	ExcludeHashes []string
 }
 
-// SnapshotTorrent provides convenient access to torrent metadata captured in the snapshot.
 type SnapshotTorrent struct {
 	Hash        string   `json:"hash"`
 	Name        string   `json:"name"`
@@ -119,7 +105,6 @@ type SnapshotTorrent struct {
 	InfoHashV2  *string  `json:"infoHashV2,omitempty"`
 }
 
-// SnapshotState represents the desired state recorded in a backup snapshot.
 type SnapshotState struct {
 	RunID      int64                              `json:"runId"`
 	InstanceID int                                `json:"instanceId"`
@@ -128,13 +113,11 @@ type SnapshotState struct {
 	Torrents   map[string]SnapshotTorrent         `json:"torrents"`
 }
 
-// LiveCategory captures the current state for a category in qBittorrent.
 type LiveCategory struct {
 	Name     string `json:"name"`
 	SavePath string `json:"savePath"`
 }
 
-// LiveTorrent captures the subset of torrent fields we need for planning.
 type LiveTorrent struct {
 	Hash        string   `json:"hash"`
 	Name        string   `json:"name"`
@@ -147,7 +130,6 @@ type LiveTorrent struct {
 	SizeBytes   int64    `json:"sizeBytes,omitempty"`
 }
 
-// LiveState represents the state of the live qBittorrent instance relevant for planning a restore.
 type LiveState struct {
 	InstanceID int                     `json:"instanceId"`
 	Categories map[string]LiveCategory `json:"categories"`
@@ -155,7 +137,6 @@ type LiveState struct {
 	Torrents   map[string]LiveTorrent  `json:"torrents"`
 }
 
-// PlanRestoreDiff loads snapshot and live state, returning the diff plan for the requested mode.
 func (s *Service) PlanRestoreDiff(ctx context.Context, runID int64, mode RestoreMode, opts *RestorePlanOptions) (*RestorePlan, error) {
 	if s == nil {
 		return nil, errors.New("nil backup service")
@@ -192,7 +173,6 @@ func (s *Service) PlanRestoreDiff(ctx context.Context, runID int64, mode Restore
 	return plan, nil
 }
 
-// ParseRestoreMode normalizes the provided mode string and ensures it is supported.
 func ParseRestoreMode(value string) (RestoreMode, error) {
 	mode := RestoreMode(normalizeLowerTrim(value))
 	if mode == "" {
@@ -285,7 +265,6 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 	plan.Torrents.Delete = filterHashes(plan.Torrents.Delete)
 }
 
-// buildRestorePlan compares snapshot and live state to determine the actions needed to reach parity.
 func buildRestorePlan(snapshot *SnapshotState, live *LiveState, mode RestoreMode) (*RestorePlan, error) {
 	if snapshot == nil {
 		return nil, errors.New("nil snapshot state")

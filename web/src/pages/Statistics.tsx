@@ -80,9 +80,7 @@ function combineLiveGroups(results: UseQueryResult<LiveTrackerGroup[]>[]): LiveG
   }
 }
 
-/** The rows of the queries of the page, for one period and one selection. */
 interface PageRows {
-  // The period choice and the selected instances.
   series: string
   period: StatisticsPeriod
   chart?: TransferHistoryRow[][]
@@ -95,14 +93,12 @@ interface PageRows {
   library?: TransferHistoryLibraryRow[][]
 }
 
-// The number of torrents of the Top torrents card.
 const TOP_TORRENTS = 10
 
 function relativeChange(now: number, before: number): number | undefined {
   return before > 0 ? (now - before) / before : undefined
 }
 
-/** The state of a preset period that the user picked, which ends now. */
 function presetState(preset: PeriodPreset): PeriodState {
   return { choice: preset, period: presetPeriod(preset, new Date()), moved: false }
 }
@@ -347,7 +343,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
         </>
       )}
     >
-      {/* On a phone, the cards of this page are 16 px apart. */}
       <div className="@container space-y-4 sm:space-y-6">
         {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 

@@ -33,7 +33,6 @@ type Secrets struct {
 	KeyHashes map[string]struct{}
 }
 
-// StoreSecrets reads Secrets from the stores. A nil store holds no secret.
 type StoreSecrets struct {
 	Instances     *models.InstanceStore
 	Indexers      *models.TorznabIndexerStore
@@ -43,13 +42,9 @@ type StoreSecrets struct {
 	ClientAPIKeys *models.ClientAPIKeyStore
 	Notifications *models.NotificationTargetStore
 	Licenses      *database.LicenseRepo
-	// Config returns the secrets of the config, see ConfigSecrets.
-	Config func() []string
+	Config        func() []string
 }
 
-// ConfigSecrets returns the secrets of the qui config: the session secret,
-// the database password, the password in the Postgres DSN and the OIDC
-// client secret.
 func ConfigSecrets(cfg *domain.Config) []string {
 	secrets := []string{cfg.SessionSecret, cfg.DatabasePassword, cfg.OIDCClientSecret}
 	if dsn := strings.TrimSpace(cfg.DatabaseDSN); dsn != "" {
@@ -299,7 +294,6 @@ func instanceAddress(host string) []string {
 	return forms
 }
 
-// apiKeyRegex matches a qui API key: 64 hex characters.
 var apiKeyRegex = regexp.MustCompile(`\b[0-9a-f]{64}\b`)
 
 // licensePathRegex matches a license API path and the segment after it. The
@@ -307,13 +301,9 @@ var apiKeyRegex = regexp.MustCompile(`\b[0-9a-f]{64}\b`)
 // stores the key once a retry removed it.
 var licensePathRegex = regexp.MustCompile(`/api/license/[^/?#\s"'<>\\]+`)
 
-// licenseRoutes are the fixed words of the license API, which hold no key.
 var licenseRoutes = map[string]bool{"licensed": true, "licenses": true, "activate": true, "validate": true, "refresh": true}
 
-// cleaner removes keys, the stored secrets and the instance addresses from
-// a text part.
 type cleaner struct {
-	// values removes the stored secrets; nil when there is none.
 	values    *strings.Replacer
 	keyHashes map[string]struct{}
 }
@@ -355,7 +345,6 @@ func (c cleaner) cleanAll(lines []string) []string {
 	return cleaned
 }
 
-// cleanValue cleans every string in a decoded JSON value, map keys included.
 func (c cleaner) cleanValue(value any) any {
 	switch v := value.(type) {
 	case string:

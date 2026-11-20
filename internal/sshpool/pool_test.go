@@ -24,8 +24,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// pinnedInstanceAt is an instance at addr whose row carries a key and a pin,
-// as every instance the pool dials does.
 func pinnedInstanceAt(t *testing.T, addr string) *models.Instance {
 	t.Helper()
 
@@ -73,7 +71,6 @@ func TestPoolMemoizesMismatchUntilInvalidated(t *testing.T) {
 	}
 	assert.Equal(t, 1, server.Dials(), "a refusal is never redialled")
 
-	// The code that replaced the pin tells the pool; the pool never guesses.
 	creds.pin = hostKey.PublicKey().Marshal()
 	pool.Invalidate(inst.ID)
 
@@ -101,7 +98,6 @@ func TestPoolBacksOffAfterDialFailure(t *testing.T) {
 	require.NoError(t, entry.lock(t.Context()))
 	assert.Equal(t, backoffStart, entry.backoff)
 	assert.True(t, entry.retryAt.After(time.Now()), "a failed dial must not be retried immediately")
-	// Pretend the delay elapsed, so the next call dials and doubles the delay.
 	entry.retryAt = time.Now().Add(-time.Second)
 	entry.unlock()
 
@@ -194,8 +190,6 @@ func TestPoolReusesConnection(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts(), "a second caller must reuse the open connection")
 }
 
-// Invalidate is how a credential or pin change reaches the pool: it ends the
-// session and clears any memo, and the next caller redials.
 func TestPoolInvalidateEndsTheSession(t *testing.T) {
 	t.Parallel()
 
@@ -217,14 +211,11 @@ func TestPoolInvalidateEndsTheSession(t *testing.T) {
 	assert.NotSame(t, first, second)
 	assert.Equal(t, 2, server.Accepts())
 
-	pool.Invalidate(99) // an instance the pool never saw is a no-op
+	pool.Invalidate(99)
 	var nilPool *Pool
 	nilPool.Invalidate(inst.ID)
 }
 
-// Two callers holding different snapshots of the same instance share one
-// connection: the pool no longer compares snapshots, so an older one resolved
-// before an edit cannot reset the connection a newer one is using.
 func TestPoolOlderSnapshotDoesNotResetNewerConnection(t *testing.T) {
 	t.Parallel()
 
@@ -235,12 +226,12 @@ func TestPoolOlderSnapshotDoesNotResetNewerConnection(t *testing.T) {
 	t.Cleanup(pool.Close)
 
 	newer := *older
-	newer.SSHKeyEncrypted = "key-v2" // the user saved new credentials
+	newer.SSHKeyEncrypted = "key-v2"
 
 	newerClient, err := pool.SFTP(t.Context(), &newer)
 	require.NoError(t, err)
 	for range 3 {
-		_, err = pool.SFTP(t.Context(), older) // the next directory of a walk resolved before the edit
+		_, err = pool.SFTP(t.Context(), older)
 		require.NoError(t, err)
 		_, err = pool.SFTP(t.Context(), &newer)
 		require.NoError(t, err)
@@ -250,8 +241,6 @@ func TestPoolOlderSnapshotDoesNotResetNewerConnection(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts(), "no alternation redials")
 }
 
-// A pooled connection outlives the dial deadline: the deadline is lifted after
-// the handshake, so a client used after it would have fired still works.
 func TestPoolLiftsTheDialDeadline(t *testing.T) {
 	t.Parallel()
 
@@ -273,8 +262,6 @@ func TestPoolLiftsTheDialDeadline(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts())
 }
 
-// Reusing a connection counts as using it: the idle close must leave a
-// connection alone that callers keep taking from the pool.
 func TestPoolReuseKeepsTheConnectionFromIdleClose(t *testing.T) {
 	t.Parallel()
 
@@ -291,7 +278,6 @@ func TestPoolReuseKeepsTheConnectionFromIdleClose(t *testing.T) {
 	pool.mu.Unlock()
 	entry.lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
 
-	// The reuse path must refresh lastUsed before the next tick looks at it.
 	_, err = pool.SFTP(t.Context(), inst)
 	require.NoError(t, err)
 	done := make(chan struct{})
@@ -302,9 +288,6 @@ func TestPoolReuseKeepsTheConnectionFromIdleClose(t *testing.T) {
 	require.NoError(t, err, "a connection just reused must not be closed as idle")
 }
 
-// One sftp call that alone runs past the idle limit is use, and its answer
-// marks the connection used: the copy of a big file, in one call or in many,
-// must not lose its connection halfway.
 func TestPoolRunningSFTPCallKeepsTheConnectionFromIdleClose(t *testing.T) {
 	t.Parallel()
 
@@ -349,9 +332,6 @@ func TestPoolRunningSFTPCallKeepsTheConnectionFromIdleClose(t *testing.T) {
 }
 
 // regression: #4231
-// A server that stops answering while sshd still answers keepalives would
-// hold its callers forever. Once the running calls got no answer for
-// stallTimeout, the pool closes the connection and the calls fail.
 func TestPoolClosesAConnectionWhoseSFTPCallsGetNoAnswer(t *testing.T) {
 	t.Parallel()
 
@@ -383,9 +363,6 @@ func TestPoolClosesAConnectionWhoseSFTPCallsGetNoAnswer(t *testing.T) {
 }
 
 // regression: #4231
-// The keepalive loop can look while the answer of a call that ran past the
-// idle limit comes in. At no point in between may the connection look idle,
-// or the loop closes it under the caller.
 func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
 	t.Parallel()
 
@@ -394,7 +371,6 @@ func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
 	calls := &sftpCalls{}
 	var idleSeen bool
 	calls.answered = func() {
-		// The last moment before the answer marks the connection used.
 		idleSeen = idleSeen || unused(calls, &lastUsed)
 		lastUsed.Store(time.Now().UnixNano())
 	}
@@ -410,9 +386,6 @@ func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
 }
 
 // regression: #4231
-// The wait of the running calls starts with the first of them and again at
-// each answer: a connection that had no sftp call for hours, and a copy that
-// keeps calls in flight for hours, must not look stalled.
 func TestPoolSFTPCallsStallOnlyWithoutAnAnswer(t *testing.T) {
 	t.Parallel()
 
@@ -451,9 +424,6 @@ type discardCloser struct{ io.Writer }
 func (discardCloser) Close() error { return nil }
 
 // regression: #4231
-// Stderr and the answers share the window of the channel, so stderr that
-// nobody reads stops the answers. The pool reads and drops it, as
-// sftp.NewClient does.
 func TestPoolSFTPAnswersPastTheStderrOfTheServer(t *testing.T) {
 	t.Parallel()
 
@@ -474,8 +444,6 @@ func TestPoolSFTPAnswersPastTheStderrOfTheServer(t *testing.T) {
 	}
 }
 
-// A caller giving up says nothing about the host: a dial cut short by the
-// caller's own ctx leaves no memo and no backoff behind.
 func TestPoolCancelledDialIsNotMemoised(t *testing.T) {
 	t.Parallel()
 
@@ -498,16 +466,11 @@ func TestPoolCancelledDialIsNotMemoised(t *testing.T) {
 	entry.unlock()
 }
 
-// The dial reads the row, not the caller's snapshot: after a pin replace a
-// caller built before the edit must not dial with the old pin and memoise a
-// refusal that every fresh caller then inherits.
 func TestPoolDialsFromTheRowNotTheSnapshot(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	// The instance moved: the row points at the live server, the stale caller
-	// still carries the old, dead address.
 	stale := pinnedInstanceAt(t, sshtest.DeadAddr(t))
 	row := pinnedInstanceAt(t, server.Addr)
 	pool := poolFor(hostKey.PublicKey().Marshal(), row)
@@ -520,8 +483,6 @@ func TestPoolDialsFromTheRowNotTheSnapshot(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts())
 }
 
-// A row that left remote mode is refused before any dial, and the refusal is
-// not memoised: the row, not the host, decides it.
 func TestPoolRefusesARowThatLeftRemoteMode(t *testing.T) {
 	t.Parallel()
 
@@ -534,7 +495,6 @@ func TestPoolRefusesARowThatLeftRemoteMode(t *testing.T) {
 	pool := NewPool(NewDialer(creds))
 	t.Cleanup(pool.Close)
 
-	// The caller still holds the remote snapshot, while the row says local.
 	_, err := pool.SFTP(t.Context(), remote)
 	require.ErrorIs(t, err, ErrNotRemote)
 	assert.Zero(t, server.Accepts(), "an instance that left remote mode must not be dialed")
@@ -545,7 +505,6 @@ func TestPoolRefusesARowThatLeftRemoteMode(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts())
 }
 
-// A failed row read is a local fault: it must not hold the host in backoff.
 func TestPoolRowReadFailureIsNotMemoised(t *testing.T) {
 	t.Parallel()
 
@@ -566,7 +525,6 @@ func TestPoolRowReadFailureIsNotMemoised(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts())
 }
 
-// Remove is what a deleted instance gets: the entry goes with the connection.
 func TestPoolRemoveDropsTheEntry(t *testing.T) {
 	t.Parallel()
 
@@ -585,11 +543,9 @@ func TestPoolRemoveDropsTheEntry(t *testing.T) {
 	_, kept := pool.conns[inst.ID]
 	pool.mu.Unlock()
 	assert.False(t, kept, "a deleted instance must not keep an entry for the life of the process")
-	pool.Remove(inst.ID) // idempotent
+	pool.Remove(inst.ID)
 }
 
-// The sftp-init failure is memoised and handed to every caller in the backoff
-// window, so its text must name the host and say when the subsystem hung.
 func TestPoolSFTPInitErrorNamesTheHost(t *testing.T) {
 	t.Parallel()
 
@@ -630,8 +586,6 @@ func TestPoolBackoffCaps(t *testing.T) {
 	assert.Equal(t, backoffMax, entry.backoff, "the delay stops doubling at the cap")
 }
 
-// Invalidate starts the retry schedule over: new values in the row are a
-// new host as far as the backoff is concerned.
 func TestPoolInvalidateResetsTheBackoff(t *testing.T) {
 	t.Parallel()
 
@@ -664,9 +618,6 @@ func TestPoolInvalidateResetsTheBackoff(t *testing.T) {
 	entry().unlock()
 }
 
-// sshd can close the sftp channel and keep the transport up. The pool must
-// not keep handing out that dead client: the connection is closed, and the
-// next caller redials.
 func TestPoolRedialsAfterTheSFTPChannelCloses(t *testing.T) {
 	t.Parallel()
 
@@ -695,8 +646,6 @@ func TestPoolRedialsAfterTheSFTPChannelCloses(t *testing.T) {
 	assert.Equal(t, 2, server.Accepts())
 }
 
-// A connection nobody uses is closed by the keepalive loop, and the next
-// caller redials.
 func TestPoolClosesIdleConnection(t *testing.T) {
 	t.Parallel()
 
@@ -728,8 +677,6 @@ func TestPoolClosesIdleConnection(t *testing.T) {
 	assert.Equal(t, 2, server.Accepts())
 }
 
-// A call that has ended is no longer use: after a copy in both directions,
-// many packets each way, the idle close applies again.
 func TestPoolClosesIdleConnectionAfterSFTPCalls(t *testing.T) {
 	t.Parallel()
 
@@ -821,9 +768,6 @@ func TestPoolCloseClosesClients(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts())
 }
 
-// A caller that copies on several connections gets up to four, each with an
-// sftp session of its own. The first is the connection that every other
-// caller shares, and a later caller reuses the others.
 func TestPoolSFTPConnsOpensSeveralConnections(t *testing.T) {
 	t.Parallel()
 
@@ -857,10 +801,6 @@ func TestPoolSFTPConnsOpensSeveralConnections(t *testing.T) {
 	assert.Equal(t, 4, server.Accepts(), "a later caller reuses the open connections")
 }
 
-// A host with a login limit refuses the extra connections past it. The
-// caller gets fewer, and the refusal leaves no memo: orphan scan, Dir Scan
-// and hardlink mode go on through SFTP and Exec, and the next caller asks
-// the host again.
 func TestPoolSFTPConnsTakesFewerWhenTheHostRefuses(t *testing.T) {
 	t.Parallel()
 
@@ -902,10 +842,6 @@ func TestPoolSFTPConnsTakesFewerWhenTheHostRefuses(t *testing.T) {
 	assert.Equal(t, dials+2, server.Dials(), "the next caller asks the host again")
 }
 
-// An sftp init that never returns, also after its connection closes, ends at
-// the dial timeout, and the connection closes. x/crypto never answers a
-// session that it opens just as the host drops the connection, and the wait
-// held the instance.
 // regression: #4231
 func TestPoolSFTPInitWithNoEndStopsAtTheTimeout(t *testing.T) {
 	t.Parallel()
@@ -963,8 +899,6 @@ func TestPoolSFTPInitWithNoEndStopsAtTheTimeout(t *testing.T) {
 	}
 }
 
-// An extra connection that nobody uses closes on its own, the first one stays
-// open, and the next caller that asks for it dials it again.
 func TestPoolClosesIdleExtraConnection(t *testing.T) {
 	t.Parallel()
 
@@ -997,7 +931,6 @@ func TestPoolClosesIdleExtraConnection(t *testing.T) {
 	assert.Equal(t, 3, server.Accepts())
 }
 
-// extraOf finds the extra connection that serves client.
 func extraOf(t *testing.T, pool *Pool, inst *models.Instance, client *sftp.Client) *extra {
 	t.Helper()
 
@@ -1011,9 +944,6 @@ func extraOf(t *testing.T, pool *Pool, inst *models.Instance, client *sftp.Clien
 	return entry.extras[i]
 }
 
-// A running sftp call keeps an extra connection open past the idle limit,
-// and its answer marks that connection used. The idle close of the first
-// connection does not cut it: a copy runs on every connection it got.
 func TestPoolRunningSFTPCallKeepsAnExtraConnectionOpen(t *testing.T) {
 	t.Parallel()
 
@@ -1068,8 +998,6 @@ func TestPoolRunningSFTPCallKeepsAnExtraConnectionOpen(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// Invalidate ends the extra connections with the first one: they were dialed
-// with the values that the route just replaced.
 func TestPoolInvalidateEndsTheExtraConnections(t *testing.T) {
 	t.Parallel()
 

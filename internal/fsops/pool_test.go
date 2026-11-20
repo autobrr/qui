@@ -16,7 +16,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// fakeInstanceStore implements instanceGetter for tests.
 type fakeInstanceStore struct {
 	instances map[int]*models.Instance
 	gets      int
@@ -31,7 +30,6 @@ func (s *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, er
 	return inst, nil
 }
 
-// fakeBackend is a minimal Backend for verifying which backend the pool returns.
 type fakeBackend struct{ kind string }
 
 func (f fakeBackend) Stat(context.Context, string) (*LstatInfo, error) {
@@ -97,7 +95,6 @@ func TestPool_NoAccess(t *testing.T) {
 	backend, err := pool.GetBackend(context.Background(), 2)
 	require.NoError(t, err)
 
-	// All ops should return ErrNoFilesystemAccess.
 	_, err = backend.Stat(context.Background(), "/any")
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
@@ -230,7 +227,6 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 
 	require.ErrorIs(t, b.MkdirAll(ctx, "/x", 0o755), ErrNoFilesystemAccess)
 	require.ErrorIs(t, b.Remove(ctx, "/x", RemoveOptions{}), ErrNoFilesystemAccess)
-	// A nil handle means nothing to remove — safe on every backend.
 	require.NoError(t, b.RemoveTree(ctx, nil))
 	require.ErrorIs(t, b.RemoveTree(ctx, &TreeCreateResult{Files: []string{"/x"}}), ErrNoFilesystemAccess)
 
@@ -250,8 +246,6 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 }
 
-// A caller that needs two capabilities is refused when either is missing, and
-// no backend is built for the refusal.
 func TestPool_RequireNeedsEveryCapability(t *testing.T) {
 	remote := fakeBackend{kind: "remote"}
 	built := 0

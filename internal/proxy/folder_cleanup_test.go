@@ -46,8 +46,6 @@ func (noIgnores) IgnoredPathMatcher(context.Context, int, fsops.PathDialect) (fu
 	return func(string) bool { return false }, nil
 }
 
-// proxyRig is a proxy handler in front of a qBittorrent stub that deletes and
-// moves files in a temp dir, with qui's real sync manager and folder cleanup.
 type proxyRig struct {
 	t          *testing.T
 	root       string
@@ -112,12 +110,10 @@ func (r *proxyRig) add(torrents ...qbtstub.Torrent) {
 	require.NoError(r.t, r.client.SyncOwner().Sync(r.t.Context()))
 }
 
-// post sends a form to an intercepted endpoint the way a proxy client does.
 func (r *proxyRig) post(handle http.HandlerFunc, endpoint, body string) *httptest.ResponseRecorder {
 	return r.postAs(handle, endpoint, "application/x-www-form-urlencoded", body)
 }
 
-// postAs sends body with contentType; endpoint may carry a query string.
 func (r *proxyRig) postAs(handle http.HandlerFunc, endpoint, contentType, body string) *httptest.ResponseRecorder {
 	routeCtx := chi.NewRouteContext()
 	routeCtx.URLParams.Add("api-key", "test-key")
@@ -143,7 +139,6 @@ func (r *proxyRig) requireGone(rel string) {
 	}, 20*time.Second, 50*time.Millisecond, "%s must be removed", rel)
 }
 
-// requireKept waits out a tick and the sync, then checks rel is still there.
 func (r *proxyRig) requireKept(rel string) {
 	r.t.Helper()
 	time.Sleep(rigKeptWait)
@@ -419,7 +414,6 @@ func TestProxyFolderCleanupSetLocation(t *testing.T) {
 	require.FileExists(t, r.p("torrents/movies/Show.S01E01.mkv"))
 }
 
-// Sonarr's post-import category change on an ATM torrent.
 func TestProxyFolderCleanupSetCategory(t *testing.T) {
 	t.Parallel()
 	r := newProxyRig(t)
@@ -543,7 +537,6 @@ func TestProxyFolderCleanupUnreachableUpstream(t *testing.T) {
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }
 
-// A response that never wrote a status cannot read as accepted.
 func TestProxyFolderCleanupResponseWithoutStatus(t *testing.T) {
 	t.Parallel()
 	r := newProxyRig(t)
@@ -559,7 +552,6 @@ func TestProxyFolderCleanupResponseWithoutStatus(t *testing.T) {
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }
 
-// A body that does not parse is forwarded byte for byte, without a snapshot.
 func TestProxyFolderCleanupForwardsAnUnparsableBody(t *testing.T) {
 	t.Parallel()
 	r := newProxyRig(t)

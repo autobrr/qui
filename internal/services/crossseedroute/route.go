@@ -28,7 +28,6 @@ import (
 // for an add or a listing, older than qBittorrent 5.0.
 var ErrUnavailable = errors.New("instance unavailable")
 
-// RuleError is a route that breaks a route rule. Err is the cause, if any.
 type RuleError struct {
 	Message string
 	Err     error
@@ -45,7 +44,6 @@ type instanceGetter interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 }
 
-// Service reads and saves routes. The embedded store gives the plain reads.
 type Service struct {
 	*models.CrossSeedRouteStore
 	instances instanceGetter
@@ -120,7 +118,6 @@ func (s *Service) Get(ctx context.Context, sourceInstanceID int) (*models.CrossS
 	return route, nil
 }
 
-// HashFinder finds a torrent by any of its hashes on one instance.
 type HashFinder interface {
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
 }
@@ -160,7 +157,6 @@ func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID 
 	return nil, "", nil
 }
 
-// findOn looks for hashes on one instance, after CheckAvailable.
 func (s *Service) findOn(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
 	instance, err := s.instances.Get(ctx, instanceID)
 	if err != nil {
@@ -176,15 +172,11 @@ func (s *Service) findOn(ctx context.Context, finder HashFinder, instanceID int,
 	return torrent, instance.Name, nil
 }
 
-// Check returns a *RuleError when route breaks a route rule. Any other error
-// is a failed read, such as models.ErrInstanceNotFound.
 func (s *Service) Check(ctx context.Context, route *models.CrossSeedRoute) error {
 	_, err := s.check(ctx, route)
 	return err
 }
 
-// Save stores route after the route rules pass, with each base folder key
-// cleaned.
 func (s *Service) Save(ctx context.Context, route *models.CrossSeedRoute) (*models.CrossSeedRoute, error) {
 	s.saveMu.Lock()
 	defer s.saveMu.Unlock()
@@ -199,7 +191,6 @@ func (s *Service) Save(ctx context.Context, route *models.CrossSeedRoute) (*mode
 	return saved, nil
 }
 
-// check runs the route rules in order and returns the rows with clean keys.
 func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]models.CrossSeedRouteRow, error) {
 	source, err := s.instances.Get(ctx, route.SourceInstanceID)
 	if err != nil {
@@ -255,14 +246,10 @@ func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]mo
 	return rows, checkMappedPaths(rows, models.FilesystemAccessMode(crossSeed) == models.FilesystemModeLocal)
 }
 
-// CrossSeedUnavailable rewords an ErrUnavailable error of a Cross-seed
-// instance as "Cross-seed instance unavailable: <name>: <cause>".
 func CrossSeedUnavailable(err error) error {
 	return &RuleError{Message: "Cross-seed instance unavailable: " + strings.TrimPrefix(err.Error(), ErrUnavailable.Error()+": "), Err: err}
 }
 
-// cleanRows returns one row for each base folder of source, keyed with
-// fsops.CleanPath, with the mapped path of the matching input row or empty.
 func cleanRows(d fsops.PathDialect, source *models.Instance, in []models.CrossSeedRouteRow) ([]models.CrossSeedRouteRow, error) {
 	keys := BaseDirKeys(d, source.HardlinkBaseDir)
 	cleaned := make([]models.CrossSeedRouteRow, len(in))
@@ -303,7 +290,6 @@ func checkMappedPaths(rows []models.CrossSeedRouteRow, crossSeedLocal bool) erro
 	return nil
 }
 
-// movedRow returns the first row that maps its base folder to another path.
 func movedRow(rows []models.CrossSeedRouteRow) (models.CrossSeedRouteRow, bool) {
 	for _, row := range rows {
 		if row.MappedPath != "" && crossSeedKey(row.MappedPath) != crossSeedKey(row.BaseDir) {
@@ -368,9 +354,6 @@ func sourceChangeBreaks(route *models.CrossSeedRoute, crossSeedName string, sour
 	return breaks
 }
 
-// crossSeedChangeBreaks returns a message for each rule of route that
-// crossSeed breaks, of the rules that a change to its Cross-seed instance can
-// break.
 func crossSeedChangeBreaks(route *models.CrossSeedRoute, sourceName string, crossSeed *models.Instance) []string {
 	switch models.FilesystemAccessMode(crossSeed) {
 	case models.FilesystemModeRemote:
@@ -384,8 +367,6 @@ func crossSeedChangeBreaks(route *models.CrossSeedRoute, sourceName string, cros
 	return nil
 }
 
-// rowsFor returns one row for each key, with the mapped path of the last row
-// for that key, or empty for a new base folder.
 func rowsFor(stored []models.CrossSeedRouteRow, keys []string) []models.CrossSeedRouteRow {
 	rows := make([]models.CrossSeedRouteRow, len(keys))
 	for i, key := range keys {
@@ -430,8 +411,6 @@ func (s *Service) DropRemovedBaseDirs(ctx context.Context, sourceInstanceID int)
 	return s.Upsert(ctx, route)
 }
 
-// BaseDirKeys splits the comma-separated base folders of an instance into
-// route keys, without duplicates.
 func BaseDirKeys(d fsops.PathDialect, configured string) []string {
 	var keys []string
 	for _, dir := range linktree.ParseBaseDirs(configured) {

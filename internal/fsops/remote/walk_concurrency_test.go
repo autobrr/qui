@@ -18,7 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// writeWideTree writes dirs sibling directories, one file each, under root.
 func writeWideTree(t *testing.T, root string, dirs int) {
 	t.Helper()
 	for i := range dirs {
@@ -50,8 +49,6 @@ func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 	assert.LessOrEqual(t, server.MaxInFlight(), walkWorkers, "one request in flight for each worker")
 }
 
-// The contract that survives concurrency: entries within one directory are
-// lexical, and a directory's own entry precedes anything beneath it.
 func TestWalkDir_OrderWithinDirectoryAndParentFirst(t *testing.T) {
 	t.Parallel()
 

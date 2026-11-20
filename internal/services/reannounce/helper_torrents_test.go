@@ -17,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// fakeHelpers is the helper registry: the helper torrents of one instance.
 type fakeHelpers struct {
 	instanceID int
 	hashes     map[string]bool
@@ -44,8 +43,6 @@ func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
 	return kinds
 }
 
-// Reannounce neither watches nor reannounces a helper torrent. A torrent of
-// the user with the helper tag and no registry row is watched as before.
 func TestReannounceSkipsHelperTorrents(t *testing.T) {
 	now := time.Now()
 	helper, own := strings.Repeat("c", 40), strings.Repeat("d", 40)

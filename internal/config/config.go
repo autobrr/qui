@@ -67,18 +67,14 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 		logManager: NewLogManager(version),
 	}
 
-	// Set defaults
 	c.defaults()
 
-	// Load from config file
 	if err := c.load(configDirOrPath); err != nil {
 		return nil, err
 	}
 
-	// Override with environment variables
 	c.loadFromEnv()
 
-	// Unmarshal the configuration
 	if err := c.viper.Unmarshal(c.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
@@ -89,7 +85,6 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	c.Config.ExperimentalFeatures = c.getNormalizedStringSlice("experimentalFeatures")
 	c.Config.Version = c.version
 
-	// Resolve data directory after config is unmarshaled
 	c.resolveDataDir()
 
 	if err := c.validateSessionSecret(); err != nil {
@@ -98,14 +93,12 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	c.warnWeakSessionSecret()
 	c.Config.Publish()
 
-	// Watch for config changes
 	c.watchConfig()
 
 	return c, nil
 }
 
 func (c *AppConfig) defaults() {
-	// Detect if running in container
 	host := "localhost"
 	if detectContainer() {
 		host = "0.0.0.0"
@@ -161,12 +154,10 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("externalProgramAllowList", []string{})
 	c.viper.SetDefault("externalProgramMaxRunning", 8)
 
-	// Auth disabled
 	c.viper.SetDefault("authDisabled", false)
 	c.viper.SetDefault("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", false)
 	c.viper.SetDefault("authDisabledAllowedCIDRs", []string{})
 
-	// OIDC defaults
 	c.viper.SetDefault("oidcEnabled", false)
 	c.viper.SetDefault("oidcIssuer", "")
 	c.viper.SetDefault("oidcClientId", "")
@@ -277,7 +268,6 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", envPrefix+"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
 	c.viper.BindEnv("authDisabledAllowedCIDRs", envPrefix+"AUTH_DISABLED_ALLOWED_CIDRS")
 
-	// OIDC environment variables
 	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
 	c.viper.BindEnv("oidcIssuer", envPrefix+"OIDC_ISSUER")
 	c.viper.BindEnv("oidcClientId", envPrefix+"OIDC_CLIENT_ID")
@@ -394,8 +384,6 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 	c.notifyListeners()
 }
 
-// WarnIfOIDCAllowedUserUnset logs that every provider user can log in when OIDC
-// is enabled without an allowed user.
 func WarnIfOIDCAllowedUserUnset(cfg *domain.Config) {
 	if cfg.OIDCEnabled && cfg.OIDCAllowedSubject == "" && cfg.OIDCAllowedEmail == "" {
 		log.Warn().Msg("neither oidcAllowedSubject nor oidcAllowedEmail is set: any user your OIDC provider authenticates for this client can log in")
@@ -570,7 +558,6 @@ func splitStringSliceValue(value string) []string {
 	return normalizeStringSlice(parts)
 }
 
-// RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.
 func (c *AppConfig) RegisterReloadListener(fn func(*domain.Config)) {
 	c.listenersMu.Lock()
 	defer c.listenersMu.Unlock()
@@ -594,20 +581,17 @@ func (c *AppConfig) notifyListeners() {
 
 //nolint:funlen // config template is inherently long
 func (c *AppConfig) writeDefaultConfig(path string) error {
-	// Check if config already exists
 	if _, err := os.Stat(path); err == nil {
 		log.Debug().Msgf("Config file already exists at: %s", path)
 		return nil
 	}
 
-	// Ensure directory exists
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create config directory %s: %w", dir, err)
 	}
 	log.Debug().Msgf("Created config directory: %s", dir)
 
-	// Create config template
 	configTemplate := `# config.toml - Auto-generated on first run
 
 # Hostname / IP
@@ -801,7 +785,6 @@ sessionSecret = "{{ .sessionSecret }}"
 #oidcAllowedEmail = ""
 `
 
-	// Prepare template data
 	data := map[string]any{
 		"host":          c.viper.GetString("host"),
 		"port":          c.viper.GetInt("port"),
@@ -811,7 +794,6 @@ sessionSecret = "{{ .sessionSecret }}"
 		"logMaxBackups": c.viper.GetInt("logMaxBackups"),
 	}
 
-	// Parse and execute template
 	tmpl, err := template.New("config").Parse(configTemplate)
 	if err != nil {
 		return fmt.Errorf("failed to parse config template: %w", err)
@@ -838,33 +820,25 @@ sessionSecret = "{{ .sessionSecret }}"
 	return nil
 }
 
-// Helper functions
-
-// GetDefaultConfigDir returns the OS-specific config directory
 func GetDefaultConfigDir() string {
 	// First check if XDG_CONFIG_HOME is set (Docker containers set this to /config)
 	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
-		// If XDG_CONFIG_HOME is /config (Docker), use it directly
 		if xdgConfig == "/config" {
 			return xdgConfig
 		}
-		// Otherwise append qui subdirectory
 		return filepath.Join(xdgConfig, "qui")
 	}
 
 	switch runtime.GOOS {
 	case "windows":
-		// Use %APPDATA%\qui on Windows
 		if appData := os.Getenv("APPDATA"); appData != "" {
 			return filepath.Join(appData, "qui")
 		}
-		// Fallback to home directory
 		if home, err := os.UserHomeDir(); err == nil {
 			return filepath.Join(home, "AppData", "Roaming", "qui")
 		}
 		return filepath.Join(".", "qui")
 	default:
-		// Use ~/.config/qui for Unix-like systems
 		if home, err := os.UserHomeDir(); err == nil {
 			return filepath.Join(home, ".config", "qui")
 		}
@@ -873,15 +847,12 @@ func GetDefaultConfigDir() string {
 }
 
 func detectContainer() bool {
-	// Check Docker
 	if _, err := os.Stat("/.dockerenv"); err == nil {
 		return true
 	}
-	// Check LXC
 	if _, err := os.Stat("/dev/.lxc-boot-id"); err == nil {
 		return true
 	}
-	// Check if running as init
 	if os.Getpid() == 1 {
 		return true
 	}
@@ -897,17 +868,13 @@ func generateSecureToken(length int) (string, error) {
 }
 
 func (c *AppConfig) ApplyLogConfig() error {
-	// Initialize the log manager on first call (sets up switchable writer)
 	c.logManager.Initialize()
 
-	// Resolve relative log paths to config directory
 	resolvedPath := c.ResolveLogPath(c.Config.LogPath)
 
-	// Apply configuration through the log manager
 	return c.logManager.Apply(c.Config.LogLevel, resolvedPath, c.Config.LogMaxSize, c.Config.LogMaxBackups)
 }
 
-// GetLogManager returns the LogManager for log streaming.
 func (c *AppConfig) GetLogManager() *LogManager {
 	return c.logManager
 }
@@ -945,8 +912,6 @@ func baseLogWriter(version string) io.Writer {
 	return os.Stderr
 }
 
-// InitDefaultLogger configures zerolog with the default writer for this version.
-// This is used by CLI entry points before a configuration file is loaded.
 func InitDefaultLogger(version string) {
 	log.Logger = log.Logger.Output(baseLogWriter(version))
 }
@@ -956,7 +921,6 @@ func isDevBuild(version string) bool {
 	return v == "" || v == "dev" || strings.HasSuffix(v, "-dev")
 }
 
-// resolveConfigPath determines the actual config file path from the provided directory or file path
 func (c *AppConfig) resolveConfigPath(configDirOrPath string) string {
 	// Check if it's a direct file path (ends with .toml) - backward compatibility
 	if strings.HasSuffix(strings.ToLower(configDirOrPath), ".toml") {
@@ -968,11 +932,9 @@ func (c *AppConfig) resolveConfigPath(configDirOrPath string) string {
 		return configDirOrPath
 	}
 
-	// Treat as directory path and append config.toml
 	return filepath.Join(configDirOrPath, "config.toml")
 }
 
-// resolveDataDir sets the data directory based on configuration
 func (c *AppConfig) resolveDataDir() {
 	switch {
 	case c.Config.DataDir != "":
@@ -984,24 +946,18 @@ func (c *AppConfig) resolveDataDir() {
 	}
 }
 
-// GetDatabasePath returns the path to the database file
 func (c *AppConfig) GetDatabasePath() string {
 	return filepath.Join(c.dataDir, "qui.db")
 }
 
-// GetDataDir returns the resolved data directory path.
 func (c *AppConfig) GetDataDir() string {
 	return c.dataDir
 }
 
-// SetDataDir sets the data directory (used by CLI flags)
 func (c *AppConfig) SetDataDir(dir string) {
 	c.dataDir = dir
 }
 
-// GetBackupDir returns the resolved backup root directory.
-// Empty config defaults to <dataDir>/backups; a relative override is resolved
-// against the config directory, an absolute override is used verbatim.
 func (c *AppConfig) GetBackupDir() string {
 	dir := strings.TrimSpace(c.Config.Live().BackupDir)
 	if dir == "" {
@@ -1013,18 +969,13 @@ func (c *AppConfig) GetBackupDir() string {
 	return dir
 }
 
-// GetConfigDir returns the directory containing the config file
 func (c *AppConfig) GetConfigDir() string {
 	if c.viper.ConfigFileUsed() != "" {
 		return filepath.Dir(c.viper.ConfigFileUsed())
 	}
-	// Fallback to default config directory when no config file is explicitly used
 	return GetDefaultConfigDir()
 }
 
-// GetCustomThemesDir returns the resolved custom themes directory.
-// Empty config defaults to <config-dir>/themes; a relative override is resolved
-// against the config directory, an absolute override is used verbatim.
 func (c *AppConfig) GetCustomThemesDir() string {
 	dir := strings.TrimSpace(c.Config.Live().CustomThemesDir)
 	if dir == "" {
@@ -1055,8 +1006,6 @@ func (c *AppConfig) SetDefaultLogPath(path string) {
 	c.Config.LogPath = c.viper.GetString("logPath")
 }
 
-// ResolveLogPath resolves a log path, making relative paths relative to the config directory.
-// Returns empty string if logPath is empty (stdout only).
 func (c *AppConfig) ResolveLogPath(logPath string) string {
 	if logPath == "" {
 		return ""
@@ -1069,11 +1018,6 @@ func (c *AppConfig) ResolveLogPath(logPath string) string {
 
 const encryptionKeySize = 32
 
-// encryptionKeyInfo binds the derived credential key to this one purpose, so a
-// future key taken from the same session secret is independent of it. It is
-// frozen, not versioned: the qui2 ciphertext prefix carries format version, and
-// changing this literal would orphan every stored credential with no fallback.
-// The identifier avoids the substring "cred", which gosec G101 matches on.
 const encryptionKeyInfo = "qui credential encryption key"
 
 func WriteDefaultConfig(path string) error {
@@ -1086,8 +1030,6 @@ func WriteDefaultConfig(path string) error {
 	return c.writeDefaultConfig(path)
 }
 
-// GetEncryptionKey derives the 32-byte credential encryption key from the whole
-// session secret with HKDF-SHA256.
 func (c *AppConfig) GetEncryptionKey() []byte {
 	key, err := hkdf.Key(sha256.New, []byte(c.Config.SessionSecret), nil, encryptionKeyInfo, encryptionKeySize)
 	if err != nil {
@@ -1144,8 +1086,6 @@ func (c *AppConfig) warnWeakSessionSecret() {
 		Msg("sessionSecret is shorter than 32 characters, so the credential encryption key is only as strong as the secret. On a new install set at least 32 characters. On an install that already stores credentials leave it alone, because changing it makes every stored credential unreadable and you would have to enter them all again")
 }
 
-// bindOrReadFromFile sets the viper variable from a file if the _FILE suffixed
-// environment variable is present, otherwise it binds to the regular env var.
 func (c *AppConfig) bindOrReadFromFile(viperVar, envVar string) {
 	envVarFile := envVar + "_FILE"
 	filePath := os.Getenv(envVarFile)

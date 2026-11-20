@@ -30,8 +30,6 @@ func (r *statusRecorder) WriteHeader(code int) {
 
 func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
-// interceptForFolderCleanup forwards a write that can move torrents, with a
-// snapshot taken first.
 func (h *Handler) interceptForFolderCleanup(w http.ResponseWriter, r *http.Request, opFor func(form qbtForm) (qbittorrent.FolderCleanupOp, bool)) {
 	body, err := bufferRequestBody(r)
 	if err != nil {

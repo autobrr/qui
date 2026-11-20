@@ -25,8 +25,7 @@ const releaseChecksumsAsset = "checksums.txt"
 var (
 	ErrReleaseNotFound = errors.New("release not found")
 	ErrNotNewer        = errors.New("release is not newer than the running version")
-	// ErrSwap marks a failure to replace the binary on disk, such as a permission error.
-	ErrSwap = errors.New("could not replace the binary")
+	ErrSwap            = errors.New("could not replace the binary")
 )
 
 // statBackup is a seam for the test of a backup that is missing after the swap.
@@ -40,7 +39,6 @@ type Config struct {
 	BinaryPath string
 }
 
-// Result describes a successful Self-update.
 type Result struct {
 	// Version has no "v" prefix, the same format as GET /api/version.
 	Version         string `json:"version"`
@@ -62,7 +60,6 @@ func NewUpdater(config Config) *Updater {
 	}
 }
 
-// Run installs the latest release. It serves the qui update CLI command.
 func (u *Updater) Run(ctx context.Context) error {
 	current, err := semver.NewVersion(u.config.Version)
 	if err != nil {
@@ -107,9 +104,6 @@ func (u *Updater) Run(ctx context.Context) error {
 	return nil
 }
 
-// Install replaces the binary with the release that has this exact tag. It
-// never falls back to the latest release: the dialog showed this tag, and the
-// user read the notes for it. On an error the binary does not change.
 func (u *Updater) Install(ctx context.Context, tag string) (Result, error) {
 	current, err := semver.NewVersion(u.config.Version)
 	if err != nil {

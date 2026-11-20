@@ -22,7 +22,6 @@ export interface TorznabIndexer {
   updated_at: string
 }
 
-/** Response from create/update indexer endpoints, may include warnings for partial failures */
 export interface IndexerResponse extends TorznabIndexer {
   warnings?: string[]
 }
@@ -69,7 +68,6 @@ export interface TorznabIndexerHealth {
   last_measured_at?: string
 }
 
-// Activity/Scheduler types
 export interface SchedulerTaskStatus {
   jobId: number
   taskId: number
@@ -126,7 +124,6 @@ export interface SearchHistoryEntry {
   completedAt: string
   durationMs: number
   errorMessage?: string
-  // Cross-seed outcome tracking
   outcome?: "added" | "failed" | "no_match" | ""
   addedCount?: number
 }

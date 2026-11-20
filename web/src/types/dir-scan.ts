@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Directory Scanner Types
 export type DirScanMatchMode = "strict" | "flexible"
 
 export type DirScanFileStatus =

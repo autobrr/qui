@@ -5,7 +5,6 @@
 
 import type { FilesystemMode } from "./instances"
 
-// Orphan Scan types
 export type OrphanScanRunStatus =
   | "pending"
   | "scanning"

@@ -42,7 +42,6 @@ function fixture(t, locale) {
   }
 }
 
-// English pluralizes with _one/_other; every locale-specific rule keys off that pair.
 const english = { items_one: "{{count}} item", items_other: "{{count}} items" }
 
 for (const locale of allLocales) {
@@ -275,8 +274,6 @@ for (const locale of ["fr", "zh-CN"]) {
   })
 }
 
-// --- Chinese-only checks -----------------------------------------------------
-
 for (const locale of ["zh-CN", "zh-TW"]) {
   test(`${locale}: half-width punctuation is a warning`, (t) => {
     const f = fixture(t, locale)
@@ -305,8 +302,6 @@ test("punctuation and length are not checked outside the Chinese locales", (t) =
   assert.equal(result.status, 0, result.stdout + result.stderr)
   assert.doesNotMatch(result.stdout, /\[Punctuation]|\[Text Length]/)
 })
-
-// --- invocation --------------------------------------------------------------
 
 test("rejects unsupported locales", () => {
   for (const argument of ["en", "xx", "../en"]) {

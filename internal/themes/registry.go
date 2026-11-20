@@ -20,7 +20,6 @@ import (
 //go:embed assets
 var assetsFS embed.FS
 
-// Theme is one built-in theme: its metadata and raw CSS.
 type Theme struct {
 	ID          string
 	Name        string
@@ -55,13 +54,10 @@ func GenerateID(name string) string {
 
 var registry = load()
 
-// All returns every embedded theme, "minimal" (the default) first, then by
-// name, matching the order the old bundled loader presented.
 func All() []Theme {
 	return registry
 }
 
-// Exists reports whether id names an embedded built-in theme.
 func Exists(id string) bool {
 	return slices.ContainsFunc(registry, func(t Theme) bool { return t.ID == id })
 }
@@ -139,7 +135,6 @@ func extractPreviewVars(css, selector string) map[string]string {
 	return vars
 }
 
-// blockVars parses every custom property in the first block for selector.
 func blockVars(css, selector string) map[string]string {
 	start := strings.Index(css, selector+" {")
 	if start < 0 {

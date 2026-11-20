@@ -17,7 +17,6 @@ import (
 	sqlitelib "modernc.org/sqlite/lib"
 )
 
-// ErrShrinkUnsupported is the answer of a shrink call on Postgres.
 var ErrShrinkUnsupported = errors.New("only a SQLite database file can shrink")
 
 var errCheckpointBusy = errors.New("another program held the database, so the file did not get smaller")
@@ -26,7 +25,6 @@ var errCheckpointBusy = errors.New("another program held the database, so the fi
 // header. qui does not use that field for anything else.
 const shrinkPendingMark = 1
 
-// ShrinkFailure names the kind of cause of a failed shrink.
 type ShrinkFailure string
 
 const (
@@ -35,8 +33,6 @@ const (
 	ShrinkUnknown  ShrinkFailure = "unknown"
 )
 
-// ShrinkResult is the outcome of the shrink at startup. Err is nil when the
-// shrink succeeded.
 type ShrinkResult struct {
 	BeforeBytes int64
 	AfterBytes  int64
@@ -71,7 +67,6 @@ func (db *DB) RequestShrink(ctx context.Context) error {
 	return db.setShrinkMark(ctx, shrinkPendingMark)
 }
 
-// ShrinkPending reports whether the "shrink pending" mark is stored.
 func (db *DB) ShrinkPending(ctx context.Context) (bool, error) {
 	if db.dialect != DialectSQLite {
 		return false, nil
@@ -166,8 +161,6 @@ func (db *DB) shrink(ctx context.Context) ShrinkResult {
 	return ShrinkResult{BeforeBytes: before, AfterBytes: after}
 }
 
-// checkpoint moves the WAL into the database file and empties the WAL. It
-// reports busy when another connection kept it from the end.
 func (db *DB) checkpoint(ctx context.Context) (busy bool, err error) {
 	var blocked, walFrames, moved int
 	if err := db.writerConn.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&blocked, &walFrames, &moved); err != nil {

@@ -30,16 +30,11 @@ var (
 	sleepForRetry       = time.Sleep
 )
 
-// SupportsReflink tests whether the given directory supports reflinks
-// by attempting an actual clone operation with temporary files.
-// Returns true if reflinks are supported, along with a reason string.
 func SupportsReflink(dir string) (supported bool, reason string) {
-	// Ensure directory exists
 	if err := os.MkdirAll(dir, fsutil.ContentDirMode); err != nil {
 		return false, fmt.Sprintf("cannot access directory: %v", err)
 	}
 
-	// Create temp source file
 	srcFile, err := os.CreateTemp(dir, ".reflink_probe_src_*")
 	if err != nil {
 		return false, fmt.Sprintf("cannot create temp file: %v", err)
@@ -47,7 +42,6 @@ func SupportsReflink(dir string) (supported bool, reason string) {
 	srcPath := srcFile.Name()
 	defer os.Remove(srcPath)
 
-	// Write some data to source
 	if _, err := srcFile.WriteString("reflink probe test data"); err != nil {
 		srcFile.Close()
 		return false, fmt.Sprintf("cannot write to temp file: %v", err)
@@ -56,11 +50,9 @@ func SupportsReflink(dir string) (supported bool, reason string) {
 		return false, fmt.Sprintf("cannot close temp file: %v", err)
 	}
 
-	// Create target path
 	dstPath := filepath.Join(dir, ".reflink_probe_dst_"+filepath.Base(srcPath)[len(".reflink_probe_src_"):])
 	defer os.Remove(dstPath)
 
-	// Attempt to clone
 	err = cloneFile(srcPath, dstPath)
 	if err != nil {
 		return false, fmt.Sprintf("reflink not supported: %v", err)
@@ -69,17 +61,13 @@ func SupportsReflink(dir string) (supported bool, reason string) {
 	return true, "reflink supported"
 }
 
-// cloneFile creates a reflink (copy-on-write clone) of src at dst.
-// On Linux, this uses the FICLONE ioctl with a FICLONERANGE fallback.
 func cloneFile(src, dst string) (retErr error) {
-	// Open source file
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("open source: %w", err)
 	}
 	defer srcFile.Close()
 
-	// Create destination file with same permissions
 	srcInfo, err := srcFile.Stat()
 	if err != nil {
 		return fmt.Errorf("stat source: %w", err)
@@ -96,7 +84,6 @@ func cloneFile(src, dst string) (retErr error) {
 		}
 	}()
 
-	// Perform the clone using FICLONE ioctl
 	srcFd := int(srcFile.Fd())
 	dstFd := int(dstFile.Fd())
 

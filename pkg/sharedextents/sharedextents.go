@@ -1,8 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package sharedextents reports whether two known files currently share
-// allocated storage.
 package sharedextents
 
 import (
@@ -13,8 +11,6 @@ import (
 	"slices"
 )
 
-// ErrUnsupported indicates that shared-extent detection is unavailable on the
-// current platform or filesystem.
 var ErrUnsupported = errors.New("shared extent detection unsupported")
 
 const (

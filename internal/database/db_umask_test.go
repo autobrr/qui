@@ -28,7 +28,6 @@ func TestNew_DatabaseFilesOwnerOnly(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	// WAL mode creates -wal and -shm; all three must be owner-only on disk.
 	for _, suffix := range []string{"", "-wal", "-shm"} {
 		p := dbPath + suffix
 		info, statErr := os.Stat(p)

@@ -5,63 +5,52 @@
 
 // Map of font names to their Google Fonts URLs. Exported for fontLoader.test.ts.
 export const FONT_MAP: Record<string, string> = {
-  // Sans fonts
-  "-apple-system": "", // System font, no need to load
+  "-apple-system": "",
   "Inter": "Inter:wght@300;400;500;600;700",
   "Montserrat": "Montserrat:wght@300;400;500;600;700",
   "Poppins": "Poppins:wght@300;400;500;600;700",
   "Outfit": "Outfit:wght@300;400;500;600;700",
   "Geist": "Geist:wght@300;400;500;600;700",
 
-  // Serif fonts
-  "Georgia": "", // System font, no need to load
+  "Georgia": "",
   "Source Serif 4": "Source+Serif+4:wght@300;400;500;600;700",
   "Lora": "Lora:wght@400;500;600;700",
 
-  // Mono fonts
   "JetBrains Mono": "JetBrains+Mono:wght@300;400;500;600;700",
   "Fira Code": "Fira+Code:wght@300;400;500;600;700",
   "Source Code Pro": "Source+Code+Pro:wght@300;400;500;600;700",
   "Roboto Mono": "Roboto+Mono:wght@300;400;500;600;700",
-  "Courier New": "", // System font, no need to load
-  "Tahoma": "", // System font, no need to load
-  "Times New Roman": "", // System font, no need to load
-  "Aptos": "", // System font, no need to load
-  "Cambria": "", // System font, no need to load
-  "Consolas": "", // System font, no need to load
+  "Courier New": "",
+  "Tahoma": "",
+  "Times New Roman": "",
+  "Aptos": "",
+  "Cambria": "",
+  "Consolas": "",
 };
 
-// Keep track of loaded fonts to avoid duplicates
 const loadedFonts = new Set<string>();
 
-// Extract font name from font family string. Exported for fontLoader.test.ts.
 export function extractFontName(fontFamily: string): string {
-  // Remove fallback fonts and quotes
   const match = fontFamily.match(/^["']?([^,"']+)/);
   return match ? match[1].trim() : "";
 }
 
-// Load a single font
 async function loadFont(fontName: string): Promise<void> {
   const googleFontId = FONT_MAP[fontName];
 
-  // Skip if it's a system font or already loaded
   if (!googleFontId || loadedFonts.has(fontName)) {
     return;
   }
 
-  // Create link element
   const link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = `https://fonts.googleapis.com/css2?family=${googleFontId}&display=swap`;
   link.dataset.fontLoader = fontName;
 
-  // Add to head
   document.head.appendChild(link);
   loadedFonts.add(fontName);
 }
 
-// Load fonts for a theme
 export async function loadThemeFonts(theme: {
   cssVars: {
     light: Record<string, string>;
@@ -70,7 +59,6 @@ export async function loadThemeFonts(theme: {
 }): Promise<void> {
   const fontsToLoad = new Set<string>();
 
-  // Extract fonts from both light and dark modes
   ["light", "dark"].forEach((mode) => {
     const vars = theme.cssVars[mode as "light" | "dark"];
 
@@ -84,6 +72,5 @@ export async function loadThemeFonts(theme: {
     });
   });
 
-  // Load all fonts
   await Promise.all(Array.from(fontsToLoad).map(loadFont));
 }

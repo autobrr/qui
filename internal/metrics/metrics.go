@@ -21,11 +21,9 @@ type MetricsManager struct {
 func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool, trackerCustomizationStore *models.TrackerCustomizationStore, extra ...prometheus.Collector) *MetricsManager {
 	registry := prometheus.NewRegistry()
 
-	// Register standard Go collectors like autobrr does
 	registry.MustRegister(collectors.NewGoCollector())
 	registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
-	// Register custom collectors
 	torrentCollector := collector.NewTorrentCollector(syncManager, clientPool, trackerCustomizationStore)
 	registry.MustRegister(torrentCollector)
 	registry.MustRegister(database.NewMetricsCollector())

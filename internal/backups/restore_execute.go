@@ -15,7 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// RestoreOptions control restore execution behaviour.
 type RestoreOptions struct {
 	DryRun             bool
 	StartPaused        bool
@@ -24,41 +23,35 @@ type RestoreOptions struct {
 	ExcludeHashes      []string
 }
 
-// RestoreError captures an operation failure during restore execution.
 type RestoreError struct {
 	Operation string `json:"operation"`
 	Target    string `json:"target"`
 	Message   string `json:"message"`
 }
 
-// RestoreApplied summarises the actions that were successfully applied.
 type RestoreApplied struct {
 	Categories CategoryApplied `json:"categories"`
 	Tags       TagApplied      `json:"tags"`
 	Torrents   TorrentApplied  `json:"torrents"`
 }
 
-// CategoryApplied summarises category operations.
 type CategoryApplied struct {
 	Created []string `json:"created,omitempty"`
 	Updated []string `json:"updated,omitempty"`
 	Deleted []string `json:"deleted,omitempty"`
 }
 
-// TagApplied summarises tag operations.
 type TagApplied struct {
 	Created []string `json:"created,omitempty"`
 	Deleted []string `json:"deleted,omitempty"`
 }
 
-// TorrentApplied summarises torrent operations.
 type TorrentApplied struct {
 	Added   []string `json:"added,omitempty"`
 	Updated []string `json:"updated,omitempty"`
 	Deleted []string `json:"deleted,omitempty"`
 }
 
-// RestoreResult describes the outcome of a restore execution.
 type RestoreResult struct {
 	Mode       RestoreMode    `json:"mode"`
 	RunID      int64          `json:"runId"`
@@ -70,7 +63,6 @@ type RestoreResult struct {
 	Errors     []RestoreError `json:"errors,omitempty"`
 }
 
-// ExecuteRestore executes the restore plan for the given run and mode.
 func (s *Service) ExecuteRestore(ctx context.Context, runID int64, mode RestoreMode, opts RestoreOptions) (*RestoreResult, error) {
 	var planOpts *RestorePlanOptions
 	if len(opts.ExcludeHashes) > 0 {

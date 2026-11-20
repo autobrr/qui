@@ -28,5 +28,4 @@ func execBinary(path string) error {
 	return syscall.Exec(path, os.Args, os.Environ())
 }
 
-// Supervise does nothing on Unix, where a Restart execs in place.
 func Supervise(func(msg string)) {}

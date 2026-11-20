@@ -24,7 +24,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// Reasons for a Send that brrbin refused or could not take.
 const (
 	ReasonAnonymousFull  = "anonymous_full"
 	ReasonSignInRequired = "sign_in_required"
@@ -36,11 +35,8 @@ const (
 )
 
 const (
-	// MaxReportSize is the largest report JSON that qui sends. qui cuts the
-	// oldest log lines to stay under it.
 	MaxReportSize = 4 << 20
-	// MaxImageSize is the largest image that qui sends.
-	MaxImageSize = 10 << 20
+	MaxImageSize  = 10 << 20
 
 	requestTimeout      = 30 * time.Second
 	imageRequestTimeout = 2 * time.Minute
@@ -83,24 +79,20 @@ type ReportLogs struct {
 	Lines []string `json:"lines"`
 }
 
-// Image is the image of a report: its bytes and its content type.
 type Image struct {
 	Data        []byte
 	ContentType string
 }
 
-// SentReport is the answer of a successful Send.
 type SentReport struct {
 	ID           string    `json:"id"`
 	SubmissionID string    `json:"submissionId"`
 	Title        string    `json:"title"`
 	SentAt       time.Time `json:"sentAt"`
 	Status       string    `json:"status"`
-	// Text is the user's text as qui cleaned and sent it.
-	Text string `json:"text"`
+	Text         string    `json:"text"`
 }
 
-// DecodeReport reads the report JSON that the browser sends.
 func DecodeReport(r io.Reader) (Report, error) {
 	decoder := json.NewDecoder(r)
 	decoder.UseNumber()
@@ -236,8 +228,6 @@ func cleanReport(c cleaner, report Report) Report {
 	return report
 }
 
-// encodeWithin encodes the report, and cuts the oldest log lines until the
-// JSON is at most limit bytes.
 func encodeWithin(report Report, limit int) ([]byte, error) {
 	for {
 		body, err := json.Marshal(report)
@@ -272,7 +262,6 @@ func title(text string) string {
 	return string([]rune(first)[:titleLength])
 }
 
-// post sends the report to brrbin and returns the id of the report.
 func (s *Service) post(ctx context.Context, report []byte, image *Image, installKey string, signIn *models.ProblemReportSignIn) (string, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)

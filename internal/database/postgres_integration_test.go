@@ -168,7 +168,6 @@ func openPostgresTestDB(t *testing.T) (*DB, context.Context) {
 	return db, ctx
 }
 
-// testSchemaSeq keeps parallel tests from claiming the same schema name.
 var testSchemaSeq atomic.Int64
 
 func openPostgresTestSchema(t *testing.T) (context.Context, string) {
@@ -241,8 +240,6 @@ func TestImportForeignKeysIgnoreOtherSchemasPostgresIntegration(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), fmt.Sprintf("DROP SCHEMA %s CASCADE", quoteIdent(decoySchema)))
 	})
 
-	// The decoy holds a table whose name collides with one in the active schema,
-	// so a stripped qualifier lands on the local table of the same name.
 	_, err = pool.Exec(ctx, fmt.Sprintf(`
 		CREATE TABLE %s.orphan_target (id integer PRIMARY KEY);
 		CREATE TABLE orphan_target (id integer PRIMARY KEY, linker_id integer);

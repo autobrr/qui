@@ -78,7 +78,6 @@ func openTestDB(t *testing.T) *sql.DB {
 }
 
 func TestService_getArrTypeForContent(t *testing.T) {
-	// Create a minimal service for testing internal method
 	s := &Service{}
 
 	tests := []struct {
@@ -379,8 +378,6 @@ func TestService_LookupSeasonEpisodeTotalKeepsTitlesWhenSeasonHasNoEpisodes(t *t
 }
 
 func TestService_LookupSeasonEpisodeTotalSurvivesHydrationFailure(t *testing.T) {
-	// If /series/{id} fails, the lookup must still return the episode total with the
-	// canonical title instead of erroring out or dropping the result.
 	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v3/parse":
@@ -429,17 +426,13 @@ func TestSeasonLookupTitles_SuppressesExpansionForOtherSeasonAliasPacks(t *testi
 	// would wrongly let this pack through; this case pins that it must not.
 	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.2nd.Season.S01.1080p.WEB.x264-GRP", 1))
 
-	// Alias scoped only by scene season: its Sonarr season is unknown, so a pack titled
-	// by it must not expand either, regardless of the labeled season.
 	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.Kai.S01.1080p.WEB.x264-GRP", 1))
 	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.Kai.S02.1080p.WEB.x264-GRP", 2))
 
-	// Same pack labeled with the alias's own Sonarr season: expansion is safe.
 	s2 := seasonLookupTitles(series, "Oshi.no.Ko.2nd.Season.S02.1080p.WEB.x264-GRP", 2)
 	require.Contains(t, s2, "Oshi no Ko")
 	require.Contains(t, s2, "Oshi no Ko 2nd Season")
 
-	// Canonical-titled pack is unaffected by the guard.
 	s1 := seasonLookupTitles(series, "Oshi.no.Ko.S01.1080p.WEB.x264-GRP", 1)
 	require.Contains(t, s1, "Oshi no Ko")
 	require.Contains(t, s1, "Oshi no Ko Romaji")
@@ -450,10 +443,10 @@ func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
 	series := &SonarrSeries{
 		Title: "Oshi no Ko",
 		AlternateTitles: []AlternateTitle{
-			{Title: "Oshi no Ko Romaji"},                                 // series-wide (season absent)
-			{Title: "Oshi no Ko Wide", SeasonNumber: season(-1)},         // series-wide (-1)
-			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2)},    // scoped to season 2
-			{Title: "Oshi no Ko Scene S3", SceneSeasonNumber: season(3)}, // scene-scoped only: Sonarr season unknown
+			{Title: "Oshi no Ko Romaji"},
+			{Title: "Oshi no Ko Wide", SeasonNumber: season(-1)},
+			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2)},
+			{Title: "Oshi no Ko Scene S3", SceneSeasonNumber: season(3)},
 			// The real Sonarr scene-mapping shape: SeasonNumber is the Sonarr season,
 			// SceneSeasonNumber the release-label season. Scene equality must NOT count
 			// as season alignment, or this season-2 alias bridges season-2 episodes
@@ -462,7 +455,6 @@ func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
 		},
 	}
 
-	// Season 2: keep series-wide + the season-2 aliases, drop the rest.
 	s2 := titlesForSeason(series, 2)
 	require.Contains(t, s2, "Oshi no Ko")
 	require.Contains(t, s2, "Oshi no Ko Romaji")
@@ -471,18 +463,14 @@ func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
 	require.Contains(t, s2, "Oshi no Ko Scene Mapped", "Sonarr-season-2 alias must be kept for season 2")
 	require.NotContains(t, s2, "Oshi no Ko Scene S3", "a different season's alias must be dropped")
 
-	// Season 1: no season-scoped alias applies. In particular the scene-mapped alias
-	// (sceneSeasonNumber 1) must not leak in via scene equality.
 	s1 := titlesForSeason(series, 1)
 	require.Contains(t, s1, "Oshi no Ko Romaji")
 	require.NotContains(t, s1, "Oshi no Ko 2nd Season", "season-2 alias must not bridge into a season-1 pack")
 	require.NotContains(t, s1, "Oshi no Ko Scene Mapped", "sceneSeasonNumber must not count as season alignment")
 	require.NotContains(t, s1, "Oshi no Ko Scene S3")
 
-	// A scene-only-scoped alias attaches to no season, its own scene season included.
 	require.NotContains(t, titlesForSeason(series, 3), "Oshi no Ko Scene S3")
 
-	// titlesFromSeries stays season-blind (search path unchanged): all titles present.
 	all := titlesFromSeries(series)
 	require.Contains(t, all, "Oshi no Ko 2nd Season")
 	require.Contains(t, all, "Oshi no Ko Scene S3")
@@ -515,8 +503,6 @@ func TestCacheWritesSurviveCallerCancellation(t *testing.T) {
 	require.Equal(t, []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"}, entry.Titles)
 }
 
-// sonarrEpisodeMapHandler serves a Sonarr parse response for "Solitude" and counts
-// parse calls. An empty episodes string means Sonarr named no episode.
 func sonarrEpisodeMapHandler(t *testing.T, parseCalls *int, episodes string) http.Handler {
 	t.Helper()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

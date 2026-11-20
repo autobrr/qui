@@ -20,8 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// requireShell skips where the fake server cannot run commands through a
-// local sh with the GNU tools.
 func requireShell(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS != "linux" {
@@ -46,8 +44,6 @@ func TestCommandQuotesEveryWord(t *testing.T) {
 		cmd.String())
 }
 
-// The words the remote shell sees are exactly the words of the Command,
-// whatever the path holds.
 func TestExecPassesHostileWordsThrough(t *testing.T) {
 	t.Parallel()
 	requireShell(t)
@@ -92,8 +88,6 @@ func TestExecOutputLimit(t *testing.T) {
 	assert.Len(t, out, execOutputLimit)
 }
 
-// A command that runs past its timeout ends its own session. The connection
-// stays up for the next caller.
 func TestExecTimeoutEndsTheSessionOnly(t *testing.T) {
 	t.Parallel()
 	requireShell(t)
@@ -137,8 +131,6 @@ func TestExecReportsTheExitStatus(t *testing.T) {
 	assert.Contains(t, err.Error(), "No such file or directory")
 }
 
-// Every connect probes the host and writes the tier to the row when it
-// changed, so the tier follows the key up and down.
 func TestPoolWritesTheTierOnConnect(t *testing.T) {
 	t.Parallel()
 
@@ -185,8 +177,6 @@ func TestPoolWritesTheTierOnConnect(t *testing.T) {
 	}
 }
 
-// The key loses its shell between two connects: the reconnect writes the
-// tier down, and an exec asked for on the old tier is refused.
 func TestPoolTierDropsOnReconnect(t *testing.T) {
 	t.Parallel()
 	requireShell(t)
@@ -209,9 +199,6 @@ func TestPoolTierDropsOnReconnect(t *testing.T) {
 	assert.Equal(t, models.SSHTierSFTP, inst.SSHTier)
 }
 
-// A host that never answers the probe's session open costs the probe its
-// deadline, not the connection: the open has no ctx of its own, and the pool
-// holds the instance's lock while it waits.
 func TestPoolProbeDoesNotWaitOnAStalledSessionOpen(t *testing.T) {
 	t.Parallel()
 
@@ -235,7 +222,6 @@ func TestPoolProbeDoesNotWaitOnAStalledSessionOpen(t *testing.T) {
 	assert.Zero(t, slots, "the stuck probe must not hold a slot, or the idle close never runs")
 }
 
-// A probe that gets no answer is not a tier: the row keeps what it had.
 func TestPoolKeepsTheTierWhenTheProbeHangs(t *testing.T) {
 	t.Parallel()
 
@@ -256,9 +242,6 @@ func TestPoolKeepsTheTierWhenTheProbeHangs(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoExec)
 }
 
-// A session open that stalls ends with the ctx, and gives its slot back, so
-// a tarpitting host cannot pin the connection's exec slots or keep the idle
-// close from running.
 func TestExecEndsAStalledSessionOpenWithTheContext(t *testing.T) {
 	t.Parallel()
 	requireShell(t)
@@ -282,10 +265,6 @@ func TestExecEndsAStalledSessionOpenWithTheContext(t *testing.T) {
 	assert.Empty(t, conn.slots, "the abandoned open must not hold a slot")
 }
 
-// A host at its MaxSessions refuses an open while other sessions run. The
-// refused command waits for a free session, and the connection runs no more
-// sessions than the host allows from then on, until the connection is
-// forgotten.
 func TestExecWaitsWhenTheHostIsAtItsSessionLimit(t *testing.T) {
 	t.Parallel()
 	requireShell(t)
@@ -316,9 +295,6 @@ func TestExecWaitsWhenTheHostIsAtItsSessionLimit(t *testing.T) {
 	assert.Empty(t, conn.slots)
 }
 
-// A caller that runs commands back to back can open a session while the host
-// still counts the last one, with no other session to wait behind. The open
-// is retried, so the probe keeps the exec tier and the command runs.
 func TestExecRetriesARefusalWithNothingToWaitBehind(t *testing.T) {
 	t.Parallel()
 	requireShell(t)
@@ -336,8 +312,6 @@ func TestExecRetriesARefusalWithNothingToWaitBehind(t *testing.T) {
 	assert.Zero(t, conn.parked.Load())
 }
 
-// A command can end while the host's refusal of the next open is on its way.
-// The host was full when it refused, so the open still waits and runs.
 func TestExecWaitsWhenTheSessionThatFilledTheHostEndsFirst(t *testing.T) {
 	t.Parallel()
 	requireShell(t)

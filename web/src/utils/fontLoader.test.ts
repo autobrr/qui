@@ -13,7 +13,6 @@ import { FONT_MAP, extractFontName } from "./fontLoader"
 // themes too while CI covers the free set.
 const THEMES_DIR = resolve(import.meta.dirname, "../../../internal/themes/assets")
 
-// CSS generic keywords never need loading.
 const GENERIC = /^(?:serif|sans-serif|cursive|fantasy|monospace|system-ui|math|emoji|fangsong|ui-(?:serif|sans-serif|monospace|rounded))$/
 
 describe("FONT_MAP", () => {

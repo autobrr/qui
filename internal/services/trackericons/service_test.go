@@ -98,7 +98,6 @@ func TestService_GetIcon_RecordsFailureWhenContextExpiresDuringFetch(t *testing.
 	})
 }
 
-// pngTransport serves a valid PNG for every request and counts them.
 type pngTransport struct {
 	png []byte
 }
@@ -112,7 +111,6 @@ func (p *pngTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// nxdomainTransport fails every request the way a dead host does and counts them.
 type nxdomainTransport struct {
 	calls atomic.Int32
 }
@@ -146,7 +144,6 @@ func TestService_RecordFailure_BacksOffProgressively(t *testing.T) {
 	svc.failureMu.Lock()
 	f := svc.failures[host]
 	require.Equal(t, 2, f.Attempts)
-	// Just inside the second attempt's cooldown stays blocked; just past it opens up.
 	f.LastFailure = time.Now().Add(-failureCooldown(2) + time.Minute)
 	svc.failures[host] = f
 	svc.failureMu.Unlock()
@@ -264,7 +261,6 @@ func TestPublicOnly(t *testing.T) {
 	}
 	require.ErrorIs(t, publicOnly.Safe("tcp6", "[::1]:443", nil), ssrf.ErrProhibitedIP)
 
-	// qui allows any port and NAT64.
 	require.NoError(t, publicOnly.Safe("tcp4", "1.1.1.1:8443", nil))
 	require.NoError(t, safeDial("tcp6", "[64:ff9b::101:101]:443", nil))
 }
@@ -338,7 +334,6 @@ func TestService_FetchIconBytes_AllowsConfiguredLocalProxy(t *testing.T) {
 	svc, err := NewService(t.TempDir(), "qui-test")
 	require.NoError(t, err)
 
-	// The proxy answers, so qui never dials 1.1.1.1.
 	data, _, err := svc.fetchIconBytes(t.Context(), "http://1.1.1.1:8080/favicon.ico")
 	require.NoError(t, err)
 	require.Equal(t, icon, data)

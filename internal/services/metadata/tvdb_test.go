@@ -15,8 +15,6 @@ import (
 	"time"
 )
 
-// rewriteTVDBTransport rewrites requests targeting tvdbBaseURL to
-// a local test server.
 type rewriteTVDBTransport struct {
 	base string
 }
@@ -107,7 +105,6 @@ func TestTVDB_TokenRefreshWhenExpired(t *testing.T) {
 	ts := serveTVDB(t, mux)
 	p := tvdbProviderWithBase(ts.URL, "test-key", "")
 
-	// An expired token that the server no longer accepts.
 	p.token = "old-token"
 	p.tokenExpiry = time.Now().Add(-1 * time.Hour)
 
@@ -218,7 +215,6 @@ func TestTVDB_UnauthorizedClearsToken(t *testing.T) {
 		token := fmt.Sprintf("token-%d", logins.Add(1))
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"token": token}})
 	})
-	// The server revoked the first token.
 	handleShowWithTwoEpisodes(mux, func(auth string) bool { return auth != "Bearer token-1" })
 
 	ts := serveTVDB(t, mux)

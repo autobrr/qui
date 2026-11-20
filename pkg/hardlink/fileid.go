@@ -9,14 +9,13 @@ import (
 	"hash"
 )
 
-// Kind tags which identity domain a FileID's bytes came from.
 type Kind uint8
 
 const (
-	KindNone    Kind = iota
-	KindUnix         // device and inode, big endian
-	KindWindows      // volume serial and the 16-byte file identifier
-	KindRemote       // reported by a remote host; peer-asserted, never kernel-attested
+	KindNone Kind = iota
+	KindUnix
+	KindWindows
+	KindRemote // reported by a remote host; peer-asserted, never kernel-attested
 )
 
 const fileIDRawLen = 24
@@ -30,7 +29,6 @@ type FileID struct {
 	raw  [fileIDRawLen]byte
 }
 
-// UnixFileID builds the identity of a (device, inode) pair.
 func UnixFileID(dev, ino uint64) FileID {
 	f := FileID{kind: KindUnix}
 	binary.BigEndian.PutUint64(f.raw[0:8], dev)
@@ -38,7 +36,6 @@ func UnixFileID(dev, ino uint64) FileID {
 	return f
 }
 
-// WindowsFileID builds the identity of a volume serial and file identifier.
 func WindowsFileID(volumeSerial uint64, identifier [16]byte) FileID {
 	f := FileID{kind: KindWindows}
 	binary.BigEndian.PutUint64(f.raw[0:8], volumeSerial)
@@ -70,12 +67,10 @@ func FileIDFromBytes(b []byte) FileID {
 	return f
 }
 
-// Kind reports which domain the ID belongs to.
 func (f FileID) Kind() Kind {
 	return f.kind
 }
 
-// IsZero reports no identity.
 func (f FileID) IsZero() bool {
 	return f.kind == KindNone
 }
@@ -88,7 +83,6 @@ func (f FileID) Bytes() []byte {
 	return b
 }
 
-// WriteToHash writes the tagged form without allocating a slice.
 func (f FileID) WriteToHash(h hash.Hash) {
 	var buf [1 + fileIDRawLen]byte
 	buf[0] = byte(f.kind)
@@ -96,7 +90,6 @@ func (f FileID) WriteToHash(h hash.Hash) {
 	h.Write(buf[:])
 }
 
-// Less orders IDs by kind, then raw bytes, for stable signatures.
 func (f FileID) Less(other FileID) bool {
 	if f.kind != other.kind {
 		return f.kind < other.kind

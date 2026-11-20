@@ -3,7 +3,6 @@
 
 package main
 
-// The icon of qui.exe and qui-tray.exe in Explorer and Task Manager.
 //go:generate go run github.com/akavel/rsrc@v0.10.2 -ico ../../internal/tray/qui.ico -arch amd64 -o rsrc_windows_amd64.syso
 
 import (

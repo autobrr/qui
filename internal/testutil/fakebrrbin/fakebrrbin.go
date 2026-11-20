@@ -3,7 +3,8 @@
 
 // Package fakebrrbin is a fake of the brrbin report contract (#4247) for
 // tests and live runs. It records each request and can refuse a report the
-// way brrbin does.
+// way brrbin does. Check its answers against internal/server/report.go in
+// autobrr/brrbin.
 package fakebrrbin
 
 import (

@@ -33,7 +33,6 @@ type Options struct {
 	PathReplaces []PathReplace
 }
 
-// PathReplace rewrites save paths that start with From to start with To
 type PathReplace struct {
 	From string
 	To   string
@@ -94,7 +93,6 @@ func (m Migrater) Migrate(ctx context.Context) error {
 		sourceDir = m.opts.SourceDir
 	)
 
-	// Backup data before running
 	if !m.opts.SkipBackup {
 		if err := m.Backup(); err != nil {
 			log.Error().Err(err).Msgf("Could not backup files")
@@ -169,8 +167,6 @@ func (m Migrater) Backup() error {
 	return nil
 }
 
-// archiveDir writes every regular file under dir into a tar.gz archive with
-// paths relative to dir
 func archiveDir(dir, archiveName string) error {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
@@ -308,7 +304,6 @@ func sourceSlash(p string) string {
 	return strings.ReplaceAll(p, `\`, "/")
 }
 
-// logImportSummary logs the per-importer end result with accurate counts
 func logImportSummary(dryRun bool, imported, failed, skipped, total int) {
 	switch {
 	case dryRun:
@@ -320,8 +315,6 @@ func logImportSummary(dryRun bool, imported, failed, skipped, total int) {
 	}
 }
 
-// wantedPieces reports, for each piece, whether any wanted file overlaps it,
-// given the file lengths in torrent order and per-file wanted flags
 func wantedPieces(fileLengths []int64, wanted []bool, pieceLen int64, numPieces int) []bool {
 	wp := make([]bool, numPieces)
 
@@ -340,7 +333,6 @@ func wantedPieces(fileLengths []int64, wanted []bool, pieceLen int64, numPieces 
 	return wp
 }
 
-// firstNonZero returns the first non-zero value
 func firstNonZero(values ...int64) int64 {
 	for _, v := range values {
 		if v != 0 {

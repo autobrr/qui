@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/qui/pkg/redact"
 )
 
-// Config holds the options for constructing a Client.
 type Config struct {
 	Host       string
 	APIKey     string
@@ -32,7 +31,6 @@ type Config struct {
 	Version    string
 }
 
-// TorznabError represents a Torznab error response
 type TorznabError struct {
 	Code    string `xml:"code,attr"`
 	Message string `xml:",chardata"`
@@ -55,7 +53,6 @@ func (e *responseError) RetryAfterHeader() string {
 	return e.RetryAfter
 }
 
-// Client provides a minimal Prowlarr API wrapper suitable for Torznab-style access.
 type Client struct {
 	host       string
 	apiKey     string
@@ -66,7 +63,6 @@ type Client struct {
 	version    string
 }
 
-// NewClient constructs a new Client using the provided configuration.
 func NewClient(cfg Config) *Client {
 	timeout := time.Duration(cfg.Timeout) * time.Second
 	if timeout <= 0 {
@@ -98,7 +94,6 @@ func NewClient(cfg Config) *Client {
 	}
 }
 
-// Indexer represents a configured Prowlarr indexer returned by the API.
 type Indexer struct {
 	ID                 int    `json:"id"`
 	Name               string `json:"name"`
@@ -109,7 +104,6 @@ type Indexer struct {
 	Protocol           string `json:"protocol"` // "unknown", "usenet", "torrent"
 }
 
-// IndexerDetail represents detailed information about a Prowlarr indexer
 type IndexerDetail struct {
 	ID                 int            `json:"id"`
 	Name               string         `json:"name"`
@@ -120,7 +114,6 @@ type IndexerDetail struct {
 	Fields             []IndexerField `json:"fields"`
 }
 
-// IndexerField represents a configuration field for an indexer
 type IndexerField struct {
 	Order    int    `json:"order"`
 	Name     string `json:"name"`
@@ -130,7 +123,6 @@ type IndexerField struct {
 	Advanced bool   `json:"advanced"`
 }
 
-// SearchIndexer performs a Torznab search via the specified Prowlarr indexer ID.
 func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map[string]string) (gojackett.Rss, error) {
 	var rss gojackett.Rss
 
@@ -187,13 +179,11 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 		}
 	}
 
-	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return rss, fmt.Errorf("failed to read prowlarr response: %w", err)
 	}
 
-	// Check if the response is an error
 	bodyStr := strings.TrimSpace(string(body))
 	if strings.HasPrefix(bodyStr, "<error") {
 		// Prowlarr records upstream Torznab body errors as indexer failures, then
@@ -206,7 +196,6 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 		return rss, fmt.Errorf("torznab error %s: %s", torznabErr.Code, torznabErr.Message)
 	}
 
-	// Decode the RSS response
 	if err := xml.Unmarshal(body, &rss); err != nil {
 		return rss, fmt.Errorf("failed to decode prowlarr response: %w", err)
 	}
@@ -214,7 +203,6 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 	return rss, nil
 }
 
-// GetIndexers retrieves all configured indexers from the Prowlarr instance.
 func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	if c.httpClient == nil {
 		return nil, errors.New("prowlarr HTTP client is not configured")
@@ -248,7 +236,6 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		// continue
 	case http.StatusNotFound:
 		return nil, errors.New("prowlarr endpoint not found (404)")
 	case http.StatusUnauthorized, http.StatusForbidden:
@@ -265,7 +252,6 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	return payload, nil
 }
 
-// GetIndexer retrieves detailed information about a specific indexer from Prowlarr
 func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail, error) {
 	if c.httpClient == nil {
 		return nil, errors.New("prowlarr HTTP client is not configured")
@@ -299,7 +285,6 @@ func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail,
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		// continue
 	case http.StatusNotFound:
 		return nil, fmt.Errorf("prowlarr indexer %d not found (404)", indexerID)
 	case http.StatusUnauthorized, http.StatusForbidden:
@@ -316,21 +301,17 @@ func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail,
 	return &payload, nil
 }
 
-// ExtractDomainFromIndexerFields extracts the tracker domain from Prowlarr indexer configuration fields
 func ExtractDomainFromIndexerFields(fields []IndexerField) string {
-	// Look for common field names that contain the tracker URL
 	for _, field := range fields {
 		if field.Value == nil {
 			continue
 		}
 
-		// Convert value to string
 		valueStr := fmt.Sprintf("%v", field.Value)
 		if valueStr == "" {
 			continue
 		}
 
-		// Check for common field names that contain URLs
 		fieldName := strings.ToLower(field.Name)
 		if fieldName == "baseurl" || fieldName == "base_url" || fieldName == "url" || fieldName == "siteurl" || fieldName == "site_url" {
 			if domain := extractDomainFromURL(valueStr); domain != "" {
@@ -338,7 +319,6 @@ func ExtractDomainFromIndexerFields(fields []IndexerField) string {
 			}
 		}
 
-		// Also check if the value looks like a URL
 		if strings.HasPrefix(valueStr, "http://") || strings.HasPrefix(valueStr, "https://") {
 			if domain := extractDomainFromURL(valueStr); domain != "" {
 				return domain
@@ -349,28 +329,23 @@ func ExtractDomainFromIndexerFields(fields []IndexerField) string {
 	return ""
 }
 
-// extractDomainFromURL extracts the domain from a URL string (copied from jackett service)
 func extractDomainFromURL(urlStr string) string {
 	if urlStr == "" {
 		return ""
 	}
 
-	// Parse the URL
 	u, err := url.Parse(urlStr)
 	if err != nil {
 		return ""
 	}
 
-	// Extract hostname
 	hostname := u.Hostname()
 	if hostname == "" {
 		return ""
 	}
 
-	// Remove common subdomains
 	parts := strings.Split(hostname, ".")
 	if len(parts) >= 3 {
-		// Remove www, api, etc.
 		if parts[0] == "www" || parts[0] == "api" || parts[0] == "tracker" {
 			hostname = strings.Join(parts[1:], ".")
 		}

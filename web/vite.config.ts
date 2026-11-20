@@ -42,7 +42,6 @@ function releaseTags(): string {
   }
 }
 
-// https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const demo = mode === "demo"
   return {
@@ -67,7 +66,6 @@ export default defineConfig(({ mode }) => {
       },
     },
     react({
-      // React 19 requires the new JSX transform
       jsxRuntime: "automatic",
     }),
     tailwindcss(),

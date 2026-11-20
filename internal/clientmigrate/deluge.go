@@ -48,7 +48,6 @@ func (di *DelugeImport) Migrate() error {
 
 		torrentNamePath := filepath.Join(sourceDir, torrentID+".torrent")
 
-		// If a file exist in fastresume data but no .torrent file, skip
 		if _, err = os.Stat(torrentNamePath); os.IsNotExist(err) {
 			log.Error().Err(err).Msgf("%s: skipping because %s not found in source directory", torrentID, torrentNamePath)
 			failed++
@@ -59,7 +58,6 @@ func (di *DelugeImport) Migrate() error {
 
 		torrentOutFile := filepath.Join(di.opts.QbitDir, torrentID+".torrent")
 
-		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
 			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentID)
 			skipped++
@@ -134,8 +132,6 @@ func (di *DelugeImport) Migrate() error {
 	return nil
 }
 
-// loadFastresume checks the source and qBittorrent dirs and returns the
-// decoded deluge fastresume entries
 func (di *DelugeImport) loadFastresume() (map[string]any, error) {
 	sourceDir := di.opts.SourceDir
 
@@ -186,8 +182,6 @@ func (di *DelugeImport) loadFastresume() (map[string]any, error) {
 	return fastresumeFile, nil
 }
 
-// decodeDelugeEntry decodes one entry of the deluge fastresume file and logs
-// why it could not
 func decodeDelugeEntry(value any, torrentID string) (Fastresume, bool) {
 	var fastResume Fastresume
 
@@ -205,8 +199,6 @@ func decodeDelugeEntry(value any, torrentID string) (Fastresume, bool) {
 	return fastResume, true
 }
 
-// checkDelugeResume rewrites the paths of the resume data and returns why the
-// torrent is skipped, or "" when it can be imported
 func (di *DelugeImport) checkDelugeResume(fr *Fastresume, file *metainfo.MetaInfo, info *metainfo.Info) string {
 	// v2-only torrents lose their merkle trees in this format;
 	// qBittorrent would reject or mis-verify them
@@ -246,12 +238,10 @@ func (di *DelugeImport) checkDelugeResume(fr *Fastresume, file *metainfo.MetaInf
 	return ""
 }
 
-// delugeQbtFields sets the qBittorrent fields of complete resume data
 func delugeQbtFields(fr *Fastresume, info *metainfo.Info, label string, positionNum int, pieces string) {
 	// valid QbtContentLayout = Original, Subfolder, NoSubfolder
 	fr.QbtContentLayout = "Original"
 	if info.IsDir() {
-		// legacy and should be removed sometime with 4.3.X
 		fr.QbtHasRootFolder = 1
 	} else {
 		fr.QbtHasRootFolder = 0
@@ -367,7 +357,6 @@ func readDelugeLabels(stateDir string) map[string]string {
 
 	f, err := os.Open(path)
 	if err != nil {
-		// no label plugin state means no labels
 		return nil
 	}
 	defer f.Close()

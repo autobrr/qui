@@ -44,7 +44,6 @@ func TestDetermineContentType(t *testing.T) {
 		{name: "jav code alone", release: &rls.Release{Title: "ABQD-123"}, want: ContentTypeAdult},
 		{name: "jav-shaped riaj code is music", release: &rls.Release{Title: "ABCD-123"}, want: ContentTypeMusic},
 		{name: "xxx film franchise is not adult", release: &rls.Release{Type: rls.Movie, Title: "xXx", Year: 2002}, want: ContentTypeMovie},
-		// RIAJ codes: the 3rd character of the manufacturer code names the medium.
 		{name: "riaj cd", release: &rls.Release{Title: "VICL-1234"}, want: ContentTypeMusic},
 		{name: "riaj dvd-video", release: &rls.Release{Title: "VIBX-1234"}, want: ContentTypeMovie},
 		{name: "riaj cd-rom", release: &rls.Release{Title: "VIRW-1234"}, want: ContentTypeApp},

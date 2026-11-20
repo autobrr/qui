@@ -28,15 +28,10 @@ func IsAbsolute(p string) bool {
 	return strings.HasPrefix(p, "/") || IsWindowsDriveAbs(p)
 }
 
-// NormalizePath normalizes a file path for comparison by:
-// - Converting backslashes to forward slashes
-// - Removing trailing slashes (preserving Windows drive roots like C:/ and UNC shares)
-// - Cleaning the path (removing . and .. where possible)
 func NormalizePath(p string) string {
 	if p == "" {
 		return ""
 	}
-	// Convert backslashes to forward slashes for cross-platform comparison.
 	p = strings.ReplaceAll(p, "\\", "/")
 	// Keep the UNC server/share outside path.Clean, which collapses // and
 	// would otherwise let .. move above the share root.
@@ -55,8 +50,8 @@ func NormalizePath(p string) string {
 
 	// Handle Windows drive paths specially to preserve C:/ (path.Clean turns it into C:).
 	if len(p) >= 2 && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':' {
-		drive := p[:2] // "C:"
-		rest := p[2:]  // "/foo/bar" or "/" or "" (drive-relative)
+		drive := p[:2]
+		rest := p[2:]
 
 		// Bare drive letter (C:) is drive-relative.
 		if rest == "" {
@@ -64,14 +59,12 @@ func NormalizePath(p string) string {
 		}
 
 		rest = path.Clean(rest)
-		// Ensure drive root stays as C:/ not C:
 		if rest == "/" || rest == "." {
 			return drive + "/"
 		}
 		return drive + rest
 	}
 
-	// Non-Windows path: standard cleaning.
 	p = path.Clean(p)
 	if len(p) > 1 {
 		p = strings.TrimSuffix(p, "/")

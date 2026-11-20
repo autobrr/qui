@@ -164,7 +164,6 @@ export function InstanceBackups() {
     import: t("backups.runKinds.import"),
   }
 
-  // Fetch capabilities for all instances to filter out unsupported ones
   const instanceCapabilitiesQueries = useQueries({
     queries: (instances || []).map(inst => ({
       queryKey: ["instance-capabilities", inst.id],
@@ -183,7 +182,6 @@ export function InstanceBackups() {
   const instanceCapabilitiesUnresolved = instanceCapabilitiesPending
     || instanceCapabilitiesQueries.some(query => query.isError)
 
-  // Filter instances to only show those that support backups
   const supportedInstances = useMemo(() => {
     if (!instances) return []
     return instances.filter((_inst, index) => {
@@ -224,14 +222,11 @@ export function InstanceBackups() {
     setSelectedInstanceId(parsed)
   }
 
-  // Only load capabilities when an instance is selected
   const { data: capabilities, isLoading: capabilitiesLoading } = useInstanceCapabilities(instanceId, { enabled: !!instanceId })
   const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
 
-  // Only load data when instance is selected AND supports backups
   const shouldLoadData = !!instanceId && supportsTorrentExport
 
-  // Pagination state
   const [backupsPage, setBackupsPage] = useState(1)
 
   const { data: settings, isLoading: settingsLoading } = useBackupSettings(instanceId ?? 0, { enabled: shouldLoadData })
@@ -518,18 +513,15 @@ export function InstanceBackups() {
     }
   }, [formatDate, formState, settingsLoading, summaryRuns, t])
 
-  // Pagination helpers
   const hasMoreBackups = runsResponse?.hasMore ?? false
   const canGoPrevious = backupsPage > 1
   const canGoNext = hasMoreBackups
   const shouldShowPagination = runsLoading || hasRuns || canGoPrevious
 
-  // Reset page when instance changes
   useEffect(() => {
     setBackupsPage(1)
   }, [instanceId])
 
-  // Scroll to backup history when page changes
   useEffect(() => {
     if (backupsPage > 1 && backupHistoryRef.current) {
       backupHistoryRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -818,7 +810,6 @@ export function InstanceBackups() {
     </Select>
   )
 
-  // Show instance selector when no instance is selected
   if (!instanceId) {
     const selectionHeading = instanceCapabilitiesPending? t("backups.selection.checkingHeading"): hasSupportedInstances? t("backups.selection.selectHeading"): hasInstances? t("backups.selection.noCompatibleHeading"): t("backups.selection.connectHeading")
 

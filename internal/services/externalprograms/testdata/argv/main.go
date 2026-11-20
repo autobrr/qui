@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-// The GUI-subsystem fixture reports argv and waits until its test releases it.
 func main() {
 	conn, err := net.DialTimeout("tcp", os.Getenv("QUI_TEST_WINDOWS_ARGV_ADDRESS"), 5*time.Second)
 	if err != nil {

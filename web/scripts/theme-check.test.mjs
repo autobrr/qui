@@ -13,7 +13,6 @@ const BLACK_TEXT = [
 ]
 const WHITE_TEXT = ["primary-foreground", "destructive-foreground", "sidebar-primary-foreground"]
 
-// A theme in which each pair passes. `tokens` replaces values in both modes.
 function theme(tokens = {}, header = "") {
   const values = {
     ...Object.fromEntries(WHITE_SURFACES.map(name => [name, "#ffffff"])),

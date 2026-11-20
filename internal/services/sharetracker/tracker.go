@@ -23,13 +23,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Interval is the announce interval that the tracker gives each client.
 const Interval = 5 * time.Minute
 
-// lookupTimeout bounds the lookup of the public peer address in an announce.
 const lookupTimeout = 5 * time.Second
 
-// ErrPortBusy is the error of Start when another program listens on the port.
 var ErrPortBusy = errors.New("the Share tracker port is in use")
 
 // Share is an active Share as the tracker sees it. The user's own client
@@ -59,8 +56,6 @@ type announcer struct {
 	owner bool
 }
 
-// NewTable returns the table of shares, with at most peersPerShare recipient
-// clients in each Share.
 func NewTable(shares []Share, peersPerShare int) *Table {
 	t := &Table{clients: make(map[string]announcer, 2*len(shares)), shares: make(map[int64]Share, len(shares)), peersPerShare: peersPerShare}
 	for _, s := range shares {
@@ -91,7 +86,6 @@ func (t *Table) empty() bool {
 	return t == nil || len(t.shares) == 0
 }
 
-// Shares is the owner of the table of active Shares.
 type Shares interface {
 	// ActiveShares returns the table as it is now. The tracker calls it while
 	// it holds its own lock, so it must not call the tracker.
@@ -102,7 +96,6 @@ type Shares interface {
 	PublicPeerAddress(ctx context.Context, shareID int64) (netip.AddrPort, error)
 }
 
-// Event is the event of an announce. EventNone is a regular announce.
 type Event string
 
 const (
@@ -137,8 +130,6 @@ type Reports interface {
 	Announced(ctx context.Context, r Report)
 }
 
-// Config is what New needs. Host is the address that the tracker listens on;
-// empty listens on every address. Now is time.Now when nil.
 type Config struct {
 	Shares  Shares
 	Reports Reports
@@ -146,7 +137,6 @@ type Config struct {
 	Now     func() time.Time
 }
 
-// Tracker is the Share tracker. It listens only between Start and Stop.
 type Tracker struct {
 	shares  Shares
 	reports Reports
@@ -166,7 +156,6 @@ type Tracker struct {
 	swarms map[int64]*swarm
 }
 
-// New returns a tracker that does not listen yet.
 func New(cfg Config) *Tracker {
 	now := cfg.Now
 	if now == nil {
@@ -255,8 +244,6 @@ func (t *Tracker) CheckPort(ctx context.Context, port int) error {
 	return listener.Close()
 }
 
-// Stop closes the listener and waits for the running announces until ctx
-// ends; then it closes their connections.
 func (t *Tracker) Stop(ctx context.Context) error {
 	t.runMu.Lock()
 	defer t.runMu.Unlock()
@@ -277,9 +264,6 @@ func (t *Tracker) stopLocked(ctx context.Context) error {
 	return err
 }
 
-// clientAddress finds the address of the client: the address of the
-// connection, or the forwarded address when the connection comes from a
-// trusted proxy.
 func clientAddress(proxies []netip.Prefix) func(http.Handler) http.Handler {
 	if len(proxies) == 0 {
 		return middleware.ClientIPFromRemoteAddr

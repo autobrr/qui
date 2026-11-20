@@ -37,15 +37,10 @@ type PathDialect interface {
 // hardlinktree builds plans through its own subset of this interface.
 var _ hardlinktree.PathDialect = PathDialect(nil)
 
-// HostPaths is the dialect of the host filesystem: path/filepath.
 var HostPaths PathDialect = hostPaths{}
 
-// SlashPaths is the dialect of a slash-delimited POSIX filesystem regardless of
-// the host: path. FromSlash and ToSlash are the identity.
 var SlashPaths PathDialect = slashPaths{}
 
-// WindowsPaths is the dialect of a Windows filesystem regardless of the host:
-// path/filepath as it works on Windows, for drive and UNC paths.
 var WindowsPaths PathDialect = windowsPaths{}
 
 // ClientPaths is the dialect of a path that a qBittorrent reports, for an
@@ -95,8 +90,6 @@ func (slashPaths) Base(p string) string          { return path.Base(p) }
 func (slashPaths) Clean(p string) string         { return path.Clean(p) }
 func (slashPaths) IsAbs(p string) bool           { return path.IsAbs(p) }
 
-// Rel is filepath.Rel's contract on slash paths: both absolute or both
-// relative, lexical only, error when target cannot be made relative to base.
 func (slashPaths) Rel(base, target string) (string, error) {
 	// filepath.Rel is separator-aware through filepath.Separator, so on a
 	// Windows host it would treat "/" as a plain character. Route through a
@@ -108,8 +101,6 @@ func (slashPaths) FromSlash(p string) string { return p }
 func (slashPaths) ToSlash(p string) string   { return p }
 func (slashPaths) Separator() string         { return "/" }
 
-// relSlash is filepath.Rel for slash paths; base and target are already clean.
-// same compares two names.
 func relSlash(base, target string, same func(a, b string) bool) (string, error) {
 	if same(base, target) {
 		return ".", nil

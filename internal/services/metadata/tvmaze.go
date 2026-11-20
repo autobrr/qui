@@ -20,7 +20,6 @@ import (
 
 const tvmazeBaseURL = "https://api.tvmaze.com"
 
-// ErrShowNotFound is returned when a show lookup yields no results (HTTP 404 or empty response).
 var ErrShowNotFound = errors.New("show not found")
 
 type tvmazeProvider struct {
@@ -44,7 +43,6 @@ type tvmazeEpisode struct {
 	Runtime int `json:"runtime"`
 }
 
-// EpisodesInSeason searches for a show by title and counts episodes in the given season.
 func (p *tvmazeProvider) EpisodesInSeason(ctx context.Context, title string, seasonNumber int) (int, error) {
 	showID, err := p.searchShow(ctx, title)
 	if err != nil {
@@ -113,7 +111,6 @@ func (p *tvmazeProvider) countEpisodes(ctx context.Context, showID, seasonNumber
 	return count, nil
 }
 
-// doGetResponse performs a GET request and returns the raw response (caller must close body).
 func (p *tvmazeProvider) doGetResponse(ctx context.Context, rawURL string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -166,9 +163,9 @@ func (p *tvmazeProvider) doGet(ctx context.Context, rawURL string) ([]byte, erro
 // "1923", "Yellowstone 1923"). Parenthesized years like "(2024)" are a clear
 // torrent convention and safe to remove.
 var titleCleanupPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\s*\(\d{4}\)\s*$`),                            // (2024)
-	regexp.MustCompile(`(?i)\s+(720|1080|2160)p.*$`),                  // quality info
-	regexp.MustCompile(`(?i)\s+(hdtv|webrip|bluray|web-dl|webdl).*$`), // source info
+	regexp.MustCompile(`\s*\(\d{4}\)\s*$`),
+	regexp.MustCompile(`(?i)\s+(720|1080|2160)p.*$`),
+	regexp.MustCompile(`(?i)\s+(hdtv|webrip|bluray|web-dl|webdl).*$`),
 }
 
 func normalizeTitle(title string) string {
@@ -185,12 +182,9 @@ func normalizeTitle(title string) string {
 	return result
 }
 
-// streamCountSeasonEpisodes counts episodes matching the given season number
-// by streaming the JSON array, avoiding full deserialization into memory.
 func streamCountSeasonEpisodes(r io.Reader, seasonNumber int) (int, error) {
 	dec := json.NewDecoder(r)
 
-	// Expect opening bracket.
 	t, err := dec.Token()
 	if err != nil {
 		return 0, fmt.Errorf("expected array start: %w", err)
@@ -226,9 +220,7 @@ func streamCountSeasonEpisodes(r io.Reader, seasonNumber int) (int, error) {
 	return count, nil
 }
 
-// readBody reads the full response body with a size limit.
 func readBody(resp *http.Response) ([]byte, error) {
-	// 2 MB limit to avoid unbounded reads.
 	const maxBody = 2 << 20
 
 	limited := http.MaxBytesReader(nil, resp.Body, maxBody)

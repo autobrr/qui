@@ -9,11 +9,8 @@ import (
 	"time"
 )
 
-// announcesPerMinute is the number of requests that the tracker answers for
-// each address in a minute.
 const announcesPerMinute = 30
 
-// rateLimit counts the requests of each address in a window of one minute.
 type rateLimit struct {
 	mu      sync.Mutex
 	windows map[netip.Addr]window

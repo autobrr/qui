@@ -19,7 +19,6 @@ import (
 // and a Go panic exits with 2.
 const restartExitCode = 75
 
-// supervisedEnv marks the child of a supervisor.
 const supervisedEnv = "QUI_SUPERVISED"
 
 // runSupervisor starts the binary at path as a child with qui's own argv, and
@@ -66,9 +65,6 @@ func (t *stderrTail) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// exitMessage explains a child that exited with code, from the end of its
-// stderr: the panic line of a crash, or else the last line when it is plain
-// text or a zerolog fatal event.
 func exitMessage(code int, stderr []byte) string {
 	var line, crash []byte
 	for l := range bytes.SplitSeq(bytes.TrimSpace(stderr), []byte("\n")) {

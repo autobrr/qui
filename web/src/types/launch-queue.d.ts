@@ -11,12 +11,10 @@
 interface LaunchParams {
   /** The target URL that was launched (may contain query params for protocol handlers) */
   targetURL?: string
-  /** File handles from file_handlers launches */
   files?: FileSystemFileHandle[]
 }
 
 interface LaunchQueue {
-  /** Set a consumer function to handle launch events */
   setConsumer(consumer: (params: LaunchParams) => void | Promise<void>): void
 }
 

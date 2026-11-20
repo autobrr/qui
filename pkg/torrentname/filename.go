@@ -17,7 +17,6 @@ const (
 	torrentFileExtension   = ".torrent"
 )
 
-// TruncateUTF8 preserves multi-byte runes while capping byte length.
 func TruncateUTF8(input string, maxBytes int) string {
 	if len(input) <= maxBytes {
 		return input
@@ -35,7 +34,6 @@ func TruncateUTF8(input string, maxBytes int) string {
 	return input[:cut]
 }
 
-// SanitizeExportFilename returns a filesystem-safe torrent filename with optional tracker tag and hash suffix.
 func SanitizeExportFilename(name, fallback, trackerDomain, hash string) string {
 	trimmed := strings.TrimSpace(name)
 	alt := strings.TrimSpace(fallback)
@@ -109,7 +107,6 @@ func SanitizeExportFilename(name, fallback, trackerDomain, hash string) string {
 	return filename
 }
 
-// TrackerTagFromDomain converts a tracker domain into a compact tag for filenames.
 func TrackerTagFromDomain(domain string) string {
 	domain = strings.TrimSpace(domain)
 	if domain == "" {
@@ -149,7 +146,6 @@ func TrackerTagFromDomain(domain string) string {
 	return tag
 }
 
-// ShortTorrentHash returns a lowercase, trimmed hash snippet suitable for filenames.
 func ShortTorrentHash(hash string) string {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {

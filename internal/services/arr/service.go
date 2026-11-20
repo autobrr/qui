@@ -21,7 +21,7 @@ import (
 const (
 	// DefaultPositiveCacheTTL is the default TTL for positive cache entries (IDs found)
 	// Long TTL because external IDs (IMDb, TMDb, TVDb, TVMaze) are immutable
-	DefaultPositiveCacheTTL = 30 * 24 * time.Hour // 30 days
+	DefaultPositiveCacheTTL = 30 * 24 * time.Hour
 
 	// cacheWriteTimeout bounds detached cache writes so a wedged SQLite writer
 	// cannot hold them forever.
@@ -31,11 +31,9 @@ const (
 	// Short TTL because content may be added to *arr instances later
 	DefaultNegativeCacheTTL = 1 * time.Hour
 
-	// cacheCleanupInterval is how often to run cache cleanup (opportunistically)
 	cacheCleanupInterval = 30 * time.Minute
 )
 
-// ContentType represents the type of content being searched
 type ContentType string
 
 const (
@@ -45,7 +43,6 @@ const (
 	ContentTypeUnknown ContentType = "unknown"
 )
 
-// ExternalIDsResult contains the result of an ID lookup
 type ExternalIDsResult struct {
 	IDs         *models.ExternalIDs `json:"ids,omitempty"`
 	Titles      []string            `json:"titles,omitempty"`
@@ -60,27 +57,22 @@ type ExternalIDsResult struct {
 	Source          string             `json:"source,omitempty"`
 }
 
-// SeasonEpisodeTotalResult contains the resolved episode count for a Sonarr season,
-// plus the show's alternate titles usable for that season (series-wide + same-season).
 type SeasonEpisodeTotalResult struct {
 	TotalEpisodes int      `json:"total_episodes"`
 	ArrInstanceID *int     `json:"arr_instance_id,omitempty"`
 	Titles        []string `json:"titles,omitempty"`
 }
 
-// Service orchestrates ARR ID lookups with caching
 type Service struct {
 	instanceStore *models.ArrInstanceStore
 	cacheStore    *models.ArrIDCacheStore
 	positiveTTL   time.Duration
 	negativeTTL   time.Duration
 
-	// Cache cleanup scheduling
 	cleanupMu        sync.Mutex
 	nextCacheCleanup time.Time
 }
 
-// NewService creates a new ARR service
 func NewService(instanceStore *models.ArrInstanceStore, cacheStore *models.ArrIDCacheStore) *Service {
 	return &Service{
 		instanceStore: instanceStore,
@@ -90,19 +82,15 @@ func NewService(instanceStore *models.ArrInstanceStore, cacheStore *models.ArrID
 	}
 }
 
-// LookupExternalIDs queries ARR instances for external IDs based on content type.
-// It checks the cache first, then queries ARR instances in priority order.
 func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentType ContentType) (*ExternalIDsResult, error) {
 	if title == "" {
 		return nil, errors.New("title cannot be empty")
 	}
 
-	// Skip lookup for unknown content type
 	if contentType == ContentTypeUnknown || contentType == "" {
 		return nil, nil
 	}
 
-	// Schedule opportunistic cache cleanup
 	defer s.maybeScheduleCacheCleanup()
 
 	titleHash := models.ComputeTitleHash(title)
@@ -115,7 +103,6 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 		return cacheResult, nil
 	}
 
-	// Cache miss - determine which ARR type(s) to query
 	instances, err := s.enabledInstancesForContent(ctx, title, contentType)
 	if err != nil {
 		return nil, err
@@ -468,13 +455,11 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 	return partial, nil
 }
 
-// TestConnection tests connectivity to an ARR instance.
 func (s *Service) TestConnection(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string, instanceType models.ArrInstanceType) error {
 	client := NewClient(baseURL, apiKey, basicUsername, basicPassword, instanceType, 15)
 	return client.Ping(ctx)
 }
 
-// TestInstance tests connectivity to an existing ARR instance by ID
 func (s *Service) TestInstance(ctx context.Context, instanceID int) error {
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
@@ -501,7 +486,6 @@ func (s *Service) TestInstance(ctx context.Context, instanceID int) error {
 	client := NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
 	err = client.Ping(ctx)
 
-	// Update test status
 	status := "ok"
 	var errorMsg *string
 	if err != nil {
@@ -517,14 +501,12 @@ func (s *Service) TestInstance(ctx context.Context, instanceID int) error {
 	return err
 }
 
-// DebugResolve resolves a title to IDs and returns detailed debug info
 func (s *Service) DebugResolve(ctx context.Context, title string, contentType ContentType) (*DebugResolveResult, error) {
 	result := &DebugResolveResult{
 		Title:       title,
 		ContentType: contentType,
 	}
 
-	// Check cache
 	titleHash := models.ComputeTitleHash(title)
 	result.TitleHash = titleHash
 
@@ -536,7 +518,6 @@ func (s *Service) DebugResolve(ctx context.Context, title string, contentType Co
 		result.Error = err.Error()
 	}
 
-	// Lookup fresh (bypassing cache)
 	arrType := s.getArrTypeForContent(contentType)
 	if arrType != "" {
 		instances, err := s.instanceStore.ListEnabledByType(ctx, arrType)
@@ -587,7 +568,6 @@ func (s *Service) DebugResolve(ctx context.Context, title string, contentType Co
 	return result, nil
 }
 
-// getArrTypeForContent maps content type to the appropriate ARR instance type
 func (s *Service) getArrTypeForContent(contentType ContentType) models.ArrInstanceType {
 	switch contentType {
 	case ContentTypeMovie:
@@ -599,7 +579,6 @@ func (s *Service) getArrTypeForContent(contentType ContentType) models.ArrInstan
 	}
 }
 
-// DebugResolveResult contains detailed debug information about an ID resolution
 type DebugResolveResult struct {
 	Title              string                  `json:"title"`
 	TitleHash          string                  `json:"title_hash"`
@@ -611,7 +590,6 @@ type DebugResolveResult struct {
 	Error              string                  `json:"error,omitempty"`
 }
 
-// DebugInstanceResult contains the result of querying a single ARR instance
 type DebugInstanceResult struct {
 	InstanceID   int                 `json:"instance_id"`
 	InstanceName string              `json:"instance_name"`
@@ -620,8 +598,6 @@ type DebugInstanceResult struct {
 	Error        string              `json:"error,omitempty"`
 }
 
-// maybeScheduleCacheCleanup triggers cache cleanup if enough time has passed since the last cleanup.
-// This runs opportunistically during lookups to prevent unbounded table growth.
 func (s *Service) maybeScheduleCacheCleanup() {
 	if s == nil || s.cacheStore == nil {
 		return
