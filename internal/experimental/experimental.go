@@ -19,7 +19,7 @@ type Feature string
 // known lists every Experimental feature. Each name carries a comment with the
 // number of the issue that deletes it.
 var known = []Feature{
-	ProblemReports, // deleted by #4257
+	ProblemReports, // deleted by #4297
 }
 
 // ProblemReports is Report a problem: Problem reports that qui's server sends to brrbin.
