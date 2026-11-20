@@ -7,7 +7,7 @@ date: 2026-11-20
 
 Two torrents can share a link destination. A cleanup that removed every path of a plan after a failed add deleted the links of a sibling torrent that had succeeded (discussion #2282).
 
-Each create of a hardlink tree or a reflink tree returns a record of the files and folders that this call made on disk. Rollback and `RemoveTree` remove the paths in that record and nothing else. A target that already exists is skipped only when the backend can prove that it is the same file as its source, and it does not enter the record, because it belongs to the add that made it first. Every other existing target refuses the whole plan with `hardlinktree.ErrTargetExists`. A backend that cannot prove identity refuses.
+Each create of a hardlink tree or a reflink tree returns a record of the files and folders that this call made on disk. Rollback and `RemoveTree` remove the paths in that record and nothing else. A target that already exists is skipped only when the backend can prove that it is the same file as its source, and it does not enter the record, because it belongs to the add that made it first. Every other existing target refuses the whole plan. A hardlink tree refuses with `hardlinktree.ErrTargetExists`. A reflink tree cannot prove identity, so it refuses each existing target with an error that does not wrap that sentinel.
 
 ## Consequences
 
