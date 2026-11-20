@@ -922,7 +922,7 @@
     "internal/sshpool/sshpool.go": 72,
     "internal/sshpool/sshpool_test.go": 22,
     "internal/testutil/biglib/biglib.go": 11,
-    "internal/testutil/fakebrrbin/fakebrrbin.go": 27,
+    "internal/testutil/fakebrrbin/fakebrrbin.go": 28,
     "internal/testutil/fakebrrbin/serve/main.go": 8,
     "internal/testutil/logbudget/logbudget.go": 14,
     "internal/testutil/postgres/main.go": 2,
