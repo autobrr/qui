@@ -403,6 +403,9 @@ func (s *Service) processLinkMode(
 				level = zerolog.WarnLevel
 			}
 		}
+		if treeErr.Partial {
+			message += "; a partial link tree can remain in " + treeErr.Dir
+		}
 		// The target dir already holds a file: a crashed earlier run or a
 		// second tracker sharing the link path. Falling back would add the
 		// torrent in regular mode inside the matched torrent's path and leave

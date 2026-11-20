@@ -174,6 +174,15 @@ func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 			wantMessage: "Failed to create reflink tree: disk full",
 		},
 		{
+			// regression: #4303
+			name: "cleanup of the failed tree also fails",
+			mode: "reflink",
+			setup: func(_ *testing.T, e *linkFailureEnv) {
+				e.backend.createErr = fmt.Errorf("disk full (%w: %w)", hardlinktree.ErrRollbackFailed, errors.New("busy"))
+			},
+			wantMessage: "; a partial link tree can remain in ",
+		},
+		{
 			// The target dir already holds a file: a crashed earlier run or a
 			// second tracker that shares the link path. A regular add would land
 			// in the path of the matched torrent and leave the partial tree, so
