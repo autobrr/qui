@@ -6,9 +6,7 @@ package crossseed
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
 	"path"
 	"slices"
 	"strings"
@@ -19,7 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
-	"github.com/autobrr/qui/pkg/fsutil"
+	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -447,8 +445,7 @@ func belowThresholdMessage(mode string, coverage, threshold float64, materialize
 }
 
 // linkPresetDir applies the instance's hardlink directory preset to baseDir:
-// baseDir itself for flat, or a tracker or instance folder in it. A link tree
-// goes into this directory through LinkIntoNewFolder.
+// baseDir itself for flat, or a tracker or instance folder in it.
 func (s *Service) linkPresetDir(
 	ctx context.Context,
 	d fsops.PathDialect,
@@ -483,66 +480,17 @@ func linkDestDir(d fsops.PathDialect, presetDir, torrentName string, files []har
 	return isolation, isolation
 }
 
-// LinkIntoNewFolder calls link with the directory for the link tree of one
-// torrent in presetDir. The folder that the tree adds to presetDir must be
-// new: qui creates it to reserve it, so two adds at the same time cannot
-// share it. When it already exists, the tree goes into the isolation folder
-// <name>--<shortHash>, where the tree create reuses a link to the same file
-// and refuses a different file. The result's Dirs lists the reserved
-// folder, so RemoveTree takes it back after a failed add.
-func LinkIntoNewFolder(
-	ctx context.Context,
-	backend fsops.Backend,
-	presetDir, torrentHash, torrentName string,
-	files []hardlinktree.TorrentFile,
-	link func(destDir string) (*fsops.TreeCreateResult, error),
-) (*fsops.TreeCreateResult, error) {
-	d := backend.Paths()
-	topFolder, destDir := linkDestDir(d, presetDir, torrentName, files)
-	if err := backend.MkdirAll(ctx, presetDir, fsutil.ContentDirMode); err != nil {
-		return nil, fmt.Errorf("create link directory %s: %w", presetDir, err)
-	}
-	if err := backend.Mkdir(ctx, topFolder, fsutil.ContentDirMode); err != nil {
-		if !errors.Is(err, fs.ErrExist) {
-			return nil, fmt.Errorf("create link folder %s: %w", topFolder, err)
-		}
-		return link(d.Join(presetDir, pathutil.HashedIsolationFolder(torrentHash, torrentName)))
-	}
-
-	created, err := link(destDir)
-	if err != nil {
-		// The failed create removed what it made in the folder, so only an
-		// empty folder is left. WithoutCancel: a cancelled run still frees the name.
-		if removeErr := backend.Remove(context.WithoutCancel(ctx), topFolder, fsops.RemoveOptions{}); removeErr != nil {
-			log.Warn().Err(removeErr).Str("folder", topFolder).Msg("failed to remove reserved link folder")
-		}
-		return nil, err
-	}
-	created.Dirs = append(created.Dirs, topFolder)
-	return created, nil
-}
-
-// buildCategorySavePath computes the correct save path for a cross-seed category
-// based on the instance's directory preset. This produces the tracker-level or
-// instance-level base directory (e.g., /data/cross-seed/TrackerName) rather than
-// a torrent-specific path with an isolation folder suffix.
-func (s *Service) buildCategorySavePath(
-	ctx context.Context,
-	d fsops.PathDialect,
-	instance *models.Instance,
-	baseDir string,
-	incomingTrackerDomain string,
-	candidate CrossSeedCandidate,
-	req *CrossSeedRequest,
-) string {
-	presetDir := s.linkPresetDir(ctx, d, instance, baseDir, candidate, incomingTrackerDomain, req)
-	flat := presetDir == baseDir
-	if candidate.route != nil {
+// linkCategorySavePath is the save path of the cross-seed category of a link
+// tree: its Preset directory, without the folder of the torrent, as the
+// instance that gets the add sees it.
+func linkCategorySavePath(d fsops.PathDialect, tree *linktree.Tree, route *candidateRoute) string {
+	presetDir := tree.PresetDir
+	if route != nil {
 		// Map before normalizePath, which needs no dialect but loses the one
 		// that the map needs. A link tree maps under the same row first.
-		presetDir, _ = crossseedroute.ToCrossSeed(d, candidate.route.rows, baseDir, presetDir)
+		presetDir, _ = crossseedroute.ToCrossSeed(d, route.rows, tree.BaseDir, presetDir)
 	}
-	if flat {
+	if tree.PresetDir == tree.BaseDir {
 		return presetDir
 	}
 	return normalizePath(presetDir)
@@ -569,67 +517,6 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
 }
 
-// ErrNoMatchingBaseDir means no configured base directory is on the same
-// filesystem as the source path.
-var ErrNoMatchingBaseDir = errors.New("no base directory on same filesystem as source")
-
-// LinkIntoMatchingBaseDir walks the configured base directories in rankBaseDirs
-// order and calls link for each one on the same filesystem as sourcePath. It
-// stops at the first result that is not a cross-device error: SameFilesystem
-// compares device IDs, and some hosts (OrbStack VirtioFS) report one ID for
-// several disks, so link() can still reject a dir that passed. hardlinktree.Create
-// rolls back its partial tree before it returns the error.
-func LinkIntoMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath string, backend fsops.Backend, link func(baseDir string) error) error {
-	if backend == nil {
-		return errors.New("filesystem backend is nil")
-	}
-	dirs := splitBaseDirs(configuredDirs)
-	if len(dirs) == 0 {
-		return fmt.Errorf("%w: base directory not configured", ErrNoMatchingBaseDir)
-	}
-
-	var lastErr, linkErr error
-
-	for _, dir := range rankBaseDirs(backend.Paths(), dirs, sourcePath) {
-		if err := backend.MkdirAll(ctx, dir, fsutil.ContentDirMode); err != nil {
-			lastErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
-			continue
-		}
-
-		sameFS, err := backend.SameFilesystem(ctx, sourcePath, dir)
-		if err != nil {
-			lastErr = fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
-			continue
-		}
-		if !sameFS {
-			continue
-		}
-
-		if linkErr = link(dir); !isCrossDeviceLinkError(linkErr) {
-			return linkErr
-		}
-		log.Warn().Err(linkErr).Str("baseDir", dir).Msg("cross-device link in base dir, trying the next one")
-	}
-
-	if linkErr != nil {
-		return linkErr
-	}
-	if lastErr != nil {
-		return fmt.Errorf("%w (last error: %w)", ErrNoMatchingBaseDir, lastErr)
-	}
-	return ErrNoMatchingBaseDir
-}
-
-func splitBaseDirs(configuredDirs string) []string {
-	var dirs []string
-	for dir := range strings.SplitSeq(configuredDirs, ",") {
-		if dir = strings.TrimSpace(dir); dir != "" {
-			dirs = append(dirs, dir)
-		}
-	}
-	return dirs
-}
-
 // rankBaseDirs orders dirs by the number of leading path components they share
 // with source, so the dir on the source's own disk comes first. Ties keep the
 // configured order.
@@ -649,31 +536,6 @@ func sharedPathComponents(d fsops.PathDialect, a, b string) int {
 		n++
 	}
 	return n
-}
-
-func matchedFilesystemProbePath(ctx context.Context, backend fsops.Backend, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, candidateFiles qbt.TorrentFiles) (string, bool) {
-	if props != nil && props.SavePath != "" && len(candidateFiles) > 0 && candidateFiles[0].Name != "" {
-		relativePath, ok := safeTorrentRelativeFilePath(candidateFiles[0].Name)
-		if !ok {
-			return fallbackMatchedFilesystemProbePath(matchedTorrent, props)
-		}
-		d := backend.Paths()
-		filePath := d.Join(props.SavePath, d.FromSlash(relativePath))
-		if _, err := backend.Stat(ctx, filePath); err == nil {
-			return filePath, true
-		}
-	}
-	return fallbackMatchedFilesystemProbePath(matchedTorrent, props)
-}
-
-func fallbackMatchedFilesystemProbePath(matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties) (string, bool) {
-	if matchedTorrent != nil && matchedTorrent.ContentPath != "" {
-		return matchedTorrent.ContentPath, true
-	}
-	if props != nil && props.SavePath != "" {
-		return props.SavePath, true
-	}
-	return "", false
 }
 
 func safeTorrentRelativeFilePath(name string) (string, bool) {

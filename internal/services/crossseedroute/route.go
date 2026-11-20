@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
@@ -209,7 +210,7 @@ func (s *Service) check(ctx context.Context, route *models.CrossSeedRoute) ([]mo
 		return nil, err
 	}
 
-	if !source.UseHardlinks && !source.UseReflinks || len(splitBaseDirs(source.HardlinkBaseDir)) == 0 {
+	if !source.UseHardlinks && !source.UseReflinks || len(linktree.ParseBaseDirs(source.HardlinkBaseDir)) == 0 {
 		return nil, broken("%s must use hardlink or reflink mode with at least one base folder", source.Name)
 	}
 	switch {
@@ -433,22 +434,12 @@ func (s *Service) DropRemovedBaseDirs(ctx context.Context, sourceInstanceID int)
 // route keys, without duplicates.
 func BaseDirKeys(d fsops.PathDialect, configured string) []string {
 	var keys []string
-	for _, dir := range splitBaseDirs(configured) {
+	for _, dir := range linktree.ParseBaseDirs(configured) {
 		if key := fsops.CleanPath(d, dir); !slices.Contains(keys, key) {
 			keys = append(keys, key)
 		}
 	}
 	return keys
-}
-
-func splitBaseDirs(configured string) []string {
-	var dirs []string
-	for dir := range strings.SplitSeq(configured, ",") {
-		if dir = strings.TrimSpace(dir); dir != "" {
-			dirs = append(dirs, dir)
-		}
-	}
-	return dirs
 }
 
 // crossSeedKey compares paths in the Cross-seed instance's form, which has no

@@ -224,6 +224,13 @@ func TestLinkTree(t *testing.T) {
 			wantPlanFail: ConnectionLost,
 		},
 		{
+			name: "no base dir is configured",
+			edit: func(_ *testing.T, _ *testEnv, req *Request) {
+				req.Config.BaseDirs = nil
+			},
+			wantPlanFail: NoBaseDir,
+		},
+		{
 			name: "plan writes nothing",
 			edit: func(_ *testing.T, e *testEnv, req *Request) {
 				req.Config.BaseDirs = []string{e.baseA, e.baseB}
@@ -452,6 +459,13 @@ func TestLinkTree(t *testing.T) {
 			check: func(t *testing.T, e *testEnv, _ *TreePlan, tree *Tree) {
 				require.Equal(t, e.baseB, tree.BaseDir)
 			},
+		},
+		{
+			name: "no base dir can be made",
+			edit: func(_ *testing.T, e *testEnv, _ *Request) {
+				e.stub.failMkdir = []string{e.baseA}
+			},
+			wantFail: NoBaseDir,
 		},
 		{
 			name: "rollback removes only what this add created, also after a cancel",

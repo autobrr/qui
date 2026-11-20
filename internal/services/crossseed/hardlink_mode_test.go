@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -203,131 +202,6 @@ func TestLinkPresetDir_SanitizesNames(t *testing.T) {
 	assert.Contains(t, result, "TrackerName")
 }
 
-// firstMatchingBaseDir returns the dirs LinkIntoMatchingBaseDir offers to a
-// link function that succeeds, which is the first matching dir only.
-func firstMatchingBaseDir(t *testing.T, configured, source string) ([]string, error) {
-	var tried []string
-	err := LinkIntoMatchingBaseDir(t.Context(), configured, source, local.NewBackend(), func(dir string) error {
-		tried = append(tried, dir)
-		return nil
-	})
-	return tried, err
-}
-
-func TestFindMatchingBaseDir(t *testing.T) {
-	tests := []struct {
-		name        string
-		configured  string
-		wantErr     bool
-		errContains string
-	}{
-		{
-			name:        "empty configured returns error",
-			configured:  "",
-			wantErr:     true,
-			errContains: "not configured",
-		},
-		{
-			name:        "whitespace only returns error",
-			configured:  "   ",
-			wantErr:     true,
-			errContains: "not configured",
-		},
-		{
-			name:        "nonexistent single path returns error",
-			configured:  "/nonexistent/path/that/does/not/exist",
-			wantErr:     true,
-			errContains: "no base directory",
-		},
-		{
-			name:        "multiple nonexistent paths returns error",
-			configured:  "/nonexistent/path1, /nonexistent/path2, /nonexistent/path3",
-			wantErr:     true,
-			errContains: "no base directory",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := firstMatchingBaseDir(t, tt.configured, "/some/source/path")
-
-			if tt.wantErr {
-				require.ErrorIs(t, err, ErrNoMatchingBaseDir)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
-				return
-			}
-
-			require.NoError(t, err)
-			assert.NotEmpty(t, result)
-		})
-	}
-}
-
-func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
-	sourceRoot := t.TempDir()
-	sourceFile := filepath.Join(sourceRoot, "source.bin")
-	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
-
-	invalidPath1 := filepath.Join(t.TempDir(), "not-a-directory-1")
-	invalidPath2 := filepath.Join(t.TempDir(), "not-a-directory-2")
-	invalidPath3 := filepath.Join(t.TempDir(), "not-a-directory-3")
-	require.NoError(t, os.WriteFile(invalidPath1, []byte("file"), 0o600))
-	require.NoError(t, os.WriteFile(invalidPath2, []byte("file"), 0o600))
-	require.NoError(t, os.WriteFile(invalidPath3, []byte("file"), 0o600))
-
-	configured := invalidPath1 + ", " + invalidPath2 + " , " + invalidPath3
-	_, err := firstMatchingBaseDir(t, configured, sourceFile)
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no base directory")
-}
-
-func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
-	sourceRoot := t.TempDir()
-	sourceFile := filepath.Join(sourceRoot, "source.bin")
-	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
-
-	firstDir := filepath.Join(t.TempDir(), "first")
-	secondDir := filepath.Join(t.TempDir(), "second")
-
-	result, err := firstMatchingBaseDir(t, "  "+firstDir+" , "+secondDir+"  ", sourceFile)
-	require.NoError(t, err)
-	assert.Equal(t, []string{firstDir}, result)
-	assert.DirExists(t, firstDir)
-	assert.NoDirExists(t, secondDir, "dirs after the one that linked must not be created")
-}
-
-func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
-	sourceRoot := t.TempDir()
-	sourceFile := filepath.Join(sourceRoot, "source.bin")
-	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
-
-	invalidFilePath := filepath.Join(t.TempDir(), "not-a-directory")
-	require.NoError(t, os.WriteFile(invalidFilePath, []byte("file"), 0o600))
-
-	validDir := filepath.Join(t.TempDir(), "valid")
-
-	result, err := firstMatchingBaseDir(t, invalidFilePath+", "+validDir, sourceFile)
-	require.NoError(t, err)
-	assert.Equal(t, []string{validDir}, result)
-	assert.DirExists(t, validDir)
-}
-
-func TestFindMatchingBaseDir_PrefersDirOnSourcePath(t *testing.T) {
-	root := t.TempDir()
-	dirA := filepath.Join(root, "a", "cross-seed")
-	dirB := filepath.Join(root, "b", "cross-seed")
-	sourceFile := filepath.Join(root, "b", "movies", "movie.mkv")
-	require.NoError(t, os.MkdirAll(filepath.Dir(sourceFile), 0o755))
-	require.NoError(t, os.WriteFile(sourceFile, []byte("movie"), 0o600))
-
-	result, err := firstMatchingBaseDir(t, dirA+","+dirB, sourceFile)
-	require.NoError(t, err)
-	assert.Equal(t, []string{dirB}, result)
-}
-
 func TestRankBaseDirs(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -374,57 +248,6 @@ func crossDeviceLinkError(target string) error {
 	return fmt.Errorf("hardlink src -> %s: %w", target, &os.LinkError{Op: "link", Old: "src", New: target, Err: syscall.EXDEV})
 }
 
-func TestLinkIntoMatchingBaseDir_Retry(t *testing.T) {
-	root := t.TempDir()
-	sourceFile := filepath.Join(root, "source.bin")
-	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
-	dirA := filepath.Join(root, "a")
-	dirB := filepath.Join(root, "b")
-
-	otherErr := errors.New("permission denied")
-	tests := []struct {
-		name      string
-		results   map[string]error
-		wantTried []string
-		wantErr   error
-	}{
-		{
-			name:      "cross-device error tries next dir",
-			results:   map[string]error{dirA: crossDeviceLinkError(dirA)},
-			wantTried: []string{dirA, dirB},
-		},
-		{
-			name:      "every dir cross-device returns the last error",
-			results:   map[string]error{dirA: crossDeviceLinkError(dirA), dirB: crossDeviceLinkError(dirB)},
-			wantTried: []string{dirA, dirB},
-			wantErr:   syscall.EXDEV,
-		},
-		{
-			name:      "other error stops",
-			results:   map[string]error{dirA: otherErr},
-			wantTried: []string{dirA},
-			wantErr:   otherErr,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var tried []string
-			err := LinkIntoMatchingBaseDir(t.Context(), dirA+","+dirB, sourceFile, local.NewBackend(), func(dir string) error {
-				tried = append(tried, dir)
-				return tt.results[dir]
-			})
-			assert.Equal(t, tt.wantTried, tried)
-			if tt.wantErr == nil {
-				require.NoError(t, err)
-			} else {
-				require.ErrorIs(t, err, tt.wantErr)
-				assert.NotErrorIs(t, err, ErrNoMatchingBaseDir)
-			}
-		})
-	}
-}
-
 // crossDeviceBackend fails HardlinkTree with EXDEV under the listed base dirs,
 // the way link() fails on a host whose disks share one device ID.
 type crossDeviceBackend struct {
@@ -449,66 +272,85 @@ func TestProcessHardlinkMode_CrossDeviceTriesNextBaseDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
 
-	tests := []struct {
-		name         string
-		crossDevice  []string
-		wantSuccess  bool
-		wantBaseDir  string
-		wantFallback bool
-	}{
-		{name: "first dir cross-device", crossDevice: []string{dirA}, wantSuccess: true, wantBaseDir: dirB},
-		{name: "every dir cross-device", crossDevice: []string{dirA, dirB}, wantFallback: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sync := &rootlessSavePathSyncManager{}
-			s := &Service{
-				instanceStore: &mockInstanceStore{
-					instances: map[int]*models.Instance{
-						1: {
-							ID:                       1,
-							Name:                     "qbt1",
-							HasLocalFilesystemAccess: true,
-							UseHardlinks:             true,
-							HardlinkBaseDir:          dirA + "," + dirB,
-							FallbackToRegularMode:    true,
-						},
-					},
+	s := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseHardlinks:             true,
+					HardlinkBaseDir:          dirA + "," + dirB,
+					FallbackToRegularMode:    true,
 				},
-				syncManager: sync,
-			}
-			s.SetBackendPool(fsops.NewPool(s.instanceStore, crossDeviceBackend{local.NewBackend(), tt.crossDevice}))
-
-			files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
-			adds := withLinkAdder(s)
-			result := s.processHardlinkMode(
-				t.Context(),
-				linkCheck(1, "hash123"),
-				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-				[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{},
-				&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
-				"exact", files, files,
-				&qbt.TorrentProperties{SavePath: downloadsDir},
-				"category", "category.cross",
-			)
-
-			require.Equal(t, tt.wantSuccess, result.Success, "result: %+v", result)
-			assert.Equal(t, tt.wantFallback, result.FallbackToRegular)
-			categorySavePath, categoryCreated := s.createdCategories.Load("1:category.cross")
-			if tt.wantBaseDir == "" {
-				assert.False(t, categoryCreated, "a failed link tree must not create the category")
-				return
-			}
-			// The torrent's root folder goes into the base dir. The folder that
-			// the cross-device dir reserved is free again.
-			require.Len(t, adds.added, 1)
-			assert.Equal(t, tt.wantBaseDir, adds.added[0]["savepath"])
-			assert.NoDirExists(t, filepath.Join(dirA, "Movie"))
-			require.True(t, categoryCreated)
-			assert.Equal(t, normalizePathForComparison(tt.wantBaseDir), categorySavePath)
-		})
+			},
+		},
+		syncManager: &rootlessSavePathSyncManager{},
 	}
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, crossDeviceBackend{local.NewBackend(), []string{dirA}}))
+
+	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
+	adds := withLinkAdder(s)
+	result := s.processHardlinkMode(
+		t.Context(),
+		linkCheck(1, "hash123"),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"exact", files, files,
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category", "category.cross",
+	)
+
+	require.True(t, result.Success, "result: %+v", result)
+	assert.False(t, result.FallbackToRegular)
+	// The torrent's root folder goes into the base dir. The folder that
+	// the cross-device dir reserved is free again.
+	require.Len(t, adds.added, 1)
+	assert.Equal(t, dirB, adds.added[0]["savepath"])
+	assert.NoDirExists(t, filepath.Join(dirA, "Movie"))
+	categorySavePath, categoryCreated := s.createdCategories.Load("1:category.cross")
+	require.True(t, categoryCreated)
+	assert.Equal(t, normalizePathForComparison(dirB), categorySavePath)
+}
+
+// The By Tracker folder takes the display name of the Tracker Customization
+// for the announce domain of the incoming torrent, before the indexer name.
+func TestProcessHardlinkMode_ByTrackerUsesTrackerCustomization(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir, linksDir := filepath.Join(tempDir, "downloads"), filepath.Join(tempDir, "links")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
+
+	s := &Service{
+		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: {
+			ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
+			HardlinkBaseDir: linksDir, HardlinkDirPreset: "by-tracker",
+		}}},
+		trackerCustomizationStore: &mockTrackerCustomizationStore{customizations: []*models.TrackerCustomization{
+			{DisplayName: "Custom", Domains: []string{"tracker.example.invalid"}},
+		}},
+		syncManager: &rootlessSavePathSyncManager{},
+	}
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
+
+	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
+	adds := withLinkAdder(s)
+	result := s.processHardlinkMode(
+		t.Context(),
+		linkCheck(1, "hash123"),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		catalogTorrent(t, "Movie", "", false), "hash123", "TorrentName", &CrossSeedRequest{IndexerName: "Indexer"},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"exact", files, files,
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category", "category.cross",
+	)
+
+	require.True(t, result.Success, "result: %+v", result)
+	require.Len(t, adds.added, 1)
+	assert.Equal(t, filepath.Join(linksDir, "Custom"), adds.added[0]["savepath"])
+	assert.FileExists(t, filepath.Join(linksDir, "Custom", "Movie", "movie.mkv"))
 }
 
 func TestPreviewLinkBaseDir_UsesRankedOrder(t *testing.T) {
@@ -526,41 +368,6 @@ func TestPreviewLinkBaseDir_UsesRankedOrder(t *testing.T) {
 
 	got, _ := s.previewLinkBaseDir(t.Context(), instance, savePath)
 	assert.Equal(t, dirB, got)
-}
-
-func TestMatchedFilesystemProbePath_PrefersActualFilePath(t *testing.T) {
-	savePath := t.TempDir()
-	contentPath := filepath.Join(savePath, "Movie.2024")
-	candidateFiles := qbt.TorrentFiles{{Name: path.Join("Movie.2024", "Movie.2024.mkv")}}
-	filePath := filepath.Join(savePath, candidateFiles[0].Name)
-	require.NoError(t, os.MkdirAll(filepath.Dir(filePath), 0o755))
-	require.NoError(t, os.WriteFile(filePath, []byte("movie"), 0o600))
-
-	got, ok := matchedFilesystemProbePath(
-		context.Background(),
-		local.NewBackend(),
-		&qbt.Torrent{ContentPath: contentPath},
-		&qbt.TorrentProperties{SavePath: savePath},
-		candidateFiles,
-	)
-
-	require.True(t, ok)
-	assert.Equal(t, filepath.Join(savePath, candidateFiles[0].Name), got)
-}
-
-func TestMatchedFilesystemProbePath_FallsBackToContentPath(t *testing.T) {
-	contentPath := filepath.Join(string(filepath.Separator), "mnt", "cross_linked", "HDBits", "Movie.2024")
-
-	got, ok := matchedFilesystemProbePath(
-		context.Background(),
-		local.NewBackend(),
-		&qbt.Torrent{ContentPath: contentPath},
-		&qbt.TorrentProperties{},
-		nil,
-	)
-
-	require.True(t, ok)
-	assert.Equal(t, filepath.ToSlash(contentPath), filepath.ToSlash(got))
 }
 
 func TestSafeTorrentRelativeFilePath(t *testing.T) {
@@ -1084,7 +891,6 @@ func TestProcessReflinkMode_RelaxedGroupWaitsForFullRecheck(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Original", "old.mkv"), []byte("movie"), 0o600))
 
 	syncManager := &rootlessSavePathSyncManager{}
-	materialized := false
 	service := &Service{
 		instanceStore: &mockInstanceStore{
 			instances: map[int]*models.Instance{
@@ -1098,16 +904,12 @@ func TestProcessReflinkMode_RelaxedGroupWaitsForFullRecheck(t *testing.T) {
 			},
 		},
 		syncManager: syncManager,
-		reflinkMaterializer: func(context.Context, string, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-			materialized = true
-			return &fsops.TreeCreateResult{}, nil
-		},
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
 
-	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, reflinkCapableBackend{local.NewBackend()}))
 	synctest.Test(t, func(t *testing.T) {
 		script := startSettleScript(t, service, verifyScript("hash123")...)
 
@@ -1136,8 +938,8 @@ func TestProcessReflinkMode_RelaxedGroupWaitsForFullRecheck(t *testing.T) {
 			"",
 		)
 
-		require.True(t, materialized, "reflink materialization seam must be exercised")
 		require.True(t, result.Success, result.Result.Message)
+		require.FileExists(t, filepath.Join(tempDir, "reflinks", "Renamed", "new.mkv"))
 		actions, _ := script.wait()
 		require.Equal(t, []string{"recheck:hash123", "resume:hash123"}, actions,
 			"a relaxed reflink match resumes only after an observed full recheck")
@@ -1151,7 +953,6 @@ func TestProcessReflinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Original", "old.mkv"), []byte("movie"), 0o600))
 
 	syncManager := &rootlessSavePathSyncManager{}
-	materialized := false
 	service := &Service{
 		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{
 			1: {
@@ -1163,13 +964,9 @@ func TestProcessReflinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 			},
 		}},
 		syncManager: syncManager,
-		reflinkMaterializer: func(context.Context, string, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-			materialized = true
-			return &fsops.TreeCreateResult{}, nil
-		},
 	}
 
-	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, reflinkCapableBackend{local.NewBackend()}))
 
 	adds := withLinkAdder(service)
 	result := service.processReflinkMode(
@@ -1197,8 +994,8 @@ func TestProcessReflinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 		"",
 	)
 
-	require.True(t, materialized)
 	require.True(t, result.Success, result.Result.Message)
+	require.FileExists(t, filepath.Join(tempDir, "reflinks", "Renamed", "new.mkv"))
 	require.Len(t, adds.added, 1)
 	require.Empty(t, adds.actions)
 }
@@ -1633,55 +1430,6 @@ func TestSelectExistingSourceFilesDoesNotMatchContentToSidecarBySizeOnly(t *test
 	require.Empty(t, selected)
 }
 
-func TestProcessReflinkMode_DoesNotFallbackToRegularAfterMaterializationError(t *testing.T) {
-	tempDir := t.TempDir()
-	downloadsDir := filepath.Join(tempDir, "downloads")
-	reflinkDir := filepath.Join(tempDir, "reflinks")
-	require.NoError(t, os.MkdirAll(downloadsDir, 0o755))
-
-	sync := &rootlessSavePathSyncManager{}
-	s := &Service{
-		instanceStore: &mockInstanceStore{
-			instances: map[int]*models.Instance{
-				1: {
-					ID:                       1,
-					Name:                     "qbt1",
-					HasLocalFilesystemAccess: true,
-					UseReflinks:              true,
-					FallbackToRegularMode:    true,
-					HardlinkBaseDir:          reflinkDir,
-				},
-			},
-		},
-		syncManager: sync,
-	}
-	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
-
-	withLinkAdder(s)
-	result := s.processReflinkMode(
-		context.Background(),
-		linkCheck(1, "hash123"),
-		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-		[]byte("torrent"),
-		"hash123",
-		"TorrentName",
-		&CrossSeedRequest{},
-		&qbt.Torrent{Hash: "matched", ContentPath: downloadsDir},
-		"exact",
-		qbt.TorrentFiles{{Name: "../Movie/movie.mkv", Size: 1000}},
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 1000}},
-		&qbt.TorrentProperties{SavePath: downloadsDir},
-		"category",
-		"category.cross",
-	)
-
-	require.True(t, result.Used)
-	require.False(t, result.Success)
-	require.Equal(t, "reflink_error", result.Result.Status)
-	require.Contains(t, result.Result.Message, "Failed to build reflink plan")
-	require.Nil(t, sync.addedOptions, "regular fallback must not add into the matched torrent path")
-}
-
 func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 	// When FallbackToRegularMode is enabled, hardlink failures should return
 	// Used=false so that regular cross-seed mode can proceed.
@@ -2008,109 +1756,4 @@ func TestShouldWarnForReflinkCreateError(t *testing.T) {
 			assert.Equal(t, tt.want, shouldWarnForReflinkCreateError(tt.err))
 		})
 	}
-}
-
-// An existing target means the tree is half made in the target dir, so link
-// mode reports the error instead of adding in regular mode (#2942 decision 5).
-// A stranger's file sits where the link would go; both backends answer that
-// with hardlinktree.ErrTargetExists.
-func TestProcessHardlinkMode_ExistingTargetRefusesInsteadOfFallingBack(t *testing.T) {
-	tempDir := t.TempDir()
-	downloadsDir := filepath.Join(tempDir, "downloads")
-	linksDir := filepath.Join(tempDir, "links")
-	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
-	// Another torrent holds the root folder, so the tree goes into the hashed
-	// isolation folder, where a stranger's file sits.
-	require.NoError(t, os.MkdirAll(filepath.Join(linksDir, "Movie"), 0o755))
-	stranger := filepath.Join(linksDir, "TorrentName--hash123", "Movie", "movie.mkv")
-	require.NoError(t, os.MkdirAll(filepath.Dir(stranger), 0o755))
-	require.NoError(t, os.WriteFile(stranger, []byte("stranger"), 0o600))
-
-	sync := &rootlessSavePathSyncManager{}
-	s := &Service{
-		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: {
-			ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
-			HardlinkBaseDir: linksDir, FallbackToRegularMode: true,
-		}}},
-		syncManager: sync,
-	}
-	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
-
-	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
-	withLinkAdder(s)
-	result := s.processHardlinkMode(
-		t.Context(),
-		linkCheck(1, "hash123"),
-		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-		[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{},
-		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
-		"exact", files, files,
-		&qbt.TorrentProperties{SavePath: downloadsDir},
-		"category", "category.cross",
-	)
-
-	require.False(t, result.Success, "result: %+v", result)
-	assert.Equal(t, "hardlink_error", result.Result.Status, "the refusal is reported as a hardlink error")
-	assert.False(t, result.FallbackToRegular, "an existing target must not become a regular add")
-	assert.False(t, result.RequiresFullRecheck)
-	assert.Empty(t, sync.addedOptions, "nothing is added")
-}
-
-func TestLinkIntoNewFolder(t *testing.T) {
-	t.Parallel()
-
-	withRoot := []hardlinktree.TorrentFile{{Path: "Movie/movie.mkv"}, {Path: "Movie/subs.srt"}}
-	rootless := []hardlinktree.TorrentFile{{Path: "movie.mkv"}, {Path: "subs.srt"}}
-	tests := []struct {
-		name     string
-		files    []hardlinktree.TorrentFile
-		existing string // folder already in the preset dir
-		wantDest string // relative to the preset dir
-		wantNew  string // folder the call reserves, "" when it falls back
-	}{
-		{name: "root folder is free", files: withRoot, wantDest: ".", wantNew: "Movie"},
-		{name: "root folder is taken", files: withRoot, existing: "Movie", wantDest: "Movie.2024--abcdef12"},
-		{name: "rootless name is free", files: rootless, wantDest: "Movie.2024", wantNew: "Movie.2024"},
-		{name: "rootless name is taken", files: rootless, existing: "Movie.2024", wantDest: "Movie.2024--abcdef12"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			// The preset dir does not exist yet, as for a tracker's first add.
-			presetDir := filepath.Join(t.TempDir(), "Tracker")
-			if tt.existing != "" {
-				require.NoError(t, os.MkdirAll(filepath.Join(presetDir, tt.existing), 0o755))
-			}
-
-			var gotDest string
-			created, err := LinkIntoNewFolder(t.Context(), local.NewBackend(), presetDir, "ABCDEF1234567890", "Movie.2024", tt.files,
-				func(destDir string) (*fsops.TreeCreateResult, error) {
-					gotDest = destDir
-					return &fsops.TreeCreateResult{}, nil
-				})
-			require.NoError(t, err)
-			require.Equal(t, filepath.Join(presetDir, tt.wantDest), gotDest)
-
-			if tt.wantNew == "" {
-				assert.Empty(t, created.Dirs)
-				return
-			}
-			// RemoveTree after a failed add takes back the reserved folder.
-			assert.Equal(t, []string{filepath.Join(presetDir, tt.wantNew)}, created.Dirs)
-			assert.DirExists(t, filepath.Join(presetDir, tt.wantNew))
-		})
-	}
-}
-
-func TestLinkIntoNewFolder_FailedLinkFreesTheName(t *testing.T) {
-	t.Parallel()
-
-	presetDir := t.TempDir()
-	linkErr := errors.New("link failed")
-	_, err := LinkIntoNewFolder(t.Context(), local.NewBackend(), presetDir, "abcdef1234567890", "Movie.2024",
-		[]hardlinktree.TorrentFile{{Path: "movie.mkv"}},
-		func(string) (*fsops.TreeCreateResult, error) { return nil, linkErr })
-	require.ErrorIs(t, err, linkErr)
-	assert.NoDirExists(t, filepath.Join(presetDir, "Movie.2024"))
 }
