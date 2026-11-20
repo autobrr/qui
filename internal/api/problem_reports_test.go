@@ -387,6 +387,7 @@ func TestProblemReportSendCleansALicenseKeyFromAFailedRequest(t *testing.T) {
 		removed bool
 	}{
 		{name: "the key is still stored"},
+		// regression: #4299
 		{name: "a retry removed the license", removed: true},
 	}
 	for _, tt := range tests {
