@@ -111,38 +111,6 @@ func recordReleaseRejection(
 	}
 }
 
-func logReleaseMatchDecision(
-	sourceTitle string,
-	candidateTitle string,
-	findIndividualEpisodes bool,
-	sourceRelease *rls.Release,
-	candidateRelease *rls.Release,
-	matched bool,
-	reason string,
-	message string,
-) {
-	if reason == "" {
-		if matched {
-			reason = "matched"
-		} else {
-			reason = "release mismatch"
-		}
-	}
-	// TRACE, not DEBUG: the only caller runs this for each pair that the
-	// cross-match index selects, on every cross-match build.
-	if evt := log.Trace(); evt.Enabled() {
-		evt.
-			Str("sourceTitle", sourceTitle).
-			Str("candidateTitle", candidateTitle).
-			Bool("matched", matched).
-			Str("reason", reason).
-			Bool("findIndividualEpisodes", findIndividualEpisodes).
-			Interface("sourceRelease", releaseFilterDebugInfoFrom(sourceRelease)).
-			Interface("candidateRelease", releaseFilterDebugInfoFrom(candidateRelease)).
-			Msg(message)
-	}
-}
-
 func releaseFilterDebugInfoFrom(release *rls.Release) releaseFilterDebugInfo {
 	if release == nil {
 		return releaseFilterDebugInfo{}
