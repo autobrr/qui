@@ -227,6 +227,10 @@ func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
 func (c *Client) Host() string       { return c.host }
 func (c *Client) SourceFlag() string { return c.spec.SourceFlag }
 
+// SetUnlimitedForTest makes c send each request at once, for a test against a
+// local server. The rate limit of a site is shared by the whole process.
+func (c *Client) SetUnlimitedForTest() { c.limiter = rate.NewLimiter(rate.Inf, 1) }
+
 func (c *Client) TargetHashes(torrentBytes []byte) ([]string, error) {
 	return c.spec.TargetHashes(torrentBytes)
 }

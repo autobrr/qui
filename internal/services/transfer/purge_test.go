@@ -33,13 +33,18 @@ func (r *rig) endedWithHelper(hash string, state transfer.State, instanceID int,
 	require.NoError(r.t, r.store.RegisterHelper(ctx, transfer.Helper{InstanceID: instanceID, Hash: helperHash,
 		Random: []byte{1}, Owner: transfer.OwnerTransfer, OwnerID: record.ID}))
 	require.NoError(r.t, r.store.Finish(ctx, record.ID, state))
-	// qui counts a sync as later than the end only when its time is later, and
-	// the clock of Windows moves in steps of up to 16 ms. Wait for the next
-	// step, so that a sync after this call is later on every host.
-	for end := time.Now().Round(0); !time.Now().Round(0).After(end); {
+	nextClockStep()
+	return record.ID
+}
+
+// nextClockStep waits until the clock moves on. qui counts a sync as later
+// than a time only when its time is later, and the clock of Windows moves in
+// steps of up to 16 ms: a sync after this call is later on every host.
+func nextClockStep() {
+	start := time.Now()
+	for now := time.Now(); !now.After(start) || !now.Round(0).After(start.Round(0)); now = time.Now() {
 		runtime.Gosched()
 	}
-	return record.ID
 }
 
 // waiting stores a Transfer of hash that waits for its retry.
@@ -177,7 +182,9 @@ func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 		{name: "the rows went before the last restart", remove: func(r *rig, _ []int64) {
 			r.setClock(time.Now().Add(31 * 24 * time.Hour))
 			r.restart()
+			// The start checks the kept helpers against syncs after now.
 			r.restart()
+			nextClockStep()
 		}},
 	}
 	for _, removal := range removals {
