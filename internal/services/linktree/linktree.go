@@ -61,6 +61,7 @@ type TreePlan struct {
 	req      Request
 	baseDirs []string
 	root     string
+	planLost error
 }
 
 // Tree is a Link tree that Create made.
@@ -133,6 +134,7 @@ func Plan(ctx context.Context, req Request) (*TreePlan, error) {
 		return nil, &Error{Kind: NoBaseDir, Err: lastErr}
 	}
 
+	p.planLost = lost
 	p.BaseDir = p.baseDirs[0]
 	p.PresetDir = p.presetDir(p.BaseDir)
 	p.SavePath = p.destination(p.PresetDir)
@@ -261,9 +263,10 @@ func (p *TreePlan) linkPlan(rootDir string) (*hardlinktree.TreePlan, error) {
 // Create makes the Link tree in the first Link base directory of the plan
 // that takes it. It skips a directory it cannot make, and one that gives a
 // cross-device error once its partial tree is removed. The error is a
-// *Error; a lost connection in any directory wins over other kinds.
+// *Error; a lost connection in any directory, also while Plan judged it,
+// wins over other kinds.
 func (p *TreePlan) Create(ctx context.Context) (*Tree, error) {
-	var lost error
+	lost := p.planLost
 	var crossDevice, lastFailure *Error
 	for _, baseDir := range p.baseDirs {
 		tree, failure := p.createIn(ctx, baseDir)

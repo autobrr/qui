@@ -421,6 +421,15 @@ func TestLinkTree(t *testing.T) {
 			},
 		},
 		{
+			name: "a lost connection on one check, then a cross-device error, is a lost connection",
+			edit: func(_ *testing.T, e *testEnv, req *Request) {
+				req.Config.BaseDirs = []string{e.baseA, e.baseB}
+				e.stub.lostSameFS = []string{e.baseA}
+				e.stub.crossDevice = []string{e.baseB}
+			},
+			wantFail: ConnectionLost,
+		},
+		{
 			name: "a lost connection while a missing base dir is judged fails the plan",
 			edit: func(_ *testing.T, e *testEnv, _ *Request) {
 				e.stub.lostStat = []string{e.baseA}
