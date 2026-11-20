@@ -208,9 +208,8 @@ func slowGazelleClients(t *testing.T) (clients *gazelleClientSet, started <-chan
 	t.Helper()
 	// Not parallel: the test replaces package-level vars.
 	prevTimeout := gazelleSearchTimeout
-	// The OPS queue lets one request through every 2 s, and other tests share
-	// it. A limit above 2 s makes the request reach the fake.
-	gazelleSearchTimeout = 3 * time.Second
+	// Long enough for the request to reach the fake on a busy runner.
+	gazelleSearchTimeout = time.Second
 	t.Cleanup(func() { gazelleSearchTimeout = prevTimeout })
 	prevFindMatch := findGazelleMatch
 	findGazelleMatch = gazellemusic.FindMatch

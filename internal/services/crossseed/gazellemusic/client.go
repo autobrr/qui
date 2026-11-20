@@ -196,7 +196,7 @@ func sharedLimiterForTracker(spec TrackerSpec) (*rate.Limiter, error) {
 // NewClient builds a client for one of the Sites. trackerHost is the API host
 // of the site: it selects the rate limit and the source flag. baseURL is the
 // address to talk to, and is empty outside tests, where it means the site
-// itself.
+// itself. In a test, a client with a baseURL has no rate limit.
 func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
 	site, ok := SiteByHost(trackerHost)
 	if !ok {
@@ -209,6 +209,10 @@ func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
 	}
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = "https://" + host
+	} else if testing.Testing() {
+		// The limit of a site is shared by the whole test binary, so each request
+		// to a test server would wait for the requests of the other tests.
+		limiter = rate.NewLimiter(rate.Inf, 1)
 	}
 
 	return &Client{
@@ -226,10 +230,6 @@ func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
 
 func (c *Client) Host() string       { return c.host }
 func (c *Client) SourceFlag() string { return c.spec.SourceFlag }
-
-// SetUnlimitedForTest makes c send each request at once, for a test against a
-// local server. The rate limit of a site is shared by the whole process.
-func (c *Client) SetUnlimitedForTest() { c.limiter = rate.NewLimiter(rate.Inf, 1) }
 
 func (c *Client) TargetHashes(torrentBytes []byte) ([]string, error) {
 	return c.spec.TargetHashes(torrentBytes)
