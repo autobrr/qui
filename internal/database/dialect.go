@@ -77,8 +77,6 @@ func rebindQuestionToDollar(query string) string {
 	out.Grow(len(query) + 16)
 
 	for i := 0; i < len(query); {
-		// Quoted text and comments are copied as is: a ? inside them is not a
-		// placeholder.
 		if end := skipQuotedOrComment(query, i); end > i {
 			out.WriteString(query[i:end])
 			i = end
@@ -97,10 +95,6 @@ func rebindQuestionToDollar(query string) string {
 	return out.String()
 }
 
-// skipQuotedOrComment returns the end (exclusive) of the string literal,
-// quoted identifier, comment, or dollar-quoted string that starts at
-// query[i], or i when none starts there. An unterminated one ends at the end
-// of the query.
 func skipQuotedOrComment(query string, i int) int {
 	rest := query[i:]
 	switch {
@@ -118,14 +112,12 @@ func skipQuotedOrComment(query string, i int) int {
 	return i
 }
 
-// quotedEnd returns the index after the quote that closes a quoted section
-// whose content starts at query[start]. A doubled quote is an escaped quote
-// in SQL and keeps the section open.
 func quotedEnd(query string, start int, quote byte) int {
 	for i := start; i < len(query); i++ {
 		if query[i] != quote {
 			continue
 		}
+		// A doubled quote is an escaped quote in SQL.
 		if i+1 < len(query) && query[i+1] == quote {
 			i++
 			continue
@@ -135,8 +127,6 @@ func quotedEnd(query string, start int, quote byte) int {
 	return len(query)
 }
 
-// indexEnd returns the index after the first terminator at or after
-// query[start], or len(query) when there is none.
 func indexEnd(query string, start int, terminator string) int {
 	idx := strings.Index(query[start:], terminator)
 	if idx < 0 {
