@@ -272,6 +272,16 @@ function conditionUsesField(condition: RuleCondition | null | undefined, field: 
   return false
 }
 
+/** The `freeSpaceSource` that a save of the form sends. Undefined for an allowance or a path that is not complete. */
+function formFreeSpaceSource(state: Pick<FormState, "exprFreeSpaceSourceType" | "exprFreeSpaceSourcePath" | "exprFreeSpaceAllowance" | "exprFreeSpaceAllowanceUnit">) {
+  return freeSpaceSourceOf({
+    type: state.exprFreeSpaceSourceType,
+    path: state.exprFreeSpaceSourcePath,
+    allowance: state.exprFreeSpaceAllowance,
+    allowanceUnit: state.exprFreeSpaceAllowanceUnit,
+  })
+}
+
 /** Whether a run reads Free Space for this rule: in the action condition or in the sorting. The backend decides the same way. */
 function formUsesFreeSpace(state: Pick<FormState, "actionCondition" | "sortingType" | "simpleSortField" | "scoreRules">): boolean {
   if (conditionUsesField(state.actionCondition, "FREE_SPACE")) return true
@@ -1354,7 +1364,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error(t("preferences.workflowDialog.toast.enterPathOrDefault"))
       return false
     }
-    if (allowance && !((parseFloat(state.exprFreeSpaceAllowance) || 0) > 0)) {
+    if (allowance && !formFreeSpaceSource(state)) {
       setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.allowanceRequired"))
       toast.error(t("preferences.workflowDialog.freeSpace.errors.allowanceRequired"))
       return false
@@ -1388,7 +1398,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return true
     }
     if (state.exprFreeSpaceSourceType === "allowance") {
-      return allowanceSourceAvailable && (parseFloat(state.exprFreeSpaceAllowance) || 0) > 0 && state.exprFreeSpaceSourcePath.trim() !== ""
+      return allowanceSourceAvailable && formFreeSpaceSource(state) !== undefined
     }
     if (state.exprFreeSpaceSourceType === "qbitPath") {
       return supportsFreeSpaceAtPath !== false && state.exprFreeSpaceSourcePath.trim() !== ""
@@ -1595,12 +1605,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     // The source stays even if FREE_SPACE isn't currently in the condition
     // (user might add it later, or just want to preserve the setting)
-    const freeSpaceSource = freeSpaceSourceOf({
-      type: input.exprFreeSpaceSourceType,
-      path: input.exprFreeSpaceSourcePath,
-      allowance: input.exprFreeSpaceAllowance,
-      allowanceUnit: input.exprFreeSpaceAllowanceUnit,
-    })
+    const freeSpaceSource = formFreeSpaceSource(input)
 
     let sortingConfig: SortingConfig | undefined
     if (input.sortingType === "simple") {

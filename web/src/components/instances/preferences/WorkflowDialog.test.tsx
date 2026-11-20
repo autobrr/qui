@@ -886,4 +886,20 @@ describe("WorkflowDialog free space source", () => {
     expect((await saved()).freeSpaceSource).toEqual(source)
     client.clear()
   })
+
+  // regression: #4092
+  it("refuses an allowance that rounds to zero bytes", async () => {
+    const client = renderDialog(allowanceRule({
+      schemaVersion: "1",
+      pause: { enabled: true, condition: { field: "FREE_SPACE", operator: "LESS_THAN", value: "1000" } },
+    }), [localInstance])
+
+    // This figure is 0.1 bytes in TiB. A save would send no source, and the rule would read qBittorrent's free space.
+    fireEvent.change(screen.getByLabelText(key("freeSpace.allowanceLabel")), { target: { value: "0.0000000000001" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    expect(await screen.findByText(key("freeSpace.errors.allowanceRequired"))).toBeTruthy()
+    expect(mocks.save).not.toHaveBeenCalled()
+    client.clear()
+  })
 })
