@@ -326,10 +326,12 @@ func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath str
 	var err error
 	if !ok {
 		files, err = b.svc.getTorrentFilesCached(ctx, instanceID, hash)
+		if err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", normalizeHash(hash)).
+				Msg("crossseed: could not read the file list of a cross-match candidate")
+		}
 	}
 	if err != nil || len(files) == 0 {
-		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", normalizeHash(hash)).
-			Msg("crossseed: skipping cross-match candidate without a file list")
 		b.byKey[key] = nil
 		return batchFileData{}, false
 	}
