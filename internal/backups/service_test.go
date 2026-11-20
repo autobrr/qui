@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -311,7 +312,7 @@ func TestExecuteBackupFailsWhenTheVersionIsUnknown(t *testing.T) {
 
 	_, err := svc.executeBackup(ctx, job{runID: 44, instanceID: instanceID, kind: models.BackupRunKindManual})
 	require.ErrorContains(t, err, "502")
-	require.Equal(t, 0, sm.exportCalls)
+	require.Zero(t, sm.exportCalls.Load())
 }
 
 func TestExecuteBackupSkipsUncachedHybridBeforeExport(t *testing.T) {
@@ -347,7 +348,7 @@ func TestExecuteBackupSkipsUncachedHybridBeforeExport(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, 0, result.torrentCount)
 	require.Empty(t, result.items)
-	require.Equal(t, 0, sm.exportCalls)
+	require.Zero(t, sm.exportCalls.Load())
 
 	svc.progressMu.RLock()
 	progress := svc.progress[42]
@@ -415,7 +416,7 @@ func TestExecuteBackupUsesCachedBlobForHybridTorrent(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.torrentCount)
 	require.Len(t, result.items, 1)
-	require.Equal(t, 0, sm.exportCalls)
+	require.Zero(t, sm.exportCalls.Load())
 	require.NotNil(t, result.items[0].TorrentBlobPath)
 	require.Equal(t, blobRelPath, *result.items[0].TorrentBlobPath)
 }
@@ -1536,7 +1537,7 @@ type stubBackupSyncManager struct {
 	exportName  string
 	exportTrack string
 	exportErr   error
-	exportCalls int
+	exportCalls atomic.Int32
 	versionErr  error
 }
 
@@ -1567,6 +1568,6 @@ func (s *stubBackupSyncManager) OmitsTrackersOnExport(context.Context, int) (boo
 }
 
 func (s *stubBackupSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
-	s.exportCalls++
+	s.exportCalls.Add(1)
 	return append([]byte(nil), s.exportData...), s.exportName, s.exportTrack, s.exportErr
 }
