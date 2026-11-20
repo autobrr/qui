@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/time/rate"
 )
 
 func TestNewClient_SharesLimiterPerHost(t *testing.T) {
@@ -88,6 +90,7 @@ func TestRequestQueuePastDeadlineIsDeadlineExceeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
+	client.limiter = rate.NewLimiter(rate.Every(2*time.Second), 1)
 	// Take the one token, so the next request has to wait about 2 s.
 	client.limiter.Allow()
 

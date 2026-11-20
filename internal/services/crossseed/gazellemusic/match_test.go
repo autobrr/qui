@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	"golang.org/x/time/rate"
 )
 
 // regression: #4219
@@ -49,7 +47,6 @@ func TestFindMatchBroadFilenameFallback(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			client.limiter = rate.NewLimiter(rate.Inf, 1)
 			match, err := FindMatch(t.Context(), client, nil, map[string]int64{"Album/01 - A distinctive longer song.flac": 100, "Album/02 - Brief.flac": 200}, 300)
 			if err != nil || (match != nil) != tt.wantMatch {
 				t.Fatalf("match=%+v err=%v, wantMatch=%v", match, err, tt.wantMatch)

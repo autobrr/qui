@@ -208,8 +208,8 @@ func slowGazelleClients(t *testing.T) (clients *gazelleClientSet, started <-chan
 	t.Helper()
 	// Not parallel: the test replaces package-level vars.
 	prevTimeout := gazelleSearchTimeout
-	// The OPS queue lets one request through every 2 s, and other tests share
-	// it. A limit above 2 s makes the request reach the fake.
+	// Torznab must reach its fake before this ends, also on a runner that
+	// stalls a local request for a second.
 	gazelleSearchTimeout = 3 * time.Second
 	t.Cleanup(func() { gazelleSearchTimeout = prevTimeout })
 	prevFindMatch := findGazelleMatch
