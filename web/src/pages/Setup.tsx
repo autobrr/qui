@@ -30,7 +30,7 @@ export function Setup() {
     isPending: isCheckingOIDC,
     refetch: refetchOIDCConfig,
   } = useQuery({
-    queryKey: ["oidc-config"],
+    queryKey: ["oidc-config-setup"],
     queryFn: () => api.getOIDCConfig(),
     staleTime: Infinity,
     retry: false,
@@ -43,7 +43,7 @@ export function Setup() {
     isPending: isCheckingSetup,
     refetch: refetchSetup,
   } = useQuery({
-    queryKey: ["setup-required"],
+    queryKey: ["setup-required-page"],
     queryFn: () => api.checkSetupRequired(),
     staleTime: Infinity,
     retry: false,
