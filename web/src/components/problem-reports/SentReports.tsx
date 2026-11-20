@@ -121,7 +121,7 @@ function SentReportRow({ report }: { report: ListedProblemReport }) {
     <li className="flex items-start gap-3 rounded-md px-2 py-1.5 hover:bg-accent/60">
       <span className="mt-1.5 flex h-2 w-4 items-center justify-center"><StatusDot report={report} /></span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{report.title}</span>
+        <span className="block break-words text-sm font-medium">{report.title}</span>
         <ReportStatus report={report} />
       </span>
       <span className="mt-0.5 text-xs tabular-nums text-muted-foreground">{formatDateOnly(Math.floor(Date.parse(report.sentAt) / 1000))}</span>
