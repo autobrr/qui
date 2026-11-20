@@ -427,16 +427,31 @@ describe("DashboardOverview instances", () => {
     ])
   })
 
-  it("lists a disk with less than 5% free of the free space and the Unique size as almost full", () => {
+  it("does not list a disk as almost full when qui only estimates its size", () => {
     renderOverview([
       stats(1, {}, {}, { free_space_on_disk: 4 * GiB }),
       stats(2, {}, {}, { free_space_on_disk: 5 * GiB }),
     ])
 
+    expect(screen.queryByRole("region", { name: "attention.title" })).toBeNull()
+  })
+
+  // regression: #4328
+  it("warns only about the measured disk when a large library sits next to a mostly empty estimated disk", () => {
+    const library = { ...stats(0).stats!, uniqueSize: 9 * 1024 * GiB }
+    renderOverview([
+      stats(1, { stats: library }, {}, { free_space_on_disk: 450 * GiB }),
+      stats(2, { disk: { freeBytes: 40 * GiB, totalBytes: 1000 * GiB } }, {}, { free_space_on_disk: 40 * GiB }),
+    ])
+
     const items = [...screen.getByTestId("attention-list").querySelectorAll("li[data-tone]")]
     expect(items.map(item => `${item.getAttribute("data-tone")} ${item.textContent}`)).toEqual([
-      `red attention.lowDisk name=instance 1 free=${formatBytes(4 * GiB)}`,
+      `red attention.lowDisk name=instance 2 free=${formatBytes(40 * GiB)}`,
     ])
+    const storage = screen.getByRole("region", { name: "storage.title" })
+    expect(within(storage).getByText("instance 1")).toBeTruthy()
+    expect(within(storage).getByText("instance 2")).toBeTruthy()
+    expect(within(storage).getByRole("button", { name: "fieldHelp.trigger" })).toBeTruthy()
   })
 
   // regression: #4305

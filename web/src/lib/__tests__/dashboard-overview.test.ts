@@ -5,8 +5,10 @@
 
 import { describe, expect, it } from "vitest"
 
-import { buildLiveLayers, instanceLayers, layerAt, OTHER_LAYER, type ChartLayer } from "@/lib/dashboard-overview"
-import type { LiveSamples } from "@/types"
+import { buildLiveLayers, instanceLayers, isLowDisk, layerAt, OTHER_LAYER, type ChartLayer, type DashboardInstanceStats } from "@/lib/dashboard-overview"
+import type { InstanceDisk, LiveSamples, ServerState, TorrentStats } from "@/types"
+
+const GiB = 1024 ** 3
 
 const NOW = Date.parse("2026-11-15T12:00:00Z")
 
@@ -110,5 +112,29 @@ describe("layerAt", () => {
     expect(layerAt(layers, "down", 1, 2)).toBe(0)
     expect(layerAt(layers, "up", -1, 5)).toBeUndefined()
     expect(layerAt(layers, "up", 3, 5)).toBeUndefined()
+  })
+})
+
+describe("isLowDisk", () => {
+  function instance(freeSpace: number, uniqueSize: number, disk: InstanceDisk | null): DashboardInstanceStats {
+    return {
+      stats: { uniqueSize } as TorrentStats,
+      serverState: { free_space_on_disk: freeSpace } as ServerState,
+      disk,
+    } as DashboardInstanceStats
+  }
+
+  it("never warns from an estimate, with no disk or with a disk that qui could not read", () => {
+    expect(isLowDisk(instance(4 * GiB, 1000 * GiB, null))).toBe(false)
+    expect(isLowDisk(instance(4 * GiB, 1000 * GiB, { freeBytes: null, totalBytes: null }))).toBe(false)
+  })
+
+  it("warns when less than 5% of a measured disk is free", () => {
+    expect(isLowDisk(instance(40 * GiB, 0, { freeBytes: 40 * GiB, totalBytes: 1000 * GiB }))).toBe(true)
+    expect(isLowDisk(instance(50 * GiB, 0, { freeBytes: 50 * GiB, totalBytes: 1000 * GiB }))).toBe(false)
+  })
+
+  it("waits until qBittorrent reports its free space", () => {
+    expect(isLowDisk(instance(-1, 0, { freeBytes: 40 * GiB, totalBytes: 1000 * GiB }))).toBe(false)
   })
 })
