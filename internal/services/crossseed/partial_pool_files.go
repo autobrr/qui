@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type partialPoolFileDescriptor struct {
@@ -46,7 +45,10 @@ func buildPartialPoolFileDescriptors(info *metainfo.Info) ([]partialPoolFileDesc
 	if info.HasV2() && len(info.Files) == 0 {
 		descriptorInfo.Files = info.UpvertedFiles()
 	}
-	files := BuildTorrentFilesFromInfo(stringutils.SanitizeUTF8(info.BestName()), descriptorInfo)
+	files, err := BuildTorrentFilesFromInfo(info.BestName(), descriptorInfo)
+	if err != nil {
+		return nil, err
+	}
 	if len(files) == 0 {
 		return nil, errors.New("torrent has no files")
 	}
@@ -100,8 +102,8 @@ func partialPoolV2Roots(info *metainfo.Info) map[string]partialPoolV2Leaf {
 				if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
 					continue
 				}
-				component := pathutil.TorrentPathComponent(stringutils.SanitizeUTF8(name))
-				if component == "" || component == "." || component == ".." || strings.ContainsAny(component, `/\`) {
+				component, err := pathutil.TorrentPathComponent(name)
+				if err != nil || component == "." || component == ".." || strings.ContainsAny(component, `/\`) {
 					continue
 				}
 				walk(child, append(parts, component))

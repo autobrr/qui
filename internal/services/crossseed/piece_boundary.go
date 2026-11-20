@@ -9,7 +9,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 
-	"github.com/autobrr/qui/pkg/stringutils"
+	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 // PieceBoundarySafetyResult contains the outcome of a piece-boundary safety check.
@@ -155,7 +155,7 @@ func BuildFilesForBoundaryCheck(
 
 	// Single-file torrent
 	if len(info.Files) == 0 {
-		name := stringutils.SanitizeUTF8(info.Name)
+		name := pathutil.TorrentPathName(info.Name)
 		return []TorrentFileForBoundaryCheck{
 			{
 				Path:      name,
@@ -165,23 +165,12 @@ func BuildFilesForBoundaryCheck(
 		}
 	}
 
-	// Multi-file torrent
-	// Path format must match qbt.TorrentFiles.Name (see BuildTorrentFilesFromInfo):
-	// - When info.IsDir(): rootName + "/" + displayPath
-	// - Otherwise: displayPath
+	// Multi-file torrent. Paths must match qbt.TorrentFiles.Name, so both use torrentFilePath.
 	files := make([]TorrentFileForBoundaryCheck, 0, len(info.Files))
-	rootName := stringutils.SanitizeUTF8(info.Name)
+	rootName := pathutil.TorrentPathName(info.Name)
 	for i := range info.Files {
-		displayPath := stringutils.SanitizeUTF8(torrentDisplayPath(info, &info.Files[i]))
-		var path string
-		switch {
-		case info.IsDir() && displayPath != "":
-			path = rootName + "/" + displayPath
-		case displayPath != "":
-			path = displayPath
-		default:
-			path = rootName
-		}
+		// ParseTorrentMetadataWithInfo has already refused a path that filtering empties.
+		path, _ := torrentFilePath(info, &info.Files[i], rootName)
 		files = append(files, TorrentFileForBoundaryCheck{
 			Path:      path,
 			Size:      info.Files[i].Length,

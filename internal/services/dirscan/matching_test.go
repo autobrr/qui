@@ -58,7 +58,8 @@ func TestParseTorrentBytes_MultiFilePrefixesRootFolder(t *testing.T) {
 	require.Equal(t, "Example.Show.S01.1080p.WEB-DL.DDP5.1.x264-GROUP/Example.Show.S01E02.mkv", parsed.Files[1].Path)
 }
 
-func TestParseTorrentBytes_MultiFileDoesNotDoublePrefixRootFolder(t *testing.T) {
+// regression: #4220
+func TestParseTorrentBytes_MultiFilePreservesMatchingChildFolder(t *testing.T) {
 	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
 		Name:        "Example.Show.S02.1080p.WEB-DL.x264-GROUP",
 		PieceLength: 262144,
@@ -70,7 +71,7 @@ func TestParseTorrentBytes_MultiFileDoesNotDoublePrefixRootFolder(t *testing.T) 
 	parsed, err := ParseTorrentBytes(torrentBytes)
 	require.NoError(t, err)
 	require.Len(t, parsed.Files, 1)
-	require.Equal(t, "Example.Show.S02.1080p.WEB-DL.x264-GROUP/Example.Show.S02E01.mkv", parsed.Files[0].Path)
+	require.Equal(t, "Example.Show.S02.1080p.WEB-DL.x264-GROUP/Example.Show.S02.1080p.WEB-DL.x264-GROUP/Example.Show.S02E01.mkv", parsed.Files[0].Path)
 }
 
 func TestParseTorrentBytes_SanitizesInvalidUTF8(t *testing.T) {
@@ -91,9 +92,8 @@ func TestParseTorrentBytes_SanitizesInvalidUTF8(t *testing.T) {
 	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/Movie.\uFFFD.2024.1080p-GROUP.mkv", parsed.Files[0].Path)
 }
 
-func TestParseTorrentBytes_InvalidUTF8RootPrefixNotDoubled(t *testing.T) {
-	// Root folder repeated in the file path AND invalid UTF-8 in the name: the root-dedup
-	// comparison must see both sides sanitized, or the root gets prefixed twice.
+// regression: #4220
+func TestParseTorrentBytes_InvalidUTF8PreservesMatchingChildFolder(t *testing.T) {
 	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
 		Name:        "Movie.\xe1.2024.1080p-GROUP",
 		PieceLength: 262144,
@@ -105,7 +105,40 @@ func TestParseTorrentBytes_InvalidUTF8RootPrefixNotDoubled(t *testing.T) {
 	parsed, err := ParseTorrentBytes(torrentBytes)
 	require.NoError(t, err)
 	require.Len(t, parsed.Files, 1)
-	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/file.mkv", parsed.Files[0].Path)
+	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/Movie.\uFFFD.2024.1080p-GROUP/file.mkv", parsed.Files[0].Path)
+}
+
+// regression: #4211
+func TestParseTorrentBytes_DirectionalControls(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		filePath []string
+		wantPath string
+	}{
+		{name: "single file", wantPath: "Mira Calder - Étoiles"},
+		{name: "relative child", filePath: []string{"Disc\u200f 1", "01 - Étoiles\u202e.flac"}, wantPath: "Mira Calder - Étoiles/Disc 1/01 - Étoiles.flac"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			info := metainfo.Info{Name: "Mira Calder - Étoiles\u200e", Length: 1, PieceLength: 16384}
+			if tt.filePath != nil {
+				info.Length = 0
+				info.Files = []metainfo.FileInfo{{Path: tt.filePath, Length: 1}}
+			}
+			parsed, err := ParseTorrentBytes(buildTorrentBytes(t, &info))
+			require.NoError(t, err)
+			require.Equal(t, "Mira Calder - Étoiles", parsed.Name)
+			require.Equal(t, []TorrentFile{{Path: tt.wantPath, Size: 1, Offset: 0}}, parsed.Files)
+			require.Equal(t, int64(1), parsed.TotalSize)
+		})
+	}
+
+	for _, info := range []metainfo.Info{
+		{Name: "\u200e", PieceLength: 16384, Files: []metainfo.FileInfo{{Path: []string{"track.flac"}, Length: 1}}},
+		{Name: "Example Album", PieceLength: 16384, Files: []metainfo.FileInfo{{Path: []string{"\u200e", "track.flac"}, Length: 1}}},
+	} {
+		_, err := ParseTorrentBytes(buildTorrentBytes(t, &info))
+		require.Error(t, err)
+	}
 }
 
 func TestParseTorrentBytes_MultiFileNormalizesEmptyPathComponents(t *testing.T) {
