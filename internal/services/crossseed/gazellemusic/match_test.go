@@ -117,38 +117,56 @@ func legacyFlagTorrent(t *testing.T) []byte {
 
 // TestFindMatch_HashLookupFindsLegacyFlagUpload: the RED copy was uploaded as
 // PTH, so the RED-flag hash misses and the PTH-flag hash hits. The filename
-// search must not run.
+// search must not run. OPS leaves infoHash out of the answer unless the user
+// snatched or uploaded the torrent, so a hit without it is still a hash match.
 func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 	const pthHash = "2d95e58ed6b0430e79a00d41c506fe3715b43874"
-	var hashCalls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("action") != "torrent" {
-			t.Errorf("unexpected %s call", r.URL.Query().Get("action"))
-			return
-		}
-		hashCalls.Add(1)
-		if strings.EqualFold(r.URL.Query().Get("hash"), pthHash) {
-			_, _ = w.Write([]byte(`{"status":"success","response":{"group":{"id":3,"name":"Album"},"torrent":{"id":7,"size":123,"infoHash":"2d95e58ed6b0430e79a00d41c506fe3715b43874"}}}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"status":"failure","error":"bad hash parameter"}`))
-	}))
-	defer server.Close()
+	for _, tc := range []struct {
+		name, infoHash string
+		wantErr        bool
+	}{
+		{name: "answer names the hash", infoHash: `,"infoHash":"2D95E58ED6B0430E79A00D41C506FE3715B43874"`},
+		{name: "answer leaves the hash out", infoHash: ""},
+		{name: "answer names another hash", infoHash: `,"infoHash":"0000000000000000000000000000000000000001"`, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var hashCalls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("action") != "torrent" {
+					t.Errorf("unexpected %s call", r.URL.Query().Get("action"))
+					return
+				}
+				hashCalls.Add(1)
+				if strings.EqualFold(r.URL.Query().Get("hash"), pthHash) {
+					_, _ = w.Write([]byte(`{"status":"success","response":{"group":{"id":3,"name":"Album"},"torrent":{"id":7,"size":123` + tc.infoHash + `}}}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"status":"failure","error":"bad hash parameter"}`))
+			}))
+			defer server.Close()
 
-	client, err := NewClient("redacted.sh", server.URL, "key")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
+			client, err := NewClient("redacted.sh", server.URL, "key")
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
 
-	match, err := FindMatch(t.Context(), client, legacyFlagTorrent(t), map[string]int64{"test.flac": 123}, 123)
-	if err != nil {
-		t.Fatalf("FindMatch: %v", err)
-	}
-	if match == nil || match.Kind != MatchHash || match.TargetHash != pthHash || match.QueriedHash != pthHash || match.TorrentID != 7 {
-		t.Fatalf("expected the PTH upload as a hash match, got %+v", match)
-	}
-	if got := hashCalls.Load(); got != 2 {
-		t.Fatalf("expected the RED then PTH hash lookups, got %d calls", got)
+			match, err := FindMatch(t.Context(), client, legacyFlagTorrent(t), map[string]int64{"test.flac": 123}, 123)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected an identity error, got %+v", match)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("FindMatch: %v", err)
+			}
+			if match == nil || match.Kind != MatchHash || match.TargetHash != pthHash || match.QueriedHash != pthHash || match.TorrentID != 7 {
+				t.Fatalf("expected the PTH upload as a hash match, got %+v", match)
+			}
+			if got := hashCalls.Load(); got != 2 {
+				t.Fatalf("expected the RED then PTH hash lookups, got %d calls", got)
+			}
+		})
 	}
 }
 

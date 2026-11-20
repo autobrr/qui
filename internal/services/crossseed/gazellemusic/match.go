@@ -44,6 +44,11 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 					return nil, err
 				}
 				if res != nil {
+					// OPS names the hash only on a torrent the user snatched or
+					// uploaded. The hit itself confirms the queried hash.
+					if res.InfoHash == "" {
+						res.InfoHash = targetHash
+					}
 					if !validIdentity(res.TorrentID, res.Size, res.InfoHash) || !strings.EqualFold(res.InfoHash, targetHash) {
 						return nil, errors.New("hash lookup returned inconsistent target identity")
 					}
