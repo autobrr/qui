@@ -119,6 +119,7 @@ func legacyFlagTorrent(t *testing.T) []byte {
 // PTH, so the RED-flag hash misses and the PTH-flag hash hits. The filename
 // search must not run. OPS leaves infoHash out of the answer unless the user
 // snatched or uploaded the torrent, so a hit without it is still a hash match.
+// regression: #4213
 func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 	const pthHash = "2d95e58ed6b0430e79a00d41c506fe3715b43874"
 	for _, tc := range []struct {

@@ -157,6 +157,7 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 
 // A RED/OPS copy that is not music or books keeps its hash match. The result
 // carries no file-evidence decision, so Add matches it by name.
+// regression: #4219
 func TestSearchTorrentMatches_GazelleHashMatchOutsideMusicAndBooks(t *testing.T) {
 	tests := []struct {
 		name  string
