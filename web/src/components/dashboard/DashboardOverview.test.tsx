@@ -439,6 +439,7 @@ describe("DashboardOverview instances", () => {
     ])
   })
 
+  // regression: #4305
   it("judges two instances on one disk by the size of the disk, not by their own torrents", () => {
     const disk = { freeBytes: 60 * GiB, totalBytes: 2000 * GiB }
     const big = { ...stats(0).stats!, uniqueSize: 1900 * GiB }
@@ -455,6 +456,7 @@ describe("DashboardOverview instances", () => {
     ])
   })
 
+  // regression: #4305
   it("explains the Storage bars only while one of them is an estimate", () => {
     const disk = { freeBytes: 400 * GiB, totalBytes: 1000 * GiB }
     const measured = renderOverview([stats(1, { disk }), stats(2, { disk })])
