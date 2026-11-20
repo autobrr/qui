@@ -36,6 +36,7 @@ const (
 // searchScope is the Search scope of one torrent: the Torznab indexers and the
 // RED/OPS sites that one search asks.
 type searchScope struct {
+	sourceInstanceID  int
 	torznabIndexerIDs []int
 	// gazelle holds one decision for each RED/OPS site, in the order of the
 	// site table: will_ask, or not_asked with its reason.

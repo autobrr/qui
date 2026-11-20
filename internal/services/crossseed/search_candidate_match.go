@@ -21,6 +21,7 @@ import (
 type searchCandidateClass string
 
 const (
+	searchCandidateClassFileEvidence     searchCandidateClass = "file-evidence"
 	searchCandidateClassRejected         searchCandidateClass = "rejected"
 	searchCandidateClassStrict           searchCandidateClass = "strict"
 	searchCandidateClassWebSourceRelabel searchCandidateClass = "web-source-relabel"
@@ -92,7 +93,8 @@ type searchCandidateDecision struct {
 // keeps. It travels as one value from classification through cached results
 // to apply so adding a safety field cannot leave one transport path behind.
 type searchDecisionProvenance struct {
-	Class searchCandidateClass
+	Catalog catalogFileEvidence
+	Class   searchCandidateClass
 	// SearchCandidateName lets apply reject new metadata in the downloaded name.
 	SearchCandidateName string
 	SourceInstanceID    int
@@ -126,9 +128,16 @@ func (provenance searchDecisionProvenance) clone() searchDecisionProvenance {
 
 func (provenance searchDecisionProvenance) bindSource(instanceID int, hash string) searchDecisionProvenance {
 	bound := provenance.clone()
+	if bound.catalog() {
+		return bound
+	}
 	bound.SourceInstanceID = instanceID
 	bound.SourceHash = normalizeHash(hash)
 	return bound
+}
+
+func (provenance searchDecisionProvenance) matchesSource(instanceID int, hash string) bool {
+	return !provenance.catalog() || (provenance.SourceInstanceID == instanceID && provenance.SourceHash == normalizeHash(hash))
 }
 
 func (provenance searchDecisionProvenance) admitted() bool {
@@ -136,6 +145,9 @@ func (provenance searchDecisionProvenance) admitted() bool {
 }
 
 func searchDecisionRequiresVerification(decision searchDecisionProvenance) bool {
+	if decision.catalog() {
+		return false
+	}
 	return decision.Class == searchCandidateClassTitleRescue ||
 		decision.Relaxed.needsVerification()
 }
@@ -228,7 +240,7 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 		}
 	case searchCandidateClassHybridTolerance:
 		decision.MatchReason = "one-sided HYBRID within size tolerance; " + decision.MatchReason
-	case searchCandidateClassRejected:
+	case searchCandidateClassRejected, searchCandidateClassFileEvidence:
 	}
 	if verdict.MappedEpisode != "" {
 		decision.MatchReason = verdict.MappedEpisode + "; " + decision.MatchReason
@@ -482,7 +494,7 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 	}
 	sourceHash := normalizeHash(req.SearchDecision.SourceHash)
 	return sourceHash != "" && normalizeHash(selectedHash) == sourceHash &&
-		req.SearchDecision.Relaxed.needsVerification()
+		searchDecisionRequiresVerification(req.SearchDecision)
 }
 
 // crossFieldGroupSiteFallback reports whether a group mismatch carries the

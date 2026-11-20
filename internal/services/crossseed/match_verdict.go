@@ -159,6 +159,7 @@ func (c releaseComparison) reasonOf(difference matchDifference) string {
 // matchEvidence is what a Match path knows about a pair beyond the two Read
 // releases (GLOSSARY.md). A path that lacks a field leaves it empty.
 type matchEvidence struct {
+	Catalog       catalogFileEvidence
 	SourceSize    int64
 	CandidateSize int64
 	// SourceFiles and CandidateFiles are the files of the pair. The verdict reads
@@ -182,6 +183,7 @@ func (evidence matchEvidence) sizes() (source, candidate int64) {
 // matchPolicy is the switches that a Match path sets on the Match verdict
 // (GLOSSARY.md).
 type matchPolicy struct {
+	CatalogFiles         bool
 	TitleRescue          bool
 	IndividualEpisodes   bool
 	SizeTolerancePercent float64
@@ -237,6 +239,9 @@ func (verdict matchVerdict) relaxedFields() []string {
 // between two packs or two episodes. A group differs only when one fansub tag
 // is split across Group and Site, and that pair needs a full hash check.
 func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvidence, policy matchPolicy) matchVerdict {
+	if policy.CatalogFiles {
+		return m.catalogVerdict(source, candidate, evidence)
+	}
 	source, candidate, mappedEpisode := applyEpisodeMap(policy.SeasonPack.apply(source), policy.SeasonPack.apply(candidate), evidence.EpisodeMap)
 	verdict := matchVerdict{Class: searchCandidateClassRejected, MappedEpisode: mappedEpisode}
 	sourceSize, candidateSize := evidence.sizes()

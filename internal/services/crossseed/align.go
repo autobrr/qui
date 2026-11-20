@@ -43,6 +43,9 @@ func (s *Service) alignCrossSeed(
 	sourceTorrentName string,
 	addPlan *crossSeedAddPlan,
 ) (bool, string) {
+	if addPlan != nil && len(addPlan.filePairs) > 0 {
+		return s.alignCatalogFiles(ctx, instanceID, torrentHash, torrentHashV2, addPlan)
+	}
 	hashes := dedupeHashes(torrentHash, torrentHashV2)
 	hashLabel := ""
 	if len(hashes) > 0 {

@@ -205,6 +205,7 @@ type FindCandidatesResponseV2 struct {
 //   - Multiple episodes can collectively provide a season pack
 //   - The same content may exist in different qualities/groups across instances
 type CrossSeedCandidate struct {
+	filePairs    []catalogFilePair
 	InstanceID   int    `json:"instance_id"`
 	InstanceName string `json:"instance_name"`
 	// Torrents: The EXISTING torrents in this instance that have matching files

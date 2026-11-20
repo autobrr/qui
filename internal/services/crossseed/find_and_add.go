@@ -158,6 +158,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		return nil, errors.New("torrent_name is required")
 	}
 
+	if req.SearchDecision.catalog() {
+		return s.findCatalogCandidate(ctx, req)
+	}
 	if req.ManualTargetHash != "" {
 		return s.findManualTargetCandidate(ctx, req)
 	}
@@ -490,6 +493,22 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	// when the raw name already parses as TV. Ordinary and Manual apply keep the
 	// raw TV identity. Non-TV names still need file-derived structure in either path.
 	sourceView := s.readApplyTarget(meta.Name, meta.Files, requestHasSearchDecision(req))
+	if req.SearchDecision.catalog() {
+		if meta.Info == nil || !meta.Info.HasV1() {
+			return nil, errors.New("file evidence requires a v1 target torrent")
+		}
+		if req.ManualTargetHash != "" {
+			return nil, errors.New("file evidence cannot be used as a manual decision")
+		}
+		if err := validateCatalogTarget(req.SearchDecision, meta.HashV1, meta.Files); err != nil {
+			return nil, err
+		}
+		sourceView, err = s.readCatalogRelease(meta.Name, meta.Files, req.SearchDecision.Catalog.Family)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	sourceRelease := sourceView.release
 
 	// Carry the private search decision into candidate discovery. Apply keeps
@@ -598,7 +617,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	// A season pack that couldn't cross-seed directly but has same-title episodes
 	// in the library can still be assembled by the season-pack pipeline.
 	if !response.Success && candidatesResp.seasonPackEpisodeCandidates &&
-		!requestRequiresSearchVerification(req) {
+		!requestRequiresSearchVerification(req) && !req.SearchDecision.catalog() {
 		s.maybeDivertSeasonPack(ctx, req, meta.Name, response)
 	}
 
@@ -730,7 +749,7 @@ func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownlo
 // search source when rechecks are disabled. Other torrents in the aggregated
 // candidate remain eligible, so a strict alternative can supply the add plan.
 func filterRecheckBlockedSource(candidate CrossSeedCandidate, req *CrossSeedRequest) (CrossSeedCandidate, bool) {
-	if req == nil || !req.SkipRecheck || candidate.InstanceID != req.SearchDecision.SourceInstanceID ||
+	if req == nil || req.SearchDecision.catalog() || !req.SkipRecheck || candidate.InstanceID != req.SearchDecision.SourceInstanceID ||
 		!req.SearchDecision.Relaxed.needsVerification() {
 		return candidate, false
 	}
@@ -822,6 +841,9 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	}
 
+	if req.SearchDecision.catalog() {
+		ctx = qbittorrent.WithForceFilesRefresh(ctx)
+	}
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
 	tolerancePercent := defaultSizeMismatchTolerancePercent
 	planCandidate, verificationSourceExcluded := filterRecheckBlockedSource(candidate, req)
@@ -852,6 +874,8 @@ func (s *Service) processCrossSeedCandidate(
 
 		return result
 	}
+	candidate.filePairs = addPlan.filePairs
+	facts.MappedFiles = len(addPlan.filePairs) > 0
 	matchedTorrent := &addPlan.torrent
 	candidateFiles := addPlan.files
 	matchType := addPlan.matchType
@@ -886,9 +910,21 @@ func (s *Service) processCrossSeedCandidate(
 	// Check if we need rename alignment (folder/file names differ). An
 	// unvalidated Manual match has no file mapping to align to.
 	requiresAlignment := !manualUnvalidated && needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
+	if facts.MappedFiles {
+		requiresAlignment = false
+		for _, pair := range addPlan.filePairs {
+			if pair.sourcePath != pair.candidatePath {
+				requiresAlignment = true
+				break
+			}
+		}
+	}
 
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not in the candidate)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
+	if len(addPlan.filePairs) > 0 {
+		hasExtraFiles = false
+	}
 
 	matchedRelease := addPlan.candidateRelease
 	// Rename-only alignment: every source file maps to an existing candidate file of
@@ -927,6 +963,10 @@ func (s *Service) processCrossSeedCandidate(
 
 	var fileSizeMismatches []contentFileSizeMismatch
 	facts.SizeMismatch, fileSizeMismatches = hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer)
+	if len(addPlan.filePairs) > 0 {
+		facts.SizeMismatch = false
+		fileSizeMismatches = nil
+	}
 
 	var pieceSafety PieceBoundarySafetyResult
 	if hasExtraFiles && torrentInfo != nil {
@@ -1019,6 +1059,9 @@ func (s *Service) processCrossSeedCandidate(
 	// to use the season pack's content path instead of category save path
 	isEpisodeInPack := addPlan.isEpisodeInPack
 	rootlessContentDir := rootlessDestDir(matchedTorrent, candidateFiles, isEpisodeInPack)
+	if facts.MappedFiles {
+		rootlessContentDir = ""
+	}
 
 	// Determine final category to apply (with optional .cross suffix for isolation)
 	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
@@ -1499,6 +1542,9 @@ func (s *Service) selectBestCandidateAddPlan(
 	tolerancePercent float64,
 	req *CrossSeedRequest,
 ) (*crossSeedAddPlan, string) {
+	if req != nil && req.SearchDecision.catalog() {
+		return s.catalogAddPlan(candidate, sourceRelease, sourceFiles, filesByHash, req)
+	}
 	var (
 		bestPlan         crossSeedAddPlan
 		hasBestPlan      bool

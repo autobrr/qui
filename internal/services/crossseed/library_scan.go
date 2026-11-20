@@ -1712,6 +1712,11 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, instanceID 
 		ReleaseTitle: match.Title,
 		ProcessedAt:  processedAt,
 	}
+	if !match.SearchDecision.matchesSource(instanceID, torrent.Hash) {
+		result.Status = models.CrossSeedSearchResultStatusFailed
+		result.Message = "file-evidence source binding mismatch"
+		return result, errors.New(result.Message)
+	}
 
 	if rejection, rejected := s.contentPrefilterRejectionForHashes(instanceID, torrent.Hash, match.IndexerID, torrentSearchResultInfoHashes(match.InfoHashV1, match.InfoHashV2)); rejected {
 		result.Status = models.CrossSeedSearchResultStatusSkipped

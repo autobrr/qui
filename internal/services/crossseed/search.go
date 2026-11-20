@@ -207,6 +207,7 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		applyContentFilterSnapshot(&sourceInfo, snapshot)
 	}
 
+	scope.sourceInstanceID = instanceID
 	waitGazelle := s.startGazelleSearch(ctx, sourceTorrent, sourceFiles, scope, gazelleClients)
 	torznabRequested := false
 	// failed returns err with the lookups that the caller still needs.
@@ -662,7 +663,7 @@ func searchCandidateClassPriority(class searchCandidateClass) int {
 		return 4
 	case searchCandidateClassWebSourceRelabel:
 		return 3
-	case searchCandidateClassExactSizeFallback, searchCandidateClassHybridTolerance:
+	case searchCandidateClassExactSizeFallback, searchCandidateClassHybridTolerance, searchCandidateClassFileEvidence:
 		return 2
 	case searchCandidateClassTitleRescue:
 		return 1
