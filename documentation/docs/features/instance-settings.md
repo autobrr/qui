@@ -2,7 +2,7 @@
 sidebar_position: 3
 title: Add qBittorrent instances to qui
 sidebar_label: Instance Settings
-description: Connect one or more qBittorrent instances to qui, with connection settings, local filesystem access, SSH access, incognito mode, and qBittorrent preferences.
+description: Connect one or more qBittorrent instances to qui, with connection settings, local filesystem access, SSH access, incognito mode, instance icons, and qBittorrent preferences.
 ---
 
 # Instance Settings
@@ -87,6 +87,29 @@ The Add instance form does not have this field. Add the instance first, then edi
 ## Incognito mode
 
 When [incognito mode](./incognito.md) is on, **Settings → Instances** blurs the host of each instance.
+
+## Instance icons
+
+Each instance has an icon. qui shows it in the expanded and collapsed (icon-only) sidebar, in instance menus, on Dashboard rows, and in **Settings → Instances**. **Unified** (the view of all instances) has its own icon. It shows only when more than one instance is active.
+
+To change an icon:
+
+1. Open **Settings → Instances**.
+2. Under **Instance icons**, click **Unified** or an instance row to open the icon picker. You can also click **Change icon** in the three-dot menu of an instance in the instance list.
+3. Click **Automatic**, type up to 2 characters in **Letters**, or click an icon in the list. Each of the three replaces the other two.
+4. Under **Color**, select one of 8 colors or no color. The color applies to the icon or the letters, and the theme sets the exact shade.
+
+The preview at the top of the picker shows the icon in the collapsed sidebar and everywhere else. Each choice saves at once. Click **Reset to default** to return to **Automatic** with no color.
+
+| Choice | What qui shows |
+|--------|----------------|
+| **Automatic** (default) | The initials of the instance name in the collapsed sidebar, and a drive icon everywhere else. **Unified** shows the drive icon everywhere. |
+| **Letters** | Up to 2 characters in the collapsed sidebar, and the drive icon everywhere else. |
+| An icon from the list | The icon everywhere. The list has 56 icons in 7 groups (Servers, Hardware, Places, Media, Nature, Symbols, Objects). |
+
+If qui cannot connect to an instance, its icon turns red in the sidebar, in instance menus, on Dashboard rows, and in the instance list. The rows under **Instance icons** always show the color that you picked.
+
+qui saves your icon choices on the qui server with your user settings, so each browser that you sign in from shows the same icons. The icons do not change qBittorrent.
 
 ## Instance actions
 

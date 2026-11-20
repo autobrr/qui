@@ -89,4 +89,31 @@ describe("Editor", () => {
     await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
     expect(document.activeElement).toBe(focused === null ? dialog : screen.getByRole("textbox", { name: focused }))
   })
+
+  it.each([["fine", "Star"], ["coarse", null]] as const)("with a %s pointer and initialFocus, focuses the element it names: %s", async (pointer, focused) => {
+    stubPointer(pointer)
+    render(
+      <Editor open onOpenChange={() => {}} title="Icon for main" initialFocus="[data-current]">
+        <input aria-label="Letters" />
+        <button type="button" data-current>Star</button>
+      </Editor>
+    )
+
+    const dialog = await screen.findByRole("dialog")
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+    expect(document.activeElement).toBe(focused === null ? dialog : screen.getByRole("button", { name: focused }))
+  })
+
+  it("puts the pinned content after the title, outside the fields that scroll", () => {
+    render(
+      <Editor open onOpenChange={() => {}} title="Icon for main" submitLabel="Save" onSubmit={() => {}} pinned={<p>Preview</p>}>
+        <input aria-label="Letters" />
+      </Editor>
+    )
+
+    const preview = screen.getByText("Preview")
+    expect(preview.closest("form")).toBeNull()
+    expect(screen.getByRole("textbox", { name: "Letters" }).closest("form")).not.toBeNull()
+    expect(screen.getByRole("heading", { name: "Icon for main" }).compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })

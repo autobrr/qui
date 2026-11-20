@@ -451,3 +451,16 @@
     background-color: var(--muted-foreground);
   }
 }
+
+/* The color of an instance mark: the hue that the user picked (--mark-hue), with the chroma of the theme's
+   primary color and a lightness that reads on the sidebar in light and dark mode. See lib/instance-marks.ts.
+   The name starts with text-, because menu and select items gray out each svg whose class has no text-. */
+@layer utilities {
+  .text-instance-mark {
+    color: oklch(from var(--primary) 0.55 clamp(0.07, c, 0.19) var(--mark-hue));
+  }
+
+  .dark .text-instance-mark {
+    color: oklch(from var(--primary) 0.75 clamp(0.07, c, 0.17) var(--mark-hue));
+  }
+}

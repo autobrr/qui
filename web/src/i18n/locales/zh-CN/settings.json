@@ -56,6 +56,10 @@
     },
     "browserTab": {
       "title": "浏览器标签页"
+    },
+    "icons": {
+      "title": "实例图标",
+      "description": "选择实例在侧边栏和菜单中的显示方式。"
     }
   },
   "integrations": {

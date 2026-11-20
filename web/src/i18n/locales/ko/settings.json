@@ -56,6 +56,10 @@
     },
     "browserTab": {
       "title": "브라우저 탭"
+    },
+    "icons": {
+      "title": "인스턴스 아이콘",
+      "description": "사이드바와 메뉴에서 인스턴스가 표시되는 방식을 선택하세요."
     }
   },
   "integrations": {

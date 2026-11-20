@@ -47,7 +47,7 @@ it("keeps the switch of an instance disabled until its own status save ends", as
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>
-        <InstanceList instances={instances} onEdit={() => {}} onAdd={() => {}} />
+        <InstanceList instances={instances} onEdit={() => {}} onChangeIcon={() => {}} onAdd={() => {}} />
       </TooltipProvider>
     </QueryClientProvider>
   )

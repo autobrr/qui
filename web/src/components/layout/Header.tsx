@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { InstanceMarkIcon } from "@/components/instances/marks/InstanceMarkIcon"
 import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SpreadsheetRibbonTabs } from "@/components/spreadsheet/SpreadsheetRibbonTabs"
@@ -63,7 +64,7 @@ import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
-import { ChevronsUpDown, Cog, FileEdit, FunnelPlus, FunnelX, HardDrive, Info, ListTodo, Plus, Search, X } from "lucide-react"
+import { ChevronsUpDown, Cog, FileEdit, FunnelPlus, FunnelX, Info, ListTodo, Plus, Search, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { useTranslation } from "react-i18next"
@@ -109,14 +110,8 @@ function UnifiedActionDropdown({ icon, tooltip, label, instances, onSelectInstan
             onSelect={() => onSelectInstance(instance.id)}
             className="cursor-pointer"
           >
-            <HardDrive className="mr-2 h-4 w-4 flex-shrink-0" />
+            <InstanceMarkIcon instanceId={instance.id} problem={!instance.connected} className="mr-2" />
             <span className="flex-1 truncate">{instance.name}</span>
-            <span
-              className={cn(
-                "ml-2 h-2 w-2 rounded-full flex-shrink-0",
-                instance.connected ? "bg-green-500" : "bg-red-500"
-              )}
-            />
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -364,15 +359,9 @@ export function Header({ sidebarIconOnly = false }: HeaderProps) {
                           instance.id === selectedInstanceId ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
                         )}
                       >
-                        <HardDrive className="h-4 w-4 flex-shrink-0" />
+                        <InstanceMarkIcon instanceId={instance.id} problem={!instance.connected} colored={instance.id !== selectedInstanceId} />
                         <span className="flex-1 truncate">{instance.name}</span>
-                        <span
-                          className={cn(
-                            "h-2 w-2 rounded-full flex-shrink-0",
-                            instance.connected ? "bg-green-500" : "bg-red-500"
-                          )}
-                          aria-label={instance.connected ? t("header.connected") : t("header.disconnected")}
-                        />
+                        {!instance.connected && <span className="sr-only">{t("header.disconnected")}</span>}
                       </Link>
                     </DropdownMenuItem>
                   ))

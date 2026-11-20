@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { ArrowDown, ArrowUp, HardDrive, PlugZap, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, PlugZap, Shapes, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -11,11 +11,13 @@ import { toast } from "sonner"
 import { CrossSeedDeleteNotice, useCrossSeedDeleteCheck } from "@/components/cross-seed/RouteProtectionConfirm"
 import { DeleteHistoryCheckbox } from "@/components/instances/DeleteHistoryCheckbox"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
+import { InstanceMarkIcon } from "@/components/instances/marks/InstanceMarkIcon"
 import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog"
 import { ResourceList, type ResourceAction, type ResourceRow } from "@/components/kit/ResourceList"
 import { usePendingIds } from "@/components/kit/use-pending-ids"
 import { instanceStatusKey, useInstances } from "@/hooks/useInstances"
+import { useClientSettingsSettled } from "@/lib/client-settings"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { useIncognitoMode } from "@/lib/incognito"
 import type { InstanceResponse } from "@/types"
@@ -24,6 +26,8 @@ interface InstanceListProps {
   instances: readonly InstanceResponse[]
   /** Opens the settings of the instance. */
   onEdit: (instance: InstanceResponse) => void
+  /** Opens the icon editor of the instance. */
+  onChangeIcon: (instance: InstanceResponse) => void
   onAdd: () => void
 }
 
@@ -34,11 +38,13 @@ const hasInstanceErrors = (instance: InstanceResponse) =>
 const errorText = (error: unknown, fallback: string) => error instanceof Error ? formatErrorMessage(error.message) : fallback
 
 /** The qBittorrent instances in their order, each with its state, its on/off switch, a test, a move, and a delete. */
-export function InstanceList({ instances, onEdit, onAdd }: InstanceListProps) {
+export function InstanceList({ instances, onEdit, onChangeIcon, onAdd }: InstanceListProps) {
   const { t } = useTranslation("instances")
   const { testConnection, setInstanceStatus, reorderInstances, isReordering } = useInstances()
   const toggling = usePendingIds(instanceStatusKey)
   const [incognito] = useIncognitoMode()
+  // Until the server answers, the icon editor shows the default, and a change would be lost.
+  const marksSettled = useClientSettingsSettled()
   const [testing, setTesting] = useState<ReadonlySet<number>>(() => new Set())
   // The instance stays in the state while the dialog fades out. A new session gives the dialog fresh state.
   const [removal, setRemoval] = useState<{ instance: InstanceResponse; open: boolean; session: number } | null>(null)
@@ -96,7 +102,7 @@ export function InstanceList({ instances, onEdit, onAdd }: InstanceListProps) {
 
     return {
       title: instance.name,
-      icon: HardDrive,
+      icon: <InstanceMarkIcon instanceId={instance.id} problem={instance.isActive && !instance.connected} />,
       status: !instance.isActive
         ? { tone: "off", label: t("card.status.disabled") }
         : instance.connected ? { tone: "ok", label: t("card.status.connected") } : { tone: "error", label: t("card.status.disconnected") },
@@ -111,7 +117,7 @@ export function InstanceList({ instances, onEdit, onAdd }: InstanceListProps) {
         disabled: toggling.has(instance.id),
       },
       onOpen: () => onEdit(instance),
-      // A wide screen shows Edit, Test, and Delete as buttons, and the moves in the menu.
+      // A wide screen shows Edit, Test, and Delete as buttons, and Change icon and the moves in the menu.
       actions: [
         {
           label: t("card.actions.testConnection"),
@@ -126,6 +132,7 @@ export function InstanceList({ instances, onEdit, onAdd }: InstanceListProps) {
           destructive: true,
           onSelect: () => setRemoval((prev) => ({ instance, open: true, session: (prev?.session ?? 0) + 1 })),
         },
+        { label: t("card.actions.changeIcon"), icon: Shapes, disabled: !marksSettled, onSelect: () => onChangeIcon(instance) },
         ...moves,
       ],
       detail: hasInstanceErrors(instance) ? <InstanceErrorDisplay instance={instance} onEdit={() => onEdit(instance)} /> : undefined,

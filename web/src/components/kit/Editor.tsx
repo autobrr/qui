@@ -34,12 +34,25 @@ type EditorProps = EditorSubmit & {
   submitDisabled?: boolean
   /** Why the last save failed, above the buttons. The fields stay as the user left them. */
   error?: ReactNode
-  /** Buttons at the start of the footer, for a step that does not save, for example Test. A phone wraps them onto more lines. */
+  /**
+   * Buttons at the start of the footer, for a step that does not save, for example Test. A phone wraps them onto more
+   * lines, and puts them over Cancel and Save. Without onSubmit, Close shares their row when it fits.
+   */
   secondaryActions?: ReactNode
   /** wide: for a form with fields side by side. A phone always uses the full width. */
   size?: "default" | "wide"
   /** Where focus goes on close, when the element that opened the editor can be gone by then. The opener by default. */
   returnFocusTo?: RefObject<HTMLElement | null>
+  /**
+   * A selector for the element that takes the focus on open in place of the first field, for example the current choice
+   * of a picker. A phone and a touch screen still focus the editor itself.
+   */
+  initialFocus?: string
+  /**
+   * Content between the title and the fields that stays in place while the fields scroll, for example a preview of the
+   * choice. Unlike a sticky element among the fields, it cannot hide the field that has the focus.
+   */
+  pinned?: ReactNode
   /** The fields. With onSubmit, the editor is the form, so the children hold no form element: call the form library in onSubmit. */
   children: ReactNode
 }
@@ -49,7 +62,7 @@ type EditorProps = EditorSubmit & {
  * footer stay in place, and only the fields scroll. On a phone, no field takes focus on open, so the keyboard stays
  * down until the user taps a field.
  */
-export function Editor({ open, onOpenChange, title, description, submitLabel, onSubmit, pending = false, submitDisabled = false, error, secondaryActions, size = "default", returnFocusTo, children }: EditorProps) {
+export function Editor({ open, onOpenChange, title, description, submitLabel, onSubmit, pending = false, submitDisabled = false, error, secondaryActions, size = "default", returnFocusTo, initialFocus, pinned, children }: EditorProps) {
   const { t } = useTranslation("common")
   const phone = useIsPhone()
   const returnFocus = useReturnFocus(returnFocusTo)
@@ -70,7 +83,7 @@ export function Editor({ open, onOpenChange, title, description, submitLabel, on
     // The first focusable element can be a FieldHelp, whose tooltip would open on each open. On a touch screen, a focused
     // field opens the keyboard over the form, so the editor itself takes the focus.
     const touch = window.matchMedia?.("(pointer: coarse)").matches ?? false
-    const field = phone || touch ? null : content.querySelector<HTMLElement>("input:not([type=hidden]):not(:disabled), textarea:not(:disabled), [role=combobox]:not(:disabled)")
+    const field = phone || touch ? null : content.querySelector<HTMLElement>(initialFocus ?? "input:not([type=hidden]):not(:disabled), textarea:not(:disabled), [role=combobox]:not(:disabled)")
     field?.focus()
     if (!content.contains(document.activeElement)) content.focus()
   }
@@ -90,7 +103,8 @@ export function Editor({ open, onOpenChange, title, description, submitLabel, on
           {error}
         </p>
       )}
-      <div className={cn("flex shrink-0 gap-2 border-t pt-3", phone ? "flex-col px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]" : "items-center px-6 pb-4")}>
+      {/* A phone stacks the secondary actions over Cancel and Save. Without Save, Close joins their row when it fits. */}
+      <div className={cn("flex shrink-0 gap-2 border-t pt-3", phone ? cn("px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]", onSubmit ? "flex-col" : "flex-wrap *:grow") : "items-center px-6 pb-4")}>
         {secondaryActions && <div className={cn("flex gap-2", phone && "flex-wrap *:h-11 *:flex-1")}>{secondaryActions}</div>}
         <div className={cn("flex gap-2", phone ? "*:h-11 *:flex-1" : "ml-auto")}>
           <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
@@ -107,9 +121,14 @@ export function Editor({ open, onOpenChange, title, description, submitLabel, on
     </>
   )
   // Without onSubmit, the children can hold their own form, and a form cannot hold another one.
-  const form = onSubmit
-    ? <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">{body}</form>
-    : <div className="flex min-h-0 flex-1 flex-col">{body}</div>
+  const form = (
+    <>
+      {pinned && <div className={cn("shrink-0 pb-2", phone ? "px-4" : "px-6")}>{pinned}</div>}
+      {onSubmit
+        ? <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">{body}</form>
+        : <div className="flex min-h-0 flex-1 flex-col">{body}</div>}
+    </>
+  )
 
   if (phone) {
     return (

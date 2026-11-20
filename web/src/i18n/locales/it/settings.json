@@ -56,6 +56,10 @@
     },
     "browserTab": {
       "title": "Scheda del browser"
+    },
+    "icons": {
+      "title": "Icone delle istanze",
+      "description": "Scegli come appaiono le istanze nella barra laterale e nei menu."
     }
   },
   "integrations": {

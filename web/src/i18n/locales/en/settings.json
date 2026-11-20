@@ -56,6 +56,10 @@
     },
     "browserTab": {
       "title": "Browser tab"
+    },
+    "icons": {
+      "title": "Instance icons",
+      "description": "Choose how instances appear in the sidebar and menus."
     }
   },
   "integrations": {

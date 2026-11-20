@@ -48,7 +48,7 @@ function renderList(instance: InstanceResponse) {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>
-        <InstanceList instances={[instance]} onEdit={() => {}} onAdd={() => {}} />
+        <InstanceList instances={[instance]} onEdit={() => {}} onChangeIcon={() => {}} onAdd={() => {}} />
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -81,6 +81,7 @@ describe("InstanceList", () => {
           <InstanceList
             instances={[{ id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true, filesystemMode: "remote", sshTier: "sftp" } as InstanceResponse]}
             onEdit={onEdit}
+            onChangeIcon={() => {}}
             onAdd={() => {}}
           />
         </TooltipProvider>

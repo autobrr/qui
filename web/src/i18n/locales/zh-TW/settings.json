@@ -56,6 +56,10 @@
     },
     "browserTab": {
       "title": "瀏覽器分頁"
+    },
+    "icons": {
+      "title": "實例圖示",
+      "description": "選擇實例在側邊欄和選單中的顯示方式。"
     }
   },
   "integrations": {
