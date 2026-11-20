@@ -37,7 +37,6 @@ beforeEach(() => {
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })))
   registerBuiltinThemes([{ id: "minimal", name: "Minimal", cssVars: { light: { "--background": "white" }, dark: { "--background": "black" } } }])
   registerCustomThemes([ocean])
-  // The stored theme of this browser hides the page, so the user opened ?theme=default.
   localStorage.setItem("color-theme", "custom:ocean")
   localStorage.setItem("theme", "light")
   localStorage.setItem("theme-cache", JSON.stringify({ id: "custom:ocean" }))

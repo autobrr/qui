@@ -84,7 +84,6 @@ func TestExecIdentity(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, info.FileID, linked.FileID, "a hardlink has the identity of its source")
 
-	// Lstat never follows: a planted symlink reports no identity at all.
 	planted, err := backend.Lstat(t.Context(), symlink)
 	require.NoError(t, err)
 	assert.True(t, planted.FileID.IsZero())
@@ -258,7 +257,6 @@ func TestExecWalkFallsBackToSFTPOnAnUnreadableDirectory(t *testing.T) {
 	assert.ErrorIs(t, files[0].FileIDErr, errNoIdentity, "the sftp walk carries no identity")
 }
 
-// A record cut short by a clean exit is a truncated tree, not a complete walk.
 func TestExecWalkFallsBackToSFTPOnATornRecord(t *testing.T) {
 	t.Parallel()
 
@@ -320,9 +318,6 @@ func TestExecWalkEndsWhenFindLosesTheConnection(t *testing.T) {
 	}
 }
 
-// The key loses its shell: the reconnect writes the tier down, and a backend
-// built on the stored exec tier gets ErrUnsupported for identity instead of
-// a guess, while its sftp reads go on.
 func TestExecTierDropAnswersUnsupported(t *testing.T) {
 	t.Parallel()
 
@@ -365,9 +360,6 @@ func TestParseFindRecord(t *testing.T) {
 	}
 }
 
-// A host that prints more records than the caller allows, as a hostile host
-// can for a batch, fails the read at the limit and not at the end of its
-// output.
 func TestFindStopsAtItsLimit(t *testing.T) {
 	t.Parallel()
 
@@ -388,7 +380,6 @@ func TestFindStopsAtItsLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, entries, 3)
 
-	// The byte cap bounds memory when a host prints long records.
 	entries, err = find(t.Context(), conn, cmd, 3, 8)
 	require.ErrorIs(t, err, errFindLimit)
 	assert.Empty(t, entries)
@@ -407,8 +398,6 @@ func sftpFixturePath(p string) string {
 	return fsops.SlashPaths.Join("/", filepath.ToSlash(p))
 }
 
-// lstatBatchTree is a directory with one of each kind of path LstatBatch gets,
-// and enough plain files for two batches.
 func lstatBatchTree(t *testing.T) []string {
 	t.Helper()
 	dir := t.TempDir()
@@ -611,9 +600,6 @@ func TestBatchSingleStatsOverlapRoundTrips(t *testing.T) {
 	}
 }
 
-// A connection lost before a batch is not an answer about the paths. The
-// pool remembers the failed dial, so each path gets its own
-// fsops.ErrConnectionLost at once, and no path reads as missing.
 func TestExecBatchAfterALostConnectionReportsEachPathAsLost(t *testing.T) {
 	t.Parallel()
 
@@ -638,8 +624,6 @@ func TestExecBatchAfterALostConnectionReportsEachPathAsLost(t *testing.T) {
 	}
 }
 
-// The exec tier reads find, the sftp tier reads sftp attrs, and both answer
-// a batch the same way. Only identity differs, since sftp has none.
 func TestBatchTiersAgree(t *testing.T) {
 	t.Parallel()
 

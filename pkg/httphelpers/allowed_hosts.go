@@ -19,8 +19,6 @@ type HostAllowlist struct {
 	hosts []string
 }
 
-// NewHostAllowlist accepts exact hosts and leading *. subdomain wildcards.
-// An empty list permits all hosts. Invalid entries return an error.
 func NewHostAllowlist(entries []string) (*HostAllowlist, error) {
 	list := &HostAllowlist{hosts: make([]string, 0, len(entries))}
 	for _, entry := range entries {
@@ -40,7 +38,6 @@ func NewHostAllowlist(entries []string) (*HostAllowlist, error) {
 	return list, nil
 }
 
-// Allows reports whether host, ignoring any port, matches a listed host name or IP.
 func (list *HostAllowlist) Allows(host string) bool {
 	if len(list.hosts) == 0 {
 		return true

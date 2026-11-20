@@ -30,7 +30,6 @@ func NewLicenseChecker(service ValidationChecker) *Checker {
 }
 
 func (lc *Checker) StartPeriodicChecks(ctx context.Context) {
-	// Initial check
 	lc.validateLicense(ctx)
 
 	ticker := time.NewTicker(lc.checkInterval)

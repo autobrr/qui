@@ -75,15 +75,10 @@ func EndpointOf(instance *models.Instance) Endpoint {
 	return Endpoint{URL: instance.Host, Mode: models.FilesystemAccessMode(instance), Walked: WalkedEndpoint(instance)}
 }
 
-// Changed reports whether current no longer reaches e: another URL, access
-// mode, SSH server, account, host key, or private key. A nil current, a
-// deleted instance, has changed.
 func (e Endpoint) Changed(current *models.Instance) bool {
 	return current == nil || EndpointOf(current) != e
 }
 
-// FileRelation is whether a file that one instance reads is a file that
-// another instance reads.
 type FileRelation int
 
 const (
@@ -92,10 +87,7 @@ const (
 	// that has no identity. A file identity that a remote host reports never
 	// widens a delete (ADR 0033).
 	FilesUnknown FileRelation = iota
-	// FilesSame is one file on qui's own disk, under one path or two, such as
-	// a hardlink or a second mount.
 	FilesSame
-	// FilesDifferent is two files on qui's own disk.
 	FilesDifferent
 )
 

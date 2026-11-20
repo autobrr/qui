@@ -75,9 +75,6 @@ var (
 	}
 )
 
-// SupportsReflink tests whether the given directory supports reflinks
-// by attempting an actual clone operation with temporary files.
-// Returns true if reflinks are supported, along with a reason string.
 func SupportsReflink(dir string) (supported bool, reason string) {
 	if err := os.MkdirAll(dir, fsutil.ContentDirMode); err != nil {
 		return false, fmt.Sprintf("cannot access directory: %v", err)

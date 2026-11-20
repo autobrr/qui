@@ -72,8 +72,6 @@ func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) 
 	return buf.Bytes(), true, nil
 }
 
-// decodeRawValue returns the decoded form of one raw top-level value, or nil
-// when the key is absent or its value does not decode.
 func decodeRawValue(raw bencode.Bytes) any {
 	var v any
 	if err := bencode.Unmarshal(raw, &v); err != nil {

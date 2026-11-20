@@ -123,8 +123,6 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 	}
 }
 
-// Note: Intercept logic is now handled by chi routes, not by dynamic checking
-
 func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
 	t.Helper()
 

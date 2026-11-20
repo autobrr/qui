@@ -26,7 +26,6 @@ func engines(t *testing.T, run func(t *testing.T, store *sharetracker.SettingsSt
 	})
 }
 
-// With no saved settings, the tracker has no port, so it never listens.
 func TestTheTrackerDoesNotListenWithTheDefaultSettingsPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, store *sharetracker.SettingsStore) {

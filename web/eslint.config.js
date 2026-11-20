@@ -6,6 +6,8 @@ import { globalIgnores } from 'eslint/config'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+import { noComments } from './scripts/no-comments-rule.mjs'
+
 const copyGroupImportPattern = {
   regex: '(^|/)copy-groups$',
   importNames: ['summarizeCopyGroups', 'countTickedCopies'],
@@ -64,7 +66,6 @@ const gazelleSiteSelectors = [
 const settingsKitMessage = 'Settings builds on the kit in @/components/kit: Section for a card, Editor for a form in a dialog or a sheet, ConfirmDialog for a question before a step. Read src/components/kit/AGENTS.md.'
 
 const settingsKitImportPatterns = [{
-  // Also a relative path, such as ../ui/card.
   regex: '(^|/)ui/(card|dialog|alert-dialog|sheet|drawer)$',
   allowTypeImports: true,
   message: settingsKitMessage,
@@ -90,7 +91,6 @@ const settingsFiles = [
   'src/components/themes/**',
 ]
 
-// Files in the Settings folders that keep their own dialog or sheet, each for its reason.
 const settingsKitAllowlist = [
   // The API keys tab stays as it is.
   'src/components/settings/ApiKeysManager.tsx',
@@ -118,9 +118,7 @@ const rawTextFieldSelectors = [{
 
 const clientSettingMessage = 'Read and write a UI preference with useClientSetting (or readClientSetting outside React) from "@/lib/client-settings". It maps the key to the active Display profile. A direct localStorage call skips that, so every profile shares the value.'
 
-// Files that may touch localStorage or the raw client settings store, each for its reason.
 const clientSettingAllowlist = [
-  // The module itself.
   'src/lib/client-settings.ts',
   // The theme boot cache, which index.html reads before the bundle loads.
   'src/lib/theme-storage.ts',
@@ -313,6 +311,12 @@ export default tseslint.config([
     extends: [js.configs.recommended],
     languageOptions: {
       globals: globals.node,
+    },
+  },
+  {
+    plugins: { qui: { rules: { 'no-comments': noComments } } },
+    rules: {
+      'qui/no-comments': 'error',
     },
   },
 ])

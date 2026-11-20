@@ -38,7 +38,6 @@ func (b *Backend) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) 
 	return &root{r}, nil
 }
 
-// mkdirs creates each missing folder of dir with mode 775.
 func mkdirs(dir string) error {
 	dir = filepath.Clean(dir)
 	if _, err := os.Stat(dir); err == nil {

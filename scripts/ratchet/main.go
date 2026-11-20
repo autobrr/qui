@@ -1,19 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Command ratchet holds the linters in golangci.yml to a shrink-only
-// allowlist. allowlist.json maps each linter to the files that broke it when
-// it landed, with the number of problems in each. The command fails when:
-//
-//  1. a file has more problems than its entry allows, or a file without an
-//     entry has any;
-//  2. a file has fewer problems than its entry, so the entry must go down
-//     (delete it at 0);
-//  3. the allowlist grew against the base ref: a new entry or a higher count;
-//  4. a nolint comment hides gocognit. The fix for a complex function is to
-//     split it.
-//
-// Run it from the repo root: go run ./scripts/ratchet [-base origin/develop]
 package main
 
 import (
@@ -36,15 +23,25 @@ const (
 	allowlistPath = "scripts/ratchet/allowlist.json"
 )
 
-// counts maps a linter to a file to its number of problems.
 type counts map[string]map[string]int
 
 func main() {
 	base := flag.String("base", "origin/develop", "git ref whose allowlist this one may not exceed")
+	updateComments := flag.Bool("update-comments", false, "write the comment count of each Go file to the allowlist, then stop")
 	flag.Parse()
+
+	if *updateComments {
+		if err := writeCommentCounts(); err != nil {
+			fail(err)
+		}
+		return
+	}
 
 	got, err := lint()
 	if err != nil {
+		fail(err)
+	}
+	if got[commentsLinter], err = goComments(); err != nil {
 		fail(err)
 	}
 	raw, err := os.ReadFile(allowlistPath)
@@ -76,13 +73,14 @@ func main() {
 		fail(err)
 	}
 	problems = append(problems, hidden...)
+	grown, err := suppressionGrowth(*base)
+	if err != nil {
+		fail(err)
+	}
+	problems = append(problems, grown...)
 
 	for _, linter := range slices.Sorted(maps.Keys(got)) {
-		total := 0
-		for _, n := range got[linter] {
-			total += n
-		}
-		fmt.Printf("ratchet: %s has %d problems in %d files\n", linter, total, len(got[linter]))
+		fmt.Printf("ratchet: %s has %d problems in %d files\n", linter, sum(got[linter]), len(got[linter]))
 	}
 	if len(problems) > 0 {
 		for _, p := range problems {
@@ -145,7 +143,6 @@ func parse(raw []byte) (counts, error) {
 	return c, json.Unmarshal(raw, &c)
 }
 
-// compare returns one message per rule 1-3 break. A nil base skips rule 3.
 func compare(got, allow, base counts) []string {
 	var problems []string
 	for _, linter := range slices.Sorted(maps.Keys(merge(got, allow))) {
@@ -165,10 +162,21 @@ func compare(got, allow, base counts) []string {
 	if base == nil {
 		return problems
 	}
+	return append(problems, growth(allow, base)...)
+}
+
+func growth(allow, base counts) []string {
+	var problems []string
 	for _, linter := range slices.Sorted(maps.Keys(allow)) {
 		// A linter that the base does not list is a new rule, which starts
 		// with the count of each file.
 		if _, ok := base[linter]; !ok {
+			continue
+		}
+		if linter == commentsLinter || linter == suppressionsRule {
+			if now, was := sum(allow[linter]), sum(base[linter]); now > was {
+				problems = append(problems, fmt.Sprintf("%s: the total grew from %d to %d. The total only shrinks: a moved comment keeps it level, a new comment does not.", linter, was, now))
+			}
 			continue
 		}
 		for _, file := range slices.Sorted(maps.Keys(allow[linter])) {
@@ -180,7 +188,14 @@ func compare(got, allow, base counts) []string {
 	return problems
 }
 
-// merge returns the union of the keys of a and b, for iteration only.
+func sum(files map[string]int) int {
+	total := 0
+	for _, n := range files {
+		total += n
+	}
+	return total
+}
+
 func merge[V any](a, b map[string]V) map[string]V {
 	m := maps.Clone(a)
 	if m == nil {
@@ -190,7 +205,6 @@ func merge[V any](a, b map[string]V) map[string]V {
 	return m
 }
 
-// hiddenGocognit reports rule 4: a nolint comment that covers gocognit.
 func hiddenGocognit() ([]string, error) {
 	out, err := exec.CommandContext(context.Background(), "git", "grep", "-lz", "nolint",
 		"--", "*.go", ":!*_test.go").Output()

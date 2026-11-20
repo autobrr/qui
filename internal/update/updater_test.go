@@ -131,7 +131,6 @@ func (r fakeRelease) GetAssets() []selfupdate.SourceAsset {
 	return assets
 }
 
-// fakeSource serves signed releases from memory, so no test calls GitHub.
 type fakeSource struct {
 	releases  []fakeRelease
 	listErr   error
@@ -164,14 +163,11 @@ func (s *fakeSource) DownloadReleaseAsset(_ context.Context, _ *selfupdate.Relea
 	return nil, fmt.Errorf("asset %d not found", assetID)
 }
 
-// signedRelease builds a release whose archive holds a qui binary with the given
-// content, plus checksums.txt and its signature.
 func signedRelease(t *testing.T, key *ecdsa.PrivateKey, id int64, version string, binary []byte) fakeRelease {
 	t.Helper()
 	return signedArchiveRelease(t, key, id, version, map[string][]byte{"qui": binary})
 }
 
-// signedArchiveRelease builds a signed release whose archive holds these files.
 func signedArchiveRelease(t *testing.T, key *ecdsa.PrivateKey, id int64, version string, files map[string][]byte) fakeRelease {
 	t.Helper()
 
@@ -359,8 +355,6 @@ func TestInstallReportsReleaseWithoutAssetForThisPlatform(t *testing.T) {
 	requireUnchanged(t, f)
 }
 
-// withTray gives the fixture a qui-tray binary next to qui, and a v1.31.0
-// release whose archive holds both.
 func withTray(t *testing.T, f installFixture, archive map[string][]byte) string {
 	t.Helper()
 	tray := filepath.Join(f.dir, "qui-tray")

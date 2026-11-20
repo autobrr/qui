@@ -65,7 +65,6 @@ func withTestDB(t *testing.T, open testDBOpener, run func(context.Context, *test
 	run(ctx, t, db)
 }
 
-// seedInstance creates the instance row the cache rows point at.
 func seedInstance(ctx context.Context, t *testing.T, db *database.DB) {
 	t.Helper()
 
@@ -89,8 +88,6 @@ func markCachedAt(ctx context.Context, t *testing.T, db *database.DB) {
 	require.NoError(t, err)
 }
 
-// countAtSentinel reports how many rows still carry the sentinel, i.e. how many
-// rows the last upsert left untouched.
 func countAtSentinel(ctx context.Context, t *testing.T, db *database.DB) int {
 	t.Helper()
 	var n int
@@ -131,7 +128,6 @@ func testUpsertFilesSkipsUnchangedRows(t *testing.T, open testDBOpener) {
 	})
 }
 
-// Each guarded column must still let a real change through on its own.
 func testUpsertFilesWritesChangedRows(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
@@ -248,8 +244,6 @@ func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 	})
 }
 
-// A sync sweep touches many torrents at once; only the rows that actually moved
-// should be written, and only within the batch that contains them.
 func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
@@ -269,7 +263,6 @@ func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) 
 
 		markCachedAt(ctx, t, db)
 
-		// Move one file in each batch: first, one past the batch boundary, and last.
 		changed := make([]CachedFile, total)
 		copy(changed, files)
 		for _, i := range []int{0, fileBatchSize, total - 1} {
@@ -449,7 +442,6 @@ func testUpsertSyncInfoBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 	})
 }
 
-// runOverlapping runs call from several workers at once and returns the first error.
 func runOverlapping(ctx context.Context, workers, rounds int, call func(ctx context.Context, worker, round int) error) error {
 	g, gctx := errgroup.WithContext(ctx)
 	for w := range workers {

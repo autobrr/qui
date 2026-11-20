@@ -36,12 +36,10 @@ func TestCreate_SharedDestRollbackKeepsSiblingFiles(t *testing.T) {
 	plan1 := &TreePlan{RootDir: destRoot, Files: files}
 	plan2 := &TreePlan{RootDir: destRoot, Files: files}
 
-	// Attempt 1: creates the tree, torrent adds successfully.
 	if _, err := Create(plan1); err != nil {
 		t.Fatalf("attempt 1 Create: %v", err)
 	}
 
-	// Attempt 2: "creates" the tree (idempotent same-inode skips)...
 	created2, err := Create(plan2)
 	if err != nil {
 		t.Fatalf("attempt 2 Create: %v", err)
@@ -52,7 +50,6 @@ func TestCreate_SharedDestRollbackKeepsSiblingFiles(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	// Attempt 1's already-added torrent must still have its files.
 	for _, fp := range plan1.Files {
 		if _, err := os.Stat(fp.TargetPath); err != nil {
 			t.Errorf("attempt 1's file gone after sibling rollback: %v", err)

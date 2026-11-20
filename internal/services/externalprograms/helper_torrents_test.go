@@ -17,13 +17,10 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// fakeHelpers is the helper registry: the helper torrents of instance 1.
 type fakeHelpers map[string]bool
 
 func (f fakeHelpers) IsHelper(instanceID int, hash string) bool { return instanceID == 1 && f[hash] }
 
-// No External Program runs for a helper torrent. A torrent of the user with
-// the helper tag and no registry row runs it as before.
 func TestExternalProgramsSkipHelperTorrents(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("this fixture needs a POSIX shell; Windows uses the native recorder test")

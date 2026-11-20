@@ -58,7 +58,6 @@ func TestHubDropsWhenSubscriberBufferFull(t *testing.T) {
 	h := NewHub()
 	defer h.Close()
 
-	// Subscribe but never drain; the buffered channel fills and further events drop.
 	_, unsub := h.Subscribe()
 	defer unsub()
 
@@ -79,7 +78,6 @@ func TestHubUnsubscribeStopsDelivery(t *testing.T) {
 	ch, unsub := h.Subscribe()
 	unsub()
 
-	// Channel is closed on unsubscribe; a receive should observe the closed state.
 	select {
 	case _, ok := <-ch:
 		if ok {
@@ -89,7 +87,6 @@ func TestHubUnsubscribeStopsDelivery(t *testing.T) {
 		t.Fatal("expected closed channel receive to return immediately")
 	}
 
-	// Publishing after unsubscribe must not panic.
 	h.Publish(Event{Kind: KindTrackerIcons})
 }
 
@@ -99,7 +96,7 @@ func TestHubUnsubscribeIsIdempotent(_ *testing.T) {
 
 	_, unsub := h.Subscribe()
 	unsub()
-	unsub() // must not panic or double-close
+	unsub()
 }
 
 func TestHubCloseClosesSubscribersAndStopsPublishing(t *testing.T) {
@@ -117,7 +114,6 @@ func TestHubCloseClosesSubscribersAndStopsPublishing(t *testing.T) {
 		t.Fatal("expected closed channel receive to return immediately")
 	}
 
-	// Subscribe after close returns an already-closed channel.
 	ch2, unsub2 := h.Subscribe()
 	defer unsub2()
 	select {
@@ -129,6 +125,5 @@ func TestHubCloseClosesSubscribersAndStopsPublishing(t *testing.T) {
 		t.Fatal("expected closed channel receive to return immediately")
 	}
 
-	// Publish after close is a no-op and must not panic.
 	h.Publish(Event{Kind: KindBackupRun})
 }

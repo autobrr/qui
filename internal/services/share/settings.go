@@ -13,11 +13,8 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// ErrInvalidSettings is the error of Share settings that qui does not take.
 var ErrInvalidSettings = errors.New("invalid Share settings")
 
-// Options are the Share settings next to the Share tracker settings: the
-// limits, the outside tracker URL, and the defaults of a new Share.
 type Options struct {
 	MaxActive     int
 	PeersPerShare int
@@ -27,7 +24,6 @@ type Options struct {
 	Defaults   Defaults
 }
 
-// Defaults fill in the form of a new Share.
 type Defaults struct {
 	Days                int
 	EndAtFirstDownload  bool
@@ -38,7 +34,6 @@ func defaultOptions() Options {
 	return Options{MaxActive: 10, PeersPerShare: 20, Defaults: Defaults{Days: 7, EndAtFirstDownload: true, FirstDownloaderOnly: true}}
 }
 
-// maxDays bounds the days of a Share.
 const maxDays = 365
 
 func (o Options) validate() error {
@@ -59,7 +54,6 @@ func (o Options) validate() error {
 	return nil
 }
 
-// SettingsStore keeps the Share settings in the database.
 type SettingsStore struct {
 	db dbinterface.Querier
 }
@@ -68,7 +62,6 @@ func NewSettingsStore(db dbinterface.Querier) *SettingsStore {
 	return &SettingsStore{db: db}
 }
 
-// Settings returns the saved settings, or the defaults before the first save.
 func (s *SettingsStore) Settings(ctx context.Context) (Options, error) {
 	var o Options
 	err := s.db.QueryRowContext(ctx, `SELECT max_active, peers_per_share, tracker_url, default_days,
@@ -84,7 +77,6 @@ func (s *SettingsStore) Settings(ctx context.Context) (Options, error) {
 	return o, nil
 }
 
-// SaveSettings saves o, or returns ErrInvalidSettings.
 func (s *SettingsStore) SaveSettings(ctx context.Context, o Options) error {
 	if err := o.validate(); err != nil {
 		return err

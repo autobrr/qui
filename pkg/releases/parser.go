@@ -49,7 +49,6 @@ type Parser struct {
 	keyNormalizer *stringutils.Normalizer[string, string]
 }
 
-// NewParser returns a parser with the provided TTL for cached entries.
 func NewParser(ttl time.Duration) *Parser {
 	cache := ttlcache.New[string, *rls.Release](
 		ttlcache.SetDefaultTTL(ttl))
@@ -59,7 +58,6 @@ func NewParser(ttl time.Duration) *Parser {
 	}
 }
 
-// NewDefaultParser returns a parser using the default TTL.
 func NewDefaultParser() *Parser {
 	return NewParser(defaultParserTTL)
 }
@@ -241,8 +239,6 @@ func shouldScanRawHDR(release *rls.Release) bool {
 	return false
 }
 
-// NormalizeHDRTags deduplicates and canonicalizes a slice of HDR tag strings.
-// HDR10 is subsumed by HDR10+ when both are present. Returns nil for empty input.
 func NormalizeHDRTags(tags []string) []string {
 	seen := make(map[string]struct{}, len(tags))
 	hasHDR10Plus := false
@@ -372,8 +368,6 @@ func trailingTokenRegexes(token string) []*regexp.Regexp {
 
 var hdrTagSeparators = strings.NewReplacer(" ", "", ".", "", "_", "", "-", "")
 
-// CanonicalHDRTag maps an HDR tag string to its canonical form.
-// For example, "HDR10P", "HDR10PLUS", and "HDR10+" all map to "HDR10+".
 func CanonicalHDRTag(tag string) string {
 	upper := strings.ToUpper(strings.TrimSpace(tag))
 	if upper == "" {
@@ -398,7 +392,6 @@ func CanonicalHDRTag(tag string) string {
 	}
 }
 
-// Clear removes a cached entry.
 func (p *Parser) Clear(name string) {
 	if p == nil {
 		return
@@ -451,7 +444,6 @@ func (p *Parser) listingRelease(name string) *rls.Release {
 	return release
 }
 
-// titleWords splits name into its folded words, without punctuation.
 func titleWords(name string) []string {
 	return strings.FieldsFunc(stringutils.NormalizeForMatching(name), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)

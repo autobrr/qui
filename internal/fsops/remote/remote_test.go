@@ -32,8 +32,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// fakeCreds stands in for the instance store: the row Get answers with, plus
-// the decrypted key and pin, so the tests need no database.
 type fakeCreds struct {
 	key    string
 	pin    []byte
@@ -60,7 +58,6 @@ func newBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	return newBackendWithKey(t, hostKey, hostKey.PublicKey().Marshal())
 }
 
-// newBackendPinned is newBackend with a pin other than the server's key.
 func newBackendPinned(t *testing.T, pin []byte) (*Backend, *sshtest.Server) {
 	t.Helper()
 
@@ -88,7 +85,6 @@ func newBackendWithKey(t *testing.T, hostKey ssh.Signer, pin []byte) (*Backend, 
 	return New(pool, inst), server
 }
 
-// remotePath converts a local test path to the slash form the remote side uses.
 func remotePath(elem ...string) string {
 	return filepath.ToSlash(filepath.Join(elem...))
 }
@@ -304,7 +300,6 @@ func TestWalkDir_SkipsAndIgnores(t *testing.T) {
 	assert.NotContains(t, relPaths, path.Join(".trash-1000", "deleted.mkv"))
 	assert.NotContains(t, relPaths, "ignored.txt")
 
-	// An ignored root walks nothing, as it does locally.
 	ch, err = b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{IgnorePaths: []string{remotePath(dir)}})
 	require.NoError(t, err)
 	assert.Empty(t, slices.Collect(func(yield func(fsops.WalkEntry) bool) {
@@ -356,8 +351,6 @@ func TestWalkDir_FiltersOnTheirOwn(t *testing.T) {
 	}
 }
 
-// The root is exempt from the name filters over sftp as it is locally, so a
-// hidden or ignored-name root is still walked.
 func TestWalkDir_FilteredRootNamesAreWalked(t *testing.T) {
 	t.Parallel()
 
@@ -395,9 +388,6 @@ func writeCutTree(t *testing.T, dir string) {
 	writeFile(t, remotePath(dir, "m", "mid.txt"), "x")
 }
 
-// drainAfterCut reads the rest of the walk and returns its one Err entry,
-// failing if a second Err or any entry after the first arrives: a walk that
-// lost its connection must stop, not step over the directory and go on.
 func drainAfterCut(t *testing.T, ch <-chan fsops.WalkEntry) fsops.WalkEntry {
 	t.Helper()
 	var cut *fsops.WalkEntry
@@ -413,9 +403,6 @@ func drainAfterCut(t *testing.T, ch <-chan fsops.WalkEntry) fsops.WalkEntry {
 	return *cut
 }
 
-// A pool failure mid-walk ends the walk with one Err entry carrying
-// ErrConnectionLost, so a consumer that skips per-directory errors still sees
-// that the tree was cut short.
 func TestWalkDir_PoolFailureEndsTheWalkWithConnectionLost(t *testing.T) {
 	t.Parallel()
 
@@ -499,8 +486,6 @@ func TestStatAnsweredWithEOFIsNotALostConnection(t *testing.T) {
 	}
 }
 
-// readCalls runs every read method against p, for the tests that assert how
-// each one reports a failure.
 func readCalls(b *Backend, p string) map[string]func(context.Context) error {
 	return map[string]func(context.Context) error{
 		"stat":    func(ctx context.Context) error { _, err := b.Stat(ctx, p); return err },
@@ -538,8 +523,6 @@ func TestReadsReportAPoolErrorAsConnectionLost(t *testing.T) {
 	}
 }
 
-// An instance that left remote mode is refused by the pool, and every read
-// reports that as a lost connection rather than as an answer about the path.
 func TestReadsReportAnInstanceThatLeftRemoteModeAsConnectionLost(t *testing.T) {
 	t.Parallel()
 
@@ -623,8 +606,6 @@ func TestLostKeepsATransportCauseAsText(t *testing.T) {
 	assert.ErrorContains(t, err, cause.Error(), "the cause stays readable")
 }
 
-// A transport that drops while a request is in flight is a lost connection
-// from every read, not only from the walk.
 func TestReadsReportADroppedTransportAsConnectionLost(t *testing.T) {
 	t.Parallel()
 
@@ -646,8 +627,6 @@ func TestReadsReportADroppedTransportAsConnectionLost(t *testing.T) {
 	}
 }
 
-// A path the server refuses is an answer about that path, not a lost
-// connection.
 func TestReadsKeepAServerPermissionDenial(t *testing.T) {
 	t.Parallel()
 

@@ -20,17 +20,14 @@ import (
 )
 
 const (
-	// statusWindow is how far back qui asks brrbin for Report statuses.
 	statusWindow = 90 * 24 * time.Hour
 	// callTimeout bounds a status read or a Delete. The report dialog waits
 	// on the status read, so it is short.
 	callTimeout = 5 * time.Second
 )
 
-// ErrNotFound marks a report id that has no Sent reports row.
 var ErrNotFound = errors.New("no sent report has this id")
 
-// Issue is the GitHub issue or discussion that a report became.
 type Issue struct {
 	Number int `json:"number"`
 	// URL is empty when brrbin sent no https URL.
@@ -38,9 +35,6 @@ type Issue struct {
 	Closed bool   `json:"closed"`
 }
 
-// ListedReport is one row of Sent reports with its last known Report
-// status. Issue is set while the status is issue, and Reason can be set when
-// it is closed.
 type ListedReport struct {
 	ID              string    `json:"id"`
 	Title           string    `json:"title"`
@@ -105,7 +99,6 @@ func (s *Service) refreshStatuses(ctx context.Context, rows []models.SentProblem
 	return nil
 }
 
-// brrbinStatus is one answer of GET /api/install/reports.
 type brrbinStatus struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
@@ -113,8 +106,6 @@ type brrbinStatus struct {
 	Reason string `json:"reason"`
 }
 
-// apply sets the Report status of row to the answer, and reports whether
-// it changed. An answer that qui cannot show changes nothing.
 func (a brrbinStatus) apply(row *models.SentProblemReport) bool {
 	next := *row
 	next.Status = a.Status
@@ -179,7 +170,6 @@ func listedReport(row models.SentProblemReport) ListedReport {
 	return listed
 }
 
-// fetchStatuses asks brrbin for the Report statuses of ids, by id.
 func (s *Service) fetchStatuses(ctx context.Context, installKey string, ids []string) (map[string]brrbinStatus, error) {
 	escaped := make([]string, len(ids))
 	for i, id := range ids {
@@ -228,7 +218,6 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		log.Warn().Err(err).Str("reportID", id).Msg("brrbin did not answer a Problem report delete")
 		return &RefusalError{Status: http.StatusBadGateway, Reason: ReasonUnavailable}
 	case status == http.StatusNotFound:
-		// brrbin no longer has the report.
 	case status < 200 || status > 299:
 		log.Warn().Int("status", status).Str("reportID", id).Msg("brrbin refused a Problem report delete")
 		return &RefusalError{Status: http.StatusBadGateway, Reason: ReasonUnavailable}
@@ -240,8 +229,6 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// callBrrbin sends a request with the Install key to brrbin, and returns the
-// status and the body of the answer.
 func (s *Service) callBrrbin(ctx context.Context, installKey, method, path string) (int, []byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()

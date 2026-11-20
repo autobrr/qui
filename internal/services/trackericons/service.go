@@ -50,25 +50,20 @@ import (
 const (
 	iconDirName            = "tracker-icons"
 	failuresFileName       = "fetch-failures.json"
-	maxHTMLBytes     int64 = 2 << 20 // 2 MiB
-	maxIconBytes     int64 = 1 << 20 // 1 MiB
+	maxHTMLBytes     int64 = 2 << 20
+	maxIconBytes     int64 = 1 << 20
 
 	fetchTimeout   = 15 * time.Second
 	requestTimeout = 5 * time.Second
 
-	// Consecutive failures double the wait between attempts, starting at
-	// baseFailureCooldown and capped at maxFailureCooldown.
 	baseFailureCooldown = 30 * time.Minute
 	maxFailureCooldown  = 24 * time.Hour
 )
 
 var (
-	// ErrIconNotFound is returned when no icon could be fetched for a tracker.
-	ErrIconNotFound = errors.New("tracker icon not found")
-	// ErrInvalidTrackerHost is returned when the requested tracker host is invalid.
+	ErrIconNotFound       = errors.New("tracker icon not found")
 	ErrInvalidTrackerHost = errors.New("invalid tracker host")
-	// ErrFetchingDisabled is returned when tracker icon fetching is disabled by configuration.
-	ErrFetchingDisabled = errors.New("tracker icon fetching is disabled")
+	ErrFetchingDisabled   = errors.New("tracker icon fetching is disabled")
 
 	globalService *Service
 	globalMu      sync.RWMutex
@@ -79,7 +74,6 @@ func init() {
 	fetchEnabled.Store(true)
 }
 
-// Service handles fetching and caching tracker icons on disk.
 type Service struct {
 	iconDir string
 	client  *http.Client
@@ -100,24 +94,6 @@ type failureState struct {
 	LastFailure time.Time `json:"lastFailure"`
 }
 
-// Flow overview:
-//   * tracker syncs call QueueFetch when they encounter a host; the helper skips
-//     work if a PNG already exists on disk or the host is still in cooldown.
-//   * GetIcon handles the actual fetch pipeline with singleflight so only one
-//     goroutine ever attempts a download for a given host at a time.
-//   * fetchAndStoreIcon probes a bounded set of candidate URLs, deduplicates
-//     them, attempts each icon once, and stops after the first success. Images
-//     are decoded (falling back to ICO when needed), resized, and written
-//     atomically.
-//   * ListIcons simply streams whatever PNGs already live on disk; the frontend
-//     polls that endpoint but never triggers new fetch attempts.
-//   * Example: encountering "cdn.trackers.example.org" produces host
-//     candidates `["cdn.trackers.example.org", "trackers.example.org",
-//     "example.org"]`. For each we probe `https://…/` and `http://…/`, scrape
-//     any `<link rel="icon">` references, append `/favicon.ico`, and stop at
-//     the first icon that decodes successfully.
-
-// NewService creates a new tracker icon service rooted in the provided data directory.
 func NewService(dataDir, userAgent string) (*Service, error) {
 	if strings.TrimSpace(dataDir) == "" {
 		return nil, errors.New("data directory must be provided")
@@ -165,17 +141,6 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// newPublicOnlyTransport returns a transport that connects only to public
-// addresses. The torrent author chooses the tracker host, and the tracker page
-// chooses the icon URLs and redirects, so without this check a torrent could
-// make qui send requests into the local network.
-//
-// A request that goes through HTTP_PROXY or HTTPS_PROXY uses a transport that
-// dials only the proxy, which the operator configured and which is often on
-// the local network. The proxy connects to the target, so qui first resolves
-// the target host and refuses a private address. A DNS server that gives qui
-// and the proxy different answers can still get past this check. Every other
-// request uses the checked dialer, also when it targets the proxy address.
 func newPublicOnlyTransport() http.RoundTripper {
 	proxyFunc := httpproxy.FromEnvironment().ProxyFunc()
 
@@ -201,8 +166,6 @@ func newPublicOnlyTransport() http.RoundTripper {
 	})
 }
 
-// checkPublicHost resolves host and refuses it if any of its addresses is not
-// public. A host that does not resolve is refused too.
 func checkPublicHost(ctx context.Context, host string) error {
 	// net/http sends the ASCII form of a Unicode host name, and the Go resolver
 	// refuses a Unicode name. Like net/http, keep the host as it is when the
@@ -228,7 +191,6 @@ func checkPublicHost(ctx context.Context, host string) error {
 	return nil
 }
 
-// safeDial is the dialer Control function for direct requests.
 func safeDial(network, address string, c syscall.RawConn) error {
 	if err := publicOnly.Safe(network, address, c); err != nil {
 		return err
@@ -247,8 +209,6 @@ func checkNAT64(ip netip.Addr) error {
 	return publicOnly.SafeAddr(netip.AddrFrom4([4]byte(b[12:])))
 }
 
-// SetActivityPublisher wires the qui server-event hub so newly cached tracker
-// icons are pushed to connected clients instead of polled. Safe to call once at startup.
 func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 	if s == nil || publisher == nil {
 		return
@@ -284,18 +244,15 @@ func QueueFetch(host, trackerURL string) {
 		return
 	}
 
-	// Check if already cached
 	path := svc.iconPath(sanitized)
 	if _, err := os.Stat(path); err == nil {
 		return
 	}
 
-	// Check cooldown
 	if !svc.canAttempt(sanitized) {
 		return
 	}
 
-	// Queue background fetch
 	go func(h string, tracker string) {
 		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		defer cancel()
@@ -304,7 +261,6 @@ func QueueFetch(host, trackerURL string) {
 	}(sanitized, trackerURL)
 }
 
-// ListIcons returns all cached tracker icons as base64-encoded data URLs.
 func (s *Service) ListIcons(ctx context.Context) (map[string]string, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -331,7 +287,6 @@ func (s *Service) ListIcons(ctx context.Context) (map[string]string, error) {
 			continue
 		}
 
-		// Extract tracker host from filename (strip extension, normalise casing).
 		host := sanitizeHost(strings.TrimSuffix(name, ext))
 		if host == "" {
 			continue
@@ -363,7 +318,6 @@ func (s *Service) ListIcons(ctx context.Context) (map[string]string, error) {
 	return icons, nil
 }
 
-// GetIcon ensures an icon is available for the host (fetching if necessary) and returns the file path.
 func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string, error) {
 	sanitized := sanitizeHost(host)
 	if sanitized == "" {
@@ -425,13 +379,11 @@ func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string,
 	}
 }
 
-// iconPath returns the on-disk path for the tracker icon.
 func (s *Service) iconPath(host string) string {
 	filename := safeFilename(host) + ".png"
 	return filepath.Join(s.iconDir, filename)
 }
 
-// fetchAndStoreIcon attempts to download, normalise, and cache the icon for the given host.
 func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string) error {
 	ctx, cancel := ensureContext(ctx)
 	defer cancel()
@@ -476,8 +428,6 @@ func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string
 				}
 			}
 
-			// Common fallbacks for sites that don't advertise <link rel="icon"> or
-			// don't serve /favicon.ico.
 			for _, fallbackPath := range []string{"/favicon.ico", "/favicon.png", "/apple-touch-icon.png"} {
 				fallback := baseURL.ResolveReference(&url.URL{Path: fallbackPath}).String()
 				if _, ok := attempted[fallback]; ok {
@@ -514,8 +464,6 @@ func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string
 				return err
 			}
 
-			// Signal connected clients that a new tracker icon was cached so they
-			// refetch the icon set instead of polling. Global event, no ids.
 			if s.activityPublisher != nil {
 				s.activityPublisher.Publish(activity.Event{Kind: activity.KindTrackerIcons})
 			}
@@ -629,7 +577,6 @@ func (s *Service) fetchIconBytes(ctx context.Context, iconURL string) ([]byte, s
 }
 
 func (s *Service) writePNG(img image.Image, path string) error {
-	// Encode in memory first - fails fast without any disk I/O
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		return fmt.Errorf("encode png: %w", err)
@@ -637,8 +584,6 @@ func (s *Service) writePNG(img image.Image, path string) error {
 	return s.writeFileAtomic(path, buf.Bytes())
 }
 
-// writeFileAtomic writes data to a temp file in the icon directory and renames
-// it over path, so readers never see a partial file.
 func (s *Service) writeFileAtomic(path string, data []byte) error {
 	tmpFile, err := os.CreateTemp(s.iconDir, "tracker-icon-*.tmp")
 	if err != nil {
@@ -732,7 +677,6 @@ func isHostNotFound(err error) bool {
 	return ok && dnsErr.IsNotFound
 }
 
-// failureCooldown returns how long a host waits after its n-th consecutive failure.
 func failureCooldown(attempts int) time.Duration {
 	d := baseFailureCooldown
 	for range max(attempts-1, 0) {
@@ -803,7 +747,6 @@ func (s *Service) loadFailures() error {
 	return nil
 }
 
-// saveFailuresLocked writes the failure map to disk. Caller holds failureMu.
 func (s *Service) saveFailuresLocked() {
 	data, err := json.Marshal(s.failures)
 	if err == nil {
@@ -842,7 +785,6 @@ func sanitizeHost(host string) string {
 	return hostname
 }
 
-// safeFilename normalises a host into a filesystem-friendly base name.
 func safeFilename(host string) string {
 	sanitized := sanitizeHost(host)
 	if sanitized == "" {
@@ -895,7 +837,6 @@ func generateHostCandidates(host string) []string {
 
 	addWithWWW := func(candidate string) {
 		add(candidate)
-		// Also try the www alias for base domains (e.g. example.org -> www.example.org).
 		if !strings.HasPrefix(candidate, "www.") && strings.Count(candidate, ".") == 1 {
 			add("www." + candidate)
 		}
@@ -1008,7 +949,6 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 		return nil, err
 	}
 
-	// Reset reader for full decode
 	if _, err := reader.Seek(0, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("failed to reset reader: %w", err)
 	}

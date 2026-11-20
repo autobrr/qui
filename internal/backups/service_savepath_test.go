@@ -134,7 +134,6 @@ func TestBackupItemSavePathRoundTrip(t *testing.T) {
 	require.NotNil(t, got.SavePath)
 	require.Equal(t, savePath, *got.SavePath)
 
-	// LoadManifest must rehydrate the path so it reaches the restore planner.
 	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
 	manifest, err := svc.LoadManifest(ctx, run.ID)
 	require.NoError(t, err)

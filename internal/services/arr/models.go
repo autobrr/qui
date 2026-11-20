@@ -10,13 +10,11 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// SystemStatusResponse represents the response from /api/v3/system/status (both Sonarr and Radarr)
 type SystemStatusResponse struct {
 	AppName string `json:"appName"`
 	Version string `json:"version"`
 }
 
-// SonarrParseResponse represents the response from Sonarr's /api/v3/parse endpoint
 type SonarrParseResponse struct {
 	Title             string                   `json:"title"`
 	ParsedEpisodeInfo *SonarrParsedEpisodeInfo `json:"parsedEpisodeInfo"`
@@ -24,7 +22,6 @@ type SonarrParseResponse struct {
 	Episodes          []SonarrEpisodeResource  `json:"episodes"`
 }
 
-// SonarrParsedEpisodeInfo contains parsed episode information from Sonarr
 type SonarrParsedEpisodeInfo struct {
 	SeriesTitle       string `json:"seriesTitle"`
 	SeasonNumber      int    `json:"seasonNumber"`
@@ -37,7 +34,6 @@ type SonarrParsedEpisodeInfo struct {
 	IsPossibleSpecial bool   `json:"isPossibleSpecialEpisode"`
 }
 
-// SonarrSeries represents a series in Sonarr (contains external IDs)
 type SonarrSeries struct {
 	ID              int              `json:"id"`
 	Title           string           `json:"title"`
@@ -59,7 +55,6 @@ type SonarrEpisodeResource struct {
 	AbsoluteEpisodeNumber *int `json:"absoluteEpisodeNumber"`
 }
 
-// RadarrParseResponse represents the response from Radarr's /api/v3/parse endpoint
 type RadarrParseResponse struct {
 	Title           string                 `json:"title"`
 	ParsedMovieInfo *RadarrParsedMovieInfo `json:"parsedMovieInfo"`
@@ -78,7 +73,6 @@ type RadarrParsedMovieInfo struct {
 	ReleaseHash  string `json:"releaseHash"`
 }
 
-// RadarrMovie represents a movie in Radarr (contains external IDs)
 type RadarrMovie struct {
 	ID              int              `json:"id"`
 	Title           string           `json:"title"`
@@ -116,16 +110,12 @@ func (a AlternateTitle) matchesSeason(season int) bool {
 	return a.SeasonNumber != nil && *a.SeasonNumber == season
 }
 
-// ExternalIDsLookupResult contains ARR IDs plus ARR-provided titles for the same
-// content, and the episode map when Sonarr named exactly one absolute-numbered episode.
 type ExternalIDsLookupResult struct {
 	IDs        *models.ExternalIDs
 	Titles     []string
 	EpisodeMap *models.EpisodeMap
 }
 
-// ExtractLookupResult extracts external IDs, title aliases, and the episode map
-// from a Sonarr parse response.
 func (r *SonarrParseResponse) ExtractLookupResult() *ExternalIDsLookupResult {
 	if r == nil {
 		return nil
@@ -137,8 +127,6 @@ func (r *SonarrParseResponse) ExtractLookupResult() *ExternalIDsLookupResult {
 	return result
 }
 
-// episodeMap returns the map only when Sonarr named exactly one episode and it
-// carries an absolute number. Multi-episode and pack releases have no single map.
 func (r *SonarrParseResponse) episodeMap() *models.EpisodeMap {
 	if len(r.Episodes) != 1 || r.Episodes[0].AbsoluteEpisodeNumber == nil {
 		return nil
@@ -157,7 +145,6 @@ func externalIDsFromSonarrSeries(series *SonarrSeries) *models.ExternalIDs {
 	}
 	ids := &models.ExternalIDs{}
 
-	// Extract IDs, treating 0 as "not present"
 	if series.TVDbID > 0 {
 		ids.TVDbID = series.TVDbID
 	}
@@ -195,7 +182,6 @@ func lookupResultFromSonarrSeries(series *SonarrSeries) *ExternalIDsLookupResult
 	}
 }
 
-// ExtractLookupResult extracts external IDs and title aliases from a Radarr parse response.
 func (r *RadarrParseResponse) ExtractLookupResult() *ExternalIDsLookupResult {
 	if r == nil {
 		return nil
@@ -206,7 +192,6 @@ func (r *RadarrParseResponse) ExtractLookupResult() *ExternalIDsLookupResult {
 		ids = &models.ExternalIDs{}
 	}
 
-	// If movie is nil or missing IDs, try parsedMovieInfo (can have IDs from release name)
 	if r.ParsedMovieInfo != nil {
 		if ids.TMDbID == 0 && r.ParsedMovieInfo.TMDbID > 0 {
 			ids.TMDbID = r.ParsedMovieInfo.TMDbID
@@ -387,7 +372,7 @@ func selectRadarrLookupMatch(term string, year int, movies []RadarrMovie) *Radar
 		return inLibrary[0]
 	}
 	if len(inLibrary) > 1 {
-		return nil // two same-title library entries and no year to pick between them
+		return nil
 	}
 	if len(matches) == 1 || (len(matches) > 1 && year > 0) {
 		return matches[0]
@@ -395,7 +380,6 @@ func selectRadarrLookupMatch(term string, year int, movies []RadarrMovie) *Radar
 	return nil
 }
 
-// selectSonarrLookupMatch is selectRadarrLookupMatch for series, matching on title only.
 func selectSonarrLookupMatch(term string, year int, series []SonarrSeries) *SonarrSeries {
 	normalized := normalizeTitleWords(term)
 	if normalized == "" {
@@ -431,7 +415,7 @@ func selectSonarrLookupMatch(term string, year int, series []SonarrSeries) *Sona
 		return inLibrary[0]
 	}
 	if len(inLibrary) > 1 {
-		return nil // two same-title library entries and no year to pick between them
+		return nil
 	}
 	if len(matches) == 1 || (len(matches) > 1 && year > 0) {
 		return matches[0]
@@ -439,8 +423,6 @@ func selectSonarrLookupMatch(term string, year int, series []SonarrSeries) *Sona
 	return nil
 }
 
-// normalizeTitleWords lowercases and reduces a title (or release name) to space-separated
-// alphanumeric words, so "Oshi.no.Ko.2nd.Season.S01..." prefix-matches "Oshi no Ko 2nd Season".
 func normalizeTitleWords(s string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(s) {

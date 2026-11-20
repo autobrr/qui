@@ -14,7 +14,6 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// Argon2 parameters - these are secure defaults
 type Argon2Params struct {
 	Memory      uint32
 	Iterations  uint32
@@ -23,7 +22,6 @@ type Argon2Params struct {
 	KeyLength   uint32
 }
 
-// DefaultArgon2Params returns secure default parameters for Argon2id
 func DefaultArgon2Params() *Argon2Params {
 	return &Argon2Params{
 		Memory:      64 * 1024, // 64 MB
@@ -34,42 +32,33 @@ func DefaultArgon2Params() *Argon2Params {
 	}
 }
 
-// HashPassword generates an Argon2id hash of the password
 func HashPassword(password string) (string, error) {
 	params := DefaultArgon2Params()
 
-	// Generate a salt
 	salt := make([]byte, params.SaltLength)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("failed to generate salt: %w", err)
 	}
 
-	// Generate the hash
 	hash := argon2.IDKey([]byte(password), salt, params.Iterations, params.Memory, params.Parallelism, params.KeyLength)
 
-	// Encode the hash and parameters for storage
 	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
 
-	// Format: $argon2id$v=19$m=65536,t=3,p=2$salt$hash
 	encoded := fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, params.Memory, params.Iterations, params.Parallelism, b64Salt, b64Hash)
 
 	return encoded, nil
 }
 
-// VerifyPassword verifies a password against an Argon2id hash
 func VerifyPassword(password, encodedHash string) (bool, error) {
-	// Extract parameters, salt, and hash from the encoded string
 	params, salt, hash, err := decodeHash(encodedHash)
 	if err != nil {
 		return false, err
 	}
 
-	// Generate hash of the password with the same parameters
 	otherHash := argon2.IDKey([]byte(password), salt, params.Iterations, params.Memory, params.Parallelism, params.KeyLength)
 
-	// Constant time comparison to prevent timing attacks
 	if subtle.ConstantTimeCompare(hash, otherHash) == 1 {
 		return true, nil
 	}
@@ -77,7 +66,6 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 	return false, nil
 }
 
-// decodeHash extracts parameters, salt, and hash from an encoded hash string
 func decodeHash(encodedHash string) (*Argon2Params, []byte, []byte, error) {
 	parts := strings.Split(encodedHash, "$")
 	if len(parts) != 6 {

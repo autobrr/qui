@@ -22,7 +22,6 @@ type Inputs struct {
 	BinaryPath string
 }
 
-// Availability reports which of Self-update and Restart qui offers.
 type Availability struct {
 	SelfUpdate                  bool
 	SelfUpdateUnavailableReason string
@@ -48,7 +47,6 @@ func Decide(in Inputs) Availability {
 	}
 }
 
-// Measure reads the Availability inputs from the host and logs each one at DEBUG level.
 func Measure(log zerolog.Logger, disableSelfUpdate bool, version string) Inputs {
 	in := Inputs{
 		AppContainer: appContainer(func(path string) bool {

@@ -134,7 +134,6 @@ func TestRefreshAllLicenses_RestoresLicenseRightAfterItWentOffline(t *testing.T)
 	assert.Equal(t, models.LicenseStatusActive, stored.Status)
 }
 
-// storeLicense stores a Dodo license with the given status that the server last confirmed at lastValidated.
 func storeLicense(t *testing.T, repo *database.LicenseRepo, status string, lastValidated time.Time) *models.ProductLicense {
 	t.Helper()
 
@@ -155,7 +154,6 @@ func storeLicense(t *testing.T, repo *database.LicenseRepo, status string, lastV
 	return license
 }
 
-// newFakeDodoClient returns a client whose server answers valid while serverUp returns true, and times out otherwise.
 func newFakeDodoClient(serverUp func() bool) *dodo.Client {
 	return dodo.NewClient(
 		dodo.WithBaseURL("http://dodo.test"),
@@ -214,7 +212,6 @@ func TestValidateLicenses_InvalidThenTransientStillReturnsInvalid(t *testing.T) 
 		dodo.WithBaseURL("http://dodo.test"),
 		dodo.WithHTTPClient(&http.Client{
 			Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
-				// First call (bad license) returns invalid, second returns timeout
 				if strings.Contains(req.URL.Path, "validate") && strings.Contains(string(mustRead(req.Body)), "QUI-BAD") {
 					body := `{"valid":false}`
 					return &http.Response{

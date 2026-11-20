@@ -104,3 +104,26 @@ func TestHidesGocognit(t *testing.T) {
 		assert.Equal(t, tt.want, hidesGocognit(tt.comment), tt.comment)
 	}
 }
+
+func TestSuppressionGrowth(t *testing.T) {
+	parse := func(raw string) counts {
+		got, err := parseSuppressions([]byte(raw))
+		require.NoError(t, err)
+		return counts{suppressionsRule: got}
+	}
+	was := parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}, "no-undef": {"count": 9}}}`)
+	assert.Empty(t, growth(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 1}, "no-undef": {"count": 20}}}`), was))
+	assert.Empty(t, growth(parse(`{"src/b.tsx": {"qui/no-comments": {"count": 1}}, "src/c.tsx": {"qui/no-comments": {"count": 1}}}`), was), "a move keeps the total level")
+	assert.Equal(t, []string{
+		"qui/no-comments: the total grew from 2 to 3. The total only shrinks: a moved comment keeps it level, a new comment does not.",
+	}, growth(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}}, "src/b.tsx": {"qui/no-comments": {"count": 1}}}`), was))
+}
+
+func TestGrowthOfGoComments(t *testing.T) {
+	base := counts{commentsLinter: {"a.go": 3, "b.go": 1}, "gocognit": {"a.go": 1}}
+	assert.Empty(t, growth(counts{commentsLinter: {"c.go": 4}, "gocognit": {"a.go": 1}}, base))
+	assert.Equal(t, []string{
+		"comments: the total grew from 4 to 5. The total only shrinks: a moved comment keeps it level, a new comment does not.",
+		"b.go: the gocognit entry grew from 0 to 1. The allowlist only shrinks.",
+	}, growth(counts{commentsLinter: {"a.go": 5}, "gocognit": {"b.go": 1}}, base))
+}

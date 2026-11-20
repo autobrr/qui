@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// RSS Types
-
 export interface RSSArticle {
   id: string
   date: string
@@ -26,12 +24,10 @@ export interface RSSFeed {
   articles?: RSSArticle[]
 }
 
-// Hierarchical structure returned by qBittorrent
 export interface RSSItems {
   [key: string]: RSSFeed | RSSItems
 }
 
-// Helper type to distinguish feeds from folders
 export function isRSSFeed(item: RSSFeed | RSSItems): item is RSSFeed {
   return "url" in item && typeof item.url === "string"
 }
@@ -81,7 +77,6 @@ export type RSSRules = Record<string, RSSAutoDownloadRule>
 
 export type RSSMatchingArticles = Record<string, string[]>
 
-// Request types for RSS API
 export interface AddRSSFolderRequest {
   path: string
 }

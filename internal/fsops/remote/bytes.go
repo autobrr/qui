@@ -43,8 +43,6 @@ func (b *Backend) open(ctx context.Context, p string, flag int, offset int64) (*
 	return &file{f: f, client: client, path: p}, nil
 }
 
-// file is an open sftp file whose errors name its path, like those of every
-// other method of the backend.
 type file struct {
 	f      *sftp.File
 	client *sftp.Client

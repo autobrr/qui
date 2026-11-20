@@ -1,50 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package database provides a SQLite database layer with string interning.
-//
-// WRITE CONCURRENCY MODEL:
-//
-// Single writer connection with read-only reader pool architecture:
-//   - writerConn: Single connection (SetMaxOpenConns=1) for all write operations
-//   - readerPool: Read-only connection pool for concurrent reads
-//   - ExecContext: Routes writes to writerConn, reads to readerPool
-//   - QueryContext: Routes writes to writerConn, reads to readerPool
-//   - QueryRowContext: Routes writes to writerConn, reads to readerPool
-//   - BeginTx (write): Uses writerConn, fully serialized by the writerSem lock
-//   - BeginTx (read-only): Uses readerPool (concurrent)
-//   - WAL mode allows concurrent readers during writes
-//
-// The single writer connection + writerSem lock eliminates both SQLITE_BUSY errors
-// and "cannot start a transaction within a transaction" errors by fully serializing
-// all write transactions. Only one write transaction can be active at a time.
-//
-// STRING POOL SYSTEM:
-//
-// String interning uses the database string_pool table as the source of truth.
-// String operations are handled through dbinterface package functions that work
-// within transactions, looking up existing IDs first and inserting only missing
-// values (insert-first ON CONFLICT burns Postgres sequence values; see
-// dbinterface.InternStrings).
-//
-// CLEANUP CONCURRENCY PROTECTION:
-//
-// Periodic cleanup removes unused strings from string_pool:
-//   - Runs automatically every 24 hours
-//   - atomic.Bool prevents overlapping cleanup operations
-//   - Uses write transaction for atomicity
-//
-// FAILURE MODES & RECOVERY:
-//
-// 1. Cleanup fails:
-//   - Strings remain in database (orphaned but harmless)
-//   - Next cleanup (24hrs) will retry
-//   - Disk space gradually increases until next successful cleanup
-//
-// MONITORING:
-//
-// Use GetStringPoolMetrics() to monitor:
-//   - cleanupDeleted = total strings removed (growing = healthy cleanup)
 package database
 
 import (
@@ -82,13 +38,12 @@ func SQLiteMigrations() fs.FS {
 	return migrationsFS
 }
 
-// reader/writer fields on DB
 type DB struct {
-	writerConn  *sql.DB                            // Single connection for all writes (SetMaxOpenConns=1)
-	readerPool  *sql.DB                            // Read-only connection pool for concurrent reads
-	writerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
-	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
-	stmtMu      sync.RWMutex                       // Protects stmt caches during Close and cache ops
+	writerConn  *sql.DB
+	readerPool  *sql.DB
+	writerStmts *ttlcache.Cache[string, *sql.Stmt]
+	readerStmts *ttlcache.Cache[string, *sql.Stmt]
+	stmtMu      sync.RWMutex
 	dialect     Dialect
 	sqlitePath  string // empty on Postgres
 
@@ -99,13 +54,10 @@ type DB struct {
 	// so a waiter can give up when its context ends. Nil when writes are not serialized.
 	writerSem chan struct{}
 
-	// Metrics for string pool cache performance
-	cleanupDeleted atomic.Uint64 // Total strings deleted by cleanup
+	cleanupDeleted atomic.Uint64
 
-	// Cleanup coordination
-	cleanupRunning atomic.Bool // Prevents concurrent cleanup operations
+	cleanupRunning atomic.Bool
 
-	// Cleanup cancellation
 	cleanupCancel context.CancelFunc
 
 	closing atomic.Bool
@@ -268,23 +220,19 @@ var postgresMigrationFilenameRenames = []migrationFilenameRename{
 	},
 }
 
-// Tx wraps sql.Tx to provide prepared statement caching for transaction queries
 type Tx struct {
 	tx         *sql.Tx
 	db         *DB
-	ctx        context.Context // context from BeginTx, used for commit/rollback
-	isWriteTx  bool            // true if this is a write transaction that needs serialized commit
-	unlockFn   func()          // function to release writerSem when transaction completes (write tx only)
-	unlockOnce sync.Once       // ensures unlock happens only once
+	ctx        context.Context
+	isWriteTx  bool
+	unlockFn   func()
+	unlockOnce sync.Once
 
-	// Track statements prepared during this transaction for promotion to DB cache after commit
-	txStmts    map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
-	tempTables map[string]struct{} // temp table names created/used in this transaction
-	txMu       sync.Mutex          // protects transaction-local cache metadata
+	txStmts    map[string]struct{}
+	tempTables map[string]struct{}
+	txMu       sync.Mutex
 }
 
-// markQueryForCaching records a successfully executed query for post-commit
-// statement promotion and tracks temp-table lifecycle within the transaction.
 func (t *Tx) markQueryForCaching(query string) {
 	t.txMu.Lock()
 	defer t.txMu.Unlock()
@@ -368,23 +316,14 @@ func (txQueryRows) getErr(r *sql.Rows) error {
 }
 func (q txQueryRows) getTx() *Tx { return q.tx }
 
-// ExecContext executes a query within the transaction.
-// Uses connection-specific statement cache when available. If statement is not cached,
-// prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return execWithRetry(ctx, t.db, query, args, txExecResult{tx: t})
 }
 
-// QueryContext executes a query within the transaction.
-// Uses connection-specific statement cache when available. If statement is not cached,
-// prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return execWithRetry(ctx, t.db, query, args, txQueryRows{tx: t})
 }
 
-// QueryRowContext executes a query within the transaction.
-// Uses connection-specific statement cache when available. If statement is not cached,
-// prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := t.db.getStmt(ctx, query, t)
 	if err != nil {
@@ -420,9 +359,7 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 func (t *Tx) Commit() error {
 	err := t.tx.Commit()
 	if err == nil {
-		// Commit succeeded - promote statements to cache
 		t.promoteStatementsToCache()
-		// Release the write lock only on successful commit (for write transactions)
 		if t.unlockFn != nil {
 			t.unlockOnce.Do(t.unlockFn)
 		}
@@ -436,19 +373,16 @@ func (t *Tx) Commit() error {
 // Does NOT promote statements to cache since the transaction failed.
 func (t *Tx) Rollback() error {
 	err := t.tx.Rollback()
-	// Always release the write lock - transaction is done regardless of rollback result
 	if t.unlockFn != nil {
 		t.unlockOnce.Do(t.unlockFn)
 	}
 	return err
 }
 
-// promoteStatementsToCache prepares and caches statements that were used during the transaction
-// but weren't already in the cache. This is called after successful commit.
 func (t *Tx) promoteStatementsToCache() {
 	t.txMu.Lock()
 	queries := t.txStmts
-	t.txStmts = nil // Clear the map
+	t.txStmts = nil
 	t.txMu.Unlock()
 
 	if len(queries) == 0 {
@@ -462,14 +396,12 @@ func (t *Tx) promoteStatementsToCache() {
 
 	for query := range queries {
 		boundQuery := t.db.bindQuery(query)
-		// Skip promotion during shutdown
 		if t.db.closing.Load() {
 			return
 		}
 
 		t.db.stmtMu.RLock()
 
-		// Determine which cache and connection to use based on transaction type
 		var stmts *ttlcache.Cache[string, *sql.Stmt]
 		var conn *sql.DB
 		if t.isWriteTx {
@@ -558,8 +490,8 @@ var connectionPragmas = []pragmaDirective{
 	{stmt: "PRAGMA journal_mode = WAL", allowReadOnly: false},
 	{stmt: "PRAGMA synchronous = NORMAL", allowReadOnly: false}, // NORMAL is safe with WAL and much faster than FULL
 	{stmt: "PRAGMA mmap_size = 268435456", allowReadOnly: true}, // 256MB memory-mapped I/O for better performance
-	{stmt: "PRAGMA page_size = 4096", allowReadOnly: false},     // Optimal page size for modern systems
-	{stmt: "PRAGMA cache_size = -2000", allowReadOnly: true},    // 2MB per connection; the OS page cache already holds the file
+	{stmt: "PRAGMA page_size = 4096", allowReadOnly: false},
+	{stmt: "PRAGMA cache_size = -2000", allowReadOnly: true}, // 2MB per connection; the OS page cache already holds the file
 	{stmt: "PRAGMA foreign_keys = ON", allowReadOnly: true},
 	{stmt: fmt.Sprintf("PRAGMA busy_timeout = %d", defaultBusyTimeoutMillis), allowReadOnly: true},
 	{stmt: "PRAGMA analysis_limit = 400", allowReadOnly: true},
@@ -629,9 +561,6 @@ func openSQLiteReader(databasePath string) (*sql.DB, error) {
 	return readerPool, nil
 }
 
-// New opens the SQLite database at databasePath, creating the parent directory
-// and applying any pending migrations. The returned DB routes writes through a
-// single serialized connection and reads through a read-only pool.
 func New(databasePath string) (*DB, error) {
 	log.Info().Msgf("Initializing database at: %s", databasePath)
 
@@ -648,13 +577,11 @@ func New(databasePath string) (*DB, error) {
 		return nil, err
 	}
 
-	// Open writer connection (single connection for all writes)
 	writerConn, err := sql.Open("sqlite", databasePath+"?"+sqliteTimeParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open writer connection at %s: %w", databasePath, err)
 	}
 
-	// CRITICAL: Use only 1 connection for writer to serialize all writes
 	writerConn.SetMaxOpenConns(1)
 	writerConn.SetMaxIdleConns(1)
 	writerConn.SetConnMaxLifetime(0)
@@ -675,21 +602,18 @@ func New(databasePath string) (*DB, error) {
 		return nil, fmt.Errorf("apply wal checkpoint: %w", err)
 	}
 
-	// Open reader pool (read-only connection pool for concurrent reads)
 	readerPool, err := openSQLiteReader(databasePath)
 	if err != nil {
 		writerConn.Close()
 		return nil, err
 	}
 
-	// Configure reader pool for concurrent reads
 	readerPoolSize := sqliteReaderPoolSize()
 	readerPool.SetMaxOpenConns(readerPoolSize)
 	readerPool.SetMaxIdleConns(readerPoolSize)
 	readerPool.SetConnMaxLifetime(0)
 	log.Debug().Msg("Reader pool opened in read-only mode")
 
-	// Apply connection pragmas to reader pool
 	ctx2, cancel2 := context.WithTimeout(context.Background(), connectionSetupTimeout)
 	defer cancel2()
 	if err := applyConnectionPragmas(ctx2, func(ctx context.Context, stmt string) error {
@@ -711,19 +635,16 @@ func New(databasePath string) (*DB, error) {
 		writerSem:   make(chan struct{}, 1),
 	}
 
-	// Run migrations with writer connection
 	if err := db.migrate(); err != nil {
 		writerConn.Close()
 		readerPool.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	// start periodic string pool cleanup
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 	db.cleanupCancel = cleanupCancel
 	go db.stringPoolCleanupLoop(cleanupCtx)
 
-	// Verify database file was created
 	if _, err := os.Stat(databasePath); err != nil {
 		writerConn.Close()
 		readerPool.Close()
@@ -734,15 +655,6 @@ func New(databasePath string) (*DB, error) {
 	return db, nil
 }
 
-// getStmt returns a prepared statement for the given query, preparing and
-// caching it if necessary. Statements are cached with TTL and automatically
-// closed on eviction. This is safe for concurrent use.
-// Uses writerStmts for write operations and readerStmts for read operations.
-// If tx is provided, uses the transaction type to determine the cache and
-// returns a transaction-specific statement. If tx is nil, uses query type
-// to determine the cache and returns a regular statement.
-// When tx is provided, only cached statements are returned - no preparation
-// is done to avoid conflicts with active transactions.
 func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, error) {
 	if db.closing.Load() {
 		return nil, sql.ErrConnDone
@@ -766,12 +678,10 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	db.stmtMu.RLock()
 	defer db.stmtMu.RUnlock()
 
-	// Determine which cache to use
 	var stmts *ttlcache.Cache[string, *sql.Stmt]
 	var conn *sql.DB
 
 	if tx != nil {
-		// Use transaction type to determine cache
 		if tx.isWriteTx {
 			stmts = db.writerStmts
 			conn = db.writerConn
@@ -780,7 +690,6 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 			conn = db.readerPool
 		}
 	} else {
-		// No transaction, use query type
 		if isWriteQuery(query) {
 			stmts = db.writerStmts
 			conn = db.writerConn
@@ -790,13 +699,11 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 		}
 	}
 
-	// Check cache first
 	if stmts == nil || conn == nil {
 		return nil, sql.ErrConnDone
 	}
 	if s, found := stmts.Get(query); found && s != nil {
 		if tx != nil {
-			// Return transaction-specific statement
 			return tx.tx.StmtContext(ctx, s), nil
 		}
 		return s, nil
@@ -806,7 +713,6 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 		return nil, errors.New("statement not cached")
 	}
 
-	// Slow path: prepare new statement
 	s, err := conn.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -820,7 +726,6 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	}
 
 	if tx != nil {
-		// Return transaction-specific statement
 		return tx.tx.StmtContext(ctx, s), nil
 	}
 
@@ -844,18 +749,12 @@ func (db *DB) deleteStmt(query string, isWrite bool) {
 	stmts.Delete(query)
 }
 
-// isWriteQuery efficiently determines if a query is a write operation.
-// This uses a fast byte-level check to avoid string allocation and case conversion.
 func isWriteQuery(query string) bool {
-	// Trim leading whitespace (covers spaces, tabs, newlines, etc.)
 	q := strings.TrimLeftFunc(query, unicode.IsSpace)
 	if q == "" {
 		return false
 	}
 
-	// We only care about the first word. Convert to upper-case for
-	// case-insensitive comparison and use HasPrefix to avoid allocations
-	// beyond the ToUpper call.
 	upper := strings.ToUpper(q)
 	return strings.HasPrefix(upper, "INSERT") ||
 		strings.HasPrefix(upper, "UPDATE") ||
@@ -949,9 +848,6 @@ func queryReferencesTempTable(query string, tempTables map[string]struct{}) bool
 	return false
 }
 
-// sqlKeywordTokens is a lightweight tokenizer for internal SQL snippets. It
-// lowercases and splits on non-identifier runes, but it does not understand SQL
-// literals or comments.
 func sqlKeywordTokens(query string) []string {
 	return strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
@@ -999,7 +895,7 @@ type stmtExecutor[T any] interface {
 	execStmt(context.Context, *sql.Stmt, []any) (T, error)
 	execDirect(context.Context, *sql.DB, string, []any) (T, error)
 	getErr(T) error
-	getTx() *Tx // Returns tx if this is a transaction executor, nil otherwise
+	getTx() *Tx
 }
 
 type execResult struct{}
@@ -1086,8 +982,6 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 	return execWithRetry(ctx, db, query, args, execResult{})
 }
 
-// QueryContext routes write queries to the single writer connection and
-// read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	if !isWriteQuery(query) {
 		return execWithRetry(ctx, db, query, args, queryRows{})
@@ -1101,8 +995,6 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 	return execWithRetry(ctx, db, query, args, queryRows{})
 }
 
-// QueryRowContext routes write queries to the single writer connection and
-// read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	if isWriteQuery(query) {
 		if db.lockWriter(ctx) != nil {
@@ -1117,7 +1009,6 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 	return db.queryRowUnlocked(ctx, query, args...)
 }
 
-// lockWriter takes the write lock, or returns ctx.Err() if ctx ends first.
 func (db *DB) lockWriter(ctx context.Context) error {
 	if db.writerSem == nil {
 		return nil
@@ -1169,24 +1060,19 @@ func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *
 	return stmt.QueryRowContext(ctx, args...)
 }
 
-// stringPoolCleanupLoop runs periodic cleanup of unused strings from string_pool
 func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
-	// Run cleanup once per day
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
-	// Run initial cleanup after 1 hour of startup
 	initialDelay := time.NewTimer(1 * time.Hour)
 	defer initialDelay.Stop()
 
-	// Track consecutive failures to adjust cleanup frequency
 	consecutiveFailures := 0
 	const maxConsecutiveFailures = 5
 
 	for {
 		select {
 		case <-initialDelay.C:
-			// Run first cleanup after initial delay
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			if deleted, err := db.CleanupUnusedStrings(cleanupCtx); err != nil {
 				consecutiveFailures++
@@ -1198,12 +1084,11 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 				if deleted > 0 {
 					log.Debug().Msgf("Initial string pool cleanup: removed %d unused strings", deleted)
 				}
-				consecutiveFailures = 0 // Reset on success
+				consecutiveFailures = 0
 			}
 			cancel()
 
 		case <-ticker.C:
-			// Run periodic cleanup
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			if deleted, err := db.CleanupUnusedStrings(cleanupCtx); err != nil {
 				consecutiveFailures++
@@ -1215,7 +1100,7 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 				if deleted > 0 {
 					log.Debug().Msgf("Periodic string pool cleanup: removed %d unused strings", deleted)
 				}
-				consecutiveFailures = 0 // Reset on success
+				consecutiveFailures = 0
 			}
 			cancel()
 
@@ -1276,11 +1161,9 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 // This means write transactions are fully serialized, but that's acceptable since SQLite can only
 // handle one write transaction at a time anyway.
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
-	// Determine if this is a read-only transaction
 	isReadOnly := opts != nil && opts.ReadOnly
 
 	if isReadOnly {
-		// Read-only transactions use the reader pool (no lock needed; waits for a free connection when the pool is full)
 		tx, err := db.readerPool.BeginTx(ctx, opts)
 		if err != nil {
 			return nil, err
@@ -1310,7 +1193,6 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	// Pass unlock function to Tx so it can release the lock on Commit/Rollback
 	return &Tx{
 		tx:        tx,
 		db:        db,
@@ -1324,13 +1206,11 @@ func (db *DB) Close() error {
 	db.closeOnce.Do(func() {
 		db.closing.Store(true)
 
-		// Cancel cleanup goroutine
 		if db.cleanupCancel != nil {
 			db.cleanupCancel()
 		}
 
 		if db.dialect == DialectSQLite {
-			// Run PRAGMA optimize on writer connection before closing
 			ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
 			defer cancel()
 			if _, err := db.writerConn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
@@ -1351,7 +1231,6 @@ func (db *DB) Close() error {
 
 		db.stmtMu.Unlock()
 
-		// Close both connections
 		if err := db.writerConn.Close(); err != nil {
 			db.closeErr = err
 		}
@@ -1370,7 +1249,6 @@ func (db *DB) Conn() *sql.DB {
 func (db *DB) migrate() error {
 	ctx := context.Background()
 
-	// Create migrations table if it doesn't exist
 	if _, err := db.writerConn.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS migrations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1381,20 +1259,15 @@ func (db *DB) migrate() error {
 		return fmt.Errorf("failed to create migrations table: %w", err)
 	}
 
-	// Handle historical migration file renames.
-	// If we ever rename an embedded migration file, we must update the filename
-	// stored in the migrations table so existing databases don't re-run it.
 	if err := db.normalizeMigrationFilenames(ctx); err != nil {
 		return fmt.Errorf("failed to normalize migration filenames: %w", err)
 	}
 
-	// Get all migration files
 	entries, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
 		return fmt.Errorf("failed to read migrations directory: %w", err)
 	}
 
-	// Sort migration files by name
 	var files []string
 	for _, entry := range entries {
 		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".sql" {
@@ -1403,7 +1276,6 @@ func (db *DB) migrate() error {
 	}
 	sort.Strings(files)
 
-	// Find pending migrations
 	pendingMigrations, err := db.findPendingMigrations(ctx, files)
 	if err != nil {
 		return fmt.Errorf("failed to find pending migrations: %w", err)
@@ -1414,7 +1286,6 @@ func (db *DB) migrate() error {
 		return nil
 	}
 
-	// Apply all pending migrations in a single transaction
 	if err := db.applyAllMigrations(ctx, pendingMigrations); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
@@ -1435,7 +1306,6 @@ func (db *DB) normalizeMigrationFilenamesWithExecer(
 ) error {
 	for _, renames := range renameSets {
 		for _, r := range renames {
-			// If both entries exist, keep the new name.
 			if _, err := execer.ExecContext(ctx, db.bindQuery(`
 				DELETE FROM migrations
 				WHERE filename = ?
@@ -1444,7 +1314,6 @@ func (db *DB) normalizeMigrationFilenamesWithExecer(
 				return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
 			}
 
-			// Rename old -> new if the new entry doesn't already exist.
 			if _, err := execer.ExecContext(ctx, db.bindQuery(`
 				UPDATE migrations
 				SET filename = ?
@@ -1477,34 +1346,16 @@ func (db *DB) findPendingMigrations(ctx context.Context, allFiles []string) ([]s
 	return pendingMigrations, nil
 }
 
-// applyAllMigrations applies pending database migrations in order.
-//
-// MIGRATION FAILURE HANDLING:
-// If a migration fails, any strings interned during the migration will remain in string_pool.
-// These orphaned strings will be automatically cleaned up by the periodic cleanup loop (24hrs).
-// This is acceptable because:
-// - Orphaned strings are harmless (just unused rows)
-// - CleanupUnusedStrings runs automatically and will remove them
-// - Manual cleanup can be triggered with: db.CleanupUnusedStrings(ctx)
-// - The migration system prevents retrying failed migrations automatically
-//
-// For immediate cleanup after a failed migration, manually run:
-//
-//	db.CleanupUnusedStrings(context.Background())
 func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error {
-	// Migrations that need foreign keys disabled due to table recreation
 	needsForeignKeysOff := map[string]bool{
 		"010_add_files_cache_and_string_interning.sql": true,
 	}
 
-	// Begin single transaction for all migrations using BeginTx for proper connection handling
 	tx, err := db.writerConn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	// CRITICAL: Track whether we have an active transaction to rollback
-	// This prevents double-rollback issues when recreating transactions mid-migration
 	rollbackActive := func() {
 		if tx != nil {
 			_ = tx.Rollback()
@@ -1513,17 +1364,13 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 	}
 	defer rollbackActive()
 
-	// Apply each migration within the transaction
 	for _, filename := range migrations {
-		// Check if this migration needs foreign keys disabled
 		if needsForeignKeysOff[filename] {
-			// Commit current transaction before disabling foreign keys
 			if err := tx.Commit(); err != nil {
 				return fmt.Errorf("failed to commit before %s: %w", filename, err)
 			}
-			tx = nil // Clear tx so rollbackActive() won't try to rollback committed tx
+			tx = nil
 
-			// Ensure foreign keys are re-enabled even if migration fails
 			defer func() {
 				if _, err := db.writerConn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
 					log.Error().Err(err).Msg("CRITICAL: Failed to re-enable foreign keys after migration - manual intervention required")
@@ -1534,25 +1381,21 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 				return err
 			}
 
-			// Start new transaction for remaining migrations using BeginTx
 			tx, err = db.writerConn.BeginTx(ctx, nil)
 			if err != nil {
 				return fmt.Errorf("failed to begin new transaction after %s: %w", filename, err)
 			}
-			// rollbackActive() will handle this new transaction via the defer
 		} else {
-			// Normal migration within transaction
 			if err := execMigration(ctx, tx, filename); err != nil {
 				return err
 			}
 		}
 	}
 
-	// Commit final transaction
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit migrations: %w", err)
 	}
-	tx = nil // Clear tx so rollbackActive() won't try to rollback committed tx
+	tx = nil
 
 	log.Info().Msgf("Applied %d migrations successfully", len(migrations))
 	return nil
@@ -1566,12 +1409,10 @@ func (db *DB) applyMigrationWithForeignKeysOff(ctx context.Context, filename str
 		return fmt.Errorf("failed to disable foreign keys for %s: %w", filename, err)
 	}
 
-	// Run migration within explicit transaction while foreign keys are disabled
 	if err := db.execMigrationInOwnTx(ctx, filename); err != nil {
 		return err
 	}
 
-	// Re-enable foreign keys explicitly
 	if _, err := db.writerConn.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
 		return fmt.Errorf("failed to re-enable foreign keys after %s: %w", filename, err)
 	}
@@ -1603,7 +1444,6 @@ func (db *DB) execMigrationInOwnTx(ctx context.Context, filename string) error {
 	return nil
 }
 
-// execMigration reads a migration file, executes it, and records it in tx.
 func execMigration(ctx context.Context, tx *sql.Tx, filename string) error {
 	content, err := migrationsFS.ReadFile("migrations/" + filename)
 	if err != nil {
@@ -1620,17 +1460,6 @@ func execMigration(ctx context.Context, tx *sql.Tx, filename string) error {
 	return nil
 }
 
-// CleanupUnusedStrings removes strings from the string_pool table that are no longer
-// referenced by any other table. This should be run periodically to reclaim storage space.
-// Returns the number of strings deleted and any error encountered.
-// Also clears the string ID cache to ensure consistency.
-//
-// IMPORTANT: This operation is protected against concurrent execution. If a cleanup is
-// already running, subsequent calls will return immediately with (0, nil). This prevents
-// excessive cache thrashing and database contention from overlapping cleanup operations.
-//
-// NOTE: Uses an optimized temp table approach with a single UNION ALL query to minimize
-// transaction time while maintaining data consistency.
 const referencedStringsInsertQuery = `
 	SELECT torrent_hash_id AS string_id FROM torrent_files_cache WHERE torrent_hash_id IS NOT NULL
 	UNION ALL
@@ -1704,24 +1533,18 @@ const referencedStringsInsertQuery = `
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
-	// Prevent concurrent cleanup operations
 	if !db.cleanupRunning.CompareAndSwap(false, true) {
 		log.Debug().Msg("String pool cleanup already in progress, skipping")
 		return 0, nil
 	}
 	defer db.cleanupRunning.Store(false)
 
-	// Begin transaction for the actual cleanup work
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// CRITICAL: Defer foreign key checks until end of transaction
-	// All string_pool references use ON DELETE RESTRICT which would prevent deletion
-	// even when there are no actual references. Deferring allows the transaction to
-	// complete and verify constraints at commit time rather than immediately.
 	if err := dbinterface.DeferForeignKeyChecks(ctx, tx); err != nil {
 		return 0, fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
@@ -1745,8 +1568,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to populate temp table with referenced string IDs: %w", err)
 	}
 
-	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
-	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
 		DELETE FROM string_pool
 		WHERE NOT EXISTS (
@@ -1771,7 +1592,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	// Update cleanup metrics
 	if rowsAffected > 0 {
 		db.cleanupDeleted.Add(uint64(rowsAffected))
 		log.Debug().Msgf("Cleaned up %d unused strings from string_pool (total deleted: %d)",
@@ -1781,23 +1601,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	return rowsAffected, nil
 }
 
-// NewForTest wraps an existing sql.DB connection for testing purposes.
-// This creates a minimal DB wrapper without running migrations or starting
-// background goroutines. The caller is responsible for managing the underlying
-// sql.DB connection lifecycle.
-//
-// IMPORTANT LIMITATIONS FOR TESTING:
-// - Does NOT start the stringPoolCleanupLoop (automatic cleanup is disabled)
-// - Tests must manually call CleanupUnusedStrings() if testing cleanup behavior
-// - String pool may grow unbounded during test execution
-// - Tests should use short-lived databases or manually clean up
-// - Uses the same connection for both reads and writes (no separate reader pool)
-//
-// GetStringPoolMetrics returns the current values of string pool cleanup metrics.
-// These metrics track cleanup activity:
-//   - cleanupDeleted: Total number of unused strings deleted since startup
-//
-// This counter is cumulative and never resets. Use it to track cleanup effectiveness.
 func (db *DB) GetStringPoolMetrics() (cleanupDeleted uint64) {
 	return db.cleanupDeleted.Load()
 }

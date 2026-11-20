@@ -79,7 +79,6 @@ func TestCacheFilesBatch_MaintainsHashAlignment(t *testing.T) {
 	}
 
 	for attempt := range 3 {
-		// Reset cache tables to isolate each attempt.
 		_, err := db.ExecContext(ctx, "DELETE FROM torrent_files_cache; DELETE FROM torrent_files_sync;")
 		require.NoError(t, err)
 
@@ -177,7 +176,6 @@ func TestGetCachedFilesBatch_MaxAgeServesAgedRows(t *testing.T) {
 	require.Equal(t, []string{"absent"}, missing)
 }
 
-// unprinted wraps file lists as writes with no print.
 func unprinted(files map[string]qbt.TorrentFiles) map[string]qbittorrent.CachedFilesWrite {
 	writes := make(map[string]qbittorrent.CachedFilesWrite, len(files))
 	for hash, list := range files {

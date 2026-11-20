@@ -1,9 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package local implements fsops.Backend by delegating to the local filesystem
-// via os.*, pkg/hardlinktree, pkg/reflinktree, pkg/hardlink, and pkg/fsutil.
-// This is the default backend used when qui and qBittorrent share a host.
 package local
 
 import (
@@ -19,13 +16,10 @@ import (
 	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
-// Backend implements fsops.Backend using the local filesystem.
 type Backend struct{}
 
-// NewBackend returns a local filesystem backend.
 func NewBackend() *Backend { return &Backend{} }
 
-// compile-time check
 var _ fsops.Backend = (*Backend)(nil)
 
 func (b *Backend) Stat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
@@ -79,7 +73,6 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	// Verify root exists before starting the goroutine.
 	if _, err := os.Stat(root); err != nil {
 		return nil, err
 	}
@@ -274,7 +267,6 @@ func (b *Backend) SupportsReflink(ctx context.Context, path string) (bool, strin
 	return supported, reason, nil
 }
 
-// osFileInfoToFsops converts an os.FileInfo to an fsops.FileInfo.
 func osFileInfoToFsops(fi os.FileInfo, path string, follow bool) *fsops.FileInfo {
 	return &fsops.FileInfo{
 		Path:      path,

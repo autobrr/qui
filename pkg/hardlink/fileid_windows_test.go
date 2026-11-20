@@ -86,7 +86,6 @@ func TestLegacyFileIDWindows(t *testing.T) {
 	require.Equal(t, uint64(1), copyLinks)
 	require.False(t, sourceID.IsZero())
 
-	// The legacy index occupies the low 8 bytes of the identifier; the rest stays zeroed.
 	require.Equal(t, KindWindows, sourceID.Kind())
 	require.Equal(t, make([]byte, 8), sourceID.Bytes()[17:25])
 }

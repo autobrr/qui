@@ -8,7 +8,6 @@ import type { Category, InstanceCapabilities } from "@/types"
 import type { Dispatch, ReactNode } from "react"
 import { createContext, useContext, useMemo, useReducer, useState } from "react"
 
-// The facts of the list that the bulk action dialogs and Export read.
 export interface ListFacts {
   // The list comes from the cross-instance endpoint, and categories and tags are those of its response.
   isCrossInstance: boolean

@@ -132,8 +132,6 @@ func TestRoot_RemovesFilesAndEmptyFolders(t *testing.T) {
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
-// A resumed copy writes the missing pieces into the file that it wrote
-// before, and keeps the bytes that are there.
 func TestRoot_OpenWriteWritesIntoAnExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	root := openRoot(t, dir)
@@ -164,7 +162,6 @@ func TestRoot_OpenWriteNeverCreatesAFile(t *testing.T) {
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
-// Link makes the missing folders of the new name, as Create does.
 func TestRoot_LinkMakesTheFoldersOfTheNewName(t *testing.T) {
 	dir := t.TempDir()
 	root := openRoot(t, dir)

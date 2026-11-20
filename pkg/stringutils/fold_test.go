@@ -54,7 +54,6 @@ func TestCompareFoldMatchesLowerCompare(t *testing.T) {
 		}
 	}
 
-	// Prefix and case-boundary cases the sample list does not cover.
 	extra := [][2]string{
 		{"abc", "ABCD"}, {"ABCD", "abc"}, {"abc", "abc"}, {"", "a"}, {"a", ""},
 		{"Zebra", "apple"}, {"apple", "Zebra"}, {"a", "Æ"}, {"Æ", "a"}, {"æ", "Æ"},

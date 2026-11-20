@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// dodoAnswering returns a client whose server answers each request with the body for its path.
 func dodoAnswering(bodies map[string]string) *dodo.Client {
 	return dodo.NewClient(
 		dodo.WithBaseURL("http://dodo.test"),

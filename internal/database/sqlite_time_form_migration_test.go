@@ -118,8 +118,6 @@ func TestSQLiteTimeFormMigrationCoversEveryTimeColumn(t *testing.T) {
 	require.Equal(t, schemaBefore, sqliteSchemaObjects(t, conn), "the migration changes only data")
 }
 
-// openSQLiteSchemaBefore returns one connection to a new database with the
-// schema of every SQLite migration that sorts before the named one.
 func openSQLiteSchemaBefore(t *testing.T, migration string) *sql.Conn {
 	t.Helper()
 	ctx := t.Context()

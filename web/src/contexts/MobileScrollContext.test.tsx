@@ -82,7 +82,6 @@ describe("useMobileScroll", () => {
     act(() => scrollTo(container, 408))
     expect(result.current.isFooterVisible).toBe(false)
 
-    // A real scroll up away from the bottom still shows the footer
     act(() => scrollTo(container, 300))
     expect(result.current.isFooterVisible).toBe(true)
   })
@@ -140,7 +139,6 @@ describe("useMobileScroll", () => {
     rerender(<Harness phase={1} />)
     rerender(<Harness phase={2} />)
 
-    // The new list must still drive footer visibility
     act(() => scrollTo(newEl, 100))
     expect(footerVisible).toBe(false)
   })
@@ -153,7 +151,6 @@ describe("useMobileScroll", () => {
     act(() => scrollTo(container, 100))
     expect(result.current.isFooterVisible).toBe(false)
 
-    // Queue a scroll-down frame but unregister before it runs
     act(() => {
       container.scrollTop = 200
       container.dispatchEvent(new Event("scroll"))

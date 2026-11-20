@@ -24,7 +24,6 @@ func TestSwitchableWriter_Write(t *testing.T) {
 		t.Errorf("expected 'hello world\\n', got %q", buf.String())
 	}
 
-	// Check that line was captured to hub
 	history := hub.History(10)
 	if len(history) != 1 {
 		t.Errorf("expected 1 line in hub, got %d", len(history))
@@ -62,19 +61,16 @@ func TestSwitchableWriter_PartialLines(t *testing.T) {
 	hub := NewHub(100)
 	sw := NewSwitchableWriter(&buf, hub)
 
-	// Write partial line
 	_, err := sw.Write([]byte("partial"))
 	if err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
-	// No complete line yet
 	history := hub.History(10)
 	if len(history) != 0 {
 		t.Errorf("expected 0 lines, got %d", len(history))
 	}
 
-	// Complete the line
 	_, err = sw.Write([]byte(" complete\n"))
 	if err != nil {
 		t.Fatalf("Write error: %v", err)
@@ -94,16 +90,13 @@ func TestSwitchableWriter_Swap(t *testing.T) {
 	hub := NewHub(100)
 	sw := NewSwitchableWriter(&buf1, hub)
 
-	// Write to first buffer
 	_, err := sw.Write([]byte("first\n"))
 	if err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
-	// Swap to second buffer
 	sw.Swap(&buf2, nil)
 
-	// Write to second buffer
 	_, err = sw.Write([]byte("second\n"))
 	if err != nil {
 		t.Fatalf("Write error: %v", err)
@@ -122,23 +115,19 @@ func TestSwitchableWriter_SwapCloser(t *testing.T) {
 	hub := NewHub(100)
 	sw := NewSwitchableWriter(&buf, hub)
 
-	// Create a mock closer
 	closed := false
 	mockCloser := &mockWriter{
 		w:       &bytes.Buffer{},
 		closeFn: func() error { closed = true; return nil },
 	}
 
-	// Swap with a closer
 	sw.Swap(mockCloser.w, mockCloser)
 
-	// Swap again, should return the old closer
 	oldCloser := sw.Swap(&buf, nil)
 	if oldCloser == nil {
 		t.Error("expected to get old closer back")
 	}
 
-	// Close the old closer
 	if err := oldCloser.Close(); err != nil {
 		t.Errorf("close error: %v", err)
 	}
@@ -165,7 +154,6 @@ func (m *mockWriter) Close() error {
 }
 
 func TestSwitchableWriter_ConcurrentWrite(t *testing.T) {
-	// Use a thread-safe writer for the test
 	hub := NewHub(1000)
 	sw := NewSwitchableWriter(&safeBuffer{}, hub)
 
@@ -183,13 +171,11 @@ func TestSwitchableWriter_ConcurrentWrite(t *testing.T) {
 
 	wg.Wait()
 
-	// Verify all lines were captured
 	if got := len(hub.History(0)); got != 1000 {
 		t.Errorf("expected 1000 lines, got %d", got)
 	}
 }
 
-// safeBuffer is a thread-safe bytes.Buffer for testing.
 type safeBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer

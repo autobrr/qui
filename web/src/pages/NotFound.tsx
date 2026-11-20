@@ -14,7 +14,6 @@ export function NotFound() {
   return (
     <div className="flex items-center min-h-screen px-4 py-12 sm:px-6 md:px-8 lg:px-12 xl:px-16">
       <div className="w-full space-y-6 text-center">
-        {/* Logo */}
         <div className="flex items-center justify-center mb-8">
           <Logo className="h-16 w-16 sm:h-20 sm:w-20" />
         </div>

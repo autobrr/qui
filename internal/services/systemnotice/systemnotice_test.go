@@ -14,7 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/services/systemnotice"
 )
 
-// sent keeps each event that the module sends.
 type sent struct {
 	mu     sync.Mutex
 	events []notifications.Event

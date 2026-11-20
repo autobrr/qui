@@ -21,11 +21,9 @@ type sftpCalls struct {
 	// lastAnswer is when the last answer came in, or when a call began with
 	// none running: the running calls have heard nothing since.
 	lastAnswer atomic.Int64
-	// answered marks the connection used each time a call ends.
-	answered func()
+	answered   func()
 }
 
-// stalled reports that calls run and none got an answer within stallTimeout.
 func (c *sftpCalls) stalled() bool {
 	return c.running.Load() > 0 && time.Since(time.Unix(0, c.lastAnswer.Load())) > stallTimeout
 }
@@ -78,7 +76,6 @@ func (w *requestWriter) Write(p []byte) (int, error) {
 	return w.WriteCloser.Write(p)
 }
 
-// answerReader ends a request when the last byte of its answer comes in.
 type answerReader struct {
 	io.Reader
 	calls  *sftpCalls
@@ -105,7 +102,6 @@ type packetFrames struct {
 	left   int64 // bytes of the current packet still to come
 }
 
-// scan consumes p and reports how many packets began and ended in it.
 func (f *packetFrames) scan(p []byte) (began, ended int) {
 	for len(p) > 0 {
 		if f.got < len(f.length) {

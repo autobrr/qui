@@ -140,7 +140,6 @@ func (s *Service) Notify(ctx context.Context, event Event) {
 		ctx = context.Background()
 	}
 
-	// An event that no target listens for would only fill the queue.
 	if !s.Listens(ctx, event.Type) {
 		return
 	}
@@ -459,7 +458,6 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 	case EventTransferFinished:
 		return formatCustomEvent(instanceLabel, "Transfer finished", event.Title, customMessage)
 	case EventSystemNotice:
-		// A System notice is about qui, not about one instance.
 		return formatCustomEvent("", "System notice", event.Title, customMessage)
 	default:
 		return "", ""

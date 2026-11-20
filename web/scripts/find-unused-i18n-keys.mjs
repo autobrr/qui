@@ -85,8 +85,6 @@ export function collectKeyReferencesFromSource(source, fileName) {
     }
   }
 
-  // `dateTime.units.` -> `dateTime.units`; `sort.` -> `sort`. A head ending mid-segment
-  // (`preferences.orphan` in `` `preferences.orphan${x}` ``) keeps only whole segments.
   function addPrefix(headText) {
     const lastDotIndex = headText.lastIndexOf(".")
     if (lastDotIndex === -1) {
@@ -141,7 +139,6 @@ export function collectKeyReferencesFromSource(source, fileName) {
   return { literals, prefixes }
 }
 
-// Nearest `const name = "..."` visible from the identifier, by lexical block.
 function resolveStringConst(identifier) {
   for (let scope = identifier.parent; scope; scope = scope.parent) {
     for (const statement of scope.statements ?? []) {

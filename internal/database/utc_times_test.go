@@ -141,8 +141,6 @@ func setProcessZone(t *testing.T, name string) {
 	t.Cleanup(func() { time.Local = original })
 }
 
-// newPostgresInSessionZone opens a migrated Postgres schema whose connection
-// string asks for postgresSessionZone.
 func newPostgresInSessionZone(t *testing.T, name string) *database.DB {
 	t.Helper()
 	baseDSN := strings.TrimSpace(os.Getenv("QUI_TEST_POSTGRES_DSN"))

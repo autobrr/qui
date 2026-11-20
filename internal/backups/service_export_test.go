@@ -34,12 +34,10 @@ func TestCacheTorrentBlobAtomicWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("payload"), got)
 
-	// No temp files may remain next to the blob.
 	entries, err := os.ReadDir(filepath.Dir(absBlob))
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 
-	// An existing destination is trusted and never rewritten.
 	require.NoError(t, os.WriteFile(absBlob, []byte("sentinel"), 0o600))
 	require.NoError(t, cacheTorrentBlob(dir, relBlob, []byte("payload")))
 	got, err = os.ReadFile(absBlob)
@@ -62,7 +60,6 @@ func TestSweepStaleBlobTemps(t *testing.T) {
 	fresh := filepath.Join(blobDir, "cafebabe.torrent.tmp-123-3")
 	require.NoError(t, os.WriteFile(fresh, []byte("inflight"), 0o600))
 
-	// Age everything but the fresh temp past the guard.
 	old := time.Now().Add(-2 * blobTmpMinAge)
 	for _, p := range []string{blob, stale, staleRoot} {
 		require.NoError(t, os.Chtimes(p, old, old))
@@ -96,12 +93,10 @@ func TestCopyTorrentFromTempAtomicWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, payload, got)
 
-	// No temp files may remain next to the blob.
 	entries, err := os.ReadDir(filepath.Join(dataDir, filepath.Dir(rel)))
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 
-	// Invalid payloads are rejected before anything is written.
 	badSrc := filepath.Join(t.TempDir(), "bad.torrent")
 	require.NoError(t, os.WriteFile(badSrc, []byte("not bencoded, but long enough to pass the size check"), 0o600))
 	require.ErrorContains(t, svc.copyTorrentFromTemp(badSrc, dataDir, filepath.Join("backups", "torrents", "bad.torrent")), "not a bencoded dict")
@@ -133,7 +128,6 @@ func TestAdaptiveExportDelayCapsSlowExports(t *testing.T) {
 		defer cancel()
 
 		start := time.Now()
-		// A 10s stall must not be mirrored back as a 10s sleep.
 		require.NoError(t, adaptiveExportDelay(ctx, 20*time.Millisecond, 10*time.Second))
 		require.Equal(t, maxAdaptiveExportDelay, time.Since(start))
 	})
@@ -153,15 +147,12 @@ func TestAdaptiveExportDelayHonorsConfiguredMinAboveCap(t *testing.T) {
 	})
 }
 
-// concurrentExportStub is a thread-safe backupReader for exercising the
-// concurrent export path with per-hash gates, payload, and error behavior.
 type concurrentExportStub struct {
 	torrents []qbt.Torrent
 	// gates holds an export until its gate closes or its ctx ends. A hash
 	// without a gate exports at once.
-	gates map[string]chan struct{}
-	errs  map[string]error
-	// exported, if set, runs when an export passes its gate.
+	gates    map[string]chan struct{}
+	errs     map[string]error
 	exported func(hash string)
 
 	mu          sync.Mutex
@@ -274,7 +265,6 @@ func TestExecuteBackupConcurrentMatchesSerialOrdering(t *testing.T) {
 			TotalSize: int64(1000 + i),
 		})
 	}
-	// Metadata-unavailable exports must be skipped without failing the run.
 	errs["hash-05"] = errors.New("could not get export; status code: 409: unexpected status code")
 	errs["hash-16"] = qbt.ErrTorrentMetadataNotDownloadedYet
 
@@ -469,7 +459,6 @@ func TestExecuteBackupConcurrentStopsOnContextCancel(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	// The first export cancels the run.
 	stub := &concurrentExportStub{torrents: torrents, exported: func(string) { cancel() }}
 	svc, instanceID := newExportTestService(t, stub)
 

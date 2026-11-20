@@ -1,7 +1,3 @@
-// Reports on built-in theme files: each color that sRGB cannot show, and each text or control pair
-// that the app paints below its WCAG contrast minimum.
-//
-//   node scripts/theme-check.mjs [theme.css ...]     (run in web/; no file means every built-in theme)
 import fs from "node:fs"
 import path from "node:path"
 
@@ -128,10 +124,6 @@ function pairGroups(color, mode) {
   ]
 }
 
-/**
- * Returns `outsideSrgb`, one "<mode> <token>: <value>" line for each color that sRGB cannot show, and `pairs`, one
- * entry for each pair in each mode and theme variation, with `ok` false below the minimum.
- */
 export function checkTheme(css) {
   const outsideSrgb = []
   const pairs = []

@@ -25,13 +25,10 @@ type Root interface {
 	// folders of newName. It never replaces a file. The error differs between
 	// filesystems, and a filesystem without hardlinks always fails.
 	Link(ctx context.Context, oldName, newName string) error
-	// Remove removes a file or an empty folder.
 	Remove(ctx context.Context, name string) error
 	Close() error
 }
 
-// RootOpener is a Backend that writes new files through a Root.
 type RootOpener interface {
-	// OpenRoot opens dir as a Root, and creates it when it is missing.
 	OpenRoot(ctx context.Context, dir string) (Root, error)
 }

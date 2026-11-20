@@ -246,13 +246,11 @@ If no --config-dir is specified, uses the OS-specific default location:
 - Linux/macOS: ~/.config/qui/config.toml
 - Windows: %APPDATA%\qui\config.toml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Initialize configuration
 			cfg, err := config.New(configDir, buildinfo.Version)
 			if err != nil {
 				return fmt.Errorf("failed to initialize configuration: %w", err)
 			}
 
-			// Override data directory if provided
 			if dataDir != "" {
 				cfg.SetDataDir(dataDir)
 			}
@@ -533,13 +531,11 @@ func NewApplication(configDir, dataDir, logPath string, pprofFlag bool) *Applica
 }
 
 func (app *Application) runServer() {
-	// Initialize configuration
 	cfg, err := config.New(app.configDir, buildinfo.Version)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
 	}
 
-	// Override with CLI flags if provided
 	if app.dataDir != "" {
 		os.Setenv("QUI__DATA_DIR", app.dataDir)
 		cfg.SetDataDir(app.dataDir)
@@ -593,7 +589,6 @@ func (app *Application) runServer() {
 	if !cfg.Config.TrackerIconsFetchEnabled {
 		log.Info().Msg("Tracker icon remote fetching disabled by configuration")
 	}
-	// Make tracker icon service globally accessible for background fetching
 	trackericons.SetGlobal(trackerIconService)
 
 	peerClientIconService, err := peerclienticons.NewService(cfg.GetDataDir(), buildinfo.UserAgent, peerclienticons.Icons)
@@ -626,7 +621,6 @@ func (app *Application) runServer() {
 		Str("base_url", dodoClient.BaseURL()).
 		Msg("Initialized Dodo Payments client")
 
-	// Initialize database
 	db, err := database.OpenFromConfig(cfg.Config, cfg.GetDatabasePath())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize database")
@@ -634,7 +628,6 @@ func (app *Application) runServer() {
 	defer db.Close()
 	startupShrink, shrinkRan := db.RunPendingShrink(context.Background())
 
-	// Initialize stores
 	licenseRepo := database.NewLicenseRepo(db)
 	encryptionKey := cfg.GetEncryptionKey()
 	legacyEncryptionKey := models.WithLegacyEncryptionKey(cfg.GetLegacyEncryptionKey())
@@ -670,7 +663,6 @@ func (app *Application) runServer() {
 	arrIDCacheStore := models.NewArrIDCacheStore(db)
 	errorStore := models.NewInstanceErrorStore(db)
 
-	// Initialize services
 	authService := auth.NewService(db)
 	licenseService := license.NewLicenseService(licenseRepo, dodoClient, cfg.GetConfigDir())
 
@@ -679,14 +671,12 @@ func (app *Application) runServer() {
 		checker.StartPeriodicChecks(context.Background())
 	}()
 
-	// Initialize qBittorrent client pool
 	clientPool, err := qbittorrent.NewClientPool(instanceStore, errorStore, time.Duration(cfg.Config.QbittorrentTimeout)*time.Second)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize client pool")
 	}
 	defer clientPool.Close()
 
-	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 	transfers, err := transfer.NewStore(context.Background(), db)
 	if err != nil {
@@ -715,11 +705,9 @@ func (app *Application) runServer() {
 	defer liveSamplesCancel()
 	go liveSamples.Run(liveSamplesCtx)
 
-	// Initialize files manager for caching torrent file information
-	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
+	filesManagerService := filesmanager.NewService(db)
 	syncManager.SetFilesManager(filesManagerService)
 
-	// Start background orphan cleanup for torrent files cache
 	filesCleanupCtx, filesCleanupCancel := context.WithCancel(context.Background())
 	defer filesCleanupCancel()
 	filesManagerService.StartOrphanCleanup(filesCleanupCtx,
@@ -727,13 +715,11 @@ func (app *Application) runServer() {
 		&torrentHashAdapter{syncManager: syncManager},
 	)
 
-	// Initialize Torznab indexer store
 	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize torznab indexer store")
 	}
 
-	// Initialize Torznab torrent cache, search cache and Jackett/Torznab service
 	torznabTorrentCache := models.NewTorznabTorrentCacheStore(db)
 	torznabSearchCache := models.NewTorznabSearchCacheStore(db)
 	cacheTTL := jackett.DefaultSearchCacheTTL
@@ -762,11 +748,9 @@ func (app *Application) runServer() {
 	)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
-	// Initialize ARR service for Sonarr/Radarr ID lookup
 	arrService := arr.NewService(arrInstanceStore, arrIDCacheStore)
 	log.Info().Msg("ARR service initialized")
 
-	// Initialize automation activity store and external programs service
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
 	externalProgramService.SetHelperTorrents(transfers)
@@ -778,11 +762,9 @@ func (app *Application) runServer() {
 	activityHub := activity.NewHub()
 	defer activityHub.Close()
 
-	// Wire services constructed earlier (before the hub) as activity publishers.
 	trackerIconService.SetActivityPublisher(activityHub)
 	jackettService.SetActivityPublisher(activityHub)
 
-	// Initialize cross-seed automation store and service
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize cross-seed store")
@@ -950,7 +932,6 @@ func (app *Application) runServer() {
 	defer cancelUpdate()
 	updateService.Start(updateCtx)
 
-	// Initialize client connections for all active instances on startup
 	go func() {
 		listCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		instances, err := instanceStore.List(listCtx)
@@ -961,7 +942,6 @@ func (app *Application) runServer() {
 			return
 		}
 
-		// Connect to instances in parallel with separate timeouts
 		for _, instance := range instances {
 			if !instance.IsActive {
 				log.Debug().
@@ -972,7 +952,6 @@ func (app *Application) runServer() {
 			}
 
 			go func(instanceID int) {
-				// Use separate context for each connection attempt with longer timeout
 				connCtx, connCancel := context.WithTimeout(context.Background(), 60*time.Second)
 				defer connCancel()
 
@@ -985,10 +964,9 @@ func (app *Application) runServer() {
 		}
 	}()
 
-	// Initialize session manager
 	sessionManager := scs.New()
 	sessionManager.Store = sqlite3store.New(db)
-	sessionManager.Lifetime = 24 * time.Hour * 30 // 30 days
+	sessionManager.Lifetime = 24 * time.Hour * 30
 	sessionManager.Cookie.Name = "qui_user_session"
 	sessionManager.Cookie.HttpOnly = true
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
@@ -1049,7 +1027,6 @@ func (app *Application) runServer() {
 		},
 	})
 
-	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
 		Config:                           cfg,
 		Experimental:                     experimentalFeatures,
@@ -1145,7 +1122,6 @@ func (app *Application) runServer() {
 	if cfg.Config.MetricsEnabled {
 		metricsManager := metrics.NewMetricsManager(syncManager, clientPool, trackerCustomizationStore, crossSeedService.MetricsCollectors()...)
 
-		// Start metrics server on separate port
 		go func() {
 			metricsServer := metrics.NewMetricsServer(
 				metricsManager,
@@ -1158,7 +1134,6 @@ func (app *Application) runServer() {
 		}()
 	}
 
-	// Start profiling server if enabled
 	if cfg.Config.PprofEnabled {
 		// Bind to loopback by default so pprof never collides with another listener
 		// sharing the network namespace (e.g. a Tailscale sidecar already serving
@@ -1180,11 +1155,9 @@ func (app *Application) runServer() {
 		}()
 	}
 
-	// Wait for interrupt signal to gracefully shutdown the server
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 
-	// Graceful shutdown with timeout. A Restart runs the same steps as SIGTERM.
 	shutdown := func() error {
 		tray.Remove()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1207,14 +1180,6 @@ func (app *Application) runServer() {
 			return err
 		}
 
-		// Closed here because os.Exit below means a defer would never fire. A
-		// running Transfer stops first and keeps its partial data. One that
-		// does not stop in time waits on a call that ignores the stop; the pool
-		// then stays open, so that the run cannot go on against a closed pool
-		// and finish a cleanup with leftovers, and the exit ends it the way a
-		// crash does. Another job's next read gets ErrConnectionLost with
-		// ErrPoolClosed in its chain, a read in flight gets ErrConnectionLost,
-		// and either ends with the process.
 		transfersStopped := transferService.Close(ctx) == nil
 		shareCancel()
 		shareService.Close()
@@ -1243,7 +1208,6 @@ func (app *Application) runServer() {
 	os.Exit(0)
 }
 
-// instanceListerAdapter implements filesmanager.InstanceLister
 type instanceListerAdapter struct {
 	store *models.InstanceStore
 }
@@ -1263,7 +1227,6 @@ func (a *instanceListerAdapter) ListInstanceIDs(ctx context.Context) ([]int, err
 	return ids, nil
 }
 
-// torrentHashAdapter implements filesmanager.TorrentHashProvider
 type torrentHashAdapter struct {
 	syncManager *qbittorrent.SyncManager
 }

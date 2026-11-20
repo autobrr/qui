@@ -15,7 +15,6 @@ import (
 	goversion "github.com/hashicorp/go-version"
 )
 
-// Release models the parts of a GitHub release we care about.
 type Release struct {
 	ID              int64     `json:"id,omitempty"`
 	NodeID          string    `json:"node_id,omitempty"`
@@ -33,7 +32,6 @@ type Release struct {
 	Assets          []Asset   `json:"assets"`
 }
 
-// Author represents the author of a release.
 type Author struct {
 	Login      string `json:"login"`
 	ID         int64  `json:"id"`
@@ -45,7 +43,6 @@ type Author struct {
 	Type       string `json:"type"`
 }
 
-// Asset models a downloadable artifact for a release.
 type Asset struct {
 	URL                string    `json:"url"`
 	ID                 int64     `json:"id"`
@@ -62,7 +59,6 @@ type Asset struct {
 	BrowserDownloadURL string    `json:"browser_download_url"`
 }
 
-// Checker talks to api.autobrr.com to determine whether a newer release is available.
 type Checker struct {
 	Owner     string
 	Repo      string
@@ -71,7 +67,6 @@ type Checker struct {
 	httpClient *http.Client
 }
 
-// NewChecker returns a configured Checker for the provided repository.
 func NewChecker(owner, repo, userAgent string) *Checker {
 	return &Checker{
 		Owner:     owner,
@@ -116,7 +111,6 @@ func (c *Checker) get(ctx context.Context) (*Release, error) {
 	return &release, nil
 }
 
-// CheckNewVersion returns whether a newer release is available and the release metadata.
 func (c *Checker) CheckNewVersion(ctx context.Context, version string) (bool, *Release, error) {
 	if isDevelop(version) {
 		return false, nil, nil

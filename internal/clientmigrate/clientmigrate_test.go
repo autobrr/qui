@@ -231,7 +231,6 @@ func TestTransmissionFilePriorities(t *testing.T) {
 	}
 
 	assert.Equal(t, []int{0, 6}, transmissionFilePriorities(&resume, 2))
-	// mismatched lengths fall back to all-normal
 	assert.Equal(t, []int{1, 1, 1}, transmissionFilePriorities(&resume, 3))
 }
 
@@ -308,7 +307,6 @@ func TestRTorrentFilePriorities(t *testing.T) {
 	}
 
 	assert.Equal(t, []int{0, 1, 6}, rtorrentFilePriorities(entries, 3))
-	// length mismatch falls back to all-normal
 	assert.Equal(t, []int{1, 1}, rtorrentFilePriorities(entries, 2))
 	assert.Equal(t, []int{1}, rtorrentFilePriorities(nil, 1))
 }
@@ -430,7 +428,6 @@ func TestReadDelugeLabels(t *testing.T) {
 	labels := readDelugeLabels(stateDir)
 	assert.Equal(t, map[string]string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tv"}, labels)
 
-	// absent file means no labels
 	assert.Nil(t, readDelugeLabels(t.TempDir()))
 }
 
@@ -487,7 +484,6 @@ func TestDelugeMigrateSkipsMismatchedInfoHash(t *testing.T) {
 
 	opts := Options{Source: "deluge", SourceDir: stateDir, QbitDir: qbitDir}
 
-	// valid length but belonging to different content: nothing is written
 	writeResume(bytes.Repeat([]byte{0xaa}, 20))
 	if err := NewDelugeImporter(opts).Migrate(); err != nil {
 		t.Fatal(err)
@@ -498,7 +494,6 @@ func TestDelugeMigrateSkipsMismatchedInfoHash(t *testing.T) {
 	}
 	assert.Empty(t, entries)
 
-	// control: the matching hash imports the torrent
 	writeResume(mi.HashInfoBytes().Bytes())
 	if err := NewDelugeImporter(opts).Migrate(); err != nil {
 		t.Fatal(err)
@@ -513,8 +508,6 @@ func TestDelugeMigrateSkipsMismatchedInfoHash(t *testing.T) {
 func TestArchiveDirExcludesOwnArchive(t *testing.T) {
 	t.Parallel()
 
-	// --source-dir . puts qbt_backup inside the walked tree; the archive must
-	// not be written into itself
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "torrents.fastresume"), []byte("data"), 0o600); err != nil {
 		t.Fatal(err)

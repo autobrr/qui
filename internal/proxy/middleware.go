@@ -46,7 +46,6 @@ func userAgentOrUnknown(r *http.Request) string {
 	return "unknown"
 }
 
-// getOrCreateDebouncer returns a debouncer for the given key hash, creating one if it doesn't exist
 func getOrCreateDebouncer(keyHash string) *debounce.Debouncer {
 	startAPIKeyDebouncerCleanup()
 
@@ -100,11 +99,9 @@ func cleanupStaleDebouncers() {
 	}
 }
 
-// ClientAPIKeyMiddleware validates client API keys and extracts instance information
 func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Extract API key from URL path parameter
 			apiKey := chi.URLParam(r, "api-key")
 
 			if apiKey == "" {
@@ -115,7 +112,6 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 				return
 			}
 
-			// Validate the API key
 			ctx := r.Context()
 			clientAPIKey, err := store.ValidateKey(ctx, apiKey)
 			if err != nil {
@@ -131,7 +127,6 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 				return
 			}
 
-			// Update last used timestamp with debouncing per API key
 			debouncer := getOrCreateDebouncer(clientAPIKey.KeyHash)
 
 			if !debouncer.Queued() {
@@ -142,17 +137,14 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 				})
 			}
 
-			// Add client API key and instance ID to request context
 			ctx = context.WithValue(ctx, ClientAPIKeyContextKey, clientAPIKey)
 			ctx = context.WithValue(ctx, InstanceIDContextKey, clientAPIKey.InstanceID)
 
-			// Continue with the request
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-// GetClientAPIKeyFromContext retrieves the client API key from the request context
 func GetClientAPIKeyFromContext(ctx context.Context) *models.ClientAPIKey {
 	if key, ok := ctx.Value(ClientAPIKeyContextKey).(*models.ClientAPIKey); ok {
 		return key
@@ -160,7 +152,6 @@ func GetClientAPIKeyFromContext(ctx context.Context) *models.ClientAPIKey {
 	return nil
 }
 
-// GetInstanceIDFromContext retrieves the instance ID from the request context
 func GetInstanceIDFromContext(ctx context.Context) int {
 	if id, ok := ctx.Value(InstanceIDContextKey).(int); ok {
 		return id

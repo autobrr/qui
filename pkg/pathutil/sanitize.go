@@ -1,7 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package pathutil provides cross-platform path sanitization utilities.
 package pathutil
 
 import (
@@ -13,37 +12,21 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// illegalCharsRegex matches characters that are illegal in Windows filenames.
-// These are: < > : " / \ | ? *
 var illegalCharsRegex = regexp.MustCompile(`[<>:"/\\|?*]`)
 
-// controlCharsRegex matches ASCII control characters (0x00-0x1F).
 var controlCharsRegex = regexp.MustCompile(`[\x00-\x1f]`)
 
-// SanitizePathSegment sanitizes a path segment (directory or file name) to be
-// safe for use across platforms (Unix, Windows, macOS).
-//
-// It performs the following transformations:
-//   - Removes characters illegal in Windows: < > : " / \ | ? *
-//   - Removes ASCII control characters (0x00-0x1F)
-//   - Removes trailing dots and spaces (Windows restriction)
-//   - Prefixes Windows reserved names (CON, PRN, etc.) with underscore
-//   - Returns "_" if the result would be empty
 func SanitizePathSegment(name string) string {
 	if name == "" {
 		return "_"
 	}
 
-	// Remove illegal characters
 	result := illegalCharsRegex.ReplaceAllString(name, "")
 
-	// Remove control characters
 	result = controlCharsRegex.ReplaceAllString(result, "")
 
-	// Remove trailing dots and spaces (Windows restriction)
 	result = strings.TrimRight(result, ". ")
 
-	// Handle empty result
 	if result == "" {
 		return "_"
 	}
@@ -55,8 +38,6 @@ func SanitizePathSegment(name string) string {
 	return result
 }
 
-// IsWindowsDeviceName reports whether a path component is a reserved Windows
-// device name, ignoring its extension and trailing spaces.
 func IsWindowsDeviceName(component string) bool {
 	base, _, _ := strings.Cut(component, ".")
 	base = strings.TrimRight(base, " ")
@@ -100,9 +81,6 @@ func TorrentPathComponent(component string) (string, error) {
 	return name, nil
 }
 
-// TorrentFilePath joins root and each component mapped by TorrentPathComponent
-// with "/", and returns the first error of a component. An empty root adds no
-// prefix, and no components return root.
 func TorrentFilePath(root string, components []string) (string, error) {
 	n := len(root) + len(components)
 	for _, c := range components {
@@ -159,8 +137,6 @@ func writeTorrentPathName(b *strings.Builder, name string) {
 // torrentPathControlLen is the UTF-8 length of every rune isTorrentPathControl reports.
 const torrentPathControlLen = 3
 
-// indexTorrentPathControl returns the byte index of the first filtered rune in
-// valid UTF-8, or -1.
 func indexTorrentPathControl(name string) int {
 	offset := 0
 	// Every filtered rune starts with 0xe2.
@@ -194,9 +170,6 @@ func isTorrentPathControl(r rune) bool {
 // are never more than 255 UTF-16 units, so the limit also holds on NTFS.
 const maxIsolationNameBytes = 255 - len("--") - 8
 
-// IsolationFolder returns the name of the isolation folder for a torrent: the
-// sanitized torrent name, cut at a full character to fit 255 bytes with room
-// for the hash of HashedIsolationFolder.
 func IsolationFolder(name string) string {
 	result := SanitizePathSegment(name)
 	if len(result) <= maxIsolationNameBytes {

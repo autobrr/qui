@@ -14,7 +14,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Supported reports whether the current platform can inspect shared allocation.
 const Supported = true
 
 const (
@@ -42,8 +41,6 @@ type fileMetadata struct {
 	size               int64
 }
 
-// FilesShareAllocation reports whether two known files currently reference at
-// least one common allocated cluster.
 func FilesShareAllocation(sourcePath, candidatePath string) (bool, error) {
 	sourceHandle, err := openFile(sourcePath)
 	if err != nil {

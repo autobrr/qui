@@ -11,20 +11,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Provider looks up episode counts from an external metadata source.
 type Provider interface {
 	EpisodesInSeason(ctx context.Context, title string, seasonNumber int) (int, error)
 }
 
-// Service orchestrates metadata lookups across configured providers with caching.
 type Service struct {
-	tvdb   Provider // nil if not configured
-	tvmaze Provider // always available
+	tvdb   Provider
+	tvmaze Provider
 	cache  *resultCache
 }
 
-// NewService creates a metadata service. TVMaze is always enabled.
-// TVDB is only enabled when tvdbAPIKey is non-empty.
 func NewService(tvdbAPIKey, tvdbPIN string) *Service {
 	s := &Service{
 		tvmaze: newTVMazeProvider(),
@@ -39,8 +35,6 @@ func NewService(tvdbAPIKey, tvdbPIN string) *Service {
 	return s
 }
 
-// LookupEpisodeTotal returns the total number of episodes in a season for the given show title.
-// Results are cached for 1 hour after a successful lookup.
 func (s *Service) LookupEpisodeTotal(ctx context.Context, title string, seasonNumber int) (int, error) {
 	if count, ok := s.cache.Get(title, seasonNumber); ok {
 		log.Debug().Str("title", title).Int("season", seasonNumber).Int("count", count).Msg("metadata: cache hit")
@@ -125,7 +119,6 @@ func (s *Service) resolveResults(title string, season, tvdbCount int, tvdbErr er
 	}
 }
 
-// HasTVDB reports whether the TVDB provider is configured.
 func (s *Service) HasTVDB() bool {
 	return s.tvdb != nil
 }

@@ -16,7 +16,6 @@ import (
 
 const defaultCheckInterval = 2 * time.Hour
 
-// Service periodically checks api.autobrr.com for new qui releases and caches the latest result.
 type Service struct {
 	log            zerolog.Logger
 	currentVersion string
@@ -29,7 +28,6 @@ type Service struct {
 	isEnabled      atomic.Bool
 }
 
-// NewService creates a new update Service instance.
 func NewService(log zerolog.Logger, enabled bool, currentVersion, userAgent string) *Service {
 	svc := &Service{
 		log:            log.With().Str("component", "update").Logger(),
@@ -40,7 +38,6 @@ func NewService(log zerolog.Logger, enabled bool, currentVersion, userAgent stri
 	return svc
 }
 
-// Start launches a background loop that periodically checks for updates while the context is active.
 func (s *Service) Start(ctx context.Context) {
 	go func() {
 		// Run an initial check shortly after startup so the banner can appear quickly.
@@ -72,14 +69,12 @@ func (s *Service) initialCheck(ctx context.Context) {
 	}
 }
 
-// GetLatestRelease returns the last known release if a newer version has been found.
 func (s *Service) GetLatestRelease(_ context.Context) *version.Release {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.latestRelease
 }
 
-// CheckUpdates triggers a refresh of the latest release information if updates are enabled.
 func (s *Service) CheckUpdates(ctx context.Context) {
 	if !s.isEnabled.Load() {
 		s.log.Trace().Msg("skipping update check - disabled in config")
@@ -91,7 +86,6 @@ func (s *Service) CheckUpdates(ctx context.Context) {
 	}
 }
 
-// CheckUpdateAvailable performs an update check and returns the new release if one is available.
 func (s *Service) CheckUpdateAvailable(ctx context.Context) (*version.Release, error) {
 	s.log.Trace().Msg("checking for updates")
 
@@ -124,7 +118,6 @@ func (s *Service) CheckUpdateAvailable(ctx context.Context) (*version.Release, e
 	return release, nil
 }
 
-// SetEnabled toggles whether periodic update checks should run.
 func (s *Service) SetEnabled(enabled bool) {
 	s.isEnabled.Store(enabled)
 	if !enabled {
