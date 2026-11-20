@@ -450,6 +450,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore), s.sshPool)
 	instancesHandler.SetOrphanScan(s.orphanScanService)
 	instancesHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
+	instancesHandler.SetFilesystem(s.backendPool)
 	torrentsHandler := s.newTorrentsHandler()
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
@@ -763,6 +764,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.With(instances.Read).Get("/capabilities", instancesHandler.GetInstanceCapabilities)
 					r.With(instances.Read).Get("/transfer-info", instancesHandler.GetTransferInfo)
 					r.With(instances.Read).Get("/free-space", instancesHandler.GetFreeSpaceAtPath)
+					r.With(instances.Read).Get("/disk", instancesHandler.GetDisk)
 					r.With(instances.Read).Get("/reannounce/activity", instancesHandler.GetReannounceActivity)
 					r.With(instances.Read).Get("/reannounce/candidates", instancesHandler.GetReannounceCandidates)
 

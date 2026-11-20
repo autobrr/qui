@@ -108,6 +108,7 @@
   },
   "storage": {
     "title": "Archiviazione",
+    "help": "Una o più barre qui sono stime. Quando qui non riesce a leggere il disco di un'istanza, la parte piena mostra i suoi torrent e la parte vuota mostra lo spazio libero. Per visualizzare l'utilizzo reale del disco, abilita \"Accesso al filesystem locale\" o configura l'accesso SSH nelle impostazioni dell'istanza.",
     "free": "{{size}} liberi"
   },
   "library": {

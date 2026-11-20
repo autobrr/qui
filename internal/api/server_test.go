@@ -216,11 +216,12 @@ func newTestDependenciesWithDB(t *testing.T) (*Dependencies, *database.DB) {
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
 	require.NoError(t, err)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	backendPool := fsops.NewPool(instanceStore, local.NewBackend())
 	transferService := transfer.NewService(t.Context(), transfer.Deps{
 		Store:     transfers,
 		Instances: instanceStore,
 		Sync:      syncManager,
-		Files:     fsops.NewPool(instanceStore, local.NewBackend()),
+		Files:     backendPool,
 		Groups:    crossSeedService,
 		Config:    transfer.DefaultConfig(),
 	})
@@ -297,6 +298,7 @@ func newTestDependenciesWithDB(t *testing.T) (*Dependencies, *database.DB) {
 		Transfers:                 transfers,
 		TransferService:           transferService,
 		ShareService:              shareService,
+		BackendPool:               backendPool,
 	}, db
 }
 
