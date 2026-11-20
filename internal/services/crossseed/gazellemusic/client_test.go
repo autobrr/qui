@@ -90,7 +90,6 @@ func TestRequestQueuePastDeadlineIsDeadlineExceeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	// A test server gets no rate limit, so give the client the limit of the site.
 	client.limiter = rate.NewLimiter(rate.Every(2*time.Second), 1)
 	// Take the one token, so the next request has to wait about 2 s.
 	client.limiter.Allow()
