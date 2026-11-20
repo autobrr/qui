@@ -108,7 +108,6 @@ In order:
 
 1. Infohash match with the Gazelle-style `info["source"]` swap logic (see [nemorosa](https://github.com/KyokoMiki/nemorosa)). qui tries the current source flag first (`RED` or `OPS`), then the flag the site used before its rename (`PTH` or `APL`). Uploads from before a rename still carry the old flag.
 2. Filename search plus exact total size
-3. Filename search plus filelist verification
 
 If the target tracker is down or returns an error, qui logs a warning, does not stamp the torrent's Gazelle cooldown, and continues the run. The torrent stays eligible for the next run.
 
