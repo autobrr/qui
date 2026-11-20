@@ -88,6 +88,14 @@ func (b *catalogReplayBackend) HardlinkTree(_ context.Context, plan *hardlinktre
 	return &fsops.TreeCreateResult{}, nil
 }
 
+func (b *catalogReplayBackend) ReflinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+	return b.HardlinkTree(ctx, plan)
+}
+
+func (*catalogReplayBackend) SupportsReflink(context.Context, string) (bool, string, error) {
+	return true, "", nil
+}
+
 func catalogTorrent(t *testing.T, name, source string, renamed bool) []byte {
 	t.Helper()
 	track := "01 - Still Water.flac"
@@ -139,9 +147,6 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 	svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) { return settings, nil }
 	backend := &catalogReplayBackend{Backend: local.NewBackend()}
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, backend))
-	svc.reflinkMaterializer = func(ctx context.Context, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-		return backend.HardlinkTree(ctx, plan)
-	}
 	withAdder(svc)
 	var query string
 	var downloads int

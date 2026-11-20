@@ -758,8 +758,8 @@ func (s *Service) planSeasonPack(
 }
 
 // createSeasonPackTree links the planned tree. After a cross-device error it rolls
-// the partial tree back and retries in the next ranked base dir, as
-// LinkIntoMatchingBaseDir does: SameFilesystem compares device IDs, and some hosts
+// the partial tree back and retries in the next ranked base dir, as the
+// link tree module does: SameFilesystem compares device IDs, and some hosts
 // (OrbStack VirtioFS) report one ID for several disks. A retry replaces
 // *planBuild with the plan for the dir that was used.
 func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPackPlanBuild, linkMode string) error {
@@ -799,9 +799,9 @@ func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPac
 }
 
 // seasonPackDestDir applies the instance's hardlink directory-organization preset
-// (flat / by-tracker / by-instance) to the selected base dir, mirroring buildCategorySavePath
-// on the regular cross-seed apply path. The pack's own root folder provides per-torrent
-// isolation, so unlike buildHardlinkDestDir no isolation folder is added here.
+// (flat / by-tracker / by-instance) to the selected base dir, mirroring the Preset
+// directory of the link tree module on the regular cross-seed apply path. The pack's
+// own root folder provides per-torrent isolation, so no isolation folder is added here.
 // The by-instance preset uses instanceName, the name of the instance that gets the add.
 func (s *Service) seasonPackDestDir(ctx context.Context, d fsops.PathDialect, inst *models.Instance, instanceName, baseDir string, torrentBytes []byte, indexer string) string {
 	switch inst.HardlinkDirPreset {
@@ -817,7 +817,7 @@ func (s *Service) seasonPackDestDir(ctx context.Context, d fsops.PathDialect, in
 }
 
 // selectSeasonPackBaseDir returns the first base dir, in rankBaseDirs order as
-// LinkIntoMatchingBaseDir uses for single cross-seeds, on the same filesystem as
+// the link tree module uses for single cross-seeds, on the same filesystem as
 // every episode source. It also returns the ranked dirs after it, unchecked, to
 // retry after a cross-device link error. The episodes of a pack share a disk, so
 // the first source path stands in for all of them when ranking.

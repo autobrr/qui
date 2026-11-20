@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -33,12 +34,19 @@ func TestCatalogPlacementKeepsValidatedEdges(t *testing.T) {
 		require.NoError(t, os.WriteFile(name, []byte{byte('A' + i), byte('A' + i)}, 0o600))
 		existing[i] = hardlinktree.ExistingFile{AbsPath: name, RelPath: file.Name, Size: 2}
 	}
-	plan, err := catalogLinkPlan(fsops.HostPaths, filepath.Join(root, "links"), pairs, existing)
+	links, err := catalogLinks(fsops.HostPaths, pairs, existing)
 	require.NoError(t, err)
-	_, err = local.NewBackend().HardlinkTree(t.Context(), plan)
+	plan, err := linktree.Plan(t.Context(), linktree.Request{
+		Backend: local.NewBackend(),
+		Config:  linktree.Config{BaseDirs: []string{filepath.Join(root, "links")}, Kind: linktree.Hardlink},
+		Torrent: linktree.Torrent{InfoHash: "hash", Name: "Incoming", Files: []string{left[0].Name, left[1].Name}},
+		Links:   links,
+	})
+	require.NoError(t, err)
+	tree, err := plan.Create(t.Context())
 	require.NoError(t, err)
 	for _, tt := range []struct{ name, want string }{{"new.flac", "BB"}, {"exact.flac", "AA"}} {
-		data, err := os.ReadFile(filepath.Join(plan.RootDir, "Incoming", tt.name))
+		data, err := os.ReadFile(filepath.Join(tree.SavePath, "Incoming", tt.name))
 		require.NoError(t, err)
 		require.Equal(t, tt.want, string(data))
 	}
