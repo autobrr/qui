@@ -22,7 +22,6 @@ export interface CrossSeedTorrentInfo {
   requiredCaps?: string[]
   discLayout?: boolean
   discMarker?: string
-  // Pre-filtering information for UI context menu
   availableIndexers?: number[]
   filteredIndexers?: number[]
   excludedIndexers?: Record<number, string>
@@ -59,7 +58,6 @@ export interface CrossSeedGazelleLookup {
   replacedIndexerIds?: number[]
 }
 
-/** One RED/OPS site, as GET /api/cross-seed/gazelle/sites describes it. */
 export interface CrossSeedGazelleSite {
   site: string
   name: string
@@ -300,12 +298,10 @@ export interface CrossSeedAutomationSettings {
   runIntervalMinutes: number
   targetInstanceIds: number[]
   targetIndexerIds: number[]
-  // RSS source filtering: filter which local torrents to search when checking RSS feeds
   rssSourceCategories: string[]
   rssSourceTags: string[]
   rssSourceExcludeCategories: string[]
   rssSourceExcludeTags: string[]
-  // Webhook source filtering: filter which local torrents to search when checking webhook requests
   webhookSourceCategories: string[]
   webhookSourceTags: string[]
   webhookSourceExcludeCategories: string[]
@@ -320,15 +316,12 @@ export interface CrossSeedAutomationSettings {
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
-  // Category mapping: force the search category by qBittorrent category
   categoryMappingRules: CategoryMappingRule[]
-  // Source-specific tagging
   rssAutomationTags: string[]
   seededSearchTags: string[]
   completionSearchTags: string[]
   webhookTags: string[]
   inheritSourceTags: boolean
-  // Skip auto-resume settings per source mode
   skipAutoResumeRss: boolean
   skipAutoResumeSeededSearch: boolean
   skipAutoResumeCompletion: boolean
@@ -336,15 +329,12 @@ export interface CrossSeedAutomationSettings {
   skipRecheck: boolean
   rescueTitleMismatches: boolean
   skipPieceBoundarySafetyCheck: boolean
-  // Hardlink mode settings
   useHardlinks: boolean
   hardlinkBaseDir: string
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
-  // Gazelle (OPS/RED) cross-seed settings
   gazelleEnabled: boolean
   redactedApiKey: string
   orpheusApiKey: string
-  // Season pack settings
   seasonPackEnabled: boolean
   seasonPackAutomationEnabled: boolean
   seasonPackSkipRepackCompare: boolean
@@ -366,12 +356,10 @@ export interface CrossSeedAutomationSettingsPatch {
   runIntervalMinutes?: number
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
-  // RSS source filtering: filter which local torrents to search when checking RSS feeds
   rssSourceCategories?: string[]
   rssSourceTags?: string[]
   rssSourceExcludeCategories?: string[]
   rssSourceExcludeTags?: string[]
-  // Webhook source filtering: filter which local torrents to search when checking webhook requests
   webhookSourceCategories?: string[]
   webhookSourceTags?: string[]
   webhookSourceExcludeCategories?: string[]
@@ -386,15 +374,12 @@ export interface CrossSeedAutomationSettingsPatch {
   useCustomCategory?: boolean
   customCategory?: string
   runExternalProgramId?: number | null
-  // Category mapping: force the search category by qBittorrent category
   categoryMappingRules?: CategoryMappingRule[]
-  // Source-specific tagging
   rssAutomationTags?: string[]
   seededSearchTags?: string[]
   completionSearchTags?: string[]
   webhookTags?: string[]
   inheritSourceTags?: boolean
-  // Skip auto-resume settings per source mode
   skipAutoResumeRss?: boolean
   skipAutoResumeSeededSearch?: boolean
   skipAutoResumeCompletion?: boolean
@@ -402,15 +387,12 @@ export interface CrossSeedAutomationSettingsPatch {
   skipRecheck?: boolean
   rescueTitleMismatches?: boolean
   skipPieceBoundarySafetyCheck?: boolean
-  // Hardlink mode settings
   useHardlinks?: boolean
   hardlinkBaseDir?: string
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
-  // Gazelle (OPS/RED) cross-seed settings
   gazelleEnabled?: boolean
   redactedApiKey?: string
   orpheusApiKey?: string
-  // Season pack settings
   seasonPackEnabled?: boolean
   seasonPackAutomationEnabled?: boolean
   seasonPackSkipRepackCompare?: boolean
@@ -473,7 +455,6 @@ export interface CrossSeedSearchResult {
   status: CrossSeedSearchResultStatus
   message?: string
   processedAt: string
-  /** The Cross-seed instance that a routed add goes to. */
   crossSeedInstanceId?: number
   crossSeedInstanceName?: string
 }
@@ -501,7 +482,6 @@ export interface CrossSeedSearchRun {
   cooldownMinutes: number
   results: CrossSeedSearchResult[]
   gazelleSummary?: CrossSeedGazelleSiteSummary[]
-  /** The cap of a scheduled run. */
   searchLimit?: number
   /** Set when the run stopped at its cap: the torrents left for the next run. */
   waitingTorrents?: number
@@ -549,14 +529,12 @@ export interface CrossSeedRouteRow {
   mappedPath: string
 }
 
-/** A saved route from a Source instance to its Cross-seed instance. */
 export interface CrossSeedRoute {
   sourceInstanceId: number
   crossSeedInstanceId: number
   rows: CrossSeedRouteRow[]
 }
 
-/** The route read of one Source instance: one row for each base folder, with the rule status. */
 export interface CrossSeedRouteStatus extends CrossSeedRoute {
   /** routedTorrents is null when the Cross-seed instance is unavailable. */
   rows: (CrossSeedRouteRow & { routedTorrents: number | null })[]

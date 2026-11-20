@@ -11,7 +11,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// isPlatformCrossDevice recognizes the error of a Windows hardlink across volumes.
 func isPlatformCrossDevice(err error) bool {
 	return errors.Is(err, windows.ERROR_NOT_SAME_DEVICE)
 }

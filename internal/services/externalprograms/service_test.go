@@ -114,7 +114,7 @@ func TestService_Execute_PathBlocked(t *testing.T) {
 
 	s := &Service{
 		config: &domain.Config{
-			ExternalProgramAllowList: []string{otherDir}, // Different directory
+			ExternalProgramAllowList: []string{otherDir},
 		},
 	}
 
@@ -122,7 +122,7 @@ func TestService_Execute_PathBlocked(t *testing.T) {
 		ID:      1,
 		Name:    "Test Program",
 		Enabled: true,
-		Path:    filepath.Join(tempDir, "script.sh"), // Not in allowlist
+		Path:    filepath.Join(tempDir, "script.sh"),
 	}
 
 	torrent := &qbt.Torrent{
@@ -218,7 +218,7 @@ func TestBuildTorrentData(t *testing.T) {
 		Category:    "movies",
 		Tags:        "tag1,tag2",
 		State:       qbt.TorrentStateUploading,
-		Size:        1024 * 1024 * 100, // 100 MB
+		Size:        1024 * 1024 * 100,
 		Progress:    0.75,
 		ContentPath: "/downloads/complete/Test.Torrent.Name",
 		Comment:     "Test comment",
@@ -232,13 +232,13 @@ func TestBuildTorrentData(t *testing.T) {
 
 	assert.Equal(t, "abc123def456", data["hash"])
 	assert.Equal(t, "Test.Torrent.Name", data["name"])
-	assert.Equal(t, "/mnt/data/complete", data["save_path"]) // Path mapped
+	assert.Equal(t, "/mnt/data/complete", data["save_path"])
 	assert.Equal(t, "movies", data["category"])
 	assert.Equal(t, "tag1,tag2", data["tags"])
 	assert.Equal(t, "uploading", data["state"])
 	assert.Equal(t, "104857600", data["size"])
 	assert.Equal(t, "0.75", data["progress"])
-	assert.Equal(t, "/mnt/data/complete/Test.Torrent.Name", data["content_path"]) // Path mapped
+	assert.Equal(t, "/mnt/data/complete/Test.Torrent.Name", data["content_path"])
 	assert.Equal(t, "Test comment", data["comment"])
 }
 
@@ -256,8 +256,6 @@ func TestBuildTorrentData_NoPathMappings(t *testing.T) {
 }
 
 func TestBuildTorrentData_SpecialCharacters(t *testing.T) {
-	// Test that special characters in torrent data are handled safely
-	// These characters could potentially be used for shell injection attacks
 	tests := []struct {
 		name     string
 		torrent  *qbt.Torrent
@@ -353,7 +351,6 @@ func TestBuildTorrentData_SpecialCharacters(t *testing.T) {
 			// The actual shell escaping happens in shellJoin when building commands
 			assert.NotEmpty(t, data[tt.checkKey])
 
-			// For name-based tests, verify the exact value is preserved
 			if tt.checkKey == "name" {
 				assert.Equal(t, tt.torrent.Name, data["name"])
 			}
@@ -362,7 +359,6 @@ func TestBuildTorrentData_SpecialCharacters(t *testing.T) {
 }
 
 func TestBuildTorrentData_EmptyFields(t *testing.T) {
-	// Test handling of empty and zero values
 	torrent := &qbt.Torrent{
 		Hash:        "",
 		Name:        "",
@@ -464,28 +460,18 @@ func TestExecuteRequest_Validate(t *testing.T) {
 	}
 }
 
-// Helper function
-//
-// =============================================================================
-// Terminal Detection Function Tests
-// =============================================================================
-
 func TestGetTerminalCandidates(t *testing.T) {
 	candidates := getTerminalCandidates()
 
-	// Should always return some candidates
 	assert.NotEmpty(t, candidates)
 
-	// Cross-platform terminals should always be present at the start
 	crossPlatformTerminals := []string{"wezterm", "hyper", "kitty", "alacritty"}
 	for i, term := range crossPlatformTerminals {
 		assert.Equal(t, term, candidates[i].name, "cross-platform terminal %s should be at position %d", term, i)
 	}
 
-	// Platform-specific checks
 	switch runtime.GOOS {
 	case "darwin":
-		// macOS should have iterm2 and apple-terminal
 		var hasITerm2, hasAppleTerminal bool
 		for _, c := range candidates {
 			if c.name == "iterm2" {
@@ -498,7 +484,6 @@ func TestGetTerminalCandidates(t *testing.T) {
 		assert.True(t, hasITerm2, "macOS should have iterm2 as a candidate")
 		assert.True(t, hasAppleTerminal, "macOS should have apple-terminal as a candidate")
 
-		// macOS should NOT have Linux-specific terminals
 		for _, c := range candidates {
 			assert.NotEqual(t, "gnome-terminal", c.name, "macOS should not have gnome-terminal")
 			assert.NotEqual(t, "konsole", c.name, "macOS should not have konsole")
@@ -506,13 +491,11 @@ func TestGetTerminalCandidates(t *testing.T) {
 		}
 
 	case "windows":
-		// Windows should NOT have macOS-specific terminals
 		for _, c := range candidates {
 			assert.NotEqual(t, "iterm2", c.name, "Windows should not have iterm2")
 			assert.NotEqual(t, "apple-terminal", c.name, "Windows should not have apple-terminal")
 		}
 
-		// Windows should have Linux terminals in the candidate list (they won't be available but are checked)
 		var hasGnomeTerminal, hasXterm bool
 		for _, c := range candidates {
 			if c.name == "gnome-terminal" {
@@ -526,7 +509,6 @@ func TestGetTerminalCandidates(t *testing.T) {
 		assert.True(t, hasXterm, "Windows candidate list should include xterm")
 
 	default:
-		// Linux should have Linux terminals
 		var hasGnomeTerminal, hasXterm bool
 		for _, c := range candidates {
 			if c.name == "gnome-terminal" {
@@ -539,7 +521,6 @@ func TestGetTerminalCandidates(t *testing.T) {
 		assert.True(t, hasGnomeTerminal, "Linux should have gnome-terminal as a candidate")
 		assert.True(t, hasXterm, "Linux should have xterm as a candidate")
 
-		// Linux should NOT have macOS-specific terminals
 		for _, c := range candidates {
 			assert.NotEqual(t, "iterm2", c.name, "Linux should not have iterm2")
 			assert.NotEqual(t, "apple-terminal", c.name, "Linux should not have apple-terminal")
@@ -613,7 +594,6 @@ func TestEscapeAppleScript(t *testing.T) {
 			input:    "line1\rline2",
 			expected: "line1\\rline2",
 		},
-		// Security-critical test cases
 		{
 			name:     "injection attempt with quotes",
 			input:    `"; do shell script "rm -rf /"`,
@@ -743,7 +723,6 @@ func TestDetectTerminalFromEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save original env value
 			originalValue := os.Getenv("TERM_PROGRAM")
 			defer func() {
 				if originalValue == "" {
@@ -753,7 +732,6 @@ func TestDetectTerminalFromEnv(t *testing.T) {
 				}
 			}()
 
-			// Set test env value
 			if tt.envValue == "" {
 				os.Unsetenv("TERM_PROGRAM")
 			} else {
@@ -778,7 +756,6 @@ func TestBuildTerminalArgs(t *testing.T) {
 		expectedExe  string
 		expectedArgs []string
 	}{
-		// Cross-platform terminals
 		{
 			name:         "wezterm",
 			terminal:     "wezterm",
@@ -807,7 +784,6 @@ func TestBuildTerminalArgs(t *testing.T) {
 			expectedExe:  "alacritty",
 			expectedArgs: []string{"-e", "bash", "-c", keepOpenCmd},
 		},
-		// Linux terminals
 		{
 			name:         "gnome-terminal",
 			terminal:     "gnome-terminal",
@@ -820,14 +796,14 @@ func TestBuildTerminalArgs(t *testing.T) {
 			terminal:     "konsole",
 			cmdLine:      testCmd,
 			expectedExe:  "konsole",
-			expectedArgs: []string{"--hold", "-e", "bash", "-c", testCmd}, // No exec bash
+			expectedArgs: []string{"--hold", "-e", "bash", "-c", testCmd},
 		},
 		{
 			name:         "xfce4-terminal uses hold flag",
 			terminal:     "xfce4-terminal",
 			cmdLine:      testCmd,
 			expectedExe:  "xfce4-terminal",
-			expectedArgs: []string{"--hold", "-e", "bash", "-c", testCmd}, // No exec bash
+			expectedArgs: []string{"--hold", "-e", "bash", "-c", testCmd},
 		},
 		{
 			name:         "mate-terminal",
@@ -841,7 +817,7 @@ func TestBuildTerminalArgs(t *testing.T) {
 			terminal:     "xterm",
 			cmdLine:      testCmd,
 			expectedExe:  "xterm",
-			expectedArgs: []string{"-hold", "-e", "bash", "-c", testCmd}, // No exec bash
+			expectedArgs: []string{"-hold", "-e", "bash", "-c", testCmd},
 		},
 		{
 			name:         "terminator",
@@ -850,7 +826,6 @@ func TestBuildTerminalArgs(t *testing.T) {
 			expectedExe:  "terminator",
 			expectedArgs: []string{"-e", "bash", "-c", keepOpenCmd},
 		},
-		// Unknown terminal
 		{
 			name:         "unknown terminal returns empty",
 			terminal:     "unknown-terminal",
@@ -924,27 +899,21 @@ func TestIsTerminalAvailable(t *testing.T) {
 	})
 }
 
-// TestTerminalCandidate_Integration tests the integration between
-// getTerminalCandidates, isTerminalAvailable, and buildTerminalArgs
 func TestTerminalCandidate_Integration(t *testing.T) {
 	candidates := getTerminalCandidates()
 	testCmd := "echo test"
 
 	for _, candidate := range candidates {
 		t.Run(candidate.name, func(t *testing.T) {
-			// Verify buildTerminalArgs works for all candidates
 			exe, args := buildTerminalArgs(candidate.name, testCmd)
 			assert.NotEmpty(t, exe, "buildTerminalArgs should return exe for candidate %s", candidate.name)
 			assert.NotNil(t, args, "buildTerminalArgs should return args for candidate %s", candidate.name)
 
-			// Verify isTerminalAvailable doesn't panic for any candidate
 			_ = isTerminalAvailable(candidate.name)
 		})
 	}
 }
 
-// TestBuildCommand_Windows tests Windows-specific command building.
-// These tests document the expected Windows behavior and are skipped on other platforms.
 func TestBuildCommand_Windows(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Skipping Windows command building tests on non-Windows platform")
@@ -1004,7 +973,6 @@ func TestBuildCommand_Windows(t *testing.T) {
 	})
 }
 
-// TestIsPathAllowed_Windows tests Windows-specific path allowlist behavior.
 func TestIsPathAllowed_Windows(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Skipping Windows path allowlist tests on non-Windows platform")
@@ -1017,7 +985,6 @@ func TestIsPathAllowed_Windows(t *testing.T) {
 			},
 		}
 
-		// Different cases should match due to case-insensitive comparison
 		assert.True(t, s.IsPathAllowed("C:\\Programs\\test.exe"))
 		assert.True(t, s.IsPathAllowed("c:\\programs\\test.exe"))
 		assert.True(t, s.IsPathAllowed("C:\\PROGRAMS\\TEST.EXE"))
@@ -1035,8 +1002,6 @@ func TestIsPathAllowed_Windows(t *testing.T) {
 	})
 }
 
-// TestBuildCommand_Unix tests Unix-specific command building.
-// These tests verify the current platform behavior.
 func TestBuildCommand_Unix(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping Unix command building tests on Windows")

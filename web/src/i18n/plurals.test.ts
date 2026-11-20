@@ -120,8 +120,6 @@ describe("plural leak detection", () => {
     expect(await findLeaks("ko", english, ko)).toEqual([])
   })
 
-  // Pins that the check never compares rendered text: this locale has every form it
-  // needs, and the fact that they read like English must not put it in the report.
   it("ignores a locale whose text matches English", async () => {
     const it = { common: { items_one: "{{count}} item", items_other: "{{count}} items" } }
 

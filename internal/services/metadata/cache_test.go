@@ -82,7 +82,6 @@ func TestResultCache_NormalizedKeyHit(t *testing.T) {
 	c := newResultCache()
 	c.Set("Breaking Bad", 2, 13)
 
-	// Different casing should hit the same entry.
 	count, ok := c.Get("BREAKING BAD", 2)
 	if !ok {
 		t.Fatal("expected cache hit with different casing, got miss")

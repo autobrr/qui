@@ -58,7 +58,6 @@ func localFileMode(path string, mode fs.FileMode, follow bool) fs.FileMode {
 	return mode
 }
 
-// followedReparseTag queries the opened target, including through junction parents.
 func followedReparseTag(path *uint16) (uint32, error) {
 	h, err := windows.CreateFile(path, 0,
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,

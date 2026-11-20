@@ -10,8 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// SlashPaths must read a POSIX path the same way on every host, including a
-// Windows one, which is the whole reason the dialect exists.
 func TestSlashPathsIsHostIndependent(t *testing.T) {
 	d := SlashPaths
 	require.True(t, d.IsAbs("/data"))
@@ -58,7 +56,6 @@ func TestSlashPathsRel(t *testing.T) {
 		}
 		require.NoError(t, err, "%s -> %s", tc.base, tc.target)
 		require.Equal(t, tc.want, got, "%s -> %s", tc.base, tc.target)
-		// On a slash host the stdlib is the oracle.
 		if filepath.Separator == '/' {
 			want, err := filepath.Rel(tc.base, tc.target)
 			require.NoError(t, err)
@@ -67,8 +64,6 @@ func TestSlashPathsRel(t *testing.T) {
 	}
 }
 
-// WindowsPaths reads a Windows path the same way on every host. On a Windows
-// host the host dialect is the oracle.
 // regression: #4231
 func TestWindowsPathsIsHostIndependent(t *testing.T) {
 	d := WindowsPaths
@@ -157,8 +152,6 @@ func TestWindowsPathsIsHostIndependent(t *testing.T) {
 	}
 }
 
-// An instance whose files qui cannot reach gets the path rules that the form
-// of its save path shows, whatever the host.
 // regression: #4231
 func TestClientPaths(t *testing.T) {
 	for _, tc := range []struct {

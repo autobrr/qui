@@ -93,12 +93,10 @@ func (c *Client) buildURL(endpoint string, params map[string]string) string {
 	return parsedURL.String()
 }
 
-// drainAndClose drains and closes the response body to ensure HTTP connection reuse
 func drainAndClose(body io.ReadCloser) {
 	if body == nil {
 		return
 	}
-	// Drain the body to allow connection reuse
 	_, _ = io.Copy(io.Discard, body)
 	body.Close()
 }
@@ -151,7 +149,6 @@ func (c *Client) retryDo(ctx context.Context, req *http.Request) (*http.Response
 
 		retry.Delay(time.Second * 3)
 
-		// Redact sensitive params from URL errors to prevent secret leakage in logs
 		return redact.URLError(err)
 	},
 		retry.OnRetry(func(n uint, err error) {

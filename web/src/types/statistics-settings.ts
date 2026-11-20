@@ -13,7 +13,6 @@ export interface TransferHistorySettings {
   detailRetentionDays: DetailRetentionDays
 }
 
-/** The part of the transfer history status that the Statistics settings show. */
 export interface TransferHistorySettingsStatus {
   instances: TransferHistoryInstance[]
   historyBytes: number

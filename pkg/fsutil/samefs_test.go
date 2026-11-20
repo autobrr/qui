@@ -10,7 +10,6 @@ import (
 )
 
 func TestSameFilesystem_SamePath(t *testing.T) {
-	// Create a temp directory
 	tmpDir := t.TempDir()
 
 	same, err := SameFilesystem(tmpDir, tmpDir)
@@ -23,7 +22,6 @@ func TestSameFilesystem_SamePath(t *testing.T) {
 }
 
 func TestSameFilesystem_SiblingDirectories(t *testing.T) {
-	// Create two sibling temp directories
 	tmpDir := t.TempDir()
 	dir1 := filepath.Join(tmpDir, "dir1")
 	dir2 := filepath.Join(tmpDir, "dir2")
@@ -44,7 +42,6 @@ func TestSameFilesystem_SiblingDirectories(t *testing.T) {
 }
 
 func TestSameFilesystem_FileInDirectory(t *testing.T) {
-	// Create a file in a temp directory
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "testfile.txt")
 	if err := os.WriteFile(filePath, []byte("test"), 0o600); err != nil {
@@ -81,7 +78,6 @@ func TestSameFilesystem_BothNonexistent(t *testing.T) {
 }
 
 func TestSameFilesystem_SymlinkSameFS(t *testing.T) {
-	// Create temp directory with a symlink
 	tmpDir := t.TempDir()
 	targetDir := filepath.Join(tmpDir, "target")
 	linkPath := filepath.Join(tmpDir, "link")

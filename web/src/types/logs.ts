@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Log Settings Types
 export interface LogSettings {
   level: string
   path: string

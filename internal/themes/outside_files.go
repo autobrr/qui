@@ -12,8 +12,6 @@ import (
 	"github.com/tdewolff/parse/v2/css"
 )
 
-// OutsideFileKind tells CSS that can load a file from another host from CSS
-// that the check cannot read.
 type OutsideFileKind string
 
 const (
@@ -21,8 +19,6 @@ const (
 	KindUnreadable  OutsideFileKind = "unreadable"
 )
 
-// OutsideFileError names the first construct that the rule refuses, its kind,
-// and the line it starts on.
 type OutsideFileError struct {
 	Line   int
 	Kind   OutsideFileKind

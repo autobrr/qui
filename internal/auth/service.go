@@ -35,9 +35,7 @@ func NewService(db dbinterface.Querier) *Service {
 	}
 }
 
-// SetupUser creates the initial user account
 func (s *Service) SetupUser(ctx context.Context, username, password string) (*models.User, error) {
-	// Check if user already exists
 	exists, err := s.userStore.Exists(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check user existence: %w", err)
@@ -46,18 +44,15 @@ func (s *Service) SetupUser(ctx context.Context, username, password string) (*mo
 		return nil, models.ErrUserAlreadyExists
 	}
 
-	// Validate password strength
 	if len(password) < 8 {
 		return nil, errors.New("password must be at least 8 characters long")
 	}
 
-	// Hash password
 	hashedPassword, err := HashPassword(password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Create user
 	user, err := s.userStore.Create(ctx, username, hashedPassword)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
@@ -67,9 +62,7 @@ func (s *Service) SetupUser(ctx context.Context, username, password string) (*mo
 	return user, nil
 }
 
-// Login validates credentials and returns the user
 func (s *Service) Login(ctx context.Context, username, password string) (*models.User, error) {
-	// Check if setup is complete
 	exists, err := s.userStore.Exists(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check user existence: %w", err)
@@ -78,7 +71,6 @@ func (s *Service) Login(ctx context.Context, username, password string) (*models
 		return nil, ErrNotSetup
 	}
 
-	// Get user by username
 	user, err := s.userStore.GetByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, models.ErrUserNotFound) {
@@ -87,7 +79,6 @@ func (s *Service) Login(ctx context.Context, username, password string) (*models
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Verify password
 	valid, err := VerifyPassword(password, user.PasswordHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify password: %w", err)
@@ -99,15 +90,12 @@ func (s *Service) Login(ctx context.Context, username, password string) (*models
 	return user, nil
 }
 
-// ChangePassword updates the user's password
 func (s *Service) ChangePassword(ctx context.Context, oldPassword, newPassword string) error {
-	// Get the current user
 	user, err := s.userStore.Get(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Verify old password
 	valid, err := VerifyPassword(oldPassword, user.PasswordHash)
 	if err != nil {
 		return fmt.Errorf("failed to verify password: %w", err)
@@ -116,18 +104,15 @@ func (s *Service) ChangePassword(ctx context.Context, oldPassword, newPassword s
 		return ErrInvalidCredentials
 	}
 
-	// Validate new password strength
 	if len(newPassword) < 8 {
 		return errors.New("password must be at least 8 characters long")
 	}
 
-	// Hash new password
 	hashedPassword, err := HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Update password
 	if err := s.userStore.UpdatePassword(ctx, hashedPassword); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
@@ -136,9 +121,6 @@ func (s *Service) ChangePassword(ctx context.Context, oldPassword, newPassword s
 	return nil
 }
 
-// API Key Management
-
-// CreateAPIKey generates a new API key
 func (s *Service) CreateAPIKey(ctx context.Context, name string, permissions []models.Permission, instanceIDs []int) (string, *models.APIKey, error) {
 	return s.apiKeyStore.Create(ctx, name, permissions, instanceIDs)
 }
@@ -147,22 +129,18 @@ func (s *Service) UpdateAPIKey(ctx context.Context, id int, name string, permiss
 	return s.apiKeyStore.Update(ctx, id, name, permissions, instanceIDs)
 }
 
-// ValidateAPIKey checks if an API key is valid
 func (s *Service) ValidateAPIKey(ctx context.Context, key string) (*models.APIKey, error) {
 	return s.apiKeyStore.ValidateAPIKey(ctx, key)
 }
 
-// ListAPIKeys returns all API keys
 func (s *Service) ListAPIKeys(ctx context.Context) ([]*models.APIKey, error) {
 	return s.apiKeyStore.List(ctx)
 }
 
-// DeleteAPIKey removes an API key
 func (s *Service) DeleteAPIKey(ctx context.Context, id int) error {
 	return s.apiKeyStore.Delete(ctx, id)
 }
 
-// IsSetupComplete checks if initial setup has been completed
 func (s *Service) IsSetupComplete(ctx context.Context) (bool, error) {
 	return s.userStore.Exists(ctx)
 }

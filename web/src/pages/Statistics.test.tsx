@@ -87,10 +87,8 @@ let torrentAnswer: (request: TransferRequest) => TransferHistoryRow[]
 let requests: TransferRequest[]
 let liveGroups: (instanceId: number) => LiveTrackerGroup[]
 let libraryAnswer: (instanceId: number) => TransferHistoryLibraryRow[]
-// While set, the transfer route waits for it before it answers: for each bucket, or only for holdBucket.
 let hold: Promise<void> | undefined
 let holdBucket: string | undefined
-// While set, the route holds only the queries with this groupOf.
 let holdGroupOf: string | undefined
 
 function row(group: string, uploaded: number, downloaded: number, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
@@ -105,7 +103,6 @@ function torrentRow(hash: string, name: string, uploaded: number, torrent: Parti
   })
 }
 
-/** A library row of the UTC day that is daysAgo days before today. */
 function libraryRow(daysAgo: number, sizes: Partial<TransferHistoryLibraryRow>): TransferHistoryLibraryRow {
   const now = new Date()
   return { day: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - daysAgo * DAY).toISOString(), added: 0, completed: 0, deleted: 0, ...sizes }
@@ -137,14 +134,12 @@ async function expectTile(label: string, expected: string) {
   })
 }
 
-/** The text of a node as a wide table shows it, without the numbers that a narrow table puts below the name. */
 function wideText(node: Element): string {
   const copy = node.cloneNode(true) as Element
   copy.querySelectorAll("[data-narrow]").forEach(narrow => narrow.remove())
   return copy.textContent ?? ""
 }
 
-/** Returns the text of each cell of the table row whose first cell holds name. */
 function cells(table: HTMLElement, name: string): string[] {
   const nameNode = within(table).getByText(name)
   return [...(nameNode.closest("tr")?.querySelectorAll("td") ?? [])].map(wideText)
@@ -159,12 +154,10 @@ function isoDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 }
 
-/** The names of the rows of the table, in the order of the table. */
 function rowNames(table: HTMLElement): string[] {
   return [...table.querySelectorAll("tbody tr")].map(row => wideText(row.querySelector("td")!))
 }
 
-/** The header of a column of the table, which sorts the table on a click. */
 function columnHeader(table: HTMLElement, label: string): HTMLElement {
   return within(table.querySelector("thead")!).getByText(label)
 }
@@ -491,7 +484,6 @@ describe("Statistics", () => {
       })
       await expectTile("tiles.uploaded", "1 KiB | ")
       hold = new Promise(() => {})
-      // Home has no rows for the moved period yet.
       fireEvent.click(await screen.findByText("Home"))
 
       await act(async () => {
@@ -626,7 +618,6 @@ describe("Statistics", () => {
     server.use(http.get("*/api/instances/2/transfer-history", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
 
-    // The chart and the table both read the rows of the chart. The top torrents read the instance too.
     await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(3))
     expect(screen.queryByText("chart.empty")).toBeNull()
   })
@@ -636,14 +627,12 @@ describe("Statistics", () => {
     server.use(http.get("*/api/transfer-history/status", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
 
-    // The line at the top of the page, the table, the top torrents, the library growth, the adds and deletes, and the deleted torrents show it.
     await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(6))
   })
 
   it("says that a period with no transfer has none", async () => {
     renderPage()
 
-    // The chart, the table, and the top torrents say so.
     await vi.waitFor(() => expect(screen.getAllByText("chart.empty")).toHaveLength(3))
     expect(screen.queryByTestId("chart")).toBeNull()
   })
@@ -736,7 +725,6 @@ describe("Statistics", () => {
   })
 
   it("sorts each row of the table by the column of a clicked header on a desktop, before it cuts the table to ten rows, and turns the order on the next click", async () => {
-    // Row t1 uploaded the most. The downloads are in another order: t8 the most, then t3, and t1 nothing.
     answer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "day"
       ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, ((index * 5) % 12) * 1024, { width: "day" }))
       : []
@@ -757,7 +745,6 @@ describe("Statistics", () => {
     expect(rowNames(table)).toEqual(names(1, 6, 11, 4, 9, 2, 7, 12, 5, 10))
     expect(sortOf(table, "table.columns.downloaded")).toBe("ascending")
 
-    // The name column starts at the first name, and puts t2 before t10.
     fireEvent.click(columnHeader(table, "table.groupings.tracker"))
 
     expect(rowNames(table)).toEqual(names(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
@@ -770,7 +757,6 @@ describe("Statistics", () => {
 
   it("keeps a row with no value in the column of the sort below the other rows, in both orders", async () => {
     answer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "day" ? [row("a.test", 2048, 1024, { width: "day" }), row("b.test", 1024, 1024, { width: "day" })] : []
-    // A Tracker group with torrents and no transfer in the period has no ratio.
     liveGroups = instanceId => instanceId === 1 ? [{ group: "idle.test", torrents: 1, size: 1024, uploaded: 0 }] : []
     renderPage()
     const table = await screen.findByRole("table")
@@ -889,7 +875,6 @@ describe("Statistics", () => {
     await expectFact("detail.share", "75% | detail.shareOf total=8 KiB")
     await expectFact("detail.crossSeed", "2 KiB | detail.crossSeedShare percent=33.3%")
     await expectFact("detail.bestDay", `6 KiB | ${isoDay(yesterday)}`)
-    // Both instances recorded the whole 30 days, so the average divides by each day of the period.
     await expectFact("detail.averageDay", "204.8 B | ")
     expect(screen.getByTestId("group-chart")).toBeTruthy()
 
@@ -909,7 +894,6 @@ describe("Statistics", () => {
     renderPage()
     fireEvent.click(await within(await screen.findByRole("table")).findByText("a.test"))
 
-    // The first recording is at 01:00 two days ago, so the average counts that day, yesterday, and today.
     await expectFact("detail.averageDay", "1 KiB | ")
   })
 
@@ -962,7 +946,6 @@ describe("Statistics", () => {
     const names = within(table).getAllByRole("button").map(button => button.textContent)
     expect(names).toEqual(["Alpha", "CharlietopTorrents.crossSeed", "BravotopTorrents.deleted"])
     expect(cells(table, "Alpha").slice(1)).toEqual(["a.test · Seedbox", "3 KiB", "0 B", "∞", "1 KiB"])
-    // The cell cuts a long tracker and instance name, and the title shows all of it.
     expect(within(table).getAllByTitle("a.test · Seedbox").length).toBeGreaterThan(0)
     const asked = requests.filter(request => request.groupBy === "torrent")
     expect(asked.map(request => [request.instanceId, request.bucket, request.limit, request.group])).toEqual([[1, "total", "10", null], [2, "total", "10", null]])
@@ -1104,7 +1087,6 @@ describe("Statistics", () => {
       await act(async () => {
         await new Promise(resolve => setTimeout(resolve, 200))
       })
-      // The chart of the new period still loads, so the card keeps the torrents of the old period.
       expect(within(torrentTable()).queryByText("Alpha")).toBeTruthy()
       expect(within(torrentTable()).queryByText("Bravo")).toBeNull()
       release()
@@ -1135,7 +1117,6 @@ describe("Statistics", () => {
         await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
       })
 
-      // The page loads the moved period, then the open row asks for the torrents of its group, which wait.
       await vi.waitFor(() => expect(requests.some(request => request.groupOf === "tracker")).toBe(true))
       expect(screen.getByText("detail.topTorrents group=a.test").nextElementSibling?.textContent).toBe("Alpha2 KiB")
       release()
@@ -1170,10 +1151,8 @@ describe("Statistics", () => {
       })
 
       await vi.waitFor(() => expect(requests.some(request => request.groupBy === "torrent" && request.bucket === "total")).toBe(true))
-      // The table still shows the rows of the old period, so the open chart stays on that period.
       expect(requests.filter(request => request.groupBy === "torrent" && request.bucket === "day")).toEqual([])
       expect(screen.getByTestId("group-chart")).toBeTruthy()
-      // The day rows of the new period wait, and the open chart keeps its bars meanwhile.
       const releaseTotals = release
       holdBucket = "day"
       hold = new Promise(resolve => {
@@ -1225,13 +1204,11 @@ describe("Statistics", () => {
   it("leaves a gap in the Unique size of a day without a Copy groups build, and takes the fifth number from the day before", async () => {
     libraryAnswer = instanceId => [
       libraryRow(3, { torrents: 1, totalSize: 4096, uniqueSize: 1024 }),
-      // Instance 1 has no build on this day, so the sum of the two instances would draw a drop.
       libraryRow(1, { torrents: 1, totalSize: 4096, uniqueSize: instanceId === 1 ? undefined : 1024 }),
       libraryRow(0, { torrents: 1, totalSize: 4096 }),
     ]
     renderPage()
 
-    // qui stored nothing for the day 2 days ago, so both lines have a gap there.
     expect(await growthPoints()).toEqual([[2, 8192, 2048], [null, null, null], [2, 8192, null], [2, 8192, null]])
     await expectTile("tiles.unique", "2 KiB | tiles.uniqueTotal size=8 KiB")
     expect(screen.getByText("growth.gapNote")).toBeTruthy()
@@ -1248,7 +1225,6 @@ describe("Statistics", () => {
 
   it("leaves a gap on a day on which an instance that qui records has no row, and ends a removed instance at its last row", async () => {
     statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Old box", 400), recordedDaysAgo(3, "Home", 400)]
-    // Instance 1 has no row 2 days ago and none yet today. Instance 2 is removed after 3 days ago, so its last row ends it.
     libraryAnswer = instanceId => [3, 2, 1, 0].filter(daysAgo => instanceId === 1 ? daysAgo === 3 || daysAgo === 1 : instanceId === 2 ? daysAgo === 3 : true)
       .map(daysAgo => libraryRow(daysAgo, { torrents: 1, totalSize: instanceId * 1024, uniqueSize: instanceId * 1024 }))
     configuredIds = [1, 3]
@@ -1377,7 +1353,6 @@ describe("Statistics", () => {
     fireEvent.click(await within(await screen.findByRole("table")).findByText("a.test"))
 
     const facts = (await screen.findByText("detail.share")).closest("dl")!
-    // Each of the two instances adds 2 KiB.
     expect(within(facts).getByText("table.columns.buffer").nextElementSibling?.textContent).toBe("+4 KiB")
   })
 
@@ -1416,14 +1391,12 @@ describe("Statistics", () => {
     const preloads = () => requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent")
     answer = ({ bucket, groupBy }) => groupBy === "category" && bucket === "total" ? [row("tv", 1024, 0, { width: "total" })] : []
     const { queryClient } = renderPage()
-    // The chart asks for its rows once the status loaded.
     await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
     expect(preloads()).toHaveLength(0)
     const category = screen.getByText("table.groupings.category")
 
     fireEvent.pointerEnter(category)
 
-    // One query for each of the two instances, and none for the other groupings.
     await vi.waitFor(() => expect(preloads().map(request => request.groupBy)).toEqual(["category", "category"]))
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
@@ -1549,7 +1522,6 @@ describe("Statistics year view", () => {
   }
 
   async function applyRange(first: Date, last: Date) {
-    // After a custom range, the button of the picker shows that range.
     fireEvent.click(await screen.findByText(/^(periods\.custom|customRange\.range from=.*)$/))
     fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: inputDate(first) } })
     fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: inputDate(last) } })
@@ -1584,7 +1556,6 @@ describe("Statistics year view", () => {
   })
 
   it("takes the best day, the best month, and the weekend share from the rows of the transfer query, and marks a Recording gap", async () => {
-    // A Saturday early in a month at least 80 days ago, the Monday after it, and a Wednesday of the next month.
     let saturday = daysAgo(80)
     while (saturday.getDay() !== 6 || saturday.getDate() > 20) {
       saturday = new Date(saturday.getFullYear(), saturday.getMonth(), saturday.getDate() - 1)
@@ -1624,7 +1595,6 @@ describe("Statistics year view", () => {
     const date = (day: Date) => `${day.toLocaleDateString("en", { weekday: "short" })}, ${isoDay(day)}`
     expect(cells[0].getAttribute("aria-label")).toBe(`yearView.day date=${date(daysAgo(370))} uploaded=0 B`)
     expect(cells[cells.length - 2].getAttribute("aria-label")).toBe(`yearView.day date=${date(daysAgo(1))} uploaded=100 KiB`)
-    // The monthly bars cover the whole period.
     expect(screen.getByTestId("chart").getAttribute("data-uploaded")).toBe(String(1000 * KiB))
   })
 

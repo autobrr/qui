@@ -5,8 +5,6 @@
 
 package hardlinktree
 
-// isPlatformDirNotEmpty has no additional native error outside Windows.
-// syscall.ENOTEMPTY is handled by isDirNotEmpty itself.
 func isPlatformDirNotEmpty(error) bool {
 	return false
 }

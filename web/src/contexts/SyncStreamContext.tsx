@@ -48,15 +48,12 @@ export interface StreamParams {
   order: "asc" | "desc"
   search?: string
   filters?: TorrentFilters
-  // summary asks for the totals of the view without its rows.
   summary?: boolean
   groupCopies?: boolean
   // uniqueSize adds the Unique size to the stats of a single-instance view.
   uniqueSize?: boolean
 }
 
-// normalizeInstanceIds returns a sorted, de-duplicated, positive-only copy used for
-// stable stream keys and payloads (or undefined when there are no valid ids).
 function normalizeInstanceIds(instanceIds?: number[]): number[] | undefined {
   if (!instanceIds || instanceIds.length === 0) {
     return undefined
@@ -104,9 +101,6 @@ interface SyncStreamContextValue {
   // server activity events even when no torrent view is mounted. Returns an
   // unsubscribe that releases that interest.
   registerActivity: () => () => void
-  // subscribeActivity delivers every server activity event to the listener, for
-  // reactions that are not a query refetch (a toast, for example). Returns an
-  // unsubscribe.
   subscribeActivity: (listener: (event: ActivityEvent) => void) => () => void
 }
 
@@ -149,7 +143,6 @@ interface StreamConnection {
   // The server names the connection in its first event. With the id, a view
   // joins or leaves the open source with a change request instead of a reopen.
   connectionId?: string
-  // The subscriptions and the activity flag that the server holds for the source.
   streams?: StreamSubscription[]
   activity?: boolean
   // Change requests run one at a time, so the server applies them in order.
@@ -597,7 +590,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             return
           }
           entry.handoffPending = true
-          // Fresh swap: the replacement socket has not opened yet.
           entry.handoffOpened = false
           if (entry.handoffTimer !== undefined) {
             if (typeof window !== "undefined") {
@@ -813,15 +805,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         notifyStateSubscribers(streamKey)
       }
 
-      // Heartbeats carry no torrent data; they exist solely to keep the watchdog alive.
       const heartbeatHandler = () => {
         connectionRef.current.firstEventSeen = true
         resetStaleTimer()
       }
 
-      // Activity events are qui-owned server signals (not torrent data). They keep
-      // the watchdog alive and invalidate the matching cached query so it refetches
-      // on demand instead of polling.
       const activityHandler = (event: MessageEvent | Event) => {
         connectionRef.current.firstEventSeen = true
         resetStaleTimer()
@@ -882,7 +870,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         }
         entry.sourceGeneration += 1
         clearDataWatchdog(entry)
-        // Only the first replacement after accepted data extends its baseline grace.
         if (!entry.handoffGraceUsed) {
           entry.dataDeadline = Date.now() + STREAM_DATA_STALE_TIMEOUT_MS
           entry.handoffGraceUsed = true
@@ -1059,7 +1046,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
     connection.retryAttempt = Math.min(connection.retryAttempt + 1, MAX_RETRY_ATTEMPTS)
 
-    // Notify user when max retries reached
     if (connection.retryAttempt >= MAX_RETRY_ATTEMPTS) {
       Object.values(streamsRef.current).forEach(entry => {
         entry.error = STREAM_ERROR_RETRY_EXHAUSTED
@@ -1226,8 +1212,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const registerActivity = useCallback(() => {
     activityCountRef.current += 1
     if (activityCountRef.current === 1) {
-      // First subscriber: ensure the connection exists (opening it in activity-only
-      // mode if no torrent view is mounted).
       queueConnectionUpdate({ preserveState: true })
     }
 
@@ -1276,7 +1260,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     }
   }, [closeConnection])
 
-  // Reconnect when tab becomes visible again
   useEffect(() => {
     if (typeof document === "undefined") {
       return
@@ -1311,7 +1294,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const isDisconnected = !source || source.readyState === EventSource.CLOSED
 
       if (isDisconnected) {
-        // Dead/closed source: reset retry state and force an immediate reconnection.
         ensureConnection({ preserveState: false, resetRetry: true })
         return
       }
@@ -1499,7 +1481,6 @@ export function createStreamKey(params: StreamParams): string {
       ...(params.uniqueSize ? { uniqueSize: true } : {}),
     })
   } catch (err) {
-    // Fallback for non-serializable filters - log for debugging
     console.error("Failed to serialize stream params, using degraded key:", err, params)
     const idsKey = instanceIds ? instanceIds.join(",") : params.instanceId
     return `${idsKey}-${params.page}-${params.limit}-${params.sort}-${params.order}-${Date.now()}`

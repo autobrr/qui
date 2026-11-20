@@ -42,11 +42,9 @@ export function Setup() {
       return
     }
 
-    // Check if user already exists
     api.checkAuth().then(() => {
       navigate({ to: "/login" })
     }).catch(() => {
-      // No user exists, stay on setup page
     })
   }, [navigate, oidcConfig])
 

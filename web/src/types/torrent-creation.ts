@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Torrent Creation Types
 export type TorrentFormat = "v1" | "v2" | "hybrid"
 export type TorrentCreationStatus = "Queued" | "Running" | "Finished" | "Failed"
 

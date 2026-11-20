@@ -180,10 +180,8 @@ func TestUTorrentTrackers(t *testing.T) {
 		},
 	}
 
-	// no resume list keeps the torrent's own tiers
 	assert.Equal(t, [][]string(file.UpvertedAnnounceList()), utorrentTrackers(file, nil))
 
-	// removed trackers drop out, added ones get their own tier
 	got := utorrentTrackers(file, []any{
 		"https://tracker-a.test/announce",
 		"https://tracker-c.test/announce https://tracker-d.test/announce",
@@ -200,7 +198,6 @@ func TestDecodeCESU8(t *testing.T) {
 
 	assert.Equal(t, "Test 😀 Torrent", decodeCESU8("Test \xed\xa0\xbd\xed\xb8\x80 Torrent"))
 	assert.Equal(t, "Test Torrent ö", decodeCESU8("Test Torrent ö"))
-	// a lone surrogate is left as-is
 	assert.Equal(t, "Test \xed\xa0\xbd", decodeCESU8("Test \xed\xa0\xbd"))
 }
 
@@ -268,7 +265,6 @@ func TestUTorrentMigrate(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "resume.dat"), blob, 0o600))
 
-	// the Windows save path only resolves through the replace rule
 	opts := Options{
 		Source:       ClientTypeUTorrent,
 		SourceDir:    sourceDir,

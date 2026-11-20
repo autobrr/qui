@@ -29,7 +29,6 @@ func cacheKey(title string, season int) string {
 	return fmt.Sprintf("%s:%d", strings.ToLower(strings.TrimSpace(title)), season)
 }
 
-// Get returns the cached episode count and true if a non-expired entry exists.
 func (c *resultCache) Get(title string, season int) (int, bool) {
 	key := cacheKey(title, season)
 
@@ -47,7 +46,6 @@ func (c *resultCache) Get(title string, season int) (int, bool) {
 	return entry.count, true
 }
 
-// Set stores the episode count with a TTL expiry.
 func (c *resultCache) Set(title string, season int, count int) {
 	key := cacheKey(title, season)
 	c.entries.Store(key, cacheEntry{

@@ -326,7 +326,6 @@ export function Search() {
     setAdvancedParams({ ...ADVANCED_PARAM_DEFAULTS })
   }, [])
 
-  // Cleanup timeouts and RAF on unmount
   useEffect(() => {
     return () => {
       if (blurTimeoutRef.current !== null) {
@@ -401,7 +400,6 @@ export function Search() {
     const normalizedQuery = (overrideQuery ?? query).trim()
     const activeIndexers = overrideIndexers ?? selectedIndexers
 
-    // Allow search with either query or advanced parameters
     if (!normalizedQuery && !hasAdvancedParams) {
       toast.error(t("toast.enterSearchQuery"))
       return false
@@ -541,19 +539,14 @@ export function Search() {
     [advancedParams, query, selectedIndexers, refreshRecentSearches, searchType, t]
   )
 
-  // Build a category ID to name map from all indexers
-  // Only use parent categories (multiples of 1000) for cleaner display
   const categoryMap = useMemo(() => {
     const map = new Map<number, string>()
     indexers.forEach(indexer => {
       indexer.categories?.forEach(cat => {
-        // Store parent categories directly
         if (cat.category_id % 1000 === 0) {
           map.set(cat.category_id, cat.category_name)
         } else {
-          // For subcategories, map them to their parent category
           const parentCategoryId = Math.floor(cat.category_id / 1000) * 1000
-          // Find parent category name
           const parentCat = indexer.categories?.find(c => c.category_id === parentCategoryId)
           if (parentCat && !map.has(cat.category_id)) {
             map.set(cat.category_id, parentCat.category_name)
@@ -612,7 +605,6 @@ export function Search() {
         const data = await api.listTorznabIndexers()
         const enabledIndexers = data.filter(idx => idx.enabled)
         setIndexers(enabledIndexers)
-        // Select all enabled indexers by default
         setSelectedIndexers(new Set(enabledIndexers.map(idx => idx.id)))
       } catch (error) {
         toast.error(t("toast.failedToLoadIndexers"))
@@ -721,7 +713,6 @@ export function Search() {
       if (sortOrder === "desc") {
         setSortOrder("asc")
       } else {
-        // Reset sorting on third click
         setSortColumn(null)
         setSortOrder("desc")
       }
@@ -737,11 +728,9 @@ export function Search() {
     return sortOrder === "asc" ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />
   }
 
-  // Filter and sort results
   const filteredAndSortedResults = useMemo(() => {
     let filtered = results
 
-    // Apply filter
     const activeFilters = Object.values(columnFilters)
     if (activeFilters.length > 0) {
       filtered = results.filter(result => {
@@ -749,7 +738,6 @@ export function Search() {
       })
     }
 
-    // Apply search filter
     if (resultsFilter.trim()) {
       const filter = resultsFilter.toLowerCase()
       filtered = filtered.filter(result =>
@@ -762,7 +750,6 @@ export function Search() {
       )
     }
 
-    // Apply sorting
     if (!sortColumn) {
       return filtered
     }
@@ -1220,7 +1207,6 @@ export function Search() {
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       onFocus={() => {
-                        // Clear any pending blur timeout
                         if (blurTimeoutRef.current !== null) {
                           window.clearTimeout(blurTimeoutRef.current)
                           blurTimeoutRef.current = null
@@ -1228,7 +1214,6 @@ export function Search() {
                         setQueryFocused(true)
                       }}
                       onBlur={() => {
-                        // Clear any existing timeout
                         if (blurTimeoutRef.current !== null) {
                           window.clearTimeout(blurTimeoutRef.current)
                         }
@@ -1281,7 +1266,6 @@ export function Search() {
                 </div>
               </div>
 
-              {/* Advanced Search Parameters */}
               {showAdvancedParams && (
                 <div className="rounded-lg border bg-muted/40 p-4 space-y-4">
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -1358,7 +1342,6 @@ export function Search() {
                       <TooltipTrigger
                         asChild
                         onFocus={(e) => {
-                          // Prevent tooltip from showing on focus - only show on hover
                           e.preventDefault()
                         }}
                       >
@@ -1527,7 +1510,6 @@ export function Search() {
                     </Button>
                   </div>
                 </div>
-                {/* Mobile: Card-based view */}
                 <div ref={cardsScrollRef} className="sm:hidden max-h-150 overflow-auto will-change-transform contain-paint">
                   <div style={{ height: `${cardsVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
                     {cardsVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -1567,7 +1549,6 @@ export function Search() {
                   </div>
                 </div>
 
-                {/* Desktop: Full table view */}
                 <div ref={tableScrollRef} className="hidden sm:block max-h-150 overflow-auto border rounded-md will-change-transform contain-paint">
                   <div style={{ position: "relative", minWidth: `${SEARCH_TABLE_MIN_WIDTH}px` }}>
                     <div

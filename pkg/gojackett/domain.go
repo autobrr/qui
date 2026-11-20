@@ -9,7 +9,6 @@ import (
 	"strconv"
 )
 
-// TorznabError represents a Torznab error response
 type TorznabError struct {
 	XMLName    xml.Name `xml:"error"`
 	Code       string   `xml:"code,attr"`

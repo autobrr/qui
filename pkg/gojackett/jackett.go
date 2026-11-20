@@ -30,13 +30,10 @@ type Config struct {
 	Host   string
 	APIKey string
 
-	// TLS skip cert validation
 	TLSSkipVerify bool
 
-	// HTTP Basic auth username
 	BasicUser string
 
-	// HTTP Basic auth password
 	BasicPass string
 
 	Timeout int
@@ -54,7 +51,6 @@ func NewClient(cfg Config) *Client {
 		timeout: DefaultTimeout,
 	}
 
-	// override logger if we pass one
 	if cfg.Log != nil {
 		c.log = cfg.Log
 	}
@@ -63,7 +59,6 @@ func NewClient(cfg Config) *Client {
 		c.timeout = time.Duration(cfg.Timeout) * time.Second
 	}
 
-	// store cookies in jar
 	jarOptions := &cookiejar.Options{PublicSuffixList: publicsuffix.List}
 	jar, err := cookiejar.New(jarOptions)
 	if err != nil {

@@ -23,27 +23,22 @@ import (
 	"github.com/autobrr/qui/pkg/version"
 )
 
-// Where a report starts from.
 const (
 	StartedFromMenu   = "menu"
 	StartedFromNotice = "notice"
 	StartedFromSearch = "search"
 )
 
-// Log scopes of a report.
 const (
 	LogScopeWarnings = "warnings"
 	LogScopeAll      = "all"
 	LogScopeNone     = "none"
 )
 
-// warningLines is how many lines the warnings scope holds.
 const warningLines = 200
 
-// ErrInvalidRequest marks a request that qui refuses before it contacts brrbin.
 var ErrInvalidRequest = errors.New("invalid problem report request")
 
-// QuiFacts are the facts about qui itself.
 type QuiFacts struct {
 	Version              string        `json:"version"`
 	Commit               string        `json:"commit,omitempty"`
@@ -57,7 +52,6 @@ type QuiFacts struct {
 	ExperimentalFeatures []string      `json:"experimentalFeatures"`
 }
 
-// NewerRelease is the release that qui's update check found.
 type NewerRelease struct {
 	Version string `json:"version"`
 	URL     string `json:"url"`
@@ -68,7 +62,6 @@ type LogFacts struct {
 	All      []string `json:"all"`
 }
 
-// Facts are what qui's server adds to a report, with every text part cleaned.
 type Facts struct {
 	Qui         QuiFacts                          `json:"qui"`
 	Instances   []qbittorrent.InstanceReportFacts `json:"instances"`
@@ -78,8 +71,6 @@ type Facts struct {
 	SearchScope *crossseed.ReportSearchScope      `json:"searchScope,omitempty"`
 }
 
-// FactsRequest names the starting point of a report. A search names the
-// torrent and the options of the search.
 type FactsRequest struct {
 	StartedFrom string
 	InstanceID  int
@@ -115,7 +106,6 @@ type SecretReader interface {
 	ReportSecrets(ctx context.Context) (Secrets, error)
 }
 
-// Sources are where the service reads the facts and the secrets.
 type Sources struct {
 	// Qui returns the facts about qui, except the newer release.
 	Qui       func() QuiFacts
@@ -137,8 +127,6 @@ type Service struct {
 	now     func() time.Time
 }
 
-// NewService returns a service that sends reports to the brrbin at baseURL
-// with client.
 func NewService(baseURL string, client *http.Client, store *models.ProblemReportStore, sources Sources) *Service {
 	return &Service{store: store, baseURL: baseURL, client: client, sources: sources, now: time.Now}
 }

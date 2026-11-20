@@ -56,7 +56,6 @@ func (c *Client) GetTorrentsCtx(ctx context.Context, indexer string, opts map[st
 	return decodeRssResponse(resp)
 }
 
-// SearchDirectCtx performs a direct search against a tracker's torznab API with context.
 func (c *Client) SearchDirectCtx(ctx context.Context, query string, opts map[string]string) (Rss, error) {
 	if opts == nil {
 		opts = make(map[string]string)

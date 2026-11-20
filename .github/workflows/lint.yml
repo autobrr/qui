@@ -218,7 +218,7 @@ jobs:
 
       # The lint action put golangci-lint on PATH. The ratchet holds the
       # linters that existing code does not pass yet to a shrink-only
-      # allowlist. See scripts/ratchet/main.go.
+      # allowlist. See "Ratchet" in docs/linting.md.
       - name: Check the lint ratchet
         run: go run ./scripts/ratchet -base "origin/${{ github.base_ref }}"
 

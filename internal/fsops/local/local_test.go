@@ -154,7 +154,6 @@ func TestLstat_Symlink(t *testing.T) {
 	info, err := b.Lstat(context.Background(), link)
 	require.NoError(t, err)
 	assert.True(t, info.IsSymlink)
-	// Symlinks are not regular files, so FileID should be zero.
 	assert.True(t, info.FileID.IsZero())
 }
 
@@ -199,8 +198,6 @@ func TestReadDir(t *testing.T) {
 	assert.Contains(t, names, "subdir")
 }
 
-// syslessFileInfo is a regular-file FileInfo whose Sys() carries no
-// platform stat data, so hardlink.GetFileID must fail on it.
 type syslessFileInfo struct{}
 
 func (syslessFileInfo) Name() string       { return "x.mkv" }
@@ -211,9 +208,6 @@ func (syslessFileInfo) IsDir() bool        { return false }
 func (syslessFileInfo) Sys() any           { return nil }
 
 func TestLstatConversion_FileIDFailureDegrades(t *testing.T) {
-	// Identity failure must land in FileIDErr with the rest of the
-	// metadata intact — not fail the conversion (one identity-opaque
-	// file must not abort callers that only need size/mtime).
 	path := filepath.Join(t.TempDir(), "missing", "x.mkv")
 	info := osFileInfoToLstat(syslessFileInfo{}, path, false)
 
@@ -237,7 +231,6 @@ func TestWalkDir_Basic(t *testing.T) {
 		entries = append(entries, e)
 	}
 
-	// Should have: dir itself, a.txt, sub/, sub/b.txt
 	assert.GreaterOrEqual(t, len(entries), 4)
 
 	paths := make([]string, len(entries))
@@ -292,9 +285,6 @@ func TestWalkDir_IgnoreDirNamesAndPrefixes(t *testing.T) {
 	assert.NotContains(t, relPaths, filepath.Join(".trash-1000", "deleted.mkv"))
 }
 
-// The walk root is exempt from the name filters, and IgnoreDirNames applies
-// to directories only, so a hidden or ignored-name root is walked and a file
-// named like an ignored directory is kept.
 func TestWalkDir_RootAndFileAreNotNameFiltered(t *testing.T) {
 	b := newBackend()
 	parent := t.TempDir()
@@ -331,7 +321,6 @@ func TestWalkDir_IgnoredRootWalksNothing(t *testing.T) {
 	assert.Empty(t, relPaths)
 }
 
-// A followed root is reported under its own path, and the filters match that path.
 func TestWalkDir_FollowRootWalksASymlinkedRootUnderItsOwnPath(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
@@ -380,7 +369,6 @@ func TestWalkDir_ContextCancellation(t *testing.T) {
 	ch, err := b.WalkDir(ctx, dir, fsops.WalkOptions{})
 	require.NoError(t, err)
 
-	// Read a few entries then cancel.
 	count := 0
 	for range ch {
 		count++
@@ -389,7 +377,6 @@ func TestWalkDir_ContextCancellation(t *testing.T) {
 			break
 		}
 	}
-	// Drain remaining entries (channel should close promptly).
 	for range ch {
 		count++
 	}
@@ -414,9 +401,6 @@ func TestStatfs_FilePath(t *testing.T) {
 }
 
 func TestWalkDir_UnreadableSubdirEmitsEntryErrAndContinues(t *testing.T) {
-	// The per-entry Err path is the load-bearing half of the WalkDir error
-	// contract: an unreadable subdirectory must surface as an entry with Err
-	// set while the rest of the walk continues.
 	if runtime.GOOS == "windows" {
 		t.Skip("0o000 permissions are not enforced on Windows")
 	}
@@ -541,7 +525,6 @@ func TestHardlinkTree_CreateAndRemove(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
 
-	// Create source files.
 	src1 := filepath.Join(dir, "source", "a.mkv")
 	src2 := filepath.Join(dir, "source", "b.srt")
 	writeFile(t, src1, "video data")
@@ -556,12 +539,10 @@ func TestHardlinkTree_CreateAndRemove(t *testing.T) {
 		},
 	}
 
-	// Create the tree.
 	result, err := b.HardlinkTree(context.Background(), plan)
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.Created)
 
-	// Verify files exist and are hardlinks.
 	fi1, err := os.Stat(filepath.Join(treeRoot, "a.mkv"))
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), fi1.Size())
@@ -570,7 +551,6 @@ func TestHardlinkTree_CreateAndRemove(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, os.SameFile(srcFi, fi1))
 
-	// Remove the tree using the create result's recorded files/dirs.
 	require.NoError(t, b.RemoveTree(context.Background(), result))
 	_, err = os.Stat(filepath.Join(treeRoot, "a.mkv"))
 	assert.True(t, os.IsNotExist(err))
@@ -597,15 +577,12 @@ func TestHardlinkTree_SkippedExists(t *testing.T) {
 	assert.Equal(t, 1, first.Created)
 	assert.Equal(t, 0, first.SkippedExists)
 
-	// Re-creating the same plan is idempotent: the existing link is skipped
-	// and NOT recorded as this call's work.
 	second, err := b.HardlinkTree(context.Background(), plan)
 	require.NoError(t, err)
 	assert.Equal(t, 0, second.Created)
 	assert.Equal(t, 1, second.SkippedExists)
 	assert.Empty(t, second.Files)
 
-	// Removing the second (empty) result must leave the first call's link alone.
 	require.NoError(t, b.RemoveTree(context.Background(), second))
 	_, err = os.Stat(filepath.Join(treeRoot, "a.mkv"))
 	require.NoError(t, err)

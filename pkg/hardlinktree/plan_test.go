@@ -21,7 +21,6 @@ func (hostDialect) Rel(base, target string) (string, error) { return filepath.Re
 func (hostDialect) FromSlash(p string) string               { return filepath.FromSlash(p) }
 func (hostDialect) Separator() string                       { return string(filepath.Separator) }
 
-// slashDialect is fsops.SlashPaths, a POSIX destination on every host.
 type slashDialect struct{}
 
 func (slashDialect) Join(base, name string) string { return path.Join(base, name) }
@@ -124,7 +123,6 @@ func TestBuildPlan_SubfolderLayout_SingleFile(t *testing.T) {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
 
-	// Subfolder layout with single file strips extension from folder name
 	expectedTarget := filepath.Join("/dest", "Movie.2024", "movie.mkv")
 	if plan.Files[0].TargetPath != expectedTarget {
 		t.Errorf("TargetPath = %q, want %q", plan.Files[0].TargetPath, expectedTarget)
@@ -146,7 +144,6 @@ func TestBuildPlan_SubfolderLayout_MultipleFiles(t *testing.T) {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
 
-	// Subfolder layout wraps in torrent name folder
 	for _, fp := range plan.Files {
 		if !strings.HasPrefix(fp.TargetPath, filepath.Join("/dest", "Show.S01")) {
 			t.Errorf("TargetPath %q should start with %q", fp.TargetPath, filepath.Join("/dest", "Show.S01"))
@@ -162,33 +159,26 @@ func TestBuildPlan_SubfolderLayout_SanitizesIllegalChars(t *testing.T) {
 		{AbsPath: "/downloads/movie.mkv", RelPath: "movie.mkv", Size: 1000000},
 	}
 
-	// Torrent name with Windows-illegal characters: < > : " / \ | ? *
 	torrentName := "Movie: The Sequel? Part 2 <2024>.mkv"
 	plan, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutSubfolder, torrentName, "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
 
-	// Folder name should be sanitized to remove illegal characters
-	// The file path inside should remain unchanged
 	targetPath := plan.Files[0].TargetPath
 
-	// Should NOT contain any Windows-illegal characters in the path
 	illegalChars := []string{"<", ">", ":", "\"", "|", "?", "*"}
 	for _, c := range illegalChars {
-		// Check only the folder segment (between dest and movie.mkv)
 		if filepath.Dir(targetPath) != "/dest" && containsChar(filepath.Dir(targetPath), c) {
 			t.Errorf("TargetPath folder %q should not contain illegal character %q", filepath.Dir(targetPath), c)
 		}
 	}
 
-	// Should still contain the file name unchanged
 	if filepath.Base(targetPath) != "movie.mkv" {
 		t.Errorf("File name should be preserved, got %q", filepath.Base(targetPath))
 	}
 }
 
-// containsChar checks if a string contains a character
 func containsChar(s, char string) bool {
 	return strings.Contains(s, char)
 }
@@ -206,7 +196,6 @@ func TestBuildPlan_NoSubfolderLayout(t *testing.T) {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
 
-	// NoSubfolder strips the first directory component
 	expectedTarget := filepath.Join("/dest", "S01E01.mkv")
 	if plan.Files[0].TargetPath != expectedTarget {
 		t.Errorf("TargetPath = %q, want %q", plan.Files[0].TargetPath, expectedTarget)
@@ -214,7 +203,6 @@ func TestBuildPlan_NoSubfolderLayout(t *testing.T) {
 }
 
 func TestBuildPlan_SizeMatching(t *testing.T) {
-	// Files with same names but different sizes
 	candidateFiles := []TorrentFile{
 		{Path: "file1.mkv", Size: 1000},
 		{Path: "file2.mkv", Size: 2000},
@@ -233,7 +221,6 @@ func TestBuildPlan_SizeMatching(t *testing.T) {
 		t.Fatalf("Expected 2 file plans, got %d", len(plan.Files))
 	}
 
-	// Verify size-based matching
 	for _, fp := range plan.Files {
 		if filepath.Base(fp.TargetPath) == "file1.mkv" && fp.SourcePath != "/downloads/file1.mkv" {
 			t.Errorf("file1.mkv should map to /downloads/file1.mkv, got %s", fp.SourcePath)
@@ -271,7 +258,7 @@ func TestBuildPlan_NoMatchingFile(t *testing.T) {
 		{Path: "movie.mkv", Size: 1000000},
 	}
 	existingFiles := []ExistingFile{
-		{AbsPath: "/downloads/other.mkv", RelPath: "other.mkv", Size: 2000000}, // Different size
+		{AbsPath: "/downloads/other.mkv", RelPath: "other.mkv", Size: 2000000},
 	}
 
 	_, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutOriginal, "Movie", "/dest")
@@ -396,7 +383,6 @@ func TestBuildPlan_Deterministic(t *testing.T) {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
 
-	// Plans should be identical
 	if len(plan1.Files) != len(plan2.Files) {
 		t.Fatalf("Plan lengths differ: %d vs %d", len(plan1.Files), len(plan2.Files))
 	}
@@ -428,7 +414,7 @@ func TestNormalizeFileKey(t *testing.T) {
 		{
 			name:     "with punctuation",
 			path:     "Movie.2024.1080p.BluRay.mkv",
-			expected: "movie20241080pbluray.mkv", // strips non-alphanumeric (periods, etc.)
+			expected: "movie20241080pbluray.mkv",
 		},
 		{
 			name:     "sidecar file with video extension",

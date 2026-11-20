@@ -13,8 +13,6 @@ import (
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
-// List returns every Share, the newest first, with the latest reports of the
-// tracker.
 func (s *Service) List(ctx context.Context) ([]Share, error) {
 	list, err := s.deps.Store.List(ctx)
 	if err != nil {
@@ -30,8 +28,6 @@ func (s *Service) List(ctx context.Context) ([]Share, error) {
 	return list, nil
 }
 
-// TorrentFile returns the .torrent of the recipient of a Share and its file
-// name.
 func (s *Service) TorrentFile(ctx context.Context, id int64) ([]byte, string, error) {
 	sh, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
@@ -40,7 +36,6 @@ func (s *Service) TorrentFile(ctx context.Context, id int64) ([]byte, string, er
 	return sh.TorrentFile, torrentname.SanitizeExportFilename(sh.Name, "", "", sh.HelperHash), nil
 }
 
-// Stop ends an active Share. A Share that ends already stays as it is.
 func (s *Service) Stop(ctx context.Context, id int64) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -80,22 +75,17 @@ func (s *Service) Unlock(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Remove removes the row of an ended Share, or returns ErrNotEnded.
 func (s *Service) Remove(ctx context.Context, id int64) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	return s.removeRow(ctx, id)
 }
 
-// Settings are the settings of Settings → Shares: the Share tracker settings
-// and the Share options.
 type Settings struct {
 	Tracker sharetracker.Settings
 	Options Options
 }
 
-// TrackerInUse is the tracker that a new Share gets, or "" while no tracker
-// is set.
 func (s Settings) TrackerInUse() TrackerKind {
 	kind, _, err := trackerOf(s.Tracker, s.Options)
 	if err != nil {
@@ -104,7 +94,6 @@ func (s Settings) TrackerInUse() TrackerKind {
 	return kind
 }
 
-// Settings returns the settings of Settings → Shares.
 func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	trackerSettings, err := s.deps.TrackerSettings.Settings(ctx)
 	if err != nil {
@@ -167,7 +156,6 @@ func (s *Service) keepTrackerOfActiveShares(ctx context.Context, next sharetrack
 	return nil
 }
 
-// IsRefusal reports whether err is a refusal for the user.
 func IsRefusal(err error) bool {
 	_, ok := errors.AsType[*RefusalError](err)
 	return ok

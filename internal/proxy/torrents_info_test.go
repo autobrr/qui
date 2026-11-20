@@ -22,8 +22,6 @@ import (
 )
 
 // regression: #3868
-// TestTorrentsInfoFiltersLikeQBittorrent sends torrents/info requests through
-// the proxy handler to a fake qBittorrent 5.1 with subcategories on.
 func TestTorrentsInfoFiltersLikeQBittorrent(t *testing.T) {
 	t.Parallel()
 
@@ -70,8 +68,6 @@ func TestTorrentsInfoFiltersLikeQBittorrent(t *testing.T) {
 	}
 }
 
-// newInfoTestHandler serves mainData from a fake qBittorrent 5.1 through the
-// proxy handler. It returns the handler and the ID of its instance.
 func newInfoTestHandler(t *testing.T, mainData string) (*Handler, int) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -18,8 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// gnuProbeCommand asks the tools the remote file operations lean on for their
-// version. It is a fixed string with nothing interpolated into it.
 const gnuProbeCommand = "LC_ALL=C find --version && LC_ALL=C stat --version"
 
 // posixProbeWord, quoted by shellQuote, comes back from printf unchanged only
@@ -35,8 +33,6 @@ const posixProbeWord = "a\\'!\nb"
 // thing being probed, so its output is not trusted to be short.
 const outputLimit = 8 << 10
 
-// HardlinkExtension is the sftp extension a server advertises when it can
-// make hard links.
 const HardlinkExtension = "hardlink@openssh.com"
 
 // probe reports what the server lets us do. A sub-probe the server refuses
@@ -199,7 +195,6 @@ func checkAlive(client *ssh.Client) error {
 	return nil
 }
 
-// oneShot is a Conn for a probe, with a session slot of its own.
 func oneShot(client *ssh.Client) *Conn {
 	return &Conn{client: client, slots: make(chan struct{}, 1), parked: new(atomic.Int32), used: func() {}}
 }

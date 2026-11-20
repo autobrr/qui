@@ -17,7 +17,6 @@ func TestPatchTorrentTrackers(t *testing.T) {
 	data := loadTorrentFixture(t)
 	root := decodeTorrent(t, data)
 
-	// Remove announce metadata to simulate missing tracker data
 	delete(root, "announce")
 	delete(root, "announce-list")
 	encoded := encodeTorrent(t, root)
@@ -74,8 +73,6 @@ func TestPatchTorrentTrackersPreservesNonCanonicalInfo(t *testing.T) {
 }
 
 func TestPatchTorrentTrackersKeepsOversizedIntegers(t *testing.T) {
-	// Values outside int64 must survive as raw bytes instead of failing the
-	// whole patch.
 	data := []byte("d13:creation datei99999999999999999999999999e4:infod4:name1:nee")
 
 	patched, changed, err := patchTorrentTrackers(data, []string{"https://tracker.autobrr.com/announce"})

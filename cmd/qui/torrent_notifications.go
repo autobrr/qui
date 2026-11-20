@@ -37,8 +37,6 @@ type helperTorrents interface {
 	IsHelper(instanceID int, hash string) bool
 }
 
-// notifyTorrentCompleted sends the torrent-completed event of a torrent that
-// is no helper torrent.
 func notifyTorrentCompleted(ctx context.Context, syncManager torrentNotificationSync, notifier notifications.Notifier, helpers helperTorrents, instanceID int, torrent qbt.Torrent) {
 	if helpers.IsHelper(instanceID, torrent.Hash) {
 		return
@@ -82,9 +80,6 @@ func buildTorrentAddedEvent(syncManager torrentNotificationSync, instanceID int,
 	}
 }
 
-// notifyTorrentsAddedAfter waits for delay, reads the batch again in one sync,
-// and sends one torrent-added event per torrent that is no helper torrent. It
-// blocks for the delay.
 func notifyTorrentsAddedAfter(ctx context.Context, syncManager torrentNotificationSync, notifier torrentAddedNotifier, helpers helperTorrents, instanceID int, torrents []*qbt.Torrent, delay time.Duration) {
 	torrents = slices.DeleteFunc(slices.Clone(torrents), func(t *qbt.Torrent) bool { return helpers.IsHelper(instanceID, t.Hash) })
 	if notifier == nil || len(torrents) == 0 {
@@ -102,8 +97,6 @@ func notifyTorrentsAddedAfter(ctx context.Context, syncManager torrentNotificati
 	}
 }
 
-// refreshTorrentsForNotification returns the torrents with fresh stats. A
-// torrent that the read does not return keeps its initial snapshot.
 func refreshTorrentsForNotification(ctx context.Context, syncManager torrentNotificationSync, instanceID int, torrents []*qbt.Torrent) []*qbt.Torrent {
 	if syncManager == nil {
 		return torrents

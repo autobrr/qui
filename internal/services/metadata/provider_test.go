@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-// fakeProvider is a test double implementing the Provider interface.
 type fakeProvider struct {
 	count int
 	err   error
@@ -23,7 +22,6 @@ func (f *fakeProvider) EpisodesInSeason(_ context.Context, _ string, _ int) (int
 func TestLookupEpisodeTotal_CacheHit(t *testing.T) {
 	t.Parallel()
 
-	// Provider that always errors -- if called, the test fails.
 	failing := &fakeProvider{err: errors.New("should not be called")}
 
 	svc := &Service{
@@ -32,7 +30,6 @@ func TestLookupEpisodeTotal_CacheHit(t *testing.T) {
 		cache:  newResultCache(),
 	}
 
-	// Pre-populate cache.
 	svc.cache.Set("Cached Show", 1, 10)
 
 	count, err := svc.LookupEpisodeTotal(context.Background(), "Cached Show", 1)
@@ -49,7 +46,7 @@ func TestLookupEpisodeTotal_TVMazeOnly(t *testing.T) {
 
 	svc := &Service{
 		tvmaze: &fakeProvider{count: 8},
-		tvdb:   nil, // not configured
+		tvdb:   nil,
 		cache:  newResultCache(),
 	}
 
@@ -75,7 +72,6 @@ func TestLookupEpisodeTotal_BothProviders_TVDBPreferred(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// TVDB is preferred when both succeed.
 	if count != 12 {
 		t.Errorf("got count %d, want 12 (TVDB preferred)", count)
 	}

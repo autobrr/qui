@@ -78,7 +78,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     return normalized.length > 0 ? normalized : undefined
   }, [isAllInstances, persistedUnifiedFilter, activeInstanceIds])
 
-  // Mobile detection for responsive layout
   const isMobile = useIsMobile()
   const [columnFilters] = usePersistedColumnFilters(instanceId)
 
@@ -118,7 +117,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     setSelectedTorrent(null)
   }
   const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
-  // The torrent that a link selected, until the table scrolls to its row.
   const [revealTorrent, setRevealTorrent] = useState<Torrent | null>(null)
   const handleRevealDone = useCallback(() => setRevealTorrent(null), [])
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
@@ -162,7 +160,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }))
   }, [getTorrentInstanceId, isAllInstances, openMobileDetails])
 
-  // Handle deep link to a specific torrent (from cross-seed navigation or the command palette)
   useEffect(() => {
     if (!search.torrent) return
     const clearDeepLinkParams = () => onSearchChange({ ...search, torrent: undefined, tab: undefined, instance: undefined })
@@ -184,7 +181,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     const tab = search.tab
     const escapedHash = hash.replaceAll("\"", "\\\"")
 
-    // Fetch the torrent by hash and select it
     const fetchTorrentByHash = isAllInstances? api.getCrossInstanceTorrents({
       filters: {
         expr: `Hash == "${escapedHash}"`,
@@ -228,13 +224,11 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       }
       // Mobile keeps the params: Back closes the sheet and refresh restores it
       if (torrent && isMobile) return
-      // Clear the search params after consuming
       clearDeepLinkParams()
     }).catch(() => {
       if (cancelled) {
         return
       }
-      // Silently fail - torrent might not exist
       clearDeepLinkParams()
     })
 
@@ -243,10 +237,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }
   }, [activeInstanceIds, getTorrentInstanceId, instanceId, isAllInstances, isMobile, onSearchChange, search, selectedTorrent])
 
-  // Navigate to a cross-seed match torrent
   const handleNavigateToTorrent = useCallback((targetInstanceId: number, torrentHash: string) => {
     if (!isAllInstances && targetInstanceId === instanceId) {
-      // Same instance - fetch and select the torrent directly
       api.getTorrents(instanceId, {
         filters: {
           expr: `Hash == "${torrentHash}"`,
@@ -271,7 +263,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         }
       })
     } else {
-      // Different instance - navigate with search params
       navigate({
         to: "/instances/$instanceId",
         params: { instanceId: String(targetInstanceId) },
@@ -291,12 +282,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     panelIds,
   })
 
-  // Ref for controlling the details panel imperatively (auto-expand/collapse)
   const detailsPanelRef = usePanelRef()
 
-  // Navigation is handled by parent component via onSearchChange prop
-
-  // Check if add torrent modal should be open
   const isAddTorrentModalOpen = !isAllInstances && search?.modal === "add-torrent"
 
   const handleAddTorrentModalChange = (open: boolean) => {
@@ -310,7 +297,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }
   }
 
-  // Check if create torrent modal should be open
   const isCreateTorrentModalOpen = !isAllInstances && search?.modal === "create-torrent"
 
   const handleCreateTorrentModalChange = (open: boolean) => {
@@ -324,7 +310,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }
   }
 
-  // Check if tasks modal should be open
   const isTasksModalOpen = !isAllInstances && search?.modal === "tasks"
 
   const handleTasksModalChange = (open: boolean) => {
@@ -338,7 +323,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }
   }
 
-  // Store counts from torrent response
   const [torrentCounts, setTorrentCounts] = useState<Record<string, number> | undefined>(undefined)
   const [categorySizes, setCategorySizes] = useState<Record<string, number> | undefined>(undefined)
   const [tagSizes, setTagSizes] = useState<Record<string, number> | undefined>(undefined)
@@ -359,7 +343,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   if (revealTorrent && !isSameTorrent(revealTorrent, selectedTorrent)) setRevealTorrent(null)
 
   const handleTorrentSelect = useCallback((torrent: Torrent | null) => {
-    // Toggle selection: a click on the selected torrent deselects it
     if (torrent && isSameTorrent(selectedTorrent, torrent)) {
       closeMobileDetails()
     } else {
@@ -373,41 +356,32 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
 
   const swipeToClose = useSwipeToClose(closeMobileDetails)
 
-  // Callback when filtered data updates - now receives counts, categories, tags, and useSubcategories from backend
   const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], subcategoriesEnabled?: boolean, trackerHealthEnabled?: boolean) => {
-    // Update the last instance ID when we receive new data
     setLastInstanceId(instanceId)
 
     if (counts) {
-      // Transform backend counts to match the expected format for FilterSidebar
       const transformedCounts: Record<string, number> = {}
 
-      // Add status counts
       Object.entries(counts.status || {}).forEach(([status, count]) => {
         transformedCounts[`status:${status}`] = count as number
       })
 
-      // Add category counts
       Object.entries(counts.categories || {}).forEach(([category, count]) => {
         transformedCounts[`category:${category}`] = count as number
       })
 
-      // Add tag counts
       Object.entries(counts.tags || {}).forEach(([tag, count]) => {
         transformedCounts[`tag:${tag}`] = count as number
       })
 
-      // Add tracker counts
       Object.entries(counts.trackers || {}).forEach(([tracker, count]) => {
         transformedCounts[`tracker:${tracker}`] = count as number
       })
 
-      // Add filtered total count for cross-seed display
       transformedCounts.filtered = _total
 
       setTorrentCounts(transformedCounts)
 
-      // Store size data for sidebar display
       if (counts.categorySizes) {
         setCategorySizes(counts.categorySizes)
       }
@@ -424,7 +398,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       setTags(tagsData)
     }
 
-    // Update subcategories flag when provided
     if (subcategoriesEnabled !== undefined) {
       setUseSubcategories(subcategoriesEnabled)
     }
@@ -433,10 +406,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }
   }, [instanceId])
 
-  // Calculate total active filters for badge
-  // Count exists but badge is now handled in header (not used here)
-
-  // Listen for header mobile filter button click
   useEffect(() => {
     const handler = () => setMobileFilterOpen(true)
     window.addEventListener("qui-open-mobile-filters", handler)
@@ -449,7 +418,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }
   }, [isMobile, selectedTorrent])
 
-  // Auto-expand details panel when a torrent is selected on desktop
   useEffect(() => {
     if (!isMobile && selectedTorrent && detailsPanelReady && detailsPanelRef.current?.isCollapsed()) {
       detailsPanelRef.current.expand()
@@ -470,7 +438,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     clearSearch: clearListSearch,
   })
 
-  // Close the mobile filters sheet when viewport switches to desktop layout
   useEffect(() => {
     if (!isMobile) {
       setMobileFilterOpen(false)
@@ -479,7 +446,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
 
   return (
     <div className="flex h-full relative">
-      {/* Desktop Sidebar - slides in on tablet/desktop */}
       <div
         className={cn(
           "hidden md:flex shrink-0 h-full overflow-hidden transition-[flex-basis,width] duration-300 ease-in-out",
@@ -516,7 +482,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         </div>
       </div>
 
-      {/* Mobile Filter Sheet */}
       <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
         <SheetContent
           side="left"
@@ -555,7 +520,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         </SheetContent>
       </Sheet>
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Desktop: Resizable vertical layout with bottom details panel */}
         {/* Use React conditional rendering to avoid duplicate dialogs */}
@@ -609,7 +573,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                         return
                       }
                       if (panelSize.asPercentage <= 0 || panelSize.inPixels <= 0) {
-                        // When user collapses the panel, deselect the torrent
                         setSelectedTorrent(null)
                       }
                     }}
@@ -635,7 +598,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
           </div>
         )}
 
-        {/* Mobile: Full height table with Sheet overlay */}
         {isMobile && (
           <div className="flex flex-col h-full px-4">
             <TorrentTableResponsive
@@ -653,7 +615,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         )}
       </div>
 
-      {/* Mobile Details Sheet - only renders on mobile */}
       {isMobile && (
         <Sheet
           open={!!selectedTorrent}
@@ -690,7 +651,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         </Sheet>
       )}
 
-      {/* Torrent Creator Dialog */}
       {!isAllInstances && (
         <TorrentCreatorDialog
           instanceId={instanceId}
@@ -699,7 +659,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         />
       )}
 
-      {/* Torrent Creation Tasks Modal */}
       {!isAllInstances && (
         <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
           <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">

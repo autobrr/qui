@@ -16,17 +16,15 @@ import (
 func TestHub_RingBuffer(t *testing.T) {
 	hub := NewHub(5)
 
-	// Write more lines than buffer size
 	for i := range 10 {
 		hub.Write("line " + string(rune('0'+i)))
 	}
 
-	history := hub.History(10) // Request more than available
+	history := hub.History(10)
 	if len(history) != 5 {
 		t.Errorf("expected 5 lines, got %d", len(history))
 	}
 
-	// Verify the content is the last 5 lines
 	for i, line := range history {
 		expected := "line " + string(rune('5'+i))
 		if line != expected {
@@ -38,18 +36,15 @@ func TestHub_RingBuffer(t *testing.T) {
 func TestHub_HistoryPartial(t *testing.T) {
 	hub := NewHub(100)
 
-	// Write 10 lines
 	for i := range 10 {
 		hub.Write("line " + string(rune('0'+i)))
 	}
 
-	// Request only 3 lines
 	history := hub.History(3)
 	if len(history) != 3 {
 		t.Errorf("expected 3 lines, got %d", len(history))
 	}
 
-	// Should be the last 3 lines
 	expected := []string{"line 7", "line 8", "line 9"}
 	for i, line := range history {
 		if line != expected[i] {
@@ -65,7 +60,6 @@ func TestHub_Subscribe(t *testing.T) {
 
 	sub := hub.Subscribe(ctx)
 
-	// Write a line after subscribing
 	hub.Write("test line")
 
 	select {
@@ -86,7 +80,6 @@ func TestHub_Unsubscribe(t *testing.T) {
 
 	hub.Unsubscribe(sub)
 
-	// Channel should be closed
 	_, ok := <-sub.Channel()
 	if ok {
 		t.Error("expected channel to be closed")
@@ -101,7 +94,6 @@ func TestHub_ContextCancel(t *testing.T) {
 
 	cancel()
 
-	// The auto-unsubscribe closes the channel. No line was written.
 	select {
 	case _, ok := <-sub.Channel():
 		if ok {
@@ -111,10 +103,8 @@ func TestHub_ContextCancel(t *testing.T) {
 		t.Fatal("timeout waiting for the auto-unsubscribe")
 	}
 
-	// Verify Done channel is closed
 	select {
 	case <-sub.Done():
-		// Expected
 	default:
 		t.Error("expected Done channel to be closed")
 	}
@@ -125,12 +115,10 @@ func TestHub_SlowConsumer(t *testing.T) {
 
 	sub := hub.Subscribe(t.Context())
 
-	// Fill up the subscriber's buffer (100 messages) plus more
 	for range 200 {
 		hub.Write("line")
 	}
 
-	// Drain the channel
 	count := 0
 	for {
 		select {
@@ -142,7 +130,6 @@ func TestHub_SlowConsumer(t *testing.T) {
 	}
 done:
 
-	// Should have received at most the buffer size
 	if count > DefaultSubscriberBuffer {
 		t.Errorf("expected at most %d messages, got %d", DefaultSubscriberBuffer, count)
 	}
@@ -187,7 +174,6 @@ func TestHub_HistoryEmpty(t *testing.T) {
 func TestHub_DefaultSize(t *testing.T) {
 	hub := NewHub(0)
 
-	// Should use default size
 	for range DefaultBufferSize + 100 {
 		hub.Write("line")
 	}

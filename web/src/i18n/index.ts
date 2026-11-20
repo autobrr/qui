@@ -26,7 +26,6 @@ for (const [path, module] of Object.entries(enModules)) {
   if (parsed) enResources[parsed.ns] = module
 }
 
-// lng -> ns -> lazy loader, for languages other than English.
 const namespaceLoaders: Record<string, Record<string, () => Promise<ResourceKey>>> = {}
 for (const [path, loader] of Object.entries(lazyLoaders)) {
   const parsed = parseLocalePath(path)
@@ -35,7 +34,6 @@ for (const [path, loader] of Object.entries(lazyLoaders)) {
   }
 }
 
-// English is bundled eagerly; mark it loaded so we never try to lazy-load it.
 const loadedLanguages = new Set<string>(["en"])
 
 async function loadLanguageResources(lng: string): Promise<void> {
@@ -76,12 +74,10 @@ function isAppLanguage(value: string | null): value is AppLanguage {
 function detectBrowserLanguage(): AppLanguage | null {
   const browserLanguages = navigator.languages ?? [navigator.language]
   for (const lang of browserLanguages) {
-    // Exact match (e.g. "fr" → "fr", "zh-CN" → "zh-CN")
     if (isAppLanguage(lang)) return lang
     // Traditional Chinese tags ("zh-Hant", "zh-Hant-TW", "zh-HK", "zh-MO") have no
     // exact match, and the prefix match below would hand them zh-CN.
     if (/^zh-(hant|hk|mo)\b/i.test(lang)) return "zh-TW"
-    // Prefix match (e.g. "fr-FR" → "fr", "zh-Hans" → skip if no match)
     const prefix = lang.split("-")[0]
     const match = supportedLanguages.find((s) => s === prefix || s.startsWith(`${prefix}-`))
     if (match) return match
@@ -112,7 +108,6 @@ export async function changeLanguage(lng: AppLanguage) {
   persistLanguage(lng)
   const requestId = ++latestLanguageRequest
   await loadLanguageResources(lng)
-  // A newer changeLanguage call superseded this one while its chunk was loading.
   if (requestId !== latestLanguageRequest) return
   return i18n.changeLanguage(lng)
 }

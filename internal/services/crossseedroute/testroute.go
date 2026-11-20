@@ -21,12 +21,8 @@ import (
 	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
-// ErrCannotSeeFolder marks a folder that the qBittorrent of an instance
-// refuses to list.
 var ErrCannotSeeFolder = errors.New("cannot see the folder")
 
-// Lists reports whether the qBittorrent directory listing of dir on
-// instanceID holds an entry named name, as ListingHas reads it.
 func (s *Service) Lists(ctx context.Context, instanceID int, dir, name string, mode qbt.DirectoryContentMode) (bool, error) {
 	client, err := s.clients.GetClient(ctx, instanceID)
 	if err != nil {
@@ -36,12 +32,6 @@ func (s *Service) Lists(ctx context.Context, instanceID int, dir, name string, m
 	return ListingHas(content, err, dir, name)
 }
 
-// ListingHas reads the answer of a qBittorrent directory listing of dir, and
-// reports whether it holds an entry named name. It compares the last path
-// element of each entry, with either separator, and ignores case on a
-// drive-letter entry. An answer other than 200 matches ErrCannotSeeFolder. Any
-// other failure, such as a transport error or a qBittorrent version older than
-// 5.0, matches ErrUnavailable.
 func ListingHas(content any, err error, dir, name string) (bool, error) {
 	switch {
 	// go-qbittorrent puts the status code only in the text, so a 404 and a
@@ -62,29 +52,22 @@ func ListingHas(content any, err error, dir, name string) (bool, error) {
 	}), nil
 }
 
-// TestOutcome is the answer of a route test for one base folder.
 type TestOutcome string
 
 const (
 	TestSees                TestOutcome = "sees"
 	TestSeesFolderNotMarker TestOutcome = "seesFolderNotMarker"
 	TestCannotSeeFolder     TestOutcome = "cannotSeeFolder"
-	// TestCannotWrite means that qui cannot write to the base folder on the
-	// Source instance.
-	TestCannotWrite TestOutcome = "cannotWrite"
+	TestCannotWrite         TestOutcome = "cannotWrite"
 )
 
-// TestRow is the test answer for one base folder.
 type TestRow struct {
-	BaseDir string `json:"baseDir"`
-	// ListedPath is the folder that qui lists on the Cross-seed instance.
+	BaseDir    string      `json:"baseDir"`
 	ListedPath string      `json:"listedPath"`
 	Result     TestOutcome `json:"result"`
-	// Error is the cause of a cannotWrite result.
-	Error string `json:"error,omitempty"`
+	Error      string      `json:"error,omitempty"`
 }
 
-// TestResult is the answer of a route test.
 type TestResult struct {
 	// Unavailable is set, and Rows is empty, when the Cross-seed instance is
 	// unavailable.
@@ -92,10 +75,6 @@ type TestResult struct {
 	Rows        []TestRow `json:"rows"`
 }
 
-// Test checks each base folder of the Source instance with the rows of a
-// route that is not saved yet. qui writes a marker folder in the base folder
-// and asks the Cross-seed instance's qBittorrent if it lists the marker at the
-// mapped path. The test always removes the marker and keeps the base folder.
 func (s *Service) Test(ctx context.Context, route *models.CrossSeedRoute) (*TestResult, error) {
 	backend, source, err := s.backends.Require(ctx, route.SourceInstanceID, models.CapabilityWrite)
 	switch {
@@ -153,8 +132,6 @@ func (s *Service) Test(ctx context.Context, route *models.CrossSeedRoute) (*Test
 	return result, nil
 }
 
-// testRow writes a marker in baseDir and looks for it in listed on the
-// Cross-seed instance. An error that matches ErrUnavailable stops the test.
 func (s *Service) testRow(ctx context.Context, backend fsops.Backend, baseDir, listed string, crossSeedID int) (TestOutcome, error) {
 	// Cross-seed link mode creates a missing base folder with the same mode,
 	// so the umask decides who else can read it.
@@ -167,7 +144,6 @@ func (s *Service) testRow(ctx context.Context, backend fsops.Backend, baseDir, l
 		return TestCannotWrite, err
 	}
 	defer func() {
-		// Remove the marker also when ctx ran out during the listing.
 		removeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		if err := backend.Remove(removeCtx, marker, fsops.RemoveOptions{}); err != nil {

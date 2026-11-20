@@ -5,11 +5,8 @@
 
 package sharedextents
 
-// Supported reports whether the current platform can inspect shared allocation.
 const Supported = false
 
-// FilesShareAllocation reports that shared-extent detection is unsupported
-// without probing either path.
 func FilesShareAllocation(_, _ string) (bool, error) {
 	return false, ErrUnsupported
 }

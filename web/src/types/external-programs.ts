@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// External Program Types
 export interface PathMapping {
   from: string
   to: string
@@ -21,8 +20,6 @@ export interface ExternalProgram {
   updated_at: string
 }
 
-// ExternalProgramCreate and ExternalProgramUpdate share an identical payload
-// shape; keep them as a single source of truth to avoid drift.
 export interface ExternalProgramPayload {
   name: string
   path: string

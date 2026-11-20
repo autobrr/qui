@@ -32,8 +32,6 @@ func TestCreate_RespectsUmask(t *testing.T) {
 		t.Fatalf("write source file: %v", err)
 	}
 
-	// RootDir and the per-file parent dir must not exist yet so Create creates
-	// them (and we observe the mode it requests).
 	rootDir := filepath.Join(t.TempDir(), "tree")
 	nestedParent := filepath.Join(rootDir, "season")
 	target := filepath.Join(nestedParent, "linked.txt")

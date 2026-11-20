@@ -96,8 +96,6 @@ const (
 	rtorrentSkipped
 )
 
-// importTorrent converts one rtorrent session torrent into a qBittorrent
-// BT_backup torrent and fastresume pair
 func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int) rtorrentOutcome {
 	file, err := metainfo.LoadFromFile(match)
 	if err != nil {
@@ -122,20 +120,17 @@ func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int)
 
 	torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
 
-	// If file already exists, skip
 	if _, err = os.Stat(torrentOutFile); err == nil {
 		log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentOutFile)
 		return rtorrentSkipped
 	}
 
-	// check for FILE.torrent.libtorrent_resume
 	resumeFile, err := i.decodeRTorrentLibTorrentResumeFile(match)
 	if err != nil {
 		log.Error().Err(err).Msgf("Could not decode rtorrent libtorrent resume file %s for %s", match, torrentID)
 		return rtorrentFailed
 	}
 
-	// check for FILE.torrent.rtorrent
 	rtFile, err := i.decodeRTorrentFile(match)
 	if err != nil {
 		log.Error().Err(err).Msgf("Could not decode rtorrent state file %s for %s", match, torrentID)
@@ -169,7 +164,6 @@ func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int)
 	// pieces overlapping only priority-off files stay unset
 	newFastResume.Pieces = pieces
 
-	// copy torrent file
 	fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
 	if err = newFastResume.Encode(fastResumeOutFile); err != nil {
 		log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s", fastResumeOutFile)
@@ -186,7 +180,6 @@ func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int)
 	return rtorrentImported
 }
 
-// rtorrentSaveDir expands and rewrites the session download directory
 func rtorrentSaveDir(directory string, rules []PathReplace) string {
 	// directory is stored before shell expansion and can be ~-prefixed
 	dir := directory
@@ -286,17 +279,13 @@ func newRTorrentFastresume(match, dir string, file *metainfo.MetaInfo, metaInfo 
 
 	setRTorrentLayout(&newFastResume, metaInfo, dir)
 
-	// handle trackers
 	newFastResume.Trackers = rtorrentTrackers(file, resumeFile)
 
-	// Set 20 byte SHA1 hash
 	newFastResume.InfoHash = file.HashInfoBytes().Bytes()
 
 	return newFastResume
 }
 
-// setRTorrentLayout sets the save path and content layout fields for the
-// rtorrent directory layout of a multi-file torrent
 func setRTorrentLayout(fr *Fastresume, metaInfo *metainfo.Info, dir string) {
 	if !metaInfo.IsDir() {
 		fr.QbtHasRootFolder = 0
@@ -309,7 +298,6 @@ func setRTorrentLayout(fr *Fastresume, metaInfo *metainfo.Info, dir string) {
 		savePath := filepath.Dir(dir)
 		fr.SavePath = savePath
 		fr.QbtSavePath = savePath
-		// legacy and should be removed sometime with 4.3.X
 		fr.QbtHasRootFolder = 1
 		return
 	}
@@ -512,7 +500,6 @@ func (i *RTorrentImport) decodeRTorrentFile(path string) (*RTorrentTorrentFile, 
 	return &torrentFile, nil
 }
 
-// Clean and convert string to int from rtorrent.custom.addtime, seedingtime
 func strToIntClean(line string) int64 {
 	s := strings.TrimSpace(line)
 	if s == "" {

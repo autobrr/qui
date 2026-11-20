@@ -13,7 +13,6 @@ import (
 	"testing"
 )
 
-// serveTVMaze creates an httptest server that routes TVMaze-style paths.
 func serveTVMaze(t *testing.T, mux *http.ServeMux) *httptest.Server {
 	t.Helper()
 	ts := httptest.NewServer(mux)
@@ -21,24 +20,17 @@ func serveTVMaze(t *testing.T, mux *http.ServeMux) *httptest.Server {
 	return ts
 }
 
-// tvmazeProviderWithBase returns a tvmazeProvider whose doGet
-// hits the test server instead of the real TVMaze API. We achieve
-// this by replacing the hardcoded base URL in the request URL via
-// a custom RoundTripper.
 func tvmazeProviderWithBase(baseURL string) *tvmazeProvider {
 	p := newTVMazeProvider()
 	p.client.Transport = &rewriteTransport{base: baseURL}
 	return p
 }
 
-// rewriteTransport rewrites requests targeting tvmazeBaseURL to a
-// local test server URL.
 type rewriteTransport struct {
 	base string
 }
 
 func (rt *rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Replace the real base URL with the test server URL.
 	req.URL.Host = strings.TrimPrefix(rt.base, "http://")
 	req.URL.Scheme = "http"
 	return http.DefaultTransport.RoundTrip(req)
@@ -85,14 +77,12 @@ func TestTVMaze_RetryWithNormalizedTitle(t *testing.T) {
 		n := calls.Add(1)
 		q := r.URL.Query().Get("q")
 		if n == 1 {
-			// First call must carry the original title.
 			if q != "The Show (2024)" {
 				t.Errorf("first search: got q=%q, want %q", q, "The Show (2024)")
 			}
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		// Second call must carry the normalized title.
 		if q != "The Show" {
 			t.Errorf("second search: got q=%q, want %q", q, "The Show")
 		}
@@ -110,7 +100,6 @@ func TestTVMaze_RetryWithNormalizedTitle(t *testing.T) {
 	ts := serveTVMaze(t, mux)
 	p := tvmazeProviderWithBase(ts.URL)
 
-	// Title with year suffix triggers normalization on retry.
 	count, err := p.EpisodesInSeason(context.Background(), "The Show (2024)", 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -147,8 +136,6 @@ func TestTVMaze_RateLimited(t *testing.T) {
 	}
 }
 
-// TestTVMaze_TransientErrorSkipsNormalizationRetry verifies that non-404
-// errors (rate limits, 5xx) do not trigger a normalized-title retry.
 func TestTVMaze_TransientErrorSkipsNormalizationRetry(t *testing.T) {
 	t.Parallel()
 
@@ -162,7 +149,6 @@ func TestTVMaze_TransientErrorSkipsNormalizationRetry(t *testing.T) {
 	ts := serveTVMaze(t, mux)
 	p := tvmazeProviderWithBase(ts.URL)
 
-	// Title with year suffix would normally trigger normalization on a 404.
 	_, err := p.EpisodesInSeason(context.Background(), "Some Show (2024)", 1)
 	if err == nil {
 		t.Fatal("expected error for 500 response")
@@ -182,7 +168,6 @@ func TestTVMaze_NoEpisodesInSeason(t *testing.T) {
 	})
 
 	mux.HandleFunc("/shows/99/episodes", func(w http.ResponseWriter, _ *http.Request) {
-		// Only season 1 episodes, none for season 5.
 		eps := []tvmazeEpisode{
 			{Season: 1, Number: 1},
 		}
@@ -208,14 +193,14 @@ func TestNormalizeTitle(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"The Show (2024)", "The Show"},    // parenthesized year stripped
-		{"The Show 2024", "The Show 2024"}, // bare year preserved (ambiguous)
+		{"The Show (2024)", "The Show"},
+		{"The Show 2024", "The Show 2024"},
 		{"The Show 1080p WEB-DL", "The Show"},
-		{"1923", "1923"},                         // numeric title preserved
-		{"Yellowstone 1923", "Yellowstone 1923"}, // bare year preserved (could be title)
+		{"1923", "1923"},
+		{"Yellowstone 1923", "Yellowstone 1923"},
 		{"Show Name HDTV x264", "Show Name"},
 		{"  Spacey Title  ", "Spacey Title"},
-		{"인간실격 (2021)", "인간실격"}, // parenthesized year stripped
+		{"인간실격 (2021)", "인간실격"},
 	}
 
 	for _, tt := range tests {

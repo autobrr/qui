@@ -31,8 +31,6 @@ type fileStandardInfo struct {
 	_              [2]byte
 }
 
-// GetFileID returns the FileID and link count for a file with low-allocation overhead.
-// This is more efficient than LinkInfo when you don't need the string representation.
 func GetFileID(fi os.FileInfo, path string) (FileID, uint64, error) {
 	pathp, err := windows.UTF16PtrFromString(path)
 	if err != nil {

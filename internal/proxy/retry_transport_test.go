@@ -21,7 +21,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockRoundTripper is a mock implementation of http.RoundTripper for testing
 type mockRoundTripper struct {
 	attempts   int
 	maxAttempt int
@@ -137,7 +136,7 @@ func TestRetryTransport_RetryableError(t *testing.T) {
 			err:           syscall.ECONNREFUSED,
 			expectRetry:   true,
 			maxFailures:   2,
-			expectedCalls: 3, // 2 failures + 1 success
+			expectedCalls: 3,
 		},
 		{
 			name:          "Connection reset - should retry",
@@ -568,7 +567,7 @@ func TestRetryTransport_MaxRetries(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mock := &mockRoundTripper{
 			err:        syscall.ECONNREFUSED,
-			maxAttempt: maxRetries + 10, // More than max retries
+			maxAttempt: maxRetries + 10,
 		}
 
 		transport := NewRetryTransport(mock)
@@ -587,8 +586,6 @@ func TestRetryTransport_MaxRetries(t *testing.T) {
 		assert.Nil(t, resp)
 		assert.Equal(t, maxRetries+1, mock.attempts, "Should stop after max retries")
 
-		// Verify that backoff was applied
-		// With exponential backoff: 50ms + 100ms + 200ms = 350ms
 		expected := initialRetryWait + (initialRetryWait * 2) + (initialRetryWait * 4)
 		assert.Equal(t, expected, duration, "Should apply backoff between retries")
 	})
@@ -607,7 +604,6 @@ func TestRetryTransport_ContextCancellation(t *testing.T) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.com", http.NoBody)
 		require.NoError(t, err)
 
-		// Cancel context after first failure
 		go func() {
 			time.Sleep(100 * time.Millisecond)
 			cancel()
@@ -781,7 +777,6 @@ func TestCalculateBackoff(t *testing.T) {
 	}
 }
 
-// mockTransportWithIdleClose is a mock that tracks CloseIdleConnections calls
 type mockTransportWithIdleClose struct {
 	mockRoundTripper
 	closeIdleCalled int
@@ -794,10 +789,8 @@ func (m *mockTransportWithIdleClose) CloseIdleConnections() {
 func TestRetryTransport_ClosesIdleConnections(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mock := &mockTransportWithIdleClose{
-			mockRoundTripper: mockRoundTripper{
-				err:        syscall.ECONNREFUSED,
-				maxAttempt: 1, // Fail once, then succeed
-			},
+			err:        syscall.ECONNREFUSED,
+			maxAttempt: 1,
 		}
 
 		transport := NewRetryTransport(mock)
@@ -810,7 +803,6 @@ func TestRetryTransport_ClosesIdleConnections(t *testing.T) {
 		require.NotNil(t, resp)
 		t.Cleanup(func() { _ = resp.Body.Close() })
 
-		// Should have called CloseIdleConnections once for the failed attempt
 		assert.Equal(t, 1, mock.closeIdleCalled, "Should close idle connections on network error")
 		assert.Equal(t, 2, mock.attempts, "Should have retried after network error")
 	})
@@ -819,10 +811,8 @@ func TestRetryTransport_ClosesIdleConnections(t *testing.T) {
 func TestRetryTransport_ClosesIdleConnectionsMultipleTimes(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mock := &mockTransportWithIdleClose{
-			mockRoundTripper: mockRoundTripper{
-				err:        io.EOF,
-				maxAttempt: 2, // Fail twice, then succeed
-			},
+			err:        io.EOF,
+			maxAttempt: 2,
 		}
 
 		transport := NewRetryTransport(mock)
@@ -835,7 +825,6 @@ func TestRetryTransport_ClosesIdleConnectionsMultipleTimes(t *testing.T) {
 		require.NotNil(t, resp)
 		t.Cleanup(func() { _ = resp.Body.Close() })
 
-		// Should have called CloseIdleConnections twice for the two failed attempts
 		assert.Equal(t, 2, mock.closeIdleCalled, "Should close idle connections for each network error")
 		assert.Equal(t, 3, mock.attempts, "Should have retried after network errors")
 	})
@@ -858,7 +847,6 @@ func TestRetryTransport_DoesNotCloseOnNonRetryableError(t *testing.T) {
 	}
 	require.Error(t, err)
 
-	// Should not have called CloseIdleConnections for non-retryable error
 	assert.Equal(t, 0, mock.closeIdleCalled, "Should not close idle connections on non-retryable error")
 	assert.Equal(t, 1, mock.attempts, "Should not retry non-retryable error")
 }

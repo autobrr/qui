@@ -46,17 +46,14 @@ const (
 // because NUL is the one byte a path cannot hold.
 const findFormat = `%y %D %i %n %s %T@ %m %P\0`
 
-// batchFormat is findFormat with the path as given, for find on a list of
-// paths at depth 0.
 const batchFormat = `%y %D %i %n %s %T@ %m %p\0`
 
 const (
 	// batchPaths and batchBytes size one find of a batch stat. The command
 	// goes to the shell as one argument, and Linux caps one argument at
 	// 128 KiB.
-	batchPaths = 1000
-	batchBytes = 64 << 10
-	// batchTimeout bounds one find of a batch stat.
+	batchPaths   = 1000
+	batchBytes   = 64 << 10
 	batchTimeout = 30 * time.Second
 	// batchWidth is how many single stats of a batch are in flight at once.
 	// They share the one sftp client, so they overlap their round trips.
@@ -69,7 +66,6 @@ const (
 
 var errFindLimit = errors.New("find prints more entries than its limit")
 
-// errRelativePath answers a batch path without a leading "/".
 var errRelativePath = errors.New("path is not absolute")
 
 // execTier reports whether the stored tier says this instance runs commands.
@@ -77,8 +73,6 @@ var errRelativePath = errors.New("path is not absolute")
 // found less answers fsops.ErrUnsupported.
 func (b *Backend) execTier() bool { return b.inst.SSHTier == models.SSHTierExec }
 
-// exec returns the connection for remote commands. It is client for exec,
-// and answers fsops.ErrUnsupported when the live connection has no exec tier.
 func (b *Backend) exec(ctx context.Context) (*sshpool.Conn, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -95,8 +89,6 @@ func (b *Backend) exec(ctx context.Context) (*sshpool.Conn, error) {
 	return nil, lost(err)
 }
 
-// output runs cmd and maps a dropped connection to ErrConnectionLost. A
-// command that exits non-zero keeps its own error.
 func output(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command) ([]byte, error) {
 	out, err := conn.Output(ctx, cmd)
 	if err != nil && ctx.Err() == nil && errors.Is(err, sshpool.ErrConnect) {
@@ -149,8 +141,6 @@ func remoteFileID(dev, ino uint64) hardlink.FileID {
 	return hardlink.RemoteFileID(raw[:])
 }
 
-// setIdentity fills the identity of info the way the local backend does: for
-// regular files and directories, with a failure in FileIDErr.
 func (b *Backend) setIdentity(ctx context.Context, info *fsops.LstatInfo, follow bool) {
 	if !info.Mode.IsRegular() && !info.IsDir {
 		return
@@ -162,8 +152,6 @@ func (b *Backend) setIdentity(ctx context.Context, info *fsops.LstatInfo, follow
 	info.FileID, info.Nlinks, info.FileIDErr = b.identity(ctx, info.Path, follow)
 }
 
-// StatBatch answers fsops.BatchStater. It is LstatBatch, but it follows
-// symlinks, as Stat does.
 func (b *Backend) StatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
 	return b.statBatch(ctx, paths, true)
 }
@@ -224,7 +212,6 @@ func (b *Backend) statBatch(ctx context.Context, paths []string, follow bool) ([
 			IsSymlink: e.mode&fs.ModeSymlink != 0,
 			Mode:      e.mode,
 		}
-		// Lstat gives identity to regular files and directories only.
 		if e.mode.IsRegular() || e.mode.IsDir() {
 			info.FileID, info.Nlinks = e.id, e.nlink
 		}
@@ -242,7 +229,7 @@ func (b *Backend) statBatch(ctx context.Context, paths []string, follow bool) ([
 			return nil
 		})
 	}
-	_ = g.Wait() // each error stays with its path
+	_ = g.Wait()
 	return infos, errs
 }
 
@@ -291,8 +278,6 @@ func (b *Backend) statFind(ctx context.Context, paths []string, follow bool, fou
 	}
 }
 
-// sameFilesystemExec compares the device numbers of the two paths. It follows
-// links, as the local backend does.
 func (b *Backend) sameFilesystemExec(ctx context.Context, p1, p2 string) (bool, error) {
 	conn, err := b.exec(ctx)
 	if err != nil {
@@ -403,9 +388,6 @@ type findEntry struct {
 	nlink   uint64
 }
 
-// find runs cmd, streams its output and parses it record by record, at most
-// limit records. When the command exits non-zero, the records it finished
-// printing come back with the error.
 func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, maxEntries, maxBytes int) ([]findEntry, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -459,7 +441,6 @@ func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, maxEntri
 	}
 }
 
-// parseFindRecord reads one findFormat record without its NUL.
 func parseFindRecord(record []byte) (findEntry, error) {
 	fields := bytes.SplitN(record, []byte(" "), 8)
 	if len(fields) != 8 || len(fields[0]) != 1 || len(fields[7]) == 0 {
@@ -507,7 +488,6 @@ func parseFindTime(text string) (time.Time, error) {
 	return time.Unix(sec, nsec), nil
 }
 
-// findMode builds a FileMode from the %y type letter and the %m bits.
 func findMode(kind byte, perm uint32) fs.FileMode {
 	mode := fs.FileMode(perm & 0o777)
 	if perm&0o4000 != 0 {

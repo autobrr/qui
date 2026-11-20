@@ -21,8 +21,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// stubBackend is the local backend with the failures a real folder cannot
-// give. Each list holds path prefixes.
 type stubBackend struct {
 	fsops.Backend
 	otherDisk   []string
@@ -159,8 +157,7 @@ func TestLinkTree(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		// edit changes the request, the stub, or the disk before Plan.
+		name         string
 		edit         func(t *testing.T, e *testEnv, req *Request)
 		planOnly     bool
 		wantPlanFail FailureKind

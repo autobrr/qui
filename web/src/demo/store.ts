@@ -893,7 +893,6 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         let peers = 0
         for (const t of inst.torrents) {
           if (t.state === "checkingUP" || t.state === "checkingDL") {
-            // A recheck finishes on the next tick.
             t.state = t.progress === 1 ? "uploading" : "downloading"
             continue
           }

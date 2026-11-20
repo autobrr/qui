@@ -5,9 +5,6 @@ package httphelpers
 
 import "strings"
 
-// NormalizeBasePath converts a configured base URL into a path prefix that
-// always begins with a leading slash and omits any trailing slash. An empty
-// string indicates the root.
 func NormalizeBasePath(baseURL string) string {
 	base := strings.TrimSpace(baseURL)
 	if base == "" || base == "/" {
@@ -26,9 +23,6 @@ func NormalizeBasePath(baseURL string) string {
 	return base
 }
 
-// JoinBasePath ensures the provided suffix is properly joined to the base
-// prefix. The suffix may be relative or absolute and is treated as relative
-// when the base is non-empty.
 func JoinBasePath(basePath, suffix string) string {
 	if basePath == "" {
 		if suffix == "" {

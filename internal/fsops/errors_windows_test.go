@@ -24,8 +24,6 @@ func TestIsDirNotEmptyMatchesWindowsCodeInAnyLanguage(t *testing.T) {
 	require.False(t, IsDirNotEmpty(&fs.PathError{Op: "remove", Path: `D:\data\Not Empty`, Err: windows.ERROR_ACCESS_DENIED}))
 }
 
-// localizedErrnoError is an error whose message is not English but which unwraps
-// to the Windows code, the shape a translated system message takes.
 type localizedErrnoError struct {
 	errno windows.Errno
 	msg   string

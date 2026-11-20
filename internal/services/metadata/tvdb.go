@@ -42,7 +42,6 @@ func newTVDBProvider(apiKey, pin string) *tvdbProvider {
 	}
 }
 
-// EpisodesInSeason searches for a series on TVDB and returns the episode count for a season.
 func (p *tvdbProvider) EpisodesInSeason(ctx context.Context, title string, seasonNumber int) (int, error) {
 	if err := p.ensureToken(ctx); err != nil {
 		return 0, fmt.Errorf("tvdb auth: %w", err)
@@ -209,7 +208,6 @@ func (p *tvdbProvider) doAuthGet(ctx context.Context, rawURL string) ([]byte, er
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		// Clear the cached token so ensureToken will re-authenticate on the next call.
 		p.mu.Lock()
 		p.token = ""
 		p.tokenExpiry = time.Time{}

@@ -13,14 +13,12 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// SettingsCache provides an in-memory copy of instance reannounce settings.
 type SettingsCache struct {
 	store *models.InstanceReannounceStore
 	mu    sync.RWMutex
 	data  map[int]*models.InstanceReannounceSettings
 }
 
-// NewSettingsCache creates a cache backed by the given store.
 func NewSettingsCache(store *models.InstanceReannounceStore) *SettingsCache {
 	return &SettingsCache{
 		store: store,
@@ -28,7 +26,6 @@ func NewSettingsCache(store *models.InstanceReannounceStore) *SettingsCache {
 	}
 }
 
-// LoadAll refreshes the cache with all stored settings.
 func (c *SettingsCache) LoadAll(ctx context.Context) error {
 	if c.store == nil {
 		return nil
@@ -47,7 +44,6 @@ func (c *SettingsCache) LoadAll(ctx context.Context) error {
 	return nil
 }
 
-// Replace updates the cache for a single instance.
 func (c *SettingsCache) Replace(settings *models.InstanceReannounceSettings) {
 	if c == nil || settings == nil {
 		return
@@ -60,7 +56,6 @@ func (c *SettingsCache) Replace(settings *models.InstanceReannounceSettings) {
 	c.data[settings.InstanceID] = cloneSettings(settings)
 }
 
-// Get returns a copy of cached settings for an instance, or nil if absent.
 func (c *SettingsCache) Get(instanceID int) *models.InstanceReannounceSettings {
 	if c == nil {
 		return nil
@@ -73,7 +68,6 @@ func (c *SettingsCache) Get(instanceID int) *models.InstanceReannounceSettings {
 	return nil
 }
 
-// StartAutoRefresh periodically reloads settings into the cache.
 func (c *SettingsCache) StartAutoRefresh(ctx context.Context, interval time.Duration) {
 	if c == nil || c.store == nil || interval <= 0 {
 		return

@@ -5,7 +5,6 @@
 
 package linktree
 
-// isPlatformCrossDevice has no error to add to EXDEV outside Windows.
 func isPlatformCrossDevice(error) bool {
 	return false
 }

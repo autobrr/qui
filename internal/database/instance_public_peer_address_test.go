@@ -44,8 +44,6 @@ func TestInstancePublicPeerAddressMigrationPostgresIntegration(t *testing.T) {
 	checkInstancePublicPeerAddressMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations")
 }
 
-// An instance that exists before the migration has no public peer address
-// after it.
 func checkInstancePublicPeerAddressMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadDirFS, dir string) {
 	t.Helper()
 

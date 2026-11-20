@@ -24,7 +24,6 @@ func lowerASCII(c byte) byte {
 	return c
 }
 
-// isASCII reports whether s contains only single-byte runes.
 func isASCII(s string) bool {
 	for i := range len(s) {
 		if s[i] >= utf8.RuneSelf {
@@ -34,7 +33,6 @@ func isASCII(s string) bool {
 	return true
 }
 
-// ContainsFold reports whether s contains sub, case-insensitively.
 func ContainsFold(s, sub string) bool {
 	if sub == "" {
 		return true
@@ -66,7 +64,6 @@ func ContainsFold(s, sub string) bool {
 	return false
 }
 
-// HasPrefixFold reports whether s starts with prefix, case-insensitively.
 func HasPrefixFold(s, prefix string) bool {
 	if !isASCII(s) || !isASCII(prefix) {
 		return strings.HasPrefix(strings.ToLower(s), strings.ToLower(prefix))
@@ -83,7 +80,6 @@ func HasPrefixFold(s, prefix string) bool {
 	return true
 }
 
-// HasSuffixFold reports whether s ends with suffix, case-insensitively.
 func HasSuffixFold(s, suffix string) bool {
 	if !isASCII(s) || !isASCII(suffix) {
 		return strings.HasSuffix(strings.ToLower(s), strings.ToLower(suffix))
@@ -101,8 +97,6 @@ func HasSuffixFold(s, suffix string) bool {
 	return true
 }
 
-// CompareFold compares a and b case-insensitively, matching
-// strings.Compare(strings.ToLower(a), strings.ToLower(b)).
 func CompareFold(a, b string) int {
 	for i := 0; i < len(a) && i < len(b); i++ {
 		ca, cb := a[i], b[i]

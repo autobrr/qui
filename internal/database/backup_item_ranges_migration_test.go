@@ -43,8 +43,6 @@ func TestBackupItemRangesMigrationPostgresIntegration(t *testing.T) {
 	checkBackupItemRangesMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations", "102_backup_item_ranges.sql", false)
 }
 
-// A migrated run must list exactly the items it listed before, and each
-// instance's newest snapshot must stay open for the next run to extend.
 func checkBackupItemRangesMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadDirFS, dir, target string, enforceForeignKeys bool) {
 	t.Helper()
 
@@ -170,7 +168,6 @@ func backupRunContents(ctx context.Context, t *testing.T, conn *sql.DB, query st
 	return contents
 }
 
-// backupRunMetadata reads the run columns the migration must leave untouched.
 func backupRunMetadata(ctx context.Context, t *testing.T, conn *sql.DB) []string {
 	t.Helper()
 	rows, err := conn.QueryContext(ctx, `

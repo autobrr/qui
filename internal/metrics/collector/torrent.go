@@ -175,7 +175,6 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
-	// Load tracker customizations once for resolving display names
 	var trackerCustomizations []*models.TrackerCustomization
 	if c.trackerCustomizationStore != nil {
 		var err error

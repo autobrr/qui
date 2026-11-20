@@ -71,14 +71,12 @@ func TestMigrationIdempotency(t *testing.T) {
 	ctx := t.Context()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
-	// First initialization
 	db1, err := New(dbPath)
 	require.NoError(t, err, "Failed to initialize database first time")
 	var count1 int
 	require.NoError(t, db1.Conn().QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count1))
 	require.NoError(t, db1.Close())
 
-	// Second initialization should be a no-op for migrations
 	db2, err := New(dbPath)
 	require.NoError(t, err, "Failed to initialize database second time")
 	t.Cleanup(func() {
@@ -132,7 +130,6 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	db := openTestDatabase(t)
 	sqlDB := db.Conn()
 
-	// Set max connections to 4: 1 for writeConn + 2 test connections + 1 buffer
 	sqlDB.SetMaxOpenConns(4)
 	sqlDB.SetMaxIdleConns(3)
 
@@ -552,41 +549,33 @@ func TestCleanupUnusedStrings(t *testing.T) {
 	db := openTestDatabase(t)
 	conn := db.Conn()
 
-	// Get initial count of strings
 	var initialCount int
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&initialCount))
 
-	// Insert some test strings into string_pool
 	var id1, id2, id3 int64
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "referenced_string").Scan(&id1))
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "orphaned_string").Scan(&id2))
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "another_orphaned").Scan(&id3))
 
-	// Reference id1 in instances table (create a minimal instance)
 	_, err := conn.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?)", id1, id1, id1, "dummy_password")
 	require.NoError(t, err)
 
-	// Verify 3 more strings exist
 	var count int
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&count))
 	require.Equal(t, initialCount+3, count)
 
-	// Run cleanup
 	deleted, err := db.CleanupUnusedStrings(ctx)
 	require.NoError(t, err)
-	require.Positive(t, deleted) // Should delete some orphaned strings
+	require.Positive(t, deleted)
 
-	// Verify our referenced string still exists
 	var exists bool
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
 	require.True(t, exists)
 
-	// Run cleanup again - should delete nothing since temp table was properly dropped
 	deleted2, err := db.CleanupUnusedStrings(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), deleted2)
 
-	// Verify our referenced string still exists
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
 	require.True(t, exists)
 }
@@ -777,128 +766,99 @@ func TestTempTableNameParsingWithoutSpaceBeforeColumns(t *testing.T) {
 	require.Equal(t, "current_hashes", createName)
 }
 
-// TestTransactionCommitSuccessMutexRelease tests that the writer mutex is properly released
-// after a successful commit.
 func TestTransactionCommitSuccessMutexRelease(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
 	db := openTestDatabase(t)
 
-	// Start a write transaction
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tx)
 
-	// Perform a simple write operation
 	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
 	require.NoError(t, err)
 
-	// Commit should succeed and release the mutex
 	err = tx.Commit()
 	require.NoError(t, err)
 
-	// Should be able to start another write transaction immediately (mutex was released)
 	tx2, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tx2)
 
-	// Clean up
 	require.NoError(t, tx2.Rollback())
 }
 
-// TestTransactionRollbackReleasesMutex tests that Rollback() always releases the mutex,
-// even after a failed commit attempt.
 func TestTransactionRollbackReleasesMutex(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
 	db := openTestDatabase(t)
 
-	// Start a write transaction
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tx)
 
-	// Do some work
 	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
 	require.NoError(t, err)
 
-	// Rollback instead of commit
 	err = tx.Rollback()
 	require.NoError(t, err)
 
-	// Should be able to start another write transaction immediately (mutex was released)
 	tx2, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err, "Should be able to start new transaction after rollback")
 	require.NotNil(t, tx2)
 	require.NoError(t, tx2.Rollback())
 }
 
-// TestTransactionDoubleRollbackSafe tests that calling Rollback() twice doesn't panic
-// or cause mutex issues (sync.Once protects the unlock).
 func TestTransactionDoubleRollbackSafe(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
 	db := openTestDatabase(t)
 
-	// Start a write transaction
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 
-	// Rollback twice - second call should be safe (returns ErrTxDone, but no panic)
 	err = tx.Rollback()
 	require.NoError(t, err)
 
 	err = tx.Rollback()
-	require.Error(t, err) // Expected: sql.ErrTxDone
+	require.Error(t, err)
 
-	// Mutex should still be released, can start new transaction
 	tx2, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NoError(t, tx2.Rollback())
 }
 
-// TestTransactionCommitThenRollbackSafe tests that calling Rollback() after successful
-// Commit() doesn't cause mutex issues (sync.Once protects the unlock).
 func TestTransactionCommitThenRollbackSafe(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
 	db := openTestDatabase(t)
 
-	// Start a write transaction
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 
-	// Insert something
 	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
 	require.NoError(t, err)
 
-	// Commit successfully
 	err = tx.Commit()
 	require.NoError(t, err)
 
-	// Call Rollback after commit (like a deferred rollback pattern) - should be safe
 	err = tx.Rollback()
-	require.Error(t, err) // Expected: sql.ErrTxDone
+	require.Error(t, err)
 
-	// Mutex should still be released, can start new transaction
 	tx2, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NoError(t, tx2.Rollback())
 }
 
-// TestTransactionSerialization tests that write transactions are properly serialized
-// and that the mutex prevents concurrent write transactions.
 func TestTransactionSerialization(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
 	db := openTestDatabase(t)
 
-	// Channel to coordinate the test
 	started := make(chan bool, 1)
 	release := make(chan struct{})
 	committed := make(chan bool, 1)
 
-	// Start first transaction in a goroutine
 	go func() {
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
@@ -907,18 +867,15 @@ func TestTransactionSerialization(t *testing.T) {
 		}
 		defer func() { _ = tx.Rollback() }()
 
-		// Signal that we started, then hold the transaction open
 		started <- true
 		<-release
 
-		// Insert something
 		_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "serialization_test")
 		if err != nil {
 			t.Errorf("Failed to insert in first transaction: %v", err)
 			return
 		}
 
-		// Commit
 		err = tx.Commit()
 		if err != nil {
 			t.Errorf("Failed to commit first transaction: %v", err)
@@ -928,22 +885,18 @@ func TestTransactionSerialization(t *testing.T) {
 		committed <- true
 	}()
 
-	// Wait for first transaction to start
 	select {
 	case <-started:
-		// Good, first transaction started
 	case <-time.After(1 * time.Second):
 		t.Fatal("First transaction didn't start")
 	}
 
-	// A second transaction cannot begin while the first is open
 	waitCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 	_, err := db.BeginTx(waitCtx, nil)
 	cancel()
 	require.ErrorIs(t, err, context.DeadlineExceeded, "Second transaction should wait while the first is open")
 	close(release)
 
-	// It begins after the first commits
 	tx2, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tx2)
@@ -952,49 +905,37 @@ func TestTransactionSerialization(t *testing.T) {
 	require.NoError(t, tx2.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool WHERE value = ?", "serialization_test").Scan(&count))
 	require.Equal(t, 1, count, "Second transaction should have been blocked until the first committed")
 
-	// Clean up
 	require.NoError(t, tx2.Rollback())
 
-	// Wait for first transaction to complete
 	select {
 	case <-committed:
-		// Good
 	case <-time.After(1 * time.Second):
 		t.Fatal("First transaction didn't commit")
 	}
 }
 
-// TestReadOnlyTransactionConcurrency tests that read-only transactions can run concurrently
-// with write transactions (due to WAL mode).
 func TestReadOnlyTransactionConcurrency(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
 	db := openTestDatabase(t)
 
-	// Start a write transaction
 	txWrite, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, txWrite)
 
-	// Insert something in the write transaction
 	_, err = txWrite.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "concurrency_test")
 	require.NoError(t, err)
 
-	// Start a read-only transaction while write transaction is active
 	txRead, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	require.NoError(t, err)
 	require.NotNil(t, txRead)
 
-	// Read transaction should be able to query (may or may not see the uncommitted write)
 	var count int
 	err = txRead.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&count)
 	require.NoError(t, err)
-	// Count could be anything depending on isolation level
 
-	// Commit the read transaction
 	require.NoError(t, txRead.Rollback())
 
-	// Commit the write transaction
 	require.NoError(t, txWrite.Commit())
 }
 
@@ -1008,8 +949,6 @@ func TestSQLiteReaderPoolSizeFollowsCPUsWithinBounds(t *testing.T) {
 	}
 }
 
-// A burst of reads larger than the read pool waits for a free connection
-// instead of opening one connection per read.
 // regression: #3738
 func TestReaderPoolCapsOpenConnections(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
@@ -1127,8 +1066,6 @@ func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
 	}
 }
 
-// A writer queued behind the write lock returns when its context ends instead of
-// waiting for the lock holder (#2817).
 func TestWriterLockWaitHonorsContext(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	dbPath := filepath.Join(t.TempDir(), "test.db")

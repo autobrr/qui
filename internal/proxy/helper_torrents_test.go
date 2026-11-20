@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// helperRegistry names the helper torrents of the rig's instance.
 type helperRegistry map[string]string
 
 func (h helperRegistry) HelperKinds(int) map[string]string {
@@ -20,8 +19,6 @@ func (h helperRegistry) HelperKinds(int) map[string]string {
 	return h
 }
 
-// newHelperProxyRig has a helper torrent (proxyHashA) and a torrent of the
-// user (proxyHashB).
 func newHelperProxyRig(t *testing.T) *proxyRig {
 	t.Helper()
 	r := newProxyRig(t)

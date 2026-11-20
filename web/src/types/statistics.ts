@@ -35,7 +35,6 @@ export interface TransferHistoryTorrent {
 
 export type TransferHistoryGrouping = "tracker" | "category" | "torrent" | "releaseGroup" | "resolution" | "source" | "contentType"
 
-/** A grouping of the table of the Statistics page. */
 export type TableGrouping = Exclude<TransferHistoryGrouping, "torrent">
 
 export interface TransferHistoryQuery {

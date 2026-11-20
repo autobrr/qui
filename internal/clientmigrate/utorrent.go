@@ -80,7 +80,6 @@ func (i *UTorrentImport) Migrate() error {
 
 		torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
 
-		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
 			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentID)
 			skipped++
@@ -151,8 +150,6 @@ func (i *UTorrentImport) Migrate() error {
 	return nil
 }
 
-// loadResume checks the source and qBittorrent dirs and returns the
-// resume.dat entries
 func (i *UTorrentImport) loadResume() (map[string]bencode.Bytes, error) {
 	sourceDir := i.opts.SourceDir
 
@@ -185,8 +182,6 @@ func (i *UTorrentImport) loadResume() (map[string]bencode.Bytes, error) {
 	return entries, nil
 }
 
-// utorrentFastresume builds the qBittorrent resume data for a complete
-// uTorrent resume entry
 func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info *metainfo.Info, savePath string, mappedFiles []string, pieces string) Fastresume {
 	completedTime := firstNonZero(item.CompletedOn, item.AddedOn)
 
@@ -259,7 +254,6 @@ func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info 
 	}
 
 	if info.IsDir() {
-		// legacy and should be removed sometime with 4.3.X
 		fr.QbtHasRootFolder = 1
 	} else {
 		fr.QbtHasRootFolder = 0
@@ -270,7 +264,6 @@ func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info 
 	// pieces overlapping only skipped files stay unset
 	fr.Pieces = pieces
 
-	// Set 20 byte SHA1 hash
 	fr.InfoHash = file.HashInfoBytes().Bytes()
 
 	return fr
@@ -431,8 +424,6 @@ func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo
 	return savePath, mapped, nil
 }
 
-// utorrentName returns the renamed torrent name, or "" when the torrent keeps
-// its metainfo name
 func utorrentName(item *UTorrentResumeItem, info *metainfo.Info) string {
 	caption := decodeCESU8(item.Caption)
 	if caption == info.BestName() {

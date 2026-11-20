@@ -3,10 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// This file is a thin re-export barrel. Type definitions live in domain
-// modules alongside this file; every symbol previously exported from
-// "@/types" remains importable from here unchanged.
-
 export * from "./common"
 export * from "./auth"
 export * from "./app"

@@ -34,8 +34,6 @@ func TestOpenWrite_WritesAtTheOffsetAndKeepsTheRest(t *testing.T) {
 	assert.Equal(t, "0123ab6789", string(got))
 }
 
-// Only a server that advertises fsync@openssh.com can confirm that written
-// bytes are on its disk.
 func TestFlush_ConfirmedOnlyWithTheFsyncExtension(t *testing.T) {
 	t.Parallel()
 
@@ -85,8 +83,6 @@ func TestOpenBytes_MissingPath(t *testing.T) {
 func TestByteCallsReportADroppedTransportAsConnectionLost(t *testing.T) {
 	t.Parallel()
 
-	// Each call opens what it needs, runs drop, and then sends the request
-	// that the drop cuts.
 	for name, call := range map[string]func(t *testing.T, b *Backend, file string, drop func()) error{
 		"open": func(t *testing.T, b *Backend, file string, drop func()) error {
 			drop()
@@ -134,8 +130,6 @@ func TestByteCallsReportADroppedTransportAsConnectionLost(t *testing.T) {
 	}
 }
 
-// Each backend that Connections gives reads on a connection of its own. A
-// host with a login limit gives fewer.
 func TestConnections_ReadOnAConnectionEach(t *testing.T) {
 	t.Parallel()
 

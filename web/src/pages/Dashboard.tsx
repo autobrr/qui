@@ -70,7 +70,7 @@ type InstanceStreamData = {
   hasLiveDashboardStatsPayload: boolean
   fallbackPollInterval: number | false
   cacheMetadata: CacheMetadata | null | undefined
-  instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
+  instanceMeta: InstanceMeta | null
 }
 
 const STATS_FALLBACK_POLL_INTERVAL_MS = 5000
@@ -199,7 +199,6 @@ function mergeCachedInstanceData(
   return next
 }
 
-// Optimized hook to get all instance stats using shared TorrentResponse cache
 // eslint-disable-next-line react-refresh/only-export-components
 export function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
   const { enabled: streamEnabled } = options
@@ -588,7 +587,6 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
 }
 
 
-/** The menu that adds a torrent to a connected instance. Compact, its button is an icon with an arrow, for a phone. */
 function QuickActionsDropdown({ statsData, compact = false }: { statsData: DashboardInstanceStats[]; compact?: boolean }) {
   const { t } = useTranslation("dashboard")
   const connectedInstances = statsData
@@ -719,7 +717,6 @@ export function Dashboard() {
       description={t("description")}
       controls={hasInstances && (
         <>
-          {/* On a phone, Add torrent and Add instance are icons. */}
           <QuickActionsDropdown statsData={statsData} compact={phone} />
           <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
             {phone ? (

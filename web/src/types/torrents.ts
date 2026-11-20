@@ -249,10 +249,6 @@ export interface FilterViewInput {
   filters: Partial<TorrentFilters>
 }
 
-/**
- * Real-time instance auth/decryption and connection metadata emitted on torrent
- * stream snapshots.
- */
 export interface InstanceMeta {
   connected: boolean
   hasDecryptionError: boolean
@@ -261,9 +257,6 @@ export interface InstanceMeta {
   connectionStatus?: string
 }
 
-/**
- * Torrent list response shared by REST and stream snapshots.
- */
 export interface TorrentResponse {
   torrents: Torrent[]
   crossInstanceTorrents?: CrossInstanceTorrent[]
@@ -283,7 +276,7 @@ export interface TorrentResponse {
   partialResults?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
-  instanceMeta?: InstanceMeta  // Real-time instance health from SSE
+  instanceMeta?: InstanceMeta
   /** Web API version of each instance in the response, keyed by instance ID; "" while unknown. */
   webAPIVersions?: Record<number, string>
   /** Frontend-assembled only: number of pages combined into this loaded-window response. */
@@ -353,7 +346,6 @@ export interface TorrentStreamPayload {
   error?: string
 }
 
-// Simplified MainData - only used for Dashboard server stats
 export interface MainData {
   rid: number
   serverState?: ServerState

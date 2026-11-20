@@ -107,7 +107,6 @@ func pairWrite(p int64) map[string]qbittorrent.CachedFilesWrite {
 	return map[string]qbittorrent.CachedFilesWrite{pairHash: {Files: pairList(tag), Print: &p}}
 }
 
-// requireOnePair fails when the entry holds a print with the list of another write.
 func requireOnePair(t *testing.T, entry qbittorrent.CachedFilesEntry) {
 	t.Helper()
 	require.NotNil(t, entry.Print)
@@ -163,8 +162,6 @@ func testNilPrintReplacesPrint(t *testing.T, open testDBOpener) {
 	})
 }
 
-// failingCommitDB rolls back, and fails the commit of, each transaction that
-// wrote sync rows. A combined write fails after its file rows.
 type failingCommitDB struct {
 	*database.DB
 }
@@ -220,7 +217,6 @@ func testFailedWriteKeepsOldPair(t *testing.T, open testDBOpener) {
 	})
 }
 
-// releaseTogether starts n calls at once and returns their errors.
 func releaseTogether(n int, call func(i int) error) []error {
 	start := make(chan struct{})
 	errs := make([]error, n)
@@ -325,8 +321,6 @@ const previousReleaseSyncUpsert = `
 		file_count = excluded.file_count
 `
 
-// previousReleaseWrite writes one torrent as the release before the print
-// columns did.
 func previousReleaseWrite(ctx context.Context, t *testing.T, db *database.DB, hash string, syncedAt time.Time) {
 	t.Helper()
 	repo := NewRepository(db)
@@ -404,7 +398,6 @@ func TestFilesCacheLockOrderPostgresIntegration(t *testing.T) {
 		}
 	}
 
-	// Each case runs calls 0..n-1 released together.
 	tests := []struct {
 		name          string
 		n             int

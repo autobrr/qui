@@ -42,7 +42,6 @@ func (b *Backend) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) 
 	return &root{b: b, dir: dir}, nil
 }
 
-// mkdirs creates dir and its missing folders with mode 775.
 func mkdirs(ctx context.Context, client *sftp.Client, dir string) error {
 	made, err := mkdirAll(ctx, client, dir)
 	for _, d := range made {
@@ -56,9 +55,6 @@ type root struct {
 	dir string
 }
 
-// open returns the client and the path of name on the server, once name
-// passed the path rules and each folder of name that exists below the root
-// is a folder.
 func (r *root) open(ctx context.Context, op, name string) (*sftp.Client, string, error) {
 	if err := hardlinktree.ValidateRelativePath(fsops.SlashPaths, name); err != nil {
 		return nil, "", pathError(op, name, err)
