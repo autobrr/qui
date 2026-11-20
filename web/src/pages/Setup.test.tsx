@@ -9,6 +9,7 @@ import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { server } from "@/test/msw/server"
+import { SETUP_COMPLETED_KEY } from "@/hooks/useAuth"
 import { Setup } from "./Setup"
 
 const mocks = vi.hoisted(() => ({
@@ -28,6 +29,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 }))
 
 vi.mock("@/hooks/useAuth", () => ({
+  SETUP_COMPLETED_KEY: "qui-setup-completed",
   useAuth: () => ({
     setup: mocks.setup,
     isSettingUp: false,
@@ -121,5 +123,16 @@ describe("Setup", () => {
 
     expect(await screen.findByRole("button", { name: "setup.createAccount" })).toBeTruthy()
     expect(attempts).toBe(2)
+  })
+
+  // regression: #4313
+  it("does not redirect to login after the account was just created", async () => {
+    server.use(http.get("*/api/auth/check-setup", () => HttpResponse.json({ setupRequired: false })))
+    sessionStorage.setItem(SETUP_COMPLETED_KEY, "1")
+
+    renderSetup()
+
+    await vi.waitFor(() => expect(createAccount()).toBeNull())
+    expect(mocks.navigate).not.toHaveBeenCalled()
   })
 })

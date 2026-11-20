@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Logo } from "@/components/ui/Logo"
 import { ShineBorder } from "@/components/magicui/shine-border"
 import { BlurFade } from "@/components/magicui/blur-fade"
-import { useAuth } from "@/hooks/useAuth"
+import { SETUP_COMPLETED_KEY, useAuth } from "@/hooks/useAuth"
 import { api } from "@/lib/api"
 import { useForm } from "@tanstack/react-form"
 import { useQuery } from "@tanstack/react-query"
@@ -58,6 +58,14 @@ export function Setup() {
     }
 
     if (oidcConfig.enabled || !setupRequired) {
+      let completed = false
+      try {
+        completed = sessionStorage.getItem(SETUP_COMPLETED_KEY) === "1"
+        sessionStorage.removeItem(SETUP_COMPLETED_KEY)
+      } catch {
+        // Without storage, the redirect stays as it was.
+      }
+      if (completed) return
       // Login reads its own infinite-stale copy of this answer. Write the
       // result we just observed there before redirecting, so Login cannot send
       // the visitor back here with stale data.
