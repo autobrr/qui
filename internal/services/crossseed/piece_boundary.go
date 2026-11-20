@@ -165,24 +165,12 @@ func BuildFilesForBoundaryCheck(
 		}
 	}
 
-	// Multi-file torrent
-	// Path format must match qbt.TorrentFiles.Name (see BuildTorrentFilesFromInfo):
-	// - When info.IsDir(): rootName + "/" + displayPath
-	// - Otherwise: displayPath
+	// Multi-file torrent. Paths must match qbt.TorrentFiles.Name, so both use torrentFilePath.
 	files := make([]TorrentFileForBoundaryCheck, 0, len(info.Files))
 	rootName := pathutil.TorrentPathName(info.Name)
 	for i := range info.Files {
 		// ParseTorrentMetadataWithInfo has already refused a path that filtering empties.
-		displayPath, _ := torrentDisplayPath(info, &info.Files[i])
-		var path string
-		switch {
-		case info.IsDir() && displayPath != "":
-			path = rootName + "/" + displayPath
-		case displayPath != "":
-			path = displayPath
-		default:
-			path = rootName
-		}
+		path, _ := torrentFilePath(info, &info.Files[i], rootName)
 		files = append(files, TorrentFileForBoundaryCheck{
 			Path:      path,
 			Size:      info.Files[i].Length,

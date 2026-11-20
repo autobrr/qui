@@ -100,25 +100,93 @@ func TorrentPathComponent(component string) (string, error) {
 	return name, nil
 }
 
+// TorrentFilePath joins root and each component mapped by TorrentPathComponent
+// with "/", and returns the first error of a component. An empty root adds no
+// prefix, and no components return root.
+func TorrentFilePath(root string, components []string) (string, error) {
+	n := len(root) + len(components)
+	for _, c := range components {
+		n += len(c)
+	}
+	var b strings.Builder
+	b.Grow(n)
+	b.WriteString(root)
+	for i, c := range components {
+		if i > 0 || root != "" {
+			b.WriteByte('/')
+		}
+		if c == "" {
+			b.WriteByte('_')
+			continue
+		}
+		start := b.Len()
+		writeTorrentPathName(&b, c)
+		if b.Len() == start {
+			return "", errFilteredEmptyPath
+		}
+	}
+	return b.String(), nil
+}
+
 // TorrentPathName returns a torrent name or path component as qBittorrent shows it:
 // malformed UTF-8 replaced and the directional characters libtorrent filters removed.
 // A caller must refuse a nonempty name that comes back empty.
 func TorrentPathName(name string) string {
-	name = stringutils.SanitizeUTF8(name)
-	// Every filtered rune starts with 0xe2.
-	if strings.IndexByte(name, '\xe2') < 0 {
+	if utf8.ValidString(name) && indexTorrentPathControl(name) < 0 {
 		return name
 	}
-	// Both libtorrent 1.2 and 2.0 use this set in filter_path_character:
-	// https://github.com/arvidn/libtorrent/blob/RC_1_2/src/torrent_info.cpp
-	return strings.Map(func(r rune) rune {
-		switch r {
-		case '\u200e', '\u200f', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e':
-			return -1
-		default:
-			return r
+	var b strings.Builder
+	b.Grow(len(name))
+	writeTorrentPathName(&b, name)
+	return b.String()
+}
+
+func writeTorrentPathName(b *strings.Builder, name string) {
+	if !utf8.ValidString(name) {
+		name = stringutils.SanitizeUTF8(name)
+	}
+	for {
+		i := indexTorrentPathControl(name)
+		if i < 0 {
+			b.WriteString(name)
+			return
 		}
-	}, name)
+		b.WriteString(name[:i])
+		name = name[i+torrentPathControlLen:]
+	}
+}
+
+// torrentPathControlLen is the UTF-8 length of every rune isTorrentPathControl reports.
+const torrentPathControlLen = 3
+
+// indexTorrentPathControl returns the byte index of the first filtered rune in
+// valid UTF-8, or -1.
+func indexTorrentPathControl(name string) int {
+	offset := 0
+	// Every filtered rune starts with 0xe2.
+	for {
+		i := strings.IndexByte(name[offset:], '\xe2')
+		if i < 0 {
+			return -1
+		}
+		i += offset
+		r, size := utf8.DecodeRuneInString(name[i:])
+		if isTorrentPathControl(r) {
+			return i
+		}
+		offset = i + size
+	}
+}
+
+// Both libtorrent 1.2 and 2.0 filter this set in filter_path_character:
+// https://github.com/arvidn/libtorrent/blob/RC_1_2/src/torrent_info.cpp
+func isTorrentPathControl(r rune) bool {
+	switch r {
+	case '\u200e', '\u200f', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e':
+		return true
+	default:
+		return false
+	}
 }
 
 // maxIsolationNameBytes keeps room for "--<shortHash>" in a folder name of

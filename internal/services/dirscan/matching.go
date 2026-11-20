@@ -374,9 +374,11 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	}
 
 	name := pathutil.TorrentPathName(info.BestName())
-	root, err := pathutil.TorrentPathComponent(info.BestName())
-	if err != nil {
-		return nil, err
+	root := name
+	if root == "" {
+		if root, err = pathutil.TorrentPathComponent(info.BestName()); err != nil {
+			return nil, err
+		}
 	}
 
 	parsed := &ParsedTorrent{
@@ -404,18 +406,12 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
 		for i := range info.Files {
 			f := &info.Files[i]
-			rawPathParts := f.BestPath()
-			pathParts := make([]string, 0, len(rawPathParts)+1)
-			pathParts = append(pathParts, root)
-			for _, part := range rawPathParts {
-				component, err := pathutil.TorrentPathComponent(part)
-				if err != nil {
-					return nil, err
-				}
-				pathParts = append(pathParts, component)
+			filePath, err := pathutil.TorrentFilePath(root, f.BestPath())
+			if err != nil {
+				return nil, err
 			}
 			tf := TorrentFile{
-				Path:   path.Join(pathParts...),
+				Path:   path.Clean(filePath),
 				Size:   f.Length,
 				Offset: offset,
 			}

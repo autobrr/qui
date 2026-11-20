@@ -68,7 +68,7 @@ func buildMultiFileTorrent(t *testing.T, rootName string, pieceLength int64, fil
 }
 
 func fileDisplayPath(info *metainfo.Info, file metainfo.FileInfo) string {
-	path, _ := torrentDisplayPath(info, &file)
+	path, _ := torrentFilePath(info, &file, "")
 	return path
 }
 

@@ -364,15 +364,9 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) (qbt.Torrent
 	files = make(qbt.TorrentFiles, len(info.Files))
 	var offset int64
 	for i, f := range info.Files {
-		displayPath, err := torrentDisplayPath(&info, &f)
+		name, err := torrentFilePath(&info, &f, rootName)
 		if err != nil {
 			return nil, err
-		}
-		name := rootName
-		if info.IsDir() && displayPath != "" {
-			name = rootName + "/" + displayPath
-		} else if !info.IsDir() && displayPath != "" {
-			name = displayPath
 		}
 
 		pieceStart := 0
@@ -411,24 +405,18 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) (qbt.Torrent
 	return files, nil
 }
 
-// torrentDisplayPath sanitizes UTF-8 and applies libtorrent's empty-component and
-// directional-control rules to metainfo.FileInfo.DisplayPath. It returns an error
-// for a component that directional-character removal empties.
-func torrentDisplayPath(info *metainfo.Info, f *metainfo.FileInfo) (string, error) {
+// torrentFilePath returns the name qBittorrent stores for f: rootName and the
+// file's path for a directory torrent, else the torrent name, falling back to
+// rootName. It returns an error for a component that directional-character
+// removal empties.
+func torrentFilePath(info *metainfo.Info, f *metainfo.FileInfo, rootName string) (string, error) {
 	if !info.IsDir() {
-		return pathutil.TorrentPathName(info.BestName()), nil
-	}
-
-	parts := f.BestPath()
-	components := make([]string, len(parts))
-	for i, part := range parts {
-		component, err := pathutil.TorrentPathComponent(part)
-		if err != nil {
-			return "", err
+		if name := pathutil.TorrentPathName(info.BestName()); name != "" {
+			return name, nil
 		}
-		components[i] = component
+		return rootName, nil
 	}
-	return strings.Join(components, "/"), nil
+	return pathutil.TorrentFilePath(rootName, f.BestPath())
 }
 
 // ParseTorrentAnnounceDomain extracts the primary announce URL's domain from torrent bytes.
