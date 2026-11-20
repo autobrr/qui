@@ -422,6 +422,7 @@ func TestBuildCrossMatchSets_ReleaseMetadataTraceLogsRejection(t *testing.T) {
 	require.Contains(t, logOutput, `"reason":"group mismatch"`)
 }
 
+// regression: #4331
 func TestBuildCrossMatchSets_ReleaseMetadataTraceLimit(t *testing.T) {
 	const rounds = releaseRejectTraceLimit + 6
 	tests := []struct {
