@@ -155,6 +155,35 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 	}
 }
 
+// A RED/OPS copy that is not music or books keeps its hash match. The result
+// carries no file-evidence decision, so Add matches it by name.
+func TestSearchTorrentMatches_GazelleHashMatchOutsideMusicAndBooks(t *testing.T) {
+	tests := []struct {
+		name  string
+		files qbt.TorrentFiles
+	}{
+		{"application", qbt.TorrentFiles{{Name: gazelleSeamName + "/setup.exe", Size: 120}, {Name: gazelleSeamName + "/readme.txt", Size: 3}}},
+		{"album with a bonus video", qbt.TorrentFiles{{Name: gazelleSeamName + "/01.flac", Size: 100}, {Name: gazelleSeamName + "/Bonus/video.mkv", Size: 23}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newGazelleSeamService(t, redTracker, bothGazelleKeys(), gazelleSiteAnswers{
+				"orpheus.network": func(context.Context) (*gazellemusic.Match, error) {
+					return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+				},
+			})
+			svc.syncManager.(*hashFilteringSyncManager).filesByHash[gazelleSeamHash] = tt.files
+
+			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+
+			require.NoError(t, err)
+			require.Equal(t, "match ", gazelleStatuses(resp.GazelleLookups)["orpheus.network"])
+			require.Len(t, resp.Results, 1)
+			require.False(t, resp.Results[0].SearchDecision.admitted())
+		})
+	}
+}
+
 // A site that does not answer in time fails alone; the other site still
 // answers within the limit of the search.
 func TestSearchTorrentMatches_SlowGazelleSiteTimesOutAlone(t *testing.T) {

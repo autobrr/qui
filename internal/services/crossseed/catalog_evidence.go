@@ -127,12 +127,18 @@ func catalogFileFamily(files qbt.TorrentFiles) rls.Type {
 	return rls.Unknown
 }
 
+// gazelleDecision returns no decision for content other than music and books,
+// so Add matches that result by name, like a result from before file evidence.
 func (s *Service) gazelleDecision(instanceID int, source *qbt.Torrent, files qbt.TorrentFiles, match *gazellemusic.Match) (searchDecisionProvenance, error) {
 	snapshot, total, err := fullFileSnapshot(files)
 	if err != nil {
 		return searchDecisionProvenance{}, err
 	}
-	e := catalogFileEvidence{Kind: match.Kind, Host: match.Host, TorrentID: match.TorrentID, TargetHash: normalizeHash(match.TargetHash), QueriedHash: match.QueriedHash, Total: match.Size, SourceSnapshot: snapshot, Family: catalogFileFamily(files)}
+	family := catalogFileFamily(files)
+	if family != rls.Music && family != rls.Book {
+		return searchDecisionProvenance{}, nil
+	}
+	e := catalogFileEvidence{Kind: match.Kind, Host: match.Host, TorrentID: match.TorrentID, TargetHash: normalizeHash(match.TargetHash), QueriedHash: match.QueriedHash, Total: match.Size, SourceSnapshot: snapshot, Family: family}
 	if match.Kind == gazellemusic.MatchFileList {
 		if len(match.RemoteFiles) == 0 || fileMapTotal(match.RemoteFiles) != total {
 			return searchDecisionProvenance{}, errors.New("incomplete remote file evidence")
