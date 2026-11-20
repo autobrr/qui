@@ -14,6 +14,7 @@ import (
 
 	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -524,11 +525,51 @@ func TestSearchRunLoop_TorznabSearchFailureIsReported(t *testing.T) {
 	t.Cleanup(downedTracker.Close)
 	svc, state := newTorznabSearchRunFixture(t, "crossseed-runloop-torznab-search-failure", downedTracker.URL, torrent, qbt.TorrentFiles{{Name: name + "/01 - Track.flac", Size: 123}})
 	findGazelleMatch = func(context.Context, *gazellemusic.Client, []byte, map[string]int64, int64) (*gazellemusic.Match, error) {
-		return &gazellemusic.Match{TorrentID: 4242, Title: name, Size: 123, Reason: "hash"}, nil
+		return &gazellemusic.Match{TorrentID: 4242, Title: name, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
 	}
 
 	runSearchLoopToCompletion(t, svc, state)
 
 	require.NotNil(t, state.run.ErrorMessage)
 	require.Contains(t, *state.run.ErrorMessage, "torznab failed, only RED/OPS searched")
+}
+
+func TestSkippedTorznabIndexers(t *testing.T) {
+	const red = "redacted.sh"
+	skipped := func(f searchScopeFacts) ([]int, map[int]string) {
+		scope := decideSearchScope(f)
+		require.NoError(t, scope.err)
+		return scope.torznabIndexerIDs, skippedTorznabIndexers(f, scope.torznabIndexerIDs, scope.skipReason)
+	}
+
+	asked, reasons := skipped(searchScopeFacts{
+		requestedIndexerIDs:    []int{1, 2, 3, 4, 5},
+		contentFilter:          contentFilterFacts{done: true, indexerIDs: []int{1, 2, 4}, capableIDs: []int{1, 2, 3, 4}},
+		cooldownIndexerIDs:     []int{2},
+		gazelleKeys:            []string{red},
+		gazelleTorznabIndexers: map[int]string{5: red},
+	})
+	assert.Equal(t, []int{1, 4}, asked)
+	assert.Equal(t, map[int]string{
+		2: "within cooldown",
+		3: "filtered out by the content filter",
+		5: "asked through the RED/OPS API",
+	}, reasons)
+
+	asked, reasons = skipped(searchScopeFacts{
+		requestedIndexerIDs: []int{1, 2},
+		contentFilter:       contentFilterFacts{indexerIDs: []int{1}, capableIDs: []int{1}},
+		cooldownIndexerIDs:  []int{1},
+	})
+	assert.Empty(t, asked)
+	assert.Equal(t, map[int]string{1: "within cooldown", 2: "does not support the required caps"}, reasons)
+
+	// regression: #4288
+	// The content filter finishes at once when no indexer supports the caps.
+	asked, reasons = skipped(searchScopeFacts{
+		requestedIndexerIDs: []int{1, 2},
+		contentFilter:       contentFilterFacts{done: true, indexerIDs: []int{}, noCapableIndexers: true},
+	})
+	assert.Empty(t, asked)
+	assert.Equal(t, map[int]string{1: "does not support the required caps", 2: "does not support the required caps"}, reasons)
 }

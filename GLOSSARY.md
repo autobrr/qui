@@ -104,7 +104,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Folder cleanup
 
 - **Leftover folder**: A folder that held a torrent's content and is empty after qui deleted or moved that torrent. A folder that holds only junk files counts as empty. _Avoid_: orphan folder. An abandoned directory is a different thing: orphan scan finds it with a scan.
-- **Stop folder**: A folder that the folder cleanup never removes and never climbs past: the default save path, the download path, a category folder in either of them, a category's download folder, or the hardlink base dir. A category's download folder is the folder that qBittorrent downloads the category into, and it can be outside both paths. A folder qBittorrent monitors for `.torrent` files, and the save path set for it, is never removed either, but is not a stop folder: it sets no climb limit of its own. _Avoid_: base dir, root, ceiling.
+- **Stop folder**: A folder that the folder cleanup never removes and never climbs past: the default save path, the download path, a category folder in either of them, a category's download folder, or a Link base directory. A category's download folder is the folder that qBittorrent downloads the category into, and it can be outside both paths. A folder qBittorrent monitors for `.torrent` files, and the save path set for it, is never removed either, but is not a stop folder: it sets no climb limit of its own. _Avoid_: base dir, root, ceiling.
 - **Instance folders**: The folders that qBittorrent saves and downloads into for one instance: the default save path, the download path, the save folder and download folder of each category, and each monitored folder with its save path. Folder cleanup and orphan scan read the same Instance folders. _Avoid_: folder layout, category paths.
 - **Folder cleanup**: The step that removes leftover folders after qui deletes or moves a torrent. _Avoid_: prune, managed delete cleanup.
 
@@ -167,7 +167,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Cross-seed link tree
 
-- **Isolation folder**: A folder that qui adds in the link directory so that the files of one torrent do not mix with the files of other torrents. _Avoid_: hash folder.
+- **Link tree**: The folder tree of hardlinks or reflinks that qui builds before a link mode add, in the layout of the incoming torrent. _Avoid_: hardlink tree (when a reflink tree is also meant), materialized tree.
+- **Link base directory**: A folder from the instance configuration under which qui builds Link trees. An instance can have several. _Avoid_: base dir alone, hardlink base dir.
+- **Directory preset**: The Directory organization choice of an instance: Flat, By Tracker, or By Instance. _Avoid_: directory mode, layout (a qBittorrent term).
+- **Preset directory**: The folder that the Directory preset gives inside a Link base directory. A Link tree adds one folder to it. _Avoid_: link directory, tracker folder (when the preset is not By Tracker).
+- **Isolation folder**: A folder that qui adds in the Preset directory so that the files of one torrent do not mix with the files of other torrents. _Avoid_: hash folder.
 - **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
 - **Pending file**: A file in an added torrent that was absent at add time. _Avoid_: Missing file, extra file (when the download is meant).
 - **Settle**: The steps after an add that needs a recheck, from the recheck to the resume or the decision to stay paused. _Avoid_: Post-add flow.
@@ -247,6 +251,13 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Experimental features
 
 - **Experimental feature**: A feature that is merged before it is finished. It stays off unless the user puts its name in `experimentalFeatures`. The ticket that opens the feature to all users deletes the name. _Avoid_: feature flag, toggle, beta.
+
+## Problem reports
+
+- **Problem report**: A message that a user sends to the qui maintainers from inside qui: the user's text, plus the facts that qui adds. qui's server sends it to brrbin, and it is never public. _Avoid_: feedback, bug report, ticket.
+- **Sent reports**: The list in the report dialog of the Problem reports that this qui sent, each with its Report status, plus a draft that could not be sent. _Avoid_: history, inbox.
+- **Report status**: Where a Problem report stands: Received, Became issue #N, Issue #N closed, Closed with a reason, or Not sent. qui reads it from brrbin when the user opens the report dialog or Sent reports. _Avoid_: state.
+- **Install key**: The secret that tells brrbin which qui install sent a Problem report. qui makes it, stores it encrypted, and never shows it. _Avoid_: install ID, device ID, client token.
 
 ## Running on Windows
 

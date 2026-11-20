@@ -10,6 +10,11 @@ import type {
   AddRSSFolderRequest,
   AddTorrentResponse,
   ApplicationInfo,
+  ListedProblemReport,
+  ProblemReportFacts,
+  ProblemReportPayload,
+  ProblemReportStartedFrom,
+  SentProblemReport,
   AppPreferences,
   PreferenceField,
   NetworkBindingInterface,
@@ -83,6 +88,7 @@ import type {
   IndexerResponse,
   InstanceCapabilities,
   InstanceCrossSeedCompletionSettings,
+  InstanceDisk,
   InstanceFormData,
   InstanceReannounceActivity,
   InstanceResponse,
@@ -167,6 +173,7 @@ import type {
   ArrTestResponse
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
+import { recordFailedRequest } from "./failed-requests"
 import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
 import type { CustomThemeFile } from "./custom-themes"
 // The instance "@/i18n" initializes. Importing "@/i18n" here instead splits the bundled
@@ -445,9 +452,53 @@ function clearSSORecoveryGuard(): void {
   }
 }
 
+async function extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
+  const fallbackMessage = i18n.t("errors.httpStatus", { ns: "common", status: response.status })
+
+  try {
+    const contentType = response.headers.get("content-type") || ""
+    const rawBody = await response.text()
+
+    if (!rawBody) {
+      return { message: fallbackMessage }
+    }
+
+    // Try to parse as JSON first
+    try {
+      const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: unknown }
+      const parsedMessage = errorData?.error ?? errorData?.message
+      if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
+        // Return both the message and the full data (for 409 conflicts with automations, etc.)
+        return { message: parsedMessage, data: errorData }
+      }
+      // Even if no message, return the data for potential use
+      return { message: fallbackMessage, data: errorData }
+    } catch {
+      // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
+      if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
+        // Don't show raw HTML to user, provide a readable message
+        return { message: i18n.t("errors.httpStatusHtml", { ns: "common", status: response.status }) }
+      }
+
+      // Plain text error
+      const trimmed = rawBody.trim()
+      if (trimmed.length > 0 && trimmed.length < 500) {
+        return { message: trimmed }
+      }
+    }
+
+    return { message: fallbackMessage }
+  } catch {
+    return { message: fallbackMessage }
+  }
+}
+
 /**
  * SSO-safe fetch wrapper. Handles network errors and HTML responses that indicate
  * an expired SSO session by triggering a top-level navigation.
+ *
+ * Every request of the API client goes through it, so it keeps each failure in the
+ * failed-request list that a Problem report sends.
  */
 async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response> {
   const isLoginRequest = url.includes("/api/auth/login")
@@ -469,6 +520,9 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
         return new Promise<Response>(() => {})
       }
     }
+    if (!cancelledByCaller(options.signal)) {
+      recordFailedRequest(url, options.method, undefined, error instanceof Error ? error.message : String(error))
+    }
     throw error
   }
 
@@ -478,11 +532,23 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
     if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
       return new Promise<Response>(() => {})
     }
-    throw new Error(i18n.t("errors.ssoHtmlResponse", { ns: "common" }))
+    const message = i18n.t("errors.ssoHtmlResponse", { ns: "common" })
+    recordFailedRequest(url, options.method, response.status, message)
+    throw new Error(message)
   }
 
   clearSSORecoveryGuard()
+  if (!response.ok) {
+    // The caller gets the response now. The error lands in the list when its body is in.
+    const time = new Date().toISOString()
+    void extractErrorData(response.clone()).then(({ message }) => recordFailedRequest(url, options.method, response.status, message, time))
+  }
   return response
+}
+
+/** A request that its caller aborted did not fail. An abort for a timeout did. */
+function cancelledByCaller(signal: AbortSignal | null | undefined): boolean {
+  return signal?.aborted === true && (signal.reason as Error | undefined)?.name !== "TimeoutError"
 }
 
 // Custom error class for API errors with status and additional data
@@ -620,7 +686,7 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const { message, data } = await this.extractErrorData(response)
+      const { message, data } = await extractErrorData(response)
       this.handleAuthError(response.status, endpoint, message)
       throw new APIError(message, response.status, data)
     }
@@ -631,47 +697,6 @@ class ApiClient {
     }
 
     return response.json()
-  }
-
-  private async extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
-    const fallbackMessage = i18n.t("errors.httpStatus", { ns: "common", status: response.status })
-
-    try {
-      const contentType = response.headers.get("content-type") || ""
-      const rawBody = await response.text()
-
-      if (!rawBody) {
-        return { message: fallbackMessage }
-      }
-
-      // Try to parse as JSON first
-      try {
-        const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: unknown }
-        const parsedMessage = errorData?.error ?? errorData?.message
-        if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
-          // Return both the message and the full data (for 409 conflicts with automations, etc.)
-          return { message: parsedMessage, data: errorData }
-        }
-        // Even if no message, return the data for potential use
-        return { message: fallbackMessage, data: errorData }
-      } catch {
-        // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
-        if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
-          // Don't show raw HTML to user, provide a readable message
-          return { message: i18n.t("errors.httpStatusHtml", { ns: "common", status: response.status }) }
-        }
-
-        // Plain text error
-        const trimmed = rawBody.trim()
-        if (trimmed.length > 0 && trimmed.length < 500) {
-          return { message: trimmed }
-        }
-      }
-
-      return { message: fallbackMessage }
-    } catch {
-      return { message: fallbackMessage }
-    }
   }
 
   private handleAuthError(status: number, endpoint: string, errorMessage: string): void {
@@ -867,6 +892,10 @@ class ApiClient {
     return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
   }
 
+  async getInstanceDisk(id: number): Promise<InstanceDisk> {
+    return this.request<InstanceDisk>(`/instances/${id}/disk`)
+  }
+
   // bytes is null when qBittorrent cannot measure the path.
   async getFreeSpaceAtPath(id: number, path: string): Promise<{ path: string; bytes: number | null }> {
     return this.request<{ path: string; bytes: number | null }>(
@@ -1011,7 +1040,7 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const { message } = await this.extractErrorData(response)
+      const { message } = await extractErrorData(response)
       this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, message)
       throw new Error(message)
     }
@@ -2046,7 +2075,7 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const { message } = await this.extractErrorData(response)
+      const { message } = await extractErrorData(response)
       this.handleAuthError(response.status, `/instances/${instanceId}/torrents/${encodedHash}/export`, message)
       throw new Error(message)
     }
@@ -2072,7 +2101,7 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const { message } = await this.extractErrorData(response)
+      const { message } = await extractErrorData(response)
       this.handleAuthError(response.status, "/torrents/export", message)
       throw new Error(message)
     }
@@ -2510,6 +2539,41 @@ class ApiClient {
 
   async getApplicationInfo(): Promise<ApplicationInfo> {
     return this.request<ApplicationInfo>("/application/info")
+  }
+
+  // A search report also needs the instance, the torrent and the search inputs, which #4255 adds. Without them the server answers 400.
+  async getProblemReportFacts(startedFrom: ProblemReportStartedFrom): Promise<ProblemReportFacts> {
+    return this.request<ProblemReportFacts>(`/problem-reports/facts?startedFrom=${startedFrom}`)
+  }
+
+  /** Throws an APIError whose message is the refusal reason from the server, for example `anonymous_full`. */
+  async sendProblemReport(report: ProblemReportPayload): Promise<SentProblemReport> {
+    const endpoint = "/problem-reports"
+    const formData = new FormData()
+    formData.append("report", JSON.stringify(report))
+
+    const response = await ssoSafeFetch(`${API_BASE}${endpoint}`, {
+      method: "POST",
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const { message, data } = await extractErrorData(response)
+      this.handleAuthError(response.status, endpoint, message)
+      throw new APIError(message, response.status, data)
+    }
+
+    return response.json()
+  }
+
+  /** Sent reports, the newest first. The server asks brrbin for fresh Report statuses first. */
+  async getSentProblemReports(): Promise<ListedProblemReport[]> {
+    return this.request<ListedProblemReport[]>("/problem-reports")
+  }
+
+  /** Throws an APIError whose message is `unavailable` when brrbin cannot delete the report. */
+  async deleteProblemReport(id: string): Promise<void> {
+    await this.request<void>(`/problem-reports/${encodeURIComponent(id)}`, { method: "DELETE" })
   }
 
   async getVersion(): Promise<VersionInfo> {

@@ -108,6 +108,7 @@
   },
   "storage": {
     "title": "Armazenamento",
+    "help": "Uma ou mais barras aqui são estimativas. Quando o qui não consegue ler o disco de uma instância, a parte preenchida mostra os torrents dela e a parte vazia mostra o espaço livre. Para ver o uso real do disco, ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância.",
     "free": "{{size}} livres"
   },
   "library": {

@@ -9,7 +9,7 @@ A report is triaged by the rules of Discussions triage in `docs/agents/triage.md
 1. Run `brrbin reports list --status received --json` for the reports to triage. It needs a maintainer sign-in, as "Log links" in `docs/agents/issue-tracker.md` describes.
 2. Run `brrbin reports fetch <id>`. It writes the report files to `~/.cache/brrbin/<id>/` and prints the paths. Read every file.
 
-A report holds the facts that triage otherwise asks for: the qui version, the OS, the database, the Log level, each instance's qBittorrent and libtorrent versions and state, the open System notices, the page and browser, the requests that failed, and the log lines of the scope that the reporter picked. A report from "Report this search" also holds the Search breakdown, the Match policy, and the Search scope.
+A report holds the facts that triage otherwise asks for: the qui version, the time qui started, the newer release that qui's update check found, the OS, the database, the Log level, the Experimental features that are on, each instance's qBittorrent and libtorrent versions, state, and torrent count, the open System notices, the page and browser, the requests that failed, and the log lines of the scope that the reporter picked. A report from "Report this search" also holds the Search breakdown, the Match policy, and the Search scope.
 
 Note what the facts leave out. A log scope of "Warnings and errors", or a Log level above DEBUG, has no debug lines. A cross-seed report from the menu has no Search breakdown.
 
@@ -44,7 +44,7 @@ The decisions in `docs/agents/triage.md` that belong to a human stay with the ma
 | A confirmed `bug` with no open issue | Draft an issue as "Issue from a report" describes. After the OK, create it and link the report. |
 | The same problem as an open issue or discussion | Link the report to it. Link each later report of the same fault to the same issue. |
 | Fixed in a release | Close with the reason. |
-| Fixed on `develop`, not released | Close with the reason. A report linked to a closed issue can end before qui shows its status. |
+| Fixed on `develop`, not released | Close with the reason. A report linked to a closed issue shows only "Issue #N closed", so close the report with the reason. |
 | Already implemented | Close with the reason. |
 | Matches a concept in `.out-of-scope/` | Close with the reason. |
 | A bug in another program | Close with the reason. |

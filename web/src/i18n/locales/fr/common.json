@@ -34,6 +34,113 @@
     "collapseToIcons": "Réduire aux icônes",
     "expandSidebar": "Développer la barre latérale"
   },
+  "problemReports": {
+    "reportProblem": "Signaler un problème",
+    "subtitle": "Votre rapport est envoyé aux mainteneurs de qui.",
+    "textLabel": "Votre rapport",
+    "placeholders": {
+      "menu": "Que s'est-il passé et qu'attendiez-vous ?",
+      "notice": "Que faisiez-vous quand cela s'est produit ?",
+      "search": "Quelle correspondance attendiez-vous, et sur quel indexeur ?"
+    },
+    "sentWithIt": "Inclus dans votre rapport",
+    "summary_one": "qui {{version}} et {{count}} instance",
+    "summary_other": "qui {{version}} et {{count}} instances",
+    "details": "Détails",
+    "view": "Voir",
+    "whatGetsSent": "Ce qui est envoyé",
+    "whatGetsSentNote": "qui remplit ces données. Rien ne quitte qui tant que vous n'envoyez pas le rapport.",
+    "loadingFacts": "Chargement des détails...",
+    "factsFailed": "Impossible de charger les détails : {{message}}",
+    "facts": {
+      "version": "Version",
+      "system": "Système",
+      "appContainer": "Dans un conteneur",
+      "database": "Base de données",
+      "logLevel": "Niveau de log",
+      "started": "Démarré",
+      "experimentalFeatures": "Expérimental",
+      "instance": "Instance {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "inconnue",
+      "states": {
+        "connected": "Connecté",
+        "offline": "Hors ligne",
+        "disabled": "Désactivé"
+      },
+      "torrentCount_one": "{{count}} torrent",
+      "torrentCount_other": "{{count}} torrents",
+      "notices": "Avis système",
+      "openCount_one": "{{count}} ouvert",
+      "openCount_other": "{{count}} ouverts",
+      "page": "Page",
+      "browser": "Navigateur",
+      "screen": "{{width}} × {{height}}, ratio de pixels {{ratio}}",
+      "failedRequests": "Requêtes échouées",
+      "failedCount_one": "{{count}} dans cette session",
+      "failedCount_other": "{{count}} dans cette session",
+      "noAnswer": "aucune réponse",
+      "none": "Aucun"
+    },
+    "logs": {
+      "title": "Journaux",
+      "scopeLabel": "Lignes de journal à inclure",
+      "scopes": {
+        "warnings": "Avertissements et erreurs",
+        "all": "Tout ce qui est récent",
+        "none": "Exclure"
+      },
+      "notes": {
+        "warnings_one": "{{count}} avertissement ou erreur récent. qui retire les clés et les secrets.",
+        "warnings_other": "{{count}} avertissements et erreurs récents. qui retire les clés et les secrets.",
+        "all_one": "{{count}} ligne récente au niveau de log {{level}}. qui retire les clés et les secrets.",
+        "all_other": "{{count}} lignes récentes au niveau de log {{level}}. qui retire les clés et les secrets.",
+        "none": "Aucune ligne de journal n'accompagne votre rapport."
+      },
+      "empty": "Aucune ligne de journal.",
+      "debugMissing": "Le niveau de log est {{level}}, donc qui n'enregistre pas les lignes de débogage. Pour les inclure, réglez Niveau de log sur DEBUG dans Paramètres > Logs, reproduisez le problème, puis signalez-le à nouveau."
+    },
+    "privacy": {
+      "anonymous": "Anonyme : aucun nom, aucun compte. brrbin ne conserve aucune adresse IP.",
+      "link": "Confidentialité"
+    },
+    "newerRelease": "Vous utilisez {{running}}. <release>{{newer}}</release> est disponible.",
+    "send": "Envoyer",
+    "sendAnyway": "Envoyer quand même",
+    "sending": "Envoi",
+    "sent": "Rapport envoyé",
+    "errors": {
+      "anonymousFull": {
+        "title": "Les rapports anonymes sont complets pour aujourd'hui",
+        "body": "Connectez-vous pour l'envoyer maintenant, ou réessayez demain. Votre texte reste ici en brouillon."
+      },
+      "signInRequired": "Connectez-vous pour envoyer ce rapport. Votre texte reste ici en brouillon.",
+      "accountLimit": "Vous avez envoyé beaucoup de rapports dans la dernière heure. Réessayez plus tard.",
+      "reporterFull": "Vos rapports occupent toute la place que brrbin donne à une personne. Supprimez un ancien rapport dans Rapports envoyés, puis renvoyez.",
+      "tooLarge": "Le rapport est trop volumineux. Choisissez moins de lignes de journal ou une image plus petite.",
+      "tokenRejected": "Votre connexion a pris fin. Reconnectez-vous, puis envoyez.",
+      "unavailable": "brrbin ne peut pas recevoir de rapports pour le moment. Réessayez plus tard.",
+      "sendFailed": "Impossible d'envoyer le rapport : {{message}}"
+    },
+    "sentReports": {
+      "title": "Rapports envoyés",
+      "subtitle": "qui vérifie le statut des rapports chaque fois que vous ouvrez cette liste.",
+      "changed_one": "{{count}} statut modifié",
+      "changed_other": "{{count}} statuts modifiés",
+      "status": {
+        "received": "Reçu",
+        "issue": "Devenu le ticket #{{number}}",
+        "issueClosed": "Ticket #{{number}} fermé",
+        "closed": "Fermé : {{reason}}",
+        "closedNoReason": "Fermé"
+      },
+      "delete": "Supprimer le rapport",
+      "deleteUnavailable": "brrbin ne peut pas supprimer de rapports pour le moment. Réessayez plus tard.",
+      "deleteFailed": "Impossible de supprimer le rapport : {{message}}",
+      "empty": "Aucun rapport envoyé.",
+      "back": "Retour au rapport"
+    }
+  },
   "header": {
     "currentInstance": "Instance actuelle : {{name}}. Cliquez pour changer d'instance.",
     "connected": "Connecté",

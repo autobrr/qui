@@ -120,11 +120,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function renderTab() {
+function renderTab(pageSize?: number) {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>
-        <TransfersTab />
+        <TransfersTab pageSize={pageSize} />
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -218,13 +218,13 @@ describe("the Transfers tab", () => {
     expect(failedFilter.getAttribute("aria-selected")).toBe("true")
   })
 
-  it("splits a long list into pages of 50 rows, and keeps the counts of every row", async () => {
-    const long = { active: 0, waiting: 120, finished: 0, failed: 0 }
+  it("splits a long list into pages, and keeps the counts of every row", async () => {
+    const long = { active: 0, waiting: 12, finished: 0, failed: 0 }
     server.use(http.get("*/api/transfers", ({ request }) => {
       const query = new URL(request.url).searchParams
       const offset = Number(query.get("offset"))
       requests.push(`GET /api/transfers?${query}`)
-      const rows = Array.from({ length: Math.min(50, long.waiting - offset) }, (_, i) =>
+      const rows = Array.from({ length: Math.min(5, long.waiting - offset) }, (_, i) =>
         row({ id: 1000 - offset - i, hash: `h${offset + i}`, name: `Built.Show.E${offset + i + 1}.1080p-GRP` }))
       return HttpResponse.json({ rows, counts: long })
     }))
@@ -232,29 +232,29 @@ describe("the Transfers tab", () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
     try {
-      renderTab()
+      renderTab(5)
       const pages = await screen.findByRole("navigation", { name: "Pages of the list" })
       const previous = within(pages).getByRole("button", { name: "Previous" })
       const next = within(pages).getByRole("button", { name: "Next" })
-      expect(within(pages).getByText("1–50 of 120")).toBeTruthy()
+      expect(within(pages).getByText("1–5 of 12")).toBeTruthy()
       expect(previous.hasAttribute("disabled")).toBe(true)
       expect(screen.getByText("Built.Show.E1.1080p-GRP")).toBeTruthy()
 
       fireEvent.click(next)
-      await screen.findByText("Built.Show.E51.1080p-GRP")
-      expect(within(pages).getByText("51–100 of 120")).toBeTruthy()
-      expect(requests).toContain("GET /api/transfers?limit=50&offset=50")
+      await screen.findByText("Built.Show.E6.1080p-GRP")
+      expect(within(pages).getByText("6–10 of 12")).toBeTruthy()
+      expect(requests).toContain("GET /api/transfers?limit=5&offset=5")
       expect(scrollIntoView).toHaveBeenCalled()
 
       fireEvent.click(next)
-      await screen.findByText("Built.Show.E120.1080p-GRP")
-      expect(within(pages).getByText("101–120 of 120")).toBeTruthy()
+      await screen.findByText("Built.Show.E12.1080p-GRP")
+      expect(within(pages).getByText("11–12 of 12")).toBeTruthy()
       expect(next.hasAttribute("disabled")).toBe(true)
 
       // Another filter starts on its first page.
       fireEvent.mouseDown(screen.getByRole("tab", { name: /^Waiting/ }), { button: 0 })
-      await waitFor(() => expect(requests).toContain("GET /api/transfers?limit=50&offset=0&filter=waiting"))
-      expect(await within(pages).findByText("1–50 of 120")).toBeTruthy()
+      await waitFor(() => expect(requests).toContain("GET /api/transfers?limit=5&offset=0&filter=waiting"))
+      expect(await within(pages).findByText("1–5 of 12")).toBeTruthy()
     } finally {
       delete (Element.prototype as Partial<Element>).scrollIntoView
     }
@@ -458,47 +458,47 @@ describe("the Transfers tab", () => {
   })
 
   it("picks every row behind the chip, on every page, and sends the chip in place of the ids", async () => {
-    const long = { active: 0, waiting: 120, finished: 0, failed: 0 }
+    const long = { active: 0, waiting: 12, finished: 0, failed: 0 }
     server.use(http.get("*/api/transfers", ({ request }) => {
       const offset = Number(new URL(request.url).searchParams.get("offset"))
-      const rows = Array.from({ length: Math.min(50, long.waiting - offset) }, (_, i) =>
+      const rows = Array.from({ length: Math.min(5, long.waiting - offset) }, (_, i) =>
         row({ id: 1000 - offset - i, hash: `h${offset + i}`, name: `Built.Show.E${offset + i + 1}.1080p-GRP` }))
       return HttpResponse.json({ rows, counts: long })
     }))
-    answerBulk({ done: 118, skipped: 1, failed: 1, reasons: [] })
+    answerBulk({ done: 10, skipped: 1, failed: 1, reasons: [] })
     // jsdom has no layout, so it has no scrollIntoView.
     Element.prototype.scrollIntoView = vi.fn()
     try {
-      renderTab()
+      renderTab(5)
       await tick("Built.Show.E2.1080p-GRP")
       // A new page starts with no pick.
       fireEvent.click(within(screen.getByRole("navigation", { name: "Pages of the list" })).getByRole("button", { name: "Next" }))
-      await screen.findByText("Built.Show.E51.1080p-GRP")
+      await screen.findByText("Built.Show.E6.1080p-GRP")
       expect(selectionBar()).toBeNull()
 
       const pageBox = screen.getByRole("checkbox", { name: "Select the rows of this page" })
       fireEvent.click(pageBox)
-      expect(within(selectionBar()!).getByText("50 selected")).toBeTruthy()
-      fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Select all 120" }))
-      expect(within(selectionBar()!).getByText("All 120 selected")).toBeTruthy()
+      expect(within(selectionBar()!).getByText("5 selected")).toBeTruthy()
+      fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Select all 12" }))
+      expect(within(selectionBar()!).getByText("All 12 selected")).toBeTruthy()
       expect(pageBox.getAttribute("data-state")).toBe("checked")
 
       // A tick off one row keeps the other rows of this page.
-      await tick("Built.Show.E60.1080p-GRP")
-      expect(within(selectionBar()!).getByText("49 selected")).toBeTruthy()
+      await tick("Built.Show.E7.1080p-GRP")
+      expect(within(selectionBar()!).getByText("4 selected")).toBeTruthy()
       expect(pageBox.getAttribute("data-state")).toBe("indeterminate")
       fireEvent.click(pageBox)
-      fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Select all 120" }))
+      fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Select all 12" }))
 
       // The All chip offers Cancel and Remove, because the page does not know the rows of the other pages. The server
       // skips each row that a step does not fit. A retry plans each Transfer again, so it takes picked rows only.
       expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Cancel", "Remove", "Clear"])
       fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Cancel" }))
       const ask = await screen.findByRole("alertdialog")
-      expect(within(ask).getByText(/^120 rows are selected\./)).toBeTruthy()
+      expect(within(ask).getByText(/^12 rows are selected\./)).toBeTruthy()
       fireEvent.click(within(ask).getByRole("button", { name: "Cancel the rows" }))
       await waitFor(() => expect(requests).toContain("POST /api/transfers/bulk {\"action\":\"cancel\",\"filter\":\"all\"}"))
-      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("qui cancels 118 rows.", {
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("qui cancels 10 rows.", {
         description: "1 row stays as it was: the action does not apply to it. 1 row failed. The log of qui gives the reason.",
       }))
     } finally {

@@ -36,6 +36,127 @@
     "collapseToIcons": "Згорнути до значків",
     "expandSidebar": "Розгорнути бічну панель"
   },
+  "problemReports": {
+    "reportProblem": "Повідомити про проблему",
+    "subtitle": "Ваш звіт надійде супровідникам qui.",
+    "textLabel": "Ваш звіт",
+    "placeholders": {
+      "menu": "Що сталося і чого ви очікували?",
+      "notice": "Що ви робили, коли це сталося?",
+      "search": "Якого збігу ви очікували і на якому індексаторі?"
+    },
+    "sentWithIt": "Додається до звіту",
+    "summary_one": "qui {{version}} і {{count}} екземпляр",
+    "summary_few": "qui {{version}} і {{count}} екземпляри",
+    "summary_many": "qui {{version}} і {{count}} екземплярів",
+    "summary_other": "qui {{version}} і {{count}} екземпляра",
+    "details": "Деталі",
+    "view": "Переглянути",
+    "whatGetsSent": "Що надсилається",
+    "whatGetsSentNote": "qui заповнює це автоматично. Нічого не залишає qui, доки ви не надішлете звіт.",
+    "loadingFacts": "Завантаження деталей...",
+    "factsFailed": "Не вдалося завантажити деталі: {{message}}",
+    "facts": {
+      "version": "Версія",
+      "system": "Система",
+      "appContainer": "У контейнері",
+      "database": "База даних",
+      "logLevel": "Рівень журналу",
+      "started": "Запущено",
+      "experimentalFeatures": "Експериментальні",
+      "instance": "Екземпляр {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "невідомо",
+      "states": {
+        "connected": "Підключено",
+        "offline": "Не в мережі",
+        "disabled": "Вимкнено"
+      },
+      "torrentCount_one": "{{count}} торент",
+      "torrentCount_few": "{{count}} торенти",
+      "torrentCount_many": "{{count}} торентів",
+      "torrentCount_other": "{{count}} торента",
+      "notices": "Системні сповіщення",
+      "openCount_one": "{{count}} відкрите",
+      "openCount_few": "{{count}} відкриті",
+      "openCount_many": "{{count}} відкритих",
+      "openCount_other": "{{count}} відкритого",
+      "page": "Сторінка",
+      "browser": "Браузер",
+      "screen": "{{width}} × {{height}}, щільність пікселів {{ratio}}",
+      "failedRequests": "Невдалі запити",
+      "failedCount_one": "{{count}} у цьому сеансі",
+      "failedCount_few": "{{count}} у цьому сеансі",
+      "failedCount_many": "{{count}} у цьому сеансі",
+      "failedCount_other": "{{count}} у цьому сеансі",
+      "noAnswer": "немає відповіді",
+      "none": "Немає"
+    },
+    "logs": {
+      "title": "Журнал",
+      "scopeLabel": "Які рядки журналу додати",
+      "scopes": {
+        "warnings": "Попередження та помилки",
+        "all": "Усе недавнє",
+        "none": "Не додавати"
+      },
+      "notes": {
+        "warnings_one": "{{count}} недавнє попередження або помилка. qui прибирає ключі й секрети.",
+        "warnings_few": "{{count}} недавні попередження й помилки. qui прибирає ключі й секрети.",
+        "warnings_many": "{{count}} недавніх попереджень і помилок. qui прибирає ключі й секрети.",
+        "warnings_other": "{{count}} недавнього попередження або помилки. qui прибирає ключі й секрети.",
+        "all_one": "{{count}} недавній рядок на рівні журналу {{level}}. qui прибирає ключі й секрети.",
+        "all_few": "{{count}} недавні рядки на рівні журналу {{level}}. qui прибирає ключі й секрети.",
+        "all_many": "{{count}} недавніх рядків на рівні журналу {{level}}. qui прибирає ключі й секрети.",
+        "all_other": "{{count}} недавнього рядка на рівні журналу {{level}}. qui прибирає ключі й секрети.",
+        "none": "До вашого звіту не додаються рядки журналу."
+      },
+      "empty": "Немає рядків журналу.",
+      "debugMissing": "Для журналу встановлено рівень {{level}}, тому qui не записує рядки налагодження. Щоб додати їх, установіть Рівень журналу на DEBUG у Налаштування > Журнали, відтворіть проблему й надішліть звіт знову."
+    },
+    "privacy": {
+      "anonymous": "Анонімно: без імені та облікового запису. brrbin не зберігає IP-адресу.",
+      "link": "Політика конфіденційності"
+    },
+    "newerRelease": "У вас {{running}}. Вже вийшла версія <release>{{newer}}</release>.",
+    "send": "Надіслати",
+    "sendAnyway": "Усе одно надіслати",
+    "sending": "Надсилання",
+    "sent": "Звіт надіслано",
+    "errors": {
+      "anonymousFull": {
+        "title": "Анонімні звіти на сьогодні вичерпано",
+        "body": "Увійдіть, щоб надіслати зараз, або спробуйте завтра. Ваш текст збережеться тут як чернетка."
+      },
+      "signInRequired": "Увійдіть, щоб надіслати цей звіт. Ваш текст збережеться тут як чернетка.",
+      "accountLimit": "Ви надіслали багато звітів за останню годину. Спробуйте пізніше.",
+      "reporterFull": "Ваші звіти займають усе місце, яке brrbin дає одній людині. Видаліть старий звіт у Надісланих звітах, а потім надішліть знову.",
+      "tooLarge": "Звіт завеликий. Виберіть менше рядків журналу або менше зображення.",
+      "tokenRejected": "Ваш вхід завершився. Увійдіть знову, а потім надішліть.",
+      "unavailable": "brrbin зараз не може приймати звіти. Спробуйте пізніше.",
+      "sendFailed": "Не вдалося надіслати звіт: {{message}}"
+    },
+    "sentReports": {
+      "title": "Надіслані звіти",
+      "subtitle": "qui перевіряє статус звітів щоразу, коли ви відкриваєте цей список.",
+      "changed_one": "{{count}} статус змінився",
+      "changed_few": "{{count}} статуси змінилися",
+      "changed_many": "{{count}} статусів змінилося",
+      "changed_other": "{{count}} статусу змінилося",
+      "status": {
+        "received": "Отримано",
+        "issue": "Перетворено на issue #{{number}}",
+        "issueClosed": "Issue #{{number}} закрито",
+        "closed": "Закрито: {{reason}}",
+        "closedNoReason": "Закрито"
+      },
+      "delete": "Видалити звіт",
+      "deleteUnavailable": "brrbin зараз не може видаляти звіти. Спробуйте пізніше.",
+      "deleteFailed": "Не вдалося видалити звіт: {{message}}",
+      "empty": "Немає надісланих звітів.",
+      "back": "Назад до звіту"
+    }
+  },
   "header": {
     "currentInstance": "Поточний екземпляр: {{name}}. Натисніть, щоб перемкнути.",
     "connected": "Підключено",

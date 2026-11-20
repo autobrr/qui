@@ -1343,9 +1343,24 @@
           "unsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows.",
           "qbitPathUnsupported": "Tato instance je starší než qBittorrent 5.3 a neumí hlásit volné místo pro cestu.",
           "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\".",
-          "filesystemAccessRequired": "Zdroj volného místa založený na cestě vyžaduje lokální přístup k souborovému systému nebo přístup přes SSH."
+          "filesystemAccessRequired": "Zdroj volného místa založený na cestě vyžaduje lokální přístup k souborovému systému nebo přístup přes SSH.",
+          "allowanceRequired": "Zadejte povolené místo větší než 0.",
+          "allowanceAccessRequired": "Zdroj povoleného místa vyžaduje lokální přístup k souborovému systému nebo SSH přístup se shellem."
         },
-        "pathSourceFilesystemAccessRequired": "Cesta na serveru (vyžaduje lokální nebo SSH přístup)"
+        "pathSourceFilesystemAccessRequired": "Cesta na serveru (vyžaduje lokální nebo SSH přístup)",
+        "allowanceSource": "Povolené místo na cestě",
+        "allowanceSourceWindowsUnsupported": "Povolené místo na cestě (nepodporováno na Windows)",
+        "allowanceSourceAccessRequired": "Povolené místo na cestě (vyžaduje lokální přístup nebo SSH přístup se shellem)",
+        "allowanceLabel": "Povolené místo",
+        "allowancePathLabel": "Složka k měření",
+        "allowanceUnitAria": "Jednotka povoleného místa",
+        "allowanceHelp": "Zadejte místo, které povoluje váš tarif, v jednotce, kterou používá váš poskytovatel. qui od něj odečte velikost souborů pod cestou. Většina poskytovatelů počítá po 1000 ({{decimalUnit}}), ne po 1024 ({{binaryUnit}}): rozdíl je asi 9 %.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
+        "allowancePathHelp": "Například váš domovský adresář"
       },
       "grouping": {
         "title": "Skupiny podmínek",

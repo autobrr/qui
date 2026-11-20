@@ -168,6 +168,17 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 			name: "double slash base dir", preset: "by-tracker", baseDir: "//data/hl", savePath: "/data/torrents",
 			file: "Movie/movie.mkv", wantRoot: "/data/hl/Tracker", wantCategory: "/data/hl/tracker",
 		},
+		{
+			// The category path is the preset folder, without the isolation folder.
+			name: "by-tracker isolation folder", preset: "by-tracker", baseDir: "/data/hl", savePath: "/data/torrents",
+			file: "movie.mkv", wantRoot: "/data/hl/Tracker/TorrentName", wantCategory: "/data/hl/tracker",
+		},
+		{
+			// Host Clean on Windows splits a remote "a\b" name into two segments,
+			// which ranks the wrong base dir first.
+			name: "base dirs ranked by slash segments", preset: "flat", baseDir: `/data/a/b/links,/data/a\b/links`, savePath: `/data/a\b/x`,
+			file: "file.mkv", wantRoot: `/data/a\b/links/TorrentName`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -212,37 +223,6 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Host Clean on Windows splits a remote "a\b" name into two segments, which
-// ranks the wrong base dir first.
-func TestPathDialect_LinkIntoMatchingBaseDirRanksSlashSegments(t *testing.T) {
-	t.Parallel()
-
-	source := `/data/a\b/x/file.mkv`
-	backend := newSlashBackend([]string{"/data"}, source)
-	var visited []string
-	err := LinkIntoMatchingBaseDir(t.Context(), `/data/a/b/links,/data/a\b/links`, source, backend, func(baseDir string) error {
-		visited = append(visited, baseDir)
-		return crossDeviceLinkError(baseDir)
-	})
-
-	require.Error(t, err)
-	require.Equal(t, []string{`/data/a\b/links`, "/data/a/b/links"}, visited)
-}
-
-func TestPathDialect_MatchedFilesystemProbePath(t *testing.T) {
-	t.Parallel()
-
-	backend := newSlashBackend([]string{"/data"}, "/data/torrents/Movie/movie.mkv")
-	got, ok := matchedFilesystemProbePath(t.Context(), backend,
-		&qbt.Torrent{ContentPath: "/data/torrents/Movie"},
-		&qbt.TorrentProperties{SavePath: "/data/torrents"},
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv"}},
-	)
-
-	require.True(t, ok)
-	require.Equal(t, "/data/torrents/Movie/movie.mkv", got)
 }
 
 // Host IsAbs on Windows rejects "/data/tv", which read as "not linked" with no

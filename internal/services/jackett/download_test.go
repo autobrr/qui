@@ -137,6 +137,11 @@ func TestDownloadTorrentDoesNotCacheRejectedPayload(t *testing.T) {
 	cache := models.NewTorznabTorrentCacheStore(db)
 	service := NewService(store, WithTorrentCache(cache))
 	t.Cleanup(service.searchScheduler.Stop)
+	// The cache hit touches its row, and the first store starts a cleanup. Both write after the call returns.
+	t.Cleanup(func() {
+		service.background.Wait()
+		cache.WaitTouches()
+	})
 	req := TorrentDownloadRequest{IndexerID: indexer.ID, DownloadURL: server.URL + "/download", GUID: "test-release"}
 
 	data, err := service.DownloadTorrent(t.Context(), req)

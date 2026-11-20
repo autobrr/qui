@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -48,6 +50,11 @@ type InstancesHandler struct {
 	routes *crossseedroute.Service
 	// peers works out the public peer address. Nil without a sync manager.
 	peers *peeraddress.Resolver
+	// filesystem reads the disk of an instance. Nil in tests that do not need it.
+	filesystem *fsops.Pool
+	// connectionTests tracks the connection tests that outlive their request.
+	// A test waits for them before it closes the database.
+	connectionTests sync.WaitGroup
 }
 
 type orphanScanGuard interface {
@@ -882,7 +889,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	go h.testConnectionAsync(instance.ID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
+	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) }) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 
 	RespondJSON(w, http.StatusCreated, response)
 }
@@ -1004,7 +1011,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	go h.testConnectionAsync(instance.ID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
+	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) }) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -1135,7 +1142,7 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 	} else {
 		// Clear backoff state and errors when re-enabling instance
 		h.clientPool.ResetFailureTracking(instanceID)
-		go h.testConnectionAsync(instanceID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
+		h.connectionTests.Go(func() { h.testConnectionAsync(instanceID) }) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 	}
 
 	response := h.buildQuickInstanceResponse(instance)

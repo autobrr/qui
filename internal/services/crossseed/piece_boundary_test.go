@@ -15,8 +15,6 @@ import (
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
-
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func mustLoadTorrent(t *testing.T, torrentData []byte) (metainfo.MetaInfo, metainfo.Info) {
@@ -70,7 +68,8 @@ func buildMultiFileTorrent(t *testing.T, rootName string, pieceLength int64, fil
 }
 
 func fileDisplayPath(info *metainfo.Info, file metainfo.FileInfo) string {
-	return torrentDisplayPath(info, &file)
+	path, _ := torrentFilePath(info, &file, "")
+	return path
 }
 
 func TestPieceBoundariesSpanFiles_InRealTorrentFixtures(t *testing.T) {
@@ -547,6 +546,7 @@ func TestPathFormatMatchesSourceFiles(t *testing.T) {
 	require.Equal(t, "test-root/b-extra.nfo", files[1].Path, "path should include root folder")
 }
 
+// regression: #4220
 func TestBuildFilesForBoundaryCheck_MatchesQbtFileNames(t *testing.T) {
 	// The boundary-check paths are looked up in maps keyed by qbt.TorrentFiles.Name,
 	// so the two builders must format paths identically. Malformed UTF-8 in the
@@ -555,12 +555,13 @@ func TestBuildFilesForBoundaryCheck_MatchesQbtFileNames(t *testing.T) {
 		Name:        "Movie.\xe1.2024",
 		PieceLength: 262144,
 		Files: []metainfo.FileInfo{
-			{Path: []string{"sub\xe1", "file.mkv"}, Length: 1},
+			{Path: []string{"sub\xff\xfe", "file.mkv"}, Length: 1},
 			{Path: []string{"", "extra.nfo"}, Length: 1},
 		},
 	}
 
-	qbtFiles := BuildTorrentFilesFromInfo(stringutils.SanitizeUTF8(info.Name), info)
+	qbtFiles, err := BuildTorrentFilesFromInfo(info.Name, info)
+	require.NoError(t, err)
 	boundaryFiles := BuildFilesForBoundaryCheck(&info, func(string) bool { return true })
 
 	require.Len(t, boundaryFiles, len(qbtFiles))

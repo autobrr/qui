@@ -166,6 +166,12 @@ func TestAllEndpointsDocumented(t *testing.T) {
 
 func newTestDependencies(t *testing.T) *Dependencies {
 	t.Helper()
+	deps, _ := newTestDependenciesWithDB(t)
+	return deps
+}
+
+func newTestDependenciesWithDB(t *testing.T) (*Dependencies, *database.DB) {
+	t.Helper()
 
 	sessionManager := scs.New()
 
@@ -210,11 +216,12 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
 	require.NoError(t, err)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	backendPool := fsops.NewPool(instanceStore, local.NewBackend())
 	transferService := transfer.NewService(t.Context(), transfer.Deps{
 		Store:     transfers,
 		Instances: instanceStore,
 		Sync:      syncManager,
-		Files:     fsops.NewPool(instanceStore, local.NewBackend()),
+		Files:     backendPool,
 		Groups:    crossSeedService,
 		Config:    transfer.DefaultConfig(),
 	})
@@ -291,7 +298,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		Transfers:                 transfers,
 		TransferService:           transferService,
 		ShareService:              shareService,
-	}
+		BackendPool:               backendPool,
+	}, db
 }
 
 func collectRouterRoutes(t *testing.T, r chi.Routes) map[routeKey]struct{} {

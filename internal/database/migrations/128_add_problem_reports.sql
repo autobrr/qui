@@ -1,0 +1,31 @@
+-- Copyright (c) 2025-2026, s0up and the autobrr contributors.
+-- SPDX-License-Identifier: GPL-2.0-or-later
+
+-- Problem reports (#4247). One row holds the Install key and the sign-in to
+-- brrbin; the key and the token are encrypted like instance passwords.
+CREATE TABLE IF NOT EXISTS problem_report_install (
+    id                      INTEGER PRIMARY KEY CHECK (id = 1),
+    install_key_encrypted   TEXT NOT NULL,
+    sign_in_token_encrypted TEXT,
+    sign_in_provider        TEXT,
+    sign_in_name            TEXT
+);
+
+-- Sent reports. status is received, issue or closed. issue_number,
+-- issue_url and issue_closed are set while the status is issue;
+-- close_reason is set when it is closed.
+CREATE TABLE IF NOT EXISTS problem_reports (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    brrbin_id         TEXT NOT NULL UNIQUE,
+    submission_id     TEXT NOT NULL UNIQUE,
+    title             TEXT NOT NULL,
+    sent_at           DATETIME NOT NULL,
+    status            TEXT NOT NULL,
+    issue_number      INTEGER,
+    issue_url         TEXT,
+    issue_closed      BOOLEAN NOT NULL DEFAULT 0,
+    close_reason      TEXT,
+    status_changed_at DATETIME NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS problem_reports_sent_at ON problem_reports (sent_at);

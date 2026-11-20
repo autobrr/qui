@@ -34,6 +34,113 @@
     "collapseToIcons": "Collapse to icons",
     "expandSidebar": "Expand sidebar"
   },
+  "problemReports": {
+    "reportProblem": "Report a problem",
+    "subtitle": "Your report goes to the qui maintainers.",
+    "textLabel": "Your report",
+    "placeholders": {
+      "menu": "What happened, and what did you expect?",
+      "notice": "What were you doing when this happened?",
+      "search": "Which match did you expect, and on which indexer?"
+    },
+    "sentWithIt": "Included with your report",
+    "summary_one": "qui {{version}} and {{count}} instance",
+    "summary_other": "qui {{version}} and {{count}} instances",
+    "details": "Details",
+    "view": "View",
+    "whatGetsSent": "What gets sent",
+    "whatGetsSentNote": "qui fills this in. Nothing leaves qui until you send the report.",
+    "loadingFacts": "Loading report details...",
+    "factsFailed": "Could not load report details: {{message}}",
+    "facts": {
+      "version": "Version",
+      "system": "System",
+      "appContainer": "In a container",
+      "database": "Database",
+      "logLevel": "Log level",
+      "started": "Started",
+      "experimentalFeatures": "Experimental",
+      "instance": "Instance {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "unknown",
+      "states": {
+        "connected": "Connected",
+        "offline": "Offline",
+        "disabled": "Disabled"
+      },
+      "torrentCount_one": "{{count}} torrent",
+      "torrentCount_other": "{{count}} torrents",
+      "notices": "System notices",
+      "openCount_one": "{{count}} open",
+      "openCount_other": "{{count}} open",
+      "page": "Page",
+      "browser": "Browser",
+      "screen": "{{width}} × {{height}}, pixel ratio {{ratio}}",
+      "failedRequests": "Failed requests",
+      "failedCount_one": "{{count}} in this session",
+      "failedCount_other": "{{count}} in this session",
+      "noAnswer": "no response",
+      "none": "None"
+    },
+    "logs": {
+      "title": "Logs",
+      "scopeLabel": "Log lines to include",
+      "scopes": {
+        "warnings": "Warnings and errors",
+        "all": "Everything recent",
+        "none": "Leave out"
+      },
+      "notes": {
+        "warnings_one": "{{count}} recent warning or error. qui removes keys and secrets.",
+        "warnings_other": "{{count}} recent warnings and errors. qui removes keys and secrets.",
+        "all_one": "{{count}} recent line at log level {{level}}. qui removes keys and secrets.",
+        "all_other": "{{count}} recent lines at log level {{level}}. qui removes keys and secrets.",
+        "none": "No log lines go with your report."
+      },
+      "empty": "No log lines.",
+      "debugMissing": "Log level is {{level}}, so qui does not record debug lines. To include them, set Log level to DEBUG in Settings > Logs, reproduce the problem, then report again."
+    },
+    "privacy": {
+      "anonymous": "Anonymous: no name, no account. brrbin keeps no IP address.",
+      "link": "Privacy policy"
+    },
+    "newerRelease": "You run {{running}}. <release>{{newer}}</release> is out.",
+    "send": "Send",
+    "sendAnyway": "Send anyway",
+    "sending": "Sending",
+    "sent": "Report sent",
+    "errors": {
+      "anonymousFull": {
+        "title": "Anonymous reports are full for today",
+        "body": "Sign in to send now, or try again tomorrow. Your text stays here as a draft."
+      },
+      "signInRequired": "Sign in to send this report. Your text stays here as a draft.",
+      "accountLimit": "You sent many reports in the last hour. Try again later.",
+      "reporterFull": "Your reports use all the room brrbin gives one person. Delete an old report in Sent reports, then send again.",
+      "tooLarge": "The report is too large. Pick fewer log lines or a smaller image.",
+      "tokenRejected": "Your sign-in ended. Sign in again, then send.",
+      "unavailable": "brrbin cannot take reports right now. Try again later.",
+      "sendFailed": "Could not send the report: {{message}}"
+    },
+    "sentReports": {
+      "title": "Sent reports",
+      "subtitle": "qui checks report statuses each time you open this list.",
+      "changed_one": "{{count}} status changed",
+      "changed_other": "{{count}} statuses changed",
+      "status": {
+        "received": "Received",
+        "issue": "Became issue #{{number}}",
+        "issueClosed": "Issue #{{number}} closed",
+        "closed": "Closed: {{reason}}",
+        "closedNoReason": "Closed"
+      },
+      "delete": "Delete report",
+      "deleteUnavailable": "brrbin cannot delete reports right now. Try again later.",
+      "deleteFailed": "Could not delete the report: {{message}}",
+      "empty": "No sent reports.",
+      "back": "Back to report"
+    }
+  },
   "header": {
     "currentInstance": "Current instance: {{name}}. Click to switch instances.",
     "connected": "Connected",

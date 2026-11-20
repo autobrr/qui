@@ -361,6 +361,7 @@ type ParsedTorrent struct {
 }
 
 // ParseTorrentBytes parses a .torrent file and extracts file information.
+// Multi-file paths include the torrent root before every relative file path.
 func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	mi, err := metainfo.Load(bytes.NewReader(data))
 	if err != nil {
@@ -372,7 +373,13 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		return nil, fmt.Errorf("unmarshal info: %w", err)
 	}
 
-	name := stringutils.SanitizeUTF8(info.BestName())
+	name := pathutil.TorrentPathName(info.BestName())
+	root := name
+	if root == "" {
+		if root, err = pathutil.TorrentPathComponent(info.BestName()); err != nil {
+			return nil, err
+		}
+	}
 
 	parsed := &ParsedTorrent{
 		Name:        name,
@@ -397,32 +404,14 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	} else {
 		// Multi-file torrent
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
-		root := name
 		for i := range info.Files {
 			f := &info.Files[i]
-			rawPathParts := f.BestPath()
-			// Sanitize the parts before the root-dedup comparison below; root is already
-			// sanitized, so comparing it against a raw part would double-prefix.
-			pathParts := make([]string, 0, len(rawPathParts))
-			for _, part := range rawPathParts {
-				pathParts = append(pathParts, stringutils.SanitizeUTF8(part))
-			}
-			// For multi-file torrents, qBittorrent's "Original" layout places files under the
-			// top-level folder named by the torrent's info.name.
-			//
-			// The torrent file list itself typically does NOT include that folder in each file path,
-			// so we include it here to reflect the on-disk paths qBittorrent will expect.
-			//
-			// The comparison runs before the empty-component mapping below, or a torrent named
-			// "_" whose paths start with an empty component would lose one level.
-			if root == "" || len(pathParts) == 0 || pathParts[0] != root {
-				pathParts = append([]string{root}, pathParts...)
-			}
-			for j, part := range pathParts {
-				pathParts[j] = pathutil.TorrentPathComponent(part)
+			filePath, err := pathutil.TorrentFilePath(root, f.BestPath())
+			if err != nil {
+				return nil, err
 			}
 			tf := TorrentFile{
-				Path:   path.Join(pathParts...),
+				Path:   path.Clean(filePath),
 				Size:   f.Length,
 				Offset: offset,
 			}

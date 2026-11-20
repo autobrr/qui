@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -52,12 +53,18 @@ var browserOnlyRoutes = []routeKey{
 	{http.MethodPost, "/api/external-programs"},
 	{http.MethodPut, "/api/external-programs/1"},
 	{http.MethodDelete, "/api/external-programs/1"},
+	{http.MethodGet, "/api/problem-reports/facts"},
+	{http.MethodPost, "/api/problem-reports"},
+	{http.MethodGet, "/api/problem-reports"},
+	{http.MethodDelete, "/api/problem-reports/r1"},
 	// Last: a session that reaches logout ends.
 	{http.MethodPost, "/api/auth/logout"},
 }
 
 func TestBrowserOnlyRoutesRefuseAPIKeys(t *testing.T) {
 	deps := newTestDependencies(t)
+	deps.Experimental = experimental.New([]string{string(experimental.ProblemReports)})
+	deps.Config.Config.ProblemReports = true
 	apiKey, _, err := deps.AuthService.CreateAPIKey(t.Context(), "script", models.AllPermissions(), nil)
 	require.NoError(t, err)
 

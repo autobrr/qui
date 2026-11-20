@@ -19,6 +19,7 @@ const (
 )
 
 type crossSeedAddPlan struct {
+	filePairs        []catalogFilePair
 	torrent          qbt.Torrent
 	files            qbt.TorrentFiles
 	sourceFiles      qbt.TorrentFiles

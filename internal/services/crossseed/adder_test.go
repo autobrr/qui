@@ -283,6 +283,27 @@ func TestAdderAdd(t *testing.T) {
 			wantGate:    settle(GateBudget),
 		},
 		{
+			name:        "mapped reuse alignment waits for a complete recheck",
+			facts:       AddFacts{MappedFiles: true, Align: true, RenameOnly: true},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateComplete),
+		},
+		{
+			name:        "mapped reflink alignment keeps the download budget",
+			facts:       AddFacts{MappedFiles: true, ReflinkAdd: true, LinkTree: true, Align: true, RenameOnly: true},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateBudget),
+		},
+		{
+			name:        "mapped hardlink alignment keeps linked-file protection",
+			facts:       AddFacts{MappedFiles: true, LinkTree: true, Align: true, RenameOnly: true, LinkedPaths: map[string]struct{}{"Album/track.flac": {}}},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateBudget),
+		},
+		{
 			name:        "complete add starts at once",
 			wantOutcome: AddAdded,
 			wantOptions: addOptions(true, true),

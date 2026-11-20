@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -18,10 +17,8 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
-	"github.com/autobrr/qui/pkg/fsutil"
+	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/hardlinktree"
-	"github.com/autobrr/qui/pkg/pathutil"
-	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
 const (
@@ -190,7 +187,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		return result, err
 	}
 
-	savePath, addMode, linkCreated, err := i.prepareInjection(ctx, instance, backend, req)
+	savePath, addMode, tree, err := i.prepareInjection(ctx, instance, backend, req)
 	if err != nil {
 		result.ErrorMessage = err.Error()
 		return result, err
@@ -223,7 +220,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 
 	// Reject partial link tree injections when downloading missing files is disabled.
 	if linkTree && hasUnmatchedFiles && !req.DownloadMissingFiles {
-		i.rollbackLinkTree(ctx, linkCreated, savePath, backend)
+		rollbackLinkTree(ctx, tree)
 		return result, fmt.Errorf("partial match has %d missing files; enable 'Download missing files' to allow",
 			len(req.MatchResult.UnmatchedTorrentFiles))
 	}
@@ -270,7 +267,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 
 	switch {
 	case added.Outcome == crossseed.AddRefused:
-		i.rollbackLinkTree(ctx, linkCreated, savePath, backend)
+		rollbackLinkTree(ctx, tree)
 		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", added.Err)
 		return result, fmt.Errorf("add torrent: %w", added.Err)
 	case added.Outcome == crossseed.AddLeftPaused:
@@ -356,41 +353,34 @@ func (i *Injector) prepareInjection(
 	instance *models.Instance,
 	backend fsops.Backend,
 	req *InjectRequest,
-) (savePath, mode string, linkCreated *fsops.TreeCreateResult, err error) {
+) (savePath, mode string, tree *linktree.Tree, err error) {
 	if instance == nil {
 		return "", "", nil, errors.New("instance is nil")
 	}
 
-	if !instance.UseReflinks && !instance.UseHardlinks {
+	cfg, linkMode := linktree.ConfigOf(instance)
+	if !linkMode {
 		savePath, err = i.calculateSavePath(ctx, backend, req)
 		return savePath, injectModeRegular, nil, err
 	}
 
-	plan, linkMode, created, linkErr := i.materializeLinkTree(ctx, instance, backend, req)
+	tree, linkErr := i.materializeLinkTree(ctx, instance, cfg, backend, req)
 	if linkErr == nil {
-		if plan == nil || plan.RootDir == "" {
-			return "", "", nil, errors.New("link-tree plan missing root dir")
-		}
-		return plan.RootDir, linkMode, created, nil
+		return tree.SavePath, tree.Kind.String(), tree, nil
 	}
 
 	// A lost connection says nothing about links on that host, so it isn't a
 	// reason to leave link mode.
-	if !instance.FallbackToRegularMode || errors.Is(linkErr, fsops.ErrConnectionLost) {
+	if failure, ok := errors.AsType[*linktree.Error](linkErr); !instance.FallbackToRegularMode || (ok && failure.Kind == linktree.ConnectionLost) {
 		return "", "", nil, linkErr
 	}
 
-	i.logLinkTreeFallback(instance, linkErr)
+	i.logLinkTreeFallback(instance, cfg.Kind, linkErr)
 	savePath, err = i.calculateSavePath(ctx, backend, req)
 	return savePath, injectModeRegular, nil, err
 }
 
-func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
-	linkMode := injectModeHardlink
-	if instance.UseReflinks {
-		linkMode = injectModeReflink
-	}
-
+func (i *Injector) logLinkTreeFallback(instance *models.Instance, kind linktree.LinkKind, err error) {
 	fallbackReason := "link-tree creation failed"
 	if errors.Is(err, syscall.EXDEV) {
 		fallbackReason = "invalid cross-device link"
@@ -400,26 +390,17 @@ func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
 		Err(err).
 		Int("instanceID", instance.ID).
 		Str("instanceName", instance.Name).
-		Str("linkMode", linkMode).
+		Str("linkMode", kind.String()).
 		Str("reason", fallbackReason).
 		Msg("dirscan: falling back to regular mode")
 }
 
-// rollbackLinkTree removes what the link-tree creator recorded in the result,
-// never the whole plan: target paths can be shared with an earlier successful
-// injection for the same release (discussion #2282). The result lists the
-// folder that crossseed.LinkIntoNewFolder reserved. The root dir can be the
-// base dir itself, so it is not removed here.
-func (i *Injector) rollbackLinkTree(ctx context.Context, created *fsops.TreeCreateResult, rootDir string, backend fsops.Backend) {
-	if created == nil || rootDir == "" || backend == nil {
+func rollbackLinkTree(ctx context.Context, tree *linktree.Tree) {
+	if tree == nil {
 		return
 	}
-
-	// Rollback must run even when the injection failed because the run was
-	// cancelled — otherwise the partial link tree survives on disk.
-	ctx = context.WithoutCancel(ctx)
-	if err := backend.RemoveTree(ctx, created); err != nil {
-		log.Warn().Err(err).Str("rootDir", rootDir).Msg("dirscan: failed to rollback link tree")
+	if err := tree.Rollback(ctx); err != nil {
+		log.Warn().Err(err).Str("savePath", tree.SavePath).Msg("dirscan: failed to rollback link tree")
 	}
 }
 
@@ -491,79 +472,51 @@ func discMarker(parsed *ParsedTorrent) string {
 	return crossseed.PolicyForSourceFiles(files).DiscMarker
 }
 
-func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, backend fsops.Backend, req *InjectRequest) (*hardlinktree.TreePlan, string, *fsops.TreeCreateResult, error) {
+func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, cfg linktree.Config, backend fsops.Backend, req *InjectRequest) (*linktree.Tree, error) {
 	if err := validateLinkTreeInstance(instance); err != nil {
-		return nil, "", nil, err
-	}
-	if req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
-		return nil, "", nil, errors.New("link-tree request is missing required data")
+		return nil, err
 	}
 
-	incomingFiles := buildLinkTreeIncomingFiles(req.ParsedTorrent)
-
-	linkableFiles, existingFiles, err := buildLinkTreeMatchedFiles(req.MatchResult)
-	if err != nil {
-		return nil, "", nil, err
+	torrentFiles := make([]string, 0, len(req.ParsedTorrent.Files))
+	for _, f := range req.ParsedTorrent.Files {
+		torrentFiles = append(torrentFiles, f.Path)
+	}
+	links := make([]linktree.Link, 0, len(req.MatchResult.MatchedFiles))
+	for _, pair := range req.MatchResult.MatchedFiles {
+		links = append(links, linktree.Link{TorrentPath: pair.TorrentFile.Path, SourcePath: pair.SearcheeFile.Path})
 	}
 
-	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
-	trackerDisplayName := i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName(req.SearchResult))
-
-	var (
-		plan    *hardlinktree.TreePlan
-		mode    string
-		created *fsops.TreeCreateResult
-	)
-	err = crossseed.LinkIntoMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFiles[0].AbsPath, backend, func(baseDir string) error {
-		if err := backend.MkdirAll(ctx, baseDir, fsutil.LinkTreeBaseDirMode); err != nil {
-			return fmt.Errorf("create hardlink base dir: %w", err)
-		}
-
-		presetDir := buildLinkPresetDir(backend.Paths(), baseDir, instance, trackerDisplayName)
-		var err error
-		created, err = crossseed.LinkIntoNewFolder(ctx, backend, presetDir, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, incomingFiles, func(destDir string) (*fsops.TreeCreateResult, error) {
-			var err error
-			plan, err = hardlinktree.BuildPlan(backend.Paths(), linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
-			if err != nil {
-				// Debug: dump file data so we can diagnose BuildPlan mismatches.
-				for idx, lf := range linkableFiles {
-					log.Debug().
-						Int("idx", idx).
-						Str("path", lf.Path).
-						Int64("size", lf.Size).
-						Msg("dirscan: linkable file (candidate)")
-				}
-				for idx, ef := range existingFiles {
-					log.Debug().
-						Int("idx", idx).
-						Str("absPath", ef.AbsPath).
-						Str("relPath", ef.RelPath).
-						Int64("size", ef.Size).
-						Msg("dirscan: existing file")
-				}
-				log.Warn().
-					Err(err).
-					Int("instanceID", instance.ID).
-					Str("instanceName", instance.Name).
-					Str("torrentName", req.ParsedTorrent.Name).
-					Msg("dirscan: failed to build link plan")
-				return nil, humanizeLinkPlanError(err)
-			}
-
-			var treeCreated *fsops.TreeCreateResult
-			mode, treeCreated, err = i.createLinkTree(ctx, instance, baseDir, existingFiles, plan, backend)
-			return treeCreated, err
-		})
-		return err
+	plan, err := linktree.Plan(ctx, linktree.Request{
+		Backend:        backend,
+		Config:         cfg,
+		TrackerFolder:  linktree.TrackerFolderName(ctx, i.trackerCustomizationStore, crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes), indexerName(req.SearchResult)),
+		InstanceFolder: instance.Name,
+		Torrent:        linktree.Torrent{InfoHash: req.ParsedTorrent.InfoHash, Name: req.ParsedTorrent.Name, Files: torrentFiles},
+		Links:          links,
 	})
-	if errors.Is(err, crossseed.ErrNoMatchingBaseDir) {
-		return nil, "", nil, fmt.Errorf("select hardlink base dir: %w", err)
-	}
-	if err != nil {
-		return nil, "", nil, err
+	if err == nil {
+		var tree *linktree.Tree
+		if tree, err = plan.Create(ctx); err == nil {
+			return tree, nil
+		}
 	}
 
-	return plan, mode, created, nil
+	switch failure, _ := errors.AsType[*linktree.Error](err); {
+	case failure.Kind == linktree.InvalidPlan:
+		log.Warn().
+			Err(err).
+			Int("instanceID", instance.ID).
+			Str("instanceName", instance.Name).
+			Str("torrentName", req.ParsedTorrent.Name).
+			Msg("dirscan: failed to build link plan")
+		return nil, humanizeLinkPlanError(failure.Err)
+	case errors.Is(err, syscall.EXDEV):
+		return nil, fmt.Errorf(
+			"%w (hardlinks cannot cross filesystems; put your scanned directory and hardlink base dir on the same mount, or enable reflinks if supported)",
+			err,
+		)
+	}
+	return nil, err
 }
 
 func humanizeLinkPlanError(err error) error {
@@ -575,7 +528,7 @@ func humanizeLinkPlanError(err error) error {
 
 	var linkErr *hardlinktree.LinkPlanError
 	if !errors.As(err, &linkErr) {
-		return errors.New(prefix)
+		return fmt.Errorf("%s: %w", prefix, err)
 	}
 
 	switch {
@@ -593,28 +546,12 @@ func humanizeLinkPlanError(err error) error {
 	}
 }
 
-func (i *Injector) resolveTrackerDisplayName(ctx context.Context, incomingTrackerDomain, indexerName string) string {
-	var customizations []*models.TrackerCustomization
-	if i.trackerCustomizationStore != nil {
-		if customs, err := i.trackerCustomizationStore.List(ctx); err == nil {
-			customizations = customs
-		}
-	}
-	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
-}
-
 func validateLinkTreeInstance(instance *models.Instance) error {
-	if instance == nil {
-		return errors.New("instance is nil")
-	}
 	if !models.FilesystemCapabilitiesOf(instance).Write {
 		return errors.New("instance does not have filesystem write access")
 	}
 	if instance.HardlinkBaseDir == "" {
 		return errors.New("hardlink base directory is not configured")
-	}
-	if !instance.UseReflinks && !instance.UseHardlinks {
-		return errors.New("no link mode enabled")
 	}
 	return nil
 }
@@ -624,104 +561,4 @@ func indexerName(result *jackett.SearchResult) string {
 		return ""
 	}
 	return result.Indexer
-}
-
-func buildLinkTreeIncomingFiles(parsed *ParsedTorrent) []hardlinktree.TorrentFile {
-	files := make([]hardlinktree.TorrentFile, 0, len(parsed.Files))
-	for _, f := range parsed.Files {
-		files = append(files, hardlinktree.TorrentFile{Path: f.Path, Size: f.Size})
-	}
-	return files
-}
-
-func buildLinkTreeMatchedFiles(match *MatchResult) ([]hardlinktree.TorrentFile, []hardlinktree.ExistingFile, error) {
-	if match == nil || len(match.MatchedFiles) == 0 {
-		return nil, nil, errors.New("no matched files available for link-tree creation")
-	}
-
-	linkableFiles := make([]hardlinktree.TorrentFile, 0, len(match.MatchedFiles))
-	seenLinkable := make(map[string]struct{}, len(match.MatchedFiles))
-
-	existingFiles := make([]hardlinktree.ExistingFile, 0, len(match.MatchedFiles))
-	for _, pair := range match.MatchedFiles {
-		key := pair.TorrentFile.Path + "\x00" + strconv.FormatInt(pair.TorrentFile.Size, 10)
-		if _, ok := seenLinkable[key]; !ok {
-			seenLinkable[key] = struct{}{}
-			linkableFiles = append(linkableFiles, hardlinktree.TorrentFile{Path: pair.TorrentFile.Path, Size: pair.TorrentFile.Size})
-		}
-
-		existingFiles = append(existingFiles, hardlinktree.ExistingFile{
-			AbsPath: pair.SearcheeFile.Path,
-			RelPath: pair.TorrentFile.Path,
-			Size:    pair.TorrentFile.Size,
-		})
-	}
-
-	if len(linkableFiles) == 0 || len(existingFiles) == 0 {
-		return nil, nil, errors.New("no matched files available for link-tree creation")
-	}
-
-	return linkableFiles, existingFiles, nil
-}
-
-func (i *Injector) createLinkTree(ctx context.Context, instance *models.Instance, selectedBaseDir string, existingFiles []hardlinktree.ExistingFile, plan *hardlinktree.TreePlan, backend fsops.Backend) (string, *fsops.TreeCreateResult, error) {
-	if instance.UseReflinks {
-		supported, reason, err := backend.SupportsReflink(ctx, selectedBaseDir)
-		if err != nil {
-			return "", nil, fmt.Errorf("check reflink support: %w", err)
-		}
-		if !supported {
-			return "", nil, fmt.Errorf("%w: %s", reflinktree.ErrReflinkUnsupported, reason)
-		}
-		created, err := backend.ReflinkTree(ctx, plan)
-		if err != nil {
-			return "", nil, fmt.Errorf("create reflink tree: %w", err)
-		}
-		return injectModeReflink, created, nil
-	}
-
-	if instance.UseHardlinks {
-		sameFS, err := backend.SameFilesystem(ctx, existingFiles[0].AbsPath, selectedBaseDir)
-		if err != nil {
-			return "", nil, fmt.Errorf("verify same filesystem: %w", err)
-		}
-		if !sameFS {
-			return "", nil, fmt.Errorf(
-				"hardlink source (%s) and destination (%s) are on different filesystems",
-				existingFiles[0].AbsPath,
-				selectedBaseDir,
-			)
-		}
-
-		created, err := backend.HardlinkTree(ctx, plan)
-		if err != nil {
-			if errors.Is(err, syscall.EXDEV) {
-				return "", nil, fmt.Errorf(
-					"create hardlink tree: %w (hardlinks cannot cross filesystems; put your scanned directory and hardlink base dir on the same mount, or enable reflinks if supported)",
-					err,
-				)
-			}
-			return "", nil, fmt.Errorf("create hardlink tree: %w", err)
-		}
-		return injectModeHardlink, created, nil
-	}
-
-	return "", nil, errors.New("no link mode enabled")
-}
-
-// buildLinkPresetDir applies the instance's hardlink directory preset to
-// baseDir. crossseed.LinkIntoNewFolder picks the folder for the tree in it.
-func buildLinkPresetDir(d fsops.PathDialect, baseDir string, instance *models.Instance, trackerDisplayName string) string {
-	switch instance.HardlinkDirPreset {
-	case "by-tracker":
-		display := trackerDisplayName
-		if display == "" {
-			display = "Unknown"
-		}
-		return d.Join(baseDir, pathutil.SanitizePathSegment(display))
-	case "by-instance":
-		return d.Join(baseDir, pathutil.SanitizePathSegment(instance.Name))
-	default: // "flat" or unknown
-		return baseDir
-	}
 }

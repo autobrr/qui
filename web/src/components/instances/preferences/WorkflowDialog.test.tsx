@@ -192,10 +192,10 @@ describe("WorkflowDialog tracker pattern", () => {
   })
 })
 
-function renderDialog(dialogRule: Automation | null) {
+function renderDialog(dialogRule: Automation | null, instances: unknown[] = []) {
   // Radix scrolls focused select options; jsdom has no layout.
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
-  mocks.instancesQuery.data = []
+  mocks.instancesQuery.data = instances
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
@@ -846,6 +846,60 @@ describe("WorkflowDialog switched-off actions", () => {
     const conditions = await save("create")
 
     expect(conditions).toEqual({ schemaVersion: "1", pause: { enabled: true } })
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog free space source", () => {
+  const localInstance = { id: 1, hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true } }
+  const source = { type: "allowance" as const, path: "/home/user", allowanceBytes: 1024 ** 4 }
+  const allowanceRule = (conditions: Automation["conditions"], extra: Partial<Automation> = {}): Automation => ({ ...rule, conditions, freeSpaceSource: source, ...extra })
+  const saved = async () => {
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(1))
+    return mocks.save.mock.calls[0][2]
+  }
+
+  beforeEach(() => {
+    mocks.save.mockResolvedValue(rule)
+  })
+
+  // regression: #4092
+  it("keeps a saved allowance source while the capabilities load", async () => {
+    // The capabilities query has no data yet: mocks.query.data is undefined.
+    const client = renderDialog(allowanceRule({
+      schemaVersion: "1",
+      pause: { enabled: true, condition: { field: "FREE_SPACE", operator: "LESS_THAN", value: "1000" } },
+    }), [localInstance])
+
+    expect((await saved()).freeSpaceSource).toEqual(source)
+    client.clear()
+  })
+
+  it("shows the source when only the sorting reads Free Space", async () => {
+    const client = renderDialog(allowanceRule({ schemaVersion: "1", pause: { enabled: true } }, {
+      sortingConfig: { schemaVersion: "1", type: "simple", field: "FREE_SPACE", direction: "ASC" },
+    }), [localInstance])
+
+    expect(screen.getByText(key("freeSpace.allowanceLabel"))).toBeTruthy()
+    expect((await saved()).freeSpaceSource).toEqual(source)
+    client.clear()
+  })
+
+  // regression: #4092
+  it("refuses an allowance that rounds to zero bytes", async () => {
+    const client = renderDialog(allowanceRule({
+      schemaVersion: "1",
+      pause: { enabled: true, condition: { field: "FREE_SPACE", operator: "LESS_THAN", value: "1000" } },
+    }), [localInstance])
+
+    // This figure is 0.1 bytes in TiB. A save would send no source, and the rule would read qBittorrent's free space.
+    fireEvent.change(screen.getByLabelText(key("freeSpace.allowanceLabel")), { target: { value: "0.0000000000001" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    expect(await screen.findByText(key("freeSpace.errors.allowanceRequired"))).toBeTruthy()
+    expect(mocks.save).not.toHaveBeenCalled()
     client.clear()
   })
 })

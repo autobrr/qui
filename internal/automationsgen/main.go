@@ -68,7 +68,7 @@ var keyValues = map[string][]string{
 	"TransferToInstanceAction.way":         automations.TransferWays,
 	"SortingConfig.field":                  conditionFieldNames(automations.FieldSpec.Sortable),
 	"FieldMultiplierScoreRule.field":       conditionFieldNames(automations.FieldSpec.Scorable),
-	"FreeSpaceSource.type":                 {string(models.FreeSpaceSourceQBittorrent), string(models.FreeSpaceSourcePath), string(models.FreeSpaceSourceQbitPath)},
+	"FreeSpaceSource.type":                 {string(models.FreeSpaceSourceQBittorrent), string(models.FreeSpaceSourcePath), string(models.FreeSpaceSourceQbitPath), string(models.FreeSpaceSourceAllowance)},
 	"SortingConfig.type":                   {string(models.SortingTypeSimple), string(models.SortingTypeScore)},
 	"SortingConfig.direction":              {string(models.SortDirectionASC), string(models.SortDirectionDESC)},
 	"ScoreRule.type":                       {string(models.ScoreRuleTypeFieldMultiplier), string(models.ScoreRuleTypeConditional)},

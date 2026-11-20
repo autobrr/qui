@@ -108,6 +108,7 @@
   },
   "storage": {
     "title": "Storage",
+    "help": "One or more bars here are estimates. When qui cannot read the disk of an instance, the filled part shows its torrents, and the empty part shows free space. For real disk usage, enable Local Filesystem Access, or set up SSH access, in instance settings.",
     "free": "{{size}} free"
   },
   "library": {

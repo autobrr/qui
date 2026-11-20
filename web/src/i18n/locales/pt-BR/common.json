@@ -34,6 +34,113 @@
     "collapseToIcons": "Recolher para ícones",
     "expandSidebar": "Expandir barra lateral"
   },
+  "problemReports": {
+    "reportProblem": "Relatar um problema",
+    "subtitle": "Seu relato vai para os mantenedores do qui.",
+    "textLabel": "Seu relato",
+    "placeholders": {
+      "menu": "O que aconteceu e o que você esperava?",
+      "notice": "O que você estava fazendo quando isso aconteceu?",
+      "search": "Qual correspondência você esperava e em qual indexador?"
+    },
+    "sentWithIt": "Incluído no seu relato",
+    "summary_one": "qui {{version}} e {{count}} instância",
+    "summary_other": "qui {{version}} e {{count}} instâncias",
+    "details": "Detalhes",
+    "view": "Ver",
+    "whatGetsSent": "O que é enviado",
+    "whatGetsSentNote": "O qui preenche isso. Nada sai do qui até você enviar o relato.",
+    "loadingFacts": "Carregando os detalhes...",
+    "factsFailed": "Não foi possível carregar os detalhes: {{message}}",
+    "facts": {
+      "version": "Versão",
+      "system": "Sistema",
+      "appContainer": "Em um contêiner",
+      "database": "Banco de dados",
+      "logLevel": "Nível de log",
+      "started": "Iniciado",
+      "experimentalFeatures": "Experimental",
+      "instance": "Instância {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "desconhecida",
+      "states": {
+        "connected": "Conectado",
+        "offline": "Offline",
+        "disabled": "Desativado"
+      },
+      "torrentCount_one": "{{count}} torrent",
+      "torrentCount_other": "{{count}} torrents",
+      "notices": "Avisos do sistema",
+      "openCount_one": "{{count}} aberto",
+      "openCount_other": "{{count}} abertos",
+      "page": "Página",
+      "browser": "Navegador",
+      "screen": "{{width}} × {{height}}, proporção de pixels {{ratio}}",
+      "failedRequests": "Requisições com falha",
+      "failedCount_one": "{{count}} nesta sessão",
+      "failedCount_other": "{{count}} nesta sessão",
+      "noAnswer": "sem resposta",
+      "none": "Nenhum"
+    },
+    "logs": {
+      "title": "Logs",
+      "scopeLabel": "Linhas de log a incluir",
+      "scopes": {
+        "warnings": "Avisos e erros",
+        "all": "Tudo recente",
+        "none": "Deixar de fora"
+      },
+      "notes": {
+        "warnings_one": "{{count}} aviso ou erro recente. O qui remove chaves e segredos.",
+        "warnings_other": "{{count}} avisos e erros recentes. O qui remove chaves e segredos.",
+        "all_one": "{{count}} linha recente no nível de log {{level}}. O qui remove chaves e segredos.",
+        "all_other": "{{count}} linhas recentes no nível de log {{level}}. O qui remove chaves e segredos.",
+        "none": "Nenhuma linha de log vai com o seu relato."
+      },
+      "empty": "Nenhuma linha de log.",
+      "debugMissing": "O nível de log é {{level}}, então o qui não registra linhas de depuração. Para incluí-las, defina Nível de log como DEBUG em Configurações > Logs, reproduza o problema e relate de novo."
+    },
+    "privacy": {
+      "anonymous": "Anônimo: sem nome, sem conta. O brrbin não guarda endereço IP.",
+      "link": "Política de privacidade"
+    },
+    "newerRelease": "Você usa {{running}}. <release>{{newer}}</release> já saiu.",
+    "send": "Enviar",
+    "sendAnyway": "Enviar mesmo assim",
+    "sending": "Enviando",
+    "sent": "Relato enviado",
+    "errors": {
+      "anonymousFull": {
+        "title": "Os relatos anônimos de hoje acabaram",
+        "body": "Entre para enviar agora ou tente de novo amanhã. Seu texto continua aqui como rascunho."
+      },
+      "signInRequired": "Entre para enviar este relato. Seu texto continua aqui como rascunho.",
+      "accountLimit": "Você enviou muitos relatos na última hora. Tente de novo mais tarde.",
+      "reporterFull": "Seus relatos ocupam todo o espaço que o brrbin dá a uma pessoa. Exclua um relato antigo em Relatos enviados e envie de novo.",
+      "tooLarge": "O relato é grande demais. Escolha menos linhas de log ou uma imagem menor.",
+      "tokenRejected": "Sua sessão terminou. Entre de novo e envie.",
+      "unavailable": "O brrbin não pode receber relatos agora. Tente de novo mais tarde.",
+      "sendFailed": "Não foi possível enviar o relato: {{message}}"
+    },
+    "sentReports": {
+      "title": "Relatos enviados",
+      "subtitle": "O qui verifica o status dos relatos toda vez que você abre esta lista.",
+      "changed_one": "{{count}} status alterado",
+      "changed_other": "{{count}} status alterados",
+      "status": {
+        "received": "Recebido",
+        "issue": "Virou a issue #{{number}}",
+        "issueClosed": "Issue #{{number}} fechada",
+        "closed": "Fechado: {{reason}}",
+        "closedNoReason": "Fechado"
+      },
+      "delete": "Excluir relato",
+      "deleteUnavailable": "O brrbin não pode excluir relatos agora. Tente de novo mais tarde.",
+      "deleteFailed": "Não foi possível excluir o relato: {{message}}",
+      "empty": "Nenhum relato enviado.",
+      "back": "Voltar para o relato"
+    }
+  },
   "header": {
     "currentInstance": "Instância atual: {{name}}. Clique para trocar de instância.",
     "connected": "Conectado",

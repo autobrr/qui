@@ -109,9 +109,11 @@ vi.mock("@/contexts/SyncStreamContext", async (importOriginal) => {
   }
 })
 
-// Deterministic virtualizer: render all `count` rows regardless of jsdom
-// layout. One stable singleton; the items change only with the count.
+// Deterministic virtualizer: render the first rows of `count` regardless of
+// jsdom layout, as a screen of rows would. One stable singleton; the items
+// change only with the count.
 vi.mock("@tanstack/react-virtual", () => {
+  const screenRows = 20
   let count = 0
   let items: { index: number; key: number; start: number; size: number }[] = []
   const virtualizer = {
@@ -125,7 +127,7 @@ vi.mock("@tanstack/react-virtual", () => {
     useVirtualizer: (options: { count: number }) => {
       if (options.count !== count) {
         count = options.count
-        items = Array.from({ length: count }, (_, index) => ({ index, key: index, start: index * 40, size: 40 }))
+        items = Array.from({ length: Math.min(count, screenRows) }, (_, index) => ({ index, key: index, start: index * 40, size: 40 }))
       }
       return virtualizer
     },

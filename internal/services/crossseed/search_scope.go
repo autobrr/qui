@@ -27,11 +27,16 @@ const (
 	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
 	noGazelleKeySkipReason              = "no RED/OPS API key for the target site"
+	gazelleAPISkipReason                = "asked through the RED/OPS API"
+	indexerContentSkipReason            = "filtered out by the content filter"
+	indexerCapabilitySkipReason         = "does not support the required caps"
+	indexerInCooldownSkipReason         = "within cooldown"
 )
 
 // searchScope is the Search scope of one torrent: the Torznab indexers and the
 // RED/OPS sites that one search asks.
 type searchScope struct {
+	sourceInstanceID  int
 	torznabIndexerIDs []int
 	// gazelle holds one decision for each RED/OPS site, in the order of the
 	// site table: will_ask, or not_asked with its reason.
@@ -41,6 +46,9 @@ type searchScope struct {
 	exportedTorrent []byte
 	// skipReason says why the scope asks no Torznab indexer.
 	skipReason string
+	// facts are what the scope was decided from, for a Problem report that
+	// names why the scope skips each Torznab indexer.
+	facts searchScopeFacts
 	// torznabErr reports that qui could not list the Torznab indexers, so the
 	// search asks only RED/OPS.
 	torznabErr error
@@ -96,6 +104,8 @@ type contentFilterFacts struct {
 	// out, indexerIDs holds the result of the capability filter.
 	done       bool
 	indexerIDs []int
+	// capableIDs are the indexers that support the required caps.
+	capableIDs []int
 	// seededOn counts the indexers that the filter removed because the content
 	// seeds there already.
 	seededOn          int
@@ -243,6 +253,31 @@ func decideTorznabIndexers(f searchScopeFacts) ([]int, string, error) {
 	return allowed, "", nil
 }
 
+// skippedTorznabIndexers says, for each requested Torznab indexer that the
+// scope does not ask, why it skips that one.
+func skippedTorznabIndexers(f searchScopeFacts, asked []int, skipReason string) map[int]string {
+	skipped := map[int]string{}
+	for _, id := range uniquePositiveInts(f.requestedIndexerIDs) {
+		host, isGazelle := f.gazelleTorznabIndexers[id]
+		switch {
+		case slices.Contains(asked, id):
+		case isGazelle && slices.Contains(f.gazelleKeys, host):
+			skipped[id] = gazelleAPISkipReason
+		case f.torznabOff || f.contentFilter.torznabErr != nil:
+			skipped[id] = skipReason
+		case !slices.Contains(f.contentFilter.capableIDs, id):
+			skipped[id] = indexerCapabilitySkipReason
+		case !slices.Contains(f.contentFilter.indexerIDs, id):
+			skipped[id] = indexerContentSkipReason
+		case slices.Contains(f.cooldownIndexerIDs, id):
+			skipped[id] = indexerInCooldownSkipReason
+		default:
+			skipped[id] = skipReason
+		}
+	}
+	return skipped
+}
+
 // collectSearchScope fills the torrent facts into f and decides the Search scope.
 // The Library Scan resolves its indexers one time for each run, so it passes
 // resolveIndexers false.
@@ -282,6 +317,7 @@ func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torren
 		Strs("gazelleHosts", scope.gazelleHosts()).
 		Str("skipReason", scope.skipReason).
 		Msg("[CROSSSEED-SEARCH] Search scope")
+	scope.facts = f
 	return scope
 }
 
@@ -439,6 +475,7 @@ func (s *Service) contentFilterFacts(ctx context.Context, instanceID int, hash s
 		torznabErr:        snapshot.torznabErr,
 		done:              snapshot.ContentCompleted,
 		indexerIDs:        snapshot.CapabilityIndexers,
+		capableIDs:        snapshot.CapabilityIndexers,
 		seededOn:          len(snapshot.ExcludedIndexers),
 		noCapableIndexers: len(snapshot.CapabilityIndexers) == 0,
 	}

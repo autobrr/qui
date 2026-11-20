@@ -4,6 +4,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -48,6 +49,7 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
+	"github.com/autobrr/qui/internal/services/problemreport"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/share"
 	"github.com/autobrr/qui/internal/services/systemnotice"
@@ -118,6 +120,7 @@ type Server struct {
 	liveSamples                      *livesamples.Recorder
 	systemNotices                    *systemnotice.Module
 	databaseShrink                   *dbshrink.Service
+	problemReports                   *problemreport.Service
 	backendPool                      *fsops.Pool
 	sshPool                          *sshpool.Pool
 	dirScanService                   *dirscan.Service
@@ -178,12 +181,15 @@ type Dependencies struct {
 	LiveSamples                      *livesamples.Recorder
 	SystemNotices                    *systemnotice.Module
 	DatabaseShrink                   *dbshrink.Service
-	BackendPool                      *fsops.Pool
-	SSHPool                          *sshpool.Pool
-	DirScanService                   *dirscan.Service
-	ArrInstanceStore                 *models.ArrInstanceStore
-	ArrService                       *arr.Service
-	ActivityHub                      *activity.Hub
+	ProblemReports                   *problemreport.Service
+	// StartedAt is when qui started. Zero means when NewServer runs.
+	StartedAt        time.Time
+	BackendPool      *fsops.Pool
+	SSHPool          *sshpool.Pool
+	DirScanService   *dirscan.Service
+	ArrInstanceStore *models.ArrInstanceStore
+	ArrService       *arr.Service
+	ActivityHub      *activity.Hub
 	// Transfers holds the Transfer records and the helper registry.
 	Transfers *transfer.Store
 	// TransferService runs Transfers.
@@ -221,7 +227,7 @@ func NewServer(deps *Dependencies) *Server {
 		config:                           deps.Config,
 		experimental:                     deps.Experimental,
 		version:                          deps.Version,
-		started:                          time.Now().UTC(),
+		started:                          cmp.Or(deps.StartedAt, time.Now()).UTC(),
 		authService:                      deps.AuthService,
 		sessionManager:                   deps.SessionManager,
 		instanceStore:                    deps.InstanceStore,
@@ -268,6 +274,7 @@ func NewServer(deps *Dependencies) *Server {
 		liveSamples:                      deps.LiveSamples,
 		systemNotices:                    deps.SystemNotices,
 		databaseShrink:                   deps.DatabaseShrink,
+		problemReports:                   deps.ProblemReports,
 		backendPool:                      deps.BackendPool,
 		sshPool:                          deps.SSHPool,
 		dirScanService:                   deps.DirScanService,
@@ -443,6 +450,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore), s.sshPool)
 	instancesHandler.SetOrphanScan(s.orphanScanService)
 	instancesHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
+	instancesHandler.SetFilesystem(s.backendPool)
 	torrentsHandler := s.newTorrentsHandler()
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
@@ -756,6 +764,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.With(instances.Read).Get("/capabilities", instancesHandler.GetInstanceCapabilities)
 					r.With(instances.Read).Get("/transfer-info", instancesHandler.GetTransferInfo)
 					r.With(instances.Read).Get("/free-space", instancesHandler.GetFreeSpaceAtPath)
+					r.With(instances.Read).Get("/disk", instancesHandler.GetDisk)
 					r.With(instances.Read).Get("/reannounce/activity", instancesHandler.GetReannounceActivity)
 					r.With(instances.Read).Get("/reannounce/candidates", instancesHandler.GetReannounceCandidates)
 
@@ -898,6 +907,17 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.With(browserOnly).Post("/database/shrink", databaseShrinkHandler.Request)
 			r.With(allInstances, settings.Write).Delete("/database/shrink/result", databaseShrinkHandler.DismissResult)
 			s.transferRoutes(r.With(browserOnly))
+
+			r.Route("/problem-reports", func(r chi.Router) {
+				r.Use(s.experimental.Require(experimental.ProblemReports), browserOnly, handlers.RequireProblemReports(func() bool {
+					return s.config.Config.ProblemReports
+				}))
+				problemReportHandler := handlers.NewProblemReportHandler(s.problemReports)
+				r.Get("/facts", problemReportHandler.Facts)
+				r.Post("/", problemReportHandler.Send)
+				r.Get("/", problemReportHandler.SentReports)
+				r.Delete("/{id}", problemReportHandler.Delete)
+			})
 		})
 	})
 

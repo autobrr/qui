@@ -1307,9 +1307,24 @@
           "unsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt.",
           "qbitPathUnsupported": "Diese Instanz ist älter als qBittorrent 5.3 und kann keinen freien Speicher für einen Pfad melden.",
           "pathRequired": "Bei Verwendung von \"Pfad auf dem Server\" ist ein Pfad erforderlich.",
-          "filesystemAccessRequired": "Die pfadbasierte Quelle für freien Speicher erfordert lokalen oder SSH-Dateisystemzugriff."
+          "filesystemAccessRequired": "Die pfadbasierte Quelle für freien Speicher erfordert lokalen oder SSH-Dateisystemzugriff.",
+          "allowanceRequired": "Gib ein Kontingent größer als 0 ein.",
+          "allowanceAccessRequired": "Die Kontingent-Quelle erfordert lokalen Dateisystemzugriff oder SSH-Zugriff mit Shell."
         },
-        "pathSourceFilesystemAccessRequired": "Pfad auf dem Server (erfordert lokalen oder SSH-Zugriff)"
+        "pathSourceFilesystemAccessRequired": "Pfad auf dem Server (erfordert lokalen oder SSH-Zugriff)",
+        "allowanceSource": "Kontingent auf einem Pfad",
+        "allowanceSourceWindowsUnsupported": "Kontingent auf einem Pfad (unter Windows nicht unterstützt)",
+        "allowanceSourceAccessRequired": "Kontingent auf einem Pfad (erfordert lokalen Zugriff oder SSH-Zugriff mit Shell)",
+        "allowanceLabel": "Kontingent",
+        "allowancePathLabel": "Zu messender Ordner",
+        "allowanceUnitAria": "Einheit des Kontingents",
+        "allowanceHelp": "Gib den Speicher ein, den dein Tarif erlaubt, in der Einheit, die dein Anbieter verwendet. qui zieht die Größe der Dateien unter dem Pfad ab. Die meisten Anbieter rechnen in Schritten von 1000 ({{decimalUnit}}), nicht 1024 ({{binaryUnit}}): Der Unterschied beträgt etwa 9 %.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
+        "allowancePathHelp": "Zum Beispiel dein Home-Verzeichnis"
       },
       "grouping": {
         "title": "Gruppierte Bedingungsgruppen",

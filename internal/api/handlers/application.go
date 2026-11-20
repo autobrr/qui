@@ -50,6 +50,7 @@ type ApplicationInfoResponse struct {
 	CheckForUpdates      bool                    `json:"checkForUpdates"`
 	Database             ApplicationDatabaseInfo `json:"database"`
 	ExperimentalFeatures []string                `json:"experimentalFeatures"`
+	ProblemReports       bool                    `json:"problemReports"`
 }
 
 func NewApplicationHandler(appConfig *config.AppConfig, experimentalFeatures *experimental.Features, startedAt time.Time) *ApplicationHandler {
@@ -91,6 +92,7 @@ func (h *ApplicationHandler) GetInfo(w http.ResponseWriter, _ *http.Request) {
 		CheckForUpdates:      cfg.CheckForUpdates,
 		Database:             databaseInfo(cfg, h.appConfig),
 		ExperimentalFeatures: h.experimental.Names(),
+		ProblemReports:       cfg.ProblemReports,
 	}
 
 	RespondJSON(w, http.StatusOK, response)

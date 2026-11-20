@@ -78,6 +78,7 @@ const SYNCED_KEYS = new Set<string>([
   "qui-support-shortcut-hidden",
   "qui-support-reminder-off",
   "qui-support-reminder-due",
+  "qui-problem-reports-seen-at",
 ])
 const SYNCED_PREFIXES = [
   "qui-cross-seed-blocklist-",
@@ -964,6 +965,12 @@ export function _resetClientSettingsForTests(): void {
 export function parseJsonBoolean(raw: string): boolean {
   const parsed = JSON.parse(raw)
   if (typeof parsed !== "boolean") throw new Error("not a boolean")
+  return parsed
+}
+
+export function parseJsonNumber(raw: string): number {
+  const parsed: unknown = JSON.parse(raw)
+  if (typeof parsed !== "number") throw new Error("not a number")
   return parsed
 }
 

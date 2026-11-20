@@ -203,3 +203,58 @@ func TestHashedIsolationFolder(t *testing.T) {
 		t.Errorf("HashedIsolationFolder = %q (%d bytes), want %q", got, len(got), want)
 	}
 }
+
+// regression: #4220
+func FuzzTorrentFilePathMatchesReference(f *testing.F) {
+	for _, seed := range [][3]string{
+		{"Album", "Disc 1", "01 - Track.flac"},
+		{"Album\u200e", "Disc\u200f 1", "01 \u2014 Track\u202e.flac"},
+		{"Album", "", "\u2019s.flac"},
+		{"Movie.\xe1\xff.2024", "sub\xff\xfe\u200e", "file.mkv"},
+		{"", "\u200e", "track.flac"},
+		{"\u202a\u202b\u202c\u202d", "\xe2\x80", "\xe2"},
+	} {
+		f.Add(seed[0], seed[1], seed[2])
+	}
+	filter := func(name string) string {
+		return strings.Map(func(r rune) rune {
+			switch r {
+			case '\u200e', '\u200f', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e':
+				return -1
+			default:
+				return r
+			}
+		}, strings.ToValidUTF8(name, "\ufffd"))
+	}
+	f.Fuzz(func(t *testing.T, root, dir, file string) {
+		if got, want := TorrentPathName(root), filter(root); got != want {
+			t.Fatalf("TorrentPathName(%q) = %q, want %q", root, got, want)
+		}
+		parts := []string{filter(root)}
+		refused := false
+		for _, c := range []string{dir, file} {
+			switch {
+			case c == "":
+				parts = append(parts, "_")
+			case filter(c) == "":
+				refused = true
+			default:
+				parts = append(parts, filter(c))
+			}
+		}
+		want := strings.Join(parts, "/")
+		if parts[0] == "" {
+			want = strings.Join(parts[1:], "/")
+		}
+		got, err := TorrentFilePath(TorrentPathName(root), []string{dir, file})
+		if refused {
+			if err == nil {
+				t.Fatalf("TorrentFilePath(%q, %q, %q) = %q, want an error", root, dir, file, got)
+			}
+			return
+		}
+		if err != nil || got != want {
+			t.Fatalf("TorrentFilePath(%q, %q, %q) = %q, %v; want %q", root, dir, file, got, err, want)
+		}
+	})
+}

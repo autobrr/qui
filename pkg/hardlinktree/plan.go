@@ -6,10 +6,12 @@
 package hardlinktree
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -141,6 +143,44 @@ func BuildPlan(
 		}
 	}
 
+	matched, err := MatchFiles(candidateFiles, existingFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	plan := &TreePlan{
+		RootDir: destDir,
+		Files:   make([]FilePlan, 0, len(matched)),
+	}
+	for _, m := range matched {
+		// Compute target path based on layout
+		targetPath := computeTargetPath(d, m.RelPath, layout, torrentName, destDir)
+
+		// Validate that target path is inside destDir (defense in depth)
+		if err := validateTargetInsideBase(d, targetPath, destDir); err != nil {
+			return nil, err
+		}
+
+		plan.Files = append(plan.Files, FilePlan{
+			SourcePath: m.AbsPath,
+			TargetPath: targetPath,
+		})
+	}
+
+	// Sort for deterministic ordering
+	sort.Slice(plan.Files, func(i, j int) bool {
+		return plan.Files[i].TargetPath < plan.Files[j].TargetPath
+	})
+
+	return plan, nil
+}
+
+// MatchFiles finds the existing file that each candidate file links to. A
+// match has the size of the candidate and, in this order, its path, its base
+// name, its name without punctuation, or is the only file of that size left.
+// Each result holds the AbsPath of the existing file and the path of the
+// candidate as RelPath, in the order of candidateFiles. It does no I/O.
+func MatchFiles(candidateFiles []TorrentFile, existingFiles []ExistingFile) ([]ExistingFile, error) {
 	// Build index of existing files by size
 	existingBySize := make(map[int64][]*existingEntry)
 	for i := range existingFiles {
@@ -153,12 +193,7 @@ func BuildPlan(
 		existingBySize[ef.Size] = append(existingBySize[ef.Size], entry)
 	}
 
-	plan := &TreePlan{
-		RootDir: destDir,
-		Files:   make([]FilePlan, 0, len(candidateFiles)),
-	}
-
-	// Match each candidate file to an existing file
+	matched := make([]ExistingFile, 0, len(candidateFiles))
 	for _, cf := range candidateFiles {
 		bucket := existingBySize[cf.Size]
 		if len(bucket) == 0 {
@@ -225,27 +260,9 @@ func BuildPlan(
 		}
 
 		match.used = true
-
-		// Compute target path based on layout
-		targetPath := computeTargetPath(d, cf.Path, layout, torrentName, destDir)
-
-		// Validate that target path is inside destDir (defense in depth)
-		if err := validateTargetInsideBase(d, targetPath, destDir); err != nil {
-			return nil, err
-		}
-
-		plan.Files = append(plan.Files, FilePlan{
-			SourcePath: match.file.AbsPath,
-			TargetPath: targetPath,
-		})
+		matched = append(matched, ExistingFile{AbsPath: match.file.AbsPath, RelPath: cf.Path, Size: cf.Size})
 	}
-
-	// Sort for deterministic ordering
-	sort.Slice(plan.Files, func(i, j int) bool {
-		return plan.Files[i].TargetPath < plan.Files[j].TargetPath
-	})
-
-	return plan, nil
+	return matched, nil
 }
 
 // BuildSingleFilePlan creates an exact-path plan for one already-paired torrent
@@ -274,6 +291,42 @@ func BuildSingleFilePlan(d PathDialect, rootDir, relativePath, sourcePath string
 			TargetPath: targetPath,
 		}},
 	}, nil
+}
+
+// BuildLinkPlan creates a plan that links each file's AbsPath to its RelPath,
+// a torrent path, under rootDir. It does no matching and no I/O, and refuses
+// a torrent path that is unsafe or that the destination cannot store.
+func BuildLinkPlan(d PathDialect, rootDir string, files []ExistingFile) (*TreePlan, error) {
+	if rootDir == "" {
+		return nil, errors.New("destination directory is required")
+	}
+	if len(files) == 0 {
+		return nil, errors.New("no files to link")
+	}
+	plan := &TreePlan{RootDir: rootDir, Files: make([]FilePlan, 0, len(files))}
+	for _, f := range files {
+		if f.AbsPath == "" {
+			return nil, errors.New("source path is required for: " + f.RelPath)
+		}
+		if err := validateCandidatePath(d, f.RelPath); err != nil {
+			return nil, err
+		}
+		targetPath := computeTargetPath(d, f.RelPath, LayoutOriginal, "", rootDir)
+		if err := validateTargetInsideBase(d, targetPath, rootDir); err != nil {
+			return nil, err
+		}
+		plan.Files = append(plan.Files, FilePlan{SourcePath: f.AbsPath, TargetPath: targetPath})
+	}
+	slices.SortFunc(plan.Files, func(a, b FilePlan) int {
+		return cmp.Compare(a.TargetPath, b.TargetPath)
+	})
+	return plan, nil
+}
+
+// ValidateTorrentPath reports why name, a slash path from a torrent, is unsafe
+// or cannot be stored by the destination dialect d, nil when it is fine.
+func ValidateTorrentPath(d PathDialect, name string) error {
+	return validateCandidatePath(d, name)
 }
 
 type existingEntry struct {

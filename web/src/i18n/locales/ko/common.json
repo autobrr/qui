@@ -33,6 +33,106 @@
     "collapseToIcons": "아이콘으로 접기",
     "expandSidebar": "사이드바 펼치기"
   },
+  "problemReports": {
+    "reportProblem": "문제 신고",
+    "subtitle": "신고 내용은 qui 관리자에게 전달됩니다.",
+    "textLabel": "신고 내용",
+    "placeholders": {
+      "menu": "무슨 일이 일어났고 어떤 결과를 기대했나요?",
+      "notice": "이 문제가 생겼을 때 무엇을 하고 있었나요?",
+      "search": "어떤 인덱서에서 어떤 일치를 기대했나요?"
+    },
+    "sentWithIt": "함께 전송되는 정보",
+    "summary_other": "qui {{version}} 및 인스턴스 {{count}}개",
+    "details": "세부 정보",
+    "view": "보기",
+    "whatGetsSent": "전송되는 내용",
+    "whatGetsSentNote": "qui가 이 항목을 채웁니다. 신고를 보내기 전에는 아무것도 qui 밖으로 나가지 않습니다.",
+    "loadingFacts": "세부 정보를 불러오는 중...",
+    "factsFailed": "세부 정보를 불러오지 못했습니다: {{message}}",
+    "facts": {
+      "version": "버전",
+      "system": "시스템",
+      "appContainer": "컨테이너 환경",
+      "database": "데이터베이스",
+      "logLevel": "로그 수준",
+      "started": "시작 시간",
+      "experimentalFeatures": "실험적 기능",
+      "instance": "인스턴스 {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "알 수 없음",
+      "states": {
+        "connected": "연결됨",
+        "offline": "오프라인",
+        "disabled": "비활성화됨"
+      },
+      "torrentCount_other": "토렌트 {{count}}개",
+      "notices": "시스템 알림",
+      "openCount_other": "{{count}}개 열림",
+      "page": "페이지",
+      "browser": "브라우저",
+      "screen": "{{width}} × {{height}}, 픽셀 비율 {{ratio}}",
+      "failedRequests": "실패한 요청",
+      "failedCount_other": "이 세션에서 {{count}}건",
+      "noAnswer": "응답 없음",
+      "none": "없음"
+    },
+    "logs": {
+      "title": "로그",
+      "scopeLabel": "포함할 로그 줄",
+      "scopes": {
+        "warnings": "경고 및 오류",
+        "all": "최근 전체",
+        "none": "제외"
+      },
+      "notes": {
+        "warnings_other": "최근 경고 및 오류 {{count}}줄. qui가 키와 비밀 값을 제거합니다.",
+        "all_other": "로그 수준 {{level}}의 최근 {{count}}줄. qui가 키와 비밀 값을 제거합니다.",
+        "none": "신고에 로그 줄을 포함하지 않습니다."
+      },
+      "empty": "로그 줄이 없습니다.",
+      "debugMissing": "로그 수준이 {{level}}이므로 qui가 디버그 줄을 기록하지 않습니다. 포함하려면 설정 > 로그에서 로그 수준을 DEBUG로 바꾼 뒤 문제를 재현하고 다시 신고하세요."
+    },
+    "privacy": {
+      "anonymous": "익명: 이름도 계정도 없습니다. brrbin은 IP 주소를 보관하지 않습니다.",
+      "link": "개인정보 처리방침"
+    },
+    "newerRelease": "현재 {{running}} 버전을 사용 중입니다. <release>{{newer}}</release> 버전이 나왔습니다.",
+    "send": "보내기",
+    "sendAnyway": "그래도 보내기",
+    "sending": "보내는 중",
+    "sent": "신고를 보냈습니다",
+    "errors": {
+      "anonymousFull": {
+        "title": "오늘 익명 신고가 모두 찼습니다",
+        "body": "로그인하면 지금 보낼 수 있고, 아니면 내일 다시 시도하세요. 작성한 내용은 초안으로 여기에 남습니다."
+      },
+      "signInRequired": "이 신고를 보내려면 로그인하세요. 작성한 내용은 초안으로 여기에 남습니다.",
+      "accountLimit": "지난 한 시간 동안 신고를 많이 보냈습니다. 나중에 다시 시도하세요.",
+      "reporterFull": "신고가 brrbin이 한 사람에게 주는 공간을 모두 쓰고 있습니다. 보낸 신고에서 오래된 신고를 삭제한 뒤 다시 보내세요.",
+      "tooLarge": "신고가 너무 큽니다. 로그 줄을 줄이거나 더 작은 이미지를 고르세요.",
+      "tokenRejected": "로그인이 끝났습니다. 다시 로그인한 뒤 보내세요.",
+      "unavailable": "brrbin이 지금은 신고를 받을 수 없습니다. 나중에 다시 시도하세요.",
+      "sendFailed": "신고를 보내지 못했습니다: {{message}}"
+    },
+    "sentReports": {
+      "title": "보낸 신고",
+      "subtitle": "이 목록을 열 때마다 qui가 신고 상태를 확인합니다.",
+      "changed_other": "상태 {{count}}건 변경됨",
+      "status": {
+        "received": "접수됨",
+        "issue": "이슈 #{{number}} 등록됨",
+        "issueClosed": "이슈 #{{number}} 닫힘",
+        "closed": "닫힘: {{reason}}",
+        "closedNoReason": "닫힘"
+      },
+      "delete": "신고 삭제",
+      "deleteUnavailable": "brrbin이 지금은 신고를 삭제할 수 없습니다. 나중에 다시 시도하세요.",
+      "deleteFailed": "신고를 삭제하지 못했습니다: {{message}}",
+      "empty": "보낸 신고가 없습니다.",
+      "back": "신고로 돌아가기"
+    }
+  },
   "header": {
     "currentInstance": "현재 인스턴스: {{name}}. 클릭하여 인스턴스를 전환합니다.",
     "connected": "연결됨",

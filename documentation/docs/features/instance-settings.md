@@ -58,6 +58,7 @@ If enabled, qui reads the same filesystem as qBittorrent. This setting turns on 
 - **Cross-seed hardlink and reflink mode**: Create links instead of a second copy. Hardlink mode also works on a [remote instance](./ssh-access.md). Reflink mode needs local access.
 - **Cross-seed ID fallback**: Read IMDb, TMDb, and TVDb tags from MKV files when a search finds no results.
 - **Directory scan**: Use the instance as a directory scan target.
+- **Storage**: Show the real used share of the disk on the [Dashboard](./dashboard.md#storage-and-library). This also works on a [remote instance](./ssh-access.md).
 
 :::warning
 Enable this setting only if qui runs on the same machine as qBittorrent or has the same mounts. If the paths differ, these features fail without an error or return wrong results.

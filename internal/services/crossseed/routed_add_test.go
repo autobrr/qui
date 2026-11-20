@@ -26,9 +26,9 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
-	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -432,12 +432,10 @@ func TestRoutedAddNeverFallsBackToARegularAdd(t *testing.T) {
 			name: "unsupported filesystem",
 			setup: func(r *routedRig) {
 				r.updateSource(&models.InstanceUpdateParams{UseHardlinks: new(false), UseReflinks: new(true)})
-				r.svc.reflinkMaterializer = func(context.Context, string, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-					return nil, &linkUnsupportedError{reason: "no reflinks here"}
-				}
+				r.svc.SetBackendPool(fsops.NewPool(r.instances, &faultyLinkBackend{Backend: local.NewBackend()}))
 			},
 			wantStatus: "reflink_error",
-			wantMsg:    "reflink not supported: no reflinks here",
+			wantMsg:    "reflink not supported: no clones here",
 		},
 		{
 			name: "existing target",
@@ -484,6 +482,7 @@ func TestRoutedAddNeverFallsBackToARegularAdd(t *testing.T) {
 			}
 			if tt.name != "existing target" {
 				r.requireNoLinkTree()
+				assert.NoDirExists(t, filepath.Join(r.links, routedName), "the folder of the torrent is rolled back")
 			}
 		})
 	}
@@ -734,27 +733,26 @@ func TestRoutedCategorySavePath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name, preset, baseDir, mapped, want string
+		name, folder, baseDir, mapped, want string
 		hostToo                             bool
 	}{
-		{name: "by-tracker", preset: "by-tracker", baseDir: "/data/hl", mapped: `D:\seeds`, want: "D:/seeds/Tracker", hostToo: true},
-		{name: "by-instance", preset: "by-instance", baseDir: "/data/hl", mapped: "/seeds", want: "/seeds/seeds", hostToo: true},
-		{name: "flat", preset: "flat", baseDir: "/data/hl", mapped: `D:\seeds`, want: `D:\seeds`, hostToo: true},
-		{name: "same path", preset: "by-tracker", baseDir: "/data/hl", want: "/data/hl/Tracker", hostToo: true},
-		{name: "backslash base folder", preset: "by-tracker", baseDir: `/data/hl\x`, mapped: "/seeds", want: "/seeds/Tracker"},
+		{name: "preset folder", folder: "Tracker", baseDir: "/data/hl", mapped: `D:\seeds`, want: "D:/seeds/Tracker", hostToo: true},
+		{name: "flat", baseDir: "/data/hl", mapped: `D:\seeds`, want: `D:\seeds`, hostToo: true},
+		{name: "same path", folder: "Tracker", baseDir: "/data/hl", want: "/data/hl/Tracker", hostToo: true},
+		{name: "backslash base folder", folder: "Tracker", baseDir: `/data/hl\x`, mapped: "/seeds", want: "/seeds/Tracker"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			eachDialect(t, tt.hostToo, func(t *testing.T, d fsops.PathDialect, conv func(string) string) {
 				baseDir := conv(tt.baseDir)
-				candidate := CrossSeedCandidate{InstanceName: "lib", route: &candidateRoute{
-					rows:      []models.CrossSeedRouteRow{{BaseDir: fsops.CleanPath(d, baseDir), MappedPath: tt.mapped}},
-					crossSeed: &models.Instance{ID: 2, Name: "seeds"},
-				}}
-				instance := &models.Instance{Name: "lib", HardlinkDirPreset: tt.preset}
+				route := &candidateRoute{rows: []models.CrossSeedRouteRow{{BaseDir: fsops.CleanPath(d, baseDir), MappedPath: tt.mapped}}}
+				tree := &linktree.Tree{BaseDir: baseDir, PresetDir: baseDir}
+				if tt.folder != "" {
+					tree.PresetDir = d.Join(baseDir, tt.folder)
+				}
 
-				got := (&Service{}).buildCategorySavePath(t.Context(), d, instance, baseDir, "", candidate, &CrossSeedRequest{IndexerName: "Tracker"})
+				got := linkCategorySavePath(d, tree, route)
 
 				require.Equal(t, tt.want, got)
 			})

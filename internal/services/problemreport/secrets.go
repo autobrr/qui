@@ -1,0 +1,377 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package problemreport
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"net"
+	"net/url"
+	"regexp"
+	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/redact"
+)
+
+// Secrets are what qui removes from every text part of a Problem report by
+// exact match.
+type Secrets struct {
+	// Values are the secrets that qui stores in plain or encrypted form, and
+	// the address and user names of each instance.
+	Values []string
+	// KeyHashes are the hashes of the qui API keys, which qui stores only as
+	// a hash.
+	KeyHashes map[string]struct{}
+}
+
+// StoreSecrets reads Secrets from the stores. A nil store holds no secret.
+type StoreSecrets struct {
+	Instances     *models.InstanceStore
+	Indexers      *models.TorznabIndexerStore
+	Arr           *models.ArrInstanceStore
+	CrossSeed     *models.CrossSeedStore
+	APIKeys       *models.APIKeyStore
+	ClientAPIKeys *models.ClientAPIKeyStore
+	Notifications *models.NotificationTargetStore
+	Licenses      *database.LicenseRepo
+	// Config returns the secrets of the config, see ConfigSecrets.
+	Config func() []string
+}
+
+// ConfigSecrets returns the secrets of the qui config: the session secret,
+// the database password, the password in the Postgres DSN and the OIDC
+// client secret.
+func ConfigSecrets(cfg *domain.Config) []string {
+	secrets := []string{cfg.SessionSecret, cfg.DatabasePassword, cfg.OIDCClientSecret}
+	if dsn := strings.TrimSpace(cfg.DatabaseDSN); dsn != "" {
+		// The same parser as the database connection, for the URL and the key/value form.
+		if parsed, err := pgconn.ParseConfig(dsn); err == nil {
+			secrets = append(secrets, parsed.Password)
+		}
+	}
+	return secrets
+}
+
+func (s StoreSecrets) ReportSecrets(ctx context.Context) (Secrets, error) {
+	c := &secretCollector{secrets: Secrets{KeyHashes: map[string]struct{}{}}}
+	if s.Config != nil {
+		c.add(s.Config()...)
+	}
+	for _, read := range []func(context.Context, *secretCollector) error{
+		s.instanceSecrets, s.indexerSecrets, s.arrSecrets, s.crossSeedSecrets, s.keyHashes, s.notificationSecrets, s.licenseSecrets,
+	} {
+		if err := read(ctx, c); err != nil {
+			return Secrets{}, err
+		}
+	}
+	return c.secrets, nil
+}
+
+type secretCollector struct {
+	secrets Secrets
+}
+
+func (c *secretCollector) add(values ...string) {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			c.secrets.Values = append(c.secrets.Values, value)
+		}
+	}
+}
+
+// decrypted adds a value that qui could decrypt. A value that it cannot
+// decrypt cannot reach a log line either.
+func (c *secretCollector) decrypted(value string, err error) {
+	if err == nil {
+		c.add(value)
+	}
+}
+
+func (s StoreSecrets) instanceSecrets(ctx context.Context, c *secretCollector) error {
+	if s.Instances == nil {
+		return nil
+	}
+	instances, err := s.Instances.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list instances: %w", err)
+	}
+	for _, instance := range instances {
+		c.decrypted(s.Instances.GetDecryptedPassword(instance))
+		if instance.APIKeyEncrypted != "" {
+			c.decrypted(s.Instances.GetDecryptedAPIKey(instance))
+		}
+		if password, err := s.Instances.GetDecryptedBasicPassword(instance); err == nil && password != nil {
+			c.add(*password)
+		}
+		c.add(instanceAddress(instance.Host)...)
+		c.add(instance.Username)
+		if instance.BasicUsername != nil {
+			c.add(*instance.BasicUsername)
+		}
+		c.decrypted(s.Instances.GetDecryptedSSHKey(instance))
+		c.add(instanceAddress(instance.SSHHost)...)
+		c.add(instance.SSHUsername)
+		c.add(instanceAddress(instance.PublicPeerAddress)...)
+	}
+	return nil
+}
+
+func (s StoreSecrets) indexerSecrets(ctx context.Context, c *secretCollector) error {
+	if s.Indexers == nil {
+		return nil
+	}
+	indexers, err := s.Indexers.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list indexers: %w", err)
+	}
+	for _, indexer := range indexers {
+		c.decrypted(s.Indexers.GetDecryptedAPIKey(indexer))
+		c.decrypted(s.Indexers.GetDecryptedBasicPassword(indexer))
+	}
+	return nil
+}
+
+func (s StoreSecrets) arrSecrets(ctx context.Context, c *secretCollector) error {
+	if s.Arr == nil {
+		return nil
+	}
+	instances, err := s.Arr.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list arr instances: %w", err)
+	}
+	for _, instance := range instances {
+		c.decrypted(s.Arr.GetDecryptedAPIKey(instance))
+		c.decrypted(s.Arr.GetDecryptedBasicPassword(instance))
+	}
+	return nil
+}
+
+func (s StoreSecrets) crossSeedSecrets(ctx context.Context, c *secretCollector) error {
+	if s.CrossSeed == nil {
+		return nil
+	}
+	keys, err := s.CrossSeed.GetStoredGazelleAPIKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("read RED/OPS keys: %w", err)
+	}
+	for _, key := range keys.Keys {
+		c.add(key)
+	}
+	apiKey, pin, err := s.CrossSeed.GetDecryptedSeasonPackTVDBCredentials(ctx)
+	if err != nil && !errors.Is(err, models.ErrUndecryptableCredential) {
+		return fmt.Errorf("read TVDB credentials: %w", err)
+	}
+	// A key that does not decrypt comes back empty, and cannot reach a log line either.
+	c.add(apiKey, pin)
+	return nil
+}
+
+func (s StoreSecrets) keyHashes(ctx context.Context, c *secretCollector) error {
+	if s.APIKeys != nil {
+		keys, err := s.APIKeys.List(ctx)
+		if err != nil {
+			return fmt.Errorf("list API keys: %w", err)
+		}
+		for _, key := range keys {
+			c.secrets.KeyHashes[key.KeyHash] = struct{}{}
+		}
+	}
+	if s.ClientAPIKeys != nil {
+		keys, err := s.ClientAPIKeys.GetAll(ctx)
+		if err != nil {
+			return fmt.Errorf("list client API keys: %w", err)
+		}
+		for _, key := range keys {
+			c.secrets.KeyHashes[key.KeyHash] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func (s StoreSecrets) notificationSecrets(ctx context.Context, c *secretCollector) error {
+	if s.Notifications == nil {
+		return nil
+	}
+	targets, err := s.Notifications.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list notification targets: %w", err)
+	}
+	for _, target := range targets {
+		c.add(notificationURLSecrets(target.URL)...)
+	}
+	return nil
+}
+
+// licenseSecrets adds the license keys. The web app removes a license with
+// its key in the path, so a failed request can hold one.
+func (s StoreSecrets) licenseSecrets(ctx context.Context, c *secretCollector) error {
+	if s.Licenses == nil {
+		return nil
+	}
+	licenses, err := s.Licenses.GetAllLicenses(ctx)
+	if err != nil {
+		return fmt.Errorf("list licenses: %w", err)
+	}
+	for _, license := range licenses {
+		c.add(license.LicenseKey)
+	}
+	return nil
+}
+
+// hostCredentialSchemes are the notification URL schemes whose host is a
+// credential and not a server: the Notifiarr API key, the Pushover user key,
+// the Pushbullet token, the IFTTT webhook key and the WeCom webhook key.
+var hostCredentialSchemes = map[string]bool{
+	"notifiarr": true, "notifiarrapi": true, "pushover": true, "pushbullet": true, "ifttt": true, "wecom": true,
+}
+
+// notificationURLSecrets returns a notification URL and each part of it
+// that can hold a credential, because a text can hold one part alone: the
+// user name and the password, which hold the token of a discord:// or a
+// telegram:// URL, each path segment that is not in urlStructureWords, and
+// the host of a URL whose scheme is in hostCredentialSchemes.
+func notificationURLSecrets(raw string) []string {
+	secrets := []string{raw}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return secrets
+	}
+	if parsed.User != nil {
+		password, _ := parsed.User.Password()
+		secrets = append(secrets, parsed.User.Username(), password)
+	}
+	if hostCredentialSchemes[parsed.Scheme] {
+		secrets = append(secrets, parsed.Host)
+	}
+	for segment := range strings.SplitSeq(parsed.Path, "/") {
+		if !urlStructureWords[strings.ToLower(segment)] {
+			secrets = append(secrets, segment)
+		}
+	}
+	return secrets
+}
+
+// urlStructureWords are the fixed path words of notification URLs. They
+// stay in the report text, so that a text that names them keeps its meaning.
+// Every other path segment can be a credential, such as an ntfy topic.
+var urlStructureWords = map[string]bool{
+	"webhook": true, "webhooks": true, "message": true, "messages": true, "services": true, "notify": true,
+}
+
+// instanceAddress returns the forms of an instance address that a text can
+// hold: the URL, the host with the port, and the host name. A host name with
+// no dot that is no IP address, such as localhost, identifies nobody, so it
+// stays, also as a bare URL such as http://localhost.
+func instanceAddress(host string) []string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return nil
+	}
+	parsed, err := url.Parse(host)
+	if err != nil || parsed.Host == "" {
+		parsed, err = url.Parse("http://" + host)
+		if err != nil {
+			return []string{host}
+		}
+	}
+	name := parsed.Hostname()
+	identifies := net.ParseIP(name) != nil || strings.Contains(name, ".")
+	var forms []string
+	if identifies || parsed.Port() != "" {
+		forms = append(forms, parsed.Host)
+	}
+	if identifies {
+		forms = append(forms, name)
+	}
+	bare := parsed.Port() == "" && parsed.User == nil && strings.Trim(parsed.Path, "/") == "" && parsed.RawQuery == ""
+	if strings.Contains(host, "://") && (identifies || !bare) {
+		forms = append(forms, host, strings.TrimSuffix(host, "/"))
+	}
+	return forms
+}
+
+// apiKeyRegex matches a qui API key: 64 hex characters.
+var apiKeyRegex = regexp.MustCompile(`\b[0-9a-f]{64}\b`)
+
+// licensePathRegex matches a license API path and the segment after it. The
+// web app removes a license with its key in that segment, and qui no longer
+// stores the key once a retry removed it.
+var licensePathRegex = regexp.MustCompile(`/api/license/[^/?#\s"'<>\\]+`)
+
+// licenseRoutes are the fixed words of the license API, which hold no key.
+var licenseRoutes = map[string]bool{"licensed": true, "licenses": true, "activate": true, "validate": true, "refresh": true}
+
+// cleaner removes keys, the stored secrets and the instance addresses from
+// a text part.
+type cleaner struct {
+	// values removes the stored secrets; nil when there is none.
+	values    *strings.Replacer
+	keyHashes map[string]struct{}
+}
+
+func newCleaner(secrets Secrets) cleaner {
+	return cleaner{values: redact.SecretsReplacer(secrets.Values), keyHashes: secrets.KeyHashes}
+}
+
+func (c cleaner) clean(text string) string {
+	if text == "" {
+		return text
+	}
+	if c.values != nil {
+		text = c.values.Replace(text)
+	}
+	if len(c.keyHashes) > 0 {
+		text = apiKeyRegex.ReplaceAllStringFunc(text, func(match string) string {
+			sum := sha256.Sum256([]byte(match))
+			if _, ok := c.keyHashes[hex.EncodeToString(sum[:])]; ok {
+				return "REDACTED"
+			}
+			return match
+		})
+	}
+	text = licensePathRegex.ReplaceAllStringFunc(text, func(match string) string {
+		if segment := strings.TrimPrefix(match, "/api/license/"); licenseRoutes[segment] {
+			return match
+		}
+		return "/api/license/REDACTED"
+	})
+	return redact.Text(text)
+}
+
+func (c cleaner) cleanAll(lines []string) []string {
+	cleaned := make([]string, len(lines))
+	for i, line := range lines {
+		cleaned[i] = c.clean(line)
+	}
+	return cleaned
+}
+
+// cleanValue cleans every string in a decoded JSON value, map keys included.
+func (c cleaner) cleanValue(value any) any {
+	switch v := value.(type) {
+	case string:
+		return c.clean(v)
+	case []any:
+		for i := range v {
+			v[i] = c.cleanValue(v[i])
+		}
+		return v
+	case map[string]any:
+		cleaned := make(map[string]any, len(v))
+		for key, item := range v {
+			cleaned[c.clean(key)] = c.cleanValue(item)
+		}
+		return cleaned
+	default:
+		return value
+	}
+}

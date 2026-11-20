@@ -77,6 +77,8 @@ const (
 // AddFacts are what a caller knows about one cross-seed add. A caller can ask
 // for the Add verdict early with the facts it has so far.
 type AddFacts struct {
+	// MappedFiles have a retained complete source-to-target file correspondence.
+	MappedFiles bool
 	// PendingFiles is set when some source files are not on disk.
 	PendingFiles bool
 	// Align is set when the caller renames files to the matched torrent after the add.
@@ -173,6 +175,10 @@ func (f AddFacts) exactInPlace() bool {
 	return f.ExactMatch && !f.Align && !f.PendingFiles
 }
 
+func (f AddFacts) alignmentPauses() bool {
+	return (f.Align && (f.MappedFiles || f.DirScan)) || (f.SkipRecheck && f.RenameOnly)
+}
+
 // Verdict makes the Add verdict from the facts. A later fact only adds a
 // reason for a refusal or a recheck, except for the link-fallback rule and pool
 // membership. A pool member skips Settle, because its partial pool resumes it.
@@ -205,8 +211,9 @@ func (f AddFacts) Verdict() AddVerdict {
 
 	v := AddVerdict{
 		// A rename-only add with Skip recheck on must not run before its renames land.
-		// Dir Scan renames the paths of an alignment before qBittorrent uses them.
-		paused: !f.StartRunning || verify || disc || linkRecheck || (f.SkipRecheck && f.RenameOnly) || (f.DirScan && f.Align),
+		// Dir Scan and a mapped-file add rename the paths of an alignment before
+		// qBittorrent uses them.
+		paused: !f.StartRunning || verify || disc || linkRecheck || f.alignmentPauses(),
 		// qBittorrent blocks renames while it checks a torrent, so an add that aligns
 		// skips the check and Settle rechecks after the renames.
 		skipChecking: !f.PendingFiles || f.Align,
@@ -236,7 +243,7 @@ func (f AddFacts) Verdict() AddVerdict {
 	case dirScanPendingTree:
 		// Download missing files lets the tree fetch its Pending files, also for a disc layout.
 		v.gate = GateAfterRecheck
-	case disc || linkRecheck || f.DirScan:
+	case disc || linkRecheck || f.DirScan || (f.MappedFiles && !f.LinkTree && !f.ReflinkAdd):
 		v.gate = GateComplete
 	default:
 		v.gate = GateBudget

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"github.com/autobrr/qui/internal/clientmigrate"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/dodo"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/experimental"
@@ -56,6 +58,7 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peeraddress"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
+	"github.com/autobrr/qui/internal/services/problemreport"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/share"
 	"github.com/autobrr/qui/internal/services/sharetracker"
@@ -655,6 +658,10 @@ func (app *Application) runServer() {
 	logExclusionsStore := models.NewLogExclusionsStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
+	problemReportStore, err := models.NewProblemReportStore(db, encryptionKey)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize problem report store")
+	}
 	externalProgramStore := models.NewExternalProgramStore(db)
 	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
@@ -1006,6 +1013,42 @@ func (app *Application) runServer() {
 		BinaryPath: updateInputs.BinaryPath,
 	})
 
+	startedAt := time.Now().UTC()
+	problemReports := problemreport.NewService(cfg.Config.ProblemReportsURL, &http.Client{}, problemReportStore, problemreport.Sources{
+		Qui: func() problemreport.QuiFacts {
+			return problemreport.QuiFacts{
+				Version:              buildinfo.Version,
+				Commit:               buildinfo.Commit,
+				StartedAt:            startedAt,
+				OS:                   runtime.GOOS,
+				Arch:                 runtime.GOARCH,
+				AppContainer:         updateInputs.AppContainer,
+				Database:             dbinterface.DialectOf(db),
+				LogLevel:             cfg.Config.LogLevel,
+				ExperimentalFeatures: experimentalFeatures.Names(),
+			}
+		},
+		Instances: instanceStore,
+		Pool:      clientPool,
+		Notices:   systemNotices,
+		Logs:      cfg.GetLogManager().GetHub(),
+		Releases:  updateService,
+		Search:    crossSeedService,
+		Secrets: problemreport.StoreSecrets{
+			Instances:     instanceStore,
+			Indexers:      torznabIndexerStore,
+			Arr:           arrInstanceStore,
+			CrossSeed:     crossSeedStore,
+			APIKeys:       models.NewAPIKeyStore(db),
+			ClientAPIKeys: clientAPIKeyStore,
+			Notifications: notificationTargetStore,
+			Licenses:      licenseRepo,
+			Config: func() []string {
+				return problemreport.ConfigSecrets(cfg.Config)
+			},
+		},
+	})
+
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
 		Config:                           cfg,
@@ -1058,6 +1101,8 @@ func (app *Application) runServer() {
 		LiveSamples:                      liveSamples,
 		SystemNotices:                    systemNotices,
 		DatabaseShrink:                   databaseShrink,
+		ProblemReports:                   problemReports,
+		StartedAt:                        startedAt,
 		BackendPool:                      backendPool,
 		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,

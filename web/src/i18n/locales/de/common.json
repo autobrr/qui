@@ -34,6 +34,113 @@
     "collapseToIcons": "Auf Symbole reduzieren",
     "expandSidebar": "Sidebar ausklappen"
   },
+  "problemReports": {
+    "reportProblem": "Problem melden",
+    "subtitle": "Deine Meldung geht an die qui-Maintainer.",
+    "textLabel": "Deine Meldung",
+    "placeholders": {
+      "menu": "Was ist passiert und was hast du erwartet?",
+      "notice": "Was hast du getan, als das passiert ist?",
+      "search": "Welchen Treffer hast du erwartet und auf welchem Indexer?"
+    },
+    "sentWithIt": "Wird mitgesendet",
+    "summary_one": "qui {{version}} und {{count}} Instanz",
+    "summary_other": "qui {{version}} und {{count}} Instanzen",
+    "details": "Details",
+    "view": "Anzeigen",
+    "whatGetsSent": "Was gesendet wird",
+    "whatGetsSentNote": "qui füllt dies aus. Nichts verlässt qui, bis du die Meldung sendest.",
+    "loadingFacts": "Berichtsdetails werden geladen...",
+    "factsFailed": "Berichtsdetails konnten nicht geladen werden: {{message}}",
+    "facts": {
+      "version": "Version",
+      "system": "System",
+      "appContainer": "Im Container",
+      "database": "Datenbank",
+      "logLevel": "Log-Level",
+      "started": "Gestartet",
+      "experimentalFeatures": "Experimentell",
+      "instance": "Instanz {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "unbekannt",
+      "states": {
+        "connected": "Verbunden",
+        "offline": "Offline",
+        "disabled": "Deaktiviert"
+      },
+      "torrentCount_one": "{{count}} Torrent",
+      "torrentCount_other": "{{count}} Torrents",
+      "notices": "Systemhinweise",
+      "openCount_one": "{{count}} offen",
+      "openCount_other": "{{count}} offen",
+      "page": "Seite",
+      "browser": "Browser",
+      "screen": "{{width}} × {{height}}, Pixelverhältnis {{ratio}}",
+      "failedRequests": "Fehlgeschlagene Anfragen",
+      "failedCount_one": "{{count}} in dieser Sitzung",
+      "failedCount_other": "{{count}} in dieser Sitzung",
+      "noAnswer": "keine Antwort",
+      "none": "Keine"
+    },
+    "logs": {
+      "title": "Protokolle",
+      "scopeLabel": "Einzuschließende Logzeilen",
+      "scopes": {
+        "warnings": "Warnungen und Fehler",
+        "all": "Alles Aktuelle",
+        "none": "Weglassen"
+      },
+      "notes": {
+        "warnings_one": "{{count}} aktuelle Warnung oder Fehler. qui entfernt Schlüssel und Geheimnisse.",
+        "warnings_other": "{{count}} aktuelle Warnungen und Fehler. qui entfernt Schlüssel und Geheimnisse.",
+        "all_one": "{{count}} aktuelle Zeile auf Log-Level {{level}}. qui entfernt Schlüssel und Geheimnisse.",
+        "all_other": "{{count}} aktuelle Zeilen auf Log-Level {{level}}. qui entfernt Schlüssel und Geheimnisse.",
+        "none": "Es werden keine Logzeilen mit deiner Meldung gesendet."
+      },
+      "empty": "Keine Logzeilen.",
+      "debugMissing": "Das Log-Level ist {{level}}, daher zeichnet qui keine Debug-Zeilen auf. Um sie einzuschließen, setze Log-Level unter Einstellungen > Protokolle auf DEBUG, stelle das Problem nach und melde es erneut."
+    },
+    "privacy": {
+      "anonymous": "Anonym: kein Name, kein Konto. brrbin speichert keine IP-Adresse.",
+      "link": "Datenschutz"
+    },
+    "newerRelease": "Du nutzt {{running}}. <release>{{newer}}</release> ist verfügbar.",
+    "send": "Senden",
+    "sendAnyway": "Trotzdem senden",
+    "sending": "Wird gesendet",
+    "sent": "Meldung gesendet",
+    "errors": {
+      "anonymousFull": {
+        "title": "Anonyme Meldungen sind für heute voll",
+        "body": "Melde dich an, um jetzt zu senden, oder versuche es morgen erneut. Dein Text bleibt hier als Entwurf."
+      },
+      "signInRequired": "Melde dich an, um diese Meldung zu senden. Dein Text bleibt hier als Entwurf.",
+      "accountLimit": "Du hast in der letzten Stunde viele Meldungen gesendet. Versuche es später erneut.",
+      "reporterFull": "Deine Meldungen belegen den ganzen Platz, den brrbin einer Person gibt. Lösche eine alte Meldung unter Gesendete Meldungen und sende dann erneut.",
+      "tooLarge": "Die Meldung ist zu groß. Wähle weniger Logzeilen oder ein kleineres Bild.",
+      "tokenRejected": "Deine Anmeldung ist abgelaufen. Melde dich erneut an und sende dann.",
+      "unavailable": "brrbin kann gerade keine Meldungen annehmen. Versuche es später erneut.",
+      "sendFailed": "Die Meldung konnte nicht gesendet werden: {{message}}"
+    },
+    "sentReports": {
+      "title": "Gesendete Meldungen",
+      "subtitle": "qui prüft den Status der Meldungen jedes Mal, wenn du diese Liste öffnest.",
+      "changed_one": "{{count}} Status geändert",
+      "changed_other": "{{count}} Status geändert",
+      "status": {
+        "received": "Eingegangen",
+        "issue": "Wurde zu Issue #{{number}}",
+        "issueClosed": "Issue #{{number}} geschlossen",
+        "closed": "Geschlossen: {{reason}}",
+        "closedNoReason": "Geschlossen"
+      },
+      "delete": "Meldung löschen",
+      "deleteUnavailable": "brrbin kann gerade keine Meldungen löschen. Versuche es später erneut.",
+      "deleteFailed": "Die Meldung konnte nicht gelöscht werden: {{message}}",
+      "empty": "Keine gesendeten Meldungen.",
+      "back": "Zurück zur Meldung"
+    }
+  },
   "header": {
     "currentInstance": "Aktuelle Instanz: {{name}}. Zum Wechseln der Instanz klicken.",
     "connected": "Verbunden",

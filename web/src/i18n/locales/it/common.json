@@ -34,6 +34,113 @@
     "collapseToIcons": "Riduci a icone",
     "expandSidebar": "Espandi barra laterale"
   },
+  "problemReports": {
+    "reportProblem": "Segnala un problema",
+    "subtitle": "La tua segnalazione va ai maintainer di qui.",
+    "textLabel": "La tua segnalazione",
+    "placeholders": {
+      "menu": "Cosa è successo e cosa ti aspettavi?",
+      "notice": "Cosa stavi facendo quando è successo?",
+      "search": "Quale corrispondenza ti aspettavi e su quale indexer?"
+    },
+    "sentWithIt": "Incluso nella segnalazione",
+    "summary_one": "qui {{version}} e {{count}} istanza",
+    "summary_other": "qui {{version}} e {{count}} istanze",
+    "details": "Dettagli",
+    "view": "Visualizza",
+    "whatGetsSent": "Cosa viene inviato",
+    "whatGetsSentNote": "qui compila questi dati. Nulla lascia qui finché non invii la segnalazione.",
+    "loadingFacts": "Caricamento dei dettagli...",
+    "factsFailed": "Impossibile caricare i dettagli: {{message}}",
+    "facts": {
+      "version": "Versione",
+      "system": "Sistema",
+      "appContainer": "In un container",
+      "database": "Database",
+      "logLevel": "Livello di log",
+      "started": "Avviato",
+      "experimentalFeatures": "Sperimentali",
+      "instance": "Istanza {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "sconosciuta",
+      "states": {
+        "connected": "Connesso",
+        "offline": "Offline",
+        "disabled": "Disabilitato"
+      },
+      "torrentCount_one": "{{count}} torrent",
+      "torrentCount_other": "{{count}} torrent",
+      "notices": "Avvisi di sistema",
+      "openCount_one": "{{count}} aperto",
+      "openCount_other": "{{count}} aperti",
+      "page": "Pagina",
+      "browser": "Browser",
+      "screen": "{{width}} × {{height}}, rapporto pixel {{ratio}}",
+      "failedRequests": "Richieste non riuscite",
+      "failedCount_one": "{{count}} in questa sessione",
+      "failedCount_other": "{{count}} in questa sessione",
+      "noAnswer": "nessuna risposta",
+      "none": "Nessuno"
+    },
+    "logs": {
+      "title": "Log",
+      "scopeLabel": "Righe di log da includere",
+      "scopes": {
+        "warnings": "Avvisi ed errori",
+        "all": "Tutto ciò che è recente",
+        "none": "Escludi"
+      },
+      "notes": {
+        "warnings_one": "{{count}} avviso o errore recente. qui rimuove chiavi e segreti.",
+        "warnings_other": "{{count}} avvisi ed errori recenti. qui rimuove chiavi e segreti.",
+        "all_one": "{{count}} riga recente al livello di log {{level}}. qui rimuove chiavi e segreti.",
+        "all_other": "{{count}} righe recenti al livello di log {{level}}. qui rimuove chiavi e segreti.",
+        "none": "Nessuna riga di log accompagna la tua segnalazione."
+      },
+      "empty": "Nessuna riga di log.",
+      "debugMissing": "Il livello di log è {{level}}, quindi qui non registra le righe di debug. Per includerle, imposta Livello di log su DEBUG in Impostazioni > Log, riproduci il problema e invia di nuovo."
+    },
+    "privacy": {
+      "anonymous": "Anonimo: nessun nome, nessun account. brrbin non conserva alcun indirizzo IP.",
+      "link": "Informativa sulla privacy"
+    },
+    "newerRelease": "Stai usando {{running}}. È disponibile <release>{{newer}}</release>.",
+    "send": "Invia",
+    "sendAnyway": "Invia comunque",
+    "sending": "Invio in corso",
+    "sent": "Segnalazione inviata",
+    "errors": {
+      "anonymousFull": {
+        "title": "Le segnalazioni anonime di oggi sono esaurite",
+        "body": "Accedi per inviarla ora, o riprova domani. Il tuo testo resta qui come bozza."
+      },
+      "signInRequired": "Accedi per inviare questa segnalazione. Il tuo testo resta qui come bozza.",
+      "accountLimit": "Hai inviato molte segnalazioni nell'ultima ora. Riprova più tardi.",
+      "reporterFull": "Le tue segnalazioni occupano tutto lo spazio che brrbin dà a una persona. Elimina una vecchia segnalazione in Segnalazioni inviate, poi invia di nuovo.",
+      "tooLarge": "La segnalazione è troppo grande. Scegli meno righe di log o un'immagine più piccola.",
+      "tokenRejected": "Il tuo accesso è scaduto. Accedi di nuovo, poi invia.",
+      "unavailable": "brrbin non può ricevere segnalazioni in questo momento. Riprova più tardi.",
+      "sendFailed": "Impossibile inviare la segnalazione: {{message}}"
+    },
+    "sentReports": {
+      "title": "Segnalazioni inviate",
+      "subtitle": "qui controlla lo stato delle segnalazioni ogni volta che apri questo elenco.",
+      "changed_one": "{{count}} stato cambiato",
+      "changed_other": "{{count}} stati cambiati",
+      "status": {
+        "received": "Ricevuta",
+        "issue": "Diventata issue #{{number}}",
+        "issueClosed": "Issue #{{number}} chiusa",
+        "closed": "Chiusa: {{reason}}",
+        "closedNoReason": "Chiusa"
+      },
+      "delete": "Elimina segnalazione",
+      "deleteUnavailable": "brrbin non può eliminare segnalazioni in questo momento. Riprova più tardi.",
+      "deleteFailed": "Impossibile eliminare la segnalazione: {{message}}",
+      "empty": "Nessuna segnalazione inviata.",
+      "back": "Torna alla segnalazione"
+    }
+  },
   "header": {
     "currentInstance": "Istanza attuale: {{name}}. Clicca per cambiare istanza.",
     "connected": "Connesso",

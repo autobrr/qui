@@ -275,19 +275,7 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 				settings:        service.GetAutomationSettings,
 				partialPoolWake: make(chan partialPoolWake, 1),
 			}
-			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
-			if mode == models.CrossSeedPartialPoolModeReflink {
-				service.reflinkMaterializer = func(_ context.Context, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-					created := &fsops.TreeCreateResult{}
-					for _, file := range plan.Files {
-						require.NoError(t, os.MkdirAll(filepath.Dir(file.TargetPath), 0o755))
-						require.NoError(t, os.WriteFile(file.TargetPath, bytes.Repeat([]byte("x"), 1000), 0o600))
-						created.Files = append(created.Files, file.TargetPath)
-					}
-					created.Created = len(created.Files)
-					return created, nil
-				}
-			}
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, reflinkCapableBackend{local.NewBackend()}))
 
 			candidate := CrossSeedCandidate{InstanceID: instanceID, InstanceName: "partial-pool"}
 			req := &CrossSeedRequest{}
@@ -510,19 +498,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 				},
 			}
 			service.partialPool = &partialPoolCoordinator{automationStore: store, syncManager: sync, settings: service.GetAutomationSettings}
-			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
-			if mode == models.CrossSeedPartialPoolModeReflink {
-				service.reflinkMaterializer = func(_ context.Context, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-					created := &fsops.TreeCreateResult{}
-					for _, file := range plan.Files {
-						require.NoError(t, os.MkdirAll(filepath.Dir(file.TargetPath), 0o755))
-						require.NoError(t, os.WriteFile(file.TargetPath, bytes.Repeat([]byte("x"), 1000), 0o600))
-						created.Files = append(created.Files, file.TargetPath)
-					}
-					created.Created = len(created.Files)
-					return created, nil
-				}
-			}
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, reflinkCapableBackend{local.NewBackend()}))
 
 			previousLogger := log.Logger
 			var logs bytes.Buffer
