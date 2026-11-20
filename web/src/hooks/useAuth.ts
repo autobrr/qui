@@ -9,18 +9,13 @@ import type { User } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 
-/**
- * Set once the first account exists, so Setup's route guard does not navigate
- * over the post-setup destination. Session storage survives the redirect but
- * not a browser restart, which is where the marker should end.
- */
 export const SETUP_COMPLETED_KEY = "qui-setup-completed"
 
 export function markSetupCompleted(): void {
   try {
     sessionStorage.setItem(SETUP_COMPLETED_KEY, "1")
   } catch {
-    // Storage can be unavailable in some embedded browsers; the post-setup navigation still runs.
+    return
   }
 }
 
@@ -52,8 +47,6 @@ export function useAuth() {
       api.setup(username, password),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
-      // Both entry points cache `setup-required` for the process lifetime, so
-      // a later visit to either route must see that the first account exists.
       queryClient.setQueryData(["setup-required"], false)
       queryClient.setQueryData(["setup-required-page"], false)
       queryClient.invalidateQueries({ queryKey: ["setup-required"] })
