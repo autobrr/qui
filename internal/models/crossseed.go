@@ -740,6 +740,16 @@ type GazelleAPIKeys struct {
 // GetDecryptedGazelleAPIKeys returns the RED/OPS switch and, when it is on,
 // the stored RED and OPS keys by name.
 func (s *CrossSeedStore) GetDecryptedGazelleAPIKeys(ctx context.Context) (GazelleAPIKeys, error) {
+	return s.gazelleAPIKeys(ctx, false)
+}
+
+// GetStoredGazelleAPIKeys returns the RED/OPS switch and the stored RED and
+// OPS keys by name, also while the switch is off.
+func (s *CrossSeedStore) GetStoredGazelleAPIKeys(ctx context.Context) (GazelleAPIKeys, error) {
+	return s.gazelleAPIKeys(ctx, true)
+}
+
+func (s *CrossSeedStore) gazelleAPIKeys(ctx context.Context, evenWhenOff bool) (GazelleAPIKeys, error) {
 	var enabled int
 	var redacted, orpheus sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted FROM cross_seed_settings WHERE id = 1`).
@@ -751,7 +761,7 @@ func (s *CrossSeedStore) GetDecryptedGazelleAPIKeys(ctx context.Context) (Gazell
 		return GazelleAPIKeys{}, err
 	}
 	keys := GazelleAPIKeys{Enabled: SQLiteIntToBool(enabled), Keys: map[string]string{}, Errs: map[string]error{}}
-	if !keys.Enabled {
+	if !keys.Enabled && !evenWhenOff {
 		return keys, nil
 	}
 	for name, encrypted := range map[string]sql.NullString{GazelleKeyRedacted: redacted, GazelleKeyOrpheus: orpheus} {
@@ -767,6 +777,10 @@ func (s *CrossSeedStore) GetDecryptedGazelleAPIKeys(ctx context.Context) (Gazell
 	}
 	return keys, nil
 }
+
+// ErrUndecryptableCredential reports a stored credential that does not
+// decrypt, most likely because sessionSecret changed.
+var ErrUndecryptableCredential = errors.New("stored credential does not decrypt")
 
 // GetDecryptedSeasonPackTVDBCredentials returns the decrypted TVDB API key and PIN
 // for season pack metadata resolution.
@@ -785,7 +799,7 @@ func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Conte
 	if keyEnc.Valid && strings.TrimSpace(keyEnc.String) != "" {
 		apiKey, err = s.decrypt(keyEnc.String)
 		if err != nil {
-			return "", "", fmt.Errorf("decrypt tvdb api key: %w", err)
+			return "", "", fmt.Errorf("decrypt tvdb api key: %w: %w", ErrUndecryptableCredential, err)
 		}
 	}
 	if pinEnc.Valid && strings.TrimSpace(pinEnc.String) != "" {

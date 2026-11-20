@@ -51,6 +51,8 @@ type Config struct {
 	QbittorrentTimeout       int    `toml:"qbittorrentTimeout" mapstructure:"qbittorrentTimeout"`
 	CheckForUpdates          bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
 	DisableSelfUpdate        bool   `toml:"disableSelfUpdate" mapstructure:"disableSelfUpdate"`
+	ProblemReports           bool   `toml:"problemReports" mapstructure:"problemReports"`
+	ProblemReportsURL        string `toml:"problemReportsURL" mapstructure:"problemReportsURL"`
 	PprofEnabled             bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
 	PprofAddr                string `toml:"pprofAddr" mapstructure:"pprofAddr"`
 	MetricsEnabled           bool   `toml:"metricsEnabled" mapstructure:"metricsEnabled"`

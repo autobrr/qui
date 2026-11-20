@@ -7297,6 +7297,167 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
 
+  /api/problem-reports/facts:
+    get:
+      tags:
+        - Problem Reports
+      summary: Read the facts of a Problem report
+      description: >-
+        Returns what qui's server adds to a Problem report: facts about qui and each instance, the open System
+        notices, the log lines, and for a search the Match policy and the Search scope. qui removes keys, stored
+        secrets, and instance addresses and user names from every text part. The route contacts no outside service.
+        It answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false
+        in the config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: startedFrom
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [menu, notice, search]
+          description: Where the report starts.
+        - name: instanceId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: The instance of the searched torrent. Required for a search.
+        - name: hash
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The hash of the searched torrent. Required for a search.
+        - name: indexerIds
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The comma-separated Torznab indexer IDs of the search. Empty means every enabled indexer.
+        - name: gazelleSites
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The comma-separated RED/OPS sites of the search. Present and empty means none.
+        - name: findIndividualEpisodes
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Whether the search looked for individual episodes.
+      responses:
+        '200':
+          description: The cleaned facts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemReportFacts'
+        '400':
+          description: startedFrom is unknown, or a search names no instance or torrent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+        '500':
+          description: Failed to read the facts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/problem-reports:
+    post:
+      tags:
+        - Problem Reports
+      summary: Send a Problem report
+      description: >-
+        Sends one Problem report to brrbin. qui cleans every text part again, cuts the oldest log lines when the report
+        is over 4 MiB, adds the Install key and the sign-in, and stores a Sent reports row when brrbin takes the report.
+        A second Send with the same submissionId stores no second row. Only a signed-in Sender can attach an image. It
+        answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in the
+        config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - report
+              properties:
+                report:
+                  type: string
+                  description: The report as JSON, with submissionId, text, startedFrom, the facts, browser, failedRequests, logs, and for a search search, matchPolicy, and searchScope.
+                image:
+                  type: string
+                  format: binary
+                  description: A PNG, JPEG, or WebP image of at most 10 MiB.
+            encoding:
+              report:
+                contentType: application/json
+      responses:
+        '201':
+          description: brrbin took the report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SentProblemReport'
+        '400':
+          description: The body is invalid, or an anonymous Sender attached an image
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Problem reports are off in the qui config, or brrbin wants a sign-in (sign_in_required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+        '409':
+          description: The Reporter is full (reporter_full), or brrbin refused the token (token_rejected) and the Sender is anonymous again
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: The report or the image is too large (too_large)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: brrbin takes no more reports for now (anonymous_full or account_limit)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to build or store the report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: brrbin did not answer, or answered with an error (unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/shares:
     post:
       tags:
@@ -8702,9 +8863,10 @@ components:
         API key for authentication. Browser-only routes refuse every API key with
         403 "API key not allowed; use the web UI": API key and client API key
         management, system update and restart, instance SSH credential and host-key
-        routes, change password, logout, license routes, and external program
-        create, update, and delete. When authentication is disabled, qui ignores
-        API keys and these routes accept the request.
+        routes, change password, logout, license routes, external program
+        create, update, and delete, and the Problem report routes. When
+        authentication is disabled, qui ignores API keys and these routes
+        accept the request.
     ApiKeyQuery:
       type: apiKey
       in: query
@@ -10658,6 +10820,7 @@ components:
         - checkForUpdates
         - database
         - experimentalFeatures
+        - problemReports
       properties:
         version:
           type: string
@@ -10724,6 +10887,177 @@ components:
           description: The Experimental features that are on. Empty when none is on.
           items:
             type: string
+        problemReports:
+          type: boolean
+          description: Whether `problemReports` is true in the config. The Problem report routes answer 403 while it is false.
+
+    ProblemReportFacts:
+      type: object
+      description: What qui's server adds to a Problem report, with every text part cleaned
+      required: [qui, instances, notices, logs]
+      properties:
+        qui:
+          type: object
+          required: [version, startedAt, os, arch, appContainer, database, logLevel, experimentalFeatures]
+          properties:
+            version:
+              type: string
+            commit:
+              type: string
+            startedAt:
+              type: string
+              format: date-time
+            newerRelease:
+              type: object
+              description: The release that qui's update check found. Absent when qui runs the latest release.
+              required: [version, url]
+              properties:
+                version:
+                  type: string
+                url:
+                  type: string
+            os:
+              type: string
+            arch:
+              type: string
+            appContainer:
+              type: boolean
+            database:
+              type: string
+              enum: [sqlite, postgres]
+            logLevel:
+              type: string
+            experimentalFeatures:
+              type: array
+              items:
+                type: string
+        instances:
+          type: array
+          items:
+            type: object
+            required: [state]
+            properties:
+              qbittorrentVersion:
+                type: string
+              libtorrentVersion:
+                type: string
+              state:
+                type: string
+                enum: [connected, offline, disabled]
+              torrentCount:
+                type: integer
+                description: Absent when qui holds no torrent list for the instance
+        notices:
+          type: array
+          items:
+            $ref: '#/components/schemas/SystemNotice'
+        logs:
+          type: object
+          required: [warnings, all]
+          properties:
+            warnings:
+              type: array
+              description: The last 200 warning and error lines
+              items:
+                type: string
+            all:
+              type: array
+              description: Every line in the log buffer
+              items:
+                type: string
+        matchPolicy:
+          type: object
+          description: The rules of the search match. Present only for a search.
+          required: [titleRescue, individualEpisodes, sizeTolerancePercent, allowMissingCandidateGroup, skipSizeCheck, seasonPack]
+          properties:
+            titleRescue:
+              type: boolean
+            individualEpisodes:
+              type: boolean
+            sizeTolerancePercent:
+              type: number
+            allowMissingCandidateGroup:
+              type: boolean
+            skipSizeCheck:
+              type: boolean
+            seasonPack:
+              type: object
+              required: [skipRepackCompare, simplifyHdrCompare, simplifyWebCompare, skipYearCompare]
+              properties:
+                skipRepackCompare:
+                  type: boolean
+                simplifyHdrCompare:
+                  type: boolean
+                simplifyWebCompare:
+                  type: boolean
+                skipYearCompare:
+                  type: boolean
+        searchScope:
+          type: object
+          description: The Torznab indexers and RED/OPS sites that the search asks, and why it skips each other one. Present only for a search.
+          required: [torznabIndexers, torznabSkipped, gazelleSites]
+          properties:
+            torznabIndexers:
+              type: array
+              description: The Torznab indexers that the search asks
+              items:
+                $ref: '#/components/schemas/ProblemReportIndexer'
+            torznabSkipped:
+              type: array
+              description: The other requested Torznab indexers, each with the reason the search skips it
+              items:
+                $ref: '#/components/schemas/ProblemReportIndexer'
+            torznabSkipReason:
+              type: string
+              description: Why the search asks no Torznab indexer
+            gazelleSites:
+              type: array
+              items:
+                type: object
+                required: [site, status]
+                properties:
+                  site:
+                    type: string
+                  status:
+                    type: string
+                    enum: [will_ask, match, no_match, not_asked, failed]
+                  reason:
+                    type: string
+                    enum: [disabled, no_api_key, cooldown, not_selected, source_site, already_seeded, not_music, key_rejected, timed_out, error]
+
+    ProblemReportIndexer:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        reason:
+          type: string
+          description: Why the search skips the indexer
+
+    SentProblemReport:
+      type: object
+      required: [id, submissionId, title, sentAt, status, text]
+      properties:
+        id:
+          type: string
+          description: The brrbin id of the report
+        submissionId:
+          type: string
+        title:
+          type: string
+          description: The first line of the text, at most 80 characters
+        sentAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [received]
+        text:
+          type: string
+          description: The text as qui sent it, after cleaning
 
     VersionResponse:
       type: object
@@ -13919,6 +14253,8 @@ tags:
     description: The upload and download that qui recorded for each instance
   - name: Transfers
     description: Moves of a torrent and its files from one instance to another
+  - name: Problem Reports
+    description: Sending a description of a problem, with facts about qui, to brrbin
   - name: Shares
     description: Giving the files of one torrent to someone whose client qui does not manage
   - name: Disc Scans

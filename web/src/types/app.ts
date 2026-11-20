@@ -11,7 +11,7 @@ export interface ApplicationDatabaseInfo {
 }
 
 /** The names of the Experimental features that qui knows. Mirrors `known` in internal/experimental/experimental.go. */
-export type ExperimentalFeature = never
+export type ExperimentalFeature = "problemReports"
 
 export interface ApplicationInfo {
   version: string
@@ -35,6 +35,7 @@ export interface ApplicationInfo {
   checkForUpdates: boolean
   database: ApplicationDatabaseInfo
   experimentalFeatures: ExperimentalFeature[]
+  problemReports: boolean
 }
 
 export interface VersionInfo {

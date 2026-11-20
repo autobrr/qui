@@ -68,6 +68,24 @@ func (s *Service) searchUsablePredicate(base searchCandidateInput) func(jackett.
 
 // SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
 func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
+	search, err := s.prepareManualSearch(ctx, instanceID, hash, opts)
+	if err != nil {
+		return nil, err
+	}
+	return s.searchSourceMatches(ctx, search.instance, search.source, search.opts, search.scope, search.gazelleClients)
+}
+
+// manualSearch is what a manual search of one torrent reads before it asks
+// any indexer.
+type manualSearch struct {
+	opts           TorrentSearchOptions
+	gazelleClients *gazelleClientSet
+	instance       *models.Instance
+	source         *qbt.Torrent
+	scope          searchScope
+}
+
+func (s *Service) prepareManualSearch(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*manualSearch, error) {
 	settings, settingsErr := s.GetAutomationSettings(ctx)
 	opts.RescueTitleMismatches = false
 	if settingsErr != nil {
@@ -98,12 +116,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	if scope.err != nil {
 		return nil, scope.err
 	}
-
-	resp, err := s.searchSourceMatches(ctx, instance, sourceTorrent, opts, scope, gazelleClients)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
+	return &manualSearch{opts: opts, gazelleClients: gazelleClients, instance: instance, source: sourceTorrent, scope: scope}, nil
 }
 
 // loadSearchSource loads the instance and the complete torrent that a search

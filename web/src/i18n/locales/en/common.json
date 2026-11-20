@@ -34,6 +34,27 @@
     "collapseToIcons": "Collapse to icons",
     "expandSidebar": "Expand sidebar"
   },
+  "problemReports": {
+    "reportProblem": "Report a problem",
+    "description": "Describe the problem. qui adds the facts below, removes secrets, and sends the report to the qui maintainers.",
+    "textLabel": "What went wrong?",
+    "factsLabel": "Facts that qui adds",
+    "loadingFacts": "Loading the facts...",
+    "factsFailed": "Could not load the facts: {{message}}",
+    "send": "Send",
+    "sending": "Sending...",
+    "sent": "Report sent",
+    "errors": {
+      "anonymousFull": "Anonymous reports are full for today. Sign in to send now, or try again tomorrow.",
+      "signInRequired": "Sign in to send this report.",
+      "accountLimit": "You sent many reports in the last hour. Try again later.",
+      "reporterFull": "Your reports use all the room brrbin gives one person. Delete an old report in Sent reports, then send again.",
+      "tooLarge": "The report is too large. Pick fewer log lines or a smaller image.",
+      "tokenRejected": "Your sign-in ended. Sign in again, then send.",
+      "unavailable": "brrbin cannot take reports right now. Try again later.",
+      "sendFailed": "Could not send the report: {{message}}"
+    }
+  },
   "header": {
     "currentInstance": "Current instance: {{name}}. Click to switch instances.",
     "connected": "Connected",

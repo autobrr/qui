@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { NAV_ITEMS } from "@/components/layout/navigation"
+import { ProblemReportButton, ProblemReportDialog, ProblemReportMenuItem } from "@/components/problem-reports/ProblemReportDialog"
 import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { Logo } from "@/components/ui/Logo"
@@ -56,7 +57,7 @@ import {
   Rss,
   SearchCode
 } from "lucide-react"
-import { useCallback, useMemo, type ReactElement, type ReactNode } from "react"
+import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 const rowClassName = "relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm font-medium short:py-1 short:text-[13px]/5"
@@ -89,6 +90,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
   const { theme } = useTheme()
   const transferQueue = useTransferQueue()
   const settingsSettled = useClientSettingsSettled()
+  const [problemReportOpen, setProblemReportOpen] = useState(false)
 
   const { data: instances } = useQuery({
     queryKey: ["instances"],
@@ -403,8 +405,9 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
 
         {/* The row is the same in both modes, so nothing above it moves. */}
         <div className={cn("relative flex items-center justify-between pl-3", iconOnly && "w-58")}>
-          <div className={cn("flex flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none whitespace-nowrap", swapClassName(!iconOnly))}>
-            <span className="font-medium text-sidebar-foreground/50">{t("sidebar.version", { version: appVersion })}</span>
+          {/* A long dev version truncates, so the footer buttons stay inside the sidebar. */}
+          <div className={cn("flex min-w-0 flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none whitespace-nowrap", swapClassName(!iconOnly))}>
+            <span className="truncate font-medium text-sidebar-foreground/50" title={appVersion}>{t("sidebar.version", { version: appVersion })}</span>
             <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />
               <span>{new Date().getFullYear()} autobrr</span>
@@ -447,6 +450,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
                   {t("sidebar.viewOnGitHub")}
                 </a>
               </DropdownMenuItem>
+              <ProblemReportMenuItem onOpen={() => setProblemReportOpen(true)} />
               {!isDemo && (
                 <DropdownMenuItem onClick={() => logout()}>
                   <LogOut className="h-4 w-4" />
@@ -455,7 +459,8 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <div inert={iconOnly} className={cn("flex items-center gap-0.5", labelClassName)}>
+          <div inert={iconOnly} className={cn("flex shrink-0 items-center gap-0.5", labelClassName)}>
+            <ProblemReportButton className={footerButtonClassName} onOpen={() => setProblemReportOpen(true)} />
             <DropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -514,6 +519,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
           </div>
         </div>
       </div>
+      <ProblemReportDialog open={problemReportOpen} onOpenChange={setProblemReportOpen} />
     </div>
   )
 }

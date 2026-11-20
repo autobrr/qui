@@ -9,7 +9,7 @@ A report is triaged by the rules of Discussions triage in `docs/agents/triage.md
 1. Run `brrbin reports list --status received --json` for the reports to triage. It needs a maintainer sign-in, as "Log links" in `docs/agents/issue-tracker.md` describes.
 2. Run `brrbin reports fetch <id>`. It writes the report files to `~/.cache/brrbin/<id>/` and prints the paths. Read every file.
 
-A report holds the facts that triage otherwise asks for: the qui version, the OS, the database, the Log level, each instance's qBittorrent and libtorrent versions and state, the open System notices, the page and browser, the requests that failed, and the log lines of the scope that the reporter picked. A report from "Report this search" also holds the Search breakdown, the Match policy, and the Search scope.
+A report holds the facts that triage otherwise asks for: the qui version, the time qui started, the newer release that qui's update check found, the OS, the database, the Log level, the Experimental features that are on, each instance's qBittorrent and libtorrent versions, state, and torrent count, the open System notices, the page and browser, the requests that failed, and the log lines of the scope that the reporter picked. A report from "Report this search" also holds the Search breakdown, the Match policy, and the Search scope.
 
 Note what the facts leave out. A log scope of "Warnings and errors", or a Log level above DEBUG, has no debug lines. A cross-seed report from the menu has no Search breakdown.
 

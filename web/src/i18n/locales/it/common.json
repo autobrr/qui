@@ -34,6 +34,27 @@
     "collapseToIcons": "Riduci a icone",
     "expandSidebar": "Espandi barra laterale"
   },
+  "problemReports": {
+    "reportProblem": "Segnala un problema",
+    "description": "Descrivi il problema. qui aggiunge i dati qui sotto, rimuove i segreti e invia la segnalazione ai maintainer di qui.",
+    "textLabel": "Cosa è andato storto?",
+    "factsLabel": "Dati che qui aggiunge",
+    "loadingFacts": "Caricamento dei dati...",
+    "factsFailed": "Impossibile caricare i dati: {{message}}",
+    "send": "Invia",
+    "sending": "Invio in corso...",
+    "sent": "Segnalazione inviata",
+    "errors": {
+      "anonymousFull": "Le segnalazioni anonime di oggi sono esaurite. Accedi per inviarla ora, o riprova domani.",
+      "signInRequired": "Accedi per inviare questa segnalazione.",
+      "accountLimit": "Hai inviato molte segnalazioni nell'ultima ora. Riprova più tardi.",
+      "reporterFull": "Le tue segnalazioni occupano tutto lo spazio che brrbin dà a una persona. Elimina una vecchia segnalazione in Segnalazioni inviate, poi invia di nuovo.",
+      "tooLarge": "La segnalazione è troppo grande. Scegli meno righe di log o un'immagine più piccola.",
+      "tokenRejected": "Il tuo accesso è scaduto. Accedi di nuovo, poi invia.",
+      "unavailable": "brrbin non può ricevere segnalazioni in questo momento. Riprova più tardi.",
+      "sendFailed": "Impossibile inviare la segnalazione: {{message}}"
+    }
+  },
   "header": {
     "currentInstance": "Istanza attuale: {{name}}. Clicca per cambiare istanza.",
     "connected": "Connesso",

@@ -34,6 +34,27 @@
     "collapseToIcons": "Redueix a icones",
     "expandSidebar": "Amplia la barra lateral"
   },
+  "problemReports": {
+    "reportProblem": "Informa d'un problema",
+    "description": "Descriu el problema. qui hi afegeix les dades de sota, n'elimina els secrets i envia l'informe als mantenidors de qui.",
+    "textLabel": "Què ha fallat?",
+    "factsLabel": "Dades que afegeix qui",
+    "loadingFacts": "S'estan carregant les dades...",
+    "factsFailed": "No s'han pogut carregar les dades: {{message}}",
+    "send": "Envia",
+    "sending": "S'està enviant...",
+    "sent": "Informe enviat",
+    "errors": {
+      "anonymousFull": "Els informes anònims d'avui estan plens. Inicia la sessió per enviar-lo ara, o torna-ho a provar demà.",
+      "signInRequired": "Inicia la sessió per enviar aquest informe.",
+      "accountLimit": "Has enviat molts informes en l'última hora. Torna-ho a provar més tard.",
+      "reporterFull": "Els teus informes ocupen tot l'espai que brrbin dona a una persona. Esborra un informe antic a Informes enviats i torna a enviar.",
+      "tooLarge": "L'informe és massa gran. Tria menys línies de registre o una imatge més petita.",
+      "tokenRejected": "La sessió ha acabat. Torna a iniciar la sessió i envia.",
+      "unavailable": "brrbin no pot rebre informes ara mateix. Torna-ho a provar més tard.",
+      "sendFailed": "No s'ha pogut enviar l'informe: {{message}}"
+    }
+  },
   "header": {
     "currentInstance": "Instància actual: {{name}}. Fes clic per canviar d'instància.",
     "connected": "Connectat",

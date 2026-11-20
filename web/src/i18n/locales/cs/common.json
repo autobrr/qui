@@ -35,6 +35,27 @@
     "collapseToIcons": "Sbalit na ikony",
     "expandSidebar": "Rozbalit postranní panel"
   },
+  "problemReports": {
+    "reportProblem": "Nahlásit problém",
+    "description": "Popište problém. qui přidá níže uvedené údaje, odstraní tajné hodnoty a pošle hlášení správcům qui.",
+    "textLabel": "Co se pokazilo?",
+    "factsLabel": "Údaje, které qui přidá",
+    "loadingFacts": "Načítání údajů...",
+    "factsFailed": "Údaje se nepodařilo načíst: {{message}}",
+    "send": "Odeslat",
+    "sending": "Odesílání...",
+    "sent": "Hlášení odesláno",
+    "errors": {
+      "anonymousFull": "Anonymní hlášení jsou pro dnešek vyčerpána. Přihlaste se a odešlete ho hned, nebo to zkuste zítra.",
+      "signInRequired": "Pro odeslání tohoto hlášení se přihlaste.",
+      "accountLimit": "Za poslední hodinu jste odeslali mnoho hlášení. Zkuste to později.",
+      "reporterFull": "Vaše hlášení zabírají všechno místo, které brrbin dává jedné osobě. Smažte staré hlášení v Odeslaných hlášeních a odešlete znovu.",
+      "tooLarge": "Hlášení je příliš velké. Vyberte méně řádků logu nebo menší obrázek.",
+      "tokenRejected": "Vaše přihlášení skončilo. Přihlaste se znovu a pak odešlete.",
+      "unavailable": "brrbin teď nemůže přijímat hlášení. Zkuste to později.",
+      "sendFailed": "Hlášení se nepodařilo odeslat: {{message}}"
+    }
+  },
   "header": {
     "currentInstance": "Aktuální instance: {{name}}. Klikněte pro přepnutí instance.",
     "connected": "Připojeno",

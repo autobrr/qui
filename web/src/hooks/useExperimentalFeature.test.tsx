@@ -20,8 +20,7 @@ vi.mock("@/lib/demo", async (importOriginal) => ({
 
 import { useExperimentalFeature } from "@/hooks/useExperimentalFeature"
 
-// The real list of known names is empty, so the test uses a name of its own.
-const testFeature = "testFeature" as ExperimentalFeature
+const testFeature: ExperimentalFeature = "problemReports"
 const infoWithTestFeature = { experimentalFeatures: [testFeature] } as unknown as ApplicationInfo
 
 afterEach(() => {

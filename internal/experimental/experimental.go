@@ -16,9 +16,14 @@ import (
 // Feature is the name of an Experimental feature, as the user writes it in experimentalFeatures.
 type Feature string
 
-// known lists every Experimental feature. Each name carries a comment with the
-// number of the issue that deletes it.
-var known = []Feature{}
+// known lists every Experimental feature. Each name carries a comment that
+// says when it goes away.
+var known = []Feature{
+	ProblemReports, // goes away when the maintainer decides, with no ticket
+}
+
+// ProblemReports is Report a problem: Problem reports that qui's server sends to brrbin.
+const ProblemReports Feature = "problemReports"
 
 // Features holds the Experimental features that are on. qui builds it once at start.
 type Features struct {

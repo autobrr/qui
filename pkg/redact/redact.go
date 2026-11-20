@@ -6,6 +6,8 @@ package redact
 
 import (
 	"cmp"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"net/url"
 	"regexp"
@@ -214,19 +216,31 @@ func Text(s string) string {
 const minSecretLength = 6
 
 // Secrets replaces each exact occurrence of each given secret in s with
-// REDACTED, wherever it appears. It skips secrets shorter than 6 characters.
+// REDACTED, wherever it appears, also as a JSON string writes it. It skips
+// secrets shorter than 6 characters.
 func Secrets(s string, secrets []string) string {
 	if s == "" {
 		return s
 	}
+	if replacer := SecretsReplacer(secrets); replacer != nil {
+		return replacer.Replace(s)
+	}
+	return s
+}
+
+// SecretsReplacer returns the replacer that Secrets uses, for a caller that
+// cleans many texts with the same secrets. It returns nil when no secret is
+// 6 characters or longer.
+func SecretsReplacer(secrets []string) *strings.Replacer {
 	values := make([]string, 0, len(secrets))
 	for _, secret := range secrets {
 		if utf8.RuneCountInString(secret) >= minSecretLength {
 			values = append(values, secret)
+			values = append(values, jsonEscapedForms(secret)...)
 		}
 	}
 	if len(values) == 0 {
-		return s
+		return nil
 	}
 	// Longest first, so a secret that holds another secret is removed whole.
 	slices.SortFunc(values, func(a, b string) int {
@@ -238,7 +252,26 @@ func Secrets(s string, secrets []string) string {
 	for _, value := range values {
 		pairs = append(pairs, value, "REDACTED")
 	}
-	return strings.NewReplacer(pairs...).Replace(s)
+	return strings.NewReplacer(pairs...)
+}
+
+// jsonEscapedForms returns how a JSON string writes secret, when that differs
+// from secret: a log line of zerolog escapes a quote or a backslash, and
+// encoding/json also escapes <, >, & and the line separators U+2028 and U+2029.
+func jsonEscapedForms(secret string) []string {
+	var forms []string
+	for _, escapeHTML := range []bool{false, true} {
+		for _, escapeJS := range []bool{false, true} {
+			quoted, err := json.Marshal(secret, jsontext.EscapeForHTML(escapeHTML), jsontext.EscapeForJS(escapeJS))
+			if err != nil {
+				return nil // invalid UTF-8, which a JSON string does not hold as is
+			}
+			if form := string(quoted[1 : len(quoted)-1]); form != secret {
+				forms = append(forms, form)
+			}
+		}
+	}
+	return forms
 }
 
 // regexRedact redacts sensitive query params, userinfo passwords, and proxy
