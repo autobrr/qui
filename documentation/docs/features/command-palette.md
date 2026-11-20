@@ -23,7 +23,7 @@ Type some letters of a name, then press Enter. The palette searches these groups
 
 | Group | Entries |
 |-------|---------|
-| Instances | Each active instance, with its connection state. If you have two or more active instances, the **Unified** list of all instances comes first. |
+| Instances | Each active instance, with its [icon](./instance-settings.md#instance-icons) and its connection state. If you have two or more active instances, the **Unified** list of all instances comes first. |
 | Pages | The pages of the sidebar, and the sections of **Settings**, **Cross-Seed**, **Automations**, and **RSS**. A section shows its page below its name, for example **Settings › Connections**. |
 | Actions | **Add torrent**, the incognito mode switch, and **Theme**. See [Change the theme](#change-the-theme). |
 | Torrents | The torrents that match the text. See [Find a torrent](#find-a-torrent). |

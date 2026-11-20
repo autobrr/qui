@@ -12,14 +12,12 @@ import type { LucideIcon } from "lucide-react"
 export interface PaletteEntry {
   id: string
   label: string
-  icon: LucideIcon
+  icon: LucideIcon | { instanceId: number; problem?: boolean }
   /** A short fact about the entry, for the second line of its row. */
   note?: string
   /** Where the entry lives, for a result list that shows it outside its page: "Settings › Connections". */
   trail?: string
   current?: boolean
-  /** Only on an instance: the color of the dot on its icon. */
-  connected?: boolean
   /** The key that runs the entry together with the command modifier, also when another row has the highlight: a digit for an instance, "Enter" for the torrent search. */
   shortcut?: string
   /** Only a search of its own list finds the entry. A search from the first level leaves it out, because the first level already finds its destination under another entry, or because its list is too long for the first level. */

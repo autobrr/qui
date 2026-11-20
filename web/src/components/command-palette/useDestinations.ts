@@ -11,9 +11,10 @@ import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useInstances } from "@/hooks/useInstances"
 import { isDemo } from "@/lib/demo"
 import { useIncognitoMode } from "@/lib/incognito"
+import { ALL_INSTANCES_ID } from "@/lib/instances"
 import { navigateWithSearch } from "@/lib/router-search"
 import { useLocation, useNavigate } from "@tanstack/react-router"
-import { EyeOff, GitBranch, HardDrive, Layers, Plus, Rss, Settings, Zap } from "lucide-react"
+import { EyeOff, GitBranch, HardDrive, Plus, Rss, Settings, Zap } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import type { PaletteEntry, PaletteGroup } from "./palette"
 import { useThemeEntry } from "./useThemeEntry"
@@ -51,10 +52,9 @@ export function useDestinations(close: () => void): PaletteGroup[] {
     return {
       id: `instance.${instance.id}`,
       label: instance.name,
-      icon: HardDrive,
+      icon: { instanceId: instance.id, problem: !instance.connected },
       note: instance.connected ? t("common:header.connected") : t("common:header.disconnected"),
       current: pathname === path || pathname.startsWith(`${path}/`),
-      connected: instance.connected,
       shortcut: index < 9 ? String(index + 1) : undefined,
       sections: [{
         id: `instance.${instance.id}.actions`,
@@ -78,7 +78,7 @@ export function useDestinations(close: () => void): PaletteGroup[] {
     instanceEntries.unshift({
       id: "instance.unified",
       label: t("common:unifiedScope.unified"),
-      icon: Layers,
+      icon: { instanceId: ALL_INSTANCES_ID },
       current: pathname === "/instances" || pathname === "/instances/",
       shortcut: "0",
       run: go(() => navigate({ to: "/instances" })),

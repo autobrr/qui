@@ -86,7 +86,7 @@
   },
   "src/components/command-palette/palette.ts": {
     "qui/no-comments": {
-      "count": 21
+      "count": 20
     }
   },
   "src/components/command-palette/useDestinations.ts": {

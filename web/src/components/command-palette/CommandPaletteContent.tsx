@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { InstanceMarkIcon } from "@/components/instances/marks/InstanceMarkIcon"
 import { useReturnFocus } from "@/components/kit/use-return-focus"
 import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command"
@@ -10,7 +11,6 @@ import { DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { isMac, keyLabels, modShortcut } from "@/lib/keyboard"
 import { passwordManagerAttributes } from "@/lib/password-manager"
-import { cn } from "@/lib/utils"
 import { Command as CommandPrimitive } from "cmdk"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Search, X } from "lucide-react"
 import { type CSSProperties, type KeyboardEvent, type ReactNode, useId, useReducer, useRef } from "react"
@@ -107,18 +107,14 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
 
   // In a list where a row has the arrow to its sections, a row without the arrow keeps its shortcut in the same column.
   const renderRow = (entry: PaletteEntry, alignsShortcut: boolean) => {
-    const Icon = entry.icon
     const subtitle = [entry.current ? t("common:commandPalette.current") : null, parent ? null : entry.trail, entry.note].filter(Boolean).join(" · ")
     const copies = entry.copies ?? 0
     return (
       // With an id of the palette, the search field can name the row to a screen reader. cmdk knows a row by its own id, so it also leaves the highlight alone when the row goes away.
       <CommandItem asChild key={entry.id} value={entry.id} disabled={entry.disabled} onSelect={() => select(entry)} className="cursor-pointer gap-3 rounded-lg px-3 py-2">
         <div id={rowId(entry)}>
-          <span className="relative flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground/[0.06] text-muted-foreground">
-            <Icon className="size-4" />
-            {entry.connected !== undefined && (
-              <span className={cn("absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-popover", entry.connected ? "bg-green-500" : "bg-red-500")} />
-            )}
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground/[0.06] text-muted-foreground">
+            {"instanceId" in entry.icon ? <InstanceMarkIcon instanceId={entry.icon.instanceId} problem={entry.icon.problem} /> : <entry.icon className="size-4" />}
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate font-medium" title={entry.label}>{entry.label}</span>
