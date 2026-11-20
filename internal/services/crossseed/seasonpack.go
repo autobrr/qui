@@ -19,7 +19,6 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/autobrr/rls"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
@@ -994,7 +993,7 @@ func (m matcher) parseSeasonPackEpisodePayload(
 }
 
 // notInPackReason is the rejection reason for a local episode the pack does not
-// contain. The log-level split keys off this exact value.
+// contain. The season-pack check does not log this reason.
 const notInPackReason = "episode not in pack"
 
 // packEpisodeRejectReason names why a local episode failed the pack-episode gate.
@@ -1324,14 +1323,13 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	// logFiltered emits the field that filtered an episode candidate. It is the grep
 	// target the season-pack troubleshooting docs point users at. The loop below reads
 	// every cached episode on the instance, so "title mismatch" and "episode not in
-	// pack" fire once per unrelated torrent and stay off the default level. Every other
-	// reason is bounded by the pack size and is what a user debugs, so it logs at Debug.
+	// pack" fire once per unrelated torrent and are not logged. Every other reason is
+	// bounded by the pack size and is what a user debugs, so it logs at Debug.
 	logFiltered := func(candidateName, reason string) {
-		level := zerolog.DebugLevel
 		if reason == titleMismatchReason || reason == notInPackReason {
-			level = zerolog.TraceLevel
+			return
 		}
-		log.WithLevel(level).
+		log.Debug().
 			Str("pack", packRelease.Title).
 			Int("season", packRelease.Series).
 			Str("candidate", candidateName).

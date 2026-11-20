@@ -120,9 +120,9 @@ logLevel = 'DEBUG'
 
 If you upgraded from an older version, open `config.toml`. If `logLevel` holds another value, set it to `DEBUG`.
 
-For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each entry carries the `pack`, `season`, and `candidate` that qui compared. Each entry also has a `reason` field for the mismatch (for example `title mismatch`, `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, `episode not in pack`, or `episode numbering mismatch`).
+For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each entry carries the `pack`, `season`, and `candidate` that qui compared. Each entry also has a `reason` field for the mismatch (for example `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, or `episode numbering mismatch`).
 
-Two of these reasons show that the candidate belongs to different content. `title mismatch` indicates a different show. `episode not in pack` indicates an episode that this pack does not contain. Because these two reasons apply to most of a library, qui logs them at `TRACE`. All other reasons appear at `DEBUG`.
+qui does not log a torrent of another show, or an episode that the pack does not contain. These torrents are most of a library, and they have no relation to the pack.
 
 For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected` entries. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason. `TRACE` adds `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which shows the parsed fields of both releases.
 

@@ -653,7 +653,7 @@
     "internal/services/crossseed/seasonpack_matching_settings_test.go": 22,
     "internal/services/crossseed/seasonpack_regression_test.go": 45,
     "internal/services/crossseed/seasonpack_route_test.go": 20,
-    "internal/services/crossseed/seasonpack_test.go": 150,
+    "internal/services/crossseed/seasonpack_test.go": 148,
     "internal/services/crossseed/service.go": 147,
     "internal/services/crossseed/service_completion_gazelle_test.go": 7,
     "internal/services/crossseed/service_completion_queue_test.go": 9,

@@ -732,9 +732,8 @@ func TestMatchEpisodeCandidates_IgnoresTorrentSizeOfNameMatch(t *testing.T) {
 	require.Len(t, got, 1)
 }
 
-// TestMatchEpisodeCandidates_FilterLogLevels pins the level split for filtered episode
-// candidates. The loop reads every cached episode, so a reason that means "belongs to
-// another show or another pack" must stay off the default level.
+// The loop reads every cached episode, so a candidate of another show or pack writes no line.
+// regression: #4331
 func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 	// Run in a separate process so search goroutines cannot race with this test's logger.
 	if os.Getenv("QUI_TEST_FILTER_LOG_LEVELS_CHILD") != "1" {
@@ -770,7 +769,7 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 				{Hash: "other2", Name: "Third.Show.S01E05.1080p.WEB.x264-GRP", Progress: 1.0},
 			},
 			want: []want{
-				{titleMismatchReason, "trace", 2},
+				{titleMismatchReason, "", 0},
 				{"group mismatch", "debug", 1},
 			},
 		},
@@ -791,7 +790,7 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 				{Hash: "absolute", Name: "Cool Show - 1140 [1080p][WEB][x264]-GRP", Progress: 1.0},
 			},
 			want: []want{
-				{notInPackReason, "trace", 2},
+				{notInPackReason, "", 0},
 				{"episode numbering mismatch", "debug", 1},
 			},
 		},
