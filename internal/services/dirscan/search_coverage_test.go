@@ -16,8 +16,9 @@ import (
 )
 
 // stubJackettSearcher completes every search with a fixed response, including the
-// retry passes. recordingSearcher scripts one response per pass instead.
+// retry passes. scriptedSearcher scripts one response per pass instead.
 type stubJackettSearcher struct {
+	noIDSearchCaps
 	response *jackett.SearchResponse
 }
 
@@ -116,4 +117,10 @@ func TestProcessSearchee_CoverageGatesFinalization(t *testing.T) {
 			require.Equal(t, tt.wantSearched, finalized)
 		})
 	}
+}
+
+type noIDSearchCaps struct{}
+
+func (noIDSearchCaps) IndexerIDsWithIDSearchCaps(context.Context, *jackett.TorznabSearchRequest) []int {
+	return nil
 }

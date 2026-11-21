@@ -23,6 +23,7 @@ import (
 // search started and completed. A zero delay stands for a cached answer. The
 // mutex keeps the record whole when two runs search at once without the lock.
 type timedSearcher struct {
+	noIDSearchCaps
 	mu        sync.Mutex
 	delay     time.Duration
 	responses []*jackett.SearchResponse

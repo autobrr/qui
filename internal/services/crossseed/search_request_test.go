@@ -48,6 +48,7 @@ func TestBuildTorznabRequest(t *testing.T) {
 		want          jackett.TorznabSearchRequest
 		wantAltTitle  string
 		wantAltSeason *int
+		wantTVYear    int
 		seasonNumeral int
 	}{
 		{
@@ -94,9 +95,10 @@ func TestBuildTorznabRequest(t *testing.T) {
 			want:  jackett.TorznabSearchRequest{Query: "Example Movie", Year: 2019, Categories: movie.Categories, Limit: torznabCrossSeedSearchLimit},
 		},
 		{
-			name:  "TV gets no year",
-			input: torznabRequestInput{torrentName: "Azure.Compass.2019.S02E03.1080p.WEB.x264-GROUP", contentInfo: tv},
-			want:  jackett.TorznabSearchRequest{Query: "Azure Compass", Season: new(2), Episode: new(3), Categories: tv.Categories, Limit: torznabCrossSeedSearchLimit},
+			name:       "TV gets no year on the request, and the year goes to the year retry",
+			input:      torznabRequestInput{torrentName: "Azure.Compass.2019.S02E03.1080p.WEB.x264-GROUP", contentInfo: tv},
+			want:       jackett.TorznabSearchRequest{Query: "Azure Compass", Season: new(2), Episode: new(3), Categories: tv.Categories, Limit: torznabCrossSeedSearchLimit},
+			wantTVYear: 2019,
 		},
 		{
 			name: "every external ID goes on the request and turns off the alternate title",
@@ -185,12 +187,14 @@ func TestBuildTorznabRequest(t *testing.T) {
 			want := tt.want
 			want.ReleaseName = in.torrentName
 			want.ReturnAllResults = true
-			require.Equal(t, gatherInput{
-				req:            &want,
-				tagSourcedIDs:  in.tagSourcedIDs,
-				altTitle:       tt.wantAltTitle,
-				altTitleSeason: tt.wantAltSeason,
-				torrentName:    in.torrentName,
+			require.Equal(t, GatherInput{
+				Req:            &want,
+				TagSourcedIDs:  in.tagSourcedIDs,
+				AltTitle:       tt.wantAltTitle,
+				AltTitleSeason: tt.wantAltSeason,
+				TVSourceYear:   tt.wantTVYear,
+				TorrentName:    in.torrentName,
+				LogPrefix:      "[CROSSSEED-SEARCH]",
 			}, got)
 		})
 	}

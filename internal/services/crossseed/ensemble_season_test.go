@@ -391,9 +391,6 @@ func TestProcessEnsembleSeasonCandidate_FailedSearchIsNotTorznabSearch(t *testin
 	require.False(t, state.torznabSearched)
 }
 
-// The search for a season group asks each indexer for the name, the season, and
-// the full category list. With these indexers, the category trim of the normal
-// search leaves only 5000, so a trim here changes the list of the first indexer.
 func TestProcessEnsembleSeasonCandidate_WireRequest(t *testing.T) {
 	t.Parallel()
 	var mu sync.Mutex
@@ -415,7 +412,6 @@ func TestProcessEnsembleSeasonCandidate_WireRequest(t *testing.T) {
 			ID: id, Name: fmt.Sprintf("TV Indexer %d", id), Enabled: true, BaseURL: tracker.URL, Backend: models.TorznabBackendNative, TimeoutSeconds: 5,
 			Capabilities: []string{"search", "tv-search", "tv-search-q", "tv-search-season"},
 		}
-		// An indexer with no stored categories keeps the list that it gets.
 		if id > 1 {
 			indexer.Categories = []models.TorznabIndexerCategory{{IndexerID: id, CategoryID: 5000, CategoryName: "TV"}}
 		}
@@ -427,8 +423,8 @@ func TestProcessEnsembleSeasonCandidate_WireRequest(t *testing.T) {
 	state.resolvedTorznabIndexerIDs = []int{1, 2, 3, 4}
 
 	torrent := &qbt.Torrent{
-		Hash:     ensembleSeasonPseudoHash(ensembleGroupKey{normalizedTitle: "azure compass", season: 2}),
-		Name:     "Azure Compass S02",
+		Hash:     ensembleSeasonPseudoHash(ensembleGroupKey{normalizedTitle: "azure and compass ii", season: 2}),
+		Name:     "Azure and Compass II S02",
 		Progress: 1.0,
 	}
 	_, err := service.processEnsembleSeasonCandidate(t.Context(), state, torrent, time.Now().UTC())
@@ -436,15 +432,15 @@ func TestProcessEnsembleSeasonCandidate_WireRequest(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	require.Len(t, params, 4, "one search pass reaches each indexer once")
-	categoryLists := make([]string, 0, len(params))
+	queries := make(map[string]int)
 	for _, p := range params {
-		require.Equal(t, "Azure Compass", p.Get("q"))
+		queries[p.Get("q")]++
 		require.Equal(t, "2", p.Get("season"))
 		require.Empty(t, p.Get("ep"))
-		categoryLists = append(categoryLists, p.Get("cat"))
+		require.Empty(t, p.Get("year"))
+		require.Equal(t, "5000", p.Get("cat"))
 	}
-	require.Contains(t, categoryLists, "5000,5010,5020,5030,5040,5045,5070,5080")
+	require.Equal(t, map[string]int{"Azure and Compass II": 4, "Azure & Compass II": 4}, queries)
 }
 
 // packSearchResult builds a torznab search result for a season pack candidate.
