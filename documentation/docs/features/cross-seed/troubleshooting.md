@@ -122,7 +122,7 @@ If you upgraded from an older version, open `config.toml`. If `logLevel` holds a
 
 For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each entry carries the `pack`, `season`, and `candidate` that qui compared. Each entry also has a `reason` field for the mismatch (for example `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, or `episode numbering mismatch`).
 
-qui does not log a candidate that it rejects because it is another show, or because the pack does not contain its episode. These torrents are most of a library. qui compares the episode numbering before the show title. Thus, an `episode numbering mismatch` entry can name a torrent of another show.
+qui does not log a candidate that it rejects because it is another show, or because the pack does not contain its episode. These torrents are most of a library.
 
 For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected` entries. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason and the parsed fields of the source release.
 
