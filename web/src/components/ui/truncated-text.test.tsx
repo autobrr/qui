@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 
 import { Checkbox } from "@/components/ui/checkbox"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { TruncatedText } from "@/components/ui/truncated-text"
 
@@ -109,4 +110,24 @@ it("shows the full cut-off name on a tap inside a filter row, and the tap still 
 
   expect(onCheckedChange).toHaveBeenCalledOnce()
   expect(screen.getByRole("tooltip").textContent).toContain("A very long category name")
+})
+
+// regression: #4358
+it("highlights the menu item under the pointer when its label fits", () => {
+  layout({})
+  render(
+    <TooltipProvider>
+      <DropdownMenu open>
+        <DropdownMenuTrigger>Profiles</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem><TruncatedText>Default</TruncatedText></DropdownMenuItem>
+          <DropdownMenuItem><TruncatedText>Compact</TruncatedText></DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </TooltipProvider>
+  )
+
+  fireEvent.pointerMove(screen.getByText("Compact"), { pointerType: "mouse" })
+
+  expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Compact" }))
 })

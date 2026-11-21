@@ -23,13 +23,12 @@ interface TruncatedTextProps extends React.HTMLAttributes<HTMLSpanElement> {
  */
 export const TruncatedText = React.forwardRef<HTMLSpanElement, TruncatedTextProps>(
   ({ children, className, tooltipSide = "top", tooltipContent, wrap = false, openOnTap = true, ...props }, ref) => {
-    const innerRef = React.useRef<HTMLSpanElement>(null)
+    const [element, setElement] = React.useState<HTMLSpanElement | null>(null)
     const [hiddenText, setHiddenText] = React.useState<string | null>(null)
 
-    React.useImperativeHandle(ref, () => innerRef.current!)
+    React.useImperativeHandle(ref, () => element!, [element])
 
     React.useEffect(() => {
-      const element = innerRef.current
       if (!element) return
 
       const checkTruncation = () => {
@@ -43,27 +42,31 @@ export const TruncatedText = React.forwardRef<HTMLSpanElement, TruncatedTextProp
       resizeObserver.observe(element)
 
       return () => resizeObserver.disconnect()
-    }, [children])
+    }, [element, children])
 
-    const finalTooltipContent = tooltipContent ?? hiddenText
-    const showTooltip = tooltipContent !== undefined || hiddenText
+    const text = (
+      <span
+        ref={setElement}
+        data-slot="truncated-text"
+        className={cn(!wrap && "truncate", className)}
+        {...props}
+      >
+        {children}
+      </span>
+    )
+
+    if (tooltipContent === undefined && !hiddenText) {
+      return text
+    }
 
     return (
-      <Tooltip disabled={!showTooltip}>
+      <Tooltip>
         <TooltipTrigger asChild openOnTap={openOnTap}>
-          <span
-            ref={innerRef}
-            className={cn(!wrap && "truncate", className)}
-            {...props}
-          >
-            {children}
-          </span>
+          {text}
         </TooltipTrigger>
-        {showTooltip && (
-          <TooltipContent side={tooltipSide}>
-            {finalTooltipContent}
-          </TooltipContent>
-        )}
+        <TooltipContent side={tooltipSide}>
+          {tooltipContent ?? hiddenText}
+        </TooltipContent>
       </Tooltip>
     )
   }

@@ -233,8 +233,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     const measure = () => {
       const cut = new Set<string>()
       for (const row of node.querySelectorAll<HTMLElement>("tr[data-delete]")) {
-        // The name and the cause show their whole text in a tooltip, whose trigger carries data-state.
-        if ([...row.querySelectorAll("span[data-state]")].some(span => span.scrollHeight > span.clientHeight + 1 || span.scrollWidth > span.clientWidth + 1)) {
+        if ([...row.querySelectorAll("span[data-slot=truncated-text]")].some(span => span.scrollHeight > span.clientHeight + 1 || span.scrollWidth > span.clientWidth + 1)) {
           cut.add(row.dataset.delete!)
         }
       }
