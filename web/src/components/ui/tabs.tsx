@@ -46,19 +46,26 @@ function TabsList({
   }, [])
 
   React.useEffect(() => {
-    updateIndicator()
-
     const list = listRef.current
     if (!list) return
 
-    const observer = new MutationObserver(updateIndicator)
-    observer.observe(list, { attributes: true, subtree: true, attributeFilter: ["data-state"] })
-
     const resizeObserver = new ResizeObserver(updateIndicator)
-    resizeObserver.observe(list)
+    const observeTabs = () => {
+      resizeObserver.observe(list)
+      list.querySelectorAll<HTMLElement>("[role=\"tab\"]").forEach(tab => resizeObserver.observe(tab))
+    }
+
+    const mutationObserver = new MutationObserver(() => {
+      observeTabs()
+      updateIndicator()
+    })
+    mutationObserver.observe(list, { attributes: true, attributeFilter: ["data-state"], childList: true, subtree: true })
+
+    observeTabs()
+    updateIndicator()
 
     return () => {
-      observer.disconnect()
+      mutationObserver.disconnect()
       resizeObserver.disconnect()
     }
   }, [updateIndicator])
