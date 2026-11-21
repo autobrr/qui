@@ -87,11 +87,13 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
               <Fragment key={key}>
                 <TableRow className={cn("cursor-pointer", expanded && "bg-muted hover:bg-muted")} onClick={() => setOpen(expanded ? undefined : key)}>
                   <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6">
-                    <button type="button" aria-expanded={expanded} className="flex w-full min-w-0 items-center gap-2 text-left">
-                      {expanded ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
-                      <TorrentName name={name} className={expanded ? undefined : "line-clamp-2 @2xl:line-clamp-1"} />
+                    <div className="flex min-w-0 items-center gap-2">
+                      <button type="button" aria-expanded={expanded} className="flex min-w-0 items-center gap-2 text-left">
+                        {expanded ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
+                        <TorrentName name={name} className={expanded ? undefined : "line-clamp-2 @2xl:line-clamp-1"} />
+                      </button>
                       <span className="hidden shrink-0 items-center gap-2 @2xl:flex"><TorrentMarks torrent={torrent} /></span>
-                    </button>
+                    </div>
                     <div className="flex min-w-0 items-center gap-2 pl-5.5 text-xs font-normal text-muted-foreground @2xl:hidden">
                       <span className="flex min-w-0 items-center gap-1.5">{trackerIcon}<span className="truncate">{tracker}</span></span>
                       <TorrentMarks torrent={torrent} />
@@ -147,7 +149,7 @@ function TorrentMark({ icon: Icon, label }: { icon: LucideIcon; label: string })
   return (
     <Tooltip>
       <TooltipTrigger asChild openOnTap="only">
-        <span role="img" aria-label={label} className="inline-flex shrink-0 p-0.5 text-muted-foreground"><Icon className="size-3.5" /></span>
+        <span role="img" aria-label={label} tabIndex={0} className="inline-flex shrink-0 p-0.5 text-muted-foreground"><Icon className="size-3.5" /></span>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

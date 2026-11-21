@@ -975,7 +975,7 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(within(table).queryByText("Bravo")).toBeTruthy())
     const names = within(table).getAllByRole("button").map(button => button.textContent)
     expect(names).toEqual(["Alpha", "Charlie", "Bravo"])
-    const marks = (name: string) => within(table).getByText(name).closest("button")?.querySelector("[role=img]")?.getAttribute("aria-label")
+    const marks = (name: string) => within(table).getByText(name).closest("td")?.querySelector("[role=img]")?.getAttribute("aria-label")
     expect([marks("Alpha"), marks("Charlie"), marks("Bravo")]).toEqual([undefined, "topTorrents.crossSeed", "topTorrents.deleted"])
     expect(cells(table, "Alpha").slice(1)).toEqual(["a.test · Seedbox", "3 KiB", "0 B", "∞", "table.seededValue value=3.00", "1 KiB"])
     expect(within(table).getAllByTitle("a.test · Seedbox").length).toBeGreaterThan(0)
@@ -1057,7 +1057,7 @@ describe("Statistics", () => {
       torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 1024, { deleted: true })] : []
       renderPage()
       const table = await screen.findByRole("table")
-      const icon = (await within(table).findByText("Alpha")).closest("button")!.querySelector("[role=img]")!
+      const icon = (await within(table).findByText("Alpha")).closest("td")!.querySelector("[role=img]")!
 
       fireEvent.pointerDown(icon, { pointerType: "touch" })
       fireEvent.pointerUp(icon, { pointerType: "touch" })
@@ -1069,6 +1069,19 @@ describe("Statistics", () => {
       vi.unstubAllGlobals()
       delete touchWindow.ontouchstart
     }
+  })
+
+  it("opens the tooltip of a mark when the keyboard focuses it, outside the button of the row", async () => {
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 1024, { statisticsCrossSeed: true })] : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    const icon = (await within(table).findByText("Alpha")).closest("td")!.querySelector<HTMLElement>("[role=img]")!
+
+    act(() => icon.focus())
+
+    expect(document.activeElement).toBe(icon)
+    expect(icon.closest("button")).toBeNull()
+    await vi.waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("topTorrents.crossSeed"))
   })
 
   // regression: #4179
