@@ -335,6 +335,16 @@ func (s *Service) Start(ctx context.Context) {
 	go s.loop(ctx)
 }
 
+// WaitForRuns blocks until every scan and deletion goroutine has returned.
+// A run can still work after its stored status changes, so tests that close
+// the database call this before the test ends.
+func (s *Service) WaitForRuns() {
+	if s == nil {
+		return
+	}
+	s.runs.Wait()
+}
+
 func (s *Service) loop(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.SchedulerInterval)
 	defer ticker.Stop()
