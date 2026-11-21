@@ -31,7 +31,11 @@
     "rssEnabled": "Cross-seed RSS 활성화됨",
     "scanRunning": "스캔 실행 중",
     "collapseToIcons": "아이콘으로 접기",
-    "expandSidebar": "사이드바 펼치기"
+    "expandSidebar": "사이드바 펼치기",
+    "hideSidebar": "사이드바 숨기기",
+    "showSidebar": "사이드바 표시",
+    "keepOpen": "사이드바 고정",
+    "menu": "메뉴"
   },
   "problemReports": {
     "reportProblem": "문제 신고",

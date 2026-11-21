@@ -11,3 +11,10 @@ export function usePersistedSidebarIconOnly() {
     parse: parseJsonBoolean,
   })
 }
+
+export function usePersistedSidebarHidden() {
+  return useClientSetting<boolean>("qui-sidebar-hidden", {
+    defaultValue: false,
+    parse: parseJsonBoolean,
+  })
+}

@@ -31,7 +31,11 @@
     "rssEnabled": "輔種 RSS 已啟用",
     "scanRunning": "掃描執行中",
     "collapseToIcons": "收合為圖示",
-    "expandSidebar": "展開側邊欄"
+    "expandSidebar": "展開側邊欄",
+    "hideSidebar": "隱藏側邊欄",
+    "showSidebar": "顯示側邊欄",
+    "keepOpen": "固定側邊欄",
+    "menu": "選單"
   },
   "problemReports": {
     "reportProblem": "回報問題",
