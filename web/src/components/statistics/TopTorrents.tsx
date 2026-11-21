@@ -96,7 +96,7 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
                       <span className="hidden shrink-0 items-center gap-2 @2xl:flex"><TorrentMarks torrent={torrent} /></span>
                     </div>
                     <div className="flex min-w-0 items-center gap-2 pl-5.5 text-xs font-normal text-muted-foreground @2xl:hidden">
-                      <span className="flex min-w-0 items-center gap-1.5">{trackerIcon}<span className="truncate">{tracker}</span></span>
+                      <span className="flex min-w-0 items-center gap-1.5">{trackerIcon}<TruncatedText>{tracker}</TruncatedText></span>
                       <TorrentMarks torrent={torrent} />
                     </div>
                     <Facts
