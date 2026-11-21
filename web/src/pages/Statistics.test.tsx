@@ -231,6 +231,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   // A test that opens a Select or uses Show fewer stubs it, as jsdom has no layout.
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
   localStorage.clear()
