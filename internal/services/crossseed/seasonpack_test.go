@@ -788,6 +788,7 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 				{Hash: "away1", Name: "Third.Show.S01E05.1080p.WEB.x264-GRP", Progress: 1.0},
 				{Hash: "away2", Name: "Fourth.Show.S09E11.1080p.WEB.x264-GRP", Progress: 1.0},
 				{Hash: "absolute", Name: "Cool Show - 1140 [1080p][WEB][x264]-GRP", Progress: 1.0},
+				{Hash: "absolute-away", Name: "Other Show - 1140 [1080p][WEB][x264]-GRP", Progress: 1.0},
 			},
 			want: []want{
 				{notInPackReason, "", 0},

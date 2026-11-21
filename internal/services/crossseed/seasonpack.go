@@ -1391,7 +1391,11 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			origin, inPack = packEpisodes[targetID]
 			schemeOK := (localSeasonless && origin.absolute) || (!localSeasonless && origin.seasoned)
 			if !inPack || !schemeOK {
-				logFiltered(torrent.Name, packEpisodeRejectReason(inPack))
+				reason := packEpisodeRejectReason(inPack)
+				if inPack && !m.titlesMatch(parsed, packRelease, torrent.Name, packName, aliasTitles) {
+					reason = titleMismatchReason
+				}
+				logFiltered(torrent.Name, reason)
 				continue
 			}
 			id = targetID
