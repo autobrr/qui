@@ -62,7 +62,7 @@ If qui recorded the period before in full, Uploaded and Downloaded also show the
 
 ## Chart
 
-The chart shows the upload or the download of each bar. Use the switch above the chart to select **Upload** or **Download**. The bars stack by tracker. The five trackers with the most bytes in the period each get a color. The other trackers are in the gray series Other.
+The chart shows the upload or the download of each bar. Use the switch above the chart to select **Upload** or **Download**. The bars stack by tracker. The five trackers with the most bytes in the period each get a color. The other trackers are in the gray series Other. Below the chart and in the numbers of a bar, the [tracker icon](./tracker-icons.md) shows next to the name of each tracker.
 
 To see the bytes of each tracker in a bar, hold the pointer on the bar. On a touch screen, tap the bar. To close the numbers on a touch screen, tap them, tap below the bars, tap outside the chart, or scroll the page.
 
@@ -96,7 +96,7 @@ To sort the table, click a column header. The sort applies to all rows. It also 
 
 ### By tracker
 
-The table has one row for each tracker, with these columns:
+The table has one row for each tracker. The [tracker icon](./tracker-icons.md) shows next to the name. Public and No tracker have no icon. The table has these columns:
 
 | Column | Content |
 |--------|---------|
@@ -158,7 +158,7 @@ The table below the table of trackers shows the ten torrents with the most uploa
 | Column | Content |
 |--------|---------|
 | Torrent | The name of the torrent. The mark "Deleted" shows that the torrent is not in qBittorrent now. The mark "Cross-seed" shows that the torrent completed with less than 1% of its size downloaded |
-| Tracker | The tracker that the torrent has now. If the page shows two or more instances, the name of the instance follows the tracker |
+| Tracker | The [tracker icon](./tracker-icons.md) and the tracker that the torrent has now. If the page shows two or more instances, the name of the instance follows the tracker |
 | Uploaded | The upload of the torrent in the period |
 | Downloaded | The download of the torrent in the period |
 | Ratio | Uploaded divided by Downloaded |
@@ -200,7 +200,7 @@ The table **Deleted torrents** lists each torrent that was deleted in the period
 |--------|---------|
 | Deleted | The time of the delete |
 | Torrent | The name of the torrent |
-| Tracker | The tracker of the torrent |
+| Tracker | The [tracker icon](./tracker-icons.md) and the tracker of the torrent |
 | Deleted by | The cause of the delete |
 | Final upload | The upload of the torrent at the delete |
 | Final ratio | The last ratio that qBittorrent gave for the torrent |

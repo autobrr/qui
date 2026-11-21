@@ -256,8 +256,6 @@ func (c *Client) handleSyncUpdate(update qbt.SyncUpdate) {
 	c.updateServerState(update.ServerState)
 	c.handleCompletionUpdates(update)
 	c.handleAddedUpdates(update)
-	log.Trace().Int("instanceID", c.instanceID).Int("torrentCount", update.Snapshot.Len()).Msg("Sync manager update received, marking client as healthy")
-
 	c.dispatchSyncUpdate(update)
 }
 
@@ -1005,8 +1003,6 @@ func (c *Client) prunePeerSyncManagers(snapshot *qbt.SyncSnapshot) {
 
 // applyOptimisticCacheUpdate applies optimistic updates for the given hashes and action
 func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ map[string]any) {
-	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
-
 	now := time.Now()
 	var snapshot torrentIndex = noTorrents{}
 	if syncManager := c.SyncOwner(); syncManager != nil {
@@ -1031,7 +1027,7 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ ma
 				UpdatedAt:     now,
 				Action:        action,
 			}, 30*time.Second)
-			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for " + action)
+			log.Trace().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for " + action)
 		}
 	}
 
@@ -1138,7 +1134,7 @@ func (c *Client) getOptimisticUpdates() map[string]*OptimisticTorrentUpdate {
 // clearOptimisticUpdate removes an optimistic update for a specific torrent
 func (c *Client) clearOptimisticUpdate(hash string) {
 	c.optimisticUpdates.Delete(hash)
-	log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Msg("Cleared optimistic update")
+	log.Trace().Int("instanceID", c.instanceID).Str("hash", hash).Msg("Cleared optimistic update")
 }
 
 // getTargetState returns the target state for the given action and progress

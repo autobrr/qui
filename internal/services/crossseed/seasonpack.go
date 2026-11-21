@@ -994,7 +994,7 @@ func (m matcher) parseSeasonPackEpisodePayload(
 }
 
 // notInPackReason is the rejection reason for a local episode the pack does not
-// contain. The log-level split keys off this exact value.
+// contain. The season-pack check does not log this reason.
 const notInPackReason = "episode not in pack"
 
 // packEpisodeRejectReason names why a local episode failed the pack-episode gate.
@@ -1321,22 +1321,26 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	candidates := make(map[episodeIdentity][]episodeMatch)
 	m := s.matcher()
 
-	// logFiltered emits the field that filtered an episode candidate. It is the grep
-	// target the season-pack troubleshooting docs point users at. The loop below reads
+	// logFiltered returns the line that filtered an episode candidate, or nil, and the
+	// caller writes it with the message the troubleshooting docs grep for. The loop reads
 	// every cached episode on the instance, so "title mismatch" and "episode not in
-	// pack" fire once per unrelated torrent and stay off the default level. Every other
-	// reason is bounded by the pack size and is what a user debugs, so it logs at Debug.
-	logFiltered := func(candidateName, reason string) {
-		level := zerolog.DebugLevel
+	// pack" fire once per unrelated torrent and are not logged. Every other reason logs
+	// at Debug once per name and reason, because copies of one episode repeat the line.
+	logged := make(map[string]struct{})
+	logFiltered := func(candidateName, reason string) *zerolog.Event {
 		if reason == titleMismatchReason || reason == notInPackReason {
-			level = zerolog.TraceLevel
+			return nil
 		}
-		log.WithLevel(level).
+		key := candidateName + "\x00" + reason
+		if _, seen := logged[key]; seen {
+			return nil
+		}
+		logged[key] = struct{}{}
+		return log.Debug().
 			Str("pack", packRelease.Title).
 			Int("season", packRelease.Series).
 			Str("candidate", candidateName).
-			Str("reason", reason).
-			Msg("[CROSSSEED-MATCH] Release filtered")
+			Str("reason", reason)
 	}
 
 	policy := seasonPackPolicy(settings)
@@ -1393,7 +1397,13 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			origin, inPack = packEpisodes[targetID]
 			schemeOK := (localSeasonless && origin.absolute) || (!localSeasonless && origin.seasoned)
 			if !inPack || !schemeOK {
-				logFiltered(torrent.Name, packEpisodeRejectReason(inPack))
+				reason := packEpisodeRejectReason(inPack)
+				pack := namedRelease{release: packRelease, rawName: packName}
+				local := namedRelease{release: parsed, rawName: torrent.Name}
+				if inPack && !m.titlesMatchInSourceSeason(pack, local, matchEvidence{SourceTitles: aliasTitles}) {
+					reason = titleMismatchReason
+				}
+				logFiltered(torrent.Name, reason).Msg("[CROSSSEED-MATCH] Release filtered")
 				continue
 			}
 			id = targetID
@@ -1426,18 +1436,14 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		}
 		verdict := m.matchVerdict(namedRelease{release: local, rawName: torrent.Name}, namedRelease{release: packEpisode, rawName: packName}, evidence, policy)
 		if !verdict.Matched {
-			logFiltered(torrent.Name, verdict.RejectReason)
+			logFiltered(torrent.Name, verdict.RejectReason).Msg("[CROSSSEED-MATCH] Release filtered")
 			continue
 		}
 
 		// Checked last so it only fires for episodes that would otherwise satisfy
 		// the pack (announce raced the episode's download or its move).
 		if answer != sourcePass {
-			log.Debug().
-				Str("pack", packRelease.Title).
-				Int("season", packRelease.Series).
-				Str("candidate", torrent.Name).
-				Str("reason", "source not settled").
+			logFiltered(torrent.Name, "source not settled").
 				Float64("progress", torrent.Progress).
 				Str("state", string(torrent.State)).
 				Msg("[CROSSSEED-MATCH] Release filtered")

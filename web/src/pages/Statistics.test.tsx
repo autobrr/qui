@@ -16,7 +16,7 @@ import { stubPhone } from "@/test/stubPhone"
 import type { StatisticsBar } from "@/lib/statistics"
 import type { EventDay } from "@/lib/statistics-events"
 import type { LibraryPoint } from "@/lib/statistics-library"
-import type { LiveTrackerGroup, TransferHistoryInstance, TransferHistoryLibraryRow, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
+import type { LiveTrackerGroup, TrackerCustomization, TransferHistoryInstance, TransferHistoryLibraryRow, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string, options?: Record<string, unknown>) => {
@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
   return {
     i18n: { t, i18n: { resolvedLanguage: "en", language: "en" } },
     incognitoMode: [false, () => {}] as [boolean, () => void],
+    trackerIcons: { data: undefined } as { data?: Record<string, string> },
     search: {} as { period?: string },
     navigate: vi.fn(),
   }
@@ -44,6 +45,7 @@ vi.mock("@/lib/incognito", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/incognito")>(),
   useIncognitoMode: () => mocks.incognitoMode,
 }))
+vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => mocks.trackerIcons }))
 vi.mock("@/components/statistics/TransferChart", () => ({
   TransferChart: ({ bars, groups, displayName }: { bars: StatisticsBar[]; groups: string[]; displayName: (group: string) => string }) => (
     <ul data-testid="chart" data-uploaded={bars.reduce((sum, bar) => sum + [...bar.bytes.values()].reduce((bytes, value) => bytes + value.uploaded, 0), 0)}>
@@ -86,6 +88,7 @@ let answer: (request: TransferRequest) => TransferHistoryRow[]
 let torrentAnswer: (request: TransferRequest) => TransferHistoryRow[]
 let requests: TransferRequest[]
 let liveGroups: (instanceId: number) => LiveTrackerGroup[]
+let customizations: TrackerCustomization[]
 let libraryAnswer: (instanceId: number) => TransferHistoryLibraryRow[]
 let hold: Promise<void> | undefined
 let holdBucket: string | undefined
@@ -136,7 +139,7 @@ async function expectTile(label: string, expected: string) {
 
 function wideText(node: Element): string {
   const copy = node.cloneNode(true) as Element
-  copy.querySelectorAll("[data-narrow]").forEach(narrow => narrow.remove())
+  copy.querySelectorAll("[data-narrow], [aria-hidden=true]").forEach(narrow => narrow.remove())
   return copy.textContent ?? ""
 }
 
@@ -189,11 +192,14 @@ beforeEach(() => {
   answer = () => []
   torrentAnswer = () => []
   liveGroups = () => []
+  customizations = []
+  mocks.trackerIcons = { data: undefined }
   libraryAnswer = () => []
   server.use(
     http.get("*/api/instances/:id/transfer-history/library", ({ params }) => HttpResponse.json({ rows: libraryAnswer(Number(params.id)) })),
     http.get("*/api/instances/:id/transfer-history/deletes", () => HttpResponse.json({ deletes: [], counts: { automation: 0, user: 0, other: 0 } })),
     http.get("*/api/instances/:id/tracker-groups", ({ params }) => HttpResponse.json({ groups: liveGroups(Number(params.id)) })),
+    http.get("*/api/tracker-customizations", () => HttpResponse.json(customizations)),
     http.get("*/api/transfer-history/status", () => HttpResponse.json({ instances: statuses })),
     http.get("*/api/instances", () => HttpResponse.json(configuredIds.map(id => ({ id, name: `instance ${id}`, isActive: true })))),
     http.get("*/api/instances/:id/transfer-history", async ({ params, request }) => {
@@ -685,6 +691,25 @@ describe("Statistics", () => {
     expect(cells(table, "table.total").slice(0, 2)).toEqual(["table.total", "4 KiB"])
   })
 
+  it("shows the tracker icon of each Tracker group in the table, from a domain of the customizations that name the group", async () => {
+    mocks.trackerIcons = { data: { "a.test": "data:image/png;base64,YQ==", "b.test": "data:image/png;base64,Yg==" } }
+    customizations = [
+      { id: 1, displayName: "Bee ", domains: ["b.test"], createdAt: "", updatedAt: "" },
+      { id: 2, displayName: "Bee", domains: ["b-alt.test"], createdAt: "", updatedAt: "" },
+    ]
+    answer = ({ bucket }) => bucket === "day" ? ["a.test", "Bee", "c.test", "Public", "No tracker"].map(group => row(group, 1024, 0, { width: "day" })) : []
+    renderPage()
+
+    const table = await screen.findByRole("table")
+    const nameButton = (name: string) => within(table).getByText(name).closest("button")!
+    await vi.waitFor(() => expect(nameButton("Bee").querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,Yg=="))
+    expect(nameButton("a.test").querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,YQ==")
+    expect(nameButton("c.test").querySelector("img")).toBeNull()
+    expect(nameButton("c.test").querySelector("span[aria-hidden=true]")?.textContent).toBe("C")
+    expect(nameButton("groups.public").querySelector("img, span[aria-hidden=true]")).toBeNull()
+    expect(nameButton("groups.noTracker").querySelector("img, span[aria-hidden=true]")).toBeNull()
+  })
+
   // regression: #4099
   it("keeps the live numbers of the instances that loaded when one instance fails", async () => {
     answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
@@ -918,10 +943,12 @@ describe("Statistics", () => {
       }
       return bucket === "day" ? [row("tracker.private.test", 1024, 0, { width: "day" })] : []
     }
+    mocks.trackerIcons = { data: { "tracker.private.test": "data:image/png;base64,cA==" } }
     renderPage()
     const table = await screen.findByRole("table")
     await vi.waitFor(() => expect(within(table).getAllByRole("row").length).toBeGreaterThan(2))
     expect(table.textContent).not.toContain("tracker.private.test")
+    expect(table.querySelector("img")).toBeNull()
 
     fireEvent.mouseDown(screen.getByText("table.groupings.category"), { button: 0 })
 
@@ -949,6 +976,19 @@ describe("Statistics", () => {
     expect(within(table).getAllByTitle("a.test · Seedbox").length).toBeGreaterThan(0)
     const asked = requests.filter(request => request.groupBy === "torrent")
     expect(asked.map(request => [request.instanceId, request.bucket, request.limit, request.group])).toEqual([[1, "total", "10", null], [2, "total", "10", null]])
+  })
+
+  it("shows the tracker icon next to the tracker of each top torrent, the first letter for a tracker with no icon, and none for Public", async () => {
+    mocks.trackerIcons = { data: { "a.test": "data:image/png;base64,YQ==" } }
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1
+      ? [torrentRow("h1", "Alpha", 3072), torrentRow("h2", "Bravo", 2048, { trackerGroup: "c.test" }), torrentRow("h3", "Charlie", 1024, { trackerGroup: "Public" })]
+      : []
+    renderPage()
+
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(within(table).queryByText("Charlie")).toBeTruthy())
+    const trackerCells = [...table.querySelectorAll("tbody tr td:nth-child(2)")]
+    expect(trackerCells.map(cell => cell.querySelector("img")?.getAttribute("src") ?? cell.querySelector("span[aria-hidden=true]")?.textContent ?? null)).toEqual(["data:image/png;base64,YQ==", "C", null])
   })
 
   it("shows the upload of an open torrent for each day, from the rows of that torrent on its instance", async () => {

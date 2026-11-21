@@ -14,9 +14,11 @@ import { SortIcon } from "@/components/ui/sort-icon"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TorrentName } from "@/components/ui/torrent-name"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useTopTorrents, useTorrentName } from "@/hooks/useTopTorrents"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
+import { useTrackerGroupIcon } from "@/hooks/useTrackerGroupName"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { formatCalendarDay } from "@/lib/dateTimeUtils"
@@ -144,6 +146,7 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
   const tracker = shownGrouping === "tracker"
 
   const colors = useSeriesColors()
+  const groupIcon = useTrackerGroupIcon()
   const config = useMemo<ChartConfig>(() => Object.fromEntries(seriesGroups.map((group, index) => [
     `s${index}`,
     { label: group, theme: { light: colors.light[index], dark: colors.dark[index] } },
@@ -287,6 +290,7 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
                   const expanded = open === row.group
                   const seriesIndex = tracker ? seriesGroups.indexOf(row.group) : -1
                   const name = displayName(row.group, shownGrouping)
+                  const icon = tracker ? groupIcon(row.group) : undefined
                   return (
                     <Fragment key={row.group}>
                       <TableRow className={cn("cursor-pointer", expanded && "bg-muted hover:bg-muted")} onClick={() => setOpen(expanded ? undefined : row.group)}>
@@ -294,6 +298,7 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
                           <button type="button" aria-expanded={expanded} className="flex w-full min-w-0 items-center gap-2 text-left">
                             {expanded ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
                             {tracker && <span className="size-2 shrink-0 rounded-[2px]" style={{ background: seriesIndex >= 0 ? `var(--color-s${seriesIndex})` : "var(--muted-foreground)", opacity: seriesIndex >= 0 ? 1 : 0.45 }} />}
+                            {tracker && (icon ? <TrackerIconImage {...icon} /> : <span className="size-4 shrink-0" />)}
                             <span className="min-w-0 flex-1 truncate">{name}</span>
                             <span className="shrink-0 tabular-nums @xl:hidden" data-narrow>{formatBytes(row.uploaded)}</span>
                           </button>

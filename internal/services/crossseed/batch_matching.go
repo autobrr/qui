@@ -138,6 +138,8 @@ type titleEpisodeKey struct {
 // without a full date.
 const anyDate = -1
 
+const releaseRejectTraceLimit = 10
+
 func releaseDate(r *rls.Release) int {
 	if r.Year > 0 && r.Month > 0 && r.Day > 0 {
 		return r.Year*10000 + r.Month*100 + r.Day
@@ -932,6 +934,7 @@ func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease,
 	}
 	// A candidate that two groups select meets the matcher once.
 	evaluated := make(map[*releaseCandidate]struct{})
+	rejected := 0
 	evaluate := func(c *releaseCandidate) {
 		if _, done := evaluated[c]; done || (sameInstance && c.hash == sourceHash) {
 			return
@@ -939,18 +942,13 @@ func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease,
 		evaluated[c] = struct{}{}
 		verdict := s.matcher().matchVerdict(sourceRead, c.read,
 			matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(c.view.Torrent)}, localMatchPolicy)
-		logReleaseMatchDecision(
-			source.Name,
-			c.read.rawName,
-			false,
-			sourceRead.release,
-			c.read.release,
-			verdict.Matched,
-			verdict.RejectReason,
-			"crossseed: release metadata candidate evaluated",
-		)
 		if verdict.Matched {
 			add(c.candidateEntry, matchTypeRelease)
+			return
+		}
+		if rejected++; rejected <= releaseRejectTraceLimit {
+			log.Trace().Str("sourceTitle", source.Name).Str("candidateTitle", c.read.rawName).Str("reason", verdict.RejectReason).
+				Msg("crossseed: release metadata candidate rejected")
 		}
 	}
 	for _, title := range s.matcher().titleKeys(sourceRead) {
@@ -962,6 +960,10 @@ func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease,
 	}
 	for _, c := range idx.bySize[searchSourceSize(source)] {
 		evaluate(c)
+	}
+	if rejected > releaseRejectTraceLimit {
+		log.Trace().Str("sourceTitle", source.Name).Int("candidates", rejected-releaseRejectTraceLimit).
+			Msg("crossseed: release metadata rejections not logged")
 	}
 	return picks
 }
