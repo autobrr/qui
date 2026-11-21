@@ -609,7 +609,6 @@
     "internal/services/crossseed/relaxed_structure_recheck_test.go": 9,
     "internal/services/crossseed/release_cache.go": 3,
     "internal/services/crossseed/release_cache_test.go": 7,
-    "internal/services/crossseed/release_match.go": 1,
     "internal/services/crossseed/rename_only_recheck_test.go": 24,
     "internal/services/crossseed/result_class.go": 9,
     "internal/services/crossseed/result_class_scan_test.go": 32,

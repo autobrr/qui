@@ -124,7 +124,7 @@ For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entrie
 
 qui does not log a torrent of another show, or an episode that the pack does not contain. These torrents are most of a library, and they have no relation to the pack.
 
-For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected` entries. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason. `TRACE` adds `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which shows the parsed fields of both releases.
+For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected` entries. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason and the parsed fields of the source release.
 
 For the **autobrr webhook check**, look for `Webhook check: rejected near miss` entries. A near miss is a rejected torrent that has the same release group as the announce. For a fansub release, such as `[SubsPlease] Show - 01`, the tag in brackets counts as the group. Each entry names the announced release (`incomingName`), the torrent in qBittorrent (`existingName`), and the reason (`rejectReason`). At `DEBUG`, qui writes the first 5 near misses of each check. `TRACE` adds the others. The `Webhook check completed` entry gives the number of near misses in `nearMisses`. qui does not log the rejected torrents of other groups, because most torrents in a library have no relation to the announce.
 
