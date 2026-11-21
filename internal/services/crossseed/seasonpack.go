@@ -1321,8 +1321,8 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	candidates := make(map[episodeIdentity][]episodeMatch)
 	m := s.matcher()
 
-	// logFiltered emits the field that filtered an episode candidate. It is the grep
-	// target the season-pack troubleshooting docs point users at. The loop below reads
+	// logFiltered returns the line that filtered an episode candidate, or nil, and the
+	// caller writes it with the message the troubleshooting docs grep for. The loop reads
 	// every cached episode on the instance, so "title mismatch" and "episode not in
 	// pack" fire once per unrelated torrent and are not logged. Every other reason logs
 	// at Debug once per name and reason, because copies of one episode repeat the line.
