@@ -203,6 +203,9 @@ func (j *job) prepare(ctx context.Context) error {
 	if err := j.recordNames(ctx); err != nil {
 		return err
 	}
+	if err := j.land(ctx); err != nil {
+		return err
+	}
 	if !j.blind {
 		if err := j.openRoot(ctx, resumed); err != nil {
 			return err
@@ -702,6 +705,7 @@ func (j *job) finish(ctx context.Context, state State) error {
 
 // release frees what the run holds, and keeps the files.
 func (j *job) release() {
+	j.svc.leave(j.rec.ID)
 	if j.root != nil {
 		_ = j.root.Close()
 	}
