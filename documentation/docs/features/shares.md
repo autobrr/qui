@@ -134,7 +134,9 @@ share.example.com {
 }
 ```
 
-In **Trusted proxies**, enter the address from which the proxy connects to qui. For a proxy on the qui host, this is `127.0.0.1`. For a proxy in Docker, this is the address of the proxy container or the range of the Docker network. The tracker reads the client address from `X-Forwarded-For` only when the request comes from a trusted proxy.
+In **Trusted proxies**, enter only the address from which the proxy connects to qui. For a proxy on the qui host, this is `127.0.0.1`. For a proxy in Docker, enter the address of the proxy container. You can enter a Docker network range only if no BitTorrent client is inside that range.
+
+Do not enter your local network or any range that includes a BitTorrent client. A client whose address is inside a trusted range gets a `404`. The tracker reads `X-Forwarded-For` only when the connection comes from a trusted proxy. It reads the header from right to left and skips each trusted address until it finds an address that is not trusted. If every address is trusted, or if the proxy sends no `X-Forwarded-For`, the tracker has no client address and answers with `404`.
 
 Without a trusted proxy, the tracker sees each client at the address of the proxy. Then **Only the first downloader** gives the lock to the proxy, so each client that comes through the proxy gets your address. The limit of 30 announces each minute then counts all clients together.
 
@@ -150,6 +152,8 @@ If qui does not know the address, it does not start the Share. It shows `qui doe
 2. Open the public address in a browser on a network outside your own, for example on a phone with mobile data. An error page with the code `404` shows that the tracker answers. If the browser cannot connect, the port forward or the reverse proxy is wrong.
 3. In qBittorrent, find the Share torrent by its tag `qui-share`, and open its **Trackers** tab. The status **Working** shows that your client can announce.
 4. Send the `.torrent` to your friend. After your friend's client announces, the **Shares** tab shows its address.
+
+If you test with a second client on your own network, make sure that its address is outside **Trusted proxies**.
 
 ### An outside tracker
 
@@ -185,6 +189,7 @@ A client announces again only every 5 minutes. After each fix, use **Force reann
 | qui shows `qui does not know the public peer address` | The instance has no public peer address, and qBittorrent reports no external address or uses a random listen port. | Set the [public peer address](./instance-settings.md#public-peer-address) of the instance. |
 | Your friend's client shows a tracker error, such as a timeout or a refused connection | The public address does not reach the tracker port. | [Test the tracker](#test-the-tracker). |
 | Your friend's client shows the tracker error `404` | The Share ended, or the `.torrent` is from another Share. | Start a new Share and send its `.torrent`. |
+| A client shows the tracker error `404` or `Not Found`, and the qui log shows `share tracker: 404: no client address` | The address of the client is inside **Trusted proxies**, or the reverse proxy sends no `X-Forwarded-For` header. | In **Settings → Shares**, list only the address of the reverse proxy in **Trusted proxies**. Make sure that the reverse proxy sends `X-Forwarded-For`. |
 | The tracker works in your friend's client, but the client finds no peer | Your own client did not announce. | Open the **Trackers** tab of the Share torrent in qBittorrent. If the status is not **Working**, your client cannot open the public address. |
 | The tracker works, the client finds no peer, and **Only the first downloader** is on | Another address holds the lock, for example the old address of your friend. | Click **Unlock** on the Shares tab. |
 | Your friend's client finds your client, but the download stays at 0% | Your friend's client cannot connect to your client. | Make sure that the public peer address is correct, and forward the listen port of qBittorrent. |

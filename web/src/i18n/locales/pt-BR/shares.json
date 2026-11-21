@@ -30,7 +30,7 @@
       "publicAddress": "Endereço público",
       "publicAddressDescription": "A URL pela qual a internet alcança esta porta, com um proxy na frente para HTTPS. O .torrent de cada Compartilhamento contém essa URL, então uma alteração aguarda até que os Compartilhamentos no tracker do qui terminem.",
       "trustedProxies": "Proxies confiáveis",
-      "trustedProxiesDescription": "Endereços ou faixas CIDR, um por linha. O qui lê o endereço de cliente encaminhado somente desses proxies.",
+      "trustedProxiesDescription": "Liste somente os endereços ou faixas CIDR dos seus proxies, um por linha, e não as redes dos clientes. O qui lê o endereço de cliente encaminhado somente desses proxies.",
       "trackerUrl": "URL do tracker",
       "trackerUrlDescription": "Uma URL de anúncio http, https ou udp.",
       "publicAddressPlaceholder": "https://share.example.com",

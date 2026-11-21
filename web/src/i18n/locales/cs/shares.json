@@ -30,7 +30,7 @@
       "publicAddress": "Veřejná adresa",
       "publicAddressDescription": "URL, přes kterou internet dosáhne na tento port, s proxy před ním pro HTTPS. Obsahuje ji .torrent každého Sdílení, takže změna počká, dokud Sdílení na trackeru qui neskončí.",
       "trustedProxies": "Důvěryhodné proxy",
-      "trustedProxiesDescription": "Adresy nebo rozsahy CIDR, jedna na řádek. qui čte přeposlanou adresu klienta jen z těchto proxy.",
+      "trustedProxiesDescription": "Uveďte jen adresy nebo rozsahy CIDR svých proxy, ne sítě klientů, jednu na řádek. qui čte přeposlanou adresu klienta jen z těchto proxy.",
       "trackerUrl": "URL trackeru",
       "trackerUrlDescription": "Ohlašovací URL typu http, https nebo udp.",
       "publicAddressPlaceholder": "https://share.example.com",

@@ -311,10 +311,10 @@ func TestTheTrackerAnswersOnlyTheSecretsAndInfohashesOfActiveShares(t *testing.T
 	require.Empty(t, ok.Header.Values("Server"))
 
 	for name, c := range map[string]client{
-		"unknown secret":                {secret: "guessed-secret", port: 6881},
-		"secret of another Share":       {secret: "recipient-secret-8", port: 6881},
-		"owner secret of another Share": {secret: "owner-secret-8", port: 6881},
-		"empty secret":                  {secret: "", port: 6881},
+		"unknown secret":                {secret: "guessed-secret", from: recipient.from, port: 6881},
+		"secret of another Share":       {secret: "recipient-secret-8", from: recipient.from, port: 6881},
+		"owner secret of another Share": {secret: "owner-secret-8", from: recipient.from, port: 6881},
+		"empty secret":                  {secret: "", from: recipient.from, port: 6881},
 	} {
 		t.Run(name, func(t *testing.T) {
 			requireBare404(t, r.announce(c, announce{left: 1000}))
@@ -334,7 +334,7 @@ func TestTheTrackerAnswersEveryOtherRequestWithABare404(t *testing.T) {
 
 	for _, path := range []string{"/announce/", "/scrape/" + recipientSecret, "/announce/../announce/" + recipientSecret} {
 		t.Run(path, func(t *testing.T) {
-			requireBare404(t, r.get(path, nil))
+			requireBare404(t, r.get(path, http.Header{"X-Forwarded-For": {recipient.from}}))
 		})
 	}
 	post, err := http.NewRequestWithContext(t.Context(), http.MethodPost, r.base+valid, nil)
@@ -543,6 +543,16 @@ func TestTheTrackerTrustsAForwardedAddressOnlyFromATrustedProxy(t *testing.T) {
 
 	require.NoError(t, r.tracker.Start(t.Context(), sharetracker.Settings{Port: r.port}))
 	require.Equal(t, addr("127.0.0.1:6881"), forwarded("198.51.100.7"))
+}
+
+func TestTheTrackerAnswersAClientWithoutAnAddressWithABare404(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	query := "/announce/" + recipientSecret + "?" + recipient.query(announce{left: 1000}).Encode()
+
+	requireBare404(t, r.get(query, nil))
+	requireBare404(t, r.get(query, http.Header{"X-Forwarded-For": {"127.0.0.1"}}))
+	require.Empty(t, r.reports.all())
 }
 
 // regression: #4231

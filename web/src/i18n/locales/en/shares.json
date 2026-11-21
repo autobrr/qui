@@ -30,7 +30,7 @@
       "publicAddress": "Public address",
       "publicAddressDescription": "The URL at which the internet reaches this port, with a proxy in front for HTTPS. The .torrent of each Share carries it, so a change waits until the Shares on qui's tracker end.",
       "trustedProxies": "Trusted proxies",
-      "trustedProxiesDescription": "Addresses or CIDR ranges, one per line. qui reads the forwarded client address only from these proxies.",
+      "trustedProxiesDescription": "List only the addresses or CIDR ranges of your proxies, not client networks, one per line. qui reads the forwarded client address only from these proxies.",
       "trackerUrl": "Tracker URL",
       "trackerUrlDescription": "An http, https, or udp announce URL.",
       "publicAddressPlaceholder": "https://share.example.com",
