@@ -216,6 +216,7 @@ func TestTransferTorrentWritesTheTemporaryNamesOfTheCopy(t *testing.T) {
 	r.requireNoHelpers(record)
 }
 
+// regression: #4348
 func TestTransferTorrentConnectsAfterTheCheckOnTheSource(t *testing.T) {
 	r := newRigOn(t, overSFTP, onDisk)
 	r.connect()
