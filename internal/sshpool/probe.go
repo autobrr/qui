@@ -20,13 +20,6 @@ import (
 
 const gnuProbeCommand = "LC_ALL=C find --version && LC_ALL=C stat --version"
 
-// posixProbeWord, quoted by shellQuote, comes back from printf unchanged only
-// under a shell that reads that quoting the POSIX way. fish fails on the
-// backslash before a closing quote, nushell on the quote shellQuote escapes,
-// and tcsh on the newline in quotes, whatever its history settings. The "!"
-// catches tcsh a second time while history expansion is on. A zsh told to
-// quote like csh fails too, and it already fails on a path that holds a
-// newline.
 const posixProbeWord = "a\\'!\nb"
 
 // outputLimit caps what a probe keeps from a remote command. The server is the
@@ -90,7 +83,7 @@ func noAnswer(ctx context.Context, err error) bool {
 	return err != nil && (ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded))
 }
 
-// shellAndTools asks the login shell whether it quotes like POSIX and, only
+// shellAndTools asks the sh on the host whether it quotes like POSIX and, only
 // then, whether it has the GNU tools. Both probe sites call it, so the Test
 // route and the pool cannot disagree on what earns the exec tier. A command
 // that did not answer is an error; the caller decides whether the connection

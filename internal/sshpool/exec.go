@@ -116,12 +116,13 @@ func (c *Conn) run(ctx context.Context, command string, stdout io.Writer) error 
 
 	// stderr only goes into an error message, so the probe limit is enough.
 	stderr := &limitBuffer{limit: outputLimit}
+	session.Stdin = strings.NewReader(command)
 	session.Stdout = stdout
 	session.Stderr = stderr
 	stop := context.AfterFunc(ctx, func() { _ = session.Close() })
 	defer stop()
 
-	err = session.Run(command)
+	err = session.Run("sh")
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
