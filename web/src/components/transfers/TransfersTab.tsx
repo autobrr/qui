@@ -204,7 +204,7 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
                       <TableHead className="hidden text-right @xl:table-cell">{t("columns.size")}</TableHead>
                       {/* The column has the width of a row with progress, so it keeps its width when a Transfer starts or ends. */}
                       <TableHead className="hidden @lg:table-cell @lg:min-w-52">{t("columns.state")}</TableHead>
-                      <TableHead className="hidden @2xl:table-cell">{t("columns.started")}</TableHead>
+                      <TableHead className="hidden @3xl:table-cell">{t("columns.started")}</TableHead>
                       <TableHead className="pr-6 max-sm:pr-4"><span className="sr-only">{t("columns.actions")}</span></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -372,7 +372,7 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
           {row.kind === "export" && <Mark>{t("row.export")}</Mark>}
         </div>
         {/* A narrow table has no State or Started column, so the row names them here. The dot stays with the fact before it. */}
-        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground @2xl:hidden">
+        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground @3xl:hidden">
           <span className="flex items-center gap-1.5 @lg:hidden">
             <StateLabel state={row.state} />
             <span aria-hidden="true">·</span>
@@ -396,7 +396,7 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
         <StateLabel state={row.state} className="text-sm" />
         <StateDetail row={row} />
       </TableCell>
-      <TableCell className="hidden align-top @2xl:table-cell">
+      <TableCell className="hidden align-top @3xl:table-cell">
         <div>{started}</div>
         {/* The name column takes the free width, so the by-line asks for its own width up to 15rem before it wraps. */}
         <div className="w-max max-w-60 text-xs whitespace-normal text-muted-foreground [overflow-wrap:anywhere]"><StartedBy row={row} /></div>
