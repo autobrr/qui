@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/autobrr/rls"
-	"github.com/rs/zerolog/log"
 )
 
 func evaluateReleaseMatch(source, candidate *rls.Release) (float64, string) {
@@ -82,65 +81,6 @@ type releaseFilterDebugInfo struct {
 	Disc       string   `json:"disc,omitempty"`
 	Platform   string   `json:"platform,omitempty"`
 	Arch       string   `json:"arch,omitempty"`
-}
-
-func recordReleaseRejection(
-	releaseFilterReasons map[string]int,
-	reason string,
-	sourceTitle string,
-	candidateTitle string,
-	findIndividualEpisodes bool,
-	sourceRelease releaseFilterDebugInfo,
-	candidateRelease releaseFilterDebugInfo,
-	message string,
-) {
-	if reason == "" {
-		reason = "release mismatch"
-	}
-	releaseFilterReasons[reason]++
-	// The parsed release pair is developer detail. The caller logs the reason.
-	if evt := log.Trace(); evt.Enabled() {
-		evt.
-			Str("sourceTitle", sourceTitle).
-			Str("candidateTitle", candidateTitle).
-			Str("reason", reason).
-			Bool("findIndividualEpisodes", findIndividualEpisodes).
-			Interface("sourceRelease", sourceRelease).
-			Interface("candidateRelease", candidateRelease).
-			Msg(message)
-	}
-}
-
-func logReleaseMatchDecision(
-	sourceTitle string,
-	candidateTitle string,
-	findIndividualEpisodes bool,
-	sourceRelease *rls.Release,
-	candidateRelease *rls.Release,
-	matched bool,
-	reason string,
-	message string,
-) {
-	if reason == "" {
-		if matched {
-			reason = "matched"
-		} else {
-			reason = "release mismatch"
-		}
-	}
-	// TRACE, not DEBUG: the only caller runs this for each pair that the
-	// cross-match index selects, on every cross-match build.
-	if evt := log.Trace(); evt.Enabled() {
-		evt.
-			Str("sourceTitle", sourceTitle).
-			Str("candidateTitle", candidateTitle).
-			Bool("matched", matched).
-			Str("reason", reason).
-			Bool("findIndividualEpisodes", findIndividualEpisodes).
-			Interface("sourceRelease", releaseFilterDebugInfoFrom(sourceRelease)).
-			Interface("candidateRelease", releaseFilterDebugInfoFrom(candidateRelease)).
-			Msg(message)
-	}
 }
 
 func releaseFilterDebugInfoFrom(release *rls.Release) releaseFilterDebugInfo {

@@ -1754,12 +1754,6 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 		filteredTorrents = sm.filterTorrentsByExpr(filteredTorrents, filters.Expr, !view.FullPasskeyAccess)
 	}
 
-	log.Trace().
-		Int("instanceID", instanceID).
-		Int("totalCount", len(filteredTorrents)).
-		Bool("narrowed", rule.narrows()).
-		Msg("Applied initial filtering")
-
 	// Apply search filter if provided (library doesn't support search)
 	if view.Search != "" {
 		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, view.Search)
@@ -1885,21 +1879,6 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 		WebAPIVersions:         map[int]string{instanceID: client.GetWebAPIVersion()},
 		CopyGroupsReady:        copyGroupsReady,
 	}
-
-	// Always compute from fresh all_torrents data
-	// This ensures real-time updates are always reflected
-	// The sync manager is the single source of truth
-
-	freshEvent := log.Trace().
-		Int("instanceID", instanceID).
-		Int("count", len(paginatedViews)).
-		Int("total", len(filteredTorrents)).
-		Str("search", view.Search).
-		Bool("hasMore", hasMore)
-	if !filters.IsEmpty() {
-		freshEvent = freshEvent.Interface("filters", filters)
-	}
-	freshEvent.Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
 }
@@ -4894,11 +4873,7 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 	return sm.editTorrents(ctx, instanceID, hashes, "set tags", nil, func(client *Client) error {
 		// Check version support before attempting API call
 		if client.Supports(CapSetTags) {
-			if err := client.SetTags(ctx, hashes, tags); err != nil {
-				return err
-			}
-			log.Debug().Str("webAPIVersion", client.GetWebAPIVersion()).Msg("Used SetTags API directly")
-			return nil
+			return client.SetTags(ctx, hashes, tags)
 		}
 
 		return sm.setTagsFallback(ctx, instanceID, client, hashes, tags)

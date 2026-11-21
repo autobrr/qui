@@ -442,7 +442,11 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		}
 	}
 
-	log.Debug().
+	matchLevel := zerolog.DebugLevel
+	if totalCandidates == 0 {
+		matchLevel = zerolog.TraceLevel
+	}
+	log.WithLevel(matchLevel).
 		Str("targetTitle", req.TorrentName).
 		Str("sourceIndexer", req.SourceIndexer).
 		Int("instancesSearched", len(searchInstanceIDs)).

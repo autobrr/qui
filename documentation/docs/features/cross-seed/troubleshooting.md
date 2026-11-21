@@ -120,13 +120,13 @@ logLevel = 'DEBUG'
 
 If you upgraded from an older version, open `config.toml`. If `logLevel` holds another value, set it to `DEBUG`.
 
-For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each entry carries the `pack`, `season`, and `candidate` that qui compared. Each entry also has a `reason` field for the mismatch (for example `title mismatch`, `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, `episode not in pack`, or `episode numbering mismatch`).
+For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each entry carries the `pack`, `season`, and `candidate` that qui compared. Each entry also has a `reason` field for the mismatch (for example `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, or `episode numbering mismatch`).
 
-Two of these reasons show that the candidate belongs to different content. `title mismatch` indicates a different show. `episode not in pack` indicates an episode that this pack does not contain. Because these two reasons apply to most of a library, qui logs them at `TRACE`. All other reasons appear at `DEBUG`.
+qui does not log a candidate that it rejects because it is another show, or because the pack does not contain its episode. These torrents are most of a library.
 
-For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected` entries. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason. `TRACE` adds `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which shows the parsed fields of both releases.
+For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected` entries. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason and the parsed fields of the source release.
 
-For the **autobrr webhook check**, look for `Webhook check: rejected near miss` entries. A near miss is a rejected torrent that has the same release group as the announce. For a fansub release, such as `[SubsPlease] Show - 01`, the tag in brackets counts as the group. Each entry names the announced release (`incomingName`), the torrent in qBittorrent (`existingName`), and the reason (`rejectReason`). At `DEBUG`, qui writes the first 5 near misses of each check. `TRACE` adds the others. The `Webhook check completed` entry gives the number of near misses in `nearMisses`. qui does not log the rejected torrents of other groups, because most torrents in a library have no relation to the announce.
+For the **autobrr webhook check**, look for `Webhook check: rejected near miss` entries. A near miss is a rejected torrent that has the same release group as the announce. For a fansub release, such as `[SubsPlease] Show - 01`, the tag in brackets counts as the group. Each entry names the announced release (`incomingName`), the torrent in qBittorrent (`existingName`), and the reason (`rejectReason`). qui writes the first 5 near misses of each check, at `DEBUG` and at `TRACE`. The `Webhook check completed` entry gives the number of all near misses in `nearMisses`. qui does not log the rejected torrents of other groups, because most torrents in a library have no relation to the announce.
 
 For content-prefilter decisions, `DEBUG` is enough. Look for messages such as:
 

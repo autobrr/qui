@@ -89,7 +89,7 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 		require.GreaterOrEqual(t, large.Message("[CROSSSEED-SEARCH] File has explicit episode markers, using file for TV detection"), 1000)
 		require.GreaterOrEqual(t, large.Message("[CROSSSEED-SEARCH] Using largest file for content type detection"), 1000)
 	}
-	require.Equal(t, 1000, largeWarm.Message("Webhook check: rejected near miss"))
+	require.Equal(t, nearMissDebugLimit, largeWarm.Message("Webhook check: rejected near miss"))
 	require.Equal(t, nearMissDebugLimit, largeWarm[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}])
 	require.GreaterOrEqual(t, largeWarm.Message("Using cached torrent files"), 2000)
 

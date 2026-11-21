@@ -183,7 +183,7 @@ func (s *Service) InvalidateCache(ctx context.Context, instanceID int, hash stri
 		return fmt.Errorf("failed to invalidate torrent cache: %w", err)
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Str("hash", hash).
 		Msg("Invalidated torrent files cache")

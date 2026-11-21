@@ -414,16 +414,7 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 				if reason == "" {
 					reason = "release mismatch"
 				}
-				recordReleaseRejection(
-					releaseFilterReasons,
-					reason,
-					sourceTorrent.Name,
-					res.Title,
-					opts.FindIndividualEpisodes,
-					releaseFilterDebugInfoFrom(searchRelease),
-					releaseFilterDebugInfoFrom(candidateRelease),
-					"[CROSSSEED-SEARCH] Candidate rejected by search classifier",
-				)
+				releaseFilterReasons[reason]++
 				traceRejections.add(res, reason, releaseFilterReasons[reason])
 			}
 			if decision.StrictMismatchReason != "" && decision.SizeEvidence == searchSizeEvidenceExact {

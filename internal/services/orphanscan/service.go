@@ -2068,7 +2068,7 @@ func dedupeCaseVariantRoots(ctx context.Context, roots []string, backend fsops.B
 	for _, root := range roots {
 		cleaned := d.Clean(root)
 		if _, ok := exact[cleaned]; ok {
-			log.Debug().Str("root", root).Msg("orphanscan: dropped scan root that repeats an earlier root")
+			log.Trace().Str("root", root).Msg("orphanscan: dropped scan root that repeats an earlier root")
 			continue
 		}
 		exact[cleaned] = struct{}{}

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -18,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/logbudget"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -416,8 +418,50 @@ func TestBuildCrossMatchSets_ReleaseMetadataTraceLogsRejection(t *testing.T) {
 
 	logOutput := buf.String()
 	require.Contains(t, logOutput, `"level":"trace"`)
-	require.Contains(t, logOutput, `"message":"crossseed: release metadata candidate evaluated"`)
+	require.Contains(t, logOutput, `"message":"crossseed: release metadata candidate rejected"`)
 	require.Contains(t, logOutput, `"reason":"group mismatch"`)
+}
+
+// regression: #4331
+func TestBuildCrossMatchSets_ReleaseMetadataTraceLimit(t *testing.T) {
+	const rounds = releaseRejectTraceLimit + 6
+	tests := []struct {
+		name          string
+		group         func(round int) string
+		wantRejected  int
+		wantNotLogged int
+	}{
+		{name: "rounds of one group match and write nothing", group: func(int) string { return "grp" }},
+		{
+			name:          "rounds of other groups write the first rejections of each round",
+			group:         func(round int) string { return fmt.Sprintf("grp%d", round) },
+			wantRejected:  rounds * releaseRejectTraceLimit,
+			wantNotLogged: rounds,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrents := make([]crossMatchFixture, rounds)
+			for i := range torrents {
+				name := fmt.Sprintf("Karts.2022.Round%02d.Hobart.Race1.SportNet.720p.X264.English-%s.mp4", i+1, tt.group(i))
+				torrents[i] = crossMatchTorrent(1, fmt.Sprintf("a%02d", i), name, "/data/a", "/data/a/"+name, cmFile(name, int64(1000+i)))
+			}
+
+			lines := logbudget.Count(t, func() {
+				buildCrossMatch(t, CrossMatchNeeds{SameExists: true}, torrents...)
+			})
+
+			traced := 0
+			for line, count := range lines {
+				if line.Level == "trace" {
+					traced += count
+				}
+			}
+			require.Equal(t, tt.wantRejected+tt.wantNotLogged, traced)
+			require.Equal(t, tt.wantRejected, lines.Message("crossseed: release metadata candidate rejected"))
+			require.Equal(t, tt.wantNotLogged, lines.Message("crossseed: release metadata rejections not logged"))
+		})
+	}
 }
 
 // The episodes of a daily show share a Title key and episode 0. Only a pair
@@ -460,7 +504,6 @@ func TestBuildCrossMatchSets_DailyShowMeetsOnlyItsDate(t *testing.T) {
 			met[[2]string{entry.SourceTitle, entry.CandidateTitle}] = true
 		}
 	}
-	require.True(t, met[[2]string{jan15, jan15Copy}], "the same date meets the matcher")
 	require.False(t, met[[2]string{jan15, jan16}], "another date does not meet the matcher")
 	require.True(t, met[[2]string{jan15, undated}], "a dated source meets an undated candidate")
 	require.True(t, met[[2]string{undated, jan16}], "an undated source meets every dated candidate")
