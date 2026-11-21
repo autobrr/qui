@@ -7,6 +7,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 import { noComments } from './scripts/no-comments-rule.mjs'
+import { noNativeTitle } from './scripts/no-native-title-rule.mjs'
 
 const copyGroupImportPattern = {
   regex: '(^|/)copy-groups$',
@@ -314,9 +315,10 @@ export default tseslint.config([
     },
   },
   {
-    plugins: { qui: { rules: { 'no-comments': noComments } } },
+    plugins: { qui: { rules: { 'no-comments': noComments, 'no-native-title': noNativeTitle } } },
     rules: {
       'qui/no-comments': 'error',
+      'qui/no-native-title': 'error',
     },
   },
 ])
