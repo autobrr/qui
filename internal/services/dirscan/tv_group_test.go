@@ -27,6 +27,7 @@ import (
 // episode search with the result for that episode. It records each search and
 // counts the answers with a result, since each one leads to a torrent download.
 type episodeSearcher struct {
+	noIDSearchCaps
 	indexerID int
 	season    []jackett.SearchResult
 	episodes  map[int][]jackett.SearchResult

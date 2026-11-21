@@ -65,7 +65,7 @@ func (s *failingEnabledIndexerStore) Get(_ context.Context, id int) (*models.Tor
 			return indexer, nil
 		}
 	}
-	return nil, nil
+	return nil, models.ErrTorznabIndexerNotFound
 }
 
 func (s *failingEnabledIndexerStore) List(context.Context) ([]*models.TorznabIndexer, error) {

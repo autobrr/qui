@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"math/big"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1620,10 +1619,12 @@ func (s *Service) processSearchee(
 		return workItemReport{search: itemNoIndexers}
 	}
 
-	// Lookup external IDs via arr service if not already present in TRaSH naming
+	tagSourcedIDs := meta.HasExternalIDs()
 	arrTitles := s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
 
-	response, err := s.searchWithRetries(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, arrTitles, minSize, maxSize, stillPending, l)
+	in := s.searchInput(meta, filteredIndexers, contentInfo.Categories, arrTitles, tagSourcedIDs)
+	in.TVSourceYear = s.searcheeTVYear(target.backend.Paths(), searchee, meta)
+	response, covered, err := s.searchSearchee(ctx, searchee, in, minSize, maxSize, stillPending, l)
 	if err != nil {
 		if ctx.Err() != nil {
 			return workItemReport{search: itemSearchCanceled}
@@ -1634,12 +1635,12 @@ func (s *Service) processSearchee(
 		return workItemReport{search: itemSearchCanceled}
 	}
 
-	report := workItemReport{search: itemSearched, requested: response.RequestedIndexerIDs, answered: response.CoveredIndexerIDs}
+	report := workItemReport{search: itemSearched, requested: response.RequestedIndexerIDs, answered: covered}
 	if !report.searchCovered() && l != nil {
 		l.Debug().
 			Str("name", searchee.Name).
 			Ints("requestedIndexers", response.RequestedIndexerIDs).
-			Ints("coveredIndexers", response.CoveredIndexerIDs).
+			Ints("coveredIndexers", covered).
 			Msg("dirscan: search did not cover all indexers; searchee stays pending")
 	}
 
@@ -1742,83 +1743,72 @@ func (s *Service) filterIndexersForContent(ctx context.Context, contentInfo *cro
 	return filteredIndexers
 }
 
-// searchPass describes one query variant sent to the indexers. The zero value is
-// the primary pass; retry passes override the query or drop the year.
-type searchPass struct {
-	label    string
-	query    string
-	omitYear bool
+func (s *Service) searchInput(meta *SearcheeMetadata, indexerIDs, categories []int, arrTitles []string, tagSourcedIDs bool) crossseed.GatherInput {
+	req := s.searcher.buildSearchRequest(meta, indexerIDs, categories)
+	in := crossseed.GatherInput{Req: req, TagSourcedIDs: tagSourcedIDs, TorrentName: meta.OriginalName, LogPrefix: "dirscan:"}
+	if alt, season, ok := crossseed.AlternateTitleQuery(req.Query, meta.Release, arrTitles, meta.CleanedName); ok {
+		in.AltTitle = alt
+		if season > 0 {
+			in.AltTitleSeason = new(season)
+		}
+	}
+	return in
 }
 
-// searchWithRetries runs the primary search and, when it produced nothing worth
-// downloading, retries with the two safer query variants cross-seed uses.
-//
-// A result outside the size band cannot match this searchee, so a response full
-// of out-of-band hits is the same dead end as an empty one. Dir scan finalizes a
-// searchee as no_match once its search covered every indexer, so a retry that
-// fails must leave the coverage incomplete: the searchee then stays pending and
-// the next scan tries again.
-func (s *Service) searchWithRetries(
+func (s *Service) searcheeTVYear(d fsops.PathDialect, searchee *Searchee, meta *SearcheeMetadata) int {
+	if !meta.IsTV {
+		return 0
+	}
+	if meta.Year > 0 {
+		return meta.Year
+	}
+	contentFile := selectLargestVideoFile(searchee.Files)
+	if contentFile == nil {
+		return 0
+	}
+	base := d.Base(contentFile.Path)
+	return s.parser.Parse(strings.TrimSuffix(base, filepath.Ext(base))).Year
+}
+
+func (s *Service) searchSearchee(
 	ctx context.Context,
 	searchee *Searchee,
-	meta *SearcheeMetadata,
-	indexerIDs []int,
-	categories []int,
-	arrTitles []string,
+	in crossseed.GatherInput,
 	minSize, maxSize int64,
 	stillPending func() bool,
 	l *zerolog.Logger,
-) (*jackett.SearchResponse, error) {
+) (*jackett.SearchResponse, []int, error) {
 	if err := s.searchGate.acquire(ctx, isWebhookRun(ctx)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Check after the wait: another run of the directory can finish this item
 	// while it waits, for example a webhook item that went first.
 	if stillPending != nil && !stillPending() {
 		s.searchGate.releaseUnused()
-		return nil, nil
+		return nil, nil, nil
 	}
 	defer s.searchGate.release()
 
-	response, err := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, searchPass{}, l)
-	if err != nil || response == nil {
-		return response, err
+	if l != nil {
+		l.Debug().
+			Str("name", searchee.Name).
+			Str("query", in.Req.Query).
+			Ints("indexers", in.Req.IndexerIDs).
+			Ints("categories", in.Req.Categories).
+			Str("imdb", in.Req.IMDbID).
+			Int("tmdb", in.Req.TMDbID).
+			Str("tvdb", in.Req.TVDbID).
+			Msg("dirscan: search request")
 	}
 
-	for _, pass := range retrySearchPasses(meta, arrTitles) {
-		if hasResultInSizeBand(response.Results, minSize, maxSize) {
-			break
-		}
-
+	response, covered, _, err := s.searcher.gatherer(inSizeBand(minSize, maxSize)).Gather(ctx, ctx, in)
+	if err != nil {
 		if l != nil {
-			l.Debug().
-				Str("name", searchee.Name).
-				Str("pass", pass.label).
-				Str("query", pass.query).
-				Msg("dirscan: nothing in the size band, retrying search")
+			l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: search failed")
 		}
-
-		retry, retryErr := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, pass, l)
-		if retryErr != nil || retry == nil {
-			if ctx.Err() != nil {
-				return nil, retryErr
-			}
-			// The retry never answered, so this searchee has not been fully searched.
-			// Dropping the covered set keeps it pending instead of finalizing it.
-			response.CoveredIndexerIDs = nil
-			break
-		}
-
-		// Concat, not append: the merge must never write into the backing array of
-		// the response the caller before us still holds.
-		retry.Results = slices.Concat(response.Results, retry.Results)
-		retry.Partial = response.Partial || retry.Partial
-		retry.RequestedIndexerIDs = response.RequestedIndexerIDs
-		retry.CoveredIndexerIDs = intersectIndexerIDs(response.CoveredIndexerIDs, retry.CoveredIndexerIDs)
-		response = retry
+		return nil, nil, err
 	}
-
-	return response, nil
+	return response, covered, nil
 }
 
 // searchGate lets one item search at a time across runs, and starts the next
@@ -1923,113 +1913,11 @@ func isWebhookRun(ctx context.Context) bool {
 	return webhook
 }
 
-// retrySearchPasses lists the query variants to try, in order, when a search
-// found nothing usable. Both are title-driven, so neither runs for an ID-driven
-// search: the ID already identifies the content and the query is dropped.
-func retrySearchPasses(meta *SearcheeMetadata, arrTitles []string) []searchPass {
-	if meta.HasExternalIDs() {
-		return nil
-	}
-
-	var passes []searchPass
-
-	// The year is the narrowest constraint on the primary query, so drop it first.
-	if meta.Year > 0 && meta.IsMovie {
-		passes = append(passes, searchPass{label: "yearless", omitYear: true})
-	}
-
-	// A tracker can index the same content under a localized, romanized or *arr
-	// alias. Shared with cross-seed so both paths pick the same alternate title.
-	if alt, ok := crossseed.AlternateTitleQuery(buildSearchQuery(meta), meta.Release, arrTitles, meta.CleanedName); ok {
-		// Keep the year the pass before it actually searched: re-applying a year the
-		// yearless retry already ruled out would repeat a known dead end.
-		passes = append(passes, searchPass{label: "alternate-title", query: alt, omitYear: len(passes) > 0})
-	}
-
-	return passes
-}
-
-// hasResultInSizeBand reports whether any result could match the searchee at all.
+// inSizeBand reports whether a result could match the searchee at all.
 // It mirrors the band that tryMatchResultsPerIndexer applies before downloading.
-func hasResultInSizeBand(results []jackett.SearchResult, minSize, maxSize int64) bool {
-	return slices.ContainsFunc(results, func(result jackett.SearchResult) bool {
+func inSizeBand(minSize, maxSize int64) func(jackett.SearchResult) bool {
+	return func(result jackett.SearchResult) bool {
 		return (minSize <= 0 || result.Size >= minSize) && (maxSize <= 0 || result.Size <= maxSize)
-	})
-}
-
-// intersectIndexerIDs keeps the IDs present in both sets, preserving the order of
-// the first. A retry pass that missed an indexer un-covers it.
-func intersectIndexerIDs(primary, retry []int) []int {
-	if len(retry) == 0 {
-		return nil
-	}
-	return slices.DeleteFunc(slices.Clone(primary), func(id int) bool {
-		return !slices.Contains(retry, id)
-	})
-}
-
-// searchForSearchee searches indexers and waits for results.
-func (s *Service) searchForSearchee(
-	ctx context.Context,
-	searchee *Searchee,
-	meta *SearcheeMetadata,
-	indexerIDs []int,
-	categories []int,
-	pass searchPass,
-	l *zerolog.Logger,
-) (*jackett.SearchResponse, error) {
-	resultsCh := make(chan *jackett.SearchResponse, 1)
-	errCh := make(chan error, 1)
-
-	searchReq := &SearchRequest{
-		Searchee:      searchee,
-		Metadata:      meta,       // Pass parsed metadata with external IDs
-		IndexerIDs:    indexerIDs, // Use capability-filtered indexers
-		Categories:    categories,
-		QueryOverride: pass.query,
-		OmitYear:      pass.omitYear,
-		OnAllComplete: func(response *jackett.SearchResponse, err error) {
-			if err != nil {
-				errCh <- err
-				return
-			}
-			resultsCh <- response
-		},
-	}
-
-	if l != nil {
-		ev := l.Debug().
-			Str("name", searchee.Name).
-			Str("query", buildSearchQuery(meta)).
-			Ints("indexers", indexerIDs).
-			Ints("categories", categories)
-		if meta != nil && meta.HasExternalIDs() {
-			ev = ev.
-				Str("imdb", meta.GetIMDbID()).
-				Int("tmdb", meta.GetTMDbID()).
-				Int("tvdb", meta.GetTVDbID())
-		}
-		ev.Msg("dirscan: search request")
-	}
-
-	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
-	if err := s.searcher.Search(searchCtx, searchReq); err != nil {
-		if l != nil {
-			l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: search failed")
-		}
-		return nil, err
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case err := <-errCh:
-		if l != nil {
-			l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: search error")
-		}
-		return nil, err
-	case response := <-resultsCh:
-		return response, nil
 	}
 }
 

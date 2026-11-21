@@ -31,10 +31,10 @@ type torznabRequestInput struct {
 }
 
 // buildTorznabRequest holds the rules for what qui asks a Torznab indexer. The
-// normal search and the search for a season group both call it. The normal
-// search trims the categories after this step, because the trim reads the
-// indexers from the database.
-func (m matcher) buildTorznabRequest(in torznabRequestInput) gatherInput {
+// normal search and the search for a season group both call it. Both trim the
+// categories after this step, because the trim reads the indexers from the
+// database.
+func (m matcher) buildTorznabRequest(in torznabRequestInput) GatherInput {
 	release := in.source.release
 	rawRelease := m.parseReleaseName(in.torrentName)
 
@@ -95,12 +95,15 @@ func (m matcher) buildTorznabRequest(in torznabRequestInput) gatherInput {
 		}
 	}
 
-	out := gatherInput{req: req, tagSourcedIDs: in.tagSourcedIDs, torrentName: in.torrentName}
+	out := GatherInput{Req: req, TagSourcedIDs: in.tagSourcedIDs, TorrentName: in.torrentName, LogPrefix: "[CROSSSEED-SEARCH]"}
+	if in.contentInfo.ContentType == "tv" {
+		out.TVSourceYear = release.Year
+	}
 	if !req.OmitQueryForIDs || in.tagSourcedIDs {
 		var altSeason int
-		out.altTitle, altSeason, _ = m.alternateTitleQuery(req.Query, in.source, in.arrTitles)
+		out.AltTitle, altSeason, _ = m.alternateTitleQuery(req.Query, in.source, in.arrTitles)
 		if altSeason > 0 {
-			out.altTitleSeason = new(altSeason)
+			out.AltTitleSeason = new(altSeason)
 		}
 	}
 	return out

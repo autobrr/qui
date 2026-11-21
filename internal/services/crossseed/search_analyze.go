@@ -816,11 +816,14 @@ func alternateConnectorQuery(query string) (string, bool) {
 // numeral. A candidate counts only when its normalized form differs from the
 // primary query, so the retry never repeats the query that already returned
 // nothing.
-// Returns ("", false) when no distinct alternate title exists.
+// Returns ("", 0, false) when no distinct alternate title exists.
 // Dir Scan has no Service, so it parses through the default parser.
-func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
-	query, _, ok := matcher{}.alternateTitleQuery(primaryQuery, namedRelease{release: release, rawName: releaseName}, arrTitles)
-	return query, ok
+func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (query string, season int, ok bool) {
+	side := namedRelease{release: release, rawName: releaseName}
+	if isTVRelease(release) {
+		side.seasonNumeral = inferredSeasonNumeral(release)
+	}
+	return matcher{}.alternateTitleQuery(primaryQuery, side, arrTitles)
 }
 
 // TitlesMatch reports whether two release names pass the title rule of the
