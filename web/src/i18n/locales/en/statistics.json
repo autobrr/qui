@@ -182,6 +182,7 @@
     "deleted": "Deleted",
     "crossSeed": "Cross-seed",
     "note": "A deleted torrent keeps its place with its name. A torrent counts toward the tracker that it has now. First 24 hours is the upload in the 24 hours after the add. It is empty when qui first saw the torrent after them.",
+    "seededNote": "Seeded is the upload in the period divided by the size of the torrent. 1.00x is one full copy.",
     "utcNote": "Each bar is a UTC day.",
     "yearNote": "Each bar is a UTC day, apart from the bar of a year: after the Detail retention, qui keeps one number for each torrent and year."
   },

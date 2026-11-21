@@ -182,6 +182,7 @@
     "deleted": "Gelöscht",
     "crossSeed": "Cross-Seed",
     "note": "Ein gelöschter Torrent behält seinen Platz mit seinem Namen. Ein Torrent zählt zu dem Tracker, den er jetzt hat. Erste 24 Stunden ist der Upload in den 24 Stunden nach dem Hinzufügen. Der Wert ist leer, wenn qui den Torrent erst danach gesehen hat.",
+    "seededNote": "Geseedet ist der Upload im Zeitraum geteilt durch die Größe des Torrents. 1,00x ist eine vollständige Kopie.",
     "utcNote": "Jeder Balken ist ein UTC-Tag.",
     "yearNote": "Jeder Balken ist ein UTC-Tag, außer dem Balken eines Jahres: Nach der Detailaufbewahrung behält qui eine Zahl pro Torrent und Jahr."
   },

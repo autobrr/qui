@@ -309,6 +309,7 @@ func (a *answer) addTorrentFacts(rows []TransferRow) {
 		rows[i].Torrent = &TorrentFacts{
 			Name:                f.Name,
 			TrackerGroup:        torrentGroup(a.mapper, f, GroupByTracker),
+			Size:                f.Size,
 			Deleted:             f.Deleted,
 			StatisticsCrossSeed: f.StatisticsCrossSeed,
 			UploadFirst24h:      f.UploadFirst24h,

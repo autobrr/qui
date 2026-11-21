@@ -127,6 +127,7 @@ type TransferRow struct {
 type TorrentFacts struct {
 	Name                string `json:"name"`
 	TrackerGroup        string `json:"trackerGroup"`
+	Size                int64  `json:"size"`
 	Deleted             bool   `json:"deleted"`
 	StatisticsCrossSeed bool   `json:"statisticsCrossSeed"`
 	UploadFirst24h      *int64 `json:"uploadFirst24h"`

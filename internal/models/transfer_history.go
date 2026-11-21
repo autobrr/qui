@@ -1136,6 +1136,7 @@ type TransferHistoryTorrentFacts struct {
 	TrackerDomain               string
 	Private                     *bool
 	Category                    string
+	Size                        int64
 	ReleaseGroup                string
 	Resolution                  string
 	Source                      string
@@ -1173,7 +1174,7 @@ func (s *TransferHistoryStore) TorrentFactsOf(ctx context.Context, ids []int64) 
 
 func (s *TransferHistoryStore) torrentFacts(ctx context.Context, where string, args []any) ([]TransferHistoryTorrentFacts, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, hash, name, tracker_domain, private, category, release_group, resolution, source,
+		SELECT id, hash, name, tracker_domain, private, category, size, release_group, resolution, source,
 			content_type, COALESCE(statistics_cross_seed, FALSE), deleted, upload_first_24h,
 			baseline_uploaded, baseline_downloaded,
 			COALESCE(baseline_statistics_cross_seed, statistics_cross_seed, FALSE)
@@ -1188,7 +1189,7 @@ func (s *TransferHistoryStore) torrentFacts(ctx context.Context, where string, a
 		var f TransferHistoryTorrentFacts
 		var private sql.NullBool
 		var first24h sql.NullInt64
-		if err := rows.Scan(&f.ID, &f.Hash, &f.Name, &f.TrackerDomain, &private, &f.Category, &f.ReleaseGroup,
+		if err := rows.Scan(&f.ID, &f.Hash, &f.Name, &f.TrackerDomain, &private, &f.Category, &f.Size, &f.ReleaseGroup,
 			&f.Resolution, &f.Source, &f.ContentType, &f.StatisticsCrossSeed, &f.Deleted, &first24h,
 			&f.BaselineUploaded, &f.BaselineDownloaded, &f.BaselineStatisticsCrossSeed); err != nil {
 			return nil, fmt.Errorf("scan transfer history torrent facts: %w", err)

@@ -183,6 +183,7 @@
     "deleted": "Supprimé",
     "crossSeed": "Cross-seed",
     "note": "Un torrent supprimé garde sa place avec son nom. Un torrent compte pour le tracker qu'il a maintenant. Premières 24 heures est l'envoi des 24 heures après l'ajout. La valeur est vide quand qui a vu le torrent pour la première fois après celles-ci.",
+    "seededNote": "Partagé est l'envoi de la période divisé par la taille du torrent. 1,00x correspond à une copie complète.",
     "utcNote": "Chaque barre est un jour UTC.",
     "yearNote": "Chaque barre est un jour UTC, sauf la barre d'une année : après la rétention des détails, qui garde un seul nombre par torrent et par année."
   },

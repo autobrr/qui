@@ -183,6 +183,7 @@
     "deleted": "Suprimit",
     "crossSeed": "Cross-seed",
     "note": "Un torrent suprimit conserva el seu lloc amb el seu nom. Un torrent compta per al tracker que té ara. Primeres 24 hores és la pujada de les 24 hores després d'afegir-lo. El valor és buit quan qui va veure el torrent per primer cop després.",
+    "seededNote": "Sembrat és la pujada del període dividida per la mida del torrent. 1,00x és una còpia completa.",
     "utcNote": "Cada barra és un dia UTC.",
     "yearNote": "Cada barra és un dia UTC, llevat de la barra d'un any: després de la retenció del detall, qui conserva un sol nombre per torrent i any."
   },

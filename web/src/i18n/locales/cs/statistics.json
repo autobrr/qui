@@ -183,6 +183,7 @@
     "deleted": "Smazáno",
     "crossSeed": "Cross-seed",
     "note": "Smazaný torrent si ponechá své místo i se jménem. Torrent se počítá k trackeru, který má nyní. Prvních 24 hodin je odeslání za 24 hodin po přidání. Hodnota je prázdná, když qui torrent poprvé viděl až po nich.",
+    "seededNote": "Sdíleno X krát je odeslaný objem v období vydělený velikostí torrentu. 1,00× je jedna celá kopie.",
     "utcNote": "Každý sloupec je jeden den UTC.",
     "yearNote": "Každý sloupec je jeden den UTC, kromě sloupce roku: po uplynutí doby uchování podrobností qui uchovává jedno číslo pro každý torrent a rok."
   },

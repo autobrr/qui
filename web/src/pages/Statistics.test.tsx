@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "@/i18n"
 import { _resetClientSettingsForTests, applyServerSettings, readRaw, seedAndMarkReady, writeRaw } from "@/lib/client-settings"
 import { Statistics, StatisticsRoute } from "@/pages/Statistics"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { server } from "@/test/msw/server"
 import { stubPhone } from "@/test/stubPhone"
 import type { StatisticsBar } from "@/lib/statistics"
@@ -101,7 +102,7 @@ function row(group: string, uploaded: number, downloaded: number, extra: Partial
 function torrentRow(hash: string, name: string, uploaded: number, torrent: Partial<TransferHistoryTorrent> = {}, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
   return row(hash, uploaded, 0, {
     width: "total",
-    torrent: { name, trackerGroup: "a.test", deleted: false, statisticsCrossSeed: false, uploadFirst24h: null, ...torrent },
+    torrent: { name, trackerGroup: "a.test", size: 1024, deleted: false, statisticsCrossSeed: false, uploadFirst24h: null, ...torrent },
     ...extra,
   })
 }
@@ -123,7 +124,9 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <Statistics />
+      <TooltipProvider>
+        <Statistics />
+      </TooltipProvider>
     </QueryClientProvider>
   )
   return { ...view, queryClient }
@@ -971,8 +974,10 @@ describe("Statistics", () => {
     const table = await screen.findByRole("table")
     await vi.waitFor(() => expect(within(table).queryByText("Bravo")).toBeTruthy())
     const names = within(table).getAllByRole("button").map(button => button.textContent)
-    expect(names).toEqual(["Alpha", "CharlietopTorrents.crossSeed", "BravotopTorrents.deleted"])
-    expect(cells(table, "Alpha").slice(1)).toEqual(["a.test · Seedbox", "3 KiB", "0 B", "∞", "1 KiB"])
+    expect(names).toEqual(["Alpha", "Charlie", "Bravo"])
+    const marks = (name: string) => within(table).getByText(name).closest("button")?.querySelector("[role=img]")?.getAttribute("aria-label")
+    expect([marks("Alpha"), marks("Charlie"), marks("Bravo")]).toEqual([undefined, "topTorrents.crossSeed", "topTorrents.deleted"])
+    expect(cells(table, "Alpha").slice(1)).toEqual(["a.test · Seedbox", "3 KiB", "0 B", "∞", "table.seededValue value=3.00", "1 KiB"])
     expect(within(table).getAllByTitle("a.test · Seedbox").length).toBeGreaterThan(0)
     const asked = requests.filter(request => request.groupBy === "torrent")
     expect(asked.map(request => [request.instanceId, request.bucket, request.limit, request.group])).toEqual([[1, "total", "10", null], [2, "total", "10", null]])
@@ -1018,8 +1023,52 @@ describe("Statistics", () => {
       return [...node.closest("td")?.querySelector("[data-narrow]")?.children ?? []].map(fact => fact.textContent)
     }
 
-    expect(await facts("Alpha")).toEqual(["table.columns.downloaded 1 KiB", "table.columns.ratio 3.00", "topTorrents.columns.first24h 1 KiB"])
-    expect(await facts("Bravo")).toEqual(["table.columns.downloaded 0 B", "table.columns.ratio ∞"])
+    expect(await facts("Alpha")).toEqual(["table.columns.size 1 KiB", "table.columns.downloaded 1 KiB", "table.columns.ratio 3.00", "topTorrents.columns.first24h 1 KiB"])
+    expect(await facts("Bravo")).toEqual(["table.columns.size 1 KiB", "table.columns.downloaded 0 B", "table.columns.ratio ∞"])
+  })
+
+  it("shows the upload of a top torrent over its size as Seeded, a value for a cross-seed and none for a size of 0", async () => {
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1
+      ? [torrentRow("h1", "Alpha", 3072, {}, { downloaded: 1024 }), torrentRow("h2", "Bravo", 2048, { statisticsCrossSeed: true, size: 4096 }), torrentRow("h3", "Charlie", 1024, { size: 0 })]
+      : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    await within(table).findByText("Charlie")
+    const header = [...table.querySelectorAll("thead th")].map(cell => cell.textContent)
+    const seeded = (name: string) => cells(table, name)[header.indexOf("table.columns.seeded")]
+    const belowUpload = (name: string) => within(table).getByText(name).closest("tr")?.querySelectorAll("td")[header.indexOf("table.columns.uploaded")].querySelector("[data-narrow]")?.textContent
+
+    expect(header).toEqual(["topTorrents.columns.torrent", "table.columns.tracker", "table.columns.uploaded", "table.columns.downloaded", "table.columns.ratio", "table.columns.seeded", "topTorrents.columns.first24h"])
+    expect([seeded("Alpha"), seeded("Bravo"), seeded("Charlie")]).toEqual(["table.seededValue value=3.00", "table.seededValue value=0.50", "–"])
+    expect(cells(table, "Bravo")[header.indexOf("table.columns.ratio")]).toBe("∞")
+    expect([belowUpload("Alpha"), belowUpload("Bravo"), belowUpload("Charlie")]).toEqual(["table.seededValue value=3.00", "table.seededValue value=0.50", "–"])
+    expect(screen.getByText("topTorrents.seededNote")).toBeTruthy()
+  })
+
+  it("opens the tooltip of a mark on a tap, without opening the row", async () => {
+    const touchWindow = window as Window & { ontouchstart?: unknown }
+    touchWindow.ontouchstart = null
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    try {
+      torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 1024, { deleted: true })] : []
+      renderPage()
+      const table = await screen.findByRole("table")
+      const icon = (await within(table).findByText("Alpha")).closest("button")!.querySelector("[role=img]")!
+
+      fireEvent.pointerDown(icon, { pointerType: "touch" })
+      fireEvent.pointerUp(icon, { pointerType: "touch" })
+      fireEvent(icon, new PointerEvent("click", { bubbles: true, cancelable: true, pointerType: "mouse" }))
+
+      expect(screen.getByRole("tooltip").textContent).toContain("topTorrents.deleted")
+      expect(within(table).getByText("Alpha").closest("button")?.getAttribute("aria-expanded")).toBe("false")
+    } finally {
+      vi.unstubAllGlobals()
+      delete touchWindow.ontouchstart
+    }
   })
 
   // regression: #4179

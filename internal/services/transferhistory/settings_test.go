@@ -220,8 +220,8 @@ func concat(parts ...[]step) []step {
 func TestAFoldMovesTheDaysOfATorrentIntoItsYearPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	name := "Some.Show.S01E01.1080p.WEB-DL-GRP"
-	a := &transferhistory.TorrentFacts{Name: name, TrackerGroup: "tracker.example", UploadFirst24h: new(int64(300))}
-	c := &transferhistory.TorrentFacts{Name: name, TrackerGroup: "tracker.example", StatisticsCrossSeed: true, UploadFirst24h: new(int64(60))}
+	a := &transferhistory.TorrentFacts{Name: name, TrackerGroup: "tracker.example", Size: 1000, UploadFirst24h: new(int64(300))}
+	c := &transferhistory.TorrentFacts{Name: name, TrackerGroup: "tracker.example", Size: 1000, StatisticsCrossSeed: true, UploadFirst24h: new(int64(60))}
 	year := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
 	days := period(day10, day12, transferhistory.BucketDay, transferhistory.GroupByTorrent)
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {

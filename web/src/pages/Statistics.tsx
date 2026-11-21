@@ -432,6 +432,7 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
             )}
             <div className="space-y-1 px-4 pt-3 text-xs text-muted-foreground sm:px-6">
               <p>{t("topTorrents.note")}</p>
+              <p>{t("topTorrents.seededNote")}</p>
               {!period.from && <p>{t("table.baselineNote")}</p>}
             </div>
           </Card>

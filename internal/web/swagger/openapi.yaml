@@ -13349,6 +13349,10 @@ components:
         trackerGroup:
           type: string
           description: The Tracker group of the torrent now.
+        size:
+          type: integer
+          format: int64
+          description: The size of the selected files of the torrent in bytes, as qui last stored it. A deleted torrent keeps its last size.
         deleted:
           type: boolean
           description: True while the torrent is not in qBittorrent.

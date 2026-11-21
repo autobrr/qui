@@ -6,8 +6,8 @@
 import { Facts, type FactItem } from "@/components/statistics/Facts"
 import { GroupChart } from "@/components/statistics/GroupChart"
 import { RowLimit } from "@/components/statistics/RowLimit"
-import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TorrentName } from "@/components/ui/torrent-name"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useIsPhone } from "@/hooks/useMediaQuery"
@@ -17,7 +17,7 @@ import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { buildTorrentBars, formatRatio, type StatisticsPeriod, type TopTorrent } from "@/lib/statistics"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TransferHistoryInstance, TransferHistoryRow } from "@/types"
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
+import { ChevronDown, ChevronRight, Link2, Loader2, Trash2, type LucideIcon } from "lucide-react"
 import { Fragment, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -38,9 +38,11 @@ interface TopTorrentsProps {
 
 /** The torrents with the most upload in the period. A click on a row shows the upload of that torrent for each day. */
 export function TopTorrents({ scope, torrents: shown, error, period, instances, since, displayGroup }: TopTorrentsProps) {
-  const { t } = useTranslation("statistics")
+  const { t, i18n } = useTranslation("statistics")
   const torrentName = useTorrentName()
   const groupIcon = useTrackerGroupIcon()
+  const formatSeeded = new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const seeded = (torrent: TopTorrent) => torrent.size > 0 ? t("table.seededValue", { value: formatSeeded.format(torrent.uploaded / torrent.size) }) : "–"
   const narrow = useIsPhone()
   const [open, setOpen] = useState<string>()
   const [allOf, setAllOf] = useState<string>()
@@ -67,8 +69,9 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
             <TableHead className="w-full pl-4 sm:pl-6">{t("topTorrents.columns.torrent")}</TableHead>
             <TableHead className="hidden @2xl:table-cell">{t("table.columns.tracker")}</TableHead>
             <TableHead className="pr-4 text-right sm:pr-6 @xl:pr-2">{t("table.columns.uploaded")}</TableHead>
-            <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.downloaded")}</TableHead>
-            <TableHead className="hidden text-right @xl:table-cell @xl:pr-6 @2xl:pr-2">{t("table.columns.ratio")}</TableHead>
+            <TableHead className="hidden text-right @3xl:table-cell">{t("table.columns.downloaded")}</TableHead>
+            <TableHead className="hidden text-right @3xl:table-cell">{t("table.columns.ratio")}</TableHead>
+            <TableHead className="hidden text-right @xl:table-cell @xl:pr-6 @2xl:pr-2">{t("table.columns.seeded")}</TableHead>
             <TableHead className="hidden pr-6 text-right @2xl:table-cell">{t("topTorrents.columns.first24h")}</TableHead>
           </TableRow>
         </TableHeader>
@@ -95,22 +98,27 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
                     </div>
                     <Facts
                       items={[
-                        [t("table.columns.downloaded"), formatBytes(torrent.downloaded), "@xl:hidden"],
-                        [t("table.columns.ratio"), formatRatio(torrent) ?? "–", "@xl:hidden"],
-                        ...(torrent.uploadFirst24h === null ? [] : [[t("topTorrents.columns.first24h"), formatBytes(torrent.uploadFirst24h)] satisfies FactItem]),
+                        [t("table.columns.size"), formatBytes(torrent.size)],
+                        [t("table.columns.downloaded"), formatBytes(torrent.downloaded)],
+                        [t("table.columns.ratio"), formatRatio(torrent) ?? "–"],
+                        ...(torrent.uploadFirst24h === null ? [] : [[t("topTorrents.columns.first24h"), formatBytes(torrent.uploadFirst24h), "@2xl:hidden"] satisfies FactItem]),
                       ]}
-                      className="@2xl:hidden"
+                      className="@3xl:hidden"
                     />
                   </TableCell>
                   <TableCell className="hidden max-w-64 text-muted-foreground @2xl:table-cell" title={tracker}><span className="flex items-center gap-1.5">{trackerIcon}<span className="truncate">{tracker}</span></span></TableCell>
-                  <TableCell className="pr-4 text-right tabular-nums sm:pr-6 @xl:pr-2">{formatBytes(torrent.uploaded)}</TableCell>
-                  <TableCell className="hidden text-right tabular-nums @xl:table-cell">{formatBytes(torrent.downloaded)}</TableCell>
-                  <TableCell className="hidden text-right tabular-nums @xl:table-cell @xl:pr-6 @2xl:pr-2">{formatRatio(torrent) ?? "–"}</TableCell>
+                  <TableCell className="pr-4 text-right tabular-nums sm:pr-6 @xl:pr-2">
+                    {formatBytes(torrent.uploaded)}
+                    <div className="text-xs text-muted-foreground @xl:hidden" data-narrow>{seeded(torrent)}</div>
+                  </TableCell>
+                  <TableCell className="hidden text-right tabular-nums @3xl:table-cell">{formatBytes(torrent.downloaded)}</TableCell>
+                  <TableCell className="hidden text-right tabular-nums @3xl:table-cell">{formatRatio(torrent) ?? "–"}</TableCell>
+                  <TableCell className="hidden text-right tabular-nums @xl:table-cell @xl:pr-6 @2xl:pr-2">{seeded(torrent)}</TableCell>
                   <TableCell className="hidden pr-6 text-right tabular-nums text-muted-foreground @2xl:table-cell">{torrent.uploadFirst24h === null ? "–" : formatBytes(torrent.uploadFirst24h)}</TableCell>
                 </TableRow>
                 {expanded && (
                   <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={6} className="p-0">
+                    <TableCell colSpan={7} className="p-0">
                       <TorrentDays torrent={torrent} name={name} instances={instances} period={period} since={since} />
                     </TableCell>
                   </TableRow>
@@ -129,9 +137,20 @@ export function TorrentMarks({ torrent }: { torrent: TopTorrent }) {
   const { t } = useTranslation("statistics")
   return (
     <>
-      {torrent.deleted && <Badge variant="outline" className="shrink-0 py-0 text-[10px] font-normal text-muted-foreground">{t("topTorrents.deleted")}</Badge>}
-      {torrent.statisticsCrossSeed && <Badge variant="outline" className="shrink-0 py-0 text-[10px] font-normal text-muted-foreground">{t("topTorrents.crossSeed")}</Badge>}
+      {torrent.deleted && <TorrentMark icon={Trash2} label={t("topTorrents.deleted")} />}
+      {torrent.statisticsCrossSeed && <TorrentMark icon={Link2} label={t("topTorrents.crossSeed")} />}
     </>
+  )
+}
+
+function TorrentMark({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild openOnTap="only">
+        <span role="img" aria-label={label} className="inline-flex shrink-0 p-0.5 text-muted-foreground"><Icon className="size-3.5" /></span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
