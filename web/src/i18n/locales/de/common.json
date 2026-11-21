@@ -120,7 +120,7 @@
       "signOut": "Abmelden",
       "waiting": "Warte auf {{provider}}",
       "errors": {
-        "discordNotMember": "Dein Discord-Konto ist nicht auf dem autobrr-Discord-Server. Tritt dem Server bei und melde dich erneut an, oder sende anonym.",
+        "discordNotMember": "Dein Discord-Konto ist nicht auf dem autobrr-Discord-Server. Tritt dem Server bei und melde dich erneut an, melde dich mit GitHub an oder sende anonym.",
         "refused": "Anmeldung abgelehnt: {{reason}}",
         "expired": "Anmeldung abgelaufen. Melde dich erneut an.",
         "popupBlocked": "Dein Browser hat das Anmeldefenster blockiert. Erlaube Pop-ups für qui und melde dich dann erneut an.",

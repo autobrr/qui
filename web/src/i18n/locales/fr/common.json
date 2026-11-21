@@ -120,7 +120,7 @@
       "signOut": "Se déconnecter",
       "waiting": "En attente de {{provider}}",
       "errors": {
-        "discordNotMember": "Votre compte Discord n'est pas sur le serveur Discord d'autobrr. Rejoignez le serveur et reconnectez-vous, ou envoyez anonymement.",
+        "discordNotMember": "Votre compte Discord n'est pas sur le serveur Discord d'autobrr. Rejoignez le serveur et reconnectez-vous, connectez-vous avec GitHub ou envoyez anonymement.",
         "refused": "Connexion refusée : {{reason}}",
         "expired": "La connexion a expiré. Reconnectez-vous.",
         "popupBlocked": "Votre navigateur a bloqué la fenêtre de connexion. Autorisez les fenêtres pop-up pour qui, puis reconnectez-vous.",

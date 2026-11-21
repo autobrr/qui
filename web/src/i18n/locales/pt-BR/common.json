@@ -120,7 +120,7 @@
       "signOut": "Sair",
       "waiting": "Aguardando {{provider}}",
       "errors": {
-        "discordNotMember": "Sua conta do Discord não está no servidor do autobrr no Discord. Entre no servidor e faça login de novo, ou envie anonimamente.",
+        "discordNotMember": "Sua conta do Discord não está no servidor do autobrr no Discord. Entre no servidor e faça login de novo, entre com GitHub ou envie anonimamente.",
         "refused": "Login recusado: {{reason}}",
         "expired": "O login expirou. Entre de novo.",
         "popupBlocked": "Seu navegador bloqueou a janela de login. Permita pop-ups para o qui e entre de novo.",

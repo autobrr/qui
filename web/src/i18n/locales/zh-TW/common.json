@@ -113,7 +113,7 @@
       "signOut": "登出",
       "waiting": "正在等待 {{provider}}",
       "errors": {
-        "discordNotMember": "你的 Discord 帳號不在 autobrr Discord 伺服器中。請加入該伺服器後重新登入，或匿名傳送。",
+        "discordNotMember": "你的 Discord 帳號不在 autobrr Discord 伺服器中。請加入該伺服器後重新登入，使用 GitHub 登入，或匿名傳送。",
         "refused": "登入遭拒絕：{{reason}}",
         "expired": "登入已過期。請重新登入。",
         "popupBlocked": "你的瀏覽器封鎖了登入視窗。請允許 qui 開啟彈出式視窗，然後重新登入。",

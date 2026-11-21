@@ -113,7 +113,7 @@
       "signOut": "로그아웃",
       "waiting": "{{provider}} 대기 중",
       "errors": {
-        "discordNotMember": "Discord 계정이 autobrr Discord 서버에 없습니다. 서버에 가입한 뒤 다시 로그인하거나 익명으로 보내세요.",
+        "discordNotMember": "Discord 계정이 autobrr Discord 서버에 없습니다. 서버에 가입한 뒤 다시 로그인하거나, GitHub로 로그인하거나 익명으로 보내세요.",
         "refused": "로그인이 거부되었습니다: {{reason}}",
         "expired": "로그인이 만료되었습니다. 다시 로그인하세요.",
         "popupBlocked": "브라우저가 로그인 창을 차단했습니다. qui에서 팝업을 허용한 뒤 다시 로그인하세요.",

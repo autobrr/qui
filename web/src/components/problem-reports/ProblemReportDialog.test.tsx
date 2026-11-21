@@ -475,7 +475,7 @@ describe("Sender", () => {
     [
       "a Discord account outside the autobrr server",
       { state: "refused", reason: "discord_not_member" },
-      "Your Discord account is not in the autobrr Discord server. Join the server and sign in again, or send anonymously.",
+      "Your Discord account is not in the autobrr Discord server. Join the server and sign in again, sign in with GitHub, or send anonymously.",
     ],
     ["another refusal", { state: "refused", reason: "account_too_new" }, "Sign-in refused: account_too_new"],
     ["a sign-in that expired", { state: "expired" }, "Sign-in expired. Sign in again."],

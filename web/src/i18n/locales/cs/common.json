@@ -127,7 +127,7 @@
       "signOut": "Odhlásit se",
       "waiting": "Čekání na {{provider}}",
       "errors": {
-        "discordNotMember": "Váš účet Discord není na Discord serveru autobrr. Připojte se na server a přihlaste se znovu, nebo odešlete anonymně.",
+        "discordNotMember": "Váš účet Discord není na Discord serveru autobrr. Připojte se na server a přihlaste se znovu, přihlaste se přes GitHub, nebo odešlete anonymně.",
         "refused": "Přihlášení zamítnuto: {{reason}}",
         "expired": "Přihlášení vypršelo. Přihlaste se znovu.",
         "popupBlocked": "Váš prohlížeč zablokoval přihlašovací okno. Povolte vyskakovací okna pro qui a pak se přihlaste znovu.",

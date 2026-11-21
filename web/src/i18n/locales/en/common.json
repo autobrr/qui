@@ -120,7 +120,7 @@
       "signOut": "Sign out",
       "waiting": "Waiting for {{provider}}",
       "errors": {
-        "discordNotMember": "Your Discord account is not in the autobrr Discord server. Join the server and sign in again, or send anonymously.",
+        "discordNotMember": "Your Discord account is not in the autobrr Discord server. Join the server and sign in again, sign in with GitHub, or send anonymously.",
         "refused": "Sign-in refused: {{reason}}",
         "expired": "Sign-in expired. Sign in again.",
         "popupBlocked": "Your browser blocked the sign-in window. Allow pop-ups for qui, then sign in again.",

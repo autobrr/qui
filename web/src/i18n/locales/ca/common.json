@@ -120,7 +120,7 @@
       "signOut": "Tanca la sessió",
       "waiting": "S'està esperant {{provider}}",
       "errors": {
-        "discordNotMember": "El teu compte de Discord no és al servidor de Discord d'autobrr. Uneix-te al servidor i torna a iniciar la sessió, o envia de manera anònima.",
+        "discordNotMember": "El teu compte de Discord no és al servidor de Discord d'autobrr. Uneix-te al servidor i torna a iniciar la sessió, inicia la sessió amb GitHub o envia de manera anònima.",
         "refused": "Inici de sessió rebutjat: {{reason}}",
         "expired": "L'inici de sessió ha caducat. Torna a iniciar la sessió.",
         "popupBlocked": "El teu navegador ha bloquejat la finestra d'inici de sessió. Permet les finestres emergents per a qui i torna a iniciar la sessió.",

@@ -113,7 +113,7 @@
       "signOut": "退出登录",
       "waiting": "正在等待 {{provider}}",
       "errors": {
-        "discordNotMember": "你的 Discord 账号不在 autobrr Discord 服务器中。请加入该服务器后重新登录，或匿名发送。",
+        "discordNotMember": "你的 Discord 账号不在 autobrr Discord 服务器中。请加入该服务器后重新登录，使用 GitHub 登录，或匿名发送。",
         "refused": "登录被拒绝：{{reason}}",
         "expired": "登录已过期。请重新登录。",
         "popupBlocked": "你的浏览器阻止了登录窗口。请允许 qui 打开弹出窗口，然后重新登录。",

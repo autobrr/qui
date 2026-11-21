@@ -120,7 +120,7 @@
       "signOut": "Esci",
       "waiting": "In attesa di {{provider}}",
       "errors": {
-        "discordNotMember": "Il tuo account Discord non è nel server Discord di autobrr. Unisciti al server e accedi di nuovo, oppure invia in modo anonimo.",
+        "discordNotMember": "Il tuo account Discord non è nel server Discord di autobrr. Unisciti al server e accedi di nuovo, accedi con GitHub oppure invia in modo anonimo.",
         "refused": "Accesso rifiutato: {{reason}}",
         "expired": "Accesso scaduto. Accedi di nuovo.",
         "popupBlocked": "Il tuo browser ha bloccato la finestra di accesso. Consenti i pop-up per qui, poi accedi di nuovo.",

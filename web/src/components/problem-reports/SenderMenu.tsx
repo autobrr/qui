@@ -4,9 +4,10 @@
  */
 
 import type { TFunction } from "i18next"
-import { ChevronDown, Loader2, UserRound, VenetianMask } from "lucide-react"
+import { Check, ChevronDown, Loader2, LogOut, VenetianMask } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
+import { ProviderIcon } from "@/components/problem-reports/ProviderIcon"
 import type { SenderControls, SignInView } from "@/components/problem-reports/sender"
 import { Button } from "@/components/ui/button"
 import {
@@ -14,8 +15,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
@@ -30,7 +29,6 @@ export function SenderMenu({ controls, disabled }: { controls: SenderControls; d
   if (!sender) return null
 
   const waiting = signIn.phase === "waiting"
-  const Icon = waiting ? Loader2 : sender.anonymous ? VenetianMask : UserRound
   const label = waiting
     ? t("problemReports.sender.waiting", { provider: t(`problemReports.sender.providers.${signIn.provider}`) })
     : sender.anonymous ? t("problemReports.sender.anonymous") : sender.name
@@ -39,34 +37,45 @@ export function SenderMenu({ controls, disabled }: { controls: SenderControls; d
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" disabled={disabled} className="h-7 min-w-0 shrink gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground">
-          <Icon className={waiting ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+          {waiting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {!waiting && sender.anonymous && <VenetianMask className="h-3.5 w-3.5" />}
+          {!waiting && !sender.anonymous && <ProviderIcon provider={sender.provider} className="h-3.5 w-3.5" />}
           <span className="truncate">{label}</span>
           <ChevronDown className="h-3 w-3 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="start" className="w-60">
         <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("problemReports.sender.label")}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={sender.anonymous ? "anonymous" : "signedIn"}
-          onValueChange={(value) => {
-            if (value === "anonymous" && (!sender.anonymous || waiting)) controls.signOut()
+        <DropdownMenuItem
+          role="menuitemradio"
+          aria-checked={sender.anonymous}
+          onSelect={() => {
+            if (!sender.anonymous || waiting) controls.signOut()
           }}
         >
-          <DropdownMenuRadioItem value="anonymous">{t("problemReports.sender.anonymous")}</DropdownMenuRadioItem>
-          {!sender.anonymous && (
-            <DropdownMenuRadioItem value="signedIn">
-              <span className="truncate">{sender.name}</span>
-              <span className="text-xs text-muted-foreground">{t(`problemReports.sender.providers.${sender.provider}`)}</span>
-            </DropdownMenuRadioItem>
-          )}
-        </DropdownMenuRadioGroup>
+          <VenetianMask />
+          {t("problemReports.sender.anonymous")}
+          {sender.anonymous && <Check className="ml-auto text-foreground" />}
+        </DropdownMenuItem>
+        {!sender.anonymous && (
+          <DropdownMenuItem role="menuitemradio" aria-checked>
+            <ProviderIcon provider={sender.provider} />
+            <span className="truncate">{sender.name}</span>
+            <span className="text-xs text-muted-foreground">{t(`problemReports.sender.providers.${sender.provider}`)}</span>
+            <Check className="ml-auto text-foreground" />
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         {sender.anonymous ? PROVIDERS.map((provider) => (
           <DropdownMenuItem key={provider} onSelect={() => controls.startSignIn(provider)}>
+            <ProviderIcon provider={provider} />
             {t("problemReports.sender.signInWith", { provider: t(`problemReports.sender.providers.${provider}`) })}
           </DropdownMenuItem>
         )) : (
-          <DropdownMenuItem onSelect={controls.signOut}>{t("problemReports.sender.signOut")}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={controls.signOut}>
+            <LogOut />
+            {t("problemReports.sender.signOut")}
+          </DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
