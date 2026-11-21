@@ -176,6 +176,17 @@ describe("SearchResults", () => {
     await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Copy title"))
   })
 
+  it("shows the exact date of a result on a tap of its age, and the tap leaves the row unticked", async () => {
+    renderResults([first])
+    const age = screen.getAllByText(formatNarrowAge(Date.now() - Date.parse(first.publishDate)))[0]
+
+    fireEvent.pointerDown(age, { pointerType: "touch" })
+    fireEvent.click(age)
+
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("2026"))
+    expect(box(first.title).getAttribute("aria-checked")).toBe("false")
+  })
+
   it("names a focused row button in a tooltip after the first Tab press", async () => {
     screenSize.wide = true
     renderResults([first])

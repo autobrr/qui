@@ -398,9 +398,7 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
             <span className="inline-flex items-center gap-0.5"><ArrowDown className="size-3" />{result.leechers}</span>
           </span>
           <span className="@3xl:hidden" aria-hidden="true">·</span>
-          <Tip tip={hovered ? publishedTitle : undefined}>
-            <span className="tabular-nums @3xl:hidden">{age}</span>
-          </Tip>
+          <Age age={age} date={publishedTitle} hovered={hovered} className="tabular-nums @3xl:hidden" />
           {marks}
         </div>
       </TableCell>
@@ -409,9 +407,7 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
       <TableCell className={cn("hidden py-2.5 text-right align-top tabular-nums @xl:table-cell", result.seeders === 0 ? "text-muted-foreground" : "font-medium")}>{result.seeders}</TableCell>
       <TableCell className="hidden py-2.5 text-right align-top tabular-nums text-muted-foreground @3xl:table-cell">{result.leechers}</TableCell>
       <TableCell className="hidden py-2.5 text-right align-top tabular-nums text-muted-foreground @3xl:table-cell">
-        <Tip tip={hovered ? publishedTitle : undefined}>
-          <span>{age}</span>
-        </Tip>
+        <Age age={age} date={publishedTitle} hovered={hovered} />
       </TableCell>
       <TableCell className="cursor-default py-1 pr-3 align-top sm:pr-5" onClick={event => event.stopPropagation()}>
         <RowActions t={t} result={result} actionsInRow={actionsInRow} tips={hovered || tabbed} {...actions} />
@@ -514,6 +510,36 @@ function TipButton({ tip, ...props }: ComponentProps<typeof Button> & { tip?: st
     <Tip tip={tip}>
       <Button {...props} />
     </Tip>
+  )
+}
+
+function Age({ age, date, hovered, className }: { age: string; date?: string; hovered: boolean; className?: string }) {
+  const [tapped, setTapped] = useState(false)
+  const press = useRef<string | null>(null)
+
+  if (!date) return <span className={className}>{age}</span>
+  if (!hovered && !tapped) {
+    return (
+      <span
+        className={className}
+        onPointerDown={event => { press.current = event.pointerType }}
+        onClick={event => {
+          if (press.current !== "touch" && press.current !== "pen") return
+          event.stopPropagation()
+          setTapped(true)
+        }}
+      >
+        {age}
+      </span>
+    )
+  }
+  return (
+    <Tooltip defaultOpen={tapped}>
+      <TooltipTrigger asChild openOnTap="only">
+        <span className={className}>{age}</span>
+      </TooltipTrigger>
+      <TooltipContent>{date}</TooltipContent>
+    </Tooltip>
   )
 }
 
