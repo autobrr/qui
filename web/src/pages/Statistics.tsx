@@ -10,6 +10,8 @@ import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
 import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
+import { TOP_TORRENTS_VARIANTS, TopTorrentsPrototype } from "@/components/statistics/TopTorrentsPrototype"
+import { PrototypeSwitcher } from "@/components/PrototypeSwitcher"
 import { useStatisticsPeriod } from "@/hooks/useStatisticsPeriod"
 import { useClientSettingsSettled } from "@/lib/client-settings"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
@@ -323,9 +325,14 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
     </span>
   )
   // The period choice and the instance selection. A new one starts the lists of deletes and of top torrents again at their first rows.
+  // PROTOTYPE (discussion #4332): Top torrents variants. Do not merge.
+  const { variant: protoVariant } = statisticsRoute.useSearch()
+  const protoNavigate = statisticsRoute.useNavigate()
   const listScope = `${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`
 
   return (
+    <>
+    {protoVariant && <PrototypeSwitcher variants={TOP_TORRENTS_VARIANTS} current={protoVariant} onChange={key => void protoNavigate({ search: previous => ({ ...previous, variant: key }), replace: true })} />}
     <Page
       title={t("title")}
       description={recording}
@@ -418,7 +425,7 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
             />
           </Card>
 
-          <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
+          {protoVariant ? <TopTorrentsPrototype variant={protoVariant} /> : <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
             <CardHeader className="px-4 pb-4 sm:px-6">
               <CardTitle>{t("topTorrents.title")}</CardTitle>
               <CardDescription>{t("topTorrents.description")}</CardDescription>
@@ -434,7 +441,7 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
               <p>{t("topTorrents.note")}</p>
               {!period.from && <p>{t("table.baselineNote")}</p>}
             </div>
-          </Card>
+          </Card>}
         </div>
 
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
@@ -499,6 +506,7 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
         {!period.from && <p className="text-xs text-muted-foreground">{t("allTimeNote")}</p>}
       </div>
     </Page>
+    </>
   )
 }
 

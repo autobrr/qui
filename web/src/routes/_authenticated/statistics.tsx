@@ -9,6 +9,8 @@ import { z } from "zod"
 
 const statisticsSearchSchema = z.object({
   period: z.enum(PERIOD_PRESETS as [PeriodPreset, ...PeriodPreset[]]).optional().catch(undefined),
+  // PROTOTYPE (discussion #4332): Top torrents variant. Do not merge.
+  variant: z.string().optional().catch(undefined),
 })
 
 export const Route = createFileRoute("/_authenticated/statistics")({
