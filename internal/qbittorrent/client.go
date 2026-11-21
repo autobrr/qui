@@ -1134,7 +1134,7 @@ func (c *Client) getOptimisticUpdates() map[string]*OptimisticTorrentUpdate {
 // clearOptimisticUpdate removes an optimistic update for a specific torrent
 func (c *Client) clearOptimisticUpdate(hash string) {
 	c.optimisticUpdates.Delete(hash)
-	log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Msg("Cleared optimistic update")
+	log.Trace().Int("instanceID", c.instanceID).Str("hash", hash).Msg("Cleared optimistic update")
 }
 
 // getTargetState returns the target state for the given action and progress
