@@ -58,7 +58,7 @@ export function Search() {
     queryKey: ["torznab", "search", "recent", "general"],
     queryFn: () => api.getRecentTorznabSearches(20, "general"),
   })
-  const recent = recentQuery.data ?? []
+  const recent = indexers.length > 0 ? recentQuery.data ?? [] : []
 
   const [query, setQuery] = useState("")
   const [params, setParams] = useState<AdvancedParams>({})

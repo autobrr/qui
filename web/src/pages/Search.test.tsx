@@ -100,16 +100,23 @@ const sent = (call: number): TorznabSearchRequest => api.searchTorznab.mock.call
 
 describe("Search", () => {
   // regression: #4354
-  it("runs no recent search before the indexer list loads, so it cannot search every indexer", async () => {
-    api.listTorznabIndexers.mockImplementation(never)
-    api.getRecentTorznabSearches.mockResolvedValue([recent])
+  it("offers a recent search only once the indexer list loads, so the pick searches its own indexers", async () => {
+    let loadIndexers: (list: TorznabIndexer[]) => void = () => {}
+    api.listTorznabIndexers.mockImplementation(() => new Promise(resolve => { loadIndexers = resolve }))
+    api.getRecentTorznabSearches.mockResolvedValue([{ ...recent, indexerIds: [2] }])
+    api.searchTorznab.mockImplementation(never)
     renderSearch()
 
-    fireEvent.focus(screen.getByRole("combobox", { name: "Search Query" }))
-    fireEvent.click(await screen.findByRole("option", { name: /Sample Film 2023/ }))
+    await waitFor(() => expect(api.getRecentTorznabSearches).toHaveBeenCalled())
     await act(async () => {})
+    fireEvent.focus(screen.getByRole("combobox", { name: "Search Query" }))
+    expect(screen.queryByRole("option", { name: /Sample Film 2023/ })).toBeNull()
 
-    expect(api.searchTorznab).not.toHaveBeenCalled()
+    await act(async () => loadIndexers([indexer(1), indexer(2)]))
+    fireEvent.click(await screen.findByRole("option", { name: /Sample Film 2023/ }))
+
+    await waitFor(() => expect(api.searchTorznab).toHaveBeenCalledTimes(1))
+    expect(sent(0).indexer_ids).toEqual([2])
   })
 
   // regression: #4354
