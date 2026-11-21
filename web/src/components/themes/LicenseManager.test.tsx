@@ -40,6 +40,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 import { LicenseManager } from "@/components/themes/LicenseManager"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 afterEach(() => {
   cleanup()
@@ -54,7 +55,7 @@ afterEach(() => {
 describe("LicenseManager", () => {
   it("keeps a pending activation when the Add License dialog opens", () => {
     activation.isPending = true
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     fireEvent.click(screen.getByText("themes.license.actions.addLicense"))
 
@@ -63,7 +64,7 @@ describe("LicenseManager", () => {
 
   it("clears a failed activation when the Add License dialog opens", () => {
     activation.isError = true
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     fireEvent.click(screen.getByText("themes.license.actions.addLicense"))
 
@@ -72,7 +73,7 @@ describe("LicenseManager", () => {
 
   it("explains an offline license and offers no re-activation", () => {
     licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "offline", productName: "premium" }]
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     expect(screen.getByText("themes.license.status.offlineTitle")).not.toBeNull()
     expect(screen.queryByText("themes.license.status.activationRequiredTitle")).toBeNull()
@@ -85,7 +86,7 @@ describe("LicenseManager", () => {
     licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "active", productName: "supporter" }]
     premiumAccess.hasPremiumAccess = true
     premiumAccess.isSupporter = true
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     expect(screen.getByText("themes.license.status.supporterTitle")).not.toBeNull()
     expect(screen.getByText("themes.license.status.supporterDescription")).not.toBeNull()
@@ -100,7 +101,7 @@ describe("LicenseManager", () => {
     ]
     premiumAccess.hasPremiumAccess = true
     premiumAccess.isSupporter = true
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     expect(screen.getByText("themes.license.status.supporterTitle")).not.toBeNull()
     expect(screen.getByText("themes.license.status.supporterDescription")).not.toBeNull()
@@ -114,7 +115,7 @@ describe("LicenseManager", () => {
     ]
     premiumAccess.hasPremiumAccess = true
     premiumAccess.isSupporter = true
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     expect(screen.getByText("themes.license.status.activeTitle")).not.toBeNull()
     expect(screen.getByText("themes.license.status.activeDescription")).not.toBeNull()
@@ -126,7 +127,7 @@ describe("LicenseManager", () => {
       { licenseKey: "TEST-KEY-0001", status: "invalid", productName: "supporter" },
     ]
     premiumAccess.hasPremiumAccess = true
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     expect(screen.getByText("themes.license.status.activeTitle")).not.toBeNull()
     expect(screen.queryByText("themes.license.status.supporterTitle")).toBeNull()
@@ -135,7 +136,7 @@ describe("LicenseManager", () => {
   // regression: #4276
   it("explains a supporter key that is offline, and offers no purchase", () => {
     licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "offline", productName: "supporter" }]
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     expect(screen.getByText("themes.license.status.offlineTitle")).not.toBeNull()
     expect(screen.queryByText("themes.license.status.supportEndedDescription")).toBeNull()
@@ -144,7 +145,7 @@ describe("LicenseManager", () => {
 
   it("tells a past supporter where the theme license key is", () => {
     licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "invalid", productName: "supporter" }]
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     expect(screen.getByText("themes.license.status.supportEndedDescription")).not.toBeNull()
     expect(screen.queryByText("themes.license.actions.reactivate")).toBeNull()
@@ -157,7 +158,7 @@ describe("LicenseManager", () => {
     ["expired", "themes.license.details.statusLabels.unknown"],
   ])("shows a translated label for the %s status", (status, labelKey) => {
     licenses.data = [{ licenseKey: "TEST-KEY-0000", status, productName: "premium" }]
-    render(<LicenseManager />)
+    render(<LicenseManager />, { wrapper: TooltipProvider })
 
     expect(screen.getByText(`themes.license.details.productStatusAndAdded ${labelKey}`)).not.toBeNull()
   })

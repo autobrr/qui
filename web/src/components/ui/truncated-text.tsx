@@ -13,21 +13,19 @@ interface TruncatedTextProps extends React.HTMLAttributes<HTMLSpanElement> {
   tooltipSide?: "top" | "right" | "bottom" | "left"
   /** Custom tooltip content. If provided, always shows on hover regardless of truncation. */
   tooltipContent?: React.ReactNode
+  wrap?: boolean
+  openOnTap?: boolean | "only"
 }
 
 /**
- * A text component that shows a tooltip only when the text is truncated.
- * Uses ResizeObserver to detect truncation dynamically.
- *
- * If `tooltipContent` is provided, it always shows on hover.
- * Otherwise, the tooltip only appears when text is truncated.
+ * Text that shows its full text in a tooltip only while part of it is hidden: cut off at the end of the line, or
+ * clipped to a number of lines. If `tooltipContent` is provided, it always shows on hover.
  */
 export const TruncatedText = React.forwardRef<HTMLSpanElement, TruncatedTextProps>(
-  ({ children, className, tooltipSide = "top", tooltipContent, ...props }, ref) => {
+  ({ children, className, tooltipSide = "top", tooltipContent, wrap = false, openOnTap = true, ...props }, ref) => {
     const innerRef = React.useRef<HTMLSpanElement>(null)
-    const [isTruncated, setIsTruncated] = React.useState(false)
+    const [hiddenText, setHiddenText] = React.useState<string | null>(null)
 
-    // Merge refs
     React.useImperativeHandle(ref, () => innerRef.current!)
 
     React.useEffect(() => {
@@ -35,30 +33,27 @@ export const TruncatedText = React.forwardRef<HTMLSpanElement, TruncatedTextProp
       if (!element) return
 
       const checkTruncation = () => {
-        setIsTruncated(element.scrollWidth > element.clientWidth)
+        const cut = element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight
+        setHiddenText(cut ? element.textContent : null)
       }
 
-      // Initial check
       checkTruncation()
 
-      // Watch for size changes
       const resizeObserver = new ResizeObserver(checkTruncation)
       resizeObserver.observe(element)
 
       return () => resizeObserver.disconnect()
     }, [children])
 
-    const textContent = typeof children === "string" ? children : undefined
-    // Show tooltip if: custom content provided, OR text is truncated and we have text content
-    const showTooltip = tooltipContent !== undefined || (isTruncated && textContent)
-    const finalTooltipContent = tooltipContent ?? textContent
+    const finalTooltipContent = tooltipContent ?? hiddenText
+    const showTooltip = tooltipContent !== undefined || hiddenText
 
     return (
-      <Tooltip>
-        <TooltipTrigger asChild openOnTap>
+      <Tooltip disabled={!showTooltip}>
+        <TooltipTrigger asChild openOnTap={openOnTap}>
           <span
             ref={innerRef}
-            className={cn("truncate", className)}
+            className={cn(!wrap && "truncate", className)}
             {...props}
           >
             {children}

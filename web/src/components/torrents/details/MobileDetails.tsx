@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { CopyButton } from "@/components/ui/copy-button"
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { TapMenu } from "@/components/ui/tap-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getLinuxTracker } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { getTrackerStatusBadge, isValidTrackerUrl } from "@/lib/tracker-utils"
@@ -236,7 +237,14 @@ export function MobilePeerRow({ address, countryCode, country, client, clientIco
   return (
     <div className="space-y-1 px-3 py-2.5">
       <div className="flex items-center gap-2">
-        {countryCode && <span className={`fi fi-${countryCode.toLowerCase()} shrink-0 rounded text-sm`} title={country || countryCode} />}
+        {countryCode && (
+          <Tooltip>
+            <TooltipTrigger asChild openOnTap="only">
+              <span role="img" aria-label={country || countryCode} className={`fi fi-${countryCode.toLowerCase()} shrink-0 rounded text-sm`} />
+            </TooltipTrigger>
+            <TooltipContent>{country || countryCode}</TooltipContent>
+          </Tooltip>
+        )}
         <span className="min-w-0 flex-1 truncate font-mono text-sm">{address}</span>
         <span className="shrink-0 text-xs tabular-nums">
           {downSpeed && <span className="text-green-500">↓ {downSpeed}</span>}

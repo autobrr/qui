@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { BetaBadge } from "@/components/transfers/BetaBadge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
@@ -110,7 +111,7 @@ export function TransferDialog({ open, onOpenChange, onStarted, sourceInstanceId
       <DialogContent className="flex max-h-[90dvh] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:max-h-[85dvh] sm:max-w-2xl lg:max-w-5xl">
         <DialogHeader className="flex-shrink-0 border-b px-5 pt-5 pb-3 pr-12 text-left sm:px-6">
           <DialogTitle className="flex items-center gap-2">{t("dialog.title")}<BetaBadge /></DialogTitle>
-          <DialogDescription className="line-clamp-2 [overflow-wrap:anywhere]" title={shownName}>{shownName}</DialogDescription>
+          <DialogDescription className="[overflow-wrap:anywhere]"><TruncatedText wrap className="line-clamp-2">{shownName}</TruncatedText></DialogDescription>
         </DialogHeader>
 
         <ScrollBody>

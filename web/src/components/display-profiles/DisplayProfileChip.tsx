@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { cn } from "@/lib/utils"
 
@@ -100,7 +101,7 @@ export function DisplayProfileChip() {
                 className="flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:opacity-50 data-[state=checked]:font-medium"
               >
                 <DisplayProfileTile profile={profile} size="sm" />
-                <span className="min-w-0 flex-1 truncate" title={profile.name}>{profile.name}</span>
+                <TruncatedText className="min-w-0 flex-1" openOnTap={false}>{profile.name}</TruncatedText>
                 <DropdownMenuPrimitive.ItemIndicator className="flex size-4 shrink-0 items-center justify-center">
                   <Check aria-hidden="true" className="size-4" />
                 </DropdownMenuPrimitive.ItemIndicator>

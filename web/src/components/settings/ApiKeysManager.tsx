@@ -29,6 +29,7 @@ import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
@@ -75,7 +76,14 @@ const BLOCK_STYLES = {
 } as const
 
 function AccessBlock({ levels, className, title }: { levels: readonly PermissionLevel[]; className?: string; title?: string }) {
-  return <span aria-hidden title={title} className={cn("rounded-[2px] border border-foreground/75 forced-color-adjust-none", BLOCK_STYLES[levels.at(-1) ?? "none"], className)} />
+  const block = <span aria-hidden className={cn("rounded-[2px] border border-foreground/75 forced-color-adjust-none", BLOCK_STYLES[levels.at(-1) ?? "none"], className)} />
+  if (!title) return block
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{block}</TooltipTrigger>
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 function AccessMap({ name, permissions, listText }: { name: string; permissions: readonly ApiKeyPermission[]; listText: (items: string[]) => string }) {

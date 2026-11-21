@@ -35,6 +35,8 @@ import {
   TabsTrigger
 } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities.ts"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
@@ -945,17 +947,21 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                       <span className="block break-all">{file.name}</span>
                                       {duplicateInfo?.matches.length ? renderDuplicateMatches(duplicateInfo.matches) : null}
                                     </div>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => handleRemoveFile(index)}
-                                      className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-8"
-                                      aria-label={t("addTorrentDialog.fileInput.removeFile")}
-                                      title={t("addTorrentDialog.fileInput.removeFile")}
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </Button>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleRemoveFile(index)}
+                                          className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-8"
+                                          aria-label={t("addTorrentDialog.fileInput.removeFile")}
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>{t("addTorrentDialog.fileInput.removeFile")}</TooltipContent>
+                                    </Tooltip>
                                   </li>
                                 )
                               })}
@@ -1107,9 +1113,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           parentCategoryPaths,
                         })
                         return autoTMM && target ? (
-                          <p className="truncate text-xs text-muted-foreground" title={target}>
+                          <TruncatedText className="block text-xs text-muted-foreground">
                             {t("addTorrentDialog.options.categorySavePath", { path: target })}
-                          </p>
+                          </TruncatedText>
                         ) : null
                       }}
                     </form.Subscribe>
@@ -1573,7 +1579,6 @@ function PathSuggestions({ listRef, suggestions, highlightedIndex, onSelect }: {
             <button
               key={entry}
               type="button"
-              title={entry}
               className={cn(
                 "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
                 highlightedIndex === idx ? "bg-accent text-accent-foreground" : "hover:bg-accent/70"
@@ -1581,7 +1586,7 @@ function PathSuggestions({ listRef, suggestions, highlightedIndex, onSelect }: {
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => onSelect(entry)}
             >
-              <span className="block truncate text-left">{entry}</span>
+              <TruncatedText className="block text-left" openOnTap={false}>{entry}</TruncatedText>
             </button>
           ))}
         </div>

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { api } from "@/lib/api"
@@ -194,7 +195,6 @@ function PathWidget({ id, instanceId, field, labels, value, onChange, disabled }
                 <button
                   key={entry}
                   type="button"
-                  title={incognitoMode ? undefined : entry}
                   className={cn(
                     "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
                     highlightedIndex === index ? "bg-accent text-accent-foreground" : "hover:bg-accent/70",
@@ -203,7 +203,11 @@ function PathWidget({ id, instanceId, field, labels, value, onChange, disabled }
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleSelect(entry)}
                 >
-                  <span className="block truncate text-left">{entry}</span>
+                  {incognitoMode ? (
+                    <span className="block truncate text-left">{entry}</span>
+                  ) : (
+                    <TruncatedText className="block text-left" openOnTap={false}>{entry}</TruncatedText>
+                  )}
                 </button>
               ))}
             </div>

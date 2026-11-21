@@ -26,6 +26,7 @@ import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
@@ -390,7 +391,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
                 >
                   <SidebarMark instanceId={instance.id} autoLetters={activeInstanceInitials[index]} iconOnly={iconOnly} isActive={isActive} problem={!instance.connected} />
                   <span className={rowLabelClassName("min-w-44")}>
-                    <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
+                    <TruncatedText className="max-w-36" openOnTap={false}>{instance.name}</TruncatedText>
                     <span className="ml-auto flex items-center gap-1.5">
                       {hasRss && (
                         <Tooltip>
@@ -455,7 +456,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
         <div className={cn("relative flex items-center justify-between pl-3", iconOnly && "w-58")}>
           {/* A long dev version truncates, so the footer buttons stay inside the sidebar. */}
           <div className={cn("flex min-w-0 flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none whitespace-nowrap", swapClassName(!iconOnly))}>
-            <span className="truncate font-medium text-sidebar-foreground/50" title={appVersion}>{t("sidebar.version", { version: appVersion })}</span>
+            <TruncatedText className="font-medium text-sidebar-foreground/50">{t("sidebar.version", { version: appVersion })}</TruncatedText>
             <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />
               <span>{new Date().getFullYear()} autobrr</span>

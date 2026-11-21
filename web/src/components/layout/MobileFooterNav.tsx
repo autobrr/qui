@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { getThemeById, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
 import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
@@ -340,12 +341,9 @@ export function MobileFooterNav() {
                     {activeInstances.length}
                   </Badge>
                 </div>
-                <span
-                  className="block max-w-full truncate text-center"
-                  title={currentInstanceLabel ?? t("mobileNav.clients")}
-                >
+                <TruncatedText className="block max-w-full text-center" openOnTap={false}>
                   {currentInstanceLabel ?? t("mobileNav.clients")}
-                </span>
+                </TruncatedText>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
@@ -379,12 +377,9 @@ export function MobileFooterNav() {
                           className="flex items-center gap-2 min-w-0"
                         >
                           <InstanceMarkIcon instanceId={instance.id} problem={!instance.connected} />
-                          <span
-                            className="flex-1 min-w-0 truncate"
-                            title={instance.name}
-                          >
+                          <TruncatedText className="flex-1 min-w-0" openOnTap={false}>
                             {instance.name}
-                          </span>
+                          </TruncatedText>
                           {!instance.connected && <span className="sr-only">{t("header.disconnected")}</span>}
                           <span className="flex items-center gap-1.5">
                             {hasRss && (

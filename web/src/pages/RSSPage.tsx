@@ -780,9 +780,14 @@ function FeedsTab({
 
       <Card className="flex flex-col min-h-0">
         <CardHeader className="shrink-0 flex flex-row items-center justify-between space-y-0 py-0">
-          <CardTitle className="text-sm font-medium truncate min-w-0" title={selectedFeed?.url}>
-            {selectedFeed ? (selectedFeed.title || t("feeds.articles")) : t("feeds.articles")}
-          </CardTitle>
+          <Tooltip disabled={!selectedFeed?.url}>
+            <TooltipTrigger asChild>
+              <CardTitle className="text-sm font-medium truncate min-w-0">
+                {selectedFeed ? (selectedFeed.title || t("feeds.articles")) : t("feeds.articles")}
+              </CardTitle>
+            </TooltipTrigger>
+            <TooltipContent>{selectedFeed?.url}</TooltipContent>
+          </Tooltip>
           {selectedFeed && (
             <div className="flex items-center gap-3 shrink-0">
               {selectedFeedUnread > 0 && (
@@ -885,9 +890,14 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
             >
               <Rss className={`h-3.5 w-3.5 flex-shrink-0 ${feed.hasError ? "text-destructive" : isSelected ? "text-primary" : "text-muted-foreground"
               }`} />
-              <span className={`flex-1 truncate text-sm ${hasUnread ? "font-medium" : ""}`} title={feed.title && feed.title !== name ? feed.title : undefined}>
-                {name}
-              </span>
+              <Tooltip disabled={!feed.title || feed.title === name}>
+                <TooltipTrigger asChild>
+                  <span className={`flex-1 truncate text-sm ${hasUnread ? "font-medium" : ""}`}>
+                    {name}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{feed.title}</TooltipContent>
+              </Tooltip>
               {feed.isLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
               {feed.hasError && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
               {hasUnread && (
@@ -1172,27 +1182,42 @@ function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRo
   const actionButtons = (
     <>
       {article.torrentURL && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
-          onClick={() => onDownload(article.torrentURL!)}
-          title={t("feeds.downloadTorrent")}
-        >
-          <Download className="h-4 w-4" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => onDownload(article.torrentURL!)}
+              aria-label={t("feeds.downloadTorrent")}
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("feeds.downloadTorrent")}</TooltipContent>
+        </Tooltip>
       )}
       {article.link && article.link !== article.torrentURL && (
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" asChild title={t("feeds.openLink")}>
-          <a href={article.link} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="h-4 w-4" />
-          </a>
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" asChild aria-label={t("feeds.openLink")}>
+              <a href={article.link} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("feeds.openLink")}</TooltipContent>
+        </Tooltip>
       )}
       {!article.isRead && (
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={onMarkAsRead} title={t("feeds.markAsRead")}>
-          <Check className="h-4 w-4" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={onMarkAsRead} aria-label={t("feeds.markAsRead")}>
+              <Check className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("feeds.markAsRead")}</TooltipContent>
+        </Tooltip>
       )}
     </>
   )
@@ -1211,9 +1236,14 @@ function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRo
       <div className={rowClass}>
         <CollapsibleTrigger className="min-w-0 text-left">{titleContent}</CollapsibleTrigger>
         <div className="flex items-center gap-0.5 shrink-0">
-          <CollapsibleTrigger className="h-7 w-7 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title={t("feeds.toggleDetails")}>
-            <ChevronRight className="h-4 w-4 transition-transform [data-state=open]:rotate-90" />
-          </CollapsibleTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <CollapsibleTrigger className="h-7 w-7 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" aria-label={t("feeds.toggleDetails")}>
+                <ChevronRight className="h-4 w-4 transition-transform [data-state=open]:rotate-90" />
+              </CollapsibleTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{t("feeds.toggleDetails")}</TooltipContent>
+          </Tooltip>
           {actionButtons}
         </div>
       </div>

@@ -117,6 +117,15 @@ const rawTextFieldSelectors = [{
   message: 'Use Input or Textarea from @/components/ui, which keep the password managers away. For a raw text field, spread passwordManagerAttributes() from @/lib/password-manager.',
 }]
 
+const tooltipDelaySelector = {
+  selector: 'JSXAttribute[name.name="delayDuration"]',
+  message: 'Every tooltip opens after the delay of TooltipProvider in @/components/ui/tooltip. Leave out delayDuration.',
+}
+const tooltipProviderSelector = {
+  selector: 'JSXOpeningElement[name.name="TooltipProvider"]',
+  message: 'App renders the one TooltipProvider. Leave out this provider, so that its tooltips open after the app-wide delay.',
+}
+
 const clientSettingMessage = 'Read and write a UI preference with useClientSetting (or readClientSetting outside React) from "@/lib/client-settings". It maps the key to the active Display profile. A direct localStorage call skips that, so every profile shares the value.'
 
 const clientSettingAllowlist = [
@@ -253,7 +262,7 @@ export default tseslint.config([
     files: ['**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
     rules: {
-      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors],
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors, tooltipDelaySelector, tooltipProviderSelector],
     },
   },
   {
@@ -261,7 +270,31 @@ export default tseslint.config([
     files: ['src/components/ui/**'],
     ignores: ['**/*.test.{ts,tsx}'],
     rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, tooltipDelaySelector, tooltipProviderSelector],
+    },
+  },
+  {
+    files: ['src/components/ui/tooltip.tsx'],
+    rules: {
       'no-restricted-syntax': ['error', ...gazelleSiteSelectors],
+    },
+  },
+  {
+    files: ['src/App.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors, tooltipDelaySelector],
+    },
+  },
+  {
+    files: ['src/components/layout/Sidebar.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors, tooltipProviderSelector],
+    },
+  },
+  {
+    files: ['src/components/ui/SystemNoticeList.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, tooltipProviderSelector],
     },
   },
   {
@@ -283,6 +316,8 @@ export default tseslint.config([
       'no-restricted-syntax': ['error',
         ...gazelleSiteSelectors,
         ...rawTextFieldSelectors,
+        tooltipDelaySelector,
+        tooltipProviderSelector,
         { selector: 'Program:not(:has(ImportDeclaration[source.value=/^@.components.layout.(Page|SectionedPage)$/]))', message: pageShellMessage },
         { selector: 'Program:not(:has(JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]))', message: pageShellMessage },
         { selector: 'JSXElement[openingElement.name.name=/^[a-z]/] JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]', message: 'Render Page as the root of the page, with no HTML element around it.' },

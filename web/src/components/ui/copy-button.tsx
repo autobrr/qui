@@ -4,6 +4,7 @@
  */
 
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn, copyTextToClipboard } from "@/lib/utils"
 import { Check, Copy } from "lucide-react"
 import { type MouseEvent, useEffect, useRef, useState } from "react"
@@ -47,21 +48,25 @@ export function CopyButton({ value, label, className, iconClassName = "size-3.5"
 
   const name = t("actions.copyValue", { label })
   return (
-    <Button
-      // The button often sits in a form, for example in the Facts of an editor, and a copy saves nothing.
-      type="button"
-      variant="ghost"
-      size="icon"
-      className={cn("shrink-0", className)}
-      onClick={handleClick}
-      aria-label={name}
-      title={name}
-      data-state={copied ? "copied" : "idle"}
-    >
-      <span className="relative inline-flex">
-        <Copy className={cn(iconClassName, "transition-all duration-200", copied && "scale-50 opacity-0")} />
-        <Check className={cn(iconClassName, "absolute inset-0 text-green-500 transition-all duration-200", !copied && "scale-50 opacity-0")} />
-      </span>
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          // The button often sits in a form, for example in the Facts of an editor, and a copy saves nothing.
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn("shrink-0", className)}
+          onClick={handleClick}
+          aria-label={name}
+          data-state={copied ? "copied" : "idle"}
+        >
+          <span className="relative inline-flex">
+            <Copy className={cn(iconClassName, "transition-all duration-200", copied && "scale-50 opacity-0")} />
+            <Check className={cn(iconClassName, "absolute inset-0 text-green-500 transition-all duration-200", !copied && "scale-50 opacity-0")} />
+          </span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{name}</TooltipContent>
+    </Tooltip>
   )
 }

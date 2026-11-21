@@ -6,6 +6,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 
 import { Facts } from "./Facts"
@@ -23,6 +24,12 @@ type Query = Parameters<typeof Section>[0]["queries"] extends readonly (infer Q)
 function query(state: Partial<Query> = {}): Query {
   return { isLoading: false, isLoadingError: false, error: null, refetch: vi.fn(), ...state }
 }
+
+vi.stubGlobal("ResizeObserver", class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+})
 
 describe("Section", () => {
   it("holds the content and Save back while a query loads for the first time", () => {
@@ -59,7 +66,8 @@ describe("Section", () => {
     render(
       <Section title="Log settings" submit={{ label: "Save settings", onSubmit }}>
         <Facts items={[{ label: "Config file", value: "/config/config.toml", copy: "/config/config.toml" }]} />
-      </Section>
+      </Section>,
+      { wrapper: TooltipProvider }
     )
 
     fireEvent.click(screen.getByRole("button", { name: "Copy Config file" }))

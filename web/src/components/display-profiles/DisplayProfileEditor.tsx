@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next"
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { VIEW_MODE_SETTINGS } from "@/hooks/usePersistedCompactViewState"
 import { useInstances } from "@/hooks/useInstances"
 import { FILTER_SIDEBAR_COLLAPSED_KEY, parseJsonBoolean, useDisplayProfileSetting } from "@/lib/client-settings"
@@ -174,10 +175,9 @@ function NameField({ profile, titleId, lookLine }: NameFieldProps) {
       <div className="flex min-h-10 items-center gap-1">
         <h3
           id={titleId}
-          className={cn(renaming ? "sr-only" : "min-w-0 text-lg font-semibold leading-tight [overflow-wrap:anywhere] pointer-fine:truncate")}
-          title={profile.name}
+          className={cn(renaming ? "sr-only" : "min-w-0 text-lg font-semibold leading-tight [overflow-wrap:anywhere]")}
         >
-          {profile.name}
+          <TruncatedText wrap className="block pointer-fine:truncate">{profile.name}</TruncatedText>
         </h3>
         {renaming ? (
           <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="flex min-w-0 flex-1 items-center gap-1">

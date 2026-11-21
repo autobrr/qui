@@ -68,6 +68,11 @@ beforeEach(() => {
   _resetClientSettingsForTests()
   // The first read of the server ended, so the section takes changes.
   markClientSettingsUnavailable()
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
 })
 
 /** The controls that change a profile, in the editor and in the header. */
@@ -84,7 +89,10 @@ function profileActions(): HTMLButtonElement[] {
   ] as HTMLButtonElement[]
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe("DisplayProfilesSettings", () => {
   it("takes a change only after the first read of the server ends, and shows the profiles before that", () => {

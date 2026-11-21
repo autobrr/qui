@@ -18,7 +18,8 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
@@ -159,9 +160,9 @@ export const SearchTableRow = memo(function SearchTableRow({
       }}
     >
       <div className={cn("px-2 flex items-center min-w-0 text-sm font-medium", isSelected && "text-accent-foreground")}>
-        <div className="truncate" title={result.title}>
+        <TruncatedText openOnTap={false}>
           {result.title}
-        </div>
+        </TruncatedText>
       </div>
       <div className={cn("px-2 flex items-center min-w-0 text-sm truncate", isSelected && "text-accent-foreground")}>{result.indexer}</div>
       <div className={cn("px-2 flex items-center text-sm", isSelected && "text-accent-foreground")}>{formatBytes(result.size)}</div>
@@ -991,887 +992,898 @@ export function Search() {
   }
 
   return (
-    <TooltipProvider>
-      <Page
-        title={t("pageTitle")}
-        description={t("pageDescription")}
-        controls={
-          <DropdownMenu open={instanceMenuOpen} onOpenChange={setInstanceMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={loadingInstances || !instancesAvailable}
-                className="min-w-0 shrink gap-2"
-              >
-                <span className="truncate text-sm">{instanceSelectorLabel}</span>
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              {instancesAvailable ? (
-                <>
-                  {instances?.map(instance => (
-                    <DropdownMenuItem
-                      key={instance.id}
-                      onSelect={(event) => {
-                        event.preventDefault()
-                        handleInstanceSelection(instance.id)
-                      }}
-                    >
-                      <Check
-                        className={`h-4 w-4 text-muted-foreground ${targetInstance?.id === instance.id ? "opacity-100" : "opacity-0"}`}
-                      />
-                      <div className="flex flex-col">
-                        <span className="font-medium">{instance.name}</span>
-                        {!instance.connected && (
-                          <span className="text-xs text-muted-foreground">{t("instanceSelector.offline")}</span>
-                        )}
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
+    <Page
+      title={t("pageTitle")}
+      description={t("pageDescription")}
+      controls={
+        <DropdownMenu open={instanceMenuOpen} onOpenChange={setInstanceMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={loadingInstances || !instancesAvailable}
+              className="min-w-0 shrink gap-2"
+            >
+              <span className="truncate text-sm">{instanceSelectorLabel}</span>
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            {instancesAvailable ? (
+              <>
+                {instances?.map(instance => (
                   <DropdownMenuItem
+                    key={instance.id}
                     onSelect={(event) => {
                       event.preventDefault()
-                      handleInstanceSelection(null)
+                      handleInstanceSelection(instance.id)
                     }}
-                    disabled={!targetInstance}
                   >
-                    {t("instanceSelector.clearSelection")}
-                  </DropdownMenuItem>
-                </>
-              ) : (
-                <DropdownMenuItem disabled>{t("instanceSelector.noInstancesConfigured")}</DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        }
-      >
-        {!instancesAvailable && !loadingInstances && (
-          <p className="text-sm text-muted-foreground">
-            {t("instanceSelector.addInstanceNote")}
-          </p>
-        )}
-
-        <div className="rounded-lg border bg-muted/40 px-4 py-2">
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <Sheet open={indexerSheetOpen} onOpenChange={setIndexerSheetOpen}>
-              <SheetTrigger asChild>
-                <Button type="button" variant="outline" size="sm" className="flex w-full items-center justify-center gap-2 sm:w-auto sm:justify-start">
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  <span className="text-sm">{t("indexerSummary.label")}: {indexerSummaryText}</span>
-                </Button>
-              </SheetTrigger>
-
-              <SheetContent side="right" className="flex h-full max-h-dvh max-w-xl flex-col overflow-hidden p-0">
-                <SheetHeader>
-                  <SheetTitle>{t("indexerSheet.title")}</SheetTitle>
-                  <SheetDescription>{t("indexerSheet.description")}</SheetDescription>
-                </SheetHeader>
-
-                <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 pb-4">
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={handleSelectAll}>
-                      {t("indexerSheet.selectAll")}
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={handleDeselectAll}>
-                      {t("indexerSheet.clearSelection")}
-                    </Button>
-                  </div>
-
-                  <div className="flex-1 min-h-0">
-                    <ScrollArea className="h-full rounded-lg border">
-                      <div className="space-y-2 p-3">
-                        {indexers.map(indexer => {
-                          const parentCategories = indexer.categories
-                            ?.filter(cat => cat.category_id % 1000 === 0)
-                            .map(cat => cat.category_name) || []
-                          const hasCategories = parentCategories.length > 0
-                          const isSelected = selectedIndexers.has(indexer.id)
-
-                          return (
-                            <label
-                              key={indexer.id}
-                              htmlFor={`indexer-${indexer.id}`}
-                              className={`flex w-full items-start gap-3 rounded-md border p-3 transition-colors cursor-pointer ${isSelected? "bg-muted/40 border-muted-foreground/20": "hover:bg-muted/20"
-                              }`}
-                            >
-                              <Checkbox
-                                id={`indexer-${indexer.id}`}
-                                checked={isSelected}
-                                onCheckedChange={() => toggleIndexer(indexer.id)}
-                                className="mt-0.5 shrink-0"
-                              />
-                              <div className="min-w-0 flex-1 space-y-1.5">
-                                <div className="flex items-center gap-2 text-sm font-medium leading-none">
-                                  <span className="truncate">{indexer.name}</span>
-                                  <Badge variant="secondary" className="text-[10px] font-normal capitalize">
-                                    {formatBackend(indexer.backend)}
-                                  </Badge>
-                                </div>
-                                {hasCategories ? (
-                                  <div className="flex flex-wrap gap-1">
-                                    {parentCategories.map((catName, idx) => (
-                                      <Badge key={idx} variant="outline" className="text-[10px] font-normal">
-                                        {catName}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <p className="text-xs text-muted-foreground">{t("indexerSheet.noCategories")}</p>
-                                )}
-                              </div>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </ScrollArea>
-                  </div>
-                </div>
-
-                <SheetFooter className="border-t bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    {t("indexerSheet.footer", { selected: selectedIndexers.size, total: indexers.length })}
-                  </p>
-                  <SheetClose asChild>
-                    <Button type="button" size="sm">
-                      {t("indexerSheet.done")}
-                    </Button>
-                  </SheetClose>
-                </SheetFooter>
-              </SheetContent>
-            </Sheet>
-
-          </div>
-        </div>
-
-        <Card>
-          <CardContent>
-            <form onSubmit={handleSearch} className="space-y-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="shrink-0 min-w-30 max-w-45">
-                    <Label htmlFor="search-type" className="sr-only">{t("searchForm.searchType")}</Label>
-                    <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
-                      <SelectTrigger id="search-type" className="w-full">
-                        <SelectValue placeholder={t("searchTypes.movies.label")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {searchTypeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button
-                      type="button"
-                      variant={showAdvancedParams ? "default" : "outline"}
-                      size="default"
-                      className={cn(
-                        "border! px-4! py-2.5! h-9",
-                        showAdvancedParams? "border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90": "border-input dark:border-input"
-                      )}
-                      onClick={() => setShowAdvancedParams(prev => !prev)}
-                    >
-                      <SlidersHorizontal className="mr-2 h-4 w-4" />
-                      {t("searchForm.advanced")}
-                    </Button>
-                    {hasAdvancedParams && (
-                      <>
-                        <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">{t("searchForm.active")}</Badge>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-muted-foreground"
-                          onClick={handleResetAdvancedParams}
-                        >
-                          {t("searchForm.clear")}
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-1 items-center gap-2 min-w-0">
-                  <div className="flex-1 relative min-w-0">
-                    <Label htmlFor="query" className="sr-only">{t("searchForm.searchQuery")}</Label>
-                    <Input
-                      ref={queryInputRef}
-                      id="query"
-                      type="text"
-                      autoComplete="off"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      onFocus={() => {
-                        if (blurTimeoutRef.current !== null) {
-                          window.clearTimeout(blurTimeoutRef.current)
-                          blurTimeoutRef.current = null
-                        }
-                        setQueryFocused(true)
-                      }}
-                      onBlur={() => {
-                        if (blurTimeoutRef.current !== null) {
-                          window.clearTimeout(blurTimeoutRef.current)
-                        }
-                        // Delay blur to allow suggestion clicks before SUGGESTION_BLUR_DELAY_MS expires
-                        blurTimeoutRef.current = window.setTimeout(() => {
-                          setQueryFocused(false)
-                          blurTimeoutRef.current = null
-                        }, SUGGESTION_BLUR_DELAY_MS)
-                      }}
-                      placeholder={searchPlaceholder}
-                      disabled={loading}
+                    <Check
+                      className={`h-4 w-4 text-muted-foreground ${targetInstance?.id === instance.id ? "opacity-100" : "opacity-0"}`}
                     />
-                    {shouldShowSuggestions && (
-                      <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-lg">
-                        {suggestionMatches.map((search) => {
-                          const suggestionType = inferSearchTypeFromCategories(search.categories)
-                          const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? "movies", t)
-                          return (
-                            <button
-                              type="button"
-                              key={search.cacheKey}
-                              className="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => handleSuggestionClick(search)}
-                            >
-                              <div className="font-medium text-foreground">
-                                {search.query}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {t("historyMeta", {
-                                  type: suggestionTypeLabel,
-                                  count: search.totalResults,
-                                  timestamp: formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt),
-                                })}
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <Button
-                    type="submit"
-                    disabled={loading || (!query.trim() && !hasAdvancedParams) || selectedIndexers.size === 0}
-                    className="shrink-0"
-                  >
-                    <SearchIcon className="mr-2 h-4 w-4" />
-                    {loading ? t("searchForm.searching") : t("searchForm.search")}
+                    <div className="flex flex-col">
+                      <span className="font-medium">{instance.name}</span>
+                      {!instance.connected && (
+                        <span className="text-xs text-muted-foreground">{t("instanceSelector.offline")}</span>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    handleInstanceSelection(null)
+                  }}
+                  disabled={!targetInstance}
+                >
+                  {t("instanceSelector.clearSelection")}
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <DropdownMenuItem disabled>{t("instanceSelector.noInstancesConfigured")}</DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      }
+    >
+      {!instancesAvailable && !loadingInstances && (
+        <p className="text-sm text-muted-foreground">
+          {t("instanceSelector.addInstanceNote")}
+        </p>
+      )}
+
+      <div className="rounded-lg border bg-muted/40 px-4 py-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <Sheet open={indexerSheetOpen} onOpenChange={setIndexerSheetOpen}>
+            <SheetTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="flex w-full items-center justify-center gap-2 sm:w-auto sm:justify-start">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <span className="text-sm">{t("indexerSummary.label")}: {indexerSummaryText}</span>
+              </Button>
+            </SheetTrigger>
+
+            <SheetContent side="right" className="flex h-full max-h-dvh max-w-xl flex-col overflow-hidden p-0">
+              <SheetHeader>
+                <SheetTitle>{t("indexerSheet.title")}</SheetTitle>
+                <SheetDescription>{t("indexerSheet.description")}</SheetDescription>
+              </SheetHeader>
+
+              <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 pb-4">
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={handleSelectAll}>
+                    {t("indexerSheet.selectAll")}
                   </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={handleDeselectAll}>
+                    {t("indexerSheet.clearSelection")}
+                  </Button>
+                </div>
+
+                <div className="flex-1 min-h-0">
+                  <ScrollArea className="h-full rounded-lg border">
+                    <div className="space-y-2 p-3">
+                      {indexers.map(indexer => {
+                        const parentCategories = indexer.categories
+                          ?.filter(cat => cat.category_id % 1000 === 0)
+                          .map(cat => cat.category_name) || []
+                        const hasCategories = parentCategories.length > 0
+                        const isSelected = selectedIndexers.has(indexer.id)
+
+                        return (
+                          <label
+                            key={indexer.id}
+                            htmlFor={`indexer-${indexer.id}`}
+                            className={`flex w-full items-start gap-3 rounded-md border p-3 transition-colors cursor-pointer ${isSelected? "bg-muted/40 border-muted-foreground/20": "hover:bg-muted/20"
+                            }`}
+                          >
+                            <Checkbox
+                              id={`indexer-${indexer.id}`}
+                              checked={isSelected}
+                              onCheckedChange={() => toggleIndexer(indexer.id)}
+                              className="mt-0.5 shrink-0"
+                            />
+                            <div className="min-w-0 flex-1 space-y-1.5">
+                              <div className="flex items-center gap-2 text-sm font-medium leading-none">
+                                <span className="truncate">{indexer.name}</span>
+                                <Badge variant="secondary" className="text-[10px] font-normal capitalize">
+                                  {formatBackend(indexer.backend)}
+                                </Badge>
+                              </div>
+                              {hasCategories ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {parentCategories.map((catName, idx) => (
+                                    <Badge key={idx} variant="outline" className="text-[10px] font-normal">
+                                      {catName}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">{t("indexerSheet.noCategories")}</p>
+                              )}
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </ScrollArea>
                 </div>
               </div>
 
-              {showAdvancedParams && (
-                <div className="rounded-lg border bg-muted/40 p-4 space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {advancedParamConfig.map(({ key, label, placeholder, type, min }) => (
-                      <div key={key} className="space-y-1.5">
-                        <Label htmlFor={`advanced-${key}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {label}
-                        </Label>
-                        <Input
-                          id={`advanced-${key}`}
-                          type={type}
-                          inputMode={type === "number" ? "numeric" : undefined}
-                          min={type === "number" && typeof min !== "undefined" ? min : undefined}
-                          placeholder={placeholder}
-                          value={advancedParams[key]}
-                          onChange={(e) => handleAdvancedParamChange(key, e.target.value)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("searchForm.advancedNote")}
-                  </p>
-                </div>
-              )}
-              {!loadingIndexers && indexers.length === 0 && (
-                <div className="text-sm text-muted-foreground">
-                  {t("searchForm.noIndexers")}{" "}
-                  <Link to="/settings" search={{ tab: "indexers" }} className="font-medium text-primary underline-offset-4 hover:underline">
-                    {t("searchForm.indexersPage")}
-                  </Link>
-                  .
-                </div>
-              )}
+              <SheetFooter className="border-t bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {t("indexerSheet.footer", { selected: selectedIndexers.size, total: indexers.length })}
+                </p>
+                <SheetClose asChild>
+                  <Button type="button" size="sm">
+                    {t("indexerSheet.done")}
+                  </Button>
+                </SheetClose>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
 
-            </form>
+        </div>
+      </div>
 
-            {results.length > 0 && (
-              <div className="mt-6">
-                <div className="mb-2 text-xs text-muted-foreground">
-                  {t("results.showing", { filtered: filteredAndSortedResults.length, total })}
+      <Card>
+        <CardContent>
+          <form onSubmit={handleSearch} className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+              <div className="flex items-center gap-2">
+                <div className="shrink-0 min-w-30 max-w-45">
+                  <Label htmlFor="search-type" className="sr-only">{t("searchForm.searchType")}</Label>
+                  <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
+                    <SelectTrigger id="search-type" className="w-full">
+                      <SelectValue placeholder={t("searchTypes.movies.label")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {searchTypeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-                  <div className="w-full sm:min-w-50 sm:flex-1 min-w-0 relative">
-                    <Input
-                      type="text"
-                      placeholder={t("results.filterPlaceholder")}
-                      value={resultsFilter}
-                      onChange={(e) => setResultsFilter(e.target.value)}
-                      className="pr-8"
-                    />
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    type="button"
+                    variant={showAdvancedParams ? "default" : "outline"}
+                    size="default"
+                    className={cn(
+                      "border! px-4! py-2.5! h-9",
+                      showAdvancedParams? "border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90": "border-input dark:border-input"
+                    )}
+                    onClick={() => setShowAdvancedParams(prev => !prev)}
+                  >
+                    <SlidersHorizontal className="mr-2 h-4 w-4" />
+                    {t("searchForm.advanced")}
+                  </Button>
+                  {hasAdvancedParams && (
+                    <>
+                      <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">{t("searchForm.active")}</Badge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground"
+                        onClick={handleResetAdvancedParams}
+                      >
+                        {t("searchForm.clear")}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-1 items-center gap-2 min-w-0">
+                <div className="flex-1 relative min-w-0">
+                  <Label htmlFor="query" className="sr-only">{t("searchForm.searchQuery")}</Label>
+                  <Input
+                    ref={queryInputRef}
+                    id="query"
+                    type="text"
+                    autoComplete="off"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onFocus={() => {
+                      if (blurTimeoutRef.current !== null) {
+                        window.clearTimeout(blurTimeoutRef.current)
+                        blurTimeoutRef.current = null
+                      }
+                      setQueryFocused(true)
+                    }}
+                    onBlur={() => {
+                      if (blurTimeoutRef.current !== null) {
+                        window.clearTimeout(blurTimeoutRef.current)
+                      }
+                      // Delay blur to allow suggestion clicks before SUGGESTION_BLUR_DELAY_MS expires
+                      blurTimeoutRef.current = window.setTimeout(() => {
+                        setQueryFocused(false)
+                        blurTimeoutRef.current = null
+                      }, SUGGESTION_BLUR_DELAY_MS)
+                    }}
+                    placeholder={searchPlaceholder}
+                    disabled={loading}
+                  />
+                  {shouldShowSuggestions && (
+                    <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-lg">
+                      {suggestionMatches.map((search) => {
+                        const suggestionType = inferSearchTypeFromCategories(search.categories)
+                        const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? "movies", t)
+                        return (
+                          <button
+                            type="button"
+                            key={search.cacheKey}
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSuggestionClick(search)}
+                          >
+                            <div className="font-medium text-foreground">
+                              {search.query}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {t("historyMeta", {
+                                type: suggestionTypeLabel,
+                                count: search.totalResults,
+                                timestamp: formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt),
+                              })}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  type="submit"
+                  disabled={loading || (!query.trim() && !hasAdvancedParams) || selectedIndexers.size === 0}
+                  className="shrink-0"
+                >
+                  <SearchIcon className="mr-2 h-4 w-4" />
+                  {loading ? t("searchForm.searching") : t("searchForm.search")}
+                </Button>
+              </div>
+            </div>
 
-                    {resultsFilter && (
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+            {showAdvancedParams && (
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {advancedParamConfig.map(({ key, label, placeholder, type, min }) => (
+                    <div key={key} className="space-y-1.5">
+                      <Label htmlFor={`advanced-${key}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {label}
+                      </Label>
+                      <Input
+                        id={`advanced-${key}`}
+                        type={type}
+                        inputMode={type === "number" ? "numeric" : undefined}
+                        min={type === "number" && typeof min !== "undefined" ? min : undefined}
+                        placeholder={placeholder}
+                        value={advancedParams[key]}
+                        onChange={(e) => handleAdvancedParamChange(key, e.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("searchForm.advancedNote")}
+                </p>
+              </div>
+            )}
+            {!loadingIndexers && indexers.length === 0 && (
+              <div className="text-sm text-muted-foreground">
+                {t("searchForm.noIndexers")}{" "}
+                <Link to="/settings" search={{ tab: "indexers" }} className="font-medium text-primary underline-offset-4 hover:underline">
+                  {t("searchForm.indexersPage")}
+                </Link>
+                .
+              </div>
+            )}
+
+          </form>
+
+          {results.length > 0 && (
+            <div className="mt-6">
+              <div className="mb-2 text-xs text-muted-foreground">
+                {t("results.showing", { filtered: filteredAndSortedResults.length, total })}
+              </div>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                <div className="w-full sm:min-w-50 sm:flex-1 min-w-0 relative">
+                  <Input
+                    type="text"
+                    placeholder={t("results.filterPlaceholder")}
+                    value={resultsFilter}
+                    onChange={(e) => setResultsFilter(e.target.value)}
+                    className="pr-8"
+                  />
+
+                  {resultsFilter && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
+                            onClick={() => {
+                              setResultsFilter("")
+                            }}
+                          >
+                            <X className="h-3.5 w-3.5 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("results.clearSearch")}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  )}
+                </div>
+                {Object.keys(columnFilters).length > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      asChild
+                      onFocus={(e) => {
+                        e.preventDefault()
+                      }}
+                    >
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setColumnFilters({})}
+                        className="h-9"
+                      >
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">{t("results.clearAllFilters")}</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("results.clearAllFilters")}</TooltipContent>
+                  </Tooltip>
+                )}
+                {selectedResult && (
+                  <>
+                    <div className="hidden sm:flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-stretch rounded-md overflow-hidden">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
-                              onClick={() => {
-                                setResultsFilter("")
-                              }}
-                            >
-                              <X className="h-3.5 w-3.5 text-muted-foreground" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent>{t("results.clearSearch")}</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    )}
-                  </div>
-                  {Object.keys(columnFilters).length > 0 && (
-                    <Tooltip>
-                      <TooltipTrigger
-                        asChild
-                        onFocus={(e) => {
-                          e.preventDefault()
-                        }}
-                      >
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setColumnFilters({})}
-                          className="h-9"
-                        >
-                          <X className="h-4 w-4" />
-                          <span className="sr-only">{t("results.clearAllFilters")}</span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>{t("results.clearAllFilters")}</TooltipContent>
-                    </Tooltip>
-                  )}
-                  {selectedResult && (
-                    <>
-                      <div className="hidden sm:flex flex-wrap items-center gap-2">
-                        <div className="inline-flex items-stretch rounded-md overflow-hidden">
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleAddTorrent(selectedResult)}
-                            disabled={!instancesAvailable}
-                            title={addButtonTitle}
-                            className="rounded-none border-none h-9"
-                          >
-                            <Plus className="h-4 w-4" />
-                            <span className="hidden lg:inline ml-2">{primaryAddButtonLabel}</span>
-                          </Button>
-                          <div className="w-px bg-primary-foreground/20" />
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
+                            <span className="inline-flex" tabIndex={instancesAvailable ? undefined : 0}>
                               <Button
                                 type="button"
                                 size="sm"
-                                className="rounded-none border-none h-9 px-2"
+                                onClick={() => handleAddTorrent(selectedResult)}
                                 disabled={!instancesAvailable}
+                                className="rounded-none border-none h-9"
                               >
-                                <ChevronDown className="h-4 w-4" />
-                                <span className="sr-only">{t("results.pickInstance")}</span>
+                                <Plus className="h-4 w-4" />
+                                <span className="sr-only lg:not-sr-only lg:ml-2">{primaryAddButtonLabel}</span>
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              {instances?.map(instance => (
-                                <DropdownMenuItem
-                                  key={instance.id}
-                                  onSelect={(event) => {
-                                    event.preventDefault()
-                                    handleAddTorrent(selectedResult, instance.id)
-                                  }}
-                                >
-                                  {getInstanceActionLabel(instance)}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleClearSelection}
-                        >
-                          {t("results.clearSelectionButton")}
-                        </Button>
-                      </div>
-                      <div className="sm:hidden">
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>{addButtonTitle}</TooltipContent>
+                        </Tooltip>
+                        <div className="w-px bg-primary-foreground/20" />
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button type="button" size="sm" variant="outline" className="w-full">
-                              {t("results.actions")}
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onSelect={(event) => {
-                                event.preventDefault()
-                                handleAddTorrent(selectedResult)
-                              }}
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="rounded-none border-none h-9 px-2"
                               disabled={!instancesAvailable}
                             >
-                              <Plus className="mr-2 h-4 w-4" /> {primaryAddButtonLabel}
-                            </DropdownMenuItem>
-                            {instancesAvailable && (
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger>
-                                  {t("results.quickAddTo")}
-                                </DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent>
-                                  {instances?.map(instance => (
-                                    <DropdownMenuItem
-                                      key={instance.id}
-                                      onSelect={(event) => {
-                                        event.preventDefault()
-                                        handleAddTorrent(selectedResult, instance.id)
-                                      }}
-                                    >
-                                      {getInstanceActionLabel(instance)}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuSubContent>
-                              </DropdownMenuSub>
-                            )}
-                            <DropdownMenuItem
-                              onSelect={(event) => {
-                                event.preventDefault()
-                                if (selectedResult.downloadUrl) {
-                                  handleDownload(selectedResult)
-                                }
-                              }}
-                              disabled={!selectedResult.downloadUrl}
-                            >
-                              <Download className="mr-2 h-4 w-4" /> {t("results.download")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onSelect={(event) => {
-                                event.preventDefault()
-                                if (selectedResult.infoUrl) {
-                                  handleViewDetails(selectedResult)
-                                }
-                              }}
-                              disabled={!selectedResult.infoUrl}
-                            >
-                              <ExternalLink className="mr-2 h-4 w-4" /> {t("results.viewDetails")}
-                            </DropdownMenuItem>
+                              <ChevronDown className="h-4 w-4" />
+                              <span className="sr-only">{t("results.pickInstance")}</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            {instances?.map(instance => (
+                              <DropdownMenuItem
+                                key={instance.id}
+                                onSelect={(event) => {
+                                  event.preventDefault()
+                                  handleAddTorrent(selectedResult, instance.id)
+                                }}
+                              >
+                                {getInstanceActionLabel(instance)}
+                              </DropdownMenuItem>
+                            ))}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
-                    </>
-                  )}
-                  <div className="flex items-center gap-2 shrink-0 sm:ml-auto">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge
-                          variant={cacheBadge.variant}
-                          className={!cacheMetadata ? "invisible" : ""}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearSelection}
+                      >
+                        {t("results.clearSelectionButton")}
+                      </Button>
+                    </div>
+                    <div className="sm:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button type="button" size="sm" variant="outline" className="w-full">
+                            {t("results.actions")}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              handleAddTorrent(selectedResult)
+                            }}
+                            disabled={!instancesAvailable}
+                          >
+                            <Plus className="mr-2 h-4 w-4" /> {primaryAddButtonLabel}
+                          </DropdownMenuItem>
+                          {instancesAvailable && (
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>
+                                {t("results.quickAddTo")}
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                {instances?.map(instance => (
+                                  <DropdownMenuItem
+                                    key={instance.id}
+                                    onSelect={(event) => {
+                                      event.preventDefault()
+                                      handleAddTorrent(selectedResult, instance.id)
+                                    }}
+                                  >
+                                    {getInstanceActionLabel(instance)}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          )}
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              if (selectedResult.downloadUrl) {
+                                handleDownload(selectedResult)
+                              }
+                            }}
+                            disabled={!selectedResult.downloadUrl}
+                          >
+                            <Download className="mr-2 h-4 w-4" /> {t("results.download")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              if (selectedResult.infoUrl) {
+                                handleViewDetails(selectedResult)
+                              }
+                            }}
+                            disabled={!selectedResult.infoUrl}
+                          >
+                            <ExternalLink className="mr-2 h-4 w-4" /> {t("results.viewDetails")}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </>
+                )}
+                <div className="flex items-center gap-2 shrink-0 sm:ml-auto">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant={cacheBadge.variant}
+                        className={!cacheMetadata ? "invisible" : ""}
+                      >
+                        {cacheBadge.label}
+                      </Badge>
+                    </TooltipTrigger>
+                    {cacheMetadata && (
+                      <TooltipContent>
+                        <p className="text-xs">
+                          {t("results.cachedSummary", {
+                            cached: formatCacheTimestamp(cacheMetadata.cachedAt),
+                            expires: formatCacheTimestamp(cacheMetadata.expiresAt),
+                          })}
+                          <br />
+                          {t("results.cacheSource", { source: cacheMetadata.source, scope: cacheMetadata.scope })}
+                        </p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                  <Tooltip disabled={!showRefreshButton}>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex" tabIndex={showRefreshButton && !canForceRefresh ? 0 : undefined}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className={`h-7 w-7 opacity-40 transition-opacity hover:opacity-100 ${!showRefreshButton ? "invisible" : ""}`}
+                          onClick={() => setRefreshConfirmOpen(true)}
+                          disabled={!canForceRefresh}
+                          aria-label={refreshButtonTitle}
                         >
-                          {cacheBadge.label}
-                        </Badge>
-                      </TooltipTrigger>
-                      {cacheMetadata && (
-                        <TooltipContent>
-                          <p className="text-xs">
-                            {t("results.cachedSummary", {
-                              cached: formatCacheTimestamp(cacheMetadata.cachedAt),
-                              expires: formatCacheTimestamp(cacheMetadata.expiresAt),
-                            })}
-                            <br />
-                            {t("results.cacheSource", { source: cacheMetadata.source, scope: cacheMetadata.scope })}
-                          </p>
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className={`h-7 w-7 opacity-40 transition-opacity hover:opacity-100 ${!showRefreshButton ? "invisible" : ""}`}
-                      onClick={() => setRefreshConfirmOpen(true)}
-                      disabled={!canForceRefresh}
-                      title={refreshButtonTitle}
-                    >
-                      <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                    </Button>
-                  </div>
+                          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{refreshButtonTitle}</TooltipContent>
+                  </Tooltip>
                 </div>
-                <div ref={cardsScrollRef} className="sm:hidden max-h-150 overflow-auto will-change-transform contain-paint">
-                  <div style={{ height: `${cardsVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
-                    {cardsVirtualizer.getVirtualItems().map((virtualRow) => {
+              </div>
+              <div ref={cardsScrollRef} className="sm:hidden max-h-150 overflow-auto will-change-transform contain-paint">
+                <div style={{ height: `${cardsVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
+                  {cardsVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const result = filteredAndSortedResults[virtualRow.index]
+                    return (
+                      <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={cardsVirtualizer.measureElement}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualRow.start}px)`,
+                          paddingBottom: "8px",
+                          contain: "layout style",
+                        }}
+                      >
+                        <SearchResultCard
+                          result={result}
+                          isSelected={selectedResultKey === getSearchResultKey(result)}
+                          onSelect={() => handleToggleResultSelection(result)}
+                          onAddTorrent={(overrideInstanceId) => handleAddTorrent(result, overrideInstanceId)}
+                          onDownload={() => handleDownload(result)}
+                          onViewDetails={() => handleViewDetails(result)}
+                          categoryName={categoryMap.get(result.categoryId) || result.categoryName || t("results.categoryFallback", { id: result.categoryId })}
+                          formatSize={formatBytes}
+                          formatDate={formatCacheTimestamp}
+                          instances={instances}
+                          hasInstances={hasInstances}
+                          targetInstanceName={targetInstance?.name}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div ref={tableScrollRef} className="hidden sm:block max-h-150 overflow-auto border rounded-md will-change-transform contain-paint">
+                <div style={{ position: "relative", minWidth: `${SEARCH_TABLE_MIN_WIDTH}px` }}>
+                  <div
+                    className="sticky top-0 z-20 grid bg-card border-b"
+                    style={{ gridTemplateColumns: SEARCH_TABLE_GRID_TEMPLATE }}
+                  >
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("title")}>
+                        <span className="select-none">{t("table.title")}</span>
+                        <div className="flex items-center gap-1">
+                          {getSortIcon("title")}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColumnFilterPopover
+                              columnId="title"
+                              columnName={t("table.title")}
+                              columnType="string"
+                              currentFilter={columnFilters.title}
+                              onApply={(filter) => {
+                                setColumnFilters(prev => {
+                                  const next = { ...prev }
+                                  if (filter) next.title = filter
+                                  else delete next.title
+                                  return next
+                                })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("indexer")}>
+                        <span className="select-none">{t("table.indexer")}</span>
+                        <div className="flex items-center gap-1">
+                          {getSortIcon("indexer")}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColumnFilterPopover
+                              columnId="indexer"
+                              columnName={t("table.indexer")}
+                              columnType="enum"
+                              options={indexerOptions}
+                              currentFilter={columnFilters.indexer}
+                              multiSelect={true}
+                              onApply={(filter) => {
+                                setColumnFilters(prev => {
+                                  const next = { ...prev }
+                                  if (filter) next.indexer = filter
+                                  else delete next.indexer
+                                  return next
+                                })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("size")}>
+                        <span className="select-none">{t("table.size")}</span>
+                        <div className="flex items-center gap-1">
+                          {getSortIcon("size")}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColumnFilterPopover
+                              columnId="size"
+                              columnName={t("table.size")}
+                              columnType="size"
+                              currentFilter={columnFilters.size}
+                              onApply={(filter) => {
+                                setColumnFilters(prev => {
+                                  const next = { ...prev }
+                                  if (filter) next.size = filter
+                                  else delete next.size
+                                  return next
+                                })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("seeders")}>
+                        <span className="select-none">{t("table.seeders")}</span>
+                        <div className="flex items-center gap-1">
+                          {getSortIcon("seeders")}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColumnFilterPopover
+                              columnId="seeders"
+                              columnName={t("table.seeders")}
+                              columnType="number"
+                              currentFilter={columnFilters.seeders}
+                              onApply={(filter) => {
+                                setColumnFilters(prev => {
+                                  const next = { ...prev }
+                                  if (filter) next.seeders = filter
+                                  else delete next.seeders
+                                  return next
+                                })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("category")}>
+                        <span className="select-none">{t("table.category")}</span>
+                        <div className="flex items-center gap-1">
+                          {getSortIcon("category")}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColumnFilterPopover
+                              columnId="category"
+                              columnName={t("table.category")}
+                              columnType="enum"
+                              options={categoryOptions}
+                              currentFilter={columnFilters.category}
+                              multiSelect={true}
+                              onApply={(filter) => {
+                                setColumnFilters(prev => {
+                                  const next = { ...prev }
+                                  if (filter) next.category = filter
+                                  else delete next.category
+                                  return next
+                                })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("source")}>
+                        <span className="select-none">{t("table.source")}</span>
+                        <div className="flex items-center gap-1">
+                          {getSortIcon("source")}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColumnFilterPopover
+                              columnId="source"
+                              columnName={t("table.source")}
+                              columnType="enum"
+                              options={sourceOptions}
+                              currentFilter={columnFilters.source}
+                              multiSelect={true}
+                              onApply={(filter) => {
+                                setColumnFilters(prev => {
+                                  const next = { ...prev }
+                                  if (filter) next.source = filter
+                                  else delete next.source
+                                  return next
+                                })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("collection")}>
+                        <span className="select-none">{t("table.collection")}</span>
+                        <div className="flex items-center gap-1">
+                          {getSortIcon("collection")}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColumnFilterPopover
+                              columnId="collection"
+                              columnName={t("table.collection")}
+                              columnType="string"
+                              currentFilter={columnFilters.collection}
+                              onApply={(filter) => {
+                                setColumnFilters(prev => {
+                                  const next = { ...prev }
+                                  if (filter) next.collection = filter
+                                  else delete next.collection
+                                  return next
+                                })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("group")}>
+                        <span className="select-none">{t("table.group")}</span>
+                        <div className="flex items-center gap-1">
+                          {getSortIcon("group")}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColumnFilterPopover
+                              columnId="group"
+                              columnName={t("table.group")}
+                              columnType="string"
+                              currentFilter={columnFilters.group}
+                              onApply={(filter) => {
+                                setColumnFilters(prev => {
+                                  const next = { ...prev }
+                                  if (filter) next.group = filter
+                                  else delete next.group
+                                  return next
+                                })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 select-none">
+                        <span>{t("table.freeleech")}</span>
+                        <ColumnFilterPopover
+                          columnId="freeleech"
+                          columnName={t("table.freeleech")}
+                          columnType="enum"
+                          options={freeleechOptions}
+                          currentFilter={columnFilters.freeleech}
+                          multiSelect={true}
+                          onApply={(filter) => {
+                            setColumnFilters(prev => {
+                              const next = { ...prev }
+                              if (filter) next.freeleech = filter
+                              else delete next.freeleech
+                              return next
+                            })
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("published")}>
+                        <span className="select-none">{t("table.published")}</span>
+                        <div className="flex items-center gap-1">
+                          {getSortIcon("published")}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ColumnFilterPopover
+                              columnId="published"
+                              columnName={t("table.published")}
+                              columnType="date"
+                              currentFilter={columnFilters.published}
+                              onApply={(filter) => {
+                                setColumnFilters(prev => {
+                                  const next = { ...prev }
+                                  if (filter) next.published = filter
+                                  else delete next.published
+                                  return next
+                                })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                      <span className="sr-only">{t("table.actions")}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ height: `${tableVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
+                    {tableVirtualizer.getVirtualItems().map((virtualRow) => {
                       const result = filteredAndSortedResults[virtualRow.index]
                       return (
-                        <div
+                        <SearchTableRow
                           key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          ref={cardsVirtualizer.measureElement}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: "100%",
-                            transform: `translateY(${virtualRow.start}px)`,
-                            paddingBottom: "8px",
-                            contain: "layout style",
-                          }}
-                        >
-                          <SearchResultCard
-                            result={result}
-                            isSelected={selectedResultKey === getSearchResultKey(result)}
-                            onSelect={() => handleToggleResultSelection(result)}
-                            onAddTorrent={(overrideInstanceId) => handleAddTorrent(result, overrideInstanceId)}
-                            onDownload={() => handleDownload(result)}
-                            onViewDetails={() => handleViewDetails(result)}
-                            categoryName={categoryMap.get(result.categoryId) || result.categoryName || t("results.categoryFallback", { id: result.categoryId })}
-                            formatSize={formatBytes}
-                            formatDate={formatCacheTimestamp}
-                            instances={instances}
-                            hasInstances={hasInstances}
-                            targetInstanceName={targetInstance?.name}
-                          />
-                        </div>
+                          result={result}
+                          isSelected={selectedResultKey === getSearchResultKey(result)}
+                          isEven={virtualRow.index % 2 === 0}
+                          height={virtualRow.size}
+                          translateY={virtualRow.start}
+                          categoryLabel={categoryMap.get(result.categoryId) || result.categoryName || t("results.categoryFallback", { id: result.categoryId })}
+                          publishedLabel={formatCacheTimestamp(result.publishDate)}
+                          onToggleSelection={handleToggleResultSelection}
+                          onDownload={handleDownload}
+                          onViewDetails={handleViewDetails}
+                        />
                       )
                     })}
                   </div>
                 </div>
-
-                <div ref={tableScrollRef} className="hidden sm:block max-h-150 overflow-auto border rounded-md will-change-transform contain-paint">
-                  <div style={{ position: "relative", minWidth: `${SEARCH_TABLE_MIN_WIDTH}px` }}>
-                    <div
-                      className="sticky top-0 z-20 grid bg-card border-b"
-                      style={{ gridTemplateColumns: SEARCH_TABLE_GRID_TEMPLATE }}
-                    >
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("title")}>
-                          <span className="select-none">{t("table.title")}</span>
-                          <div className="flex items-center gap-1">
-                            {getSortIcon("title")}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <ColumnFilterPopover
-                                columnId="title"
-                                columnName={t("table.title")}
-                                columnType="string"
-                                currentFilter={columnFilters.title}
-                                onApply={(filter) => {
-                                  setColumnFilters(prev => {
-                                    const next = { ...prev }
-                                    if (filter) next.title = filter
-                                    else delete next.title
-                                    return next
-                                  })
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("indexer")}>
-                          <span className="select-none">{t("table.indexer")}</span>
-                          <div className="flex items-center gap-1">
-                            {getSortIcon("indexer")}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <ColumnFilterPopover
-                                columnId="indexer"
-                                columnName={t("table.indexer")}
-                                columnType="enum"
-                                options={indexerOptions}
-                                currentFilter={columnFilters.indexer}
-                                multiSelect={true}
-                                onApply={(filter) => {
-                                  setColumnFilters(prev => {
-                                    const next = { ...prev }
-                                    if (filter) next.indexer = filter
-                                    else delete next.indexer
-                                    return next
-                                  })
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("size")}>
-                          <span className="select-none">{t("table.size")}</span>
-                          <div className="flex items-center gap-1">
-                            {getSortIcon("size")}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <ColumnFilterPopover
-                                columnId="size"
-                                columnName={t("table.size")}
-                                columnType="size"
-                                currentFilter={columnFilters.size}
-                                onApply={(filter) => {
-                                  setColumnFilters(prev => {
-                                    const next = { ...prev }
-                                    if (filter) next.size = filter
-                                    else delete next.size
-                                    return next
-                                  })
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("seeders")}>
-                          <span className="select-none">{t("table.seeders")}</span>
-                          <div className="flex items-center gap-1">
-                            {getSortIcon("seeders")}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <ColumnFilterPopover
-                                columnId="seeders"
-                                columnName={t("table.seeders")}
-                                columnType="number"
-                                currentFilter={columnFilters.seeders}
-                                onApply={(filter) => {
-                                  setColumnFilters(prev => {
-                                    const next = { ...prev }
-                                    if (filter) next.seeders = filter
-                                    else delete next.seeders
-                                    return next
-                                  })
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("category")}>
-                          <span className="select-none">{t("table.category")}</span>
-                          <div className="flex items-center gap-1">
-                            {getSortIcon("category")}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <ColumnFilterPopover
-                                columnId="category"
-                                columnName={t("table.category")}
-                                columnType="enum"
-                                options={categoryOptions}
-                                currentFilter={columnFilters.category}
-                                multiSelect={true}
-                                onApply={(filter) => {
-                                  setColumnFilters(prev => {
-                                    const next = { ...prev }
-                                    if (filter) next.category = filter
-                                    else delete next.category
-                                    return next
-                                  })
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("source")}>
-                          <span className="select-none">{t("table.source")}</span>
-                          <div className="flex items-center gap-1">
-                            {getSortIcon("source")}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <ColumnFilterPopover
-                                columnId="source"
-                                columnName={t("table.source")}
-                                columnType="enum"
-                                options={sourceOptions}
-                                currentFilter={columnFilters.source}
-                                multiSelect={true}
-                                onApply={(filter) => {
-                                  setColumnFilters(prev => {
-                                    const next = { ...prev }
-                                    if (filter) next.source = filter
-                                    else delete next.source
-                                    return next
-                                  })
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("collection")}>
-                          <span className="select-none">{t("table.collection")}</span>
-                          <div className="flex items-center gap-1">
-                            {getSortIcon("collection")}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <ColumnFilterPopover
-                                columnId="collection"
-                                columnName={t("table.collection")}
-                                columnType="string"
-                                currentFilter={columnFilters.collection}
-                                onApply={(filter) => {
-                                  setColumnFilters(prev => {
-                                    const next = { ...prev }
-                                    if (filter) next.collection = filter
-                                    else delete next.collection
-                                    return next
-                                  })
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("group")}>
-                          <span className="select-none">{t("table.group")}</span>
-                          <div className="flex items-center gap-1">
-                            {getSortIcon("group")}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <ColumnFilterPopover
-                                columnId="group"
-                                columnName={t("table.group")}
-                                columnType="string"
-                                currentFilter={columnFilters.group}
-                                onApply={(filter) => {
-                                  setColumnFilters(prev => {
-                                    const next = { ...prev }
-                                    if (filter) next.group = filter
-                                    else delete next.group
-                                    return next
-                                  })
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 select-none">
-                          <span>{t("table.freeleech")}</span>
-                          <ColumnFilterPopover
-                            columnId="freeleech"
-                            columnName={t("table.freeleech")}
-                            columnType="enum"
-                            options={freeleechOptions}
-                            currentFilter={columnFilters.freeleech}
-                            multiSelect={true}
-                            onApply={(filter) => {
-                              setColumnFilters(prev => {
-                                const next = { ...prev }
-                                if (filter) next.freeleech = filter
-                                else delete next.freeleech
-                                return next
-                              })
-                            }}
-                          />
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("published")}>
-                          <span className="select-none">{t("table.published")}</span>
-                          <div className="flex items-center gap-1">
-                            {getSortIcon("published")}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <ColumnFilterPopover
-                                columnId="published"
-                                columnName={t("table.published")}
-                                columnType="date"
-                                currentFilter={columnFilters.published}
-                                onApply={(filter) => {
-                                  setColumnFilters(prev => {
-                                    const next = { ...prev }
-                                    if (filter) next.published = filter
-                                    else delete next.published
-                                    return next
-                                  })
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
-                        <span className="sr-only">{t("table.actions")}</span>
-                      </div>
-                    </div>
-
-                    <div style={{ height: `${tableVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
-                      {tableVirtualizer.getVirtualItems().map((virtualRow) => {
-                        const result = filteredAndSortedResults[virtualRow.index]
-                        return (
-                          <SearchTableRow
-                            key={virtualRow.key}
-                            result={result}
-                            isSelected={selectedResultKey === getSearchResultKey(result)}
-                            isEven={virtualRow.index % 2 === 0}
-                            height={virtualRow.size}
-                            translateY={virtualRow.start}
-                            categoryLabel={categoryMap.get(result.categoryId) || result.categoryName || t("results.categoryFallback", { id: result.categoryId })}
-                            publishedLabel={formatCacheTimestamp(result.publishDate)}
-                            onToggleSelection={handleToggleResultSelection}
-                            onDownload={handleDownload}
-                            onViewDetails={handleViewDetails}
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {!loading && results.length === 0 && total === 0 && query && (
-              <div className="mt-6 text-center text-muted-foreground">
-                {t("results.noResultsFor", { query })}
-              </div>
-            )}
+          {!loading && results.length === 0 && total === 0 && query && (
+            <div className="mt-6 text-center text-muted-foreground">
+              {t("results.noResultsFor", { query })}
+            </div>
+          )}
 
-            {!loading && !query && results.length == 0 && (
-              <div className="mt-6 text-center text-muted-foreground">
-                {t("results.enterQuery")}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          {!loading && !query && results.length == 0 && (
+            <div className="mt-6 text-center text-muted-foreground">
+              {t("results.enterQuery")}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-        {selectedInstanceId && (
-          <AddTorrentDialog
-            instanceId={selectedInstanceId}
-            open={addDialogOpen}
-            onOpenChange={handleDialogOpenChange}
-            dropPayload={addDialogPayload}
-            onDropPayloadConsumed={() => setAddDialogPayload(null)}
-          />
-        )}
+      {selectedInstanceId && (
+        <AddTorrentDialog
+          instanceId={selectedInstanceId}
+          open={addDialogOpen}
+          onOpenChange={handleDialogOpenChange}
+          dropPayload={addDialogPayload}
+          onDropPayloadConsumed={() => setAddDialogPayload(null)}
+        />
+      )}
 
-        <AlertDialog open={refreshConfirmOpen} onOpenChange={setRefreshConfirmOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t("refreshDialog.title")}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("refreshDialog.description")}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={loading}>{t("refreshDialog.cancel")}</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleForceRefreshConfirm}
-                disabled={!canForceRefresh || loading}
-              >
-                {t("refreshDialog.refreshNow")}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </Page>
-    </TooltipProvider>
+      <AlertDialog open={refreshConfirmOpen} onOpenChange={setRefreshConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("refreshDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("refreshDialog.description")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>{t("refreshDialog.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleForceRefreshConfirm}
+              disabled={!canForceRefresh || loading}
+            >
+              {t("refreshDialog.refreshNow")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Page>
   )
 }

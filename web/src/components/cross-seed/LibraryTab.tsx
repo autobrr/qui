@@ -17,6 +17,7 @@ import { MultiSelect } from "@/components/ui/multi-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import {
   CROSS_SEED_SEARCH_SETTINGS_KEY,
   CROSS_SEED_SETTINGS_KEY,
@@ -776,7 +777,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                       const routeLabel = (result: CrossSeedSearchResult) => {
                         if (!result.crossSeedInstanceName) return null
                         const text = crossSeedRouteText(t, sourceName, result.crossSeedInstanceName, result.status === "added")
-                        return <span className="min-w-0 truncate text-muted-foreground/80" title={text}>{text}</span>
+                        return <TruncatedText className="min-w-0 text-muted-foreground/80">{text}</TruncatedText>
                       }
                       const successResults = run.results?.filter(r => r.status === "added") ?? []
                       const failedResults = run.results?.filter(r => r.status === "failed") ?? []
@@ -798,9 +799,9 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                   {t("scan.torrentsCount", { count: run.status === "running" ? `${run.processed}/${run.totalTorrents}` : run.totalTorrents })}
                                 </span>
                                 {run.errorMessage && (
-                                  <span className="min-w-0 truncate text-xs text-muted-foreground" title={run.errorMessage}>
+                                  <TruncatedText className="min-w-0 text-xs text-muted-foreground" openOnTap={false}>
                                     {t("scan.runError", { message: run.errorMessage })}
-                                  </span>
+                                  </TruncatedText>
                                 )}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
@@ -825,7 +826,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                               <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
                                 {successResults.map((result, i) => (
                                   <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
-                                    <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
+                                    <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
                                     <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                     {routeLabel(result)}
                                   </div>
@@ -839,7 +840,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                     {skippedResults.map((result, i) => (
                                       <div key={`skipped-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                         <div className="flex items-center gap-2">
-                                          <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
+                                          <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                           {routeLabel(result)}
                                         </div>
@@ -856,7 +857,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                     {failedResults.map((result, i) => (
                                       <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                         <div className="flex items-center gap-2">
-                                          <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
+                                          <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                           {routeLabel(result)}
                                         </div>

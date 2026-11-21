@@ -7,9 +7,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, render } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
 import type { TorrentCreationStatus, TorrentCreationTask } from "@/types"
 import { TorrentCreationTasks } from "./TorrentCreationTasks"
+
+vi.stubGlobal("ResizeObserver", class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+})
 
 vi.mock("@/lib/api", () => ({ api: { getTorrentCreationTasks: vi.fn() } }))
 vi.mock("@/hooks/useDateTimeFormatters", () => {
@@ -47,7 +54,9 @@ it.each<[TorrentCreationStatus | undefined, number]>([
 
   render(
     <QueryClientProvider client={client}>
-      <TorrentCreationTasks instanceId={1} />
+      <TooltipProvider>
+        <TorrentCreationTasks instanceId={1} />
+      </TooltipProvider>
     </QueryClientProvider>
   )
   await act(() => vi.advanceTimersByTimeAsync(0))

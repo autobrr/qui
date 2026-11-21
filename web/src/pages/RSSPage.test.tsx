@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { ArticlesPanel } from "@/pages/RSSPage"
 import type { RSSArticle } from "@/types"
 import { cleanup, render, screen } from "@testing-library/react"
@@ -52,12 +53,14 @@ describe("ArticlesPanel", () => {
     }))
 
     render(
-      <ArticlesPanel
-        instanceId={1}
-        feed={{ uid: "feed", url: "https://example.invalid/feed", hasError: false, isLoading: false, articles }}
-        feedPath="Synthetic Feed"
-        onDownload={() => {}}
-      />
+      <TooltipProvider>
+        <ArticlesPanel
+          instanceId={1}
+          feed={{ uid: "feed", url: "https://example.invalid/feed", hasError: false, isLoading: false, articles }}
+          feedPath="Synthetic Feed"
+          onDownload={() => {}}
+        />
+      </TooltipProvider>
     )
 
     expect(document.querySelectorAll("[data-index]")).toHaveLength(3)

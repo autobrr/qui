@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { usePersistedLogExclusions } from "@/hooks/usePersistedLogExclusions"
@@ -318,15 +319,19 @@ function LogEntry({
       <div className={cn("max-sm:[overflow-wrap:anywhere] sm:flex sm:gap-2 sm:whitespace-nowrap", isClickable && "max-sm:line-clamp-4")}>
         <span className="mr-2 text-muted-foreground/60 sm:mr-0 sm:shrink-0">{entry.time ? formatTimeOnly(Date.parse(entry.time) / 1000, true) : ""}</span>
         {onMute ? (
-          <button
-            type="button"
-            onClick={handleMute}
-            title={t("logs.viewer.muteSimilarEntries")}
-            className={cn("group/mute cursor-pointer", badgeClass)}
-          >
-            <span className="group-hover/mute:hidden">{entry.level}</span>
-            <X className="hidden size-2.5 group-hover/mute:block" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleMute}
+                className={cn("group/mute cursor-pointer", badgeClass)}
+              >
+                <span className="group-hover/mute:hidden">{entry.level}</span>
+                <X className="hidden size-2.5 group-hover/mute:block" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{t("logs.viewer.muteSimilarEntries")}</TooltipContent>
+          </Tooltip>
         ) : (
           <span className={badgeClass}>{entry.level}</span>
         )}

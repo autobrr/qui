@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { cn } from "@/lib/utils"
 
 /** ok: works. warn: works, with a problem. error: does not work. off: not in use. */
@@ -165,9 +166,9 @@ function ResourceListRow({ row, selectable, onRun }: { row: ResourceRow; selecta
     <>
       <RowIcon icon={row.icon} off={off} />
       <span className="min-w-0 flex-1">
-        <span id={titleId} className={cn("block text-sm font-medium [overflow-wrap:anywhere] pointer-fine:truncate", off && "text-muted-foreground")} title={row.title}>
+        <TruncatedText id={titleId} wrap openOnTap={false} className={cn("block text-sm font-medium [overflow-wrap:anywhere] pointer-fine:truncate", off && "text-muted-foreground")}>
           {row.title}
-        </span>
+        </TruncatedText>
         {facts.length > 0 && (
           <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-muted-foreground sm:flex-nowrap">
             {facts.map((fact, index) => (

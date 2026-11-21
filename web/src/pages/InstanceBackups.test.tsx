@@ -10,6 +10,7 @@ import { delay, HttpResponse, http } from "msw"
 import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { server } from "@/test/msw/server"
 
 const stubs = vi.hoisted(() => ({
@@ -74,7 +75,9 @@ describe("InstanceBackups", () => {
     render(
       <RouterContextProvider router={router}>
         <QueryClientProvider client={queryClient}>
-          <InstanceBackups />
+          <TooltipProvider>
+            <InstanceBackups />
+          </TooltipProvider>
         </QueryClientProvider>
       </RouterContextProvider>
     )

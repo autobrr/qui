@@ -8,6 +8,8 @@ import { useReturnFocus } from "@/components/kit/use-return-focus"
 import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command"
 import { DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { isMac, keyLabels, modShortcut } from "@/lib/keyboard"
 import { passwordManagerAttributes } from "@/lib/password-manager"
@@ -117,15 +119,20 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
             {"instanceId" in entry.icon ? <InstanceMarkIcon instanceId={entry.icon.instanceId} problem={entry.icon.problem} /> : <entry.icon className="size-4" />}
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate font-medium" title={entry.label}>{entry.label}</span>
+            <TruncatedText className="font-medium" openOnTap={false}>{entry.label}</TruncatedText>
             {subtitle && <span className="truncate text-xs text-muted-foreground">{subtitle}</span>}
           </span>
           {entry.thumbnail && <ThemeThumbnail palette={entry.thumbnail} detail="compact" className="w-10 shrink-0 rounded-sm" />}
           {copies > 0 && (
-            <span className="shrink-0 rounded-full bg-foreground/10 px-1.5 py-0.5 text-xs text-muted-foreground" title={t("torrents:copyGroups.copies", { count: copies, name: entry.label })}>
-              <span aria-hidden="true">{t("torrents:copyGroups.badge", { hidden: copies })}</span>
-              <span className="sr-only">{t("torrents:copyGroups.copies", { count: copies, name: entry.label })}</span>
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild openOnTap="only">
+                <span className="shrink-0 rounded-full bg-foreground/10 px-1.5 py-0.5 text-xs text-muted-foreground">
+                  <span aria-hidden="true">{t("torrents:copyGroups.badge", { hidden: copies })}</span>
+                  <span className="sr-only">{t("torrents:copyGroups.copies", { count: copies, name: entry.label })}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t("torrents:copyGroups.copies", { count: copies, name: entry.label })}</TooltipContent>
+            </Tooltip>
           )}
           {entry.shortcut !== undefined && (
             <CommandShortcut className="text-sm tracking-normal pointer-coarse:hidden">{modShortcut(entry.shortcut === "Enter" ? keyLabels.enter : entry.shortcut)}</CommandShortcut>

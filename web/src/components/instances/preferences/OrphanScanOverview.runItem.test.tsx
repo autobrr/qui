@@ -15,7 +15,7 @@ vi.mock("@/lib/api", () => ({ api: { getOrphanScanRun } }))
 
 function render(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return { client, ...rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>) }
+  return { client, ...rtlRender(<QueryClientProvider client={client}><TooltipProvider>{ui}</TooltipProvider></QueryClientProvider>) }
 }
 
 // OrphanScanRunItem only needs a translator; keep the module's other exports

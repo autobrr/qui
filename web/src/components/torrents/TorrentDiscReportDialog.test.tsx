@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import type { DiscScans } from "@/hooks/useDiscScans"
 import type { DiscScanRun } from "@/types"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
@@ -55,7 +56,7 @@ function scansWith(current?: DiscScanRun, startState: Partial<DiscScans["start"]
 describe("DiscReportButton", () => {
   it("labels the states: no report, active, cached, failed", () => {
     const labels = ([undefined, "pending", "scanning", "completed", "failed", "canceled"] as const).map((status) => {
-      const { getByRole, unmount } = render(<DiscReportButton status={status} onClick={() => {}} />)
+      const { getByRole, unmount } = render(<DiscReportButton status={status} onClick={() => {}} />, { wrapper: TooltipProvider })
       const label = getByRole("button").getAttribute("aria-label")
       unmount()
       return label
@@ -72,7 +73,7 @@ describe("DiscReportButton", () => {
 
   it("does not fire while disabled", () => {
     const onClick = vi.fn()
-    const { getByRole } = render(<DiscReportButton disabled onClick={onClick} />)
+    const { getByRole } = render(<DiscReportButton disabled onClick={onClick} />, { wrapper: TooltipProvider })
     fireEvent.click(getByRole("button"))
     expect(onClick).not.toHaveBeenCalled()
   })

@@ -6,6 +6,7 @@
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { formatCalendarDay } from "@/lib/dateTimeUtils"
@@ -141,7 +142,6 @@ function Calendar({ days }: { days: CalendarDay[] }) {
                   {week.map((day, slot) => day ? (
                     <li
                       key={day.start}
-                      title={labels.get(day.start)}
                       aria-label={labels.get(day.start)}
                       data-gap={day.gapSeconds > 0 || undefined}
                       onMouseEnter={() => setShown(day.start)}
@@ -170,9 +170,9 @@ function YearFact({ label, value, detail, className }: { label: string; value?: 
   return (
     <div className={cn("min-w-0 border-l-2 pl-3", className)} style={{ borderLeftColor: "var(--color-heat)" }}>
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 text-lg font-semibold tabular-nums sm:truncate sm:text-xl" title={value}>{value ?? "–"}</dd>
+      <dd className="mt-0.5 text-lg font-semibold tabular-nums sm:text-xl"><TruncatedText wrap className="block sm:truncate">{value ?? "–"}</TruncatedText></dd>
       {/* In the one column next to the calendar, a long detail goes to a second line. */}
-      {detail && <dd className="truncate text-sm text-muted-foreground @[68rem]/year:whitespace-normal" title={detail}>{detail}</dd>}
+      {detail && <dd className="text-sm text-muted-foreground"><TruncatedText className="block @[68rem]/year:whitespace-normal">{detail}</TruncatedText></dd>}
     </div>
   )
 }

@@ -4,6 +4,7 @@
  */
 
 import { Dialog } from "@/components/ui/dialog"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { Circle } from "lucide-react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -54,6 +55,7 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
     unobserve() {}
+    disconnect() {}
   })
   Element.prototype.scrollIntoView = () => {}
   Element.prototype.scrollTo = () => {}
@@ -61,9 +63,11 @@ beforeEach(() => {
 
 function openPalette() {
   render(
-    <Dialog open>
-      <CommandPaletteContent close={() => {}} />
-    </Dialog>
+    <TooltipProvider>
+      <Dialog open>
+        <CommandPaletteContent close={() => {}} />
+      </Dialog>
+    </TooltipProvider>
   )
   return screen.getByRole("combobox")
 }
@@ -181,7 +185,7 @@ describe("CommandPaletteContent", () => {
 
 describe("CommandPalette", () => {
   it("opens when a button asks for it", () => {
-    render(<CommandPalette />)
+    render(<TooltipProvider><CommandPalette /></TooltipProvider>)
     expect(screen.queryByRole("combobox")).toBeNull()
 
     act(() => openCommandPalette())
@@ -190,7 +194,7 @@ describe("CommandPalette", () => {
   })
 
   it("starts with the text that the button gives, selected, and searches for it", () => {
-    render(<CommandPalette />)
+    render(<TooltipProvider><CommandPalette /></TooltipProvider>)
 
     act(() => openCommandPalette("dash"))
 

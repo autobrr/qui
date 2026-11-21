@@ -63,7 +63,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import {
   useBackupManifest,
@@ -816,26 +816,24 @@ export function InstanceBackups() {
     const selectionMessage = !hasInstances? t("backups.selection.noInstancesDescription"): instanceCapabilitiesPending? t("backups.selection.checkingDescription"): hasSupportedInstances? t("backups.selection.chooseDescription"): t("backups.selection.noCompatibleDescription")
 
     return (
-      <TooltipProvider>
-        <Page title={t("backups.pageTitle")} description={t("backups.pageDescription")} controls={instancePicker}>
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
-              <HardDrive className="h-16 w-16 text-muted-foreground/40" />
-              <div className="text-center space-y-2">
-                <p className="text-lg font-medium">{selectionHeading}</p>
-                <p className="text-sm text-muted-foreground max-w-md">{selectionMessage}</p>
-              </div>
-              {!hasSupportedInstances && !instanceCapabilitiesPending && (
-                <Button variant="outline" asChild>
-                  <Link to="/instances">
-                    {t("backups.selection.goToInstances")}
-                  </Link>
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        </Page>
-      </TooltipProvider>
+      <Page title={t("backups.pageTitle")} description={t("backups.pageDescription")} controls={instancePicker}>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
+            <HardDrive className="h-16 w-16 text-muted-foreground/40" />
+            <div className="text-center space-y-2">
+              <p className="text-lg font-medium">{selectionHeading}</p>
+              <p className="text-sm text-muted-foreground max-w-md">{selectionMessage}</p>
+            </div>
+            {!hasSupportedInstances && !instanceCapabilitiesPending && (
+              <Button variant="outline" asChild>
+                <Link to="/instances">
+                  {t("backups.selection.goToInstances")}
+                </Link>
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </Page>
     )
   }
 
@@ -871,388 +869,359 @@ export function InstanceBackups() {
   }
 
   return (
-    <TooltipProvider>
-      <Page
-        title={t("backups.pageTitle")}
-        description={t("backups.pageDescription")}
-        controls={
-          <>
-            {instancePicker}
-            <Button variant="outline" asChild>
-              <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
-                {t("backups.navigation.backToTorrents")}
-              </Link>
-            </Button>
-          </>
-        }
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("backups.settings.title")}</CardTitle>
-            <CardDescription className="flex flex-wrap gap-x-6 gap-y-1">
-              <span>
-                {t("backups.summary.lastBackup")}:{" "}
-                <span className="text-foreground">
-                  {runsLoading ? t("backups.summary.loading") : lastRun ? `${runKindLabels[lastRun.kind]}, ${formatDateSafe(lastRun.completedAt ?? lastRun.requestedAt, formatDate)}` : t("backups.summary.noBackupsYet")}
-                </span>
-                {lastRun && lastRun.status !== "success" && (
-                  <Badge variant={statusVariants[lastRun.status]} className="ml-2 capitalize">{t(`backups.statusLabels.${lastRun.status}`, lastRun.status)}</Badge>
-                )}
+    <Page
+      title={t("backups.pageTitle")}
+      description={t("backups.pageDescription")}
+      controls={
+        <>
+          {instancePicker}
+          <Button variant="outline" asChild>
+            <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
+              {t("backups.navigation.backToTorrents")}
+            </Link>
+          </Button>
+        </>
+      }
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("backups.settings.title")}</CardTitle>
+          <CardDescription className="flex flex-wrap gap-x-6 gap-y-1">
+            <span>
+              {t("backups.summary.lastBackup")}:{" "}
+              <span className="text-foreground">
+                {runsLoading ? t("backups.summary.loading") : lastRun ? `${runKindLabels[lastRun.kind]}, ${formatDateSafe(lastRun.completedAt ?? lastRun.requestedAt, formatDate)}` : t("backups.summary.noBackupsYet")}
               </span>
-              <span>
-                {t("backups.summary.nextScheduledBackup")}:{" "}
-                <span className="text-foreground">
-                  {nextScheduleInfo.kind
-                    ? [runKindLabels[nextScheduleInfo.kind], nextScheduleInfo.timestamp].filter(Boolean).join(", ")
-                    : nextScheduleInfo.status}
-                </span>
-              </span>
-              {nextScheduleInfo.kind && nextScheduleInfo.status && (
-                <span className="basis-full">{nextScheduleInfo.status}</span>
+              {lastRun && lastRun.status !== "success" && (
+                <Badge variant={statusVariants[lastRun.status]} className="ml-2 capitalize">{t(`backups.statusLabels.${lastRun.status}`, lastRun.status)}</Badge>
               )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {settingsLoading || !formState ? (
-              <p className="text-sm text-muted-foreground">{t("backups.settings.loading")}</p>
-            ) : (
-              <>
+            </span>
+            <span>
+              {t("backups.summary.nextScheduledBackup")}:{" "}
+              <span className="text-foreground">
+                {nextScheduleInfo.kind
+                  ? [runKindLabels[nextScheduleInfo.kind], nextScheduleInfo.timestamp].filter(Boolean).join(", ")
+                  : nextScheduleInfo.status}
+              </span>
+            </span>
+            {nextScheduleInfo.kind && nextScheduleInfo.status && (
+              <span className="basis-full">{nextScheduleInfo.status}</span>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {settingsLoading || !formState ? (
+            <p className="text-sm text-muted-foreground">{t("backups.settings.loading")}</p>
+          ) : (
+            <>
+              <div className="grid gap-x-10 gap-y-4 md:grid-cols-2">
+                {SETTING_TOGGLES.map(({ field, key }) => (
+                  <div key={field} className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <Label htmlFor={`backup-${field}`} className="font-medium">{t(`backups.settings.${key}`)}</Label>
+                      <FieldHelp>{t(`backups.settings.${key}Description`)}</FieldHelp>
+                    </div>
+                    <Switch id={`backup-${field}`} checked={formState[field]} onCheckedChange={handleToggle(field)} />
+                  </div>
+                ))}
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">{t("backups.settings.schedule.title")}</p>
+                  <p className="text-xs text-muted-foreground">{t("backups.settings.schedule.description")}</p>
+                </div>
                 <div className="grid gap-x-10 gap-y-4 md:grid-cols-2">
-                  {SETTING_TOGGLES.map(({ field, key }) => (
-                    <div key={field} className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-1.5">
-                        <Label htmlFor={`backup-${field}`} className="font-medium">{t(`backups.settings.${key}`)}</Label>
-                        <FieldHelp>{t(`backups.settings.${key}Description`)}</FieldHelp>
+                  {SCHEDULE_CADENCES.map(({ kind, enabled, keep }) => (
+                    <div key={kind} className="flex items-center gap-3">
+                      <div className="flex flex-1 items-center gap-1.5">
+                        <Label htmlFor={`backup-${enabled}`} className="font-medium">{t(`backups.settings.schedule.${kind}`)}</Label>
+                        <FieldHelp>
+                          {t(`backups.settings.schedule.${kind}Tooltip`)} {t(`backups.settings.schedule.${kind}Description`)}
+                        </FieldHelp>
                       </div>
-                      <Switch id={`backup-${field}`} checked={formState[field]} onCheckedChange={handleToggle(field)} />
+                      <Label htmlFor={`backup-${keep}`} className="font-normal text-muted-foreground">
+                        {t("backups.settings.schedule.keep")}
+                      </Label>
+                      <Input
+                        id={`backup-${keep}`}
+                        type="number"
+                        className="h-8 w-20"
+                        min={formState[enabled] ? 1 : 0}
+                        value={formState[keep]}
+                        onChange={handleNumberChange(keep)}
+                        disabled={!formState[enabled]}
+                      />
+                      <Switch id={`backup-${enabled}`} checked={formState[enabled]} onCheckedChange={handleToggle(enabled)} />
                     </div>
                   ))}
                 </div>
-
-                <Separator />
-
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">{t("backups.settings.schedule.title")}</p>
-                    <p className="text-xs text-muted-foreground">{t("backups.settings.schedule.description")}</p>
-                  </div>
-                  <div className="grid gap-x-10 gap-y-4 md:grid-cols-2">
-                    {SCHEDULE_CADENCES.map(({ kind, enabled, keep }) => (
-                      <div key={kind} className="flex items-center gap-3">
-                        <div className="flex flex-1 items-center gap-1.5">
-                          <Label htmlFor={`backup-${enabled}`} className="font-medium">{t(`backups.settings.schedule.${kind}`)}</Label>
-                          <FieldHelp>
-                            {t(`backups.settings.schedule.${kind}Tooltip`)} {t(`backups.settings.schedule.${kind}Description`)}
-                          </FieldHelp>
-                        </div>
-                        <Label htmlFor={`backup-${keep}`} className="font-normal text-muted-foreground">
-                          {t("backups.settings.schedule.keep")}
-                        </Label>
-                        <Input
-                          id={`backup-${keep}`}
-                          type="number"
-                          className="h-8 w-20"
-                          min={formState[enabled] ? 1 : 0}
-                          value={formState[keep]}
-                          onChange={handleNumberChange(keep)}
-                          disabled={!formState[enabled]}
-                        />
-                        <Switch id={`backup-${enabled}`} checked={formState[enabled]} onCheckedChange={handleToggle(enabled)} />
-                      </div>
-                    ))}
-                  </div>
-                  {requiresCadenceSelection && (
-                    <p className="text-xs text-destructive">{t("backups.settings.actions.requiresCadence")}</p>
-                  )}
-                </div>
-              </>
-            )}
-          </CardContent>
-          <CardFooter className="flex flex-col-reverse gap-3 border-t sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button variant="outline" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                <ArrowDownToLine className="mr-2 h-4 w-4" /> {t("backups.settings.actions.runManualBackup")}
-              </Button>
-              <Button variant="ghost" onClick={() => setImportDialogOpen(true)}>
-                <FileText className="mr-2 h-4 w-4" /> {t("backups.import.title")}
-              </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                variant="outline"
-                onClick={handleSaveAll}
-                disabled={saveAllDisabled}
-                title={instanceCapabilitiesPending ? t("backups.settings.actions.waitForCapabilities") : undefined}
-              >
-                {t("backups.settings.actions.saveAll")}
-              </Button>
-              <Button onClick={handleSave} disabled={saveDisabled || savingAll}>
-                <Save className="mr-2 h-4 w-4" /> {t("backups.settings.actions.saveChanges")}
-              </Button>
-            </div>
-          </CardFooter>
-        </Card>
-
-        <Dialog open={restoreDialogOpen} onOpenChange={(open: boolean) => {
-          if (!open) {
-            closeRestoreDialog()
-          }
-        }}>
-          <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
-            <DialogHeader>
-              <DialogTitle>{t("backups.restore.title")}</DialogTitle>
-              <DialogDescription>
-                {restoreTargetRun? t("backups.restore.runDescription", {
-                  id: restoreTargetRun.id,
-                  kind: runKindLabels[restoreTargetRun.kind],
-                }): t("backups.restore.selectBackup")}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{t("backups.restore.mode")}</span>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={restoreMode}
-                    onValueChange={handleRestoreModeChange}
-                    disabled={restorePlanLoading || !restoreTargetRun}
-                  >
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder={t("backups.restore.selectMode")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="incremental">{t("backups.restore.incremental")}</SelectItem>
-                      <SelectItem value="overwrite">{t("backups.restore.overwrite")}</SelectItem>
-                      <SelectItem value="complete">{t("backups.restore.complete")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span
-                        className="inline-flex h-8 w-8 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
-                      >
-                        <CircleHelp className="h-4 w-4" />
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent align="start" className="max-w-sm text-xs">
-                      <p className="font-bold">{t("backups.restore.incremental")}</p>
-                      <p className="mb-2">{t("backups.restore.incrementalDescription")}</p>
-                      <p className="font-bold">{t("backups.restore.overwrite")}</p>
-                      <p className="mb-2">{t("backups.restore.overwriteDescription")}</p>
-                      <p className="font-bold">{t("backups.restore.complete")}</p>
-                      <p>{t("backups.restore.completeDescription")}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="restore-dry-run"
-                  checked={restoreDryRun}
-                  onCheckedChange={setRestoreDryRun}
-                />
-                <Label htmlFor="restore-dry-run">{t("backups.restore.dryRun")}</Label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="restore-start-paused"
-                  checked={restoreStartPaused}
-                  onCheckedChange={setRestoreStartPaused}
-                />
-                <Label htmlFor="restore-start-paused">{t("backups.restore.startPaused")}</Label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="restore-skip-hash-check"
-                  checked={restoreSkipHashCheck}
-                  onCheckedChange={setRestoreSkipHashCheck}
-                />
-                <Label htmlFor="restore-skip-hash-check">{t("backups.restore.skipRecheck")}</Label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="restore-auto-resume"
-                  checked={restoreAutoResume}
-                  onCheckedChange={setRestoreAutoResume}
-                  disabled={!restoreSkipHashCheck}
-                />
-                <div className="flex items-center gap-1 text-sm">
-                  <Label
-                    htmlFor="restore-auto-resume"
-                    className={!restoreSkipHashCheck ? "text-muted-foreground" : undefined}
-                  >
-                    {t("backups.restore.autoResume")}
-                  </Label>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span
-                        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
-                      >
-                        <CircleHelp className="h-3.5 w-3.5" />
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs text-xs">
-                      <p>
-                        {t("backups.restore.autoResumeTooltip")}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
-
-              <div className="basis-full text-xs text-muted-foreground">
-                {restoreSkipHashCheck && restoreAutoResume ? (
-                  <span>{t("backups.restore.autoResumeEnabled")}</span>
-                ) : restoreSkipHashCheck ? (
-                  <span>{t("backups.restore.autoResumeDisabled")}</span>
-                ) : (
-                  <span>{t("backups.restore.autoResumeRequiresSkipRecheck")}</span>
+                {requiresCadenceSelection && (
+                  <p className="text-xs text-destructive">{t("backups.settings.actions.requiresCadence")}</p>
                 )}
               </div>
-
-              <div className="ml-auto flex items-center gap-2">
-                {restoreExcludedHashes.length > 0 ? (
+            </>
+          )}
+        </CardContent>
+        <CardFooter className="flex flex-col-reverse gap-3 border-t sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
+              <ArrowDownToLine className="mr-2 h-4 w-4" /> {t("backups.settings.actions.runManualBackup")}
+            </Button>
+            <Button variant="ghost" onClick={() => setImportDialogOpen(true)}>
+              <FileText className="mr-2 h-4 w-4" /> {t("backups.import.title")}
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Tooltip disabled={!instanceCapabilitiesPending}>
+              <TooltipTrigger asChild>
+                <span className="inline-flex" tabIndex={instanceCapabilitiesPending ? 0 : undefined}>
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleResetExcluded}
-                    disabled={restorePlanLoading}
+                    variant="outline"
+                    onClick={handleSaveAll}
+                    disabled={saveAllDisabled}
                   >
-                    <Undo2 className="mr-2 h-4 w-4" /> {t("backups.restore.reincludeAll")}
+                    {t("backups.settings.actions.saveAll")}
                   </Button>
-                ) : null}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun, restoreExcludedHashes)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t("backups.settings.actions.waitForCapabilities")}</TooltipContent>
+            </Tooltip>
+            <Button onClick={handleSave} disabled={saveDisabled || savingAll}>
+              <Save className="mr-2 h-4 w-4" /> {t("backups.settings.actions.saveChanges")}
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
+
+      <Dialog open={restoreDialogOpen} onOpenChange={(open: boolean) => {
+        if (!open) {
+          closeRestoreDialog()
+        }
+      }}>
+        <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>{t("backups.restore.title")}</DialogTitle>
+            <DialogDescription>
+              {restoreTargetRun? t("backups.restore.runDescription", {
+                id: restoreTargetRun.id,
+                kind: runKindLabels[restoreTargetRun.kind],
+              }): t("backups.restore.selectBackup")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">{t("backups.restore.mode")}</span>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={restoreMode}
+                  onValueChange={handleRestoreModeChange}
                   disabled={restorePlanLoading || !restoreTargetRun}
                 >
-                  <ListChecks className="mr-2 h-4 w-4" /> {t("backups.restore.refreshPlan")}
-                </Button>
-                <Button
-                  onClick={handleExecuteRestore}
-                  disabled={!restoreTargetRun || restorePlanLoading || executeRestore.isPending}
-                >
-                  {executeRestore.isPending ? t("backups.restore.executing") : restoreDryRun ? t("backups.restore.runDryRun") : t("backups.restore.execute")}
-                </Button>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder={t("backups.restore.selectMode")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="incremental">{t("backups.restore.incremental")}</SelectItem>
+                    <SelectItem value="overwrite">{t("backups.restore.overwrite")}</SelectItem>
+                    <SelectItem value="complete">{t("backups.restore.complete")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="inline-flex h-8 w-8 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                    >
+                      <CircleHelp className="h-4 w-4" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent align="start" className="max-w-sm text-xs">
+                    <p className="font-bold">{t("backups.restore.incremental")}</p>
+                    <p className="mb-2">{t("backups.restore.incrementalDescription")}</p>
+                    <p className="font-bold">{t("backups.restore.overwrite")}</p>
+                    <p className="mb-2">{t("backups.restore.overwriteDescription")}</p>
+                    <p className="font-bold">{t("backups.restore.complete")}</p>
+                    <p>{t("backups.restore.completeDescription")}</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
-            <Separator />
+            <div className="flex items-center gap-2">
+              <Switch
+                id="restore-dry-run"
+                checked={restoreDryRun}
+                onCheckedChange={setRestoreDryRun}
+              />
+              <Label htmlFor="restore-dry-run">{t("backups.restore.dryRun")}</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="restore-start-paused"
+                checked={restoreStartPaused}
+                onCheckedChange={setRestoreStartPaused}
+              />
+              <Label htmlFor="restore-start-paused">{t("backups.restore.startPaused")}</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="restore-skip-hash-check"
+                checked={restoreSkipHashCheck}
+                onCheckedChange={setRestoreSkipHashCheck}
+              />
+              <Label htmlFor="restore-skip-hash-check">{t("backups.restore.skipRecheck")}</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="restore-auto-resume"
+                checked={restoreAutoResume}
+                onCheckedChange={setRestoreAutoResume}
+                disabled={!restoreSkipHashCheck}
+              />
+              <div className="flex items-center gap-1 text-sm">
+                <Label
+                  htmlFor="restore-auto-resume"
+                  className={!restoreSkipHashCheck ? "text-muted-foreground" : undefined}
+                >
+                  {t("backups.restore.autoResume")}
+                </Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                    >
+                      <CircleHelp className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs text-xs">
+                    <p>
+                      {t("backups.restore.autoResumeTooltip")}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+
+            <div className="basis-full text-xs text-muted-foreground">
+              {restoreSkipHashCheck && restoreAutoResume ? (
+                <span>{t("backups.restore.autoResumeEnabled")}</span>
+              ) : restoreSkipHashCheck ? (
+                <span>{t("backups.restore.autoResumeDisabled")}</span>
+              ) : (
+                <span>{t("backups.restore.autoResumeRequiresSkipRecheck")}</span>
+              )}
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              {restoreExcludedHashes.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetExcluded}
+                  disabled={restorePlanLoading}
+                >
+                  <Undo2 className="mr-2 h-4 w-4" /> {t("backups.restore.reincludeAll")}
+                </Button>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun, restoreExcludedHashes)}
+                disabled={restorePlanLoading || !restoreTargetRun}
+              >
+                <ListChecks className="mr-2 h-4 w-4" /> {t("backups.restore.refreshPlan")}
+              </Button>
+              <Button
+                onClick={handleExecuteRestore}
+                disabled={!restoreTargetRun || restorePlanLoading || executeRestore.isPending}
+              >
+                {executeRestore.isPending ? t("backups.restore.executing") : restoreDryRun ? t("backups.restore.runDryRun") : t("backups.restore.execute")}
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
 
 
 
-            <div className="flex-1 overflow-y-auto space-y-6">
-              {!restorePlan && restorePlanLoading ? (
-                <p className="text-sm text-muted-foreground">{t("backups.restore.loadingPlan")}</p>
-              ) : !restorePlan && restorePlanError ? (
-                <p className="text-sm text-destructive">{restorePlanError}</p>
-              ) : restorePlan ? (
-                <div className="space-y-6">
-                  {restorePlanError ? (
-                    <p className="text-sm text-destructive">{restorePlanError}</p>
-                  ) : null}
+          <div className="flex-1 overflow-y-auto space-y-6">
+            {!restorePlan && restorePlanLoading ? (
+              <p className="text-sm text-muted-foreground">{t("backups.restore.loadingPlan")}</p>
+            ) : !restorePlan && restorePlanError ? (
+              <p className="text-sm text-destructive">{restorePlanError}</p>
+            ) : restorePlan ? (
+              <div className="space-y-6">
+                {restorePlanError ? (
+                  <p className="text-sm text-destructive">{restorePlanError}</p>
+                ) : null}
 
-                  {restoreExcludedHashes.length > 0 ? (
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-muted-foreground/40 bg-muted/20 px-3 py-2">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
-                        <span>{t("backups.restore.excludedSummary", { count: restoreExcludedHashes.length })}</span>
-                      </div>
+                {restoreExcludedHashes.length > 0 ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-muted-foreground/40 bg-muted/20 px-3 py-2">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                      <span>{t("backups.restore.excludedSummary", { count: restoreExcludedHashes.length })}</span>
                     </div>
-                  ) : null}
+                  </div>
+                ) : null}
 
-                  {restorePlanLoading && restorePlan ? (
-                    <p className="text-xs text-muted-foreground">{t("backups.restore.refreshingPlan")}</p>
-                  ) : null}
+                {restorePlanLoading && restorePlan ? (
+                  <p className="text-xs text-muted-foreground">{t("backups.restore.refreshingPlan")}</p>
+                ) : null}
 
-                  {restorePlanHasActions ? (
-                    <>
-                      <section className="space-y-2">
-                        <h4 className="text-sm font-semibold">{t("backups.restore.categories")}</h4>
-                        {(restorePlan.categories.create?.length ||
-                        restorePlan.categories.update?.length ||
-                        restorePlan.categories.delete?.length) ? (
-                            <div className="space-y-3">
-                              {restorePlan.categories.create?.length ? (
-                                <div>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">{t("backups.restore.create")}</p>
-                                  <ul className="space-y-1 text-sm">
-                                    {restorePlan.categories.create.map(item => (
-                                      <li key={`cat-create-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                        <Badge variant="outline" className="text-[10px] uppercase">{t("backups.restore.create")}</Badge>
-                                        <span>{item.name}</span>
-                                        {item.savePath ? (
-                                          <span className="text-xs text-muted-foreground">({item.savePath})</span>
-                                        ) : null}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              ) : null}
-                              {restorePlan.categories.update?.length ? (
-                                <div>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">{t("backups.restore.update")}</p>
-                                  <ul className="space-y-1 text-sm">
-                                    {restorePlan.categories.update.map(item => (
-                                      <li key={`cat-update-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                        <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.update")}</Badge>
-                                        <span>{item.name}</span>
-                                        <span className="text-xs text-muted-foreground">
-                                          {item.currentPath || "—"} → {item.desiredPath || "—"}
-                                        </span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              ) : null}
-                              {restorePlan.categories.delete?.length ? (
-                                <div>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">{t("backups.restore.delete")}</p>
-                                  <ul className="space-y-1 text-sm">
-                                    {restorePlan.categories.delete.map(name => (
-                                      <li key={`cat-delete-${name}`} className="flex items-center gap-2">
-                                        <Badge variant="destructive" className="text-[10px] uppercase">{t("backups.restore.delete")}</Badge>
-                                        <span>{name}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">{t("backups.restore.noCategoryChanges")}</p>
-                          )}
-                      </section>
-
-                      <section className="space-y-2">
-                        <h4 className="text-sm font-semibold">{t("backups.restore.tags")}</h4>
-                        {(restorePlan.tags.create?.length || restorePlan.tags.delete?.length) ? (
+                {restorePlanHasActions ? (
+                  <>
+                    <section className="space-y-2">
+                      <h4 className="text-sm font-semibold">{t("backups.restore.categories")}</h4>
+                      {(restorePlan.categories.create?.length ||
+                      restorePlan.categories.update?.length ||
+                      restorePlan.categories.delete?.length) ? (
                           <div className="space-y-3">
-                            {restorePlan.tags.create?.length ? (
+                            {restorePlan.categories.create?.length ? (
                               <div>
                                 <p className="text-xs font-medium text-muted-foreground mb-1">{t("backups.restore.create")}</p>
-                                <ul className="flex flex-wrap gap-2 text-sm">
-                                  {restorePlan.tags.create.map(item => (
-                                    <li key={`tag-create-${item.name}`}>
-                                      <Badge variant="outline">{item.name}</Badge>
+                                <ul className="space-y-1 text-sm">
+                                  {restorePlan.categories.create.map(item => (
+                                    <li key={`cat-create-${item.name}`} className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="outline" className="text-[10px] uppercase">{t("backups.restore.create")}</Badge>
+                                      <span>{item.name}</span>
+                                      {item.savePath ? (
+                                        <span className="text-xs text-muted-foreground">({item.savePath})</span>
+                                      ) : null}
                                     </li>
                                   ))}
                                 </ul>
                               </div>
                             ) : null}
-                            {restorePlan.tags.delete?.length ? (
+                            {restorePlan.categories.update?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">{t("backups.restore.update")}</p>
+                                <ul className="space-y-1 text-sm">
+                                  {restorePlan.categories.update.map(item => (
+                                    <li key={`cat-update-${item.name}`} className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.update")}</Badge>
+                                      <span>{item.name}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {item.currentPath || "—"} → {item.desiredPath || "—"}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {restorePlan.categories.delete?.length ? (
                               <div>
                                 <p className="text-xs font-medium text-muted-foreground mb-1">{t("backups.restore.delete")}</p>
-                                <ul className="flex flex-wrap gap-2 text-sm">
-                                  {restorePlan.tags.delete.map(name => (
-                                    <li key={`tag-delete-${name}`}>
-                                      <Badge variant="destructive">{name}</Badge>
+                                <ul className="space-y-1 text-sm">
+                                  {restorePlan.categories.delete.map(name => (
+                                    <li key={`cat-delete-${name}`} className="flex items-center gap-2">
+                                      <Badge variant="destructive" className="text-[10px] uppercase">{t("backups.restore.delete")}</Badge>
+                                      <span>{name}</span>
                                     </li>
                                   ))}
                                 </ul>
@@ -1260,717 +1229,755 @@ export function InstanceBackups() {
                             ) : null}
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">{t("backups.restore.noTagChanges")}</p>
+                          <p className="text-sm text-muted-foreground">{t("backups.restore.noCategoryChanges")}</p>
                         )}
-                      </section>
+                    </section>
 
-                      <section className="space-y-2">
-                        <h4 className="text-sm font-semibold">{t("backups.restore.torrents")}</h4>
-                        {(restorePlan.torrents.add?.length ||
-                        restorePlan.torrents.update?.length ||
-                        restorePlan.torrents.delete?.length) ? (
-                            <div className="space-y-4">
-                              {restorePlan.torrents.add?.length ? (
-                                <div>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">
-                                    {t("backups.restore.add")} ({restorePlan.torrents.add.length})
-                                  </p>
-                                  <ul className="space-y-1 text-sm">
-                                    {restorePlan.torrents.add.map(item => {
-                                      const hash = item.manifest.hash
-                                      const isExcluded = restoreExcludedHashes.includes(hash)
-                                      return (
-                                        <li
-                                          key={`torrent-add-${hash}`}
-                                          className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
-                                        >
-                                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                                            <Badge variant="outline" className="text-[10px] uppercase">{t("backups.restore.add")}</Badge>
-                                            <span className="font-medium truncate">
-                                              {item.manifest.name || hash}
-                                            </span>
-                                            <code className="text-xs text-muted-foreground">{hash}</code>
-                                            {item.manifest.category ? (
-                                              <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
-                                            ) : null}
-                                            {isExcluded ? (
-                                              <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
-                                            ) : null}
-                                          </div>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => (isExcluded? handleIncludeTorrent(hash, {
-                                              hash,
-                                              name: item.manifest.name,
-                                              category: item.manifest.category ?? null,
-                                              action: "add",
-                                            }): handleExcludeTorrent(hash, {
-                                              hash,
-                                              name: item.manifest.name,
-                                              category: item.manifest.category ?? null,
-                                              action: "add",
-                                            })
-                                            )}
-                                            disabled={restorePlanLoading}
-                                            aria-label={t(isExcluded ? "backups.restore.includeAria" : "backups.restore.excludeAria", { name: item.manifest.name || hash })}
-                                          >
-                                            {isExcluded ? (
-                                              <>
-                                                <Undo2 className="mr-1 h-3 w-3" /> {t("backups.restore.include")}
-                                              </>
-                                            ) : (
-                                              <>
-                                                <CircleX className="mr-1 h-3 w-3" /> {t("backups.restore.exclude")}
-                                              </>
-                                            )}
-                                          </Button>
-                                        </li>
-                                      )
-                                    })}
-                                  </ul>
-                                </div>
-                              ) : null}
-                              {restorePlan.torrents.update?.length ? (
-                                <div>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">
-                                    {t("backups.restore.update")} ({restorePlan.torrents.update.length})
-                                  </p>
-                                  <div className="space-y-3">
-                                    {restorePlan.torrents.update.map(update => {
-                                      const isExcluded = restoreExcludedHashes.includes(update.hash)
-                                      return (
-                                        <div
-                                          key={`torrent-update-${update.hash}`}
-                                          className={`rounded-md border p-3 space-y-2 ${isExcluded ? "border-dashed bg-muted/40" : ""}`}
-                                        >
-                                          <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <div className="flex flex-col">
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
-                                                {isExcluded ? (
-                                                  <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
-                                                ) : null}
-                                              </div>
-                                              <span className="text-xs text-muted-foreground">
-                                                {t("backups.restore.currentCategory", { category: update.current.category || "—" })}
-                                              </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                              <code className="text-xs text-muted-foreground">{update.hash}</code>
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => (isExcluded? handleIncludeTorrent(update.hash, {
-                                                  hash: update.hash,
-                                                  name: update.desired.name || update.current.name || update.hash,
-                                                  category: update.desired.category ?? update.current.category ?? null,
-                                                  action: "update",
-                                                }): handleExcludeTorrent(update.hash, {
-                                                  hash: update.hash,
-                                                  name: update.desired.name || update.current.name || update.hash,
-                                                  category: update.desired.category ?? update.current.category ?? null,
-                                                  action: "update",
-                                                })
-                                                )}
-                                                disabled={restorePlanLoading}
-                                                aria-label={t(isExcluded ? "backups.restore.includeAria" : "backups.restore.excludeAria", { name: update.desired.name || update.current.name || update.hash })}
-                                              >
-                                                {isExcluded ? (
-                                                  <>
-                                                    <Undo2 className="mr-1 h-3 w-3" /> {t("backups.restore.include")}
-                                                  </>
-                                                ) : (
-                                                  <>
-                                                    <CircleX className="mr-1 h-3 w-3" /> {t("backups.restore.exclude")}
-                                                  </>
-                                                )}
-                                              </Button>
-                                            </div>
-                                          </div>
-                                          <div className="space-y-1">
-                                            {update.changes.map(change => (
-                                              <div key={`${update.hash}-${change.field}`} className="flex flex-wrap items-center gap-2 text-sm">
-                                                <Badge
-                                                  variant={change.supported ? "secondary" : "outline"}
-                                                  className="text-[10px] uppercase"
-                                                >
-                                                  {change.supported ? t("backups.restore.auto") : t("backups.restore.manual")}
-                                                </Badge>
-                                                <span className="font-medium capitalize">{humanizeChangeField(change.field)}</span>
-                                                <span className="text-xs text-muted-foreground">
-                                                  {formatChangeValue(change.current)} → {formatChangeValue(change.desired)}
-                                                </span>
-                                                {change.message ? (
-                                                  <span className="text-xs text-muted-foreground">{change.message}</span>
-                                                ) : null}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-                                </div>
-                              ) : null}
-                              {restorePlan.torrents.delete?.length ? (
-                                <div>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">
-                                    {t("backups.restore.delete")} ({restorePlan.torrents.delete.length})
-                                  </p>
-                                  <ul className="space-y-1 text-sm">
-                                    {restorePlan.torrents.delete.map(hash => {
-                                      const isExcluded = restoreExcludedHashes.includes(hash)
-                                      return (
-                                        <li
-                                          key={`torrent-delete-${hash}`}
-                                          className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
-                                        >
-                                          <Badge variant="destructive" className="text-[10px] uppercase">{t("backups.restore.delete")}</Badge>
+                    <section className="space-y-2">
+                      <h4 className="text-sm font-semibold">{t("backups.restore.tags")}</h4>
+                      {(restorePlan.tags.create?.length || restorePlan.tags.delete?.length) ? (
+                        <div className="space-y-3">
+                          {restorePlan.tags.create?.length ? (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground mb-1">{t("backups.restore.create")}</p>
+                              <ul className="flex flex-wrap gap-2 text-sm">
+                                {restorePlan.tags.create.map(item => (
+                                  <li key={`tag-create-${item.name}`}>
+                                    <Badge variant="outline">{item.name}</Badge>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {restorePlan.tags.delete?.length ? (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground mb-1">{t("backups.restore.delete")}</p>
+                              <ul className="flex flex-wrap gap-2 text-sm">
+                                {restorePlan.tags.delete.map(name => (
+                                  <li key={`tag-delete-${name}`}>
+                                    <Badge variant="destructive">{name}</Badge>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">{t("backups.restore.noTagChanges")}</p>
+                      )}
+                    </section>
+
+                    <section className="space-y-2">
+                      <h4 className="text-sm font-semibold">{t("backups.restore.torrents")}</h4>
+                      {(restorePlan.torrents.add?.length ||
+                      restorePlan.torrents.update?.length ||
+                      restorePlan.torrents.delete?.length) ? (
+                          <div className="space-y-4">
+                            {restorePlan.torrents.add?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">
+                                  {t("backups.restore.add")} ({restorePlan.torrents.add.length})
+                                </p>
+                                <ul className="space-y-1 text-sm">
+                                  {restorePlan.torrents.add.map(item => {
+                                    const hash = item.manifest.hash
+                                    const isExcluded = restoreExcludedHashes.includes(hash)
+                                    return (
+                                      <li
+                                        key={`torrent-add-${hash}`}
+                                        className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
+                                      >
+                                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                                          <Badge variant="outline" className="text-[10px] uppercase">{t("backups.restore.add")}</Badge>
+                                          <span className="font-medium truncate">
+                                            {item.manifest.name || hash}
+                                          </span>
                                           <code className="text-xs text-muted-foreground">{hash}</code>
+                                          {item.manifest.category ? (
+                                            <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
+                                          ) : null}
                                           {isExcluded ? (
                                             <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
                                           ) : null}
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => (isExcluded? handleIncludeTorrent(hash, { hash, action: "delete" }): handleExcludeTorrent(hash, { hash, action: "delete" })
-                                            )}
-                                            disabled={restorePlanLoading}
-                                            aria-label={t(isExcluded ? "backups.restore.includeAria" : "backups.restore.excludeAria", { name: hash })}
-                                          >
-                                            {isExcluded ? (
-                                              <>
-                                                <Undo2 className="mr-1 h-3 w-3" /> {t("backups.restore.include")}
-                                              </>
-                                            ) : (
-                                              <>
-                                                <CircleX className="mr-1 h-3 w-3" /> {t("backups.restore.exclude")}
-                                              </>
-                                            )}
-                                          </Button>
-                                        </li>
-                                      )
-                                    })}
-                                  </ul>
+                                        </div>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => (isExcluded? handleIncludeTorrent(hash, {
+                                            hash,
+                                            name: item.manifest.name,
+                                            category: item.manifest.category ?? null,
+                                            action: "add",
+                                          }): handleExcludeTorrent(hash, {
+                                            hash,
+                                            name: item.manifest.name,
+                                            category: item.manifest.category ?? null,
+                                            action: "add",
+                                          })
+                                          )}
+                                          disabled={restorePlanLoading}
+                                          aria-label={t(isExcluded ? "backups.restore.includeAria" : "backups.restore.excludeAria", { name: item.manifest.name || hash })}
+                                        >
+                                          {isExcluded ? (
+                                            <>
+                                              <Undo2 className="mr-1 h-3 w-3" /> {t("backups.restore.include")}
+                                            </>
+                                          ) : (
+                                            <>
+                                              <CircleX className="mr-1 h-3 w-3" /> {t("backups.restore.exclude")}
+                                            </>
+                                          )}
+                                        </Button>
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {restorePlan.torrents.update?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">
+                                  {t("backups.restore.update")} ({restorePlan.torrents.update.length})
+                                </p>
+                                <div className="space-y-3">
+                                  {restorePlan.torrents.update.map(update => {
+                                    const isExcluded = restoreExcludedHashes.includes(update.hash)
+                                    return (
+                                      <div
+                                        key={`torrent-update-${update.hash}`}
+                                        className={`rounded-md border p-3 space-y-2 ${isExcluded ? "border-dashed bg-muted/40" : ""}`}
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <div className="flex flex-col">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
+                                              {isExcluded ? (
+                                                <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                                              ) : null}
+                                            </div>
+                                            <span className="text-xs text-muted-foreground">
+                                              {t("backups.restore.currentCategory", { category: update.current.category || "—" })}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <code className="text-xs text-muted-foreground">{update.hash}</code>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => (isExcluded? handleIncludeTorrent(update.hash, {
+                                                hash: update.hash,
+                                                name: update.desired.name || update.current.name || update.hash,
+                                                category: update.desired.category ?? update.current.category ?? null,
+                                                action: "update",
+                                              }): handleExcludeTorrent(update.hash, {
+                                                hash: update.hash,
+                                                name: update.desired.name || update.current.name || update.hash,
+                                                category: update.desired.category ?? update.current.category ?? null,
+                                                action: "update",
+                                              })
+                                              )}
+                                              disabled={restorePlanLoading}
+                                              aria-label={t(isExcluded ? "backups.restore.includeAria" : "backups.restore.excludeAria", { name: update.desired.name || update.current.name || update.hash })}
+                                            >
+                                              {isExcluded ? (
+                                                <>
+                                                  <Undo2 className="mr-1 h-3 w-3" /> {t("backups.restore.include")}
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <CircleX className="mr-1 h-3 w-3" /> {t("backups.restore.exclude")}
+                                                </>
+                                              )}
+                                            </Button>
+                                          </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                          {update.changes.map(change => (
+                                            <div key={`${update.hash}-${change.field}`} className="flex flex-wrap items-center gap-2 text-sm">
+                                              <Badge
+                                                variant={change.supported ? "secondary" : "outline"}
+                                                className="text-[10px] uppercase"
+                                              >
+                                                {change.supported ? t("backups.restore.auto") : t("backups.restore.manual")}
+                                              </Badge>
+                                              <span className="font-medium capitalize">{humanizeChangeField(change.field)}</span>
+                                              <span className="text-xs text-muted-foreground">
+                                                {formatChangeValue(change.current)} → {formatChangeValue(change.desired)}
+                                              </span>
+                                              {change.message ? (
+                                                <span className="text-xs text-muted-foreground">{change.message}</span>
+                                              ) : null}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
                                 </div>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">{t("backups.restore.noTorrentChanges")}</p>
-                          )}
-                      </section>
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{t("backups.restore.noChangesRequired")}</p>
-                  )}
+                              </div>
+                            ) : null}
+                            {restorePlan.torrents.delete?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">
+                                  {t("backups.restore.delete")} ({restorePlan.torrents.delete.length})
+                                </p>
+                                <ul className="space-y-1 text-sm">
+                                  {restorePlan.torrents.delete.map(hash => {
+                                    const isExcluded = restoreExcludedHashes.includes(hash)
+                                    return (
+                                      <li
+                                        key={`torrent-delete-${hash}`}
+                                        className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
+                                      >
+                                        <Badge variant="destructive" className="text-[10px] uppercase">{t("backups.restore.delete")}</Badge>
+                                        <code className="text-xs text-muted-foreground">{hash}</code>
+                                        {isExcluded ? (
+                                          <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                                        ) : null}
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => (isExcluded? handleIncludeTorrent(hash, { hash, action: "delete" }): handleExcludeTorrent(hash, { hash, action: "delete" })
+                                          )}
+                                          disabled={restorePlanLoading}
+                                          aria-label={t(isExcluded ? "backups.restore.includeAria" : "backups.restore.excludeAria", { name: hash })}
+                                        >
+                                          {isExcluded ? (
+                                            <>
+                                              <Undo2 className="mr-1 h-3 w-3" /> {t("backups.restore.include")}
+                                            </>
+                                          ) : (
+                                            <>
+                                              <CircleX className="mr-1 h-3 w-3" /> {t("backups.restore.exclude")}
+                                            </>
+                                          )}
+                                        </Button>
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{t("backups.restore.noTorrentChanges")}</p>
+                        )}
+                    </section>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t("backups.restore.noChangesRequired")}</p>
+                )}
 
-                  {restoreUnsupportedChanges.length > 0 && (
-                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2 text-sm text-amber-900">
-                      <p className="font-medium">{t("backups.restore.manualFollowUpRequired")}</p>
-                      <ul className="list-disc pl-5 space-y-1">
-                        {restoreUnsupportedChanges.map(({ hash, change }, index) => (
-                          <li key={`unsupported-${hash}-${change.field}-${index}`}>
-                            <code className="text-xs">{hash}</code> • {humanizeChangeField(change.field)}
-                            {change.message ? <span> — {change.message}</span> : null}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">{t("backups.restore.selectBackup")}</p>
-              )}
-            </div>
-
-            {restoreResult && (
-              <div className="rounded-md border p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold">{t("backups.restore.lastExecution")}</h4>
-                  <Badge variant={restoreResult.dryRun ? "outline" : "default"} className="text-xs">
-                    {restoreResult.dryRun ? t("backups.restore.dryRun") : t("backups.restore.applied")}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">{t("backups.restore.modeLabel", { mode: restoreResult.mode })}</p>
-                <div className="grid gap-3 md:grid-cols-3 text-sm">
-                  <div>
-                    <p className="font-medium">{t("backups.restore.categories")}</p>
-                    <p className="text-xs text-muted-foreground">
-                      +{countItems(restoreResult.applied.categories.created)} / Δ{countItems(restoreResult.applied.categories.updated)} / −{countItems(restoreResult.applied.categories.deleted)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-medium">{t("backups.restore.tags")}</p>
-                    <p className="text-xs text-muted-foreground">
-                      +{countItems(restoreResult.applied.tags.created)} / −{countItems(restoreResult.applied.tags.deleted)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-medium">{t("backups.restore.torrents")}</p>
-                    <p className="text-xs text-muted-foreground">
-                      +{countItems(restoreResult.applied.torrents.added)} / Δ{countItems(restoreResult.applied.torrents.updated)} / −{countItems(restoreResult.applied.torrents.deleted)}
-                    </p>
-                  </div>
-                </div>
-                {restoreResult.warnings?.length ? (
-                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1 text-sm text-amber-900">
-                    <p className="font-medium">{t("backups.restore.warnings")}</p>
+                {restoreUnsupportedChanges.length > 0 && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2 text-sm text-amber-900">
+                    <p className="font-medium">{t("backups.restore.manualFollowUpRequired")}</p>
                     <ul className="list-disc pl-5 space-y-1">
-                      {restoreResult.warnings.map((warning, index) => (
-                        <li key={`restore-warning-${index}`}>{warning}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {restoreResult.errors?.length ? (
-                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-1 text-sm text-destructive">
-                    <p className="font-medium">{t("backups.restore.errors")}</p>
-                    <ul className="list-disc pl-5 space-y-1">
-                      {restoreResult.errors.map((errorItem, index) => (
-                        <li key={`restore-error-${index}`}>
-                          {errorItem.operation}: {errorItem.target} — {errorItem.message}
+                      {restoreUnsupportedChanges.map(({ hash, change }, index) => (
+                        <li key={`unsupported-${hash}-${change.field}-${index}`}>
+                          <code className="text-xs">{hash}</code> • {humanizeChangeField(change.field)}
+                          {change.message ? <span> — {change.message}</span> : null}
                         </li>
                       ))}
                     </ul>
                   </div>
-                ) : null}
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={importDialogOpen} onOpenChange={(open: boolean) => {
-          setImportDialogOpen(open)
-          if (!open) {
-            setImportFile(null)
-          }
-        }}>
-          <DialogContent className="sm:max-w-md max-h-[90dvh] flex flex-col">
-            <DialogHeader className="flex-shrink-0">
-              <DialogTitle>{t("backups.import.title")}</DialogTitle>
-              <DialogDescription>
-                {t("backups.import.description")}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="manifest-file">{t("backups.import.fileLabel")}</Label>
-                <Input
-                  id="manifest-file"
-                  type="file"
-                  accept=".json,.zip,.tar,.tgz,.zst,.br,.xz,application/json,application/zip,application/x-tar,application/gzip,application/zstd,application/x-brotli,application/x-xz"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    setImportFile(file || null)
-                  }}
-                />
-                {importFile && (
-                  <p className="text-sm text-muted-foreground">
-                    {t("backups.import.selectedFile", { name: importFile.name, size: (importFile.size / 1024).toFixed(1) })}
-                  </p>
                 )}
               </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
-                {t("backups.import.cancel")}
-              </Button>
-              <Button
-                onClick={async () => {
-                  if (!importFile) return
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("backups.restore.selectBackup")}</p>
+            )}
+          </div>
 
-                  try {
-                    await importManifest.mutateAsync(importFile)
-                    toast.success(t("backups.import.success"))
-                    setImportDialogOpen(false)
-                    setImportFile(null)
-                  } catch (error) {
-                    toast.error(t("backups.import.failed"))
-                    console.error("Import error:", error)
-                  }
+          {restoreResult && (
+            <div className="rounded-md border p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold">{t("backups.restore.lastExecution")}</h4>
+                <Badge variant={restoreResult.dryRun ? "outline" : "default"} className="text-xs">
+                  {restoreResult.dryRun ? t("backups.restore.dryRun") : t("backups.restore.applied")}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("backups.restore.modeLabel", { mode: restoreResult.mode })}</p>
+              <div className="grid gap-3 md:grid-cols-3 text-sm">
+                <div>
+                  <p className="font-medium">{t("backups.restore.categories")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    +{countItems(restoreResult.applied.categories.created)} / Δ{countItems(restoreResult.applied.categories.updated)} / −{countItems(restoreResult.applied.categories.deleted)}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium">{t("backups.restore.tags")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    +{countItems(restoreResult.applied.tags.created)} / −{countItems(restoreResult.applied.tags.deleted)}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium">{t("backups.restore.torrents")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    +{countItems(restoreResult.applied.torrents.added)} / Δ{countItems(restoreResult.applied.torrents.updated)} / −{countItems(restoreResult.applied.torrents.deleted)}
+                  </p>
+                </div>
+              </div>
+              {restoreResult.warnings?.length ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1 text-sm text-amber-900">
+                  <p className="font-medium">{t("backups.restore.warnings")}</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {restoreResult.warnings.map((warning, index) => (
+                      <li key={`restore-warning-${index}`}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {restoreResult.errors?.length ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-1 text-sm text-destructive">
+                  <p className="font-medium">{t("backups.restore.errors")}</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {restoreResult.errors.map((errorItem, index) => (
+                      <li key={`restore-error-${index}`}>
+                        {errorItem.operation}: {errorItem.target} — {errorItem.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importDialogOpen} onOpenChange={(open: boolean) => {
+        setImportDialogOpen(open)
+        if (!open) {
+          setImportFile(null)
+        }
+      }}>
+        <DialogContent className="sm:max-w-md max-h-[90dvh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle>{t("backups.import.title")}</DialogTitle>
+            <DialogDescription>
+              {t("backups.import.description")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="manifest-file">{t("backups.import.fileLabel")}</Label>
+              <Input
+                id="manifest-file"
+                type="file"
+                accept=".json,.zip,.tar,.tgz,.zst,.br,.xz,application/json,application/zip,application/x-tar,application/gzip,application/zstd,application/x-brotli,application/x-xz"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  setImportFile(file || null)
                 }}
-                disabled={!importFile || importManifest.isPending}
-              >
-                {importManifest.isPending ? t("backups.import.importing") : t("backups.import.importAction")}
-              </Button>
+              />
+              {importFile && (
+                <p className="text-sm text-muted-foreground">
+                  {t("backups.import.selectedFile", { name: importFile.name, size: (importFile.size / 1024).toFixed(1) })}
+                </p>
+              )}
             </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+              {t("backups.import.cancel")}
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!importFile) return
 
-        <div ref={backupHistoryRef}>
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>{t("backups.history.title")}</CardTitle>
+                try {
+                  await importManifest.mutateAsync(importFile)
+                  toast.success(t("backups.import.success"))
+                  setImportDialogOpen(false)
+                  setImportFile(null)
+                } catch (error) {
+                  toast.error(t("backups.import.failed"))
+                  console.error("Import error:", error)
+                }
+              }}
+              disabled={!importFile || importManifest.isPending}
+            >
+              {importManifest.isPending ? t("backups.import.importing") : t("backups.import.importAction")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <div ref={backupHistoryRef}>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>{t("backups.history.title")}</CardTitle>
+              <div className="flex items-center gap-2">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deleteAllRuns.isPending || runsLoading || !hasRuns}
+                    >
+                      <Trash className="mr-2 h-4 w-4" /> {t("backups.history.deleteAll")}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{t("backups.history.deleteAllTitle")}</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {t("backups.history.deleteAllDescription")}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t("backups.history.cancel")}</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteAll} disabled={deleteAllRuns.isPending}>
+                        {t("backups.history.deleteAll")}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
+                  <ArrowDownToLine className="mr-2 h-4 w-4" /> {t("backups.history.queueBackup")}
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => latestCompletedRun && openRestore(latestCompletedRun)}
+                  disabled={!latestCompletedRun || executeRestore.isPending || runsLoading}
+                >
+                  <Undo2 className="mr-2 h-4 w-4" /> {t("backups.history.restoreFromLatest")}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {runsLoading ? (
+              <p className="text-sm text-muted-foreground">{t("backups.history.loading")}</p>
+            ) : runs.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("backups.history.table.type")}</TableHead>
+                    <TableHead>{t("backups.history.table.status")}</TableHead>
+                    <TableHead className="w-40">{t("backups.history.table.requested")}</TableHead>
+                    <TableHead className="w-40">{t("backups.history.table.completed")}</TableHead>
+                    <TableHead className="text-right">{t("backups.history.table.torrents")}</TableHead>
+                    <TableHead className="text-right">{t("backups.history.table.size")}</TableHead>
+                    <TableHead pinEnd className="text-right">{t("backups.history.table.actions")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {runs.map(run => (
+                    <TableRow key={run.id}>
+                      <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
+                      <TableCell>
+                        {run.status === "running" && run.progressTotal && run.progressTotal > 0 ? (
+                          <div className="space-y-1 min-w-[200px]">
+                            <Progress value={run.progressPercentage ?? 0} className="h-2" />
+                            <p className="text-xs text-muted-foreground">
+                              {t("backups.summary.progress", {
+                                current: run.progressCurrent ?? 0,
+                                total: run.progressTotal,
+                                percentage: (run.progressPercentage ?? 0).toFixed(1),
+                              })}
+                            </p>
+                          </div>
+                        ) : (
+                          <Badge variant={statusVariants[run.status]} className="capitalize">{t(`backups.statusLabels.${run.status}`, run.status)}</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
+                      <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>
+                      <TableCell className="text-right">{run.torrentCount}</TableCell>
+                      <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
+                      <TableCell pinEnd>
+                        <div className="flex justify-end gap-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openManifest(run.id)}
+                                aria-label={t("backups.history.actions.viewManifest")}
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{t("backups.history.actions.viewManifest")}</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openRestore(run)}
+                                aria-label={t("backups.history.actions.restoreFromBackup")}
+                              >
+                                <Undo2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{t("backups.history.actions.restoreFromBackup")}</TooltipContent>
+                          </Tooltip>
+                          {run.status === "success" && run.torrentCount > 0 ? (
+                            <Tooltip>
+                              <DropdownMenu>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" aria-label={t("backups.history.actions.downloadBackup")}>
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent>{t("backups.history.actions.downloadBackup")}</TooltipContent>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "zip")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      {t("backups.history.downloadFormats.zip")}
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.gz")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      {t("backups.history.downloadFormats.tarGz")}
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.zst")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      {t("backups.history.downloadFormats.tarZst")}
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.br")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      {t("backups.history.downloadFormats.tarBr")}
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.xz")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      {t("backups.history.downloadFormats.tarXz")}
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      {t("backups.history.downloadFormats.tar")}
+                                    </a>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </Tooltip>
+                          ) : (
+                            <Button variant="ghost" size="icon" disabled aria-label={t("backups.history.actions.downloadUnavailable")}>
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Tooltip>
+                            <AlertDialog>
+                              <TooltipTrigger asChild>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" aria-label={t("backups.history.actions.deleteBackup")}>
+                                    <Trash className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                              </TooltipTrigger>
+                              <TooltipContent>{t("backups.history.actions.deleteBackup")}</TooltipContent>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>{t("backups.history.deleteOneTitle")}</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    {t("backups.history.deleteOneDescription")}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>{t("backups.history.cancel")}</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDelete(run)}>
+                                    {t("backups.history.delete")}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </Tooltip>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {canGoPrevious ? t("backups.history.noBackupsOnPage") : t("backups.history.noBackupsYet")}
+              </p>
+            )}
+            {shouldShowPagination && (
+              <div className="flex items-center justify-between pt-4">
+                <p className="text-sm text-muted-foreground">
+                  {t("backups.history.paginationSummary", { page: backupsPage, count: runs.length })}
+                </p>
                 <div className="flex items-center gap-2">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        disabled={deleteAllRuns.isPending || runsLoading || !hasRuns}
-                      >
-                        <Trash className="mr-2 h-4 w-4" /> {t("backups.history.deleteAll")}
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>{t("backups.history.deleteAllTitle")}</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {t("backups.history.deleteAllDescription")}
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>{t("backups.history.cancel")}</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteAll} disabled={deleteAllRuns.isPending}>
-                          {t("backups.history.deleteAll")}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                  <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                    <ArrowDownToLine className="mr-2 h-4 w-4" /> {t("backups.history.queueBackup")}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBackupsPage(p => p - 1)}
+                    disabled={!canGoPrevious || runsLoading}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    {t("backups.history.previous")}
                   </Button>
                   <Button
-                    variant="default"
+                    variant="outline"
                     size="sm"
-                    onClick={() => latestCompletedRun && openRestore(latestCompletedRun)}
-                    disabled={!latestCompletedRun || executeRestore.isPending || runsLoading}
+                    onClick={() => setBackupsPage(p => p + 1)}
+                    disabled={!canGoNext || runsLoading}
                   >
-                    <Undo2 className="mr-2 h-4 w-4" /> {t("backups.history.restoreFromLatest")}
+                    {t("backups.history.next")}
+                    <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {runsLoading ? (
-                <p className="text-sm text-muted-foreground">{t("backups.history.loading")}</p>
-              ) : runs.length > 0 ? (
-                <Table>
-                  <TableHeader>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={manifestOpen} onOpenChange={(open: boolean) => {
+        setManifestOpen(open)
+        if (!open) {
+          setManifestRunId(undefined)
+        }
+      }}>
+        <DialogContent className="!w-[96vw] !max-w-7xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{t("backups.manifest.title")}</DialogTitle>
+            <DialogDescription>
+              {manifestRunId ? t("backups.manifest.runDescription", { id: manifestRunId }) : t("backups.manifest.emptyDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          {manifestLoading ? (
+            <p className="text-sm text-muted-foreground">{t("backups.manifest.loading")}</p>
+          ) : manifest ? (
+            <div className="space-y-4 flex-1 flex flex-col min-h-0">
+              <div className="space-y-3 text-sm">
+                <div className="flex flex-wrap gap-3 text-muted-foreground">
+                  <span className="font-medium text-foreground">{t("backups.manifest.torrentsCount", { count: manifest.torrentCount })}</span>
+                  {manifestCategoryEntries.length > 0 && (
+                    <span>{t("backups.manifest.categoriesCount", { count: manifestCategoryEntries.length })}</span>
+                  )}
+                  {manifestTags.length > 0 && <span>{t("backups.manifest.tagsCount", { count: manifestTags.length })}</span>}
+                  <span>{t("backups.manifest.generated", { timestamp: formatDateSafe(manifest.generatedAt, formatDate) })}</span>
+                </div>
+                {displayedCategoryEntries.length > 0 && (
+                  <div>
+                    <p className="font-medium text-foreground mb-2">{t("backups.manifest.categories")}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {displayedCategoryEntries.map(([name, snapshot]) => (
+                        <Tooltip key={name} disabled={!snapshot?.savePath}>
+                          <TooltipTrigger asChild>
+                            <Badge variant="secondary">
+                              {name}
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>{snapshot?.savePath}</TooltipContent>
+                        </Tooltip>
+                      ))}
+                      {remainingCategoryCount > 0 && (
+                        <Badge variant="outline">{t("backups.manifest.more", { count: remainingCategoryCount })}</Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {displayedTags.length > 0 && (
+                  <div>
+                    <p className="font-medium text-foreground mb-2">{t("backups.manifest.tags")}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {displayedTags.map(tag => (
+                        <Badge key={tag} variant="outline">{tag}</Badge>
+                      ))}
+                      {remainingTagCount > 0 && (
+                        <Badge variant="outline">{t("backups.manifest.more", { count: remainingTagCount })}</Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex w-full justify-end">
+                <Input
+                  value={manifestSearch}
+                  onChange={event => setManifestSearch(event.target.value)}
+                  placeholder={t("backups.manifest.searchPlaceholder")}
+                  className="w-full sm:w-[18rem] md:w-[16rem]"
+                  aria-label={t("backups.manifest.searchAria")}
+                />
+              </div>
+              <div className="flex-1 overflow-auto pr-1">
+                <Table className="min-w-[640px] w-full">
+                  <TableHeader className="sticky top-0 z-10 bg-background">
                     <TableRow>
-                      <TableHead>{t("backups.history.table.type")}</TableHead>
-                      <TableHead>{t("backups.history.table.status")}</TableHead>
-                      <TableHead className="w-40">{t("backups.history.table.requested")}</TableHead>
-                      <TableHead className="w-40">{t("backups.history.table.completed")}</TableHead>
-                      <TableHead className="text-right">{t("backups.history.table.torrents")}</TableHead>
-                      <TableHead className="text-right">{t("backups.history.table.size")}</TableHead>
-                      <TableHead pinEnd className="text-right">{t("backups.history.table.actions")}</TableHead>
+                      <TableHead>{t("backups.manifest.table.name")}</TableHead>
+                      <TableHead>{t("backups.manifest.table.category")}</TableHead>
+                      <TableHead>{t("backups.manifest.table.tags")}</TableHead>
+                      <TableHead className="text-right">{t("backups.manifest.table.size")}</TableHead>
+                      <TableHead className="text-right">{t("backups.manifest.table.cachedTorrent")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {runs.map(run => (
-                      <TableRow key={run.id}>
-                        <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
-                        <TableCell>
-                          {run.status === "running" && run.progressTotal && run.progressTotal > 0 ? (
-                            <div className="space-y-1 min-w-[200px]">
-                              <Progress value={run.progressPercentage ?? 0} className="h-2" />
-                              <p className="text-xs text-muted-foreground">
-                                {t("backups.summary.progress", {
-                                  current: run.progressCurrent ?? 0,
-                                  total: run.progressTotal,
-                                  percentage: (run.progressPercentage ?? 0).toFixed(1),
-                                })}
-                              </p>
-                            </div>
-                          ) : (
-                            <Badge variant={statusVariants[run.status]} className="capitalize">{t(`backups.statusLabels.${run.status}`, run.status)}</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
-                        <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>
-                        <TableCell className="text-right">{run.torrentCount}</TableCell>
-                        <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
-                        <TableCell pinEnd>
-                          <div className="flex justify-end gap-2">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => openManifest(run.id)}
-                                  aria-label={t("backups.history.actions.viewManifest")}
+                    {filteredManifestItems.length > 0 ? (
+                      filteredManifestItems.map(item => (
+                        <TableRow key={item.hash}>
+                          <TableCell className="font-medium !max-w-md truncate">{item.name}</TableCell>
+                          <TableCell>{item.category ?? "—"}</TableCell>
+                          <TableCell className="max-w-sm truncate">{item.tags && item.tags.length > 0 ? item.tags.join(", ") : "—"}</TableCell>
+                          <TableCell className="text-right">{formatBytes(item.sizeBytes)}</TableCell>
+                          <TableCell className="text-right">
+                            {item.torrentBlob && manifestRunId ? (
+                              <Button variant="ghost" size="icon" asChild>
+                                <a
+                                  href={api.getBackupTorrentDownloadUrl(instanceId!, manifestRunId, item.hash)}
+                                  download
+                                  aria-label={t("backups.manifest.downloadTorrentAria", { name: item.name })}
                                 >
-                                  <FileText className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>{t("backups.history.actions.viewManifest")}</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => openRestore(run)}
-                                  aria-label={t("backups.history.actions.restoreFromBackup")}
-                                >
-                                  <Undo2 className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>{t("backups.history.actions.restoreFromBackup")}</TooltipContent>
-                            </Tooltip>
-                            {run.status === "success" && run.torrentCount > 0 ? (
-                              <Tooltip>
-                                <DropdownMenu>
-                                  <TooltipTrigger asChild>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="icon" aria-label={t("backups.history.actions.downloadBackup")}>
-                                        <Download className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                  </TooltipTrigger>
-                                  <TooltipContent>{t("backups.history.actions.downloadBackup")}</TooltipContent>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem asChild>
-                                      <a
-                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "zip")}
-                                        rel="noreferrer"
-                                        download
-                                      >
-                                        {t("backups.history.downloadFormats.zip")}
-                                      </a>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem asChild>
-                                      <a
-                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.gz")}
-                                        rel="noreferrer"
-                                        download
-                                      >
-                                        {t("backups.history.downloadFormats.tarGz")}
-                                      </a>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem asChild>
-                                      <a
-                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.zst")}
-                                        rel="noreferrer"
-                                        download
-                                      >
-                                        {t("backups.history.downloadFormats.tarZst")}
-                                      </a>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem asChild>
-                                      <a
-                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.br")}
-                                        rel="noreferrer"
-                                        download
-                                      >
-                                        {t("backups.history.downloadFormats.tarBr")}
-                                      </a>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem asChild>
-                                      <a
-                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.xz")}
-                                        rel="noreferrer"
-                                        download
-                                      >
-                                        {t("backups.history.downloadFormats.tarXz")}
-                                      </a>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem asChild>
-                                      <a
-                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar")}
-                                        rel="noreferrer"
-                                        download
-                                      >
-                                        {t("backups.history.downloadFormats.tar")}
-                                      </a>
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </Tooltip>
-                            ) : (
-                              <Button variant="ghost" size="icon" disabled aria-label={t("backups.history.actions.downloadUnavailable")}>
-                                <Download className="h-4 w-4" />
+                                  <Download className="h-4 w-4" />
+                                </a>
                               </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
                             )}
-                            <Tooltip>
-                              <AlertDialog>
-                                <TooltipTrigger asChild>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" aria-label={t("backups.history.actions.deleteBackup")}>
-                                      <Trash className="h-4 w-4" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                </TooltipTrigger>
-                                <TooltipContent>{t("backups.history.actions.deleteBackup")}</TooltipContent>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>{t("backups.history.deleteOneTitle")}</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      {t("backups.history.deleteOneDescription")}
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>{t("backups.history.cancel")}</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDelete(run)}>
-                                      {t("backups.history.delete")}
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </Tooltip>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {canGoPrevious ? t("backups.history.noBackupsOnPage") : t("backups.history.noBackupsYet")}
-                </p>
-              )}
-              {shouldShowPagination && (
-                <div className="flex items-center justify-between pt-4">
-                  <p className="text-sm text-muted-foreground">
-                    {t("backups.history.paginationSummary", { page: backupsPage, count: runs.length })}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setBackupsPage(p => p - 1)}
-                      disabled={!canGoPrevious || runsLoading}
-                    >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
-                      {t("backups.history.previous")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setBackupsPage(p => p + 1)}
-                      disabled={!canGoNext || runsLoading}
-                    >
-                      {t("backups.history.next")}
-                      <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <Dialog open={manifestOpen} onOpenChange={(open: boolean) => {
-          setManifestOpen(open)
-          if (!open) {
-            setManifestRunId(undefined)
-          }
-        }}>
-          <DialogContent className="!w-[96vw] !max-w-7xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
-            <DialogHeader>
-              <DialogTitle>{t("backups.manifest.title")}</DialogTitle>
-              <DialogDescription>
-                {manifestRunId ? t("backups.manifest.runDescription", { id: manifestRunId }) : t("backups.manifest.emptyDescription")}
-              </DialogDescription>
-            </DialogHeader>
-            {manifestLoading ? (
-              <p className="text-sm text-muted-foreground">{t("backups.manifest.loading")}</p>
-            ) : manifest ? (
-              <div className="space-y-4 flex-1 flex flex-col min-h-0">
-                <div className="space-y-3 text-sm">
-                  <div className="flex flex-wrap gap-3 text-muted-foreground">
-                    <span className="font-medium text-foreground">{t("backups.manifest.torrentsCount", { count: manifest.torrentCount })}</span>
-                    {manifestCategoryEntries.length > 0 && (
-                      <span>{t("backups.manifest.categoriesCount", { count: manifestCategoryEntries.length })}</span>
-                    )}
-                    {manifestTags.length > 0 && <span>{t("backups.manifest.tagsCount", { count: manifestTags.length })}</span>}
-                    <span>{t("backups.manifest.generated", { timestamp: formatDateSafe(manifest.generatedAt, formatDate) })}</span>
-                  </div>
-                  {displayedCategoryEntries.length > 0 && (
-                    <div>
-                      <p className="font-medium text-foreground mb-2">{t("backups.manifest.categories")}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {displayedCategoryEntries.map(([name, snapshot]) => (
-                          <Badge key={name} variant="secondary" title={snapshot?.savePath ?? undefined}>
-                            {name}
-                          </Badge>
-                        ))}
-                        {remainingCategoryCount > 0 && (
-                          <Badge variant="outline">{t("backups.manifest.more", { count: remainingCategoryCount })}</Badge>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {displayedTags.length > 0 && (
-                    <div>
-                      <p className="font-medium text-foreground mb-2">{t("backups.manifest.tags")}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {displayedTags.map(tag => (
-                          <Badge key={tag} variant="outline">{tag}</Badge>
-                        ))}
-                        {remainingTagCount > 0 && (
-                          <Badge variant="outline">{t("backups.manifest.more", { count: remainingTagCount })}</Badge>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="flex w-full justify-end">
-                  <Input
-                    value={manifestSearch}
-                    onChange={event => setManifestSearch(event.target.value)}
-                    placeholder={t("backups.manifest.searchPlaceholder")}
-                    className="w-full sm:w-[18rem] md:w-[16rem]"
-                    aria-label={t("backups.manifest.searchAria")}
-                  />
-                </div>
-                <div className="flex-1 overflow-auto pr-1">
-                  <Table className="min-w-[640px] w-full">
-                    <TableHeader className="sticky top-0 z-10 bg-background">
-                      <TableRow>
-                        <TableHead>{t("backups.manifest.table.name")}</TableHead>
-                        <TableHead>{t("backups.manifest.table.category")}</TableHead>
-                        <TableHead>{t("backups.manifest.table.tags")}</TableHead>
-                        <TableHead className="text-right">{t("backups.manifest.table.size")}</TableHead>
-                        <TableHead className="text-right">{t("backups.manifest.table.cachedTorrent")}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredManifestItems.length > 0 ? (
-                        filteredManifestItems.map(item => (
-                          <TableRow key={item.hash}>
-                            <TableCell className="font-medium !max-w-md truncate">{item.name}</TableCell>
-                            <TableCell>{item.category ?? "—"}</TableCell>
-                            <TableCell className="max-w-sm truncate">{item.tags && item.tags.length > 0 ? item.tags.join(", ") : "—"}</TableCell>
-                            <TableCell className="text-right">{formatBytes(item.sizeBytes)}</TableCell>
-                            <TableCell className="text-right">
-                              {item.torrentBlob && manifestRunId ? (
-                                <Button variant="ghost" size="icon" asChild>
-                                  <a
-                                    href={api.getBackupTorrentDownloadUrl(instanceId!, manifestRunId, item.hash)}
-                                    download
-                                    aria-label={t("backups.manifest.downloadTorrentAria", { name: item.name })}
-                                  >
-                                    <Download className="h-4 w-4" />
-                                  </a>
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
-                            {manifestSearch ? t("backups.manifest.noResultsForSearch", { query: manifestSearch }) : t("backups.manifest.noTorrentsFound")}
                           </TableCell>
                         </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                          {manifestSearch ? t("backups.manifest.noResultsForSearch", { query: manifestSearch }) : t("backups.manifest.noTorrentsFound")}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{t("backups.manifest.unavailable")}</p>
-            )}
-          </DialogContent>
-        </Dialog>
-      </Page>
-    </TooltipProvider>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("backups.manifest.unavailable")}</p>
+          )}
+        </DialogContent>
+      </Dialog>
+    </Page>
   )
 }
 

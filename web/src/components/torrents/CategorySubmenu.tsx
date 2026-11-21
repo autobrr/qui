@@ -18,6 +18,7 @@ import {
   DropdownMenuSubTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { cn } from "@/lib/utils"
 import type { Category } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -152,13 +153,14 @@ export const CategorySubmenu = memo(function CategorySubmenu({
       )}
     >
       <Folder className="mr-2 h-4 w-4" />
-      <span
-        className="flex-1 truncate"
-        title={category.name}
+      <TruncatedText
+        className="flex-1"
+        openOnTap={false}
+        tooltipContent={category.name !== category.displayName ? category.name : undefined}
         style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
       >
         {category.displayName}
-      </span>
+      </TruncatedText>
       {hashCount > 1 && (
         <span className="text-xs text-muted-foreground">
           ({hashCount})

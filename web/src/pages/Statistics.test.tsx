@@ -395,12 +395,12 @@ describe("Statistics", () => {
     renderPage()
     await screen.findByText("periods.custom")
     applyRange("2026-01-06")
-    await screen.findAllByTitle("First.Range-GRP")
+    await screen.findAllByText("First.Range-GRP")
 
     applyRange("2026-01-07")
-    await vi.waitFor(() => expect(screen.queryAllByTitle("First.Range-GRP")).toHaveLength(0))
+    await vi.waitFor(() => expect(screen.queryAllByText("First.Range-GRP")).toHaveLength(0))
     releaseSecond()
-    await screen.findAllByTitle("Second.Range-GRP")
+    await screen.findAllByText("Second.Range-GRP")
   })
 
   it("moves a preset period forward while the page stays open, and keeps the old numbers until the new ones load", async () => {
@@ -978,7 +978,7 @@ describe("Statistics", () => {
     const marks = (name: string) => within(table).getByText(name).closest("td")?.querySelector("[role=img]")?.getAttribute("aria-label")
     expect([marks("Alpha"), marks("Charlie"), marks("Bravo")]).toEqual([undefined, "topTorrents.crossSeed", "topTorrents.deleted"])
     expect(cells(table, "Alpha").slice(1)).toEqual(["a.test · Seedbox", "3 KiB", "0 B", "∞", "table.seededValue value=3.00", "1 KiB"])
-    expect(within(table).getAllByTitle("a.test · Seedbox").length).toBeGreaterThan(0)
+    expect(within(table).getAllByText("a.test · Seedbox").length).toBeGreaterThan(0)
     const asked = requests.filter(request => request.groupBy === "torrent")
     expect(asked.map(request => [request.instanceId, request.bucket, request.limit, request.group])).toEqual([[1, "total", "10", null], [2, "total", "10", null]])
   })

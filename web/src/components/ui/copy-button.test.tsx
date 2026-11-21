@@ -19,7 +19,15 @@ vi.mock("@/lib/utils", async (importOriginal) => ({
 vi.mock("sonner", () => ({ toast: mocks.toast }))
 vi.mock("react-i18next", () => ({ useTranslation: () => mocks.translation }))
 
+import { TooltipProvider } from "@/components/ui/tooltip"
+
 import { CopyButton } from "./copy-button"
+
+vi.stubGlobal("ResizeObserver", class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+})
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -40,7 +48,7 @@ function clickCopy() {
 describe("CopyButton", () => {
   it("copies the value, shows the toast, and shows the check until the timer ends", async () => {
     mocks.copy.mockResolvedValue()
-    render(<CopyButton value="/data/show" label="Save Path" />)
+    render(<CopyButton value="/data/show" label="Save Path" />, { wrapper: TooltipProvider })
 
     await clickCopy()
 
@@ -57,7 +65,7 @@ describe("CopyButton", () => {
 
   it("shows the error toast and no check when the copy fails", async () => {
     mocks.copy.mockRejectedValue(new Error("denied"))
-    render(<CopyButton value="/data/show" label="Save Path" />)
+    render(<CopyButton value="/data/show" label="Save Path" />, { wrapper: TooltipProvider })
 
     await clickCopy()
 
@@ -72,7 +80,8 @@ describe("CopyButton", () => {
     render(
       <div onClick={onRowClick}>
         <CopyButton value="/data/show" label="Save Path" />
-      </div>
+      </div>,
+      { wrapper: TooltipProvider }
     )
 
     await clickCopy()

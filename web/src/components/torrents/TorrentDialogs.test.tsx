@@ -4,6 +4,7 @@
  */
 
 import { RenameTorrentFileDialog, SetCategoryDialog, TagEditorDialog } from "@/components/torrents/TorrentDialogs"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
@@ -121,11 +122,12 @@ describe("SetCategoryDialog", () => {
         hashCount={1}
         onConfirm={onConfirm}
         initialCategory={initialCategory}
-      />
+      />,
+      { wrapper: TooltipProvider }
     )
     return { input: document.getElementById("newCategory") as HTMLInputElement, onConfirm }
   }
-  const row = (name: string) => screen.getByTitle(name)
+  const row = (name: string) => screen.getByRole("button", { name })
 
   // regression: #2512
   it("keeps a typed name that extends an existing category", async () => {

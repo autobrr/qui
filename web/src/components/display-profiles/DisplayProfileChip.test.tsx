@@ -74,9 +74,17 @@ function renderWithThreeProfiles(): void {
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe("DisplayProfileChip", () => {
   // The first read of the server ended, so the picker takes picks.

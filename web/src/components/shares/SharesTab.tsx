@@ -119,8 +119,8 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
   return (
     <TableRow data-share-id={share.id}>
       <TableCell className="w-full max-w-0 pl-6 align-top whitespace-normal max-sm:pl-4">
-        {/* The name wraps in full on touch, where no pointer shows its title. */}
-        <div id={nameId} className="font-medium pointer-fine:line-clamp-2"><TorrentName name={display.name(share)} /></div>
+        {/* The name wraps in full on touch, where no pointer opens its tooltip. */}
+        <div id={nameId} className="font-medium"><TorrentName name={display.name(share)} className="pointer-fine:line-clamp-2" /></div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
           <span>{instanceName}</span>
           <span aria-hidden="true">·</span>

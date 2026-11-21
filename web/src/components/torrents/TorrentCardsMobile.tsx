@@ -18,6 +18,8 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useSwipeActions } from "@/hooks/useSwipeActions"
@@ -387,9 +389,14 @@ function SwipeableCard({
     />
   )
   const helperBadge = torrent.qui_helper && (
-    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 flex-shrink-0 ml-1" title={t("tableColumns.helperHint")}>
-      {torrent.qui_helper === "share" ? t("tableColumns.helperShare") : t("tableColumns.helperTransfer")}
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger asChild openOnTap="only">
+        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 flex-shrink-0 ml-1">
+          {torrent.qui_helper === "share" ? t("tableColumns.helperShare") : t("tableColumns.helperTransfer")}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>{t("tableColumns.helperHint")}</TooltipContent>
+    </Tooltip>
   )
   const isComplete = torrent.progress === 1
   const hasSpeeds = torrent.dlspeed > 0 || torrent.upspeed > 0
@@ -1219,20 +1226,24 @@ export function TorrentCardsMobile({
                   </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleSortOrder}
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
-                aria-label={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
-                title={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
-              >
-                {sortOrder === "desc" ? (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                ) : (
-                  <ChevronUp className="h-3.5 w-3.5" />
-                )}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleSortOrder}
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
+                    aria-label={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
+                  >
+                    {sortOrder === "desc" ? (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}</TooltipContent>
+              </Tooltip>
               <button
                 onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
                 className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
@@ -1250,9 +1261,9 @@ export function TorrentCardsMobile({
           <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
             <div className="flex min-w-0 items-center gap-2">
               <Search className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-              <span className="truncate text-sm text-foreground" title={effectiveSearch}>
+              <TruncatedText className="text-sm text-foreground">
                 {effectiveSearch}
-              </span>
+              </TruncatedText>
             </div>
             <Button
               variant="ghost"

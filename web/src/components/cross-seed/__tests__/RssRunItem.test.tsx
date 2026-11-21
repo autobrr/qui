@@ -1,13 +1,15 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-import { afterEach, describe, it, expect, vi } from "vitest"
-import { cleanup, fireEvent, render } from "@testing-library/react"
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import type { ReactElement } from "react"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import type { CrossSeedRun } from "@/types"
 
 // RSSRunItem only calls useTranslation; override it with an interpolating
-// identity translator so we can assert on the rendered error text and title
-// attribute, while keeping the module's other exports (initReactI18next, used
+// identity translator so we can assert on the rendered error text and its
+// tooltip, while keeping the module's other exports (initReactI18next, used
 // by the i18n bootstrap pulled in through the page's import graph).
 vi.mock("react-i18next", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-i18next")>()
@@ -40,32 +42,50 @@ function makeRun(overrides: Partial<CrossSeedRun> = {}): CrossSeedRun {
   }
 }
 
-afterEach(cleanup)
+const touchWindow = window as Window & { ontouchstart?: unknown }
+
+beforeEach(() => {
+  delete touchWindow.ontouchstart
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  cleanup()
+})
+
+function renderWithTooltips(ui: ReactElement) {
+  return render(<TooltipProvider>{ui}</TooltipProvider>)
+}
 
 describe("RSSRunItem", () => {
-  it("renders the run error message with a full-text title on a failed run", () => {
+  it("shows the full run error in a tooltip when the error is cut off", () => {
     const message = "all indexers unreachable"
-    const { container } = render(
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
+    renderWithTooltips(
       <RSSRunItem run={makeRun({ errorMessage: message })} formatDateValue={() => "just now"} />
     )
 
-    const errorSpan = container.querySelector(`span[title="${message}"]`)
-    expect(errorSpan).not.toBeNull()
-    expect(errorSpan?.textContent).toBe(`automation.runError:${message}`)
+    fireEvent.focus(screen.getByText(`automation.runError:${message}`))
+    expect(screen.getByRole("tooltip").textContent).toContain(`automation.runError:${message}`)
   })
 
   it("renders no error span when the run has no errorMessage", () => {
-    const { container } = render(
+    const { container } = renderWithTooltips(
       <RSSRunItem run={makeRun({ status: "success" })} formatDateValue={() => "just now"} />
     )
 
-    // React drops title={undefined}, so a span[title] query cannot see the
-    // guard; assert on the rendered text instead.
     expect(container.textContent).not.toContain("automation.runError")
   })
 
   it("shows only the instance name on a result that is not routed", () => {
-    const { container } = render(
+    const { container } = renderWithTooltips(
       <RSSRunItem
         run={makeRun({ status: "success", results: [{ instanceId: 1, instanceName: "lib", success: true, status: "added", matchedTorrentName: "Cedar.Harbor.S01E01" }] })}
         formatDateValue={() => "just now"}
@@ -73,12 +93,12 @@ describe("RSSRunItem", () => {
     )
     fireEvent.click(container.querySelector("[aria-expanded]")!)
 
-    expect(container.querySelector("span[title=\"lib\"]")?.textContent).toBe("lib")
+    expect(screen.getByText("lib").closest("[data-slot=badge]")?.textContent).toBe("lib")
     expect(container.textContent).not.toContain("route.")
   })
 
   it("names the instance that held the match and the Cross-seed instance on a routed add", () => {
-    const { container } = render(
+    const { container } = renderWithTooltips(
       <RSSRunItem
         run={makeRun({
           status: "success",
@@ -96,7 +116,7 @@ describe("RSSRunItem", () => {
   })
 
   it("labels the status of a failed routed add", () => {
-    const { container } = render(
+    const { container } = renderWithTooltips(
       <RSSRunItem
         run={makeRun({
           status: "partial",

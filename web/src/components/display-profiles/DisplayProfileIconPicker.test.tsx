@@ -4,8 +4,9 @@
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import type { DisplayProfileColor } from "@/lib/display-profiles"
 
@@ -16,15 +17,28 @@ function renderPicker(icon = "laptop", color: DisplayProfileColor | null = null)
   const onIconChange = vi.fn()
   const onColorChange = vi.fn()
   render(
-    <DisplayProfileIconPicker icon={icon} color={color} onIconChange={onIconChange} onColorChange={onColorChange}>
-      <button type="button">open</button>
-    </DisplayProfileIconPicker>
+    <TooltipProvider>
+      <DisplayProfileIconPicker icon={icon} color={color} onIconChange={onIconChange} onColorChange={onColorChange}>
+        <button type="button">open</button>
+      </DisplayProfileIconPicker>
+    </TooltipProvider>
   )
   fireEvent.click(screen.getByRole("button", { name: "open" }))
   return { onIconChange, onColorChange }
 }
 
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
+
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe("DisplayProfileIconPicker", () => {
   it("presses the icon of the profile", () => {

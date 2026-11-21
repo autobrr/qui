@@ -74,6 +74,7 @@ import {
   TableRow
 } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import i18n from "@/i18n"
@@ -620,9 +621,9 @@ function RunRow({
                           <InjectionStatusBadge injection={inj} />
                         </TableCell>
                         <TableCell className="max-w-[520px]">
-                          <div className="truncate" title={inj.torrentName}>
+                          <TruncatedText className="block">
                             {inj.torrentName}
-                          </div>
+                          </TruncatedText>
                           <div className="text-xs text-muted-foreground">
                             <span className="font-mono">{inj.infoHash.slice(0, 8)}</span>
                           </div>

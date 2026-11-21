@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useInstances } from "@/hooks/useInstances"
 import { cn } from "@/lib/utils"
 import { Link } from "@tanstack/react-router"
@@ -29,9 +30,8 @@ export function SpreadsheetSheetTabs({ currentInstanceId }: { currentInstanceId:
           to="/instances/$instanceId"
           params={{ instanceId: String(instance.id) }}
           className={cn("ss-sheet-tab", instance.id === currentInstanceId && "ss-sheet-tab-active")}
-          title={instance.name}
         >
-          {instance.name}
+          <TruncatedText className="min-w-0" openOnTap={false}>{instance.name}</TruncatedText>
         </Link>
       ))}
       <Link

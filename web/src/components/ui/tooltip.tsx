@@ -26,11 +26,14 @@ function useIsTouchDevice() {
   return isTouchDevice
 }
 
-const TooltipProvider = TooltipPrimitive.Provider
+function TooltipProvider({ delayDuration = 400, ...props }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  return <TooltipPrimitive.Provider delayDuration={delayDuration} {...props} />
+}
 
 // Context to share tooltip state between components
 const TooltipContext = React.createContext<{
   isTouchDevice: boolean
+  disabled?: boolean
   isOpen?: boolean
   setOpen?: (open: boolean) => void
   registerPointerType?: (pointerType: string | null) => void
@@ -102,7 +105,7 @@ const Tooltip = ({ children, disabled = false, ...props }: TooltipProps) => {
   // For touch devices, we prevent hover from opening via onOpenChange interception
   // For desktop, we let Radix's hover behavior trigger onOpenChange normally
   return (
-    <TooltipContext.Provider value={{ isTouchDevice, isOpen: open, setOpen: handleSetOpen, registerPointerType }}>
+    <TooltipContext.Provider value={{ isTouchDevice, disabled, isOpen: open, setOpen: handleSetOpen, registerPointerType }}>
       <TooltipPrimitive.Root open={open} onOpenChange={handleOpenChange} {...props}>
         {children}
       </TooltipPrimitive.Root>
@@ -122,6 +125,7 @@ type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitiv
 }
 type TriggerPointerEvent = Parameters<NonNullable<TooltipTriggerProps["onPointerDown"]>>[0]
 type TriggerKeyEvent = Parameters<NonNullable<TooltipTriggerProps["onKeyDown"]>>[0]
+type TriggerFocusEvent = Parameters<NonNullable<TooltipTriggerProps["onFocus"]>>[0]
 
 const CONTROL_SELECTOR = "a[href], button, input, select, textarea, label, [role=button], [role=menuitem], [role=option]"
 
@@ -134,7 +138,7 @@ function tapActs(target: EventTarget) {
 const TooltipTrigger = React.forwardRef<
   React.ComponentRef<typeof TooltipPrimitive.Trigger>,
   TooltipTriggerProps
->(({ openOnTap, onClick, onPointerDown, onPointerEnter, onKeyDown, ...props }, ref) => {
+>(({ openOnTap, onClick, onPointerDown, onPointerEnter, onPointerMove, onFocus, onKeyDown, ...props }, ref) => {
   const context = React.useContext(TooltipContext)
 
   const registerPointerType = context.registerPointerType
@@ -152,6 +156,21 @@ const TooltipTrigger = React.forwardRef<
     onPointerEnter?.(event)
   }, [registerPointerType, onPointerEnter])
 
+  const disabled = context.disabled
+  const handlePointerMove = React.useCallback((event: TriggerPointerEvent) => {
+    if (disabled) {
+      event.preventDefault()
+    }
+    onPointerMove?.(event)
+  }, [disabled, onPointerMove])
+
+  const handleFocus = React.useCallback((event: TriggerFocusEvent) => {
+    if (disabled) {
+      event.preventDefault()
+    }
+    onFocus?.(event)
+  }, [disabled, onFocus])
+
   const handleKeyDown = React.useCallback((event: TriggerKeyEvent) => {
     pressPointerTypeRef.current = "keyboard"
     registerPointerType?.("keyboard")
@@ -168,6 +187,8 @@ const TooltipTrigger = React.forwardRef<
         ref={ref}
         onPointerDown={handlePointerDown}
         onPointerEnter={handlePointerEnter}
+        onPointerMove={handlePointerMove}
+        onFocus={handleFocus}
         onKeyDown={handleKeyDown}
         onClick={(e) => {
           // A click from a mouse (for example an iPad trackpad) or a key always toggles.
@@ -192,6 +213,8 @@ const TooltipTrigger = React.forwardRef<
       ref={ref}
       onPointerDown={handlePointerDown}
       onPointerEnter={handlePointerEnter}
+      onPointerMove={handlePointerMove}
+      onFocus={handleFocus}
       onKeyDown={handleKeyDown}
       onClick={onClick}
       {...triggerProps}

@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
 import { DELETES_PAGE, DeletedTorrents } from "@/components/statistics/DeletedTorrents"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { server } from "@/test/msw/server"
 import { stubPhone } from "@/test/stubPhone"
 import type { TransferHistoryCauseKind, TransferHistoryDeleteEvent, TransferHistoryInstance } from "@/types"
@@ -78,7 +79,9 @@ function renderTable(instances: TransferHistoryInstance[]) {
   client = queryClient
   const table = (to: number) => (
     <QueryClientProvider client={queryClient}>
-      <DeletedTorrents scope="30d" instances={instances} period={{ from: new Date(0), to: new Date(to) }} displayGroup={group => `group:${group}`} />
+      <TooltipProvider>
+        <DeletedTorrents scope="30d" instances={instances} period={{ from: new Date(0), to: new Date(to) }} displayGroup={group => `group:${group}`} />
+      </TooltipProvider>
     </QueryClientProvider>
   )
   const view = render(table(1e12))
@@ -86,8 +89,8 @@ function renderTable(instances: TransferHistoryInstance[]) {
 }
 
 function shownNames(): string[] {
-  // A phone row puts the name in a button when the row opens, and in a div when it has nothing more to show.
-  return [...document.querySelectorAll("tbody tr td:nth-child(2) > span[title], tbody tr td:nth-child(2) > button > span[title], tbody tr td:nth-child(2) > div > span[title]")].map(node => node.getAttribute("title") ?? "")
+  // The name is the first line of the cell. A phone row puts it in a button when the row opens, and in a div when it has nothing more to show.
+  return [...document.querySelectorAll("tbody tr td:nth-child(2) > :first-child")].map(node => node.textContent ?? "")
 }
 
 // The names of ten deletes of an instance in a row, from the delete with the index first.
@@ -168,7 +171,7 @@ describe("DeletedTorrents", () => {
     expect(trigger("deletes.filters.other").textContent).toBe("deletes.filters.other2")
     expect(screen.getAllByText("· Remove old").length).toBeGreaterThan(0)
     expect(screen.getAllByText("· sonarr key").length).toBeGreaterThan(0)
-    expect(screen.getAllByTitle("group:Aurora · Seedbox").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("group:Aurora · Seedbox").length).toBeGreaterThan(0)
 
     fireEvent.mouseDown(trigger("deletes.filters.automation"), { button: 0 })
     await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.0-GRP", "Built.Name.2.0-GRP"]))
@@ -463,7 +466,7 @@ describe("DeletedTorrents", () => {
     vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(40)
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     renderTable([instance(1, "Seedbox")])
-    const name = (await screen.findByTitle("Built.Name.1.0-GRP")).closest("button")!
+    const name = (await screen.findByText("Built.Name.1.0-GRP")).closest("button")!
     expect(name.getAttribute("aria-expanded")).toBe("false")
 
     fireEvent.click(name)
@@ -478,7 +481,7 @@ describe("DeletedTorrents", () => {
     stubPhone("upright")
     deletesOf.set(1, [event(1, 0, 5_000, "automation", "Tidy up")])
     renderTable([instance(1, "Seedbox")])
-    const name = await screen.findByTitle("Built.Name.1.0-GRP")
+    const name = await screen.findByText("Built.Name.1.0-GRP")
 
     expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
     fireEvent.click(name)
