@@ -128,6 +128,7 @@ type Service struct {
 	// target, and freed what the runs gave back there since the start.
 	reserved, freed map[int]int64
 	landings        map[int64]landing
+	arrivals        int64
 	left            chan struct{}
 	// exports holds a place for each Export run that runs.
 	exports chan struct{}
@@ -376,7 +377,8 @@ func (s *Service) drain(sourceID int) {
 		ctx, cancel := context.WithCancel(s.ctx)
 		m := &meter{now: s.deps.Now}
 		s.runs[id].cancel, s.runs[id].meter = cancel, m
-		s.landings[id] = landing{sourceID: sourceID, targetID: s.runs[id].targetID}
+		s.arrivals++
+		s.landings[id] = landing{order: s.arrivals, sourceID: sourceID, targetID: s.runs[id].targetID}
 		s.mu.Unlock()
 
 		s.runOne(ctx, id, m)
@@ -386,13 +388,13 @@ func (s *Service) drain(sourceID int) {
 		cancelled := s.runs[id].cancelled
 		if !cancelled {
 			delete(s.runs, id)
+			s.leave(id)
 		}
 		s.mu.Unlock()
 		// A cancel that came while the run ended still rolls it back.
 		if cancelled {
 			s.rollBack(context.WithoutCancel(s.ctx), id)
 		}
-		s.leave(id)
 	}
 }
 
@@ -539,6 +541,7 @@ func (s *Service) rollBack(ctx context.Context, id int64) {
 	defer func() {
 		s.mu.Lock()
 		delete(s.runs, id)
+		s.leave(id)
 		s.mu.Unlock()
 	}()
 	record, err := s.deps.Store.Get(ctx, id)

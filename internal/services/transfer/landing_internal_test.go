@@ -16,10 +16,10 @@ func TestTransfersIntoOneFolderLandInTheOrderTheyStarted(t *testing.T) {
 	show := func(sourceID int) landing {
 		return landing{sourceID: sourceID, targetID: 9, paths: fsops.SlashPaths, tops: map[string]struct{}{"/data/Show.S01": {}}}
 	}
-	const otherSource, first, second = 1, 2, 3
-	s.landings[otherSource] = landing{sourceID: 2, targetID: 9}
-	s.landings[first] = landing{sourceID: 1, targetID: 9}
-	s.landings[second] = landing{sourceID: 1, targetID: 9}
+	const second, first, otherSource = 1, 2, 3
+	s.landings[otherSource] = landing{order: 1, sourceID: 2, targetID: 9}
+	s.landings[first] = landing{order: 2, sourceID: 1, targetID: 9}
+	s.landings[second] = landing{order: 3, sourceID: 1, targetID: 9}
 
 	inTheWay, left := s.land(second, show(1))
 	require.NotNil(t, left, "the second Transfer lands while the first one still reads its paths")

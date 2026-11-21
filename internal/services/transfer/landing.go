@@ -11,6 +11,7 @@ import (
 )
 
 type landing struct {
+	order              int64
 	sourceID, targetID int
 	paths              fsops.PathDialect
 	tops               map[string]struct{}
@@ -55,18 +56,20 @@ func (l landing) holdsOrIsBelow(other landing) bool {
 func (s *Service) land(id int64, own landing) (inTheWay int64, left <-chan struct{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	was := s.landings[id]
+	own.order = was.order
 	earlier := false
 	for other, l := range s.landings {
 		switch {
 		case other == id:
 		case l.tops == nil:
-			earlier = earlier || other < id && l.sourceID == own.sourceID && l.targetID == own.targetID
-		case (l.held || other < id) && own.meets(l) && (inTheWay == 0 || other < inTheWay):
+			earlier = earlier || l.order < own.order && l.sourceID == own.sourceID && l.targetID == own.targetID
+		case (l.held || l.order < own.order) && own.meets(l) && (inTheWay == 0 || other < inTheWay):
 			inTheWay = other
 		}
 	}
 	own.held = inTheWay == 0 && !earlier
-	if s.landings[id].tops == nil {
+	if was.tops == nil {
 		s.landed()
 	}
 	s.landings[id] = own
@@ -77,8 +80,6 @@ func (s *Service) land(id int64, own landing) (inTheWay int64, left <-chan struc
 }
 
 func (s *Service) leave(id int64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	delete(s.landings, id)
 	s.landed()
 }
