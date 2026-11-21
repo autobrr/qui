@@ -103,8 +103,8 @@ test-frontend:
 test-frontend-changed:
 	@base=$$(git merge-base origin/develop HEAD 2>/dev/null || true); \
 		if [ -n "$$base" ]; then \
-			roots=$$(git ls-tree -d --name-only HEAD | grep -vx '$(WEB_DIR)' | paste -sd'|' -); \
-			read_by_web=$$(grep -rhoE "(\.\./)+($$roots)/[A-Za-z0-9_./-]+" $(WEB_DIR)/src | sed -E 's#^(\.\./)+##' | sort -u | paste -sd'|' -); \
+			roots=$$(git ls-tree --name-only HEAD | grep -vx '$(WEB_DIR)' | paste -sd'|' -); \
+			read_by_web=$$(grep -rhoE "(\.\./)+($$roots)(/[A-Za-z0-9_./-]*)?" $(WEB_DIR)/src | sed -E 's#^(\.\./)+##' | sort -u | paste -sd'|' -); \
 			changed=$$({ git diff --name-only "$$base"; git ls-files --others --exclude-standard; } | grep -E "^($(WEB_DIR)/|$$read_by_web)" || true); \
 			if [ -z "$$changed" ]; then \
 				echo "No changed file under $(WEB_DIR)/ and none that $(WEB_DIR)/src reads, skipping the frontend tests."; \
