@@ -10097,7 +10097,7 @@ components:
               description: Whether the key may run commands at all, as opposed to being restricted to sftp.
             gnuUserland:
               type: boolean
-              description: Whether the host's find and stat are the GNU builds.
+              description: Whether the host's find is the GNU build and its stat is the GNU or the uutils build.
         error:
           type: string
           description: Why no connection was made. Present with status `error` only. Carries the transport's own message for an unreachable host and a fixed message when the stored credentials could not be read.

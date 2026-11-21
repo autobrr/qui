@@ -93,9 +93,9 @@ The test shows a tier and a list of checks.
 | **Hardlinks (hardlink@openssh.com)** | The server can create hardlinks. Cross-seed hardlink mode needs it. |
 | **Limits extension** | The server reports its SFTP limits. No feature needs it. |
 | **Commands** | The login can run a shell. |
-| **GNU find and stat** | The host has the GNU versions of `find` and `stat`. |
+| **GNU find and stat** | The host has the GNU version of `find`, and the GNU or the uutils version of `stat`. |
 
-qui gets the tier **SFTP + commands** when the login runs a POSIX shell and the host has GNU `find` and `stat`. A normal Linux server has both. qui gets the tier **SFTP** in these cases:
+qui gets the tier **SFTP + commands** when the login runs a POSIX shell and the host has GNU `find` and a `stat` from GNU coreutils or uutils coreutils. Ubuntu 25.10 and later use the `stat` from uutils coreutils. A normal Linux server has both tools. qui gets the tier **SFTP** in these cases:
 
 - The provider limits the login to SFTP.
 - The login shell is not a POSIX shell, for example fish.

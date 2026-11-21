@@ -101,7 +101,7 @@ func shellAndTools(ctx context.Context, conn *Conn, timeout time.Duration) (posi
 		return false, false, err
 	}
 	out, err = conn.output(ctx, gnuProbeCommand, timeout, outputLimit)
-	return true, err == nil && isGNU(out), err
+	return true, err == nil && hasSupportedTools(out), err
 }
 
 // Tier is the tier these capabilities give: exec needs sftp and a POSIX shell
@@ -114,12 +114,13 @@ func (c *Capabilities) Tier() models.SSHTier {
 	return models.SSHTierSFTP
 }
 
-// isGNU reads the probe output. GNU tools print "<tool> (GNU <package>)
-// <version>" as their first line, and the BSD and busybox ones print neither
-// banner. Both packages are required, because the flags the remote backend
-// passes belong to both.
-func isGNU(out []byte) bool {
-	return bytes.Contains(out, []byte("GNU findutils")) && bytes.Contains(out, []byte("GNU coreutils"))
+// hasSupportedTools reads the probe output: find must be GNU findutils, for
+// -printf, and stat GNU or uutils coreutils (Ubuntu 25.10 and later), which
+// read the formats the remote backend passes alike. The BSD and busybox tools
+// print neither banner.
+func hasSupportedTools(out []byte) bool {
+	return bytes.Contains(out, []byte("(GNU findutils)")) &&
+		(bytes.Contains(out, []byte("(GNU coreutils)")) || bytes.Contains(out, []byte("(uutils coreutils)")))
 }
 
 // probeTier asks a new pooled connection for the exec tier, and writes the

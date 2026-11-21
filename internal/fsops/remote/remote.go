@@ -5,7 +5,7 @@
 // connection the instance's stored credentials open. Reflinks have no sftp
 // operation and answer fsops.ErrUnsupported, and hardlinks need the server to
 // advertise hardlink@openssh.com. File identity needs the exec tier, where
-// GNU stat and find run as remote commands. Remote paths are
+// GNU find and a GNU or uutils stat run as remote commands. Remote paths are
 // slash-delimited, so this package uses path and never path/filepath: the
 // separator belongs to the remote host, not to ours.
 package remote
