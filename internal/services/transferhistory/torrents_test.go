@@ -41,7 +41,7 @@ func within(q transferhistory.TransferQuery, groupOf transferhistory.Grouping, g
 
 // facts are the facts of a torrent row of a private torrent on tracker.example.
 func facts(name string, first24h *int64) *transferhistory.TorrentFacts {
-	return &transferhistory.TorrentFacts{Name: name, TrackerGroup: "tracker.example", UploadFirst24h: first24h}
+	return &transferhistory.TorrentFacts{Name: name, TrackerGroup: "tracker.example", Size: 1000, UploadFirst24h: first24h}
 }
 
 func torrentRow(hash string, start time.Time, width transferhistory.Bucket, uploaded, downloaded, gapSeconds int64, f *transferhistory.TorrentFacts) transferhistory.TransferRow {
@@ -91,14 +91,14 @@ func TestTheGroupingByTorrentPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
-			name: "a torrent that qui saw deleted keeps its name and gets the deleted mark",
+			name: "a torrent that qui saw deleted keeps its name and size and gets the deleted mark",
 			steps: []step{
-				reading(at(0), named(torrent("a", 0, 0), "Alpha"), torrent("b", 0, 0)),
-				reading(at(5*time.Minute), named(torrent("a", 300, 0), "Alpha"), torrent("b", 100, 0)),
+				reading(at(0), sized(named(torrent("a", 0, 0), "Alpha"), 2500), torrent("b", 0, 0)),
+				reading(at(5*time.Minute), sized(named(torrent("a", 300, 0), "Alpha"), 2500), torrent("b", 100, 0)),
 				reading(at(10*time.Minute), torrent("b", 100, 0)),
 				expect(torrents(1),
 					torrentRow("a", day10, transferhistory.BucketTotal, 300, 0, 0, &transferhistory.TorrentFacts{
-						Name: "Alpha", TrackerGroup: "tracker.example", Deleted: true, UploadFirst24h: new(int64(300)),
+						Name: "Alpha", TrackerGroup: "tracker.example", Size: 2500, Deleted: true, UploadFirst24h: new(int64(300)),
 					}),
 				),
 			},
@@ -110,13 +110,13 @@ func TestTheGroupingByTorrentPostgresIntegration(t *testing.T) {
 				reading(at(5*time.Minute), crossSeed(60), addedAt(torrent("old", 40, 0), at(-48*time.Hour))),
 				expect(torrents(0),
 					torrentRow("c", day10, transferhistory.BucketTotal, 60, 0, 0, &transferhistory.TorrentFacts{
-						Name: "Some.Show.S01E01.1080p.WEB-DL-GRP", TrackerGroup: "tracker.example", StatisticsCrossSeed: true, UploadFirst24h: new(int64(60)),
+						Name: "Some.Show.S01E01.1080p.WEB-DL-GRP", TrackerGroup: "tracker.example", Size: 1000, StatisticsCrossSeed: true, UploadFirst24h: new(int64(60)),
 					}),
 					torrentRow("old", day10, transferhistory.BucketTotal, 40, 0, 0, facts("Some.Show.S01E01.1080p.WEB-DL-GRP", nil)),
 				),
 				expect(torrents(1),
 					torrentRow("c", day10, transferhistory.BucketTotal, 60, 0, 0, &transferhistory.TorrentFacts{
-						Name: "Some.Show.S01E01.1080p.WEB-DL-GRP", TrackerGroup: "tracker.example", StatisticsCrossSeed: true, UploadFirst24h: new(int64(60)),
+						Name: "Some.Show.S01E01.1080p.WEB-DL-GRP", TrackerGroup: "tracker.example", Size: 1000, StatisticsCrossSeed: true, UploadFirst24h: new(int64(60)),
 					}),
 				),
 			},

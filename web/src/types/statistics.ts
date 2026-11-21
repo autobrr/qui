@@ -27,6 +27,7 @@ export interface TransferHistoryRow extends TransferHistoryBytes {
 export interface TransferHistoryTorrent {
   name: string
   trackerGroup: string
+  size: number
   deleted: boolean
   statisticsCrossSeed: boolean
   /** Null when qui first saw the torrent after its first 24 hours. */

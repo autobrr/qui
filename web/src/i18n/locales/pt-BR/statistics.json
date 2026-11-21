@@ -183,6 +183,7 @@
     "deleted": "Excluído",
     "crossSeed": "Cross-seed",
     "note": "Um torrent excluído mantém seu lugar com seu nome. Um torrent conta para o tracker que tem agora. Primeiras 24 horas é o upload nas 24 horas após a adição. O valor fica vazio quando o qui viu o torrent pela primeira vez depois delas.",
+    "seededNote": "Semeados é o envio no período dividido pelo tamanho do torrent. 1,00x é uma cópia completa.",
     "utcNote": "Cada barra é um dia UTC.",
     "yearNote": "Cada barra é um dia UTC, exceto a barra de um ano: após a retenção de detalhes, o qui guarda um número para cada torrent e ano."
   },
