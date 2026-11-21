@@ -55,7 +55,9 @@ import {
   Ellipsis,
   LogOut,
   PanelLeftClose,
+  PanelLeftDashed,
   PanelLeftOpen,
+  Pin,
   Rss,
   SearchCode
 } from "lucide-react"
@@ -106,9 +108,32 @@ function SidebarMark({ instanceId, autoLetters, iconOnly, isActive, problem }: S
 interface SidebarProps {
   iconOnly: boolean
   onToggleIconOnly: () => void
+  onHide?: () => void
+  flyout?: boolean
+  onPin?: () => void
 }
 
-export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
+function SidebarHeaderButton({ label, tooltipSide, onClick, disabled, children }: { label: string; tooltipSide: "right" | "bottom"; onClick?: () => void; disabled?: boolean; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 flex-shrink-0 bg-sidebar text-sidebar-foreground/50 hover:text-sidebar-foreground"
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={label}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side={tooltipSide} className="text-xs">{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, onPin }: SidebarProps) {
   const { t, i18n } = useTranslation("common")
   const location = useLocation()
   const navigate = useNavigate()
@@ -215,23 +240,24 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
             <a href="/" target="_top" className="flex items-center gap-2 hover:opacity-80">{brand}</a>
           ) : brand}
         </h2>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="sticky right-[18px] -ml-1.5 h-7 w-7 flex-shrink-0 bg-sidebar text-sidebar-foreground/50 hover:text-sidebar-foreground"
-              onClick={onToggleIconOnly}
-              disabled={!settingsSettled}
-              aria-label={iconOnlyToggleLabel}
-            >
-              <IconOnlyToggleIcon className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side={iconOnly ? "right" : "bottom"} className="text-xs">
-            {iconOnlyToggleLabel}
-          </TooltipContent>
-        </Tooltip>
+        <div className="sticky right-[18px] -ml-1.5 flex flex-shrink-0 items-center gap-0.5">
+          {flyout ? (
+            <SidebarHeaderButton label={t("sidebar.keepOpen")} tooltipSide="bottom" onClick={onPin} disabled={!settingsSettled}>
+              <Pin className="h-4 w-4" />
+            </SidebarHeaderButton>
+          ) : (
+            <>
+              {!iconOnly && onHide && (
+                <SidebarHeaderButton label={t("sidebar.hideSidebar")} tooltipSide="bottom" onClick={onHide} disabled={!settingsSettled}>
+                  <PanelLeftDashed className="h-4 w-4" />
+                </SidebarHeaderButton>
+              )}
+              <SidebarHeaderButton label={iconOnlyToggleLabel} tooltipSide={iconOnly ? "right" : "bottom"} onClick={onToggleIconOnly} disabled={!settingsSettled}>
+                <IconOnlyToggleIcon className="h-4 w-4" />
+              </SidebarHeaderButton>
+            </>
+          )}
+        </div>
       </div>
 
       <nav className={cn("flex flex-1 min-h-0 flex-col overflow-y-auto px-3", iconOnly && "[scrollbar-width:none]")}>
@@ -454,6 +480,12 @@ export function Sidebar({ iconOnly, onToggleIconOnly }: SidebarProps) {
                 {t("sidebar.version", { version: appVersion })}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {onHide && (
+                <DropdownMenuItem onClick={onHide}>
+                  <PanelLeftDashed className="h-4 w-4" />
+                  {t("sidebar.hideSidebar")}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
                   <Globe className="h-4 w-4 text-muted-foreground" />

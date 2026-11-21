@@ -32,7 +32,11 @@
     "rssEnabled": "RSS de cross-seed ativado",
     "scanRunning": "Scan rodando",
     "collapseToIcons": "Recolher para ícones",
-    "expandSidebar": "Expandir barra lateral"
+    "expandSidebar": "Expandir barra lateral",
+    "hideSidebar": "Ocultar barra lateral",
+    "showSidebar": "Mostrar barra lateral",
+    "keepOpen": "Manter barra lateral aberta",
+    "menu": "Menu"
   },
   "problemReports": {
     "reportProblem": "Relatar um problema",

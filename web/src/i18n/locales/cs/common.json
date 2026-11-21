@@ -33,7 +33,11 @@
     "rssEnabled": "RSS křížového sdílení je zapnuto",
     "scanRunning": "Scan běží",
     "collapseToIcons": "Sbalit na ikony",
-    "expandSidebar": "Rozbalit postranní panel"
+    "expandSidebar": "Rozbalit postranní panel",
+    "hideSidebar": "Skrýt postranní panel",
+    "showSidebar": "Zobrazit postranní panel",
+    "keepOpen": "Ponechat postranní panel otevřený",
+    "menu": "Nabídka"
   },
   "problemReports": {
     "reportProblem": "Nahlásit problém",

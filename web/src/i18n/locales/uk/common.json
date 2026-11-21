@@ -34,7 +34,11 @@
     "rssEnabled": "RSS cross-seed увімкнено",
     "scanRunning": "Сканування активне",
     "collapseToIcons": "Згорнути до значків",
-    "expandSidebar": "Розгорнути бічну панель"
+    "expandSidebar": "Розгорнути бічну панель",
+    "hideSidebar": "Приховати бічну панель",
+    "showSidebar": "Показати бічну панель",
+    "keepOpen": "Залишати бічну панель відкритою",
+    "menu": "Меню"
   },
   "problemReports": {
     "reportProblem": "Повідомити про проблему",

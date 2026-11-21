@@ -32,7 +32,11 @@
     "rssEnabled": "Cross-seed RSS enabled",
     "scanRunning": "Scan running",
     "collapseToIcons": "Collapse to icons",
-    "expandSidebar": "Expand sidebar"
+    "expandSidebar": "Expand sidebar",
+    "hideSidebar": "Hide sidebar",
+    "showSidebar": "Show sidebar",
+    "keepOpen": "Keep sidebar open",
+    "menu": "Menu"
   },
   "problemReports": {
     "reportProblem": "Report a problem",
