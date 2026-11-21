@@ -99,13 +99,15 @@ test-frontend:
 	@echo "Running frontend tests..."
 	cd $(WEB_DIR) && pnpm test
 
-# Run the frontend tests when the branch changes a file under web/ or internal/. Some frontend tests read backend files.
+# Run the frontend tests when the branch changes a file under web/, or a file outside web/ that a file under web/src names by a relative path.
 test-frontend-changed:
 	@base=$$(git merge-base origin/develop HEAD 2>/dev/null || true); \
 		if [ -n "$$base" ]; then \
-			changed=$$({ git diff --name-only "$$base"; git ls-files --others --exclude-standard; } | grep -E '^($(WEB_DIR)|internal)/' || true); \
+			roots=$$(git ls-tree --name-only HEAD | grep -vx '$(WEB_DIR)' | paste -sd'|' -); \
+			read_by_web=$$(grep -rhoE "(\.\./)+($$roots)(/[A-Za-z0-9_./-]*)?" $(WEB_DIR)/src | sed -E 's#^(\.\./)+##' | sort -u | paste -sd'|' -); \
+			changed=$$({ git diff --name-only "$$base"; git ls-files --others --exclude-standard; } | grep -E "^($(WEB_DIR)/|$$read_by_web)" || true); \
 			if [ -z "$$changed" ]; then \
-				echo "No changed file under $(WEB_DIR)/ or internal/, skipping the frontend tests."; \
+				echo "No changed file under $(WEB_DIR)/ and none that $(WEB_DIR)/src reads, skipping the frontend tests."; \
 				exit 0; \
 			fi; \
 		fi; \
@@ -344,7 +346,7 @@ help:
 	@echo "  make test           - Run all Go tests with race detection"
 	@echo "  make test-postgres  - Run Postgres integration tests with a temporary server"
 	@echo "  make test-frontend  - Run frontend vitest suite"
-	@echo "  make test-frontend-changed - Run frontend vitest suite when the branch changes web/ or internal/"
+	@echo "  make test-frontend-changed - Run frontend vitest suite when the branch changes web/ or a file that web/src reads"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
 	@echo "  make mutation       - Mutation test changed Go lines and TypeScript files (MUTATION_BASE=origin/develop)"
 	@echo ""
