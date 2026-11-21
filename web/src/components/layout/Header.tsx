@@ -66,6 +66,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
 import { ChevronsUpDown, Cog, FileEdit, FunnelPlus, FunnelX, Info, ListTodo, PanelLeftOpen, Plus, Search, X } from "lucide-react"
 import { useSystemNotices } from "@/hooks/useSystemNotices"
+import { useUpdateBannerDismissed } from "@/hooks/useUpdateBannerDismissed"
 import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
@@ -74,31 +75,43 @@ import { useTranslation } from "react-i18next"
 interface HeaderProps {
   sidebarIconOnly?: boolean
   sidebarHidden?: boolean
+  sidebarOpen?: boolean
   onOpenSidebar?: () => void
 }
 
-function OpenSidebarButton({ onClick }: { onClick?: () => void }) {
+function OpenSidebarButton({ open, onClick }: { open: boolean; onClick?: () => void }) {
   const { t } = useTranslation("common")
   const systemNotices = useSystemNotices()
-  const { data: updateInfo } = useQuery({
-    queryKey: ["latest-version"],
-    queryFn: () => api.getLatestVersion(),
-    refetchInterval: 2 * 60 * 1000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-  })
+  const { data: updateInfo } = useQuery({ queryKey: ["latest-version"], queryFn: () => api.getLatestVersion(), enabled: false })
+  const [updateDismissed] = useUpdateBannerDismissed()
+  const showUpdate = Boolean(updateInfo) && !updateDismissed
+  const extras = [
+    systemNotices.length > 0 && t("systemNotice.needsAttention"),
+    showUpdate && t("updateBanner.updateAvailable"),
+  ].filter(Boolean)
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative hidden lg:inline-flex" onClick={onClick} aria-label={t("sidebar.showSidebar")}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative hidden text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:inline-flex"
+          onClick={onClick}
+          aria-label={[t("sidebar.showSidebar"), ...extras].join(", ")}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+        >
           <PanelLeftOpen className="h-4 w-4" />
           {systemNotices.length > 0 && (
-            <span className={cn("absolute top-1 left-1 h-2 w-2 rounded-full", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
+            <span aria-hidden="true" className={cn("absolute top-1.5 left-1.5 h-1.5 w-1.5 rounded-full ring-2 ring-background", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
           )}
-          {updateInfo && <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-green-500" />}
+          {showUpdate && <span aria-hidden="true" className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-green-500 ring-2 ring-background" />}
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="text-xs">{t("sidebar.showSidebar")}</TooltipContent>
+      <TooltipContent side="bottom" className="text-xs">
+        {t("sidebar.showSidebar")}
+        {extras.map((extra) => <span key={String(extra)} className="block opacity-70">{extra}</span>)}
+      </TooltipContent>
     </Tooltip>
   )
 }
@@ -149,7 +162,7 @@ function UnifiedActionDropdown({ icon, tooltip, label, instances, onSelectInstan
   )
 }
 
-export function Header({ sidebarIconOnly = false, sidebarHidden = false, onOpenSidebar }: HeaderProps) {
+export function Header({ sidebarIconOnly = false, sidebarHidden = false, sidebarOpen = false, onOpenSidebar }: HeaderProps) {
   // The icon-only or hidden sidebar has no room for the name of the instance or for the Unified scope, so the header shows them.
   const showTitleOnDesktop = sidebarIconOnly || sidebarHidden
   const { t } = useTranslation("common")
@@ -334,7 +347,7 @@ export function Header({ sidebarIconOnly = false, sidebarHidden = false, onOpenS
   const headerElement = (
     <header {...themeArea("app-header")} className={cn("sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-2 lg:static py-2 lg:py-0", headerHeight, !isInstanceRoute && "sideways:hidden")}>
       <div className={cn("hidden md:flex items-center gap-2 mr-2 order-1 lg:order-none", innerHeight)}>
-        {sidebarHidden && <OpenSidebarButton onClick={onOpenSidebar} />}
+        {sidebarHidden && <OpenSidebarButton open={sidebarOpen} onClick={onOpenSidebar} />}
         {instanceName && (hasMultipleActiveInstances || isAllInstancesRoute) ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -342,7 +355,7 @@ export function Header({ sidebarIconOnly = false, sidebarHidden = false, onOpenS
                 className={cn(
                   "group flex items-center gap-2 text-xl font-semibold transition-all duration-300 hover:opacity-90 rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   "lg:hidden", // Hidden on desktop by default
-                  showTitleOnDesktop && "lg:flex", // Visible on desktop when the sidebar shows only icons
+                  showTitleOnDesktop && "lg:flex",
                   !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
                 )}
                 aria-label={t("header.currentInstance", { name: instanceName })}
@@ -406,7 +419,7 @@ export function Header({ sidebarIconOnly = false, sidebarHidden = false, onOpenS
           <h1 className={cn(
             "flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-all duration-300",
             "lg:hidden", // Hidden on desktop by default
-            showTitleOnDesktop && "lg:flex", // Visible on desktop when the sidebar shows only icons
+            showTitleOnDesktop && "lg:flex",
             !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
           )}>
             {theme === "swizzin" ? (

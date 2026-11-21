@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Outlet } from "@tanstack/react-router"
+import { Outlet, useLocation } from "@tanstack/react-router"
+import { useReturnFocus } from "@/components/kit/use-return-focus"
 import { CommandPalette } from "@/components/command-palette/CommandPalette"
 import { MobileFooterNav } from "@/components/layout/MobileFooterNav"
 import { Header } from "@/components/layout/Header"
@@ -14,7 +15,7 @@ import { ReminderBar } from "@/components/support/SupportReminder"
 import { LayoutRouteProvider, useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { usePersistedSidebarHidden, usePersistedSidebarIconOnly } from "@/hooks/usePersistedSidebarState"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
-import { useState, type MouseEvent } from "react"
+import { useRef, useState, type MouseEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { cn } from "@/lib/utils"
@@ -24,21 +25,33 @@ import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActio
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { DatabaseShrinkProvider } from "@/components/database/DatabaseShrinkProvider"
 
+type FlyoutState = { kind: "closed" } | { kind: "open"; pathname: string } | { kind: "pinning" }
+
+const closedFlyout: FlyoutState = { kind: "closed" }
+
+function opensInPlace(event: MouseEvent): boolean {
+  const link = (event.target as Element).closest("a[href]")
+  return link !== null && link.getAttribute("target") !== "_blank" && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+}
+
 function AppLayoutContent() {
   const { t } = useTranslation("common")
   const [sidebarIconOnly, setSidebarIconOnly] = usePersistedSidebarIconOnly()
   const [sidebarHidden, setSidebarHidden] = usePersistedSidebarHidden()
-  const [flyoutOpen, setFlyoutOpen] = useState(false)
-  const [sidebarWidthInstant, setSidebarWidthInstant] = useState(false)
+  const { pathname } = useLocation()
+  const [flyout, setFlyout] = useState<FlyoutState>(closedFlyout)
+  if (!sidebarHidden && flyout.kind === "open") setFlyout(closedFlyout)
+  const flyoutOpen = sidebarHidden && flyout.kind === "open" && flyout.pathname === pathname
+  const dockedSidebarRef = useRef<HTMLDivElement>(null)
+  const returnFocus = useReturnFocus()
   const pinFlyout = () => {
-    setSidebarWidthInstant(true)
+    setFlyout({ kind: "pinning" })
     setSidebarIconOnly(false)
     setSidebarHidden(false)
-    setFlyoutOpen(false)
-    requestAnimationFrame(() => requestAnimationFrame(() => setSidebarWidthInstant(false)))
-  }
-  const closeFlyoutOnLink = (event: MouseEvent) => {
-    if ((event.target as Element).closest("a[href]")) setFlyoutOpen(false)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      setFlyout(closedFlyout)
+      dockedSidebarRef.current?.querySelector("button")?.focus()
+    }))
   }
   const { isFooterVisible } = useMobileScroll()
   const isInstanceRoute = useLayoutRoute().state.instanceId !== null
@@ -50,43 +63,53 @@ function AppLayoutContent() {
     // Off an instance route, each page has 1rem of top padding of its own, so main adds a smaller part of the gap.
     <div className={cn("flex h-[calc(100dvh-var(--app-inset-top))] bg-background md:pt-(--app-fade-gap)", !topBarShowsSideways && "sideways:pt-0")}>
       <div
+        ref={dockedSidebarRef}
         inert={sidebarHidden}
         className={cn(
           "hidden lg:flex flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out motion-reduce:transition-none",
           sidebarHidden ? "w-0" : sidebarIconOnly ? "w-16" : "w-64",
-          sidebarWidthInstant && "transition-none"
+          flyout.kind === "pinning" && "transition-none"
         )}
       >
-        <Sidebar
-          iconOnly={sidebarIconOnly}
-          onToggleIconOnly={() => setSidebarIconOnly(!sidebarIconOnly)}
-          onHide={() => setSidebarHidden(true)}
-        />
+        <div className={cn("h-full w-full", sidebarHidden && (sidebarIconOnly ? "min-w-16" : "min-w-64"))}>
+          <Sidebar
+            iconOnly={sidebarIconOnly}
+            onToggleIconOnly={() => setSidebarIconOnly(!sidebarIconOnly)}
+            onHide={() => {
+              setFlyout(closedFlyout)
+              setSidebarHidden(true)
+            }}
+          />
+        </div>
       </div>
 
       {sidebarHidden && (
-        <Sheet open={flyoutOpen} onOpenChange={setFlyoutOpen}>
+        <Sheet open={flyoutOpen} onOpenChange={(open) => setFlyout(open ? { kind: "open", pathname } : closedFlyout)}>
           <SheetContent
             side="left"
             hideClose
             aria-describedby={undefined}
-            className="w-64 gap-0 border-r-0 p-0"
-            onClickCapture={closeFlyoutOnLink}
-            onOpenAutoFocus={(event) => event.preventDefault()}
+            className="w-64 gap-0 border-r-0 p-0 shadow-xl outline-none motion-reduce:animate-none"
+            overlayClassName="bg-black/20 motion-reduce:animate-none"
+            onClickCapture={(event) => {
+              if (opensInPlace(event)) setFlyout(closedFlyout)
+            }}
+            onOpenAutoFocus={(event) => {
+              returnFocus.remember()
+              event.preventDefault()
+              const content = event.currentTarget as HTMLElement
+              content.focus()
+            }}
+            onCloseAutoFocus={returnFocus.restore}
           >
             <SheetTitle className="sr-only">{t("sidebar.menu")}</SheetTitle>
-            <Sidebar
-              flyout
-              iconOnly={false}
-              onToggleIconOnly={() => setSidebarIconOnly(false)}
-              onPin={pinFlyout}
-            />
+            <Sidebar flyout iconOnly={false} onPin={pinFlyout} />
           </SheetContent>
         </Sheet>
       )}
 
       <div className="flex flex-1 flex-col min-w-0 relative">
-        <Header sidebarIconOnly={sidebarIconOnly} sidebarHidden={sidebarHidden} onOpenSidebar={() => setFlyoutOpen(true)} />
+        <Header sidebarIconOnly={sidebarIconOnly} sidebarHidden={sidebarHidden} sidebarOpen={flyoutOpen} onOpenSidebar={() => setFlyout({ kind: "open", pathname })} />
         <ReminderBar />
         <main className={cn(
           "flex-1 overflow-y-auto",

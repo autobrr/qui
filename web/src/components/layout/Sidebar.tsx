@@ -107,20 +107,20 @@ function SidebarMark({ instanceId, autoLetters, iconOnly, isActive, problem }: S
 
 interface SidebarProps {
   iconOnly: boolean
-  onToggleIconOnly: () => void
+  onToggleIconOnly?: () => void
   onHide?: () => void
   flyout?: boolean
   onPin?: () => void
 }
 
-function SidebarHeaderButton({ label, tooltipSide, onClick, disabled, children }: { label: string; tooltipSide: "right" | "bottom"; onClick?: () => void; disabled?: boolean; children: ReactNode }) {
+function SidebarHeaderButton({ label, tooltipSide, onClick, disabled, className, children }: { label: string; tooltipSide: "right" | "bottom"; onClick?: () => void; disabled?: boolean; className?: string; children: ReactNode }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 flex-shrink-0 bg-sidebar text-sidebar-foreground/50 hover:text-sidebar-foreground"
+          className={cn("h-7 w-7 flex-shrink-0 bg-sidebar text-sidebar-foreground/50 hover:text-sidebar-foreground", className)}
           onClick={onClick}
           disabled={disabled}
           aria-label={label}
@@ -233,7 +233,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
 
   return (
     <div {...themeArea("app-sidebar")} className="flex h-full w-full flex-col border-r bg-sidebar border-sidebar-border">
-      {/* The button stays at the right edge of the part that shows. At the icon-only width the brand has no room left, and the button is in the icon column. */}
+      {/* The buttons stay at the right edge of the part that shows. At the icon-only width the brand has no room left, and the button is in the icon column. */}
       <div className={cn("flex flex-shrink-0 items-center pl-6 pr-[18px]", viewMode === "dense" ? "h-12" : "h-16")}>
         <h2 inert={iconOnly} className={cn("flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-lg font-semibold text-sidebar-foreground", labelClassName)}>
           {isDemo ? (
@@ -248,7 +248,13 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
           ) : (
             <>
               {!iconOnly && onHide && (
-                <SidebarHeaderButton label={t("sidebar.hideSidebar")} tooltipSide="bottom" onClick={onHide} disabled={!settingsSettled}>
+                <SidebarHeaderButton
+                  label={t("sidebar.hideSidebar")}
+                  tooltipSide="bottom"
+                  onClick={onHide}
+                  disabled={!settingsSettled}
+                  className="transition-[opacity,visibility] delay-300 duration-150 starting:invisible starting:opacity-0"
+                >
                   <PanelLeftDashed className="h-4 w-4" />
                 </SidebarHeaderButton>
               )}
@@ -481,7 +487,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               {onHide && (
-                <DropdownMenuItem onClick={onHide}>
+                <DropdownMenuItem onClick={onHide} disabled={!settingsSettled}>
                   <PanelLeftDashed className="h-4 w-4" />
                   {t("sidebar.hideSidebar")}
                 </DropdownMenuItem>

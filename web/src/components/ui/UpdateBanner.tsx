@@ -13,13 +13,13 @@ import { cn, collapseRowClassName } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Download, X } from "lucide-react"
-import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useUpdateBannerDismissed } from "@/hooks/useUpdateBannerDismissed"
 
 /** The update notice of the sidebar. With iconOnly, it is one icon that opens the Install dialog in Settings. */
 export function UpdateBanner({ iconOnly = false }: { iconOnly?: boolean }) {
   const { t } = useTranslation("common")
-  const [dismissed, setDismissed] = useState(false)
+  const [dismissed, dismiss] = useUpdateBannerDismissed()
   const selfUpdate = useSelfUpdate()
 
   const { data: updateInfo } = useQuery({
@@ -64,7 +64,7 @@ export function UpdateBanner({ iconOnly = false }: { iconOnly?: boolean }) {
                     size="icon"
                     variant="ghost"
                     className="h-4 w-4 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200"
-                    onClick={() => setDismissed(true)}
+                    onClick={dismiss}
                   >
                     <X className="h-3 w-3" />
                     <span className="sr-only">{t("updateBanner.dismiss")}</span>
