@@ -36,7 +36,7 @@ var (
 // Config bounds the waits and the flushes of a Transfer.
 type Config struct {
 	// Polls and PollInterval bound each wait for qBittorrent. CheckPolls
-	// bounds the wait for the check of every piece on the target.
+	// bounds the wait for the check of every piece on the target or the source.
 	Polls        int
 	CheckPolls   int
 	PollInterval time.Duration
