@@ -61,6 +61,7 @@ type added struct {
 	// checked is set once a check ran, or at the add in seed mode.
 	checked  bool
 	checking bool
+	reload   bool
 	// checkLeft counts the syncs that still report the running check.
 	checkLeft int
 	// progress is what the last check found.
@@ -204,13 +205,17 @@ func (s *Server) place(t *Torrent, param func(string) string) {
 }
 
 // run starts a torrent: seed mode looks for missing files again, as
-// qBittorrent loads a torrent with missing files again at its start, and a
-// torrent that was never checked is checked.
+// qBittorrent loads a torrent with missing files again at its start, and
+// checks the files that a rename gave it. A torrent never checked is checked.
 func (s *Server) run(t *Torrent) {
 	a := t.add
 	switch {
 	case a.seedMode:
 		a.missing = s.onDisk(t) < 1
+		if a.reload && !a.missing {
+			a.seedMode = false
+			s.startCheck(t)
+		}
 	case !a.checked && !a.checking:
 		s.startCheck(t)
 	}
@@ -254,9 +259,12 @@ func (s *Server) addedRow(t *Torrent) (state string, progress float64, listed bo
 	if a.checking {
 		if a.checkLeft > 0 {
 			a.checkLeft--
+			if a.reload {
+				return "checkingUP", 1, true
+			}
 			return "checkingDL", 0, true
 		}
-		a.checking, a.checked, a.progress = false, true, s.check(t)
+		a.checking, a.checked, a.reload, a.progress = false, true, false, s.check(t)
 		if a.stopWhenChecked {
 			a.stopped = true
 		}
