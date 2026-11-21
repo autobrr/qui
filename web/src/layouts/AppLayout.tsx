@@ -38,12 +38,13 @@ function AppLayoutContent() {
   const { t } = useTranslation("common")
   const [sidebarIconOnly, setSidebarIconOnly] = usePersistedSidebarIconOnly()
   const [sidebarHidden, setSidebarHidden] = usePersistedSidebarHidden()
-  const { pathname } = useLocation()
+  const pathname = useLocation({ select: (location) => location.pathname })
   const [flyout, setFlyout] = useState<FlyoutState>(closedFlyout)
-  if (!sidebarHidden && flyout.kind === "open") setFlyout(closedFlyout)
-  const flyoutOpen = sidebarHidden && flyout.kind === "open" && flyout.pathname === pathname
+  if (flyout.kind === "open" && (!sidebarHidden || flyout.pathname !== pathname)) setFlyout(closedFlyout)
+  const flyoutOpen = flyout.kind === "open"
   const dockedSidebarRef = useRef<HTMLDivElement>(null)
-  const returnFocus = useReturnFocus()
+  const openSidebarButtonRef = useRef<HTMLButtonElement>(null)
+  const returnFocus = useReturnFocus(openSidebarButtonRef)
   const pinFlyout = () => {
     setFlyout({ kind: "pinning" })
     setSidebarIconOnly(false)
@@ -67,8 +68,8 @@ function AppLayoutContent() {
         inert={sidebarHidden}
         className={cn(
           "hidden lg:flex flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out motion-reduce:transition-none",
-          sidebarHidden ? "w-0" : sidebarIconOnly ? "w-16" : "w-64",
-          flyout.kind === "pinning" && "transition-none"
+          sidebarHidden ? "w-0 overflow-clip" : sidebarIconOnly ? "w-16" : "w-64",
+          flyout.kind === "pinning" && "transition-none [&_*]:transition-none!"
         )}
       >
         <div className={cn("h-full w-full", sidebarHidden && (sidebarIconOnly ? "min-w-16" : "min-w-64"))}>
@@ -78,6 +79,7 @@ function AppLayoutContent() {
             onHide={() => {
               setFlyout(closedFlyout)
               setSidebarHidden(true)
+              requestAnimationFrame(() => requestAnimationFrame(() => openSidebarButtonRef.current?.focus()))
             }}
           />
         </div>
@@ -89,8 +91,8 @@ function AppLayoutContent() {
             side="left"
             hideClose
             aria-describedby={undefined}
-            className="w-64 gap-0 border-r-0 p-0 shadow-xl outline-none motion-reduce:animate-none"
-            overlayClassName="bg-black/20 motion-reduce:animate-none"
+            className="w-64 gap-0 border-r-0 p-0 shadow-xl outline-none motion-reduce:animate-none!"
+            overlayClassName="bg-black/20 motion-reduce:animate-none!"
             onClickCapture={(event) => {
               if (opensInPlace(event)) setFlyout(closedFlyout)
             }}
@@ -109,7 +111,7 @@ function AppLayoutContent() {
       )}
 
       <div className="flex flex-1 flex-col min-w-0 relative">
-        <Header sidebarIconOnly={sidebarIconOnly} sidebarHidden={sidebarHidden} sidebarOpen={flyoutOpen} onOpenSidebar={() => setFlyout({ kind: "open", pathname })} />
+        <Header sidebarIconOnly={sidebarIconOnly} sidebarHidden={sidebarHidden} sidebarOpen={flyoutOpen} openSidebarButtonRef={openSidebarButtonRef} onOpenSidebar={() => setFlyout({ kind: "open", pathname })} />
         <ReminderBar />
         <main className={cn(
           "flex-1 overflow-y-auto",

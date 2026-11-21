@@ -68,7 +68,7 @@ import { ChevronsUpDown, Cog, FileEdit, FunnelPlus, FunnelX, Info, ListTodo, Pan
 import { useSystemNotices } from "@/hooks/useSystemNotices"
 import { useUpdateBannerDismissed } from "@/hooks/useUpdateBannerDismissed"
 import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, type Ref, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { useTranslation } from "react-i18next"
 
@@ -76,10 +76,11 @@ interface HeaderProps {
   sidebarIconOnly?: boolean
   sidebarHidden?: boolean
   sidebarOpen?: boolean
+  openSidebarButtonRef?: Ref<HTMLButtonElement>
   onOpenSidebar?: () => void
 }
 
-function OpenSidebarButton({ open, onClick }: { open: boolean; onClick?: () => void }) {
+function OpenSidebarButton({ open, buttonRef, onClick }: { open: boolean; buttonRef?: Ref<HTMLButtonElement>; onClick?: () => void }) {
   const { t } = useTranslation("common")
   const systemNotices = useSystemNotices()
   const { data: updateInfo } = useQuery({ queryKey: ["latest-version"], queryFn: () => api.getLatestVersion(), enabled: false })
@@ -91,11 +92,12 @@ function OpenSidebarButton({ open, onClick }: { open: boolean; onClick?: () => v
   ].filter(Boolean)
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
+      <TooltipTrigger asChild onFocus={(event) => { if (!event.currentTarget.matches(":focus-visible")) event.preventDefault() }}>
         <Button
+          ref={buttonRef}
           variant="ghost"
           size="icon"
-          className="relative hidden text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:inline-flex"
+          className="group relative hidden text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:inline-flex"
           onClick={onClick}
           aria-label={[t("sidebar.showSidebar"), ...extras].join(", ")}
           aria-expanded={open}
@@ -103,9 +105,9 @@ function OpenSidebarButton({ open, onClick }: { open: boolean; onClick?: () => v
         >
           <PanelLeftOpen className="h-4 w-4" />
           {systemNotices.length > 0 && (
-            <span aria-hidden="true" className={cn("absolute top-1.5 left-1.5 h-1.5 w-1.5 rounded-full ring-2 ring-background", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
+            <span aria-hidden="true" className={cn("absolute top-1.5 left-1.5 h-1.5 w-1.5 rounded-full ring-2 ring-background transition-colors group-hover:ring-muted", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
           )}
-          {showUpdate && <span aria-hidden="true" className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-green-500 ring-2 ring-background" />}
+          {showUpdate && <span aria-hidden="true" className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-green-500 ring-2 ring-background transition-colors group-hover:ring-muted" />}
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="text-xs">
@@ -162,8 +164,7 @@ function UnifiedActionDropdown({ icon, tooltip, label, instances, onSelectInstan
   )
 }
 
-export function Header({ sidebarIconOnly = false, sidebarHidden = false, sidebarOpen = false, onOpenSidebar }: HeaderProps) {
-  // The icon-only or hidden sidebar has no room for the name of the instance or for the Unified scope, so the header shows them.
+export function Header({ sidebarIconOnly = false, sidebarHidden = false, sidebarOpen = false, openSidebarButtonRef, onOpenSidebar }: HeaderProps) {
   const showTitleOnDesktop = sidebarIconOnly || sidebarHidden
   const { t } = useTranslation("common")
   const navigate = useNavigate()
@@ -347,7 +348,7 @@ export function Header({ sidebarIconOnly = false, sidebarHidden = false, sidebar
   const headerElement = (
     <header {...themeArea("app-header")} className={cn("sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-2 lg:static py-2 lg:py-0", headerHeight, !isInstanceRoute && "sideways:hidden")}>
       <div className={cn("hidden md:flex items-center gap-2 mr-2 order-1 lg:order-none", innerHeight)}>
-        {sidebarHidden && <OpenSidebarButton open={sidebarOpen} onClick={onOpenSidebar} />}
+        {sidebarHidden && <OpenSidebarButton open={sidebarOpen} buttonRef={openSidebarButtonRef} onClick={onOpenSidebar} />}
         {instanceName && (hasMultipleActiveInstances || isAllInstancesRoute) ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
