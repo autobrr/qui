@@ -4873,10 +4873,7 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 	return sm.editTorrents(ctx, instanceID, hashes, "set tags", nil, func(client *Client) error {
 		// Check version support before attempting API call
 		if client.Supports(CapSetTags) {
-			if err := client.SetTags(ctx, hashes, tags); err != nil {
-				return err
-			}
-			return nil
+			return client.SetTags(ctx, hashes, tags)
 		}
 
 		return sm.setTagsFallback(ctx, instanceID, client, hashes, tags)
