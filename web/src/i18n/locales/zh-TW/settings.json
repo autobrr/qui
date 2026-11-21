@@ -1231,7 +1231,7 @@
   },
   "trackerCustomizations": {
     "cardTitle": "Tracker 自訂",
-    "cardDescription": "重新命名 Tracker，並將同一 Tracker 的多個網域合併為一個項目。",
+    "cardDescription": "重新命名 Tracker，並將同一 Tracker 的多個網域合併為一個項目。選擇 Tracker 以重新命名或合併。",
     "loading": "正在載入 Tracker…",
     "mergedFrom": "合併自：{{domains}}",
     "original": "原始：{{domain}}",
@@ -1292,9 +1292,8 @@
     "emptyDescription": "實例中有種子後，Tracker 會顯示在這裡。",
     "importButton": "匯入",
     "exportButton": "匯出",
-    "selectionHint": "選擇 Tracker 以重新命名或合併。",
+    "selectionLabel": "已選擇的 Tracker",
     "selectedCount_other": "已選擇 {{count}} 個",
-    "clearSelection": "清除選擇",
     "deleteDialog": {
       "title": "刪除自訂？",
       "description": "{{name}} 的 Tracker 將重新顯示其原始網域。此操作無法復原。"

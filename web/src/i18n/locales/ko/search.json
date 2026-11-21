@@ -1,47 +1,43 @@
 {
   "pageTitle": "인덱서 검색",
-  "pageDescription": "활성화된 모든 인덱서에서 검색합니다. 검색 유형을 선택하세요.",
-  "indexerSummary": {
-    "label": "인덱서",
-    "noEnabled": "활성화된 인덱서 없음",
-    "allEnabled": "모두 활성화됨 ({{count}})",
-    "selected": "{{total}}개 중 {{selected}}개 선택됨"
-  },
+  "pageDescription": "인덱서를 검색하고 릴리스를 qBittorrent에 추가하세요.",
   "indexerSheet": {
-    "title": "인덱서 선택",
-    "description": "검색에 포함할 인덱서를 선택하세요.",
-    "selectAll": "모두 선택",
-    "clearSelection": "선택 해제",
-    "noCategories": "카테고리 없음",
     "backend": {
       "prowlarr": "Prowlarr",
       "native": "기본",
       "jackett": "Jackett"
-    },
-    "footer": "활성화된 인덱서 {{total}}개 중 {{selected}}개 선택됨",
-    "done": "완료"
+    }
   },
   "instanceSelector": {
-    "chooseTarget": "대상 인스턴스 선택",
-    "noInstances": "인스턴스 없음",
-    "offline": "오프라인",
-    "targetNamed": "대상: {{name}}",
-    "targetNamedOffline": "대상: {{name}} (오프라인)",
-    "clearSelection": "선택 해제",
-    "noInstancesConfigured": "구성된 인스턴스가 없습니다",
-    "addInstanceNote": "설정 > 인스턴스에서 다운로드 인스턴스를 추가하세요."
+    "offline": "오프라인"
+  },
+  "picker": {
+    "indexersTitle": "검색할 인덱서",
+    "filter": "필터",
+    "all": "전체",
+    "none": "없음",
+    "done": "완료",
+    "noMatch": "필터와 일치하는 항목이 없습니다"
+  },
+  "form": {
+    "indexers": "인덱서",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "{{label}} 제거",
+    "clearFields": "필드 지우기",
+    "clearQuery": "검색어 지우기",
+    "recentSearches": "최근 검색",
+    "noIndexersTitle": "아직 인덱서가 없습니다",
+    "noIndexersBody": "인덱서를 추가하면 이 페이지에서 검색할 수 있습니다.",
+    "noIndexersAction": "인덱서 추가",
+    "indexersFailed": "인덱서를 불러오지 못했습니다"
   },
   "searchForm": {
     "advanced": "고급",
-    "active": "활성",
-    "clear": "지우기",
     "searching": "검색 중...",
     "search": "검색",
-    "advancedNote": "선택 사항(권장) Torznab 매개변수입니다.",
+    "advancedNote": "ID와 번호를 지원하는 인덱서에서는 정확하게 검색됩니다.",
     "searchType": "검색 유형",
-    "searchQuery": "검색어",
-    "noIndexers": "사용 가능한 활성화된 인덱서가 없습니다. 다음에서 인덱서를 추가하고 활성화하세요:",
-    "indexersPage": "인덱서 페이지"
+    "searchQuery": "검색어"
   },
   "searchTypes": {
     "movies": {
@@ -108,25 +104,63 @@
     }
   },
   "results": {
-    "showing": "{{total}}개 결과 중 {{filtered}}개 표시",
+    "count_other": "결과 {{count}}개",
+    "filteredCount_other": "결과 {{count}}개 중 {{shown}}개",
+    "searching_other": "인덱서 {{count}}개 검색 중...",
     "filterPlaceholder": "결과 필터링...",
-    "clearSearch": "검색 지우기",
-    "clearAllFilters": "모든 열 필터 지우기",
-    "pickInstance": "인스턴스 선택",
-    "download": "다운로드",
-    "viewDetails": "세부 정보 보기",
-    "clearSelectionButton": "선택 해제",
-    "actions": "작업",
-    "quickAddTo": "빠른 추가...",
+    "clearFilters": "필터 지우기",
+    "noMatches": "필터와 일치하는 결과가 없습니다.",
     "cachedSummary": "캐시됨 {{cached}} · 만료 {{expires}}",
-    "cacheSource": "소스: {{source}} · 범위: {{scope}}",
-    "refreshReadyIn": "{{seconds}}초 후 준비됨",
+    "cachedAgo": "캐시됨 · {{age}}",
+    "live": "실시간",
+    "partial": "불완전",
+    "partialHint": "일부 인덱서가 응답하지 않았습니다. 새로 고침하여 다시 요청하세요.",
+    "refresh": "새로 고침",
     "refreshFromIndexers": "인덱서에서 새로 고침",
+    "refreshCooldown": "잠시 후 다시 새로 고칠 수 있습니다",
+    "showMore": "더 보기",
+    "shownOf": "{{total}}개 중 {{shown}}개 표시",
     "categoryFallback": "카테고리 {{id}}",
+    "noResults": "결과를 찾을 수 없습니다",
     "noResultsFor": "\"{{query}}\"에 대한 결과를 찾을 수 없습니다",
-    "enterQuery": "시작하려면 검색어를 입력하세요",
-    "free": "무료",
-    "freeNeutral": "중립"
+    "noResultsHint": "철자를 확인하거나, 다른 검색 유형을 선택하거나, 더 많은 인덱서를 검색하세요.",
+    "searchAllIndexers": "모든 인덱서 검색",
+    "failed": "검색에 실패했습니다",
+    "retry": "다시 시도",
+    "idleTitle": "인덱서 검색",
+    "idleHint": "제목, tt1234567 같은 IMDb ID 또는 tvdb 123456 같은 TVDb ID를 입력하세요.",
+    "free": "무료"
+  },
+  "facets": {
+    "collection": "서비스",
+    "normal": "일반"
+  },
+  "sort": {
+    "label": "정렬",
+    "seeders": "시더 많은 순",
+    "newest": "최신순",
+    "oldest": "오래된 순",
+    "largest": "큰 순",
+    "smallest": "작은 순",
+    "title": "제목 A–Z",
+    "indexer": "인덱서 A–Z"
+  },
+  "columns": {
+    "age": "경과 시간"
+  },
+  "row": {
+    "add": "추가",
+    "addTo": "추가할 위치",
+    "more": "추가 작업",
+    "openIndexer": "인덱서에서 열기",
+    "copyTitle": "제목 복사",
+    "discount": "{{percent}}%",
+    "upload": "업로드 {{factor}}×"
+  },
+  "bulk": {
+    "label": "선택한 결과",
+    "selected_other": "{{count}}개 선택됨",
+    "selectShown": "표시된 결과 모두 선택"
   },
   "historyMeta": "{{type}} · 결과 {{count}}개 · {{timestamp}}",
   "table": {
@@ -134,53 +168,27 @@
     "indexer": "인덱서",
     "size": "크기",
     "seeders": "시더",
+    "leechers": "리처",
     "category": "카테고리",
     "source": "소스",
-    "collection": "컬렉션",
     "group": "그룹",
     "freeleech": "Freeleech",
-    "published": "게시일",
     "actions": "작업",
-    "downloadTorrent": ".torrent 다운로드",
-    "viewDetails": "세부 정보 보기",
-    "noInfoUrl": "정보 URL 없음"
+    "downloadTorrent": ".torrent 다운로드"
   },
   "refreshDialog": {
     "title": "캐시를 우회하시겠습니까?",
     "description": "선택한 모든 인덱서에 요청을 직접 전송합니다. 속도 제한을 피하려면 신중하게 사용하세요. 짧은 대기 시간 후 다시 새로 고칠 수 있습니다.",
-    "cancel": "취소",
     "refreshNow": "지금 새로 고침"
   },
   "cache": {
-    "cacheAndLive": "캐시 + 실시간",
-    "cacheHit": "캐시 적중",
-    "liveFetch": "실시간 가져오기"
+    "cacheAndLive": "캐시 + 실시간"
   },
   "card": {
-    "actions": "작업",
-    "addToInstance": "인스턴스에 추가",
-    "addToNamed": "{{name}}에 추가",
-    "addToNamedOffline": "{{name}}에 추가 (오프라인)",
-    "quickAddTo": "빠른 추가...",
-    "download": "다운로드",
-    "viewDetails": "세부 정보 보기",
-    "clearSelection": "선택 해제",
-    "seeders": "시더 {{count}}개",
-    "published": "게시일 {{date}}"
+    "addToNamed": "{{name}}에 추가"
   },
   "toast": {
-    "enterSearchQuery": "검색어를 입력하거나 고급 매개변수를 채워 주세요",
-    "selectIndexer": "인덱서를 하나 이상 선택해 주세요",
-    "noEnabledIndexers": "사용 가능한 활성화된 인덱서가 없습니다. 먼저 인덱서를 추가하고 활성화하세요.",
-    "noResults": "결과를 찾을 수 없습니다",
-    "foundResults": "결과 {{total}}개를 찾았습니다{{suffix}}",
-    "cached": " (캐시됨)",
-    "searchFailed": "검색 실패: {{error}}",
-    "failedToLoadIndexers": "인덱서를 불러오지 못했습니다",
-    "addInstanceFirst": "설정 -> 인스턴스에서 다운로드 인스턴스를 추가하세요",
-    "chooseInstance": "토렌트를 추가할 인스턴스를 선택하세요",
     "noDownloadUrl": "이 결과에 사용 가능한 다운로드 URL이 없습니다",
-    "noInfoUrl": "이 결과에 사용 가능한 추가 정보가 없습니다",
     "invalidProtocol": "잘못된 URL 프로토콜",
     "invalidUrl": "잘못된 URL 형식"
   }

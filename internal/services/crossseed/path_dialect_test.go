@@ -297,8 +297,11 @@ func TestPathDialect_ManualMatchPreview(t *testing.T) {
 	}
 	s := slashBackendService(instance, backend)
 
-	got := s.manualMatchEffectiveSavePath(t.Context(), instance, nil, "/data/torrents", "Movie", "tracker.example",
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}})
+	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
+	got, ok := s.linkSavePathPreview(t.Context(), backend, instance, nil,
+		singleAddTorrent{name: "Movie", files: files, trackerDomain: "tracker.example"},
+		&qbt.Torrent{SavePath: "/data/torrents"}, files)
+	require.True(t, ok)
 	require.Equal(t, "/links/tracker.example", got)
 }
 
@@ -318,8 +321,11 @@ func TestPathDialect_ManualMatchPreviewMapsTheRoute(t *testing.T) {
 		crossSeed: &models.Instance{ID: 2, Name: "seeds"},
 	}
 
-	got := s.manualMatchEffectiveSavePath(t.Context(), instance, route, "/data/torrents", "Movie", "tracker.example",
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}})
+	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
+	got, ok := s.linkSavePathPreview(t.Context(), backend, instance, route,
+		singleAddTorrent{name: "Movie", files: files, trackerDomain: "tracker.example"},
+		&qbt.Torrent{SavePath: "/data/torrents"}, files)
+	require.True(t, ok)
 	require.Equal(t, "/seeds-data/seeds", got)
 }
 

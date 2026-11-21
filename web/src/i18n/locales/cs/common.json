@@ -157,7 +157,6 @@
     "currentInstance": "Aktuální instance: {{name}}. Klikněte pro přepnutí instance.",
     "connected": "Připojeno",
     "disconnected": "Odpojeno",
-    "noActiveInstances": "Žádné aktivní instance",
     "showFilters": "Zobrazit filtry",
     "hideFilters": "Skrýt filtry",
     "addTorrent": "Přidat torrent",
@@ -230,7 +229,6 @@
     "settings": "Nastavení",
     "qbittorrentClients": "qBittorrent klienti",
     "instances": "Instance",
-    "noActiveInstances": "Žádné aktivní instance",
     "loading": "Načítání...",
     "noActiveClients": "Žádní aktivní klienti",
     "updateAvailable": "Aktualizace dostupná",
@@ -570,6 +568,7 @@
     "retry": "Zkusit znovu",
     "edit": "Upravit",
     "moreActions": "Další akce",
-    "enabled": "Povoleno"
+    "enabled": "Povoleno",
+    "clearSelection": "Zrušit výběr"
   }
 }

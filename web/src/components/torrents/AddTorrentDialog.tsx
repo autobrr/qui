@@ -41,6 +41,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities.ts"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { useAddTorrentPreferences, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
+import { addUrlsByIndexer } from "@/lib/add-torrent-urls"
 import { api } from "@/lib/api"
 import { canOfferManualCrossSeed } from "@/lib/manual-cross-seed"
 import { resolveDestinationPath } from "@/lib/save-path"
@@ -105,7 +106,7 @@ async function parseTorrentFile(file: File): Promise<string | null> {
 
 export type AddTorrentDropPayload =
   | { type: "file"; files: File[] }
-  | { type: "url"; urls: string[]; indexerId?: number }
+  | { type: "url"; urls: string[]; indexerByUrl?: Record<string, number> }
 
 interface AddTorrentDialogProps {
   instanceId: number
@@ -137,7 +138,7 @@ interface FormData {
   rename: string
   tempPathEnabled: boolean
   tempPath: string
-  indexerId?: number
+  indexerByUrl?: Record<string, number>
 }
 
 interface DuplicateEntryDetails {
@@ -529,10 +530,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       if (activeTab === "file" && data.torrentFiles && data.torrentFiles.length > 0) {
         submitData.torrentFiles = data.torrentFiles
       } else if (activeTab === "url" && data.urls) {
-        submitData.urls = data.urls.split("\n").map(u => u.trim()).filter(Boolean)
-        if (data.indexerId) {
-          submitData.indexerId = data.indexerId
-        }
+        const urls = data.urls.split("\n").map(u => u.trim()).filter(Boolean)
+        return addUrlsByIndexer(request => api.addTorrent(instanceId, request), submitData, urls, data.indexerByUrl)
       }
 
       return api.addTorrent(instanceId, submitData)
@@ -614,7 +613,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       limitRatio: 0,
       limitSeedTime: 0,
       rename: "",
-      indexerId: undefined as number | undefined,
+      indexerByUrl: undefined as Record<string, number> | undefined,
     },
     onSubmit: async ({ value }) => {
       await mutation.mutateAsync(value)
@@ -787,7 +786,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       setActiveTab("url")
       form.setFieldValue("urls", urls.join("\n"))
       form.setFieldValue("torrentFiles", null)
-      form.setFieldValue("indexerId", dropPayload.indexerId)
+      form.setFieldValue("indexerByUrl", dropPayload.indexerByUrl)
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }

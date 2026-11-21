@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathcmp"
-	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 // autoTMMDecision holds the inputs and result of autoTMM evaluation for logging.
@@ -442,42 +441,6 @@ func belowThresholdMessage(mode string, coverage, threshold float64, materialize
 		totalBytes,
 		threshold*100,
 	)
-}
-
-// linkPresetDir applies the instance's hardlink directory preset to baseDir:
-// baseDir itself for flat, or a tracker or instance folder in it.
-func (s *Service) linkPresetDir(
-	ctx context.Context,
-	d fsops.PathDialect,
-	instance *models.Instance,
-	baseDir string,
-	candidate CrossSeedCandidate,
-	incomingTrackerDomain string,
-	req *CrossSeedRequest,
-) string {
-	switch instance.HardlinkDirPreset {
-	case "by-tracker":
-		return d.Join(baseDir, pathutil.SanitizePathSegment(s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)))
-	case "by-instance":
-		_, name := candidate.receiver()
-		return d.Join(baseDir, pathutil.SanitizePathSegment(name))
-	default: // "flat" or unknown
-		return baseDir
-	}
-}
-
-// linkDestDir returns the folder that the link tree of a torrent adds to
-// presetDir, and the directory the tree goes into when that folder is free.
-// Link mode always uses contentLayout=Original, so a torrent with a root
-// folder brings its own top folder. A rootless torrent gets an isolation
-// folder named after the torrent, and the tree goes into it.
-func linkDestDir(d fsops.PathDialect, presetDir, torrentName string, files []hardlinktree.TorrentFile) (topFolder, destDir string) {
-	if hardlinktree.HasCommonRootFolder(files) {
-		root, _, _ := strings.Cut(files[0].Path, "/")
-		return d.Join(presetDir, root), presetDir
-	}
-	isolation := d.Join(presetDir, pathutil.IsolationFolder(torrentName))
-	return isolation, isolation
 }
 
 // linkCategorySavePath is the save path of the cross-seed category of a link

@@ -88,7 +88,6 @@
     "wholeChip_other": "Alle {{count}} ausgewählt",
     "pickAll_one": "Alle {{count}} auswählen",
     "pickAll_other": "Alle {{count}} auswählen",
-    "clear": "Auswahl aufheben",
     "done": {
       "retry_one": "{{count}} Zeile läuft erneut.",
       "retry_other": "{{count}} Zeilen laufen erneut.",

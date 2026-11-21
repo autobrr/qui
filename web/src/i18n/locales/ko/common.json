@@ -141,7 +141,6 @@
     "currentInstance": "현재 인스턴스: {{name}}. 클릭하여 인스턴스를 전환합니다.",
     "connected": "연결됨",
     "disconnected": "연결 끊김",
-    "noActiveInstances": "활성 인스턴스 없음",
     "showFilters": "필터 표시",
     "hideFilters": "필터 숨기기",
     "addTorrent": "토렌트 추가",
@@ -212,7 +211,6 @@
     "settings": "설정",
     "qbittorrentClients": "qBittorrent 클라이언트",
     "instances": "인스턴스",
-    "noActiveInstances": "활성 인스턴스 없음",
     "loading": "불러오는 중...",
     "noActiveClients": "활성 클라이언트 없음",
     "updateAvailable": "업데이트 사용 가능",
@@ -532,6 +530,7 @@
     "retry": "다시 시도",
     "edit": "편집",
     "moreActions": "추가 작업",
-    "enabled": "사용"
+    "enabled": "사용",
+    "clearSelection": "선택 해제"
   }
 }

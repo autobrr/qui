@@ -1240,7 +1240,7 @@
   },
   "trackerCustomizations": {
     "cardTitle": "Personalização de trackers",
-    "cardDescription": "Renomeie trackers e mescle os domínios de um mesmo tracker em uma única entrada.",
+    "cardDescription": "Renomeie trackers e mescle os domínios de um mesmo tracker em uma única entrada. Selecione trackers para renomeá-los ou mesclá-los.",
     "loading": "Carregando trackers…",
     "mergedFrom": "Mesclado de: {{domains}}",
     "original": "Original: {{domain}}",
@@ -1303,10 +1303,9 @@
     "emptyDescription": "Os trackers aparecem aqui quando uma instância tem torrents.",
     "importButton": "Importar",
     "exportButton": "Exportar",
-    "selectionHint": "Selecione trackers para renomeá-los ou mesclá-los.",
+    "selectionLabel": "Trackers selecionados",
     "selectedCount_one": "{{count}} selecionado",
     "selectedCount_other": "{{count}} selecionados",
-    "clearSelection": "Limpar",
     "deleteDialog": {
       "title": "Excluir personalização?",
       "description": "Os trackers de {{name}} voltarão a mostrar seus próprios domínios. Esta ação não pode ser desfeita."

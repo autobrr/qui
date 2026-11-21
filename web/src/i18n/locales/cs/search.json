@@ -1,47 +1,43 @@
 {
   "pageTitle": "Prohledat indexery",
-  "pageDescription": "Prohledejte všechny povolené indexery. Vyberte typ vyhledávání.",
-  "indexerSummary": {
-    "label": "Indexery",
-    "noEnabled": "Žádné povolené indexery",
-    "allEnabled": "Všechny povolené ({{count}})",
-    "selected": "{{selected}} z {{total}} vybráno"
-  },
+  "pageDescription": "Prohledávejte své indexery a přidejte release do qBittorrentu.",
   "indexerSheet": {
-    "title": "Výběr indexerů",
-    "description": "Vyberte, které indexery mají být zahrnuty do vyhledávání.",
-    "selectAll": "Vybrat vše",
-    "clearSelection": "Vymazat výběr",
-    "noCategories": "Žádné kategorie",
     "backend": {
       "prowlarr": "Prowlarr",
       "native": "Nativní",
       "jackett": "Jackett"
-    },
-    "footer": "{{selected}} z {{total}} povolených indexerů vybráno",
-    "done": "Hotovo"
+    }
   },
   "instanceSelector": {
-    "chooseTarget": "Vyberte cílovou instanci",
-    "noInstances": "Žádné instance",
-    "offline": "Nedostupné",
-    "targetNamed": "Cíl: {{name}}",
-    "targetNamedOffline": "Cíl: {{name}} (offline)",
-    "clearSelection": "Vymazat výběr",
-    "noInstancesConfigured": "Žádné instance nakonfigurovány",
-    "addInstanceNote": "Přidejte instanci ke stahování pod Nastavení > Instance."
+    "offline": "Nedostupné"
+  },
+  "picker": {
+    "indexersTitle": "Indexery k prohledání",
+    "filter": "Filtrovat",
+    "all": "Vše",
+    "none": "Nic",
+    "done": "Hotovo",
+    "noMatch": "Filtru nic neodpovídá"
+  },
+  "form": {
+    "indexers": "Indexery",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Odebrat {{label}}",
+    "clearFields": "Vymazat pole",
+    "clearQuery": "Vymazat dotaz",
+    "recentSearches": "Nedávná hledání",
+    "noIndexersTitle": "Zatím žádné indexery",
+    "noIndexersBody": "Přidejte indexer, abyste ho mohli prohledávat z této stránky.",
+    "noIndexersAction": "Přidat indexery",
+    "indexersFailed": "Nepodařilo se načíst indexery"
   },
   "searchForm": {
     "advanced": "Pokročilé",
-    "active": "Aktivní",
-    "clear": "Vymazat",
     "searching": "Hledá se...",
     "search": "Hledat",
-    "advancedNote": "Volitelné (ale doporučené) Torznab parametry.",
+    "advancedNote": "ID a čísla zpřesní hledání u indexerů, které je podporují.",
     "searchType": "Typ hledání",
-    "searchQuery": "Hledaný dotaz",
-    "noIndexers": "Žádné povolené indexery. Přidejte a povolte indexery na stránce",
-    "indexersPage": "Indexery"
+    "searchQuery": "Hledaný dotaz"
   },
   "searchTypes": {
     "movies": {
@@ -108,25 +104,71 @@
     }
   },
   "results": {
-    "showing": "Zobrazujeme {{filtered}} z {{total}} výsledků",
+    "count_one": "{{count}} výsledek",
+    "count_few": "{{count}} výsledky",
+    "count_other": "{{count}} výsledků",
+    "filteredCount_one": "{{shown}} z {{count}} výsledku",
+    "filteredCount_few": "{{shown}} z {{count}} výsledků",
+    "filteredCount_other": "{{shown}} z {{count}} výsledků",
+    "searching_one": "Prohledávání {{count}} indexeru...",
+    "searching_few": "Prohledávání {{count}} indexerů...",
+    "searching_other": "Prohledávání {{count}} indexerů...",
     "filterPlaceholder": "Filtrovat výsledky...",
-    "clearSearch": "Vymazat hledání",
-    "clearAllFilters": "Vymazat všechny filtry",
-    "pickInstance": "Vybrat instanci",
-    "download": "Stáhnout",
-    "viewDetails": "Zobrazit detaily",
-    "clearSelectionButton": "Vymazat výběr",
-    "actions": "Akce",
-    "quickAddTo": "Rychlé přidání do...",
+    "clearFilters": "Vymazat filtry",
+    "noMatches": "Filtrům neodpovídá žádný výsledek.",
     "cachedSummary": "V cache {{cached}} · Vyprší {{expires}}",
-    "cacheSource": "Zdroj: {{source}} · Rozsah: {{scope}}",
-    "refreshReadyIn": "Připraveno za {{seconds}}s",
+    "cachedAgo": "V cache · {{age}}",
+    "live": "Živě",
+    "partial": "Neúplné",
+    "partialHint": "Některé indexery neodpověděly. Obnovením se jich zeptáte znovu.",
+    "refresh": "Obnovit",
     "refreshFromIndexers": "Obnovit z indexerů",
+    "refreshCooldown": "Znovu obnovit můžete za chvíli",
+    "showMore": "Zobrazit více",
+    "shownOf": "Zobrazeno {{shown}} z {{total}}",
     "categoryFallback": "Kategorie {{id}}",
+    "noResults": "Nebyly nalezeny žádné výsledky",
     "noResultsFor": "Žádné výsledky pro \"{{query}}\"",
-    "enterQuery": "Zadejte hledaný dotaz pro začátek",
-    "free": "Free",
-    "freeNeutral": "Neutrální"
+    "noResultsHint": "Zkontrolujte pravopis, zvolte jiný typ hledání nebo prohledejte více indexerů.",
+    "searchAllIndexers": "Prohledat všechny indexery",
+    "failed": "Hledání selhalo",
+    "retry": "Zkusit znovu",
+    "idleTitle": "Prohledejte své indexery",
+    "idleHint": "Zadejte název, IMDb ID jako tt1234567 nebo TVDb ID jako tvdb 123456.",
+    "free": "Free"
+  },
+  "facets": {
+    "collection": "Služba",
+    "normal": "Normální"
+  },
+  "sort": {
+    "label": "Řadit",
+    "seeders": "Nejvíce seederů",
+    "newest": "Nejnovější",
+    "oldest": "Nejstarší",
+    "largest": "Největší",
+    "smallest": "Nejmenší",
+    "title": "Název A–Z",
+    "indexer": "Indexer A–Z"
+  },
+  "columns": {
+    "age": "Stáří"
+  },
+  "row": {
+    "add": "Přidat",
+    "addTo": "Přidat do",
+    "more": "Další akce",
+    "openIndexer": "Otevřít na indexeru",
+    "copyTitle": "Kopírovat název",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× upload"
+  },
+  "bulk": {
+    "label": "Vybrané výsledky",
+    "selected_one": "Vybráno: {{count}}",
+    "selected_few": "Vybráno: {{count}}",
+    "selected_other": "Vybráno: {{count}}",
+    "selectShown": "Vybrat vše zobrazené"
   },
   "historyMeta": "{{type}} · {{count}} výsledků · {{timestamp}}",
   "table": {
@@ -134,53 +176,27 @@
     "indexer": "Indexerů",
     "size": "Velikost",
     "seeders": "Seeders",
+    "leechers": "Stahovatelé",
     "category": "Kategorie",
     "source": "Zdroj",
-    "collection": "Kolekce",
     "group": "Skupina",
     "freeleech": "Freeleech",
-    "published": "Publikováno",
     "actions": "Akce",
-    "downloadTorrent": "Stáhnout .torrent",
-    "viewDetails": "Zobrazit detaily",
-    "noInfoUrl": "Žádné info URL"
+    "downloadTorrent": "Stáhnout .torrent"
   },
   "refreshDialog": {
     "title": "Obejít cache?",
     "description": "Toto bude poslat požadavek přímo každému vybranému indexeru. Používejte opatrně, aby jste se vyhnuli limitům rychlosti. Můžete obnovit znovu po krátké odezvě.",
-    "cancel": "Zrušit",
     "refreshNow": "Obnovit nyní"
   },
   "cache": {
-    "cacheAndLive": "Cache + živé",
-    "cacheHit": "Cache zásah",
-    "liveFetch": "Živé načítání"
+    "cacheAndLive": "Cache + živé"
   },
   "card": {
-    "actions": "Akce",
-    "addToInstance": "Přidat do instance",
-    "addToNamed": "Přidat do {{name}}",
-    "addToNamedOffline": "Přidat do {{name}} (offline)",
-    "quickAddTo": "Rychlé přidání do...",
-    "download": "Stáhnout",
-    "viewDetails": "Zobrazit detaily",
-    "clearSelection": "Vymazat výběr",
-    "seeders": "{{count}} seederů",
-    "published": "Publikováno {{date}}"
+    "addToNamed": "Přidat do {{name}}"
   },
   "toast": {
-    "enterSearchQuery": "Zadejte hledaný dotaz nebo vyplňte pokročilé parametry",
-    "selectIndexer": "Vyberte alespoň jeden indexer",
-    "noEnabledIndexers": "Žádné povolené indexery. Nejprve přidejte a povolte indexery.",
-    "noResults": "Žádné výsledky",
-    "foundResults": "Nalezeno {{total}} výsledků{{suffix}}",
-    "cached": " (v cache)",
-    "searchFailed": "Hledání selhalo: {{error}}",
-    "failedToLoadIndexers": "Nepodařilo se načíst indexery",
-    "addInstanceFirst": "Přidejte instanci ke stahování pod Nastavení > Instance",
-    "chooseInstance": "Vyberte instanci ke stahování",
     "noDownloadUrl": "Žádné stahovací URL pro tento výsledek",
-    "noInfoUrl": "Žádné další informace pro tento výsledek",
     "invalidProtocol": "Neplatný URL protokol",
     "invalidUrl": "Neplatný formát URL"
   }

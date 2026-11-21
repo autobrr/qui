@@ -1,47 +1,43 @@
 {
   "pageTitle": "Indexer durchsuchen",
-  "pageDescription": "Durchsuche alle aktivierten Indexer. Wähle einen Suchtyp.",
-  "indexerSummary": {
-    "label": "Indexer",
-    "noEnabled": "Keine aktivierten Indexer",
-    "allEnabled": "Alle aktiviert ({{count}})",
-    "selected": "{{selected}} von {{total}} ausgewählt"
-  },
+  "pageDescription": "Durchsuche deine Indexer und füge ein Release zu qBittorrent hinzu.",
   "indexerSheet": {
-    "title": "Indexer-Auswahl",
-    "description": "Wähle aus, welche Indexer in Suchen einbezogen werden.",
-    "selectAll": "Alle auswählen",
-    "clearSelection": "Auswahl aufheben",
-    "noCategories": "Keine Kategorien",
     "backend": {
       "prowlarr": "Prowlarr",
       "native": "Nativ",
       "jackett": "Jackett"
-    },
-    "footer": "{{selected}} von {{total}} aktivierten Indexern ausgewählt",
-    "done": "Fertig"
+    }
   },
   "instanceSelector": {
-    "chooseTarget": "Zielinstanz wählen",
-    "noInstances": "Keine Instanzen",
-    "offline": "Offline",
-    "targetNamed": "Ziel: {{name}}",
-    "targetNamedOffline": "Ziel: {{name}} (offline)",
-    "clearSelection": "Auswahl aufheben",
-    "noInstancesConfigured": "Keine Instanzen konfiguriert",
-    "addInstanceNote": "Füge unter Einstellungen > Instanzen eine Download-Instanz hinzu."
+    "offline": "Offline"
+  },
+  "picker": {
+    "indexersTitle": "Zu durchsuchende Indexer",
+    "filter": "Filtern",
+    "all": "Alle",
+    "none": "Keine",
+    "done": "Fertig",
+    "noMatch": "Nichts passt zum Filter"
+  },
+  "form": {
+    "indexers": "Indexer",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "{{label}} entfernen",
+    "clearFields": "Felder leeren",
+    "clearQuery": "Suchanfrage leeren",
+    "recentSearches": "Letzte Suchen",
+    "noIndexersTitle": "Noch keine Indexer",
+    "noIndexersBody": "Füge einen Indexer hinzu, um ihn auf dieser Seite zu durchsuchen.",
+    "noIndexersAction": "Indexer hinzufügen",
+    "indexersFailed": "Fehler beim Laden der Indexer"
   },
   "searchForm": {
     "advanced": "Erweitert",
-    "active": "Aktiv",
-    "clear": "Leeren",
     "searching": "Wird gesucht...",
     "search": "Suchen",
-    "advancedNote": "Optionale (aber empfohlene) Torznab-Parameter.",
+    "advancedNote": "IDs und Nummern machen die Suche bei Indexern, die sie unterstützen, exakt.",
     "searchType": "Suchtyp",
-    "searchQuery": "Suchanfrage",
-    "noIndexers": "Keine aktivierten Indexer verfügbar. Bitte füge Indexer hinzu und aktiviere sie auf der",
-    "indexersPage": "Indexer-Seite"
+    "searchQuery": "Suchanfrage"
   },
   "searchTypes": {
     "movies": {
@@ -108,25 +104,67 @@
     }
   },
   "results": {
-    "showing": "{{filtered}} von {{total}} Ergebnissen werden angezeigt",
+    "count_one": "{{count}} Ergebnis",
+    "count_other": "{{count}} Ergebnisse",
+    "filteredCount_one": "{{shown}} von {{count}} Ergebnis",
+    "filteredCount_other": "{{shown}} von {{count}} Ergebnissen",
+    "searching_one": "Durchsuche {{count}} Indexer...",
+    "searching_other": "Durchsuche {{count}} Indexer...",
     "filterPlaceholder": "Ergebnisse filtern...",
-    "clearSearch": "Suche leeren",
-    "clearAllFilters": "Alle Spaltenfilter zurücksetzen",
-    "pickInstance": "Instanz wählen",
-    "download": "Herunterladen",
-    "viewDetails": "Details anzeigen",
-    "clearSelectionButton": "Auswahl aufheben",
-    "actions": "Aktionen",
-    "quickAddTo": "Schnell hinzufügen zu...",
+    "clearFilters": "Filter zurücksetzen",
+    "noMatches": "Kein Ergebnis passt zu den Filtern.",
     "cachedSummary": "Gecacht {{cached}} · Läuft ab {{expires}}",
-    "cacheSource": "Quelle: {{source}} · Bereich: {{scope}}",
-    "refreshReadyIn": "Bereit in {{seconds}}s",
+    "cachedAgo": "Gecacht · {{age}}",
+    "live": "Live",
+    "partial": "Unvollständig",
+    "partialHint": "Einige Indexer haben nicht geantwortet. Aktualisiere, um sie erneut abzufragen.",
+    "refresh": "Aktualisieren",
     "refreshFromIndexers": "Von Indexern aktualisieren",
+    "refreshCooldown": "Du kannst gleich erneut aktualisieren",
+    "showMore": "Mehr anzeigen",
+    "shownOf": "{{shown}} von {{total}} angezeigt",
     "categoryFallback": "Kategorie {{id}}",
+    "noResults": "Keine Ergebnisse gefunden",
     "noResultsFor": "Keine Ergebnisse für \"{{query}}\" gefunden",
-    "enterQuery": "Gib eine Suchanfrage ein, um loszulegen",
-    "free": "Free",
-    "freeNeutral": "Neutral"
+    "noResultsHint": "Prüfe die Schreibweise, wähle einen anderen Suchtyp oder durchsuche mehr Indexer.",
+    "searchAllIndexers": "Alle Indexer durchsuchen",
+    "failed": "Die Suche ist fehlgeschlagen",
+    "retry": "Erneut versuchen",
+    "idleTitle": "Durchsuche deine Indexer",
+    "idleHint": "Gib einen Titel, eine IMDb-ID wie tt1234567 oder eine TVDb-ID wie tvdb 123456 ein.",
+    "free": "Free"
+  },
+  "facets": {
+    "collection": "Dienst",
+    "normal": "Normal"
+  },
+  "sort": {
+    "label": "Sortieren",
+    "seeders": "Meiste Seeder",
+    "newest": "Neueste",
+    "oldest": "Älteste",
+    "largest": "Größte",
+    "smallest": "Kleinste",
+    "title": "Titel A–Z",
+    "indexer": "Indexer A–Z"
+  },
+  "columns": {
+    "age": "Alter"
+  },
+  "row": {
+    "add": "Hinzufügen",
+    "addTo": "Hinzufügen zu",
+    "more": "Weitere Aktionen",
+    "openIndexer": "Beim Indexer öffnen",
+    "copyTitle": "Titel kopieren",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× Upload"
+  },
+  "bulk": {
+    "label": "Ausgewählte Ergebnisse",
+    "selected_one": "{{count}} ausgewählt",
+    "selected_other": "{{count}} ausgewählt",
+    "selectShown": "Alle angezeigten auswählen"
   },
   "historyMeta": "{{type}} · {{count}} Ergebnisse · {{timestamp}}",
   "table": {
@@ -134,53 +172,27 @@
     "indexer": "Indexer",
     "size": "Größe",
     "seeders": "Seeder",
+    "leechers": "Leecher",
     "category": "Kategorie",
     "source": "Quelle",
-    "collection": "Sammlung",
     "group": "Gruppe",
     "freeleech": "Freeleech",
-    "published": "Veröffentlicht",
     "actions": "Aktionen",
-    "downloadTorrent": ".torrent herunterladen",
-    "viewDetails": "Details anzeigen",
-    "noInfoUrl": "Keine Info-URL"
+    "downloadTorrent": ".torrent herunterladen"
   },
   "refreshDialog": {
     "title": "Cache umgehen?",
     "description": "Dadurch wird die Anfrage direkt an jeden ausgewählten Indexer gesendet. Verwende dies sparsam, um Rate-Limits zu vermeiden. Du kannst nach einer kurzen Abkühlphase erneut aktualisieren.",
-    "cancel": "Abbrechen",
     "refreshNow": "Jetzt aktualisieren"
   },
   "cache": {
-    "cacheAndLive": "Cache + Live",
-    "cacheHit": "Cache-Treffer",
-    "liveFetch": "Live-Abruf"
+    "cacheAndLive": "Cache + Live"
   },
   "card": {
-    "actions": "Aktionen",
-    "addToInstance": "Zu Instanz hinzufügen",
-    "addToNamed": "Zu {{name}} hinzufügen",
-    "addToNamedOffline": "Zu {{name}} hinzufügen (offline)",
-    "quickAddTo": "Schnell hinzufügen zu...",
-    "download": "Herunterladen",
-    "viewDetails": "Details anzeigen",
-    "clearSelection": "Auswahl aufheben",
-    "seeders": "{{count}} Seeder",
-    "published": "Veröffentlicht {{date}}"
+    "addToNamed": "Zu {{name}} hinzufügen"
   },
   "toast": {
-    "enterSearchQuery": "Bitte gib eine Suchanfrage ein oder fülle die erweiterten Parameter aus",
-    "selectIndexer": "Bitte wähle mindestens einen Indexer aus",
-    "noEnabledIndexers": "Keine aktivierten Indexer verfügbar. Bitte füge zuerst Indexer hinzu und aktiviere sie.",
-    "noResults": "Keine Ergebnisse gefunden",
-    "foundResults": "{{total}} Ergebnisse gefunden{{suffix}}",
-    "cached": " (gecacht)",
-    "searchFailed": "Suche fehlgeschlagen: {{error}}",
-    "failedToLoadIndexers": "Fehler beim Laden der Indexer",
-    "addInstanceFirst": "Füge unter Einstellungen -> Instanzen eine Download-Instanz hinzu",
-    "chooseInstance": "Wähle eine Instanz, um Torrents hinzuzufügen",
     "noDownloadUrl": "Keine Download-URL für dieses Ergebnis verfügbar",
-    "noInfoUrl": "Keine zusätzlichen Informationen für dieses Ergebnis verfügbar",
     "invalidProtocol": "Ungültiges URL-Protokoll",
     "invalidUrl": "Ungültiges URL-Format"
   }

@@ -6,20 +6,22 @@ package crossseed
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
-	"github.com/autobrr/qui/internal/services/linktree"
-	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
 // Manual match: the user chooses the target torrent. Candidate discovery and
@@ -239,25 +241,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	trackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
 	linkMode := instance != nil && (instance.UseReflinks || instance.UseHardlinks)
-	// A route sends the apply to the Cross-seed instance (ADR 0035). Display
-	// only: the saved route maps without the rule check, and the apply
-	// reports a route that breaks a rule. A failed read shows the unmapped path.
-	var route *candidateRoute
-	if linkMode {
-		route, _, _ = s.savedRouteOf(ctx, instanceID)
-	}
-
-	// Effective destination varies only through the target save path (link-mode
-	// base-dir selection); cache per save path.
-	effectiveBySavePath := make(map[string]string)
-	effectiveFor := func(torrent *qbt.Torrent) string {
-		if path, ok := effectiveBySavePath[torrent.SavePath]; ok {
-			return path
-		}
-		path := s.manualMatchEffectiveSavePath(ctx, instance, route, torrent.SavePath, meta.Name, trackerDomain, meta.Files)
-		effectiveBySavePath[torrent.SavePath] = path
-		return path
-	}
+	linkTargets := make(map[string]*qbt.Torrent)
 
 	proposals := make([]ManualMatchProposal, 0, proposalLimit+1)
 	for _, torrent := range shortlist {
@@ -268,9 +252,6 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		if overlap == 0 && !isRequested {
 			continue
 		}
-		// A rootless target sends the add to its content dir, not its save path.
-		// A pinned target is never an episode in a pack.
-		effectiveSavePath := cmp.Or(rootlessDestDir(torrent, candidateFiles, false), torrent.SavePath)
 		// The apply skips link modes for a pick whose files do not validate,
 		// landing it at the target's save path; only a validated pick reaches
 		// the link-mode destination. Mirror the apply's validation call so the
@@ -278,14 +259,14 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		// ponytail: plain parsed releases approximate the apply's release view.
 		if linkMode && overlap > 0 &&
 			s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(torrent.Name), sourceRelease, candidateFiles, meta.Files, defaultSizeMismatchTolerancePercent).MatchType != "" {
-			effectiveSavePath = effectiveFor(torrent)
+			linkTargets[hashKey] = torrent
 		}
 		proposals = append(proposals, ManualMatchProposal{
 			Hash:              torrent.Hash,
 			Name:              torrent.Name,
 			Size:              torrent.Size,
 			Category:          torrent.Category,
-			EffectiveSavePath: effectiveSavePath,
+			EffectiveSavePath: cmp.Or(rootlessDestDir(torrent, candidateFiles, false), torrent.SavePath),
 			OverlapBytes:      overlap,
 			OverlapFraction:   float64(overlap) / float64(sourceTotal),
 		})
@@ -300,6 +281,9 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		proposals = append(proposals[:proposalLimit], proposals[requestedIdx])
 	} else if len(proposals) > proposalLimit {
 		proposals = proposals[:proposalLimit]
+	}
+	if len(linkTargets) > 0 {
+		s.previewLinkSavePaths(ctx, instance, meta, trackerDomain, proposals, linkTargets, filesByHash)
 	}
 
 	// Default tag parity with the search-results dialog, which applies
@@ -351,63 +335,117 @@ func overlapBytesBySize(sourceSizes map[int64]int, candidateFiles qbt.TorrentFil
 	return overlap
 }
 
-// manualMatchEffectiveSavePath reports where a Manual match apply would land
-// the torrent: the target's save path in regular mode, or the link-mode
-// destination directory. Display only; the apply recomputes the real path.
-func (s *Service) manualMatchEffectiveSavePath(
+const linkPreviewPlans = 4
+
+func (s *Service) previewLinkSavePaths(
 	ctx context.Context,
 	instance *models.Instance,
-	route *candidateRoute,
-	targetSavePath string,
-	torrentName, trackerDomain string,
-	sourceFiles qbt.TorrentFiles,
-) string {
-	if instance == nil || (!instance.UseReflinks && !instance.UseHardlinks) {
-		return targetSavePath
+	meta TorrentMetadata,
+	trackerDomain string,
+	proposals []ManualMatchProposal,
+	linkTargets map[string]*qbt.Torrent,
+	filesByHash map[string]qbt.TorrentFiles,
+) {
+	direct, err := s.getBackendForInstance(ctx, instance.ID, models.CapabilityWrite)
+	if err != nil {
+		return
 	}
-	baseDir, d := s.previewLinkBaseDir(ctx, instance, targetSavePath)
-	if baseDir == "" {
-		return targetSavePath
-	}
-	treeFiles := make([]hardlinktree.TorrentFile, 0, len(sourceFiles))
-	for _, f := range sourceFiles {
-		treeFiles = append(treeFiles, hardlinktree.TorrentFile{Path: f.Name, Size: f.Size})
-	}
-	candidate := CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name, route: route}
-	// The folder is not reserved here, so the apply can still fall back to
-	// the <name>--<shortHash> folder when another torrent takes the name first.
-	_, destDir := linkDestDir(d, s.linkPresetDir(ctx, d, instance, baseDir, candidate, trackerDomain, &CrossSeedRequest{}), torrentName, treeFiles)
-	if route != nil {
-		// A routed add goes to the Cross-seed instance, so show its path.
-		if mapped, ok := crossseedroute.ToCrossSeed(d, route.rows, baseDir, destDir); ok {
-			return mapped
+	backend := newCachedFilesystemChecks(direct)
+	route, _, _ := s.savedRouteOf(ctx, instance.ID)
+	incoming := singleAddTorrent{hash: cmp.Or(meta.HashV1, meta.HashV2), name: meta.Name, files: meta.Files, trackerDomain: trackerDomain}
+	var g errgroup.Group
+	g.SetLimit(linkPreviewPlans)
+	for i := range proposals {
+		target, ok := linkTargets[normalizeHash(proposals[i].Hash)]
+		if !ok {
+			continue
 		}
+		g.Go(func() error {
+			if path, ok := s.linkSavePathPreview(ctx, backend, instance, route, incoming, target, filesByHash[normalizeHash(target.Hash)]); ok {
+				proposals[i].EffectiveSavePath = path
+			}
+			return nil
+		})
 	}
-	return destDir
+	_ = g.Wait()
 }
 
-// previewLinkBaseDir picks the configured link base directory on the same
-// filesystem as samplePath, in the order of the link tree module but without
-// a write. Falls back to the best-ranked directory. The dialect
-// is the backend's, or the host's when the backend cannot be read.
-func (s *Service) previewLinkBaseDir(ctx context.Context, instance *models.Instance, samplePath string) (string, fsops.PathDialect) {
-	dirs := linktree.ParseBaseDirs(instance.HardlinkBaseDir)
-	if len(dirs) == 0 {
-		return "", fsops.HostPaths
+type cachedFilesystemChecks struct {
+	fsops.Backend
+	mu    sync.Mutex
+	same  map[[2]string]bool
+	stats map[string]statAnswer
+}
+
+type statAnswer struct {
+	info *fsops.LstatInfo
+	err  error
+}
+
+func newCachedFilesystemChecks(backend fsops.Backend) *cachedFilesystemChecks {
+	return &cachedFilesystemChecks{
+		Backend: backend,
+		same:    make(map[[2]string]bool),
+		stats:   make(map[string]statAnswer),
 	}
-	d := fsops.HostPaths
-	backend, backendErr := s.getBackendForInstance(ctx, instance.ID, models.CapabilityWrite)
-	haveBackend := backendErr == nil && backend != nil
-	if haveBackend {
-		d = backend.Paths()
+}
+
+func (c *cachedFilesystemChecks) SameFilesystem(ctx context.Context, sourceFile, dir string) (bool, error) {
+	key := [2]string{c.Paths().Dir(sourceFile), dir}
+	c.mu.Lock()
+	same, ok := c.same[key]
+	missing := c.stats[dir]
+	c.mu.Unlock()
+	if ok {
+		return same, nil
 	}
-	dirs = rankBaseDirs(d, dirs, samplePath)
-	if haveBackend && samplePath != "" {
-		for _, dir := range dirs {
-			if same, err := backend.SameFilesystem(ctx, samplePath, dir); err == nil && same {
-				return dir, d
-			}
+	if errors.Is(missing.err, fs.ErrNotExist) {
+		return false, missing.err
+	}
+	same, err := c.Backend.SameFilesystem(ctx, sourceFile, dir)
+	if err == nil {
+		c.mu.Lock()
+		c.same[key] = same
+		c.mu.Unlock()
+	}
+	return same, err
+}
+
+func (c *cachedFilesystemChecks) Stat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
+	c.mu.Lock()
+	answer, ok := c.stats[path]
+	c.mu.Unlock()
+	if ok {
+		return answer.info, answer.err
+	}
+	info, err := c.Backend.Stat(ctx, path)
+	if !errors.Is(err, fsops.ErrConnectionLost) {
+		c.mu.Lock()
+		c.stats[path] = statAnswer{info, err}
+		c.mu.Unlock()
+	}
+	return info, err
+}
+
+func (s *Service) linkSavePathPreview(
+	ctx context.Context,
+	backend fsops.Backend,
+	instance *models.Instance,
+	route *candidateRoute,
+	incoming singleAddTorrent,
+	target *qbt.Torrent,
+	targetFiles qbt.TorrentFiles,
+) (string, bool) {
+	candidate := CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name, route: route}
+	plan, err := s.planSingleAddTree(ctx, backend, instance, candidate, incoming,
+		selectExistingSourceFiles(incoming.files, targetFiles), targetFiles, target.SavePath)
+	if err != nil {
+		return "", false
+	}
+	if route != nil {
+		if mapped, ok := crossseedroute.ToCrossSeed(backend.Paths(), route.rows, plan.BaseDir, plan.SavePath); ok {
+			return mapped, true
 		}
 	}
-	return dirs[0], d
+	return plan.SavePath, true
 }

@@ -1,47 +1,43 @@
 {
   "pageTitle": "Пошук індексаторів",
-  "pageDescription": "Шукайте серед усіх увімкнених індексаторів. Виберіть тип пошуку.",
-  "indexerSummary": {
-    "label": "Індексатори",
-    "noEnabled": "Немає увімкнених індексаторів",
-    "allEnabled": "Усі увімкнені ({{count}})",
-    "selected": "Вибрано {{selected}} із {{total}}"
-  },
+  "pageDescription": "Шукайте у своїх індексаторах і додавайте реліз до qBittorrent.",
   "indexerSheet": {
-    "title": "Вибір індексаторів",
-    "description": "Оберіть, які індексатори використовувати для пошуку.",
-    "selectAll": "Вибрати всі",
-    "clearSelection": "Очистити вибір",
-    "noCategories": "Немає категорій",
     "backend": {
       "prowlarr": "Prowlarr",
       "native": "Вбудований",
       "jackett": "Jackett"
-    },
-    "footer": "Вибрано {{selected}} із {{total}} увімкнених індексаторів",
-    "done": "Готово"
+    }
   },
   "instanceSelector": {
-    "chooseTarget": "Оберіть цільовий екземпляр",
-    "noInstances": "Немає екземплярів",
-    "offline": "Не в мережі",
-    "targetNamed": "Ціль: {{name}}",
-    "targetNamedOffline": "Ціль: {{name}} (не в мережі)",
-    "clearSelection": "Очистити вибір",
-    "noInstancesConfigured": "Екземпляри не налаштовані",
-    "addInstanceNote": "Додайте екземпляр завантаження у Налаштування → Екземпляри."
+    "offline": "Не в мережі"
+  },
+  "picker": {
+    "indexersTitle": "Індексатори для пошуку",
+    "filter": "Фільтр",
+    "all": "Усі",
+    "none": "Жодного",
+    "done": "Готово",
+    "noMatch": "Нічого не відповідає фільтру"
+  },
+  "form": {
+    "indexers": "Індексатори",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Прибрати {{label}}",
+    "clearFields": "Очистити поля",
+    "clearQuery": "Очистити запит",
+    "recentSearches": "Нещодавні пошуки",
+    "noIndexersTitle": "Ще немає індексаторів",
+    "noIndexersBody": "Додайте індексатор, щоб шукати в ньому з цієї сторінки.",
+    "noIndexersAction": "Додати індексатори",
+    "indexersFailed": "Не вдалося завантажити індексатори"
   },
   "searchForm": {
     "advanced": "Розширено",
-    "active": "Активно",
-    "clear": "Очистити",
     "searching": "Пошук...",
     "search": "Шукати",
-    "advancedNote": "Необов’язкові (але рекомендовані) параметри Torznab.",
+    "advancedNote": "ID та номери роблять пошук точним в індексаторах, які їх підтримують.",
     "searchType": "Тип пошуку",
-    "searchQuery": "Пошуковий запит",
-    "noIndexers": "Немає доступних увімкнених індексаторів. Додайте та увімкніть індексатори на сторінці",
-    "indexersPage": "Індексатори"
+    "searchQuery": "Пошуковий запит"
   },
   "searchTypes": {
     "movies": {
@@ -108,25 +104,75 @@
     }
   },
   "results": {
-    "showing": "Показано {{filtered}} із {{total}} результатів",
+    "count_one": "{{count}} результат",
+    "count_few": "{{count}} результати",
+    "count_many": "{{count}} результатів",
+    "count_other": "{{count}} результату",
+    "filteredCount_one": "{{shown}} із {{count}} результату",
+    "filteredCount_few": "{{shown}} із {{count}} результатів",
+    "filteredCount_many": "{{shown}} із {{count}} результатів",
+    "filteredCount_other": "{{shown}} із {{count}} результату",
+    "searching_one": "Пошук у {{count}} індексаторі...",
+    "searching_few": "Пошук у {{count}} індексаторах...",
+    "searching_many": "Пошук у {{count}} індексаторах...",
+    "searching_other": "Пошук у {{count}} індексатора...",
     "filterPlaceholder": "Фільтр результатів...",
-    "clearSearch": "Очистити пошук",
-    "clearAllFilters": "Очистити всі фільтри",
-    "pickInstance": "Оберіть екземпляр",
-    "download": "Завантажити",
-    "viewDetails": "Переглянути деталі",
-    "clearSelectionButton": "Очистити вибір",
-    "actions": "Дії",
-    "quickAddTo": "Швидко додати до...",
+    "clearFilters": "Очистити фільтри",
+    "noMatches": "Жоден результат не відповідає фільтрам.",
     "cachedSummary": "Кешовано {{cached}} · Закінчується {{expires}}",
-    "cacheSource": "Джерело: {{source}} · Область: {{scope}}",
-    "refreshReadyIn": "Доступно через {{seconds}} с",
+    "cachedAgo": "Кешовано · {{age}}",
+    "live": "Напряму",
+    "partial": "Неповні",
+    "partialHint": "Деякі індексатори не відповіли. Оновіть, щоб опитати їх знову.",
+    "refresh": "Оновити",
     "refreshFromIndexers": "Оновити з індексаторів",
+    "refreshCooldown": "Оновити знову можна буде за мить",
+    "showMore": "Показати більше",
+    "shownOf": "Показано {{shown}} із {{total}}",
     "categoryFallback": "Категорія {{id}}",
+    "noResults": "Нічого не знайдено",
     "noResultsFor": "Нічого не знайдено за запитом «{{query}}»",
-    "enterQuery": "Введіть пошуковий запит для початку",
-    "free": "Безкоштовно",
-    "freeNeutral": "Нейтрально"
+    "noResultsHint": "Перевірте написання, виберіть інший тип пошуку або шукайте в більшій кількості індексаторів.",
+    "searchAllIndexers": "Шукати в усіх індексаторах",
+    "failed": "Пошук не вдався",
+    "retry": "Повторити",
+    "idleTitle": "Шукайте у своїх індексаторах",
+    "idleHint": "Введіть назву, IMDb ID, наприклад tt1234567, або TVDb ID, наприклад tvdb 123456.",
+    "free": "Безкоштовно"
+  },
+  "facets": {
+    "collection": "Сервіс",
+    "normal": "Звичайний"
+  },
+  "sort": {
+    "label": "Сортування",
+    "seeders": "Найбільше роздавачів",
+    "newest": "Найновіші",
+    "oldest": "Найстаріші",
+    "largest": "Найбільші",
+    "smallest": "Найменші",
+    "title": "Назва A–Z",
+    "indexer": "Індексатор A–Z"
+  },
+  "columns": {
+    "age": "Вік"
+  },
+  "row": {
+    "add": "Додати",
+    "addTo": "Додати до",
+    "more": "Інші дії",
+    "openIndexer": "Відкрити на індексаторі",
+    "copyTitle": "Копіювати назву",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× віддача"
+  },
+  "bulk": {
+    "label": "Вибрані результати",
+    "selected_one": "Вибрано: {{count}}",
+    "selected_few": "Вибрано: {{count}}",
+    "selected_many": "Вибрано: {{count}}",
+    "selected_other": "Вибрано: {{count}}",
+    "selectShown": "Вибрати всі показані"
   },
   "historyMeta": "{{type}} · {{count}} результатів · {{timestamp}}",
   "table": {
@@ -134,53 +180,27 @@
     "indexer": "Індексатор",
     "size": "Розмір",
     "seeders": "Роздавачі",
+    "leechers": "Лічі",
     "category": "Категорія",
     "source": "Джерело",
-    "collection": "Колекція",
     "group": "Група",
     "freeleech": "Freeleech",
-    "published": "Опубліковано",
     "actions": "Дії",
-    "downloadTorrent": "Завантажити .torrent",
-    "viewDetails": "Переглянути деталі",
-    "noInfoUrl": "Немає URL"
+    "downloadTorrent": "Завантажити .torrent"
   },
   "refreshDialog": {
     "title": "Обійти кеш?",
     "description": "Запит буде відправлено напряму до кожного вибраного індексатора. Використовуйте обережно, щоб уникнути лімітів. Повторне оновлення стане доступне після короткої затримки.",
-    "cancel": "Скасувати",
     "refreshNow": "Оновити зараз"
   },
   "cache": {
-    "cacheAndLive": "Кеш + напряму",
-    "cacheHit": "Знайдено в кеші",
-    "liveFetch": "Отримано напряму"
+    "cacheAndLive": "Кеш + напряму"
   },
   "card": {
-    "actions": "Дії",
-    "addToInstance": "Додати до екземпляра",
-    "addToNamed": "Додати до {{name}}",
-    "addToNamedOffline": "Додати до {{name}} (не в мережі)",
-    "quickAddTo": "Швидко додати до...",
-    "download": "Завантажити",
-    "viewDetails": "Переглянути деталі",
-    "clearSelection": "Очистити вибір",
-    "seeders": "{{count}} роздавачів",
-    "published": "Опубліковано {{date}}"
+    "addToNamed": "Додати до {{name}}"
   },
   "toast": {
-    "enterSearchQuery": "Введіть пошуковий запит або заповніть розширені параметри",
-    "selectIndexer": "Оберіть хоча б один індексатор",
-    "noEnabledIndexers": "Немає увімкнених індексаторів. Спочатку додайте та увімкніть їх.",
-    "noResults": "Нічого не знайдено",
-    "foundResults": "Знайдено {{total}} результатів{{suffix}}",
-    "cached": " (з кешу)",
-    "searchFailed": "Помилка пошуку: {{error}}",
-    "failedToLoadIndexers": "Не вдалося завантажити індексатори",
-    "addInstanceFirst": "Додайте екземпляр завантаження у Налаштування → Екземпляри",
-    "chooseInstance": "Оберіть екземпляр для додавання торентів",
     "noDownloadUrl": "Для цього результату немає URL завантаження",
-    "noInfoUrl": "Для цього результату немає додаткової інформації",
     "invalidProtocol": "Неправильний протокол URL",
     "invalidUrl": "Неправильний формат URL"
   }

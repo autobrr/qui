@@ -731,12 +731,12 @@
   },
   "src/components/layout/Header.tsx": {
     "qui/no-comments": {
-      "count": 39
+      "count": 37
     }
   },
   "src/components/layout/MobileFooterNav.tsx": {
     "qui/no-comments": {
-      "count": 18
+      "count": 17
     }
   },
   "src/components/layout/Page.tsx": {
@@ -852,11 +852,6 @@
   "src/components/query-builder/fields.generated.ts": {
     "qui/no-comments": {
       "count": 3
-    }
-  },
-  "src/components/search/SearchResultCard.tsx": {
-    "qui/no-comments": {
-      "count": 5
     }
   },
   "src/components/settings/ApiKeysManager.test.tsx": {
@@ -986,7 +981,7 @@
   },
   "src/components/settings/TrackerCustomizationsManager.tsx": {
     "qui/no-comments": {
-      "count": 14
+      "count": 12
     }
   },
   "src/components/settings/notification-targets.ts": {
@@ -1026,7 +1021,7 @@
   },
   "src/components/shares/SharesTab.tsx": {
     "qui/no-comments": {
-      "count": 11
+      "count": 10
     }
   },
   "src/components/spreadsheet/SpreadsheetFormulaBar.tsx": {
@@ -1656,7 +1651,7 @@
   },
   "src/components/transfers/TransferSelectionBar.tsx": {
     "qui/no-comments": {
-      "count": 8
+      "count": 3
     }
   },
   "src/components/transfers/TransferState.tsx": {
@@ -1671,7 +1666,7 @@
   },
   "src/components/transfers/TransfersTab.tsx": {
     "qui/no-comments": {
-      "count": 31
+      "count": 30
     }
   },
   "src/components/transfers/tabs.ts": {
@@ -2641,7 +2636,7 @@
   },
   "src/lib/__tests__/column-filter-utils.test.ts": {
     "qui/no-comments": {
-      "count": 72
+      "count": 65
     }
   },
   "src/lib/__tests__/cross-instance-torrents.test.ts": {
@@ -3357,16 +3352,6 @@
   "src/pages/Login.tsx": {
     "qui/no-comments": {
       "count": 2
-    }
-  },
-  "src/pages/Search.test.tsx": {
-    "qui/no-comments": {
-      "count": 2
-    }
-  },
-  "src/pages/Search.tsx": {
-    "qui/no-comments": {
-      "count": 4
     }
   },
   "src/pages/Settings.sections.test.tsx": {

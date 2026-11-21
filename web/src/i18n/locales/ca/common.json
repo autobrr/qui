@@ -149,7 +149,6 @@
     "currentInstance": "Instància actual: {{name}}. Fes clic per canviar d'instància.",
     "connected": "Connectat",
     "disconnected": "Desconnectat",
-    "noActiveInstances": "No hi ha cap instància activa",
     "showFilters": "Mostra els filtres",
     "hideFilters": "Amaga els filtres",
     "addTorrent": "Afegeix un torrent",
@@ -221,7 +220,6 @@
     "settings": "Configuració",
     "qbittorrentClients": "Clients de qBittorrent",
     "instances": "Instàncies",
-    "noActiveInstances": "No hi ha cap instància activa",
     "loading": "S'està carregant...",
     "noActiveClients": "No hi ha cap client actiu",
     "updateAvailable": "Actualització disponible",
@@ -551,6 +549,7 @@
     "retry": "Torna-ho a provar",
     "edit": "Edita",
     "moreActions": "Més accions",
-    "enabled": "Activat"
+    "enabled": "Activat",
+    "clearSelection": "Esborra la selecció"
   }
 }

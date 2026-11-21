@@ -149,7 +149,6 @@
     "currentInstance": "Instância atual: {{name}}. Clique para trocar de instância.",
     "connected": "Conectado",
     "disconnected": "Desconectado",
-    "noActiveInstances": "Nenhuma instância ativa",
     "showFilters": "Mostrar filtros",
     "hideFilters": "Ocultar filtros",
     "addTorrent": "Adicionar torrent",
@@ -221,7 +220,6 @@
     "settings": "Configurações",
     "qbittorrentClients": "Clientes qBittorrent",
     "instances": "Instâncias",
-    "noActiveInstances": "Nenhuma instância ativa",
     "loading": "Carregando...",
     "noActiveClients": "Nenhum cliente ativo",
     "updateAvailable": "Atualização Disponível",
@@ -551,6 +549,7 @@
     "retry": "Tentar novamente",
     "edit": "Editar",
     "moreActions": "Mais ações",
-    "enabled": "Ativado"
+    "enabled": "Ativado",
+    "clearSelection": "Limpar seleção"
   }
 }

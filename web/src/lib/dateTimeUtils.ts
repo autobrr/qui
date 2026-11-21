@@ -305,6 +305,8 @@ export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferen
   }
 }
 
+const narrowAgeFormatters = new Map<string, Intl.NumberFormat>()
+
 /**
  * Format an age as one narrow unit in the active language: minutes below one
  * hour, hours below one day, and days above that ("4m", "6h", "2d" in English).
@@ -313,7 +315,14 @@ export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferen
 export function formatNarrowAge(ageMs: number): string {
   const minutes = Math.max(1, Math.floor(ageMs / 60000))
   const [value, unit] = minutes < 60 ? [minutes, "minute"] : minutes < 24 * 60 ? [Math.floor(minutes / 60), "hour"] : [Math.floor(minutes / (24 * 60)), "day"]
-  return new Intl.NumberFormat(getDisplayLocales(), { style: "unit", unit, unitDisplay: "narrow" }).format(value)
+  const locales = getDisplayLocales()
+  const key = `${locales.join(",")}|${unit}`
+  let formatter = narrowAgeFormatters.get(key)
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(locales, { style: "unit", unit, unitDisplay: "narrow" })
+    narrowAgeFormatters.set(key, formatter)
+  }
+  return formatter.format(value)
 }
 
 /**
