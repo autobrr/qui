@@ -1,6 +1,13 @@
 const forwardsToDom = /^(@\/components\/ui\/|@radix-ui\/|@tanstack\/react-router$)/
 const ownTitleProp = new Set(["MultiSelect", "ResponsiveCommandPopover"])
 
+function importBinding(scope, name) {
+  for (; scope; scope = scope.upper) {
+    const variable = scope.set.get(name)
+    if (variable) return variable.defs.find((definition) => definition.type === "ImportBinding")
+  }
+}
+
 export const noNativeTitle = {
   meta: {
     type: "problem",
@@ -10,20 +17,16 @@ export const noNativeTitle = {
     },
   },
   create(context) {
-    const importedFrom = new Map()
     return {
-      ImportDeclaration(node) {
-        for (const specifier of node.specifiers) {
-          importedFrom.set(specifier.local.name, node.source.value)
-        }
-      },
       JSXAttribute(node) {
         if (node.name.type !== "JSXIdentifier" || node.name.name !== "title") return
         const element = node.parent.name
         const root = element.type === "JSXMemberExpression" ? element.object : element
         if (root.type !== "JSXIdentifier") return
         const intrinsic = element.type === "JSXIdentifier" && /^[a-z]/.test(element.name)
-        const domComponent = !ownTitleProp.has(root.name) && forwardsToDom.test(importedFrom.get(root.name) ?? "")
+        const binding = importBinding(context.sourceCode.getScope(node), root.name)
+        const component = element.type === "JSXMemberExpression" ? element.property.name : binding?.node.imported?.name
+        const domComponent = !ownTitleProp.has(component) && forwardsToDom.test(binding?.parent.source.value ?? "")
         if (intrinsic || domComponent) {
           context.report({ node, messageId: "banned" })
         }
