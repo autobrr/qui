@@ -519,6 +519,32 @@ describe("Sender", () => {
     expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
   })
 
+  // regression: #4360
+  it("keeps watching a pending sign-in when the browser blocks the popup of another one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    serve()
+    serveSender({ anonymous: true }, octocat)
+    const signIn = serveSignIn([{ state: "pending" }, { state: "done" }])
+    const { open } = stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(signIn.reads).toBe(1))
+    open.mockReturnValue(null)
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+    await screen.findByRole("alert")
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+
+    await screen.findByRole("button", { name: "octocat" })
+    expect(signIn.started).toEqual(["github"])
+  })
+
   it("reads the sender again when the user comes back to the tab, as another tab can sign in or out", async () => {
     serve()
     serveSender({ anonymous: true }, octocat)

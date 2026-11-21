@@ -57,7 +57,8 @@ export function useSender(): SenderControls {
         throw error
       }
     },
-    onMutate: () => {
+    onMutate: ({ popup }) => {
+      if (!popup) return
       setWatched(null)
       queryClient.removeQueries({ queryKey: SIGN_IN_KEY })
     },
