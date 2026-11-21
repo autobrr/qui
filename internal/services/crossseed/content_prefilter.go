@@ -93,7 +93,7 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 		// side, in place of a search result from its tracker.
 		matchResult := s.matcher().getMatchTypeWithReason(sourceRead.release, candidate.read.release, sourceFiles, candidateFiles, contentPrefilterPolicy.SizeTolerancePercent)
 		candidateLayout := contentPrefilterLayoutSummary(candidateFiles, normalizer)
-		if holdsOnlyPartOfSource(matchResult.MatchType) {
+		if contentPrefilterAcceptsMatchType(matchResult.MatchType) && !holdsEveryUsableFile(candidateFiles, sourceFiles, normalizer) {
 			partialContent = append(partialContent, fmt.Sprintf("%s (%s)", candidate.view.Name, strings.Join(s.extractTrackerDomainsFromTorrent(candidate.view.Torrent), ", ")))
 			continue
 		}
@@ -253,8 +253,23 @@ func contentPrefilterAcceptsMatchType(matchType string) bool {
 	return matchTypePriority(matchType) > 0
 }
 
-func holdsOnlyPartOfSource(matchType string) bool {
-	return matchType == "partial-in-pack" || matchType == "size-partial-in-pack"
+func holdsEveryUsableFile(holder, files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) bool {
+	heldSizes := make(map[int64]int, len(holder))
+	for _, file := range holder {
+		if !shouldIgnoreFile(file.Name, normalizer) {
+			heldSizes[file.Size]++
+		}
+	}
+	for _, file := range files {
+		if shouldIgnoreFile(file.Name, normalizer) {
+			continue
+		}
+		if heldSizes[file.Size] == 0 {
+			return false
+		}
+		heldSizes[file.Size]--
+	}
+	return true
 }
 
 func contentPrefilterLargestUsableFileName(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) string {

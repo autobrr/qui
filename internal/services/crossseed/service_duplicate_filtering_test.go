@@ -361,6 +361,18 @@ func TestFilterIndexersByExistingContentSeededTracker(t *testing.T) {
 			wantAsked: false,
 		},
 		{
+			name:   "the same season pack missing one episode does not stand for the pack",
+			source: seededTrackerPackTorrent(seededTrackerSourceHash),
+			others: []seededTrackerTorrent{func() seededTrackerTorrent {
+				pack := seededTrackerPackTorrent("packbhash")
+				pack.files = slices.DeleteFunc(pack.files, func(file qbt.TorrentFile) bool {
+					return strings.Contains(file.Name, "/"+seededTrackerEpisodeName(3)+".mkv")
+				})
+				return pack
+			}()},
+			wantAsked: true,
+		},
+		{
 			name: "a season pack does not stand for one of its episodes",
 			source: seededTrackerTorrent{
 				hash:  seededTrackerSourceHash,
