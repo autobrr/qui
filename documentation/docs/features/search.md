@@ -63,21 +63,21 @@ The table shows 50 results first. To show 50 more, click **Show more** below the
 
 ## Send a result to an instance
 
-Each row has an **Add** button. If you have one qBittorrent instance, **Add** sends the result to that instance. If you have more than one instance, **Add** opens a list of your instances. The add-torrent dialog opens with the download URL prefilled. You can set the category, tags, and save path before you add the torrent.
+Each row has a plus button (**+**) that adds the result. If you have one qBittorrent instance, the button sends the result to that instance. If you have more than one instance, the button opens a list of your instances. The add-torrent dialog opens with the download URL prefilled. You can set the category, tags, and save path before you add the torrent.
 
 To add more than one result at a time:
 
 1. Click the checkbox of each result that you want, or click the row. To select a range of rows, hold Shift and click the last row of the range. The checkbox in the table header selects all the results that the table shows.
 2. In the bar at the bottom of the screen, click **Add**. If you have more than one instance, pick an instance.
 
-The add-torrent dialog opens with the download URLs of all the selected results. To clear the selection, click **Clear selection** in the bar.
+The add-torrent dialog opens with the download URLs of all the selected results. To clear the selection, click **Clear selection** in the bar, or press Escape.
 
-If you have no instance, each row has a **Download** button instead of **Add**.
+If you have no instance, each row has a download button instead of the plus button. It opens the download URL in a new tab, as **Download .torrent** does.
 
-The **More actions** menu of each row has these items:
+Each row has these actions. On a screen of 1440 pixels or wider, each action is a button in the row. On a narrower screen, the actions are in the **More actions** menu of the row.
 
 - **Download .torrent** opens the download URL in a new tab.
-- **Open on indexer** opens the release page on the indexer in a new tab. On a screen of 768 pixels or wider, this action is a button in the row.
+- **Open on indexer** opens the release page on the indexer in a new tab.
 - **Copy title** copies the release title.
 
 ## Search cache

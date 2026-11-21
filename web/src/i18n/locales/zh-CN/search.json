@@ -110,7 +110,6 @@
     "filterPlaceholder": "筛选结果……",
     "clearFilters": "清除筛选",
     "noMatches": "没有符合筛选条件的结果。",
-    "download": "下载",
     "cachedSummary": "已缓存 {{cached}} · {{expires}} 过期",
     "cachedAgo": "已缓存 · {{age}}",
     "live": "实时",

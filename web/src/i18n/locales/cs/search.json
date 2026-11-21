@@ -116,7 +116,6 @@
     "filterPlaceholder": "Filtrovat výsledky...",
     "clearFilters": "Vymazat filtry",
     "noMatches": "Filtrům neodpovídá žádný výsledek.",
-    "download": "Stáhnout",
     "cachedSummary": "V cache {{cached}} · Vyprší {{expires}}",
     "cachedAgo": "V cache · {{age}}",
     "live": "Živě",

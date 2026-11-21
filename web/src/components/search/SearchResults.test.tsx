@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
@@ -13,16 +13,26 @@ import type { InstanceResponse, TorznabSearchResult } from "@/types"
 
 import { SearchResults } from "./SearchResults"
 
-const screenSize = vi.hoisted(() => ({ phone: false }))
+const screenSize = vi.hoisted(() => ({ phone: false, wide: false }))
 vi.mock("@/hooks/useMediaQuery", () => ({
   useIsPhone: () => screenSize.phone,
   useIsMobile: () => screenSize.phone,
-  useMediaQuery: () => false,
+  useMediaQuery: (query: string) => query === "(min-width: 1440px)" && screenSize.wide,
 }))
+
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
   screenSize.phone = false
+  screenSize.wide = false
 })
 
 function result(edit: Partial<TorznabSearchResult>): TorznabSearchResult {
@@ -41,7 +51,7 @@ const instances = [{ id: 1, name: "Stub 1", connected: true }, { id: 2, name: "S
 
 function renderResults(results: TorznabSearchResult[], onAdd = vi.fn(), onOpenInfo = vi.fn()) {
   render(
-    <TooltipProvider>
+    <TooltipProvider delayDuration={0}>
       <SearchResults
         results={results}
         partial={false}
@@ -108,20 +118,34 @@ describe("SearchResults", () => {
     expect(screen.getAllByRole("checkbox").every(checkbox => checkbox.getAttribute("aria-checked") === "false")).toBe(true)
   })
 
-  it("opens the page of a result on its indexer from the row, and leaves the row unticked", () => {
+  it("shows each row action as a button on a wide screen, and a click on one leaves the row unticked", () => {
+    screenSize.wide = true
     const onOpenInfo = vi.fn()
-    renderResults([first], undefined, onOpenInfo)
+    renderResults([first, result({ guid: "4", infoUrl: undefined, title: "Sample.Film.2023.480p.WEB-RIG" })], undefined, onOpenInfo)
+
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull()
+    expect(screen.getAllByRole("button", { name: "Download .torrent" }).length).toBe(2)
+    expect(screen.getAllByRole("button", { name: "Copy title" }).length).toBe(2)
+    expect(screen.getAllByRole("button", { name: "Open on indexer" }).length).toBe(1)
 
     fireEvent.click(screen.getByRole("button", { name: "Open on indexer" }))
     expect(onOpenInfo).toHaveBeenCalledWith(first)
     expect(box(first.title).getAttribute("aria-checked")).toBe("false")
-
-    openMenu(screen.getByRole("button", { name: "More actions" }))
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Download .torrent", "Copy title"])
   })
 
-  it("keeps the indexer page in the menu on a phone", () => {
-    screenSize.phone = true
+  it("names each row button in a tooltip on hover", async () => {
+    screenSize.wide = true
+    renderResults([first])
+
+    for (const name of ["Add", "Download .torrent", "Open on indexer", "Copy title"]) {
+      const button = screen.getByRole("button", { name })
+      fireEvent.pointerEnter(button, { pointerType: "mouse" })
+      fireEvent.pointerMove(button, { pointerType: "mouse" })
+      await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe(name))
+    }
+  })
+
+  it("keeps the other row actions in a menu below 1440 px", () => {
     renderResults([first])
 
     expect(screen.queryByRole("button", { name: "Open on indexer" })).toBeNull()

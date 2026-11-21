@@ -5,7 +5,7 @@
 
 import { Button } from "@/components/ui/button"
 import { ListX } from "lucide-react"
-import { Children, type ReactNode } from "react"
+import { Children, type ReactNode, useEffect, useEffectEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 interface SelectionBarProps {
@@ -16,8 +16,28 @@ interface SelectionBarProps {
   onClear: () => void
 }
 
+function keyBelongsElsewhere(event: KeyboardEvent) {
+  const target = event.target instanceof Element ? event.target : null
+  return event.defaultPrevented || event.isComposing || (target !== null && (
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT" ||
+    (target instanceof HTMLElement && target.isContentEditable) ||
+    target.closest("[role=\"dialog\"], [role=\"alertdialog\"], [role=\"combobox\"]") !== null
+  ))
+}
+
 export function SelectionBar({ label, summary, extra, children, onClear }: SelectionBarProps) {
   const { t } = useTranslation("common")
+  const clearOnEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "Escape" && !keyBelongsElsewhere(event)) onClear()
+  })
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => clearOnEscape(event)
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [])
 
   return (
     <div

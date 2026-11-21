@@ -113,7 +113,6 @@
     "filterPlaceholder": "Filtra els resultats...",
     "clearFilters": "Neteja els filtres",
     "noMatches": "Cap resultat no coincideix amb els filtres.",
-    "download": "Baixa",
     "cachedSummary": "A la memòria cau {{cached}} · Caduca {{expires}}",
     "cachedAgo": "A la memòria cau · {{age}}",
     "live": "En directe",

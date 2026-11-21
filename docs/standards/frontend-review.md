@@ -45,7 +45,7 @@
 
 ## Selection
 
-- A table or a list where the user picks rows and then acts on all of them shows those actions in `SelectionBar` from `@/components/kit/SelectionBar`. The page passes the count text in `summary`, the actions as children, and a step that changes the selection itself, for example "Select all 240", in `extra`. The bar owns Clear selection and the phone layout.
+- A table or a list where the user picks rows and then acts on all of them shows those actions in `SelectionBar` from `@/components/kit/SelectionBar`. The page passes the count text in `summary`, the actions as children, and a step that changes the selection itself, for example "Select all 240", in `extra`. The bar owns Clear selection, the Escape key that clears the selection, and the phone layout. A page adds no Escape handler of its own.
 - Render the bar after the last row, inside the block that holds the rows and reaches the edges of the card, as the Search results and the Transfers list do. The bar then rests under the last row, and while more rows follow, it stays at the bottom of the screen, above the phone nav.
 - The bar sticks only while no block around it clips its overflow. Give the card `overflow-clip`, not `overflow-hidden`.
 

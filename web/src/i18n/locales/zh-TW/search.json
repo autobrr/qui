@@ -110,7 +110,6 @@
     "filterPlaceholder": "篩選結果……",
     "clearFilters": "清除篩選",
     "noMatches": "沒有符合篩選條件的結果。",
-    "download": "下載",
     "cachedSummary": "已快取 {{cached}} · {{expires}} 過期",
     "cachedAgo": "已快取 · {{age}}",
     "live": "即時",

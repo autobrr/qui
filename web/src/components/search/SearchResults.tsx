@@ -8,7 +8,6 @@ import { SelectionBar } from "@/components/kit/SelectionBar"
 import { ChecklistPicker } from "@/components/search/ChecklistPicker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SearchInput } from "@/components/ui/SearchInput"
@@ -18,14 +17,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TorrentName } from "@/components/ui/torrent-name"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { formatNarrowAge, formatRelativeTime } from "@/lib/dateTimeUtils"
 import { FACETS, facetOptions, filterResults, resultKey, sortResults, tickResult, type CategoryName, type FacetKey, type FacetSelection, type ResultSort, type SortKey } from "@/lib/search-results"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { InstanceResponse, TorznabSearchCacheMetadata, TorznabSearchResult } from "@/types"
 import type { TFunction } from "i18next"
 import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, Copy, Database, Download, ExternalLink, MoreHorizontal, Plus, RefreshCw, X, Zap } from "lucide-react"
-import { memo, useCallback, useDeferredValue, useId, useMemo, useRef, useState, type ReactNode } from "react"
+import { memo, useCallback, useDeferredValue, useId, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -101,7 +100,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
   const mountedRows = useDeferredValue(rows, rows.slice(0, FIRST_ROWS))
   const filtering = text.trim() !== "" || Object.values(facets).some(values => values.length > 0)
   const selectable = actions.instances.length > 0
-  const linkInRow = !useIsMobile()
+  const actionsInRow = useMediaQuery("(min-width: 1440px)")
   const pickedResults = useMemo(() => shown.filter(result => picked.has(resultKey(result))), [shown, picked])
   const pickableKeys = useMemo(() => rows.filter(row => row.downloadUrl).map(resultKey), [rows])
 
@@ -126,20 +125,24 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
   }
 
   return (
-    <Card className="@container gap-0 overflow-clip py-0">
+    <div className="@container">
       <div className="space-y-3 border-b px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex min-h-8 items-center gap-2">
           {filtering ? (
-            <button
-              type="button"
-              onClick={clearFilters}
-              title={t("results.clearFilters")}
-              className="group relative inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 py-0.5 pr-1.5 pl-2.5 text-sm tabular-nums transition-colors hover:bg-primary/20 pointer-coarse:after:absolute pointer-coarse:after:-inset-2"
-            >
-              {t("results.filteredCount", { shown: shown.length, count: results.length })}
-              <X className="size-3.5 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
-              <span className="sr-only">{t("results.clearFilters")}</span>
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="group relative inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 py-0.5 pr-1.5 pl-2.5 text-sm tabular-nums transition-colors hover:bg-primary/20 pointer-coarse:after:absolute pointer-coarse:after:-inset-2"
+                >
+                  {t("results.filteredCount", { shown: shown.length, count: results.length })}
+                  <X className="size-3.5 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
+                  <span className="sr-only">{t("results.clearFilters")}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{t("results.clearFilters")}</TooltipContent>
+            </Tooltip>
           ) : (
             <p className="text-sm tabular-nums">{t("results.count", { count: results.length })}</p>
           )}
@@ -225,7 +228,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
           <TableBody>
             {mountedRows.map(result => {
               const key = resultKey(result)
-              return <ResultRow key={key} rowKey={key} result={result} selectable={selectable} picked={picked.has(key)} onTick={tick} linkInRow={linkInRow} t={t} formatDate={formatDate} {...actions} />
+              return <ResultRow key={key} rowKey={key} result={result} selectable={selectable} picked={picked.has(key)} onTick={tick} actionsInRow={actionsInRow} t={t} formatDate={formatDate} {...actions} />
             })}
           </TableBody>
         </Table>
@@ -235,11 +238,11 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
         <SelectionBar label={t("bulk.label")} summary={t("bulk.selected", { count: pickedResults.length })} onClear={clearPicked}>
           <AddMenu t={t} instances={actions.instances} onAdd={instanceId => actions.onAdd(pickedResults, instanceId)} side="top">
             {({ name, onClick }) => (
-              <Button type="button" size="sm" onClick={onClick} title={name ? t("card.addToNamed", { name }) : undefined}>
+              <TipButton type="button" size="sm" onClick={onClick} tip={name ? t("card.addToNamed", { name }) : undefined}>
                 <Plus className="size-4" />
                 {t("row.add")}
                 {name === null && <ChevronDown className="size-3.5 opacity-70" />}
-              </Button>
+              </TipButton>
             )}
           </AddMenu>
         </SelectionBar>
@@ -253,7 +256,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
           <p className="text-xs text-muted-foreground">{t("results.shownOf", { shown: limit, total: shown.length })}</p>
         </div>
       )}
-    </Card>
+    </div>
   )
 }
 
@@ -333,12 +336,12 @@ interface ResultRowProps extends ResultActions {
   selectable: boolean
   picked: boolean
   onTick: (key: string, range: boolean) => void
-  linkInRow: boolean
+  actionsInRow: boolean
   t: TFunction
   formatDate: (date: Date) => string
 }
 
-const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, onTick, linkInRow, t, formatDate, ...actions }: ResultRowProps) {
+const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, onTick, actionsInRow, t, formatDate, ...actions }: ResultRowProps) {
   const titleId = useId()
   const published = Date.parse(result.publishDate)
   const age = Number.isNaN(published) ? "–" : formatNarrowAge(Date.now() - published)
@@ -399,7 +402,7 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
       <TableCell className="hidden py-2.5 text-right align-top tabular-nums text-muted-foreground @3xl:table-cell">{result.leechers}</TableCell>
       <TableCell className="hidden py-2.5 text-right align-top tabular-nums text-muted-foreground @3xl:table-cell" title={publishedTitle}>{age}</TableCell>
       <TableCell className="cursor-default py-1 pr-3 align-top sm:pr-5" onClick={event => event.stopPropagation()}>
-        <RowActions t={t} result={result} linkInRow={linkInRow} {...actions} />
+        <RowActions t={t} result={result} actionsInRow={actionsInRow} {...actions} />
       </TableCell>
     </TableRow>
   )
@@ -415,7 +418,7 @@ function ResultMarks({ t, result }: { t: TFunction; result: TorznabSearchResult 
   )
 }
 
-function RowActions({ t, result, linkInRow, instances, onAdd, onDownload, onOpenInfo }: ResultActions & { t: TFunction; result: TorznabSearchResult; linkInRow: boolean }) {
+function RowActions({ t, result, actionsInRow, instances, onAdd, onDownload, onOpenInfo }: ResultActions & { t: TFunction; result: TorznabSearchResult; actionsInRow: boolean }) {
   const copyTitle = async () => {
     try {
       await copyTextToClipboard(result.title)
@@ -424,57 +427,54 @@ function RowActions({ t, result, linkInRow, instances, onAdd, onDownload, onOpen
       toast.error(t("common:feedback.copyFailed"))
     }
   }
+  const extras = [
+    ...(result.downloadUrl && instances.length > 0 ? [{ id: "download", label: t("table.downloadTorrent"), Icon: Download, run: () => onDownload(result) }] : []),
+    { id: "open", label: t("row.openIndexer"), Icon: ExternalLink, run: result.infoUrl ? () => onOpenInfo(result) : undefined },
+    { id: "copy", label: t("row.copyTitle"), Icon: Copy, run: copyTitle },
+  ]
 
   return (
     <div className="flex items-center justify-end gap-1">
       {result.downloadUrl && instances.length > 0 && (
         <AddMenu t={t} instances={instances} onAdd={instanceId => onAdd([result], instanceId)}>
-          {({ name, onClick }) => (
-            <Button type="button" variant="outline" size="sm" className="@max-2xl:size-9 @max-2xl:px-0" onClick={onClick} aria-label={name ? t("card.addToNamed", { name }) : t("row.add")} title={name ? t("card.addToNamed", { name }) : undefined}>
-              <Plus className="size-4" />
-              <span className="hidden @2xl:inline">{t("row.add")}</span>
-            </Button>
-          )}
+          {({ name, onClick }) => {
+            const label = name ? t("card.addToNamed", { name }) : t("row.add")
+            return (
+              <TipButton type="button" variant="ghost" size="icon" className="size-9 @2xl:size-8" onClick={onClick} aria-label={label} tip={label}>
+                <Plus className="size-4" />
+              </TipButton>
+            )
+          }}
         </AddMenu>
       )}
       {result.downloadUrl && instances.length === 0 && (
-        <Button type="button" variant="outline" size="sm" className="@max-2xl:size-9 @max-2xl:px-0" aria-label={t("table.downloadTorrent")} onClick={() => onDownload(result)}>
+        <TipButton type="button" variant="ghost" size="icon" className="size-9 @2xl:size-8" aria-label={t("table.downloadTorrent")} tip={t("table.downloadTorrent")} onClick={() => onDownload(result)}>
           <Download className="size-4" />
-          <span className="hidden @2xl:inline">{t("results.download")}</span>
-        </Button>
+        </TipButton>
       )}
-      {linkInRow && (result.infoUrl ? (
-        <Button type="button" variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" aria-label={t("row.openIndexer")} title={t("row.openIndexer")} onClick={() => onOpenInfo(result)}>
-          <ExternalLink className="size-4" />
-        </Button>
+      {actionsInRow ? extras.map(({ id, label, Icon, run }) => run ? (
+        <TipButton key={id} type="button" variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" aria-label={label} tip={label} onClick={run}>
+          <Icon className="size-4" />
+        </TipButton>
       ) : (
-        <span className="size-8" aria-hidden="true" />
-      ))}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="icon" className="size-9 @2xl:size-8" aria-label={t("row.more")}>
-            <MoreHorizontal className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          {result.downloadUrl && instances.length > 0 && (
-            <DropdownMenuItem onSelect={() => onDownload(result)}>
-              <Download className="size-4" />
-              {t("table.downloadTorrent")}
-            </DropdownMenuItem>
-          )}
-          {result.infoUrl && !linkInRow && (
-            <DropdownMenuItem onSelect={() => onOpenInfo(result)}>
-              <ExternalLink className="size-4" />
-              {t("row.openIndexer")}
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuItem onSelect={copyTitle}>
-            <Copy className="size-4" />
-            {t("row.copyTitle")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        <span key={id} className="size-8" aria-hidden="true" />
+      )) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="size-9 @2xl:size-8" aria-label={t("row.more")}>
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            {extras.map(({ id, label, Icon, run }) => run && (
+              <DropdownMenuItem key={id} onSelect={run}>
+                <Icon className="size-4" />
+                {label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }
@@ -482,6 +482,18 @@ function RowActions({ t, result, linkInRow, instances, onAdd, onDownload, onOpen
 interface AddTrigger {
   name: string | null
   onClick?: () => void
+}
+
+function TipButton({ tip, ...props }: ComponentProps<typeof Button> & { tip?: string }) {
+  if (!tip) return <Button {...props} />
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button {...props} />
+      </TooltipTrigger>
+      <TooltipContent>{tip}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 function AddMenu({ t, instances, onAdd, side, children }: { t: TFunction; instances: InstanceResponse[]; onAdd: (instanceId: number) => void; side?: "top"; children: (trigger: AddTrigger) => ReactNode }) {

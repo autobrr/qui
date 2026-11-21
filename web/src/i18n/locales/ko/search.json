@@ -110,7 +110,6 @@
     "filterPlaceholder": "결과 필터링...",
     "clearFilters": "필터 지우기",
     "noMatches": "필터와 일치하는 결과가 없습니다.",
-    "download": "다운로드",
     "cachedSummary": "캐시됨 {{cached}} · 만료 {{expires}}",
     "cachedAgo": "캐시됨 · {{age}}",
     "live": "실시간",

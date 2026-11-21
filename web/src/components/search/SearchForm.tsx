@@ -15,7 +15,7 @@ import { activeAdvancedFields, advancedFieldsFor, NUMERIC_FIELDS, type AdvancedF
 import { cn } from "@/lib/utils"
 import type { TorznabIndexer, TorznabRecentSearch } from "@/types"
 import { History, Loader2, Search as SearchIcon, Server, SlidersHorizontal, X } from "lucide-react"
-import { useId, useRef, useState } from "react"
+import { Children, type ReactNode, useId, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 const SUGGESTION_LIMIT = 6
@@ -63,6 +63,7 @@ interface SearchFormProps {
   canSubmit: boolean
   onSubmit: () => void
   onRecent: (search: TorznabRecentSearch) => void
+  children?: ReactNode
 }
 
 export function SearchForm(props: SearchFormProps) {
@@ -84,8 +85,8 @@ export function SearchForm(props: SearchFormProps) {
   const setParam = (field: AdvancedField, value: string) => onParamsChange({ ...params, [field]: value })
 
   return (
-    <Card className="gap-0 p-3 sm:p-4">
-      <form onSubmit={submit} className="flex flex-wrap items-center gap-2" role="search">
+    <Card className="gap-0 py-0">
+      <form onSubmit={submit} className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6 sm:py-4" role="search">
         <div className="flex min-w-0 flex-1 gap-2 max-sm:order-1 max-sm:basis-full sm:order-2">
           <QueryInput {...props} inputRef={inputRef} />
           <Button type="submit" disabled={!canSubmit} className="h-10 shrink-0 max-sm:w-10 max-sm:px-0" aria-label={t("searchForm.search")}>
@@ -168,6 +169,7 @@ export function SearchForm(props: SearchFormProps) {
           </div>
         )}
       </form>
+      {Children.toArray(props.children).length > 0 && <div className="overflow-clip rounded-b-xl border-t">{props.children}</div>}
     </Card>
   )
 }

@@ -113,7 +113,6 @@
     "filterPlaceholder": "Filtrar resultados...",
     "clearFilters": "Limpar filtros",
     "noMatches": "Nenhum resultado corresponde aos filtros.",
-    "download": "Baixar",
     "cachedSummary": "Cache de {{cached}} · Expira em {{expires}}",
     "cachedAgo": "Em cache · {{age}}",
     "live": "Ao vivo",

@@ -113,7 +113,6 @@
     "filterPlaceholder": "Ergebnisse filtern...",
     "clearFilters": "Filter zurücksetzen",
     "noMatches": "Kein Ergebnis passt zu den Filtern.",
-    "download": "Herunterladen",
     "cachedSummary": "Gecacht {{cached}} · Läuft ab {{expires}}",
     "cachedAgo": "Gecacht · {{age}}",
     "live": "Live",

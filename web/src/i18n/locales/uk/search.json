@@ -119,7 +119,6 @@
     "filterPlaceholder": "Фільтр результатів...",
     "clearFilters": "Очистити фільтри",
     "noMatches": "Жоден результат не відповідає фільтрам.",
-    "download": "Завантажити",
     "cachedSummary": "Кешовано {{cached}} · Закінчується {{expires}}",
     "cachedAgo": "Кешовано · {{age}}",
     "live": "Напряму",

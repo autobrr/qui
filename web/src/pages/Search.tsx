@@ -171,48 +171,44 @@ export function Search() {
           canSubmit={canSubmit}
           onSubmit={submit}
           onRecent={runRecent}
-        />
+        >
+          {search.isIdle && indexers.length > 0 && <RecentSearches recent={recent.slice(0, RECENT_LIMIT)} onPick={runRecent} />}
+          {search.isPending && <Searching count={search.variables?.indexerIds.length ?? 0} />}
+          {search.isError && (
+            <ErrorCard inset title={t("results.failed")} message={search.error.message} onRetry={() => search.variables && run({ ...search.variables, bypassCache: false })} />
+          )}
+          {search.isSuccess && search.data.results.length === 0 && (
+            <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+              <SearchIcon className="size-8 text-muted-foreground/60" />
+              <p className="font-medium">{search.variables.query.trim() ? t("results.noResultsFor", { query: search.variables.query.trim() }) : t("results.noResults")}</p>
+              <p className="max-w-md text-sm text-muted-foreground">{t("results.noResultsHint")}</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {indexers.some(indexer => !search.variables.indexerIds.includes(indexer.id)) && (
+                  <Button type="button" variant="outline" size="sm" onClick={searchAllIndexers}>
+                    <Server className="size-3.5" />
+                    {t("results.searchAllIndexers")}
+                  </Button>
+                )}
+                {search.data.cache && <RefreshButton ready={!coolingDown} onRefresh={onRefresh} />}
+              </div>
+            </div>
+          )}
+          {search.isSuccess && search.data.results.length > 0 && (
+            <SearchResults
+              key={search.submittedAt}
+              results={search.data.results}
+              cache={search.data.cache}
+              partial={search.data.partial === true}
+              categoryName={categoryName}
+              sort={sort}
+              onSortChange={setSort}
+              onRefresh={onRefresh}
+              refreshReady={!coolingDown}
+              {...actions}
+            />
+          )}
+        </SearchForm>
       )}
-
-      {search.isPending && <Searching count={search.variables?.indexerIds.length ?? 0} />}
-
-      {search.isError && (
-        <ErrorCard title={t("results.failed")} message={search.error.message} onRetry={() => search.variables && run({ ...search.variables, bypassCache: false })} />
-      )}
-
-      {search.isSuccess && search.data.results.length === 0 && (
-        <Card className="items-center gap-3 px-4 py-12 text-center">
-          <SearchIcon className="size-8 text-muted-foreground/60" />
-          <p className="font-medium">{search.variables.query.trim() ? t("results.noResultsFor", { query: search.variables.query.trim() }) : t("results.noResults")}</p>
-          <p className="max-w-md text-sm text-muted-foreground">{t("results.noResultsHint")}</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {indexers.some(indexer => !search.variables.indexerIds.includes(indexer.id)) && (
-              <Button type="button" variant="outline" size="sm" onClick={searchAllIndexers}>
-                <Server className="size-3.5" />
-                {t("results.searchAllIndexers")}
-              </Button>
-            )}
-            {search.data.cache && <RefreshButton ready={!coolingDown} onRefresh={onRefresh} />}
-          </div>
-        </Card>
-      )}
-
-      {search.isSuccess && search.data.results.length > 0 && (
-        <SearchResults
-          key={search.submittedAt}
-          results={search.data.results}
-          cache={search.data.cache}
-          partial={search.data.partial === true}
-          categoryName={categoryName}
-          sort={sort}
-          onSortChange={setSort}
-          onRefresh={onRefresh}
-          refreshReady={!coolingDown}
-          {...actions}
-        />
-      )}
-
-      {search.isIdle && indexers.length > 0 && <RecentSearches recent={recent.slice(0, RECENT_LIMIT)} onPick={runRecent} />}
 
       {addInstanceId !== null && (
         <AddTorrentDialog
@@ -247,24 +243,26 @@ export function Search() {
   )
 }
 
-function ErrorCard({ title, message, retrying = false, onRetry }: { title: string; message: string; retrying?: boolean; onRetry: () => void }) {
+function ErrorCard({ title, message, retrying = false, inset = false, onRetry }: { title: string; message: string; retrying?: boolean; inset?: boolean; onRetry: () => void }) {
   const { t } = useTranslation("search")
-  return (
-    <Card className="flex-row items-start gap-3 border-destructive/40 px-4 py-4 sm:px-6">
+  const content = (
+    <>
       <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
       <div className="min-w-0 flex-1 space-y-1">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-sm break-words text-muted-foreground">{message}</p>
       </div>
       <Button type="button" variant="outline" size="sm" disabled={retrying} onClick={onRetry}>{t("results.retry")}</Button>
-    </Card>
+    </>
   )
+  if (inset) return <div className="flex items-start gap-3 px-4 py-4 sm:px-6">{content}</div>
+  return <Card className="flex-row items-start gap-3 border-destructive/40 px-4 py-4 sm:px-6">{content}</Card>
 }
 
 function Searching({ count }: { count: number }) {
   const { t } = useTranslation("search")
   return (
-    <Card className="gap-0 overflow-hidden py-0" aria-busy="true">
+    <div aria-busy="true">
       <div className="flex items-center gap-2 border-b px-4 py-3 text-sm text-muted-foreground sm:px-6 sm:py-4">
         <Loader2 className="size-4 animate-spin" />
         {t("results.searching", { count })}
@@ -280,7 +278,7 @@ function Searching({ count }: { count: number }) {
           </div>
         ))}
       </div>
-    </Card>
+    </div>
   )
 }
 
@@ -288,20 +286,20 @@ function RecentSearches({ recent, onPick }: { recent: TorznabRecentSearch[]; onP
   const { t } = useTranslation("search")
   if (recent.length === 0) {
     return (
-      <Card className="items-center gap-2 px-4 py-12 text-center">
+      <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
         <SearchIcon className="size-8 text-muted-foreground/60" />
         <p className="font-medium">{t("results.idleTitle")}</p>
         <p className="max-w-md text-sm text-muted-foreground">{t("results.idleHint")}</p>
-      </Card>
+      </div>
     )
   }
   return (
-    <Card className="gap-0 overflow-hidden py-0">
-      <p className="border-b px-4 py-3 text-sm font-medium sm:px-6">{t("form.recentSearches")}</p>
-      <ul className="divide-y">
+    <>
+      <p className="px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground sm:px-6">{t("form.recentSearches")}</p>
+      <ul>
         {recent.map(search => (
           <li key={search.cacheKey}>
-            <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 sm:px-6" onClick={() => onPick(search)}>
+            <button type="button" className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/50 sm:px-6" onClick={() => onPick(search)}>
               <History className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{search.query}</span>
@@ -312,7 +310,7 @@ function RecentSearches({ recent, onPick }: { recent: TorznabRecentSearch[]; onP
           </li>
         ))}
       </ul>
-    </Card>
+    </>
   )
 }
 
