@@ -121,6 +121,7 @@ async function advance(ms: number) {
 }
 
 describe("Install update", () => {
+  // regression: #4355
   it("sends Install to the dialog in Settings when installInSettings is set", async () => {
     renderBanner({ installInSettings: true })
     const install = await screen.findByRole("link", { name: "settings:application.update.button" })
