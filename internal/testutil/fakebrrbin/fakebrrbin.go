@@ -85,6 +85,8 @@ type Fake struct {
 
 	SignInInterval    float64
 	BrokenSignInStart map[string]any
+	startHold         chan struct{}
+	startHeld         chan struct{}
 	signIns           map[string]*signIn
 	pendingByKey      map[string]string
 	newestSignIn      string
@@ -180,6 +182,30 @@ func (f *Fake) Hold() (received <-chan struct{}, release func()) {
 	hold, held := make(chan struct{}), make(chan struct{}, 16)
 	f.hold, f.held = hold, held
 	return held, sync.OnceFunc(func() { close(hold) })
+}
+
+func (f *Fake) HoldSignInStarts() (received <-chan struct{}, release func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	hold, held := make(chan struct{}), make(chan struct{}, 16)
+	f.startHold, f.startHeld = hold, held
+	return held, sync.OnceFunc(func() { close(hold) })
+}
+
+func awaitRelease(r *http.Request, hold, held chan struct{}) bool {
+	if hold == nil {
+		return true
+	}
+	select {
+	case held <- struct{}{}:
+	default:
+	}
+	select {
+	case <-hold:
+		return true
+	case <-r.Context().Done():
+		return false
+	}
 }
 
 // Requests returns the recorded requests to the brrbin API, oldest first.
@@ -322,6 +348,12 @@ func (f *Fake) delete(w http.ResponseWriter, r *http.Request, id string) {
 func (f *Fake) startSignIn(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	f.record(Request{Method: r.Method, Path: r.URL.Path, Header: r.Header.Clone(), Body: body})
+	f.mu.Lock()
+	hold, held := f.startHold, f.startHeld
+	f.mu.Unlock()
+	if !awaitRelease(r, hold, held) {
+		return
+	}
 	installKey := r.Header.Get("X-Install-Key")
 	if installKey == "" {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "install_key_required"})
@@ -446,16 +478,8 @@ func (f *Fake) report(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	hold, held, refused := f.hold, f.held, f.refusal
 	f.mu.Unlock()
-	if hold != nil {
-		select {
-		case held <- struct{}{}:
-		default:
-		}
-		select {
-		case <-hold:
-		case <-r.Context().Done():
-			return
-		}
+	if !awaitRelease(r, hold, held) {
+		return
 	}
 	if refused != nil {
 		writeJSON(w, refused.Status, map[string]string{"error": refused.Reason})

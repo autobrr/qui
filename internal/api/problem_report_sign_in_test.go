@@ -249,3 +249,33 @@ func TestProblemReportSignOutDropsAPendingSignIn(t *testing.T) {
 	assert.Equal(t, problemreport.SignInState{State: problemreport.SignInExpired}, rig.signInState())
 	assert.Equal(t, problemreport.Sender{Anonymous: true}, rig.sender())
 }
+
+// regression: #4360
+func TestProblemReportSignOutDropsASignInThatIsStillStarting(t *testing.T) {
+	rig := signInRig(t)
+	received, release := rig.fake.HoldSignInStarts()
+	defer release()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, rig.srv.URL+"/api/problem-reports/sign-in", strings.NewReader(`{"provider":"github"}`))
+	require.NoError(t, err)
+	req.AddCookie(rig.cookie)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	started := make(chan int, 1)
+	go func() {
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			started <- 0
+			return
+		}
+		resp.Body.Close()
+		started <- resp.StatusCode
+	}()
+	<-received
+
+	status, body := rig.call(http.MethodDelete, "/api/problem-reports/sign-in", "")
+	require.Equal(t, http.StatusNoContent, status, body)
+	release()
+
+	assert.Equal(t, http.StatusBadGateway, <-started, "the sign-out ended the start, so the browser closes the popup")
+	assert.Equal(t, problemreport.SignInState{State: problemreport.SignInExpired}, rig.signInState(), "qui polls no sign-in after the sign-out")
+}

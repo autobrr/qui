@@ -79,15 +79,7 @@ func (s *Service) StartSignIn(ctx context.Context, provider string) (string, err
 	if err != nil {
 		return "", err
 	}
-	var start signInStart
-	status, err := s.signInCall(ctx, installKey, "/api/report-sign-in", map[string]string{"provider": provider}, &start)
-	interval := time.Duration(start.Interval * float64(time.Second))
-	if err != nil || status != http.StatusOK || !isWebURL(start.URL) || start.PollToken == "" || interval <= 0 {
-		log.Warn().Err(err).Int("status", status).Str("provider", provider).Msg("brrbin did not start a Problem report sign-in")
-		return "", &RefusalError{Status: http.StatusBadGateway, Reason: ReasonUnavailable}
-	}
-
-	pollCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), signInLifetime)
+	attemptCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), signInLifetime)
 	attempt := &signInAttempt{cancel: cancel, state: SignInState{State: SignInPending}}
 	s.signInMu.Lock()
 	if s.signIn != nil {
@@ -95,7 +87,21 @@ func (s *Service) StartSignIn(ctx context.Context, provider string) (string, err
 	}
 	s.signIn = attempt
 	s.signInMu.Unlock()
-	go s.pollSignIn(pollCtx, attempt, installKey, start.PollToken, interval)
+
+	var start signInStart
+	status, err := s.signInCall(attemptCtx, installKey, "/api/report-sign-in", map[string]string{"provider": provider}, &start)
+	interval := time.Duration(start.Interval * float64(time.Second))
+	if err != nil || status != http.StatusOK || !isWebURL(start.URL) || start.PollToken == "" || interval <= 0 {
+		log.Warn().Err(err).Int("status", status).Str("provider", provider).Msg("brrbin did not start a Problem report sign-in")
+		s.signInMu.Lock()
+		if s.signIn == attempt {
+			s.signIn = nil
+		}
+		s.signInMu.Unlock()
+		cancel()
+		return "", &RefusalError{Status: http.StatusBadGateway, Reason: ReasonUnavailable}
+	}
+	go s.pollSignIn(attemptCtx, attempt, installKey, start.PollToken, interval)
 	return start.URL, nil
 }
 
