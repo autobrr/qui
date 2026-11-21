@@ -147,7 +147,7 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 			Str("sourceName", sourceTorrent.Name).
 			Str("sourceLayout", sourceLayout).
 			Strs("partialTorrents", partialContent).
-			Msg("crossseed: existing torrents hold only part of the source, so their trackers are not Seeded trackers")
+			Msg("crossseed: existing torrents hold only part of the source, so they do not count toward Seeded trackers")
 	}
 
 	if len(rejectedContent) == 0 {
