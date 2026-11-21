@@ -285,11 +285,14 @@ func notFound(w http.ResponseWriter) {
 func (t *Tracker) serve(w http.ResponseWriter, r *http.Request) {
 	secret, ok := strings.CutPrefix(r.URL.Path, "/announce/")
 	if r.Method != http.MethodGet || !ok || strings.Contains(secret, "/") {
+		log.Trace().Str("method", r.Method).Msg("share tracker: 404: the request is not an announce")
 		notFound(w)
 		return
 	}
 	from := middleware.GetClientIPAddr(r.Context())
 	if !from.IsValid() {
+		log.Debug().Str("remoteAddr", r.RemoteAddr).Bool("forwardedFor", r.Header.Get("X-Forwarded-For") != "").
+			Msg("share tracker: 404: no client address because all addresses are trusted proxies, or X-Forwarded-For is missing or invalid")
 		notFound(w)
 		return
 	}
@@ -300,6 +303,7 @@ func (t *Tracker) serve(w http.ResponseWriter, r *http.Request) {
 	table := t.shares.ActiveShares()
 	client, ok := table.lookup(secret)
 	if !ok {
+		log.Trace().Stringer("from", from).Msg("share tracker: 404: no active Share has this announce URL")
 		notFound(w)
 		return
 	}
@@ -309,6 +313,7 @@ func (t *Tracker) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.infoHash != client.share.InfoHash {
+		log.Trace().Int64("shareID", client.share.ID).Stringer("from", from).Msg("share tracker: 404: the infohash does not match the Share")
 		notFound(w)
 		return
 	}

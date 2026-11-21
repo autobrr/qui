@@ -30,7 +30,7 @@
       "publicAddress": "공개 주소",
       "publicAddressDescription": "인터넷에서 이 포트에 접근하는 URL이며, HTTPS를 쓰려면 앞에 프록시를 둡니다. 각 공유의 .torrent에 이 URL이 들어가므로, 변경 사항은 qui 트래커의 공유가 끝날 때까지 기다립니다.",
       "trustedProxies": "신뢰할 수 있는 프록시",
-      "trustedProxiesDescription": "주소 또는 CIDR 범위를 한 줄에 하나씩 입력합니다. qui는 이 프록시에서만 전달된 클라이언트 주소를 읽습니다.",
+      "trustedProxiesDescription": "클라이언트 네트워크가 아닌 프록시의 주소 또는 CIDR 범위만 한 줄에 하나씩 입력합니다. qui는 이 프록시에서만 전달된 클라이언트 주소를 읽습니다.",
       "trackerUrl": "트래커 URL",
       "trackerUrlDescription": "http, https 또는 udp announce URL입니다.",
       "publicAddressPlaceholder": "https://share.example.com",

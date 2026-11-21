@@ -30,7 +30,7 @@
       "publicAddress": "公网地址",
       "publicAddressDescription": "互联网访问此端口所用的 URL，使用 HTTPS 时需在前面加一个代理。每个分享的 .torrent 都包含它，因此修改会等到 qui Tracker 上的分享结束后才生效。",
       "trustedProxies": "受信任的代理",
-      "trustedProxiesDescription": "地址或 CIDR 范围，每行一个。qui 只从这些代理读取转发的客户端地址。",
+      "trustedProxiesDescription": "仅填写代理的地址或 CIDR 范围，每行一个，不要填写客户端所在网络。qui 只从这些代理读取转发的客户端地址。",
       "trackerUrl": "Tracker 地址",
       "trackerUrlDescription": "http、https 或 udp 汇报 URL。",
       "publicAddressPlaceholder": "https://share.example.com",
