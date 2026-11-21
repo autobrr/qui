@@ -39,11 +39,10 @@ export function InstancesManager({ search, onSearchChange }: InstancesManagerPro
   const instances = instancesQuery.data ?? []
   const [editingId, setEditingId] = useState<number | null>(null)
   const editing = instances.find((instance) => instance.id === editingId)
-  // The target stays in the state while the icon editor fades out, so the focus can return to the row.
   const [markEditing, setMarkEditing] = useState<{ target: MarkTarget; open: boolean } | null>(null)
+  const sidebarShowsUnified = instances.filter((instance) => instance.isActive).length > 1
   const markTargets: MarkTarget[] = [
-    // The sidebar shows Unified only with more than one active instance.
-    ...(instances.filter((instance) => instance.isActive).length > 1
+    ...(sidebarShowsUnified
       ? [{ id: ALL_INSTANCES_ID, name: tCommon("unifiedScope.unified"), autoLetters: "", inactive: false }]
       : []),
     ...instances.map((instance) => ({
@@ -100,7 +99,6 @@ export function InstancesManager({ search, onSearchChange }: InstancesManagerPro
 
       {markEditing && (
         <InstanceMarkEditor
-          // A string key, so it cannot match the numeric key of the add form beside it.
           key={`mark-${markEditing.target.id}`}
           open={markEditing.open}
           onOpenChange={(open) => setMarkEditing((prev) => prev && { ...prev, open })}
@@ -123,14 +121,10 @@ export function InstancesManager({ search, onSearchChange }: InstancesManagerPro
   )
 }
 
-/** Unified or an instance, as the icon editor and the rows of the Icons section need it. */
 interface MarkTarget {
-  /** The id of the instance, or ALL_INSTANCES_ID for Unified. */
   id: number
   name: string
-  /** The initials that the collapsed sidebar shows while the mark has no letters. "" for Unified. */
   autoLetters: string
-  /** A disabled instance: the sidebar does not show it, but its mark can still change. */
   inactive: boolean
 }
 
@@ -139,11 +133,9 @@ interface InstanceIconsSectionProps {
   onOpen: (target: MarkTarget) => void
 }
 
-/** The mark of Unified and of each instance, in sidebar order, each row with the look of the collapsed sidebar. */
 function InstanceIconsSection({ targets, onOpen }: InstanceIconsSectionProps) {
   const { t } = useTranslation("settings")
   const { t: tInstances } = useTranslation("instances")
-  // Until the server answers, the rows show the defaults, and a change would be lost.
   const settled = useClientSettingsSettled()
 
   return (

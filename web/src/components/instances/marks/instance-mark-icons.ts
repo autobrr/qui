@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Each icon is a named import, so the bundle holds these 56 and not the full lucide set.
 import {
   Anchor,
   AppWindow,
@@ -67,7 +66,6 @@ import {
 // i18n-namespace: instances
 
 export interface InstanceMarkIconEntry {
-  /** The lucide name that the mark stores. */
   name: string
   labelKey: string
   Icon: LucideIcon
@@ -176,7 +174,6 @@ export const INSTANCE_MARK_ICONS: readonly InstanceMarkIconEntry[] = INSTANCE_MA
 
 const ICONS_BY_NAME = new Map(INSTANCE_MARK_ICONS.map((icon) => [icon.name, icon.Icon]))
 
-/** The icon for a stored name, or undefined for letters and for a name that the list does not know. */
 export function findInstanceMarkIcon(name: string | null): LucideIcon | undefined {
   return name === null ? undefined : ICONS_BY_NAME.get(name)
 }
