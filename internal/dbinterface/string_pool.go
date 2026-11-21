@@ -179,20 +179,7 @@ func GetStringID(ctx context.Context, tx TxQuerier, values ...string) ([]sql.Nul
 	}
 
 	if len(values) == 1 {
-		if values[0] == "" {
-			return []sql.NullInt64{{Valid: false}}, nil
-		}
-
-		var id int64
-		err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", values[0]).Scan(&id)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return []sql.NullInt64{{Valid: false}}, nil
-			}
-			return nil, fmt.Errorf("failed to get string ID from pool: %w", err)
-		}
-
-		return []sql.NullInt64{{Int64: id, Valid: true}}, nil
+		return getSingleStringID(ctx, tx, values[0])
 	}
 
 	results := make([]sql.NullInt64, len(values))
@@ -227,45 +214,9 @@ func GetStringID(ctx context.Context, tx TxQuerier, values ...string) ([]sql.Nul
 
 	for i := 0; i < len(valuesList); i += maxParams {
 		end := min(i+maxParams, len(valuesList))
-		chunk := valuesList[i:end]
-
-		args := make([]any, len(chunk))
-		for j, v := range chunk {
-			args[j] = v
+		if err := queryStringIDChunk(ctx, tx, valuesList[i:end], valueToID); err != nil {
+			return nil, err
 		}
-
-		var sb strings.Builder
-		const queryPrefix = "SELECT id, value FROM string_pool WHERE value IN ("
-		sb.Grow(len(queryPrefix) + (len(chunk) * 4) + 1)
-		sb.WriteString(queryPrefix)
-		for j := range chunk {
-			if j > 0 {
-				sb.WriteString(",")
-			}
-			sb.WriteString("?")
-		}
-		sb.WriteString(")")
-
-		rows, err := tx.QueryContext(ctx, sb.String(), args...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query string pool: %w", err)
-		}
-
-		for rows.Next() {
-			var id int64
-			var value string
-			if err := rows.Scan(&id, &value); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("failed to scan string pool row: %w", err)
-			}
-			valueToID[value] = id
-		}
-
-		if err = rows.Err(); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("error iterating string pool rows: %w", err)
-		}
-		rows.Close()
 	}
 
 	for value, resultIndices := range uniqueValues {
@@ -277,4 +228,62 @@ func GetStringID(ctx context.Context, tx TxQuerier, values ...string) ([]sql.Nul
 	}
 
 	return results, nil
+}
+
+func getSingleStringID(ctx context.Context, tx TxQuerier, value string) ([]sql.NullInt64, error) {
+	if value == "" {
+		return []sql.NullInt64{{Valid: false}}, nil
+	}
+
+	var id int64
+	err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return []sql.NullInt64{{Valid: false}}, nil
+		}
+		return nil, fmt.Errorf("failed to get string ID from pool: %w", err)
+	}
+
+	return []sql.NullInt64{{Int64: id, Valid: true}}, nil
+}
+
+func queryStringIDChunk(ctx context.Context, tx TxQuerier, chunk []string, valueToID map[string]int64) error {
+	args := make([]any, len(chunk))
+	for j, v := range chunk {
+		args[j] = v
+	}
+
+	var sb strings.Builder
+	const queryPrefix = "SELECT id, value FROM string_pool WHERE value IN ("
+	sb.Grow(len(queryPrefix) + (len(chunk) * 4) + 1)
+	sb.WriteString(queryPrefix)
+	for j := range chunk {
+		if j > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("?")
+	}
+	sb.WriteString(")")
+
+	rows, err := tx.QueryContext(ctx, sb.String(), args...)
+	if err != nil {
+		return fmt.Errorf("failed to query string pool: %w", err)
+	}
+
+	for rows.Next() {
+		var id int64
+		var value string
+		if err := rows.Scan(&id, &value); err != nil {
+			rows.Close()
+			return fmt.Errorf("failed to scan string pool row: %w", err)
+		}
+		valueToID[value] = id
+	}
+
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("error iterating string pool rows: %w", err)
+	}
+	rows.Close()
+	return nil
 }
