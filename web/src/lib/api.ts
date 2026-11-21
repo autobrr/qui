@@ -2550,10 +2550,11 @@ class ApiClient {
   }
 
   /** Throws an APIError whose message is the refusal reason from the server, for example `anonymous_full`. */
-  async sendProblemReport(report: ProblemReportPayload): Promise<SentProblemReport> {
+  async sendProblemReport(report: ProblemReportPayload, sender: ProblemReportSender): Promise<SentProblemReport> {
     const endpoint = "/problem-reports"
     const formData = new FormData()
     formData.append("report", JSON.stringify(report))
+    formData.append("sender", JSON.stringify(sender))
 
     const response = await ssoSafeFetch(`${API_BASE}${endpoint}`, {
       method: "POST",

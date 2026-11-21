@@ -31,7 +31,7 @@ describe("failed requests of the browser session", () => {
   it("keeps a failed call that skips request() and calls the fetch wrapper itself", async () => {
     server.use(http.post("*/api/problem-reports", () => HttpResponse.json({ error: "too_large" }, { status: 413 })))
 
-    await expect(api.sendProblemReport({} as never)).rejects.toThrow("too_large")
+    await expect(api.sendProblemReport({} as never, { anonymous: true })).rejects.toThrow("too_large")
 
     await vi.waitFor(() => {
       expect(failedRequests().at(-1)).toMatchObject({ method: "POST", path: "/api/problem-reports", status: 413, error: "too_large" })

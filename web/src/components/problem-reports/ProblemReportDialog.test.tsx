@@ -5,7 +5,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { HttpResponse, http } from "msw"
+import { HttpResponse, delay, http } from "msw"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { closeProblemReport } from "@/components/problem-reports/open"
@@ -102,18 +102,21 @@ function withQui(qui: Partial<ProblemReportFacts["qui"]>): ProblemReportFacts {
   return { ...baseFacts, qui: { ...baseFacts.qui, ...qui } }
 }
 
-/** Records each report that reaches the send route, and answers with the next answer, or 201. */
+/** Records each report and its sender that reach the send route, and answers with the next answer, or 201. */
 function serveSend(answers: Response[] = []) {
   const reports: ProblemReportPayload[] = []
+  const senders: ProblemReportSender[] = []
   server.use(http.post("*/api/problem-reports", async ({ request }) => {
-    const report = JSON.parse((await request.formData()).get("report") as string) as ProblemReportPayload
+    const form = await request.formData()
+    const report = JSON.parse(form.get("report") as string) as ProblemReportPayload
     reports.push(report)
+    senders.push(JSON.parse(form.get("sender") as string) as ProblemReportSender)
     return answers[reports.length - 1] ?? HttpResponse.json(
       { id: "r1", submissionId: report.submissionId, title: "t", sentAt: "2026-11-19T09:00:00Z", status: "received", text: report.text },
       { status: 201 }
     )
   }))
-  return reports
+  return { reports, senders }
 }
 
 function mount() {
@@ -290,7 +293,7 @@ describe("ProblemReportDialog", () => {
     ["Leave out", { scope: "none", lines: [] }],
   ])("sends the log lines of the scope %s", async (option, logs) => {
     serve()
-    const reports = serveSend()
+    const { reports } = serveSend()
     mount()
 
     const { textField, sendButton } = await openDialog()
@@ -317,7 +320,7 @@ describe("ProblemReportDialog", () => {
 
   it("names a newer release above Send and lets the user send anyway", async () => {
     serve(withQui({ version: "1.30.0", newerRelease: { version: "v1.36.0", url: "https://github.com/autobrr/qui/releases/tag/v1.36.0" } }))
-    const reports = serveSend()
+    const { reports } = serveSend()
     mount()
 
     const { textField, sendButton } = await openDialog()
@@ -389,7 +392,7 @@ describe("ProblemReportDialog", () => {
   // regression: #4288
   it("retries a refused report with the same submission id", async () => {
     serve()
-    const reports = serveSend([
+    const { reports } = serveSend([
       HttpResponse.json({ error: "anonymous_full" }, { status: 429 }),
       HttpResponse.json({ error: "Problem reports are off in the qui config." }, { status: 403 }),
     ])
@@ -439,10 +442,11 @@ describe("Sender", () => {
     serve()
     serveSender({ anonymous: true }, { anonymous: false, provider: "discord", name: "wumpus" })
     const signIn = serveSignIn([{ state: "pending" }, { state: "done" }])
+    const { senders } = serveSend()
     const { popup, open } = stubPopup()
     mount()
 
-    await openDialog()
+    const { textField, sendButton } = await openDialog()
     openSenderMenu("Anonymous")
     fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
 
@@ -461,6 +465,10 @@ describe("Sender", () => {
     await screen.findByRole("button", { name: "wumpus" })
     expect(screen.getByText(/^The maintainers see your Discord name \(wumpus\) and may contact you\./)).not.toBeNull()
     expect(signIn.reads).toBe(2)
+
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(senders).toEqual([{ anonymous: false, provider: "discord", name: "wumpus" }]))
   })
 
   it.each<[string, ProblemReportSignInState, string]>([
@@ -577,13 +585,15 @@ describe("Sender", () => {
     expect(signIn.signOuts).toBe(1)
   })
 
+  // regression: #4360
   it("signs out and sends as Anonymous again", async () => {
     serve()
     serveSender(octocat)
     const signIn = serveSignIn([])
+    const { senders } = serveSend()
     mount()
 
-    await openDialog()
+    const { textField, sendButton } = await openDialog()
     await screen.findByRole("button", { name: "octocat" })
     openSenderMenu("octocat")
     fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }))
@@ -591,6 +601,25 @@ describe("Sender", () => {
     await screen.findByRole("button", { name: "Anonymous" })
     expect(signIn.signOuts).toBe(1)
     expect(screen.getByText(/^Anonymous: no name, no account\./)).not.toBeNull()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(senders).toEqual([{ anonymous: true }]))
+  })
+
+  // regression: #4360
+  it("sends as Anonymous while qui has not answered which sender it holds", async () => {
+    serve()
+    server.use(http.get("*/api/problem-reports/sender", async () => {
+      await delay("infinite")
+    }))
+    const { senders } = serveSend()
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+
+    await waitFor(() => expect(senders).toEqual([{ anonymous: true }]))
   })
 
   it("when brrbin rejects the sign-in on Send, says that it ended, keeps the text, and keeps the user on the page", async () => {

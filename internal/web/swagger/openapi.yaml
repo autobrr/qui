@@ -7405,10 +7405,11 @@ paths:
       summary: Send a Problem report
       description: >-
         Sends one Problem report to brrbin. qui cleans every text part again, cuts the oldest log lines when the report
-        is over 4 MiB, adds the Install key and the sign-in, and stores a Sent reports row when brrbin takes the report.
-        A second Send with the same submissionId stores no second row. Only a signed-in Sender can attach an image. It
-        answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in the
-        config. Only a signed-in browser can use this route.
+        is over 4 MiB, adds the Install key, adds the sign-in when the sender part names it, and stores a Sent reports
+        row when brrbin takes the report. A second Send with the same submissionId stores no second row. Only a
+        report whose sender part names the sign-in can attach an image. It answers 404 while the problemReports
+        Experimental feature is off, and 403 while `problemReports` is false in the config. Only a signed-in browser
+        can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -7427,8 +7428,16 @@ paths:
                   type: string
                   format: binary
                   description: A PNG, JPEG, or WebP image of at most 10 MiB.
+                sender:
+                  type: string
+                  description: >-
+                    The Sender that the dialog showed, as JSON in the form of ProblemReportSender. Without it, the
+                    report goes out as Anonymous, also when qui holds a sign-in. When it names a sign-in that qui does
+                    not hold, qui sends nothing to brrbin and answers 409 token_rejected.
             encoding:
               report:
+                contentType: application/json
+              sender:
                 contentType: application/json
       responses:
         '201':
@@ -7438,7 +7447,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SentProblemReport'
         '400':
-          description: The body is invalid, or an anonymous Sender attached an image
+          description: The body is invalid, or an anonymous report carries an image
           content:
             application/json:
               schema:
@@ -7452,7 +7461,9 @@ paths:
         '404':
           description: The problemReports Experimental feature is off
         '409':
-          description: The Reporter is full (reporter_full), or brrbin refused the token (token_rejected) and the Sender is anonymous again
+          description: >-
+            The Reporter is full (reporter_full), brrbin refused the token (token_rejected) and the Sender is anonymous
+            again, or the sender part names a sign-in that qui does not hold (token_rejected)
           content:
             application/json:
               schema:

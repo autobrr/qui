@@ -93,6 +93,7 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	var report *problemreport.Report
 	var image *problemreport.Image
+	shown := problemreport.Sender{Anonymous: true}
 	for {
 		part, err := reader.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -122,6 +123,11 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			image = &problemreport.Image{Data: data, ContentType: part.Header.Get("Content-Type")}
+		case "sender":
+			if err := json.UnmarshalRead(part, &shown); err != nil {
+				RespondError(w, http.StatusBadRequest, "the sender is not valid JSON: "+err.Error())
+				return
+			}
 		}
 	}
 	if report == nil {
@@ -129,7 +135,7 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sent, err := h.service.Send(r.Context(), *report, image)
+	sent, err := h.service.Send(r.Context(), *report, image, shown)
 	var refusal *problemreport.RefusalError
 	switch {
 	case errors.As(err, &refusal):

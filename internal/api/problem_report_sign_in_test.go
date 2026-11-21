@@ -119,8 +119,11 @@ func TestProblemReportSignIn(t *testing.T) {
 	assert.NotContains(t, storedToken, token, "the token is stored encrypted")
 	assert.NotContains(t, storedKey, installKey, "the Install key is stored encrypted")
 
+	_, facts := rig.facts("startedFrom=menu")
+	shown := new(rig.sender())
 	polls := len(rig.fake.Requests())
-	rig.sendReport(reportSubmission, "signed in")
+	status, answer := rig.sendAs(shown, menuReport("signed in", facts, "none", nil), nil)
+	require.Equal(t, http.StatusCreated, status, answer)
 	requests := rig.brrbinRequests(polls)
 	require.Len(t, requests, 1, "qui stops polling after done")
 	assert.Equal(t, "Bearer "+token, requests[0].Header.Get("Authorization"))

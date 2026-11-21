@@ -115,6 +115,7 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
     queryFn: () => api.getProblemReportFacts(startedFrom),
     gcTime: 0,
   })
+  const senderControls = useSender()
   const sendMutation = useMutation({
     mutationFn: (facts: ProblemReportFacts) => api.sendProblemReport({
       submissionId,
@@ -126,7 +127,7 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
       browser,
       failedRequests: [...failed],
       logs: { scope: logScope, lines: logLines(facts, logScope) },
-    }),
+    }, senderControls.sender ?? { anonymous: true }),
     onSuccess: () => toast.success(t("problemReports.sent")),
     onError: (error) => {
       if (error instanceof APIError && error.message === "token_rejected") void queryClient.invalidateQueries({ queryKey: SENDER_KEY })
@@ -134,7 +135,6 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
   })
   // Here, and not in the action bar, because a change of layout mounts the action bar again.
   const sentReports = useSentReports()
-  const senderControls = useSender()
 
   const facts = factsQuery.data
   const canSend = facts !== undefined && text.trim() !== "" && !sendMutation.isPending
