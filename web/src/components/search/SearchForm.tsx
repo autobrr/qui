@@ -250,6 +250,7 @@ function QueryInput({ query, onQueryChange, type, recent, onRecent, inputRef }: 
           onMouseDown={event => event.preventDefault()}
           onClick={() => {
             onQueryChange("")
+            setHighlight(-1)
             inputRef.current?.focus()
           }}
         >

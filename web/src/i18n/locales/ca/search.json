@@ -28,7 +28,8 @@
     "recentSearches": "Cerques recents",
     "noIndexersTitle": "Encara no hi ha indexadors",
     "noIndexersBody": "Afegeix un indexador per cercar-hi des d'aquesta pàgina.",
-    "noIndexersAction": "Afegeix indexadors"
+    "noIndexersAction": "Afegeix indexadors",
+    "indexersFailed": "No s'han pogut carregar els indexadors"
   },
   "searchForm": {
     "advanced": "Avançat",

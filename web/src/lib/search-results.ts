@@ -42,7 +42,7 @@ function numberParam(value: string | undefined, min: number): number | undefined
   const trimmed = value?.trim()
   if (!trimmed) return undefined
   const parsed = Number(trimmed)
-  return Number.isFinite(parsed) && parsed >= min ? parsed : undefined
+  return Number.isSafeInteger(parsed) && parsed >= min ? parsed : undefined
 }
 
 export function buildSearchRequest(search: SubmittedSearch): TorznabSearchRequest {

@@ -28,7 +28,8 @@
     "recentSearches": "Нещодавні пошуки",
     "noIndexersTitle": "Ще немає індексаторів",
     "noIndexersBody": "Додайте індексатор, щоб шукати в ньому з цієї сторінки.",
-    "noIndexersAction": "Додати індексатори"
+    "noIndexersAction": "Додати індексатори",
+    "indexersFailed": "Не вдалося завантажити індексатори"
   },
   "searchForm": {
     "advanced": "Розширено",

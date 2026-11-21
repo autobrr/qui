@@ -28,7 +28,8 @@
     "recentSearches": "Ricerche recenti",
     "noIndexersTitle": "Ancora nessun indexer",
     "noIndexersBody": "Aggiungi un indexer per interrogarlo da questa pagina.",
-    "noIndexersAction": "Aggiungi indexer"
+    "noIndexersAction": "Aggiungi indexer",
+    "indexersFailed": "Caricamento degli indexer non riuscito"
   },
   "searchForm": {
     "advanced": "Avanzate",

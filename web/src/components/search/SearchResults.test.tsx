@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -79,6 +79,18 @@ describe("SearchResults", () => {
     expect(onAdd).toHaveBeenCalledTimes(1)
     expect(onAdd.mock.calls[0][0].map((picked: TorznabSearchResult) => picked.guid)).toEqual(["1", "3"])
     expect(onAdd.mock.calls[0][1]).toBe(2)
+  })
+
+  // regression: #4354
+  it("ticks the range from the row ticked before, also when React renders both ticks at once", () => {
+    renderResults([first, second, third])
+
+    act(() => {
+      fireEvent.click(screen.getByText(first.title))
+      fireEvent.click(screen.getByText(third.title), { shiftKey: true })
+    })
+
+    expect(within(screen.getByRole("region", { name: "Selected results" })).getByText("3 selected")).toBeTruthy()
   })
 
   it("shows all results again and drops the selection on a tap of the filtered count", () => {

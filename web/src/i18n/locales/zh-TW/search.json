@@ -28,7 +28,8 @@
     "recentSearches": "最近的搜尋",
     "noIndexersTitle": "尚未設定索引器",
     "noIndexersBody": "新增索引器後，即可在此頁面搜尋。",
-    "noIndexersAction": "新增索引器"
+    "noIndexersAction": "新增索引器",
+    "indexersFailed": "載入索引器失敗"
   },
   "searchForm": {
     "advanced": "進階",

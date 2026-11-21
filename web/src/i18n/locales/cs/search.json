@@ -28,7 +28,8 @@
     "recentSearches": "Nedávná hledání",
     "noIndexersTitle": "Zatím žádné indexery",
     "noIndexersBody": "Přidejte indexer, abyste ho mohli prohledávat z této stránky.",
-    "noIndexersAction": "Přidat indexery"
+    "noIndexersAction": "Přidat indexery",
+    "indexersFailed": "Nepodařilo se načíst indexery"
   },
   "searchForm": {
     "advanced": "Pokročilé",

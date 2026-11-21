@@ -6,7 +6,7 @@
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog"
 import { Page } from "@/components/layout/Page"
 import { RecentMeta, SearchForm } from "@/components/search/SearchForm"
-import { SearchResults } from "@/components/search/SearchResults"
+import { RefreshButton, SearchResults } from "@/components/search/SearchResults"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -81,7 +81,9 @@ export function Search() {
 
   const search = useMutation({
     mutationFn: (submitted: SubmittedSearch) => api.searchTorznab(buildSearchRequest(submitted)),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["torznab", "search", "recent"] }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["torznab", "search", "recent"] })
+    },
   })
 
   const categoryNames = useMemo(() => buildCategoryNames(indexers), [indexers])
@@ -101,7 +103,8 @@ export function Search() {
     setQuery(recentSearch.query)
     setType(recentType)
     if (restored) setPickedIndexers(restored.size === indexers.length ? null : restored)
-    run({ query: recentSearch.query, type: recentType, indexerIds: Array.from(restored ?? selectedIndexerIds), params })
+    const indexerIds = Array.from(restored ?? selectedIndexerIds)
+    if (indexerIds.length > 0) run({ query: recentSearch.query, type: recentType, indexerIds, params })
   }
 
   const searchAllIndexers = () => {
@@ -143,10 +146,13 @@ export function Search() {
   const actions = { instances, onAdd, onDownload, onOpenInfo }
 
   const noIndexers = indexersQuery.isSuccess && indexers.length === 0
+  const onRefresh = () => setRefreshAsk(true)
 
   return (
     <Page title={t("pageTitle")} description={t("pageDescription")}>
-      {noIndexers ? (
+      {indexersQuery.isLoadingError ? (
+        <ErrorCard title={t("form.indexersFailed")} message={indexersQuery.error.message} retrying={indexersQuery.isFetching} onRetry={() => void indexersQuery.refetch()} />
+      ) : noIndexers ? (
         <NoIndexers />
       ) : (
         <SearchForm
@@ -171,14 +177,7 @@ export function Search() {
       {search.isPending && <Searching count={search.variables?.indexerIds.length ?? 0} />}
 
       {search.isError && (
-        <Card className="flex-row items-start gap-3 border-destructive/40 px-4 py-4 sm:px-6">
-          <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
-          <div className="min-w-0 flex-1 space-y-1">
-            <p className="text-sm font-medium">{t("results.failed")}</p>
-            <p className="text-sm break-words text-muted-foreground">{search.error.message}</p>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => search.variables && run(search.variables)}>{t("results.retry")}</Button>
-        </Card>
+        <ErrorCard title={t("results.failed")} message={search.error.message} onRetry={() => search.variables && run({ ...search.variables, bypassCache: false })} />
       )}
 
       {search.isSuccess && search.data.results.length === 0 && (
@@ -186,12 +185,15 @@ export function Search() {
           <SearchIcon className="size-8 text-muted-foreground/60" />
           <p className="font-medium">{search.variables.query.trim() ? t("results.noResultsFor", { query: search.variables.query.trim() }) : t("results.noResults")}</p>
           <p className="max-w-md text-sm text-muted-foreground">{t("results.noResultsHint")}</p>
-          {search.variables.indexerIds.length < indexers.length && (
-            <Button type="button" variant="outline" size="sm" onClick={searchAllIndexers}>
-              <Server className="size-3.5" />
-              {t("results.searchAllIndexers")}
-            </Button>
-          )}
+          <div className="flex flex-wrap justify-center gap-2">
+            {indexers.some(indexer => !search.variables.indexerIds.includes(indexer.id)) && (
+              <Button type="button" variant="outline" size="sm" onClick={searchAllIndexers}>
+                <Server className="size-3.5" />
+                {t("results.searchAllIndexers")}
+              </Button>
+            )}
+            {search.data.cache && <RefreshButton ready={!coolingDown} onRefresh={onRefresh} />}
+          </div>
         </Card>
       )}
 
@@ -204,13 +206,13 @@ export function Search() {
           categoryName={categoryName}
           sort={sort}
           onSortChange={setSort}
-          onRefresh={() => setRefreshAsk(true)}
+          onRefresh={onRefresh}
           refreshReady={!coolingDown}
           {...actions}
         />
       )}
 
-      {search.isIdle && !noIndexers && <RecentSearches recent={recent.slice(0, RECENT_LIMIT)} onPick={runRecent} />}
+      {search.isIdle && indexers.length > 0 && <RecentSearches recent={recent.slice(0, RECENT_LIMIT)} onPick={runRecent} />}
 
       {addInstanceId !== null && (
         <AddTorrentDialog
@@ -242,6 +244,20 @@ export function Search() {
         }}
       />
     </Page>
+  )
+}
+
+function ErrorCard({ title, message, retrying = false, onRetry }: { title: string; message: string; retrying?: boolean; onRetry: () => void }) {
+  const { t } = useTranslation("search")
+  return (
+    <Card className="flex-row items-start gap-3 border-destructive/40 px-4 py-4 sm:px-6">
+      <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-sm break-words text-muted-foreground">{message}</p>
+      </div>
+      <Button type="button" variant="outline" size="sm" disabled={retrying} onClick={onRetry}>{t("results.retry")}</Button>
+    </Card>
   )
 }
 

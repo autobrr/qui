@@ -24,6 +24,7 @@ export async function addUrlsByIndexer<T extends AddRequest>(
   }
 
   const total: AddTorrentResponse = { message: "", added: 0, failed: 0, failedURLs: [] }
+  const errors: unknown[] = []
   for (const [indexerId, group] of groups) {
     try {
       const response = await add({ ...base, urls: group, indexerId })
@@ -32,10 +33,12 @@ export async function addUrlsByIndexer<T extends AddRequest>(
       total.failed += response.failed
       total.failedURLs!.push(...(response.failedURLs ?? []))
     } catch (error) {
+      errors.push(error)
       const message = error instanceof Error ? error.message : String(error)
       total.failed += group.length
       total.failedURLs!.push(...group.map(url => ({ url, error: message })))
     }
   }
+  if (errors.length === groups.size) throw errors[0]
   return total
 }

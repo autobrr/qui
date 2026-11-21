@@ -28,7 +28,8 @@
     "recentSearches": "최근 검색",
     "noIndexersTitle": "아직 인덱서가 없습니다",
     "noIndexersBody": "인덱서를 추가하면 이 페이지에서 검색할 수 있습니다.",
-    "noIndexersAction": "인덱서 추가"
+    "noIndexersAction": "인덱서 추가",
+    "indexersFailed": "인덱서를 불러오지 못했습니다"
   },
   "searchForm": {
     "advanced": "고급",

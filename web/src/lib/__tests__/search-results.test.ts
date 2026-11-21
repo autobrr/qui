@@ -45,6 +45,14 @@ describe("buildSearchRequest", () => {
     expect(movies.cache_mode).toBe("bypass")
   })
 
+  // regression: #4354
+  it("drops a fraction, which the server cannot read as a whole number", () => {
+    const request = buildSearchRequest({ query: "Sample Show", type: "tv", indexerIds: [1], params: { season: "1.5", episode: "3", limit: "2.5" } })
+    expect(request.season).toBeUndefined()
+    expect(request.episode).toBe(3)
+    expect(request.limit).toBeUndefined()
+  })
+
   it("reads an IMDb ID from the query when the field is empty", () => {
     const request = buildSearchRequest({ query: "Sample Film tt7654321", type: "movies", indexerIds: [1], params: {} })
     expect(request.imdb_id).toBe("tt7654321")

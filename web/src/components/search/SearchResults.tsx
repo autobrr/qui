@@ -106,7 +106,8 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
   const pickableKeys = useMemo(() => rows.filter(row => row.downloadUrl).map(resultKey), [rows])
 
   const tick = useCallback((key: string, range: boolean) => {
-    setPicked(current => tickResult(current, pickableKeys, key, range ? lastTicked.current : null))
+    const anchor = range ? lastTicked.current : null
+    setPicked(current => tickResult(current, pickableKeys, key, anchor))
     lastTicked.current = key
   }, [pickableKeys])
   const pageTick = pickedResults.length === 0 ? false : pickableKeys.every(key => picked.has(key)) ? true : "indeterminate"
@@ -144,17 +145,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
           )}
           {cache && <CacheStatus cache={cache} />}
           {partial && <PartialStatus />}
-          <Tooltip>
-            <TooltipTrigger asChild openOnTap={!refreshReady}>
-              <span className="ml-auto inline-flex">
-                <Button type="button" variant="ghost" size="sm" disabled={!refreshReady} onClick={onRefresh} className="text-muted-foreground">
-                  <RefreshCw className="size-3.5" />
-                  <span className="max-sm:sr-only">{t("results.refresh")}</span>
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{refreshReady ? t("results.refreshFromIndexers") : t("results.refreshCooldown")}</TooltipContent>
-          </Tooltip>
+          <RefreshButton ready={refreshReady} onRefresh={onRefresh} className="ml-auto" />
         </div>
         <div className="flex flex-col gap-2 @2xl:flex-row @2xl:items-center">
           <div className="@2xl:w-64 @2xl:shrink-0">
@@ -172,7 +163,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
               value={SORT_OPTIONS.find(option => option.sort.key === sort.key && option.sort.desc === sort.desc)?.value}
               onValueChange={value => onSortChange(SORT_OPTIONS.find(option => option.value === value)!.sort)}
             >
-              <SelectTrigger size="sm" className="shrink-0 @xl:hidden" aria-label={t("sort.label")}>
+              <SelectTrigger size="sm" className="shrink-0 @3xl:hidden" aria-label={t("sort.label")}>
                 <SelectValue placeholder={t("sort.label")} />
               </SelectTrigger>
               <SelectContent>
@@ -267,6 +258,23 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
 }
 
 const TEXT_SORTS: ReadonlySet<SortKey> = new Set(["title", "indexer"])
+
+export function RefreshButton({ ready, onRefresh, className }: { ready: boolean; onRefresh: () => void; className?: string }) {
+  const { t } = useTranslation("search")
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild openOnTap={!ready}>
+        <span className={cn("inline-flex", className)}>
+          <Button type="button" variant="ghost" size="sm" disabled={!ready} onClick={onRefresh} className="text-muted-foreground">
+            <RefreshCw className="size-3.5" />
+            <span className="max-sm:sr-only">{t("results.refresh")}</span>
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{ready ? t("results.refreshFromIndexers") : t("results.refreshCooldown")}</TooltipContent>
+    </Tooltip>
+  )
+}
 
 function SortHeader({ sortKey, label, sort, onSortChange, className, end = false }: { sortKey: SortKey; label: string; sort: ResultSort; onSortChange: (sort: ResultSort) => void; className?: string; end?: boolean }) {
   const active = sort.key === sortKey

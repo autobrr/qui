@@ -28,7 +28,8 @@
     "recentSearches": "最近搜索",
     "noIndexersTitle": "还没有索引器",
     "noIndexersBody": "添加索引器后，即可在此页面搜索。",
-    "noIndexersAction": "添加索引器"
+    "noIndexersAction": "添加索引器",
+    "indexersFailed": "加载索引器失败"
   },
   "searchForm": {
     "advanced": "高级",

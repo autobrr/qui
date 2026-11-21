@@ -45,4 +45,12 @@ describe("addUrlsByIndexer", () => {
     expect(response.failed).toBe(2)
     expect(response.failedURLs).toEqual([{ url: "b", error: "indexer down" }, { url: "c", error: "indexer down" }])
   })
+
+  // regression: #4354
+  it("fails when every request fails, so the dialog stays open", async () => {
+    const add = async (): Promise<AddTorrentResponse> => {
+      throw new Error("indexer down")
+    }
+    await expect(addUrlsByIndexer(add, {}, ["a", "b"], { a: 1, b: 2 })).rejects.toThrow("indexer down")
+  })
 })
