@@ -382,7 +382,7 @@
     "internal/qbittorrent/sort_golden_test.go": 27,
     "internal/qbittorrent/sort_parity_test.go": 9,
     "internal/qbittorrent/sync_events.go": 10,
-    "internal/qbittorrent/sync_manager.go": 902,
+    "internal/qbittorrent/sync_manager.go": 899,
     "internal/qbittorrent/sync_manager_test.go": 224,
     "internal/qbittorrent/syncowner/owner.go": 20,
     "internal/qbittorrent/syncowner/owner_test.go": 5,

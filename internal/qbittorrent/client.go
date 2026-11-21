@@ -256,8 +256,6 @@ func (c *Client) handleSyncUpdate(update qbt.SyncUpdate) {
 	c.updateServerState(update.ServerState)
 	c.handleCompletionUpdates(update)
 	c.handleAddedUpdates(update)
-	log.Trace().Int("instanceID", c.instanceID).Int("torrentCount", update.Snapshot.Len()).Msg("Sync manager update received, marking client as healthy")
-
 	c.dispatchSyncUpdate(update)
 }
 
