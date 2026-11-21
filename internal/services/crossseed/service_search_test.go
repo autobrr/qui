@@ -1601,6 +1601,67 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 	require.Equal(t, 0, callCount)
 }
 
+// regression: #4320
+func TestSearchGazelleMatches_AsksSiteWhenLocalContentHoldsPartOfSource(t *testing.T) {
+	const album = "Lumen Harbor - Quiet Tides (2024) [FLAC]"
+	sourceTorrent := &qbt.Torrent{
+		Hash:     "223759985c562a644428312c8cd3585d04686847",
+		Name:     album,
+		Progress: 1.0,
+		Size:     900,
+		Tracker:  "https://flacsfor.me/abc/announce",
+	}
+	sourceFiles := qbt.TorrentFiles{
+		{Name: album + "/01 - Lumen Harbor - Low Light.flac", Size: 200},
+		{Name: album + "/02 - Lumen Harbor - Quiet Tides.flac", Size: 500},
+		{Name: album + "/03 - Lumen Harbor - Undertow.flac", Size: 200},
+	}
+	partialCopy := qbt.Torrent{
+		Hash:     "c1f58f7e5c7f6f45c8f5d6f6a6c4fbb4d4f2b1a9",
+		Name:     album,
+		Progress: 1.0,
+		Size:     200,
+		Tracker:  "https://orpheus.network/announce",
+	}
+	torrentBytes, err := bencode.Marshal(map[string]any{
+		"announce": sourceTorrent.Tracker,
+		"info":     map[string]any{"length": int64(900), "name": album},
+	})
+	require.NoError(t, err)
+	clients, err := gazelleClientsForTest()
+	require.NoError(t, err)
+
+	callCount := 0
+	prevFindMatch := findGazelleMatch
+	findGazelleMatch = func(context.Context, *gazellemusic.Client, []byte, map[string]int64, int64) (*gazellemusic.Match, error) {
+		callCount++
+		return nil, nil
+	}
+	t.Cleanup(func() { findGazelleMatch = prevFindMatch })
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &gazelleSkipHashSyncManager{
+			torrents: []qbt.Torrent{*sourceTorrent},
+			filesByHash: map[string]qbt.TorrentFiles{
+				normalizeHash(sourceTorrent.Hash): sourceFiles,
+				normalizeHash(partialCopy.Hash):   {sourceFiles[0]},
+			},
+			cachedInstanceTorrents: []internalqb.CrossInstanceTorrentView{{
+				TorrentView:  &internalqb.TorrentView{Torrent: &partialCopy},
+				InstanceID:   1,
+				InstanceName: "Local Node",
+			}},
+			exportedTorrent: torrentBytes,
+		},
+	}
+
+	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	require.Equal(t, GazelleNoMatch, gazelleLookupOf(t, lookups, "orpheus.network").Status, "one track of the album does not make OPS a Seeded tracker")
+	require.Equal(t, 1, callCount)
+}
+
 func TestSearchTorrentMatches_DisableTorznabAllowsGazellePrefilterOnlySkip(t *testing.T) {
 	ctx := context.Background()
 	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-disable-torznab-prefilter-only")

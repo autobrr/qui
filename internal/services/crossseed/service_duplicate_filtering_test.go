@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -252,6 +253,161 @@ func TestFilterIndexersByExistingContentRejectsSidecarOnlyExisting(t *testing.T)
 	require.Empty(t, contentMatches)
 }
 
+const (
+	seededTrackerPack       = "Example.Show.S02.1080p.WEB-DL.H.264-GRP"
+	seededTrackerMovie      = "Example.Movie.2024.1080p.BluRay.x264-GRP"
+	seededTrackerCollection = "Example.Collection.1080p.BluRay.x264-GRP"
+	seededTrackerSourceHash = "sourcehash"
+	seededTrackerIndexerB   = 10
+)
+
+type seededTrackerTorrent struct {
+	hash  string
+	name  string
+	files qbt.TorrentFiles
+}
+
+func seededTrackerEpisodeName(episode int) string {
+	return fmt.Sprintf("Example.Show.S02E%02d.1080p.WEB-DL.H.264-GRP", episode)
+}
+
+func seededTrackerEpisodeSizeLargestIsSeven(episode int) int64 {
+	if episode == 7 {
+		return 9_000
+	}
+	return 1_000 + int64(episode)
+}
+
+func seededTrackerPackTorrent(hash string) seededTrackerTorrent {
+	files := qbt.TorrentFiles{{Name: seededTrackerPack + "/GRP.nfo", Size: 10}}
+	for episode := 1; episode <= 8; episode++ {
+		files = append(files, qbt.TorrentFile{Name: seededTrackerPack + "/" + seededTrackerEpisodeName(episode) + ".mkv", Size: seededTrackerEpisodeSizeLargestIsSeven(episode)})
+	}
+	return seededTrackerTorrent{hash: hash, name: seededTrackerPack, files: files}
+}
+
+func seededTrackerEpisodeTorrent(episode int) seededTrackerTorrent {
+	name := seededTrackerEpisodeName(episode)
+	return seededTrackerTorrent{
+		hash:  fmt.Sprintf("episode%02dhash", episode),
+		name:  name,
+		files: qbt.TorrentFiles{{Name: name + ".mkv", Size: seededTrackerEpisodeSizeLargestIsSeven(episode)}},
+	}
+}
+
+func filterSeededTrackerIndexer(t *testing.T, source seededTrackerTorrent, othersFromTrackerB ...seededTrackerTorrent) (askedTrackerB bool, mismatches map[string]contentPrefilterRejectedTorrent) {
+	t.Helper()
+	const instanceID = 1
+	sync := &duplicateFilteringSyncManager{
+		torrents: map[int][]qbt.Torrent{instanceID: {{Hash: source.hash, Name: source.name, Progress: 1, Tracker: "https://tracker-a.example/announce"}}},
+		files:    map[string]qbt.TorrentFiles{source.hash: source.files},
+	}
+	for _, other := range othersFromTrackerB {
+		sync.torrents[instanceID] = append(sync.torrents[instanceID], qbt.Torrent{Hash: other.hash, Name: other.name, Progress: 1, Tracker: "https://tracker-b.example/announce"})
+		sync.files[other.hash] = other.files
+	}
+	svc := newDuplicateFilteringContentFilterService(sync)
+	indexerInfo := map[int]jackett.EnabledIndexerInfo{
+		seededTrackerIndexerB: {ID: seededTrackerIndexerB, Name: "Tracker B", Domain: "tracker-b.example"},
+	}
+
+	filtered, excluded, _, rejected, err := svc.filterIndexersByExistingContent(t.Context(), instanceID, source.hash, []int{seededTrackerIndexerB}, indexerInfo)
+	require.NoError(t, err)
+	asked := slices.Contains(filtered, seededTrackerIndexerB)
+	_, skipped := excluded[seededTrackerIndexerB]
+	require.NotEqual(t, asked, skipped)
+	return asked, rejected
+}
+
+// regression: #4320
+func TestFilterIndexersByExistingContentSeededTracker(t *testing.T) {
+	t.Parallel()
+
+	allEpisodes := make([]seededTrackerTorrent, 0, 8)
+	for episode := 1; episode <= 8; episode++ {
+		allEpisodes = append(allEpisodes, seededTrackerEpisodeTorrent(episode))
+	}
+	movieFile := qbt.TorrentFiles{{Name: seededTrackerMovie + "/" + seededTrackerMovie + ".mkv", Size: 5_000}}
+	movie := seededTrackerTorrent{hash: seededTrackerSourceHash, name: seededTrackerMovie, files: movieFile}
+
+	tests := []struct {
+		name      string
+		source    seededTrackerTorrent
+		others    []seededTrackerTorrent
+		wantAsked bool
+	}{
+		{
+			name:      "the largest episode of a season pack does not stand for the pack",
+			source:    seededTrackerPackTorrent(seededTrackerSourceHash),
+			others:    []seededTrackerTorrent{seededTrackerEpisodeTorrent(7)},
+			wantAsked: true,
+		},
+		{
+			name:      "every episode as single torrents does not stand for the pack",
+			source:    seededTrackerPackTorrent(seededTrackerSourceHash),
+			others:    allEpisodes,
+			wantAsked: true,
+		},
+		{
+			name:      "an episode that is not the largest does not stand for the pack",
+			source:    seededTrackerPackTorrent(seededTrackerSourceHash),
+			others:    []seededTrackerTorrent{seededTrackerEpisodeTorrent(1)},
+			wantAsked: true,
+		},
+		{
+			name:      "the same season pack is a Seeded tracker",
+			source:    seededTrackerPackTorrent(seededTrackerSourceHash),
+			others:    []seededTrackerTorrent{seededTrackerPackTorrent("packbhash")},
+			wantAsked: false,
+		},
+		{
+			name: "a season pack does not stand for one of its episodes",
+			source: seededTrackerTorrent{
+				hash:  seededTrackerSourceHash,
+				name:  seededTrackerEpisodeName(7),
+				files: seededTrackerEpisodeTorrent(7).files,
+			},
+			others:    []seededTrackerTorrent{seededTrackerPackTorrent("packbhash")},
+			wantAsked: true,
+		},
+		{
+			name:   "the same movie with one more video file is a Seeded tracker",
+			source: movie,
+			others: []seededTrackerTorrent{{
+				hash: "moviebhash",
+				name: seededTrackerMovie,
+				files: append(slices.Clone(movieFile), qbt.TorrentFiles{
+					{Name: seededTrackerMovie + "/" + seededTrackerMovie + ".Alt.Cut.mkv", Size: 1_500},
+				}...),
+			}},
+			wantAsked: false,
+		},
+		{
+			name:   "a collection does not stand for a movie inside it",
+			source: movie,
+			others: []seededTrackerTorrent{{
+				hash: "collectionhash",
+				name: seededTrackerCollection,
+				files: qbt.TorrentFiles{
+					{Name: seededTrackerCollection + "/" + seededTrackerMovie + ".mkv", Size: 5_000},
+					{Name: seededTrackerCollection + "/Example.Movie.Two.2026.1080p.BluRay.x264-GRP.mkv", Size: 6_000},
+				},
+			}},
+			wantAsked: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			asked, rejected := filterSeededTrackerIndexer(t, tt.source, tt.others...)
+
+			require.Equal(t, tt.wantAsked, asked)
+			require.Empty(t, rejected, "a torrent that holds part of the source is not a mismatch")
+		})
+	}
+}
+
 func TestBuildTorrentSearchResultsFiltersExistingInfohashes(t *testing.T) {
 	t.Parallel()
 
@@ -422,6 +578,50 @@ func TestBuildTorrentSearchResultsKeepsDuplicateRejectedByContentPrefilter(t *te
 
 	scored[0].provenance.Class = searchCandidateClassTitleRescue
 	results, duplicateFiltered, err = svc.buildTorrentSearchResults(context.Background(), instanceID, sourceHash, scored, 10)
+	require.NoError(t, err)
+	require.Equal(t, 1, duplicateFiltered)
+	require.Empty(t, results)
+}
+
+// regression: #4320
+func TestBuildTorrentSearchResultsDropsEpisodeOfPackSearchThatInstanceSeeds(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	pack := seededTrackerPackTorrent(seededTrackerSourceHash)
+	episode := seededTrackerEpisodeTorrent(7)
+	sync := &duplicateFilteringSyncManager{
+		torrents: map[int][]qbt.Torrent{instanceID: {
+			{Hash: pack.hash, Name: pack.name, Progress: 1, Tracker: "https://tracker-a.example/announce"},
+			{Hash: episode.hash, Name: episode.name, Progress: 1, Tracker: "https://tracker-b.example/announce"},
+		}},
+		files: map[string]qbt.TorrentFiles{pack.hash: pack.files, episode.hash: episode.files},
+	}
+	svc := newDuplicateFilteringContentFilterService(sync)
+	svc.asyncFilteringCache = ttlcache.New[string, *AsyncIndexerFilteringState]()
+	indexerInfo := map[int]jackett.EnabledIndexerInfo{
+		seededTrackerIndexerB: {ID: seededTrackerIndexerB, Name: "Tracker B", Domain: "tracker-b.example"},
+	}
+	_, _, _, rejected, err := svc.filterIndexersByExistingContent(t.Context(), instanceID, pack.hash, []int{seededTrackerIndexerB}, indexerInfo)
+	require.NoError(t, err)
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, pack.hash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted:     true,
+		ContentCompleted:          true,
+		rejectedContentCandidates: rejected,
+	}, ttlcache.DefaultTTL)
+	scored := []scoredTorrentSearchResult{{
+		result: jackett.SearchResult{
+			Indexer:    "Tracker B",
+			IndexerID:  seededTrackerIndexerB,
+			Title:      episode.name,
+			InfoHashV1: episode.hash,
+		},
+		score:  1,
+		reason: "exact",
+	}}
+
+	results, duplicateFiltered, err := svc.buildTorrentSearchResults(t.Context(), instanceID, pack.hash, scored, 10)
+
 	require.NoError(t, err)
 	require.Equal(t, 1, duplicateFiltered)
 	require.Empty(t, results)

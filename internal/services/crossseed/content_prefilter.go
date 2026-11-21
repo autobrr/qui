@@ -6,6 +6,7 @@ package crossseed
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
@@ -73,6 +74,7 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 	matchedContent := make([]contentPrefilterMatchedTorrent, 0, len(candidates))
 	contentMatches := make([]string, 0, len(candidates))
 	rejectedContent := make(map[string]contentPrefilterRejectedTorrent)
+	var partialContent []string
 	for _, candidate := range candidates {
 		hashKey := normalizeHash(candidate.view.Hash)
 		candidateFiles, ok := filesByHash[hashKey]
@@ -91,6 +93,10 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 		// side, in place of a search result from its tracker.
 		matchResult := s.matcher().getMatchTypeWithReason(sourceRead.release, candidate.read.release, sourceFiles, candidateFiles, contentPrefilterPolicy.SizeTolerancePercent)
 		candidateLayout := contentPrefilterLayoutSummary(candidateFiles, normalizer)
+		if holdsOnlyPartOfSource(matchResult.MatchType) {
+			partialContent = append(partialContent, fmt.Sprintf("%s (%s)", candidate.view.Name, strings.Join(s.extractTrackerDomainsFromTorrent(candidate.view.Torrent), ", ")))
+			continue
+		}
 		if !contentPrefilterAcceptsMatchType(matchResult.MatchType) {
 			trackerDomains := s.extractTrackerDomainsFromTorrent(candidate.view.Torrent)
 			rejection := contentPrefilterRejectedTorrent{
@@ -133,6 +139,15 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 			Str("matchType", matchResult.MatchType).
 			Strs("trackerDomains", trackerDomains).
 			Msg("crossseed: accepted existing content prefilter candidate after file-level matching")
+	}
+
+	if len(partialContent) > 0 {
+		log.Debug().
+			Str("sourceHash", sourceHash).
+			Str("sourceName", sourceTorrent.Name).
+			Str("sourceLayout", sourceLayout).
+			Strs("partialTorrents", partialContent).
+			Msg("crossseed: existing torrents hold only part of the source, so their trackers are not Seeded trackers")
 	}
 
 	if len(rejectedContent) == 0 {
@@ -236,6 +251,10 @@ func contentPrefilterHashKeys(view internalqb.CrossInstanceTorrentView) []string
 
 func contentPrefilterAcceptsMatchType(matchType string) bool {
 	return matchTypePriority(matchType) > 0
+}
+
+func holdsOnlyPartOfSource(matchType string) bool {
+	return matchType == "partial-in-pack" || matchType == "size-partial-in-pack"
 }
 
 func contentPrefilterLargestUsableFileName(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) string {
