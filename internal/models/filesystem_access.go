@@ -114,6 +114,6 @@ type SSHTier string
 const (
 	// SSHTierSFTP is the sftp subsystem only.
 	SSHTierSFTP SSHTier = "sftp"
-	// SSHTierExec adds a shell with GNU find and stat.
+	// SSHTierExec adds a shell with GNU find, and stat from GNU or uutils coreutils.
 	SSHTierExec SSHTier = "exec"
 )

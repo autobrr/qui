@@ -252,6 +252,8 @@ func TestExecCapabilities(t *testing.T) {
 		{name: "sftp only key", mode: sshtest.ExecSFTPOnly},
 		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, posixShell: true, gnuUserland: true},
 		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true, posixShell: true},
+		// regression: #4341
+		{name: "uutils stat", mode: sshtest.ExecUutils, exec: true, posixShell: true, gnuUserland: true},
 		// The GNU tools are there, but the login shell quotes like fish,
 		// nushell or tcsh, so a quoted path could break out: no exec tier.
 		{name: "non-posix login shell", mode: sshtest.ExecNonPOSIX, exec: true},

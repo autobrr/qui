@@ -67,6 +67,7 @@ const (
 	// second session channel, the sftp one never, the way sshd refuses an open
 	// that arrives before it counts the close of the session before it.
 	ExecRefuseEveryOtherSession
+	ExecUutils
 )
 
 // SFTPMode selects what the test server does with an sftp subsystem request.
@@ -124,7 +125,10 @@ const (
 // stallTimeout is how long a stalled listing waits before it releases itself.
 const stallTimeout = 3 * time.Second
 
-const versionBannerGNU = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\n"
+const (
+	versionBannerGNU    = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\n"
+	versionBannerUutils = "find (GNU findutils) 4.10.0\nstat (uutils coreutils) 0.10.0\n"
+)
 
 // Server is an in-process SSH server listening on loopback. It serves the sftp
 // subsystem through pkg/sftp and answers exec requests per its ExecMode, and it
@@ -605,6 +609,8 @@ func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
 	case mode == ExecCsh && quotedAny(command, func(q string) bool { return strings.Contains(q, "\n") }):
 		_, _ = io.WriteString(channel.Stderr(), "Unmatched '''.\n")
 		return 1
+	case strings.Contains(command, "--version") && mode == ExecUutils:
+		_, _ = io.WriteString(channel, versionBannerUutils)
 	case strings.Contains(command, "--version") && mode != ExecBSD:
 		_, _ = io.WriteString(channel, versionBannerGNU)
 	case strings.Contains(command, "--version"):
