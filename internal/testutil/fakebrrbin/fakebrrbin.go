@@ -418,7 +418,9 @@ func (f *Fake) signOut(w http.ResponseWriter, r *http.Request) {
 	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	f.mu.Lock()
 	ok := f.tokenWorks(r)
-	delete(f.tokens, token)
+	if ok {
+		delete(f.tokens, token)
+	}
 	f.mu.Unlock()
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token_rejected"})
