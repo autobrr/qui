@@ -7,7 +7,7 @@ date: 2026-11-21
 
 ADR 0007 put the passes of a cross-seed search in one gatherer. This decision extends it to every search for one source: the cross-seed search, the season-pack search of a Library Scan, and the Dir Scan search. Each caller hands the gatherer its own usable predicate: the match classifier, the season-pack admission check, or the size band of the searchee. Before this decision, Dir Scan ran a second retry loop that lacked two passes and gated on the whole search, and the season-pack search ran no retry. The TV year retry (discussion #3550) would have needed a second copy. Issue #4350.
 
-Retries are per indexer in all three. This costs more requests in Dir Scan than its old whole-search gate, and finds the release on trackers that the first tracker's hit used to hide. Every retry still asks the Request slot of its indexer (ADR 0046): a Native indexer waits its Request gap, and an indexer in a Rate-limit cooldown gets no retry. An indexer behind Prowlarr or Jackett has no Request gap, so its retries go out back to back, as cross-seed retries already did.
+Retries are per indexer in all three, except the yearless retry, which stays gated on the whole search (ADR 0007). This costs more requests in Dir Scan than its old whole-search gate, and finds the release on trackers that the first tracker's hit used to hide. Every retry still asks the Request slot of its indexer (ADR 0046): a Native indexer waits its Request gap, and an indexer in a Rate-limit cooldown gets no retry. An indexer behind Prowlarr or Jackett has no Request gap, so its retries go out back to back, as cross-seed retries already did.
 
 ## Considered options
 

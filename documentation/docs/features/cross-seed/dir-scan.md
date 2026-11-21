@@ -162,7 +162,7 @@ Before Dir Scan searches for an item, it waits until 60 seconds have passed sinc
 
 - A search counts even when the [search cache](#search-cache) answered it.
 - An item that sends no search does not wait. For example, an item that is already seeding, or an item that has no enabled indexer.
-- If an indexer returns no result in the size range, Dir Scan can search that indexer again for the same item. A retry search can add the year for a TV item, or remove the year for a movie. It can also use an alternate title, or "&" in place of "and". If the folder or file name gives an ID, Dir Scan also searches by title. These retry searches do not wait.
+- If an indexer returns no result in the size range, Dir Scan can search that indexer again for the same item. A retry search can add the year for a TV item. It can also use an alternate title, or "&" in place of "and". If the folder or file name gives an ID, Dir Scan also searches by title. If no indexer returns a result in the size range for a movie, Dir Scan searches again without the year. These retry searches do not wait.
 - The wait continues across runs. A webhook scan that starts 20 seconds after the last search of the previous run waits 40 seconds. A restart of qui resets the time.
 - Dir Scan does not wait after the last item of a run.
 - If you cancel a scan during the wait, the scan stops at once.
