@@ -96,7 +96,6 @@
     "pickAll_few": "Вибрати всі ({{count}})",
     "pickAll_many": "Вибрати всі ({{count}})",
     "pickAll_other": "Вибрати всі ({{count}})",
-    "clear": "Зняти вибір",
     "done": {
       "retry_one": "{{count}} рядок запущено знову.",
       "retry_few": "{{count}} рядки запущено знову.",

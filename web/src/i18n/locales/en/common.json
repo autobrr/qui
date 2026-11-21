@@ -547,6 +547,7 @@
     "retry": "Try again",
     "edit": "Edit",
     "moreActions": "More actions",
-    "enabled": "Enabled"
+    "enabled": "Enabled",
+    "clearSelection": "Clear selection"
   }
 }

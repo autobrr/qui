@@ -13,6 +13,7 @@ import { Editor } from "@/components/kit/Editor"
 import { Field } from "@/components/kit/Field"
 import { ResourceList, type ResourceRow } from "@/components/kit/ResourceList"
 import { Section } from "@/components/kit/Section"
+import { SelectionBar } from "@/components/kit/SelectionBar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -266,6 +267,16 @@ export function TrackerCustomizationsManager() {
     }
   }
 
+  const picked = selectedDomains.size + (selectedGroupId === null ? 0 : 1)
+  const primary = selectedDomains.size === 0
+    ? undefined
+    : selectedGroupId !== null
+      ? { label: t("trackerCustomizations.mergeIntoGroup"), onClick: () => handleMergeIntoGroup(selectedGroupId) }
+      : {
+        label: selectedDomains.size === 1 ? t("trackerCustomizations.rename") : t("trackerCustomizations.customizeDialog.mergeAction"),
+        onClick: () => openRenameDialog([...selectedDomains][0]),
+      }
+
   return (
     <>
       <Section
@@ -289,31 +300,21 @@ export function TrackerCustomizationsManager() {
         {rows.length === 0 ? (
           <ResourceList label={t("trackerCustomizations.cardTitle")} items={[]} itemKey={() => ""} row={resourceRow} empty={empty} />
         ) : (
-          <div className="space-y-3">
-            <SelectionBar
-              count={selectedDomains.size + (selectedGroupId === null ? 0 : 1)}
-              primary={
-                selectedGroupId !== null
-                  ? selectedDomains.size > 0
-                    ? { label: t("trackerCustomizations.mergeIntoGroup"), onClick: () => handleMergeIntoGroup(selectedGroupId) }
-                    : undefined
-                  : selectedDomains.size > 0
-                    ? {
-                      label: selectedDomains.size === 1 ? t("trackerCustomizations.rename") : t("trackerCustomizations.customizeDialog.mergeAction"),
-                      onClick: () => openRenameDialog([...selectedDomains][0]),
-                    }
-                    : undefined
-              }
-              disabled={saving}
-              onClear={clearSelection}
-            />
-            <ResourceList
-              label={t("trackerCustomizations.cardTitle")}
-              items={rows}
-              itemKey={row => row.customizationId !== undefined ? `c-${row.customizationId}` : `d-${row.domain}`}
-              row={resourceRow}
-              empty={empty}
-            />
+          <div className="-mx-6 max-sm:-mx-4">
+            <div className={cn("px-6 max-sm:px-4", picked > 0 && "pb-4")}>
+              <ResourceList
+                label={t("trackerCustomizations.cardTitle")}
+                items={rows}
+                itemKey={row => row.customizationId !== undefined ? `c-${row.customizationId}` : `d-${row.domain}`}
+                row={resourceRow}
+                empty={empty}
+              />
+            </div>
+            {picked > 0 && (
+              <SelectionBar label={t("trackerCustomizations.selectionLabel")} summary={t("trackerCustomizations.selectedCount", { count: picked })} onClear={clearSelection}>
+                {primary && <Button size="sm" disabled={saving} onClick={primary.onClick}>{primary.label}</Button>}
+              </SelectionBar>
+            )}
           </div>
         )}
       </Section>
@@ -340,32 +341,6 @@ export function TrackerCustomizationsManager() {
         updateCustomization={updateCustomization}
       />
     </>
-  )
-}
-
-interface SelectionBarProps {
-  count: number
-  /** The step for the selection: rename, merge, or merge into the selected customization. */
-  primary?: { label: string; onClick: () => void }
-  disabled: boolean
-  onClear: () => void
-}
-
-/** The line above the list: a hint while nothing is selected, else the count and the steps for the selection. */
-function SelectionBar({ count, primary, disabled, onClear }: SelectionBarProps) {
-  const { t } = useTranslation("settings")
-  return (
-    <div className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-muted/50 py-1 pr-1 pl-3 text-sm">
-      {count === 0 ? (
-        <span className="text-muted-foreground">{t("trackerCustomizations.selectionHint")}</span>
-      ) : (
-        <>
-          <span role="status" className="mr-auto font-medium">{t("trackerCustomizations.selectedCount", { count })}</span>
-          <Button variant="ghost" size="sm" className="max-sm:h-10" onClick={onClear}>{t("trackerCustomizations.clearSelection")}</Button>
-          {primary && <Button size="sm" className="max-sm:h-10" disabled={disabled} onClick={primary.onClick}>{primary.label}</Button>}
-        </>
-      )}
-    </div>
   )
 }
 

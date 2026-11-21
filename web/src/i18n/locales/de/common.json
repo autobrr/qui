@@ -547,6 +547,7 @@
     "retry": "Erneut versuchen",
     "edit": "Bearbeiten",
     "moreActions": "Weitere Aktionen",
-    "enabled": "Aktiviert"
+    "enabled": "Aktiviert",
+    "clearSelection": "Auswahl aufheben"
   }
 }

@@ -42,6 +42,12 @@
 - `pinEnd` gives the column the card background color. Use it only on a table that sits on a card.
 - Do not set `display: flex` on a `TableCell` with `pinEnd`. Put the flex layout on a `div` inside the cell.
 
+## Selection
+
+- A table or a list where the user picks rows and then acts on all of them shows those actions in `SelectionBar` from `@/components/kit/SelectionBar`. The page passes the count text in `summary`, the actions as children, and a step that changes the selection itself, for example "Select all 240", in `extra`. The bar owns Clear selection and the phone layout.
+- Render the bar after the last row, inside the block that holds the rows and reaches the edges of the card, as the Search results and the Transfers list do. The bar then rests under the last row, and while more rows follow, it stays at the bottom of the screen, above the phone nav.
+- The bar sticks only while no block around it clips its overflow. Give the card `overflow-clip`, not `overflow-hidden`.
+
 ## Page layout
 
 - Each authenticated page, except the torrent list and the instance pages, renders one `Page` from `@/components/layout/Page`, also while it loads and in its empty states. `Page` owns the padding, the title, the description, the place of the controls, and the gap to the content. A page writes none of these itself, and it does not put itself in a centered `container`.

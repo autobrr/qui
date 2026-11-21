@@ -84,7 +84,6 @@
     "picked_other": "已選取 {{count}} 項",
     "wholeChip_other": "已選取全部 {{count}} 項",
     "pickAll_other": "全選 {{count}} 項",
-    "clear": "清除選取",
     "done": {
       "retry_other": "{{count}} 列將重新執行。",
       "cancel_other": "qui 將取消 {{count}} 列。",

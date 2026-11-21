@@ -1240,7 +1240,7 @@
   },
   "trackerCustomizations": {
     "cardTitle": "Tracker-Anpassungen",
-    "cardDescription": "Benenne Tracker um und fasse die Domains eines Trackers zu einem Eintrag zusammen.",
+    "cardDescription": "Benenne Tracker um und fasse die Domains eines Trackers zu einem Eintrag zusammen. Wähle Tracker aus, um sie umzubenennen oder zusammenzuführen.",
     "loading": "Tracker werden geladen…",
     "mergedFrom": "Zusammengeführt aus: {{domains}}",
     "original": "Original: {{domain}}",
@@ -1303,10 +1303,9 @@
     "emptyDescription": "Tracker erscheinen hier, sobald eine Instanz Torrents hat.",
     "importButton": "Importieren",
     "exportButton": "Exportieren",
-    "selectionHint": "Wähle Tracker aus, um sie umzubenennen oder zusammenzuführen.",
+    "selectionLabel": "Ausgewählte Tracker",
     "selectedCount_one": "{{count}} ausgewählt",
     "selectedCount_other": "{{count}} ausgewählt",
-    "clearSelection": "Auswahl aufheben",
     "deleteDialog": {
       "title": "Anpassung löschen?",
       "description": "Die Tracker von {{name}} zeigen wieder ihre eigenen Domains. Das kann nicht rückgängig gemacht werden."

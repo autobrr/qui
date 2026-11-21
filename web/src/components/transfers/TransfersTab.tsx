@@ -192,53 +192,53 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
             <EmptyTile title={t("list.empty")} />
           ) : (
             // The table reaches the edges of the card, as the tables of Statistics do, and fits its columns to the card.
-            <div aria-busy={stale} className={cn("@container -mx-6 border-t transition-opacity max-sm:-mx-4", stale && "opacity-60")}>
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-px pr-0 pl-6 max-sm:pl-4">
-                      <Checkbox checked={pageTick} disabled={stale} onCheckedChange={tickPage} aria-label={t("bulk.pickPage")} className={cn("align-middle", CHECKBOX_TAP)} />
-                    </TableHead>
-                    <TableHead className="w-full">{t("columns.torrent")}</TableHead>
-                    <TableHead className="hidden text-right @xl:table-cell">{t("columns.size")}</TableHead>
-                    {/* The column has the width of a row with progress, so it keeps its width when a Transfer starts or ends. */}
-                    <TableHead className="hidden @lg:table-cell @lg:min-w-52">{t("columns.state")}</TableHead>
-                    <TableHead className="hidden @2xl:table-cell">{t("columns.started")}</TableHead>
-                    {/* The header row takes no hover color, so its pinned cell takes none. */}
-                    <TableHead pinEnd className="pr-6 max-sm:pr-4 [tr:hover>&]:bg-card"><span className="sr-only">{t("columns.actions")}</span></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row, index) => (
-                    <TransferTableRow
-                      key={row.id}
-                      row={row}
-                      picked={isPicked(row)}
-                      stale={stale}
-                      onTick={range => tick(index, range)}
-                      onDetails={() => setDetailsId(row.id)}
-                      running={runningStep(row.id)}
-                      onRetry={() => retry.mutate(row.id)}
-                      onCancel={() => setCancelling({ row, open: true })}
-                      onRemove={() => remove.mutate(row.id)}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="-mx-6 border-t max-sm:-mx-4">
+              <div aria-busy={stale} className={cn("@container transition-opacity", stale && "opacity-60")}>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-px pr-0 pl-6 max-sm:pl-4">
+                        <Checkbox checked={pageTick} disabled={stale} onCheckedChange={tickPage} aria-label={t("bulk.pickPage")} className={cn("align-middle", CHECKBOX_TAP)} />
+                      </TableHead>
+                      <TableHead className="w-full">{t("columns.torrent")}</TableHead>
+                      <TableHead className="hidden text-right @xl:table-cell">{t("columns.size")}</TableHead>
+                      {/* The column has the width of a row with progress, so it keeps its width when a Transfer starts or ends. */}
+                      <TableHead className="hidden @lg:table-cell @lg:min-w-52">{t("columns.state")}</TableHead>
+                      <TableHead className="hidden @2xl:table-cell">{t("columns.started")}</TableHead>
+                      <TableHead className="pr-6 max-sm:pr-4"><span className="sr-only">{t("columns.actions")}</span></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row, index) => (
+                      <TransferTableRow
+                        key={row.id}
+                        row={row}
+                        picked={isPicked(row)}
+                        stale={stale}
+                        onTick={range => tick(index, range)}
+                        onDetails={() => setDetailsId(row.id)}
+                        running={runningStep(row.id)}
+                        onRetry={() => retry.mutate(row.id)}
+                        onCancel={() => setCancelling({ row, open: true })}
+                        onRemove={() => remove.mutate(row.id)}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              {pickedCount > 0 && (
+                <TransferSelectionBar
+                  count={pickedCount}
+                  wholeChip={selection.kind === "filter"}
+                  more={selection.kind === "rows" && pageTick === true && total > rows.length ? total : null}
+                  actions={offeredActions(selection, filter, picked)}
+                  running={bulk.isPending ? bulk.variables.request.action : null}
+                  onPickAll={() => setSelection({ kind: "filter" })}
+                  onClear={clearSelection}
+                  onAction={pickAction}
+                />
+              )}
             </div>
-          )}
-
-          {pickedCount > 0 && (
-            <TransferSelectionBar
-              count={pickedCount}
-              wholeChip={selection.kind === "filter"}
-              more={selection.kind === "rows" && pageTick === true && total > rows.length ? total : null}
-              actions={offeredActions(selection, filter, picked)}
-              running={bulk.isPending ? bulk.variables.request.action : null}
-              onPickAll={() => setSelection({ kind: "filter" })}
-              onClear={clearSelection}
-              onAction={pickAction}
-            />
           )}
 
           {pageCount > 1 && (
@@ -325,13 +325,27 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
   ]
 
   return (
-    <TableRow data-transfer-id={row.id} data-state={picked ? "selected" : undefined}>
+    <TableRow
+      data-transfer-id={row.id}
+      data-state={picked ? "selected" : undefined}
+      className={cn(!stale && "cursor-pointer")}
+      onMouseDown={stale ? undefined : event => {
+        if (event.shiftKey) event.preventDefault()
+      }}
+      onClick={stale ? undefined : event => {
+        if (window.getSelection()?.type === "Range") return
+        onTick(event.shiftKey)
+      }}
+    >
       <TableCell className="pr-0 pl-6 align-top max-sm:pl-4">
         {/* The box lines up with the first line of the name. The click carries Shift, which a change of the box does not. */}
         <Checkbox
           checked={picked}
           disabled={stale}
-          onClick={event => onTick(event.shiftKey)}
+          onClick={event => {
+            event.stopPropagation()
+            onTick(event.shiftKey)
+          }}
           aria-labelledby={nameId}
           className={cn("mt-0.5", CHECKBOX_TAP)}
         />
@@ -387,7 +401,7 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
         {/* The name column takes the free width, so the by-line asks for its own width up to 15rem before it wraps. */}
         <div className="w-max max-w-60 text-xs whitespace-normal text-muted-foreground [overflow-wrap:anywhere]"><StartedBy row={row} /></div>
       </TableCell>
-      <TableCell pinEnd className="pr-6 max-sm:pr-4">
+      <TableCell className="cursor-default pr-6 max-sm:pr-4" onClick={event => event.stopPropagation()}>
         <RowActions actions={actions} describedBy={nameId} />
       </TableCell>
     </TableRow>

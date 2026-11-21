@@ -8,12 +8,10 @@ import {
   columnFilterToExpr,
   columnFiltersToExpr,
   convertSizeToBytes,
-  filterSearchResult,
   getColumnType,
   getDefaultOperation,
   getOperations
 } from "@/lib/column-filter-utils"
-import type { TorznabSearchResult } from "@/types"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 let warnSpy: ReturnType<typeof vi.spyOn>
@@ -462,112 +460,5 @@ describe("getOperations", () => {
   it("returns STRING_OPERATIONS for string type", () => {
     expect(getOperations("string").map(o => o.value)).toContain("contains")
     expect(getOperations("string").map(o => o.value)).toContain("startsWith")
-  })
-})
-
-// Intent: TorznabSearchResult filtering happens client-side (no backend
-// expression involved). Unknown columns and missing data should never
-// hide a result the user might want to see — except where the schema
-// guarantees the field exists.
-describe("filterSearchResult", () => {
-  const baseResult: TorznabSearchResult = {
-    title: "Ubuntu Linux ISO",
-    indexer: "test",
-    size: 1073741824,
-    seeders: 100,
-    leechers: 5,
-    publishDate: "2024-06-15T00:00:00Z",
-    downloadVolumeFactor: 0,
-    uploadVolumeFactor: 1,
-    categoryId: 1000,
-    categoryName: "Movies",
-    downloadUrl: "",
-    guid: "test-1",
-    source: "scene",
-    collection: "linux-distros",
-    group: "RARBG",
-  } as TorznabSearchResult
-
-  const categoryMap = new Map<number, string>([[1000, "Movies"]])
-
-  it("returns true for unknown columnId", () => {
-    expect(filterSearchResult(baseResult, { columnId: "unknown", operation: "eq", value: "x" }, categoryMap)).toBe(true)
-  })
-
-  it("filters by size with unit conversion", () => {
-    expect(filterSearchResult(baseResult, { columnId: "size", operation: "gt", value: "500", sizeUnit: "MiB" }, categoryMap)).toBe(true)
-    expect(filterSearchResult(baseResult, { columnId: "size", operation: "lt", value: "100", sizeUnit: "MiB" }, categoryMap)).toBe(false)
-  })
-
-  it("filters seeders by numeric comparison", () => {
-    expect(filterSearchResult(baseResult, { columnId: "seeders", operation: "ge", value: "100" }, categoryMap)).toBe(true)
-    expect(filterSearchResult(baseResult, { columnId: "seeders", operation: "gt", value: "100" }, categoryMap)).toBe(false)
-  })
-
-  it("filters seeders with between operation", () => {
-    expect(filterSearchResult(baseResult, { columnId: "seeders", operation: "between", value: "50", value2: "200" }, categoryMap)).toBe(true)
-    expect(filterSearchResult(baseResult, { columnId: "seeders", operation: "between", value: "200", value2: "500" }, categoryMap)).toBe(false)
-  })
-
-  it("filters by published date (gt, lt, eq, between)", () => {
-    expect(filterSearchResult(baseResult, { columnId: "published", operation: "gt", value: "2024-01-01" }, categoryMap)).toBe(true)
-    expect(filterSearchResult(baseResult, { columnId: "published", operation: "lt", value: "2024-01-01" }, categoryMap)).toBe(false)
-    expect(filterSearchResult(baseResult, { columnId: "published", operation: "eq", value: "2024-06-15" }, categoryMap)).toBe(true)
-    expect(filterSearchResult(baseResult, { columnId: "published", operation: "between", value: "2024-01-01", value2: "2024-12-31" }, categoryMap)).toBe(true)
-  })
-
-  it("filters freeleech via downloadVolumeFactor", () => {
-    expect(filterSearchResult(baseResult, { columnId: "freeleech", operation: "eq", value: "true" }, categoryMap)).toBe(true)
-    expect(filterSearchResult({ ...baseResult, downloadVolumeFactor: 1 }, { columnId: "freeleech", operation: "eq", value: "true" }, categoryMap)).toBe(false)
-    expect(filterSearchResult({ ...baseResult, downloadVolumeFactor: 0.5 }, { columnId: "freeleech", operation: "eq", value: "0.5" }, categoryMap)).toBe(true)
-  })
-
-  it("returns true when freeleech filter has no selected values", () => {
-    expect(filterSearchResult(baseResult, { columnId: "freeleech", operation: "eq", value: "" }, categoryMap)).toBe(true)
-  })
-
-  it("rejects freeleech rows when the filter value matches none of the known patterns", () => {
-    // Intent: unknown freeleech values (not "true"/"false" and not a numeric
-    // factor) hide the row. Catches anyone who flips the default to "match"
-    // and silently shows all results when an unrecognized filter is selected.
-    expect(filterSearchResult(baseResult, { columnId: "freeleech", operation: "eq", value: "unknown" }, categoryMap)).toBe(false)
-  })
-
-  it("string contains is case-insensitive by default", () => {
-    expect(filterSearchResult(baseResult, { columnId: "title", operation: "contains", value: "UBUNTU" }, categoryMap)).toBe(true)
-  })
-
-  it("string contains respects caseSensitive flag", () => {
-    expect(filterSearchResult(baseResult, { columnId: "title", operation: "contains", value: "UBUNTU", caseSensitive: true }, categoryMap)).toBe(false)
-    expect(filterSearchResult(baseResult, { columnId: "title", operation: "contains", value: "Ubuntu", caseSensitive: true }, categoryMap)).toBe(true)
-  })
-
-  it("supports notContains / startsWith / endsWith", () => {
-    expect(filterSearchResult(baseResult, { columnId: "title", operation: "notContains", value: "windows" }, categoryMap)).toBe(true)
-    expect(filterSearchResult(baseResult, { columnId: "title", operation: "startsWith", value: "ubuntu" }, categoryMap)).toBe(true)
-    expect(filterSearchResult(baseResult, { columnId: "title", operation: "endsWith", value: "iso" }, categoryMap)).toBe(true)
-  })
-
-  it("multi-value (CSV) filter matches any value with eq/contains", () => {
-    expect(filterSearchResult(baseResult, { columnId: "title", operation: "contains", value: "windows,linux" }, categoryMap)).toBe(true)
-    expect(filterSearchResult(baseResult, { columnId: "indexer", operation: "eq", value: "other,test" }, categoryMap)).toBe(true)
-    expect(filterSearchResult(baseResult, { columnId: "indexer", operation: "eq", value: "other,nope" }, categoryMap)).toBe(false)
-  })
-
-  it("resolves category via categoryMap with fallback to categoryName", () => {
-    expect(filterSearchResult(baseResult, { columnId: "category", operation: "eq", value: "Movies" }, categoryMap)).toBe(true)
-    expect(filterSearchResult({ ...baseResult, categoryId: 999 }, { columnId: "category", operation: "eq", value: "Movies" }, new Map())).toBe(true)
-    expect(
-      filterSearchResult(
-        { ...baseResult, categoryId: 999, categoryName: undefined as unknown as string },
-        { columnId: "category", operation: "eq", value: "Movies" },
-        new Map()
-      )
-    ).toBe(false)
-  })
-
-  it("returns false when itemValue is undefined", () => {
-    expect(filterSearchResult({ ...baseResult, seeders: undefined as unknown as number }, { columnId: "seeders", operation: "gt", value: "1" }, categoryMap)).toBe(false)
-    expect(filterSearchResult({ ...baseResult, title: undefined as unknown as string }, { columnId: "title", operation: "contains", value: "x" }, categoryMap)).toBe(false)
   })
 })

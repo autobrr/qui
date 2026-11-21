@@ -528,6 +528,7 @@
     "retry": "重試",
     "edit": "編輯",
     "moreActions": "更多操作",
-    "enabled": "已啟用"
+    "enabled": "已啟用",
+    "clearSelection": "清除選取"
   }
 }
