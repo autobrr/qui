@@ -13,6 +13,6 @@ Rejected: `/bin/sh`, because restricted bash refuses a command name with a slash
 
 ## Consequences
 
-- A forced command in `authorized_keys` sees `sh` in `SSH_ORIGINAL_COMMAND`, not `find` or `stat`. A wrapper script that allows commands by name must allow `sh`, or the key gets the tier SFTP.
+- A forced command in `authorized_keys` sees `sh` in `SSH_ORIGINAL_COMMAND`, not `find` or `stat`. A wrapper script that allows commands by name must allow `sh`, or the key gets the tier SFTP. A wrapper that allows `sh` lets the key run any command that it sends on standard input, so the name check no longer limits what runs. Where that access is not acceptable, use a key that is limited to SFTP.
 - No remote command of qui can read standard input, because the script is on it.
 - The quoting probe still runs, through `sh`. It fails when the login shell prints text at start, when the host has no `sh`, and when `sh` is not a POSIX shell. Such a host gets the tier SFTP.
