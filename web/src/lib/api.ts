@@ -744,16 +744,8 @@ class ApiClient {
   }
 
   async checkSetupRequired(): Promise<boolean> {
-    try {
-      const response = await ssoSafeFetch(`${API_BASE}/auth/check-setup`, {
-        method: "GET",
-      })
-      const data = await response.json()
-      return data.setupRequired || false
-    } catch {
-      // ssoSafeFetch handles SSO recovery internally
-      return false
-    }
+    const data = await this.request<{ setupRequired: boolean }>("/auth/check-setup")
+    return data.setupRequired
   }
 
   async setup(username: string, password: string): Promise<AuthResponse> {
