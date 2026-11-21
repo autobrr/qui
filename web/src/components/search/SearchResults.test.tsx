@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
+import { formatNarrowAge } from "@/lib/dateTimeUtils"
 import { DEFAULT_SORT } from "@/lib/search-results"
 import type { InstanceResponse, TorznabSearchResult } from "@/types"
 
@@ -143,6 +144,19 @@ describe("SearchResults", () => {
       fireEvent.pointerMove(button, { pointerType: "mouse" })
       await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe(name))
     }
+  })
+
+  it("shows the exact date of a result in a tooltip once a mouse enters its row", async () => {
+    renderResults([first])
+    const row = screen.getAllByRole("row")[1]
+    const age = formatNarrowAge(Date.now() - Date.parse(first.publishDate))
+
+    fireEvent.pointerEnter(row, { pointerType: "mouse" })
+    const cell = within(row).getAllByText(age).at(-1)!
+    fireEvent.pointerEnter(cell, { pointerType: "mouse" })
+    fireEvent.pointerMove(cell, { pointerType: "mouse" })
+
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("2026"))
   })
 
   it("keeps the other row actions in a menu below 1440 px", () => {

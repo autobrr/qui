@@ -24,7 +24,7 @@ import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { InstanceResponse, TorznabSearchCacheMetadata, TorznabSearchResult } from "@/types"
 import type { TFunction } from "i18next"
 import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, Copy, Database, Download, ExternalLink, MoreHorizontal, Plus, RefreshCw, X, Zap } from "lucide-react"
-import { memo, useCallback, useDeferredValue, useId, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react"
+import { memo, useCallback, useDeferredValue, useId, useMemo, useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -350,10 +350,14 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
   const publishedTitle = Number.isNaN(published) ? undefined : formatDate(new Date(published))
   const marks = <ResultMarks t={t} result={result} />
   const pickable = selectable && Boolean(result.downloadUrl)
+  const [hovered, setHovered] = useState(false)
 
   return (
     <TableRow
       data-state={picked ? "selected" : undefined}
+      onPointerEnter={hovered ? undefined : event => {
+        if (event.pointerType === "mouse") setHovered(true)
+      }}
       className={cn(pickable && "cursor-pointer")}
       onMouseDown={pickable ? event => {
         if (event.shiftKey) event.preventDefault()
@@ -380,7 +384,7 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
       )}
       <TableCell className={cn("w-full max-w-0 py-2.5 align-top whitespace-normal", !selectable && "pl-4 sm:pl-6")}>
         <div className="flex min-w-0 items-start gap-2">
-          <div id={titleId} className="min-w-0 font-medium pointer-fine:line-clamp-2" title={result.title}>
+          <div id={titleId} className="min-w-0 font-medium pointer-fine:line-clamp-2">
             <TorrentName name={result.title} />
           </div>
           <span className="hidden shrink-0 items-center gap-1 pt-px @4xl:flex">{marks}</span>
@@ -394,7 +398,9 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
             <span className="inline-flex items-center gap-0.5"><ArrowDown className="size-3" />{result.leechers}</span>
           </span>
           <span className="@3xl:hidden" aria-hidden="true">·</span>
-          <span className="tabular-nums @3xl:hidden" title={publishedTitle}>{age}</span>
+          <Tip tip={hovered ? publishedTitle : undefined}>
+            <span className="tabular-nums @3xl:hidden">{age}</span>
+          </Tip>
           {marks}
         </div>
       </TableCell>
@@ -402,7 +408,11 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
       <TableCell className="hidden py-2.5 text-right align-top tabular-nums @xl:table-cell">{formatBytes(result.size)}</TableCell>
       <TableCell className={cn("hidden py-2.5 text-right align-top tabular-nums @xl:table-cell", result.seeders === 0 ? "text-muted-foreground" : "font-medium")}>{result.seeders}</TableCell>
       <TableCell className="hidden py-2.5 text-right align-top tabular-nums text-muted-foreground @3xl:table-cell">{result.leechers}</TableCell>
-      <TableCell className="hidden py-2.5 text-right align-top tabular-nums text-muted-foreground @3xl:table-cell" title={publishedTitle}>{age}</TableCell>
+      <TableCell className="hidden py-2.5 text-right align-top tabular-nums text-muted-foreground @3xl:table-cell">
+        <Tip tip={hovered ? publishedTitle : undefined}>
+          <span>{age}</span>
+        </Tip>
+      </TableCell>
       <TableCell className="cursor-default py-1 pr-3 align-top sm:pr-5" onClick={event => event.stopPropagation()}>
         <RowActions t={t} result={result} actionsInRow={actionsInRow} tips={tips} {...actions} />
       </TableCell>
@@ -487,11 +497,19 @@ interface AddTrigger {
 }
 
 function TipButton({ tip, ...props }: ComponentProps<typeof Button> & { tip?: string }) {
-  if (!tip) return <Button {...props} />
+  return (
+    <Tip tip={tip}>
+      <Button {...props} />
+    </Tip>
+  )
+}
+
+function Tip({ tip, children }: { tip?: string; children: ReactElement }) {
+  if (!tip) return children
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button {...props} />
+      <TooltipTrigger asChild openOnTap={false}>
+        {children}
       </TooltipTrigger>
       <TooltipContent>{tip}</TooltipContent>
     </Tooltip>
