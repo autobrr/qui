@@ -142,7 +142,7 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 	}
 
 	if len(partialContent) > 0 {
-		log.Debug().
+		log.Trace().
 			Str("sourceHash", sourceHash).
 			Str("sourceName", sourceTorrent.Name).
 			Str("sourceLayout", sourceLayout).
