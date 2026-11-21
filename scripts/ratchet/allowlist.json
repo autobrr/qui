@@ -881,7 +881,7 @@
     "internal/services/transfer/retry.go": 16,
     "internal/services/transfer/retry_test.go": 40,
     "internal/services/transfer/rule_test.go": 19,
-    "internal/services/transfer/service.go": 114,
+    "internal/services/transfer/service.go": 112,
     "internal/services/transfer/service_test.go": 124,
     "internal/services/transfer/start.go": 55,
     "internal/services/transfer/store.go": 69,

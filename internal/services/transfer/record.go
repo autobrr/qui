@@ -23,7 +23,7 @@ const (
 type State string
 
 const (
-	// StateWaiting: another Transfer from the same source runs.
+	// StateWaiting: the Transfer waits for its turn.
 	StateWaiting   State = "waiting"
 	StateCopying   State = "copying"
 	StateChecking  State = "checking"
