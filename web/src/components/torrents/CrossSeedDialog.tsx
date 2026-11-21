@@ -420,7 +420,7 @@ const CrossSeedDialogComponent = ({
 
   const sourceName = sourceTorrent?.name ?? torrent?.name
   const metaParts = [
-    sourceTorrent?.contentType ? t(`common:contentTypeLabels.${sourceTorrent.contentType}`, sourceTorrent.contentType) : null,
+    sourceTorrent?.contentType ? t([`common:contentTypeLabels.${sourceTorrent.contentType}`, "common:contentTypeLabels.unknown"]) : null,
     sourceTorrent?.category || null,
     sourceTorrent?.size !== undefined ? formatBytes(sourceTorrent.size) : null,
   ].filter(Boolean)
