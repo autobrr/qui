@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -625,6 +627,149 @@ func TestManualMatchPreviewShowsTheSavePathOfTheSingleAdd(t *testing.T) {
 			require.True(t, result.Success, "result: %+v", result)
 			require.Len(t, adds.added, 1)
 			require.Equal(t, adds.added[0]["savepath"], preview)
+		})
+	}
+}
+
+type diskTableBackend struct {
+	*slashBackend
+	disks map[string]string
+}
+
+func (b *diskTableBackend) disk(p string) string {
+	for prefix, disk := range b.disks {
+		if p == prefix || strings.HasPrefix(p, prefix+"/") {
+			return disk
+		}
+	}
+	return ""
+}
+
+func (b *diskTableBackend) SameFilesystem(_ context.Context, p1, p2 string) (bool, error) {
+	return b.disk(p1) != "" && b.disk(p1) == b.disk(p2), nil
+}
+
+func TestManualMatchPreviewKeepsTheDiskOfEachTarget(t *testing.T) {
+	t.Parallel()
+
+	const name = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+	torrentBytes := createTestTorrent(t, name, []string{name + ".mkv", name + ".nfo"}, 16384)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	require.NoError(t, err)
+
+	targets := []qbt.Torrent{
+		{Hash: "1111111111111111111111111111111111111111", SavePath: "/src/a"},
+		{Hash: "2222222222222222222222222222222222222222", SavePath: "/src/b"},
+		{Hash: "3333333333333333333333333333333333333333", SavePath: "/src/a"},
+	}
+	paths := make([]string, 0, 2+len(meta.Files)*len(targets))
+	paths = append(paths, "/links/one/x", "/links/two/x")
+	files := make(map[string]qbt.TorrentFiles, len(targets))
+	for i := range targets {
+		targets[i].Name, targets[i].Progress, targets[i].Size = name, 1, meta.Info.TotalLength()
+		files[targets[i].Hash] = meta.Files
+		for _, f := range meta.Files {
+			paths = append(paths, targets[i].SavePath+"/"+f.Name)
+		}
+	}
+	backend := &diskTableBackend{
+		slashBackend: newSlashBackend(nil, paths...),
+		disks:        map[string]string{"/src/a": "1", "/links/one": "1", "/src/b": "2", "/links/two": "2"},
+	}
+	instance := &models.Instance{
+		ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
+		HardlinkBaseDir: "/links/two,/links/one", HardlinkDirPreset: "flat",
+	}
+	svc := manualMatchTestService(instance, targets, files)
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, backend))
+
+	resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, "")
+	require.NoError(t, err)
+	got := make(map[string]string, len(resp.Proposals))
+	for _, p := range resp.Proposals {
+		got[p.Hash] = p.EffectiveSavePath
+	}
+	require.Equal(t, map[string]string{
+		targets[0].Hash: "/links/one",
+		targets[1].Hash: "/links/two",
+		targets[2].Hash: "/links/one",
+	}, got)
+}
+
+type countingChecks struct {
+	fsops.Backend
+	sameCalls, statCalls int
+	sameErr, statErr     error
+}
+
+func (c *countingChecks) SameFilesystem(context.Context, string, string) (bool, error) {
+	c.sameCalls++
+	return true, c.sameErr
+}
+
+func (c *countingChecks) Stat(context.Context, string) (*fsops.LstatInfo, error) {
+	c.statCalls++
+	return nil, c.statErr
+}
+
+func (c *countingChecks) Paths() fsops.PathDialect { return fsops.SlashPaths }
+
+func TestCachedFilesystemChecks(t *testing.T) {
+	t.Parallel()
+
+	sameOn := func(files ...string) func(*testing.T, *cachedFilesystemChecks) {
+		return func(t *testing.T, checks *cachedFilesystemChecks) {
+			for _, file := range files {
+				_, _ = checks.SameFilesystem(t.Context(), file, "/links")
+			}
+		}
+	}
+	tests := []struct {
+		name               string
+		sameErr, statErr   error
+		ask                func(*testing.T, *cachedFilesystemChecks)
+		wantSame, wantStat int
+	}{
+		{name: "a file in a folder that was checked reuses the answer", ask: sameOn("/src/a/e1.mkv", "/src/a/e2.mkv", "/src/b/e1.mkv"), wantSame: 2},
+		{name: "a failed check is asked again", sameErr: fs.ErrNotExist, ask: sameOn("/src/a/e1.mkv", "/src/a/e1.mkv"), wantSame: 2},
+		{
+			name: "a folder known to be missing fails without a check", sameErr: fs.ErrNotExist, statErr: fs.ErrNotExist,
+			ask: func(t *testing.T, checks *cachedFilesystemChecks) {
+				_, err := checks.Stat(t.Context(), "/links")
+				require.ErrorIs(t, err, fs.ErrNotExist)
+				_, err = checks.SameFilesystem(t.Context(), "/src/a/e1.mkv", "/links")
+				require.ErrorIs(t, err, fs.ErrNotExist)
+			},
+			wantStat: 1,
+		},
+		{
+			name: "a missing folder is looked up once", statErr: fs.ErrNotExist,
+			ask: func(t *testing.T, checks *cachedFilesystemChecks) {
+				for range 2 {
+					_, err := checks.Stat(t.Context(), "/links")
+					require.ErrorIs(t, err, fs.ErrNotExist)
+				}
+			},
+			wantStat: 1,
+		},
+		{
+			name: "a lookup after a lost connection is asked again", statErr: fsops.ErrConnectionLost,
+			ask: func(t *testing.T, checks *cachedFilesystemChecks) {
+				for range 2 {
+					_, err := checks.Stat(t.Context(), "/links")
+					require.ErrorIs(t, err, fsops.ErrConnectionLost)
+				}
+			},
+			wantStat: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			inner := &countingChecks{sameErr: tt.sameErr, statErr: tt.statErr}
+			tt.ask(t, newCachedFilesystemChecks(inner))
+			require.Equal(t, tt.wantSame, inner.sameCalls, "same-filesystem checks")
+			require.Equal(t, tt.wantStat, inner.statCalls, "folder lookups")
 		})
 	}
 }

@@ -6,10 +6,13 @@ package crossseed
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -343,10 +346,11 @@ func (s *Service) previewLinkSavePaths(
 	linkTargets map[string]*qbt.Torrent,
 	filesByHash map[string]qbt.TorrentFiles,
 ) {
-	backend, err := s.getBackendForInstance(ctx, instance.ID, models.CapabilityWrite)
+	direct, err := s.getBackendForInstance(ctx, instance.ID, models.CapabilityWrite)
 	if err != nil {
 		return
 	}
+	backend := newCachedFilesystemChecks(direct)
 	route, _, _ := s.savedRouteOf(ctx, instance.ID)
 	incoming := singleAddTorrent{hash: cmp.Or(meta.HashV1, meta.HashV2), name: meta.Name, files: meta.Files, trackerDomain: trackerDomain}
 	var g errgroup.Group
@@ -364,6 +368,63 @@ func (s *Service) previewLinkSavePaths(
 		})
 	}
 	_ = g.Wait()
+}
+
+type cachedFilesystemChecks struct {
+	fsops.Backend
+	mu    sync.Mutex
+	same  map[[2]string]bool
+	stats map[string]statAnswer
+}
+
+type statAnswer struct {
+	info *fsops.LstatInfo
+	err  error
+}
+
+func newCachedFilesystemChecks(backend fsops.Backend) *cachedFilesystemChecks {
+	return &cachedFilesystemChecks{
+		Backend: backend,
+		same:    make(map[[2]string]bool),
+		stats:   make(map[string]statAnswer),
+	}
+}
+
+func (c *cachedFilesystemChecks) SameFilesystem(ctx context.Context, sourceFile, dir string) (bool, error) {
+	key := [2]string{c.Paths().Dir(sourceFile), dir}
+	c.mu.Lock()
+	same, ok := c.same[key]
+	missing := c.stats[dir]
+	c.mu.Unlock()
+	if ok {
+		return same, nil
+	}
+	if errors.Is(missing.err, fs.ErrNotExist) {
+		return false, missing.err
+	}
+	same, err := c.Backend.SameFilesystem(ctx, sourceFile, dir)
+	if err == nil {
+		c.mu.Lock()
+		c.same[key] = same
+		c.mu.Unlock()
+	}
+	return same, err
+}
+
+func (c *cachedFilesystemChecks) Stat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
+	c.mu.Lock()
+	answer, ok := c.stats[path]
+	c.mu.Unlock()
+	if ok {
+		return answer.info, answer.err
+	}
+	info, err := c.Backend.Stat(ctx, path)
+	if !errors.Is(err, fsops.ErrConnectionLost) {
+		c.mu.Lock()
+		c.stats[path] = statAnswer{info, err}
+		c.mu.Unlock()
+	}
+	return info, err
 }
 
 func (s *Service) linkSavePathPreview(
