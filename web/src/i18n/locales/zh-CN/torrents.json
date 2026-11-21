@@ -654,35 +654,18 @@
   "crossSeedDialog": {
     "title": "搜索辅种",
     "torrentLabel": "种子",
-    "category": "分类：{{category}}",
-    "size": "大小：{{size}}",
-    "servedFromCache": "从缓存提供",
-    "freshSearch": "全新搜索",
-    "cached": "已缓存 {{time}}",
-    "expires": "过期 {{time}}",
-    "refreshFromIndexers": "从索引器刷新",
     "partialResults": "部分结果：部分索引器未响应",
     "arrLookupFailed": "元数据 ID 查询失败：仅按标题搜索，结果可能不完整",
     "arrNoIds": "未找到该资源的元数据 ID：仅按标题搜索",
     "torznabFailed": "Torznab 搜索失败：仅显示 RED/OPS 结果",
-    "searchScope": "搜索范围",
     "noIndexers": "没有可用的 Torznab 索引器",
     "noIndexersHelp": "在设置中添加或启用 Torznab 索引器以搜索辅种。",
-    "capabilityNote": "功能说明",
-    "capabilityDescription": "这些索引器缺少此种子所需的功能/分类，服务器将跳过它们：",
-    "smartFilteringActive": "智能筛选已启用",
-    "indexersFiltered_other": "{{count}} 个索引器已筛选",
-    "excludedDescription": "您已从这些 Tracker 做种此版本，因此它们已被排除在搜索之外。",
     "searchingIndexers": "正在搜索索引器...",
     "noMatchesFound": "搜索中未找到匹配项。",
-    "selectReleasesToAdd": "选择要添加的发布",
     "selectAll": "全选",
-    "clear": "清除",
     "tagAddedTorrents": "为添加的种子打标签",
     "startPaused": "暂停启动",
-    "latestAddAttempt": "最近添加尝试",
     "close": "关闭",
-    "addSelected": "添加所选",
     "adding": "正在添加...",
     "retry": "重试",
     "seeders": "{{count}} 个做种者",
@@ -694,38 +677,43 @@
     "addedToBlocklist": "已添加到屏蔽列表",
     "missingInstance": "屏蔽列表缺少实例",
     "trace": {
-      "title": "搜索明细",
-      "summaryBadge": "{{total}} 个候选，{{matches}} 个匹配",
-      "summary": "共返回 {{total}} 个候选。被拒绝：发布信息不符 {{release}} 个，大小不符 {{size}} 个，内容过滤 {{late}} 个，重复 {{duplicates}} 个。剩余 {{matches}} 个匹配。",
-      "indexersHeading": "索引器",
+      "title": "搜索详情",
       "status": {
-        "searched": "已搜索",
         "notCovered": "未完成",
-        "error": "错误",
-        "excluded": "已排除"
+        "error": "错误"
       },
-      "candidateCount": "{{count}} 个候选",
       "rejectionsHeading": "被拒绝的候选",
       "reasonCount": "{{reason}} · {{count}}",
       "moreCandidates": "还有 {{count}} 个相同原因的候选",
       "copyReport": "复制报告",
       "copied": "报告已复制到剪贴板",
-      "copyFailed": "无法复制报告"
+      "copyFailed": "无法复制报告",
+      "rejectedCount_other": "拒绝了 {{count}} 个候选",
+      "stats": {
+        "returned": "Torznab 候选",
+        "release": "发布不匹配",
+        "size": "大小不匹配",
+        "late": "内容过滤",
+        "duplicates": "重复",
+        "matches": "Torznab 匹配"
+      }
     },
     "scope": {
-      "allIndexers": "所有索引器",
-      "selectCustom": "自定义选择",
-      "selectedCount": "已选 {{count}} 个",
-      "selectIndexers": "选择索引器",
-      "availableIndexers": "可用索引器",
-      "selectAllIndexers": "全选",
-      "clearSelection": "清除选择",
       "search": "搜索",
       "searching": "正在搜索",
-      "noneSelected": "未选择",
-      "enabledIndexers": "{{count}} 个已启用{{suffix}}",
-      "selectedOfTotal": "已选 {{selected}}/{{total}}",
-      "indexersForSearch": "{{count}} 个{{suffix}}可供搜索"
+      "alreadySeeded": "未查询：您已在那里做种",
+      "heading": "索引器",
+      "searchCount_other": "搜索 {{count}} 个索引器",
+      "unsupported_other": "另有 {{count}} 个索引器不支持此内容类型",
+      "matchCount_other": "{{count}} 个匹配",
+      "selectNone": "全不选",
+      "checking": "正在检查适合此种子的索引器…",
+      "nothingLeft": "没有可以搜索此种子的索引器。",
+      "selectAll": "全选",
+      "change": "更改",
+      "searchAgain": "重新搜索",
+      "done": "完成",
+      "nonePicked": "未选择索引器"
     },
     "status": {
       "added": "已添加",
@@ -746,17 +734,10 @@
       "belowThreshold": "已跳过 - 低于阈值"
     },
     "rateLimitHelp": {
-      "why": "为什么会这样：",
-      "whyDescription": "Tracker 限制请求频率以防止滥用和封禁。",
-      "whatYouCanDo": "您可以做的：",
-      "wait": "等待 30-60 分钟后再试",
-      "fewerIndexers": "尝试选择更少的索引器进行搜索",
-      "useRss": "使用 RSS 自动化功能进行持续辅种",
-      "checkIndexers": "检查索引器页面以查看哪些被限流"
+      "wait": "等待 30-60 分钟后再试"
     },
     "routedTo": "辅种将添加到辅种实例 {{instance}}。",
     "gazelle": {
-      "heading": "RED/OPS",
       "willAsk": "将查询",
       "willAskRejected": "将查询：站点上次拒绝了 API 密钥",
       "match": "匹配",
@@ -777,7 +758,17 @@
         "timedOut": "失败：超时",
         "other": "失败：{{detail}}"
       }
-    }
+    },
+    "cachedAgo": "缓存结果 · {{time}}",
+    "refresh": "刷新",
+    "tag": "标签",
+    "selectedOfTotal": "已选 {{selected}} / {{total}}",
+    "resultsSelectedOfTotal": "已选匹配 {{selected}} / {{total}}",
+    "addCount_other": "添加 {{count}} 个种子",
+    "openOnIndexer": "在 {{indexer}} 上打开",
+    "problem": "{{name}}：{{status}}",
+    "problemDetail": "{{name}}：{{status}}（{{detail}}）",
+    "add": "添加"
   },
   "columnFilter": {
     "filterColumn": "筛选 {{column}}",

@@ -15,28 +15,20 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu"
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import { crossSeedRouteStatusKeys, crossSeedRouteText } from "@/lib/cross-seed-utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
-import { SearchScopeEntries } from "@/components/torrents/SearchScopeEntries"
+import { SearchScopeEntries, type ScopeEntry } from "@/components/torrents/SearchScopeEntries"
 import { useGazelleLookupText } from "@/hooks/useGazelleLookupText"
-import { gazelleEntryForPick, gazelleReportLines, gazelleStatusClass } from "@/lib/gazelle-lookup"
+import { gazelleReportLines, gazelleSettingsReasons, gazelleStatusClass } from "@/lib/gazelle-lookup"
 import type {
   CrossSeedApplyResponse,
   CrossSeedGazelleLookup,
@@ -45,9 +37,10 @@ import type {
   CrossSeedTorrentSearchResponse,
   Torrent
 } from "@/types"
-import { AlertTriangle, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
-import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { AlertTriangle, ChevronDown, ChevronRight, Copy, ExternalLink, ListTree, Loader2, RefreshCw } from "lucide-react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -61,6 +54,11 @@ function getBlocklistPendingKey(instanceId: number, infoHash: string): string {
   return `${instanceId}:${infoHash}`
 }
 
+export type CrossSeedApplySummary = {
+  level: "success" | "warning" | "error" | "info"
+  message: string
+}
+
 export interface CrossSeedDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -72,8 +70,11 @@ export interface CrossSeedDialogProps {
   isLoading: boolean
   isSubmitting: boolean
   error: string | null
-  applyResult: CrossSeedApplyResponse | null
+  applyOutcomes: Map<string, CrossSeedApplyResponse["results"][number]>
+  applySummary?: CrossSeedApplySummary | null
   indexerOptions: CrossSeedIndexerOption[]
+  alreadySeededIndexers: CrossSeedIndexerOption[]
+  unsupportedIndexers: CrossSeedIndexerOption[]
   /** The RED/OPS sites for the scope list: the outcome of the last search while the pick is the same, else the plan. */
   gazelleEntries: CrossSeedGazelleLookup[]
   /** The outcome of each RED/OPS site in the last search, for the report. */
@@ -83,10 +84,9 @@ export interface CrossSeedDialogProps {
   indexerMode: "all" | "custom"
   selectedIndexerIds: number[]
   indexerNameMap: Record<number, string>
-  onIndexerModeChange: (mode: "all" | "custom") => void
   onToggleIndexer: (indexerId: number) => void
-  onSelectAllIndexers: () => void
-  onClearIndexerSelection: () => void
+  onSetAllIndexers: (picked: boolean) => void
+  outcomesStale: boolean
   onScopeSearch: () => void
   getResultKey: (result: CrossSeedSearchResult, index: number) => string
   onToggleSelection: (result: CrossSeedSearchResult, index: number) => void
@@ -108,7 +108,7 @@ export interface CrossSeedDialogProps {
   torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
   canForceRefresh?: boolean
-  refreshCooldownLabel?: string
+  refreshCooldownUntil?: number
   onForceRefresh?: () => void
   /** The Cross-seed instance that receives the adds, when the instance of the torrent routes its cross-seeds. */
   crossSeedInstanceName?: string
@@ -131,18 +131,20 @@ const CrossSeedDialogComponent = ({
   isLoading,
   isSubmitting,
   error,
-  applyResult,
+  applyOutcomes,
+  applySummary,
   indexerOptions,
+  alreadySeededIndexers,
+  unsupportedIndexers,
   gazelleEntries,
   gazelleLookups: lastLookups,
   selectableGazelleIds,
   indexerMode,
   selectedIndexerIds,
   indexerNameMap,
-  onIndexerModeChange,
   onToggleIndexer,
-  onSelectAllIndexers,
-  onClearIndexerSelection,
+  onSetAllIndexers,
+  outcomesStale,
   onScopeSearch,
   getResultKey,
   onToggleSelection,
@@ -164,115 +166,196 @@ const CrossSeedDialogComponent = ({
   torznabFailed,
   decisionTrace,
   canForceRefresh,
-  refreshCooldownLabel,
+  refreshCooldownUntil = 0,
   onForceRefresh,
   crossSeedInstanceName,
 }: CrossSeedDialogProps) => {
   const { t } = useTranslation(["torrents", "settings", "crossseed"])
   const { formatISOTimestamp } = useDateTimeFormatters()
-  const excludedIndexerEntries = useMemo(() => {
-    if (!sourceTorrent?.excludedIndexers) {
-      return []
-    }
+  const lookupText = useGazelleLookupText()
+  const isMobile = useIsPhone()
+  const toastPosition = isMobile ? "top-center" as const : undefined
 
-    return Object.keys(sourceTorrent.excludedIndexers)
-      .map(id => Number(id))
-      .filter(id => !Number.isNaN(id))
-      .map(id => ({
-        id,
-        name: indexerNameMap[id] ?? `Indexer ${id}`,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [indexerNameMap, sourceTorrent?.excludedIndexers])
-
-  const capabilityFilteredIndexerEntries = useMemo(() => {
-    const available = sourceTorrent?.availableIndexers
-    if (!available || available.length === 0) {
-      return []
-    }
-    const supported = new Set(available)
-    return Object.keys(indexerNameMap)
-      .map(id => Number(id))
-      .filter(id => !Number.isNaN(id) && !supported.has(id))
-      .map(id => ({
-        id,
-        name: indexerNameMap[id] ?? `Indexer ${id}`,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [indexerNameMap, sourceTorrent?.availableIndexers])
-
-  const [excludedOpen, setExcludedOpen] = useState(false)
   const [traceOpen, setTraceOpen] = useState(false)
-  const [applyResultOpen, setApplyResultOpen] = useState(true)
+  const [unsupportedOpen, setUnsupportedOpen] = useState(false)
+  const [scopeOpen, setScopeOpen] = useState(false)
+  const [openedAt, setOpenedAt] = useState(open)
+  const traceRef = useRef<HTMLDivElement>(null)
+  if (scopeOpen && (isLoading || isSubmitting)) {
+    setScopeOpen(false)
+  }
+  if (open !== openedAt) {
+    setOpenedAt(open)
+    if (open) {
+      setScopeOpen(false)
+      setTraceOpen(false)
+      setUnsupportedOpen(false)
+    }
+  }
   const [blocklistPendingKeys, setBlocklistPendingKeys] = useState<Set<string>>(() => new Set())
 
-  const traceIndexerRows = useMemo(() => {
-    if (!decisionTrace?.indexers) {
-      return []
+  const searchDone = hasSearched && !isLoading && !error
+  const isPicked = useCallback(
+    (id: number) => indexerMode === "all" || selectedIndexerIds.includes(id),
+    [indexerMode, selectedIndexerIds]
+  )
+
+  const scopeEntries = useMemo((): ScopeEntry[] => {
+    const outcomes = new Map((decisionTrace?.indexers ?? []).map(outcome => [outcome.indexerId, outcome]))
+    const matches = new Map<number, number>()
+    for (const result of results) {
+      matches.set(result.indexerId, (matches.get(result.indexerId) ?? 0) + 1)
     }
-    // Content-excluded indexers already have their own section above.
-    return decisionTrace.indexers
-      .filter(outcome => outcome.status !== "excluded")
-      .map(outcome => ({
-        ...outcome,
-        name: indexerNameMap[outcome.indexerId] ?? `Indexer ${outcome.indexerId}`,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [decisionTrace?.indexers, indexerNameMap])
+
+    const torznab = indexerOptions.map((option): ScopeEntry => {
+      const picked = isPicked(option.id)
+      const entry: ScopeEntry = {
+        key: `torznab-${option.id}`,
+        name: option.name,
+        status: picked ? "will_ask" : "not_asked",
+        picked,
+        onToggle: () => onToggleIndexer(option.id),
+      }
+      const outcome = searchDone && picked && !outcomesStale ? outcomes.get(option.id) : undefined
+      if (!outcome) {
+        return entry
+      }
+      const matchCount = matches.get(option.id) ?? 0
+      if (matchCount > 0) {
+        return { ...entry, status: "match", note: t("crossSeedDialog.scope.matchCount", { count: matchCount }), noteClass: "text-primary" }
+      }
+      if (outcome.status === "error" || outcome.status === "not_covered") {
+        return { ...entry, status: outcome.status }
+      }
+      return { ...entry, status: "no_match" }
+    })
+
+    const gazelle = gazelleEntries.filter(entry => entry.reason !== "not_music").map((entry): ScopeEntry => {
+      const base = { key: entry.site, name: entry.name, status: entry.status }
+      if (!selectableGazelleIds.includes(entry.indexerId)) {
+        const settingsLink = gazelleSettingsReasons.has(entry.reason)
+        return { ...base, picked: null, note: lookupText(entry), settingsLink, attention: settingsLink }
+      }
+      const picked = isPicked(entry.indexerId)
+      const quiet = entry.reason === "not_selected" || entry.status === "no_match" || entry.status === "failed" || (entry.status === "will_ask" && entry.reason !== "key_rejected")
+      const matchCount = matches.get(entry.indexerId) ?? 0
+      return {
+        ...base,
+        status: picked ? entry.status : "not_asked",
+        picked,
+        note: quiet || !picked ? undefined : entry.status === "match" && matchCount > 0 ? t("crossSeedDialog.scope.matchCount", { count: matchCount }) : lookupText(entry),
+        noteClass: gazelleStatusClass(entry.status),
+        attention: picked && entry.reason === "key_rejected",
+        onToggle: () => onToggleIndexer(entry.indexerId),
+      }
+    })
+
+    const alreadySeeded = alreadySeededIndexers.map((option): ScopeEntry => ({
+      key: `seeded-${option.id}`,
+      name: option.name,
+      status: "not_asked",
+      picked: null,
+      note: t("crossSeedDialog.scope.alreadySeeded"),
+    }))
+
+    return [...torznab, ...gazelle.filter(entry => entry.picked !== null), ...gazelle.filter(entry => entry.picked === null), ...alreadySeeded]
+  }, [
+    alreadySeededIndexers,
+    decisionTrace?.indexers,
+    gazelleEntries,
+    indexerOptions,
+    isPicked,
+    lookupText,
+    onToggleIndexer,
+    outcomesStale,
+    results,
+    searchDone,
+    selectableGazelleIds,
+    t,
+  ])
+
+  const pickedCount = scopeEntries.filter(entry => entry.picked).length
+  const selectableCount = scopeEntries.filter(entry => entry.picked !== null).length
+  const canSearch = selectableCount > 0
+  const analyzing = !sourceTorrent && !hasSearched && !error
+  const retry = Boolean(error) && (!hasSearched || !outcomesStale)
+  const freshResults = searchDone && results.length > 0 && !outcomesStale
+  const showSearch = canSearch && (!hasSearched || outcomesStale || Boolean(error))
+  const searchAgain = searchDone && results.length === 0 && !outcomesStale && canSearch
+  const pickedNames = scopeEntries.filter(entry => entry.picked).map(entry => entry.name)
+  const attentionEntries = scopeEntries.filter(entry => entry.attention).map(entry => ({ ...entry, picked: null }))
+  const rateLimited = Boolean(error && /rate limit|429|too many requests|cooldown|rate-limited/.test(error))
+  const allAdded = applyOutcomes.size > 0 && selectionCount === 0
+  const unsupportedNames = useMemo(
+    () => [
+      ...unsupportedIndexers.map(option => option.name),
+      ...gazelleEntries.filter(entry => entry.reason === "not_music").map(entry => entry.name),
+    ],
+    [gazelleEntries, unsupportedIndexers]
+  )
+
+  const problems = useMemo(() => {
+    const torznab = (decisionTrace?.indexers ?? [])
+      .filter(outcome => outcome.status === "error" || outcome.status === "not_covered")
+      .map(outcome => {
+        const name = indexerNameMap[outcome.indexerId] ?? `Indexer ${outcome.indexerId}`
+        const status = t(`crossSeedDialog.trace.status.${outcome.status === "not_covered" ? "notCovered" : "error"}`)
+        return {
+          key: `torznab-${outcome.indexerId}`,
+          name,
+          text: outcome.detail ? t("crossSeedDialog.problemDetail", { name, status, detail: outcome.detail }) : t("crossSeedDialog.problem", { name, status }),
+        }
+      })
+    const gazelle = (lastLookups ?? [])
+      .filter(entry => entry.status === "failed")
+      .map(entry => ({ key: entry.site, name: entry.name, text: t("crossSeedDialog.problem", { name: entry.name, status: lookupText(entry) }) }))
+    return [...torznab, ...gazelle].sort((a, b) => a.name.localeCompare(b.name))
+  }, [decisionTrace?.indexers, indexerNameMap, lastLookups, lookupText, t])
 
   const traceReasonGroups = useMemo(
     () => (decisionTrace ? groupTraceReasons(decisionTrace) : []),
     [decisionTrace]
   )
 
-  // The scope list shows what the next search asks. In Select Custom, a RED/OPS
-  // site that the user did not pick is not asked.
-  const scopeTorznabEntries = useMemo(
-    () => indexerOptions.map(option => ({ ...option, asked: indexerMode === "all" || selectedIndexerIds.includes(option.id) })),
-    [indexerOptions, indexerMode, selectedIndexerIds]
-  )
-  const scopeGazelleEntries = useMemo(
-    () => gazelleEntries.map(entry => gazelleEntryForPick(entry, indexerMode === "all" || selectedIndexerIds.includes(entry.indexerId))),
-    [gazelleEntries, indexerMode, selectedIndexerIds]
-  )
-
   const gazelleLookups = useMemo(
-    () => (hasSearched && !isLoading ? lastLookups ?? [] : []),
-    [hasSearched, isLoading, lastLookups]
+    () => (searchDone ? lastLookups ?? [] : []),
+    [searchDone, lastLookups]
   )
-  const showReport = Boolean(decisionTrace) || gazelleLookups.length > 0
+  const rejectedCount = decisionTrace ? Math.max(0, decisionTrace.totalResults - decisionTrace.finalMatches) : 0
+  const traceStats = decisionTrace
+    ? ([
+      ["returned", decisionTrace.totalResults],
+      ["release", decisionTrace.releaseFiltered],
+      ["size", decisionTrace.sizeFiltered],
+      ["late", decisionTrace.lateContentFiltered],
+      ["duplicates", decisionTrace.duplicateFiltered],
+      ["matches", decisionTrace.finalMatches],
+    ] as const).filter(([key, value]) => value > 0 || key === "returned" || key === "matches")
+    : []
 
   const handleCopyTraceReport = useCallback(async () => {
     const report = buildCrossSeedTraceReport(decisionTrace, sourceTorrent?.name ?? torrent?.name ?? "", indexerNameMap, gazelleLookups)
     try {
       await copyTextToClipboard(report)
-      toast.success(t("crossSeedDialog.trace.copied"))
+      toast.success(t("crossSeedDialog.trace.copied"), { position: toastPosition })
     } catch {
-      toast.error(t("crossSeedDialog.trace.copyFailed"))
+      toast.error(t("crossSeedDialog.trace.copyFailed"), { position: toastPosition })
     }
-  }, [decisionTrace, sourceTorrent?.name, torrent?.name, indexerNameMap, gazelleLookups, t])
-
-  // Auto-expand results when there are failures
-  const hasFailures = applyResult?.results.some(r => !r.success || r.instanceResults?.some(ir => !ir.success))
-  useEffect(() => {
-    if (hasFailures) {
-      setApplyResultOpen(true)
-    }
-  }, [hasFailures])
+  }, [decisionTrace, sourceTorrent?.name, torrent?.name, indexerNameMap, gazelleLookups, t, toastPosition])
 
   const handleBlockInfoHash = useCallback(async (instanceId: number, infoHash: string) => {
     if (instanceId <= 0) {
-      toast.error(t("crossSeedDialog.missingInstance"))
+      toast.error(t("crossSeedDialog.missingInstance"), { position: toastPosition })
       return
     }
     const pendingKey = getBlocklistPendingKey(instanceId, infoHash)
     setBlocklistPendingKeys(prev => new Set(prev).add(pendingKey))
     try {
       await api.addCrossSeedBlocklist({ instanceId, infoHash })
-      toast.success(t("crossSeedDialog.addedToBlocklist"))
+      toast.success(t("crossSeedDialog.addedToBlocklist"), { position: toastPosition })
     } catch (error) {
       const message = error instanceof Error ? error.message : t("crossSeedDialog.addedToBlocklist")
-      toast.error(message)
+      toast.error(message, { position: toastPosition })
     } finally {
       setBlocklistPendingKeys((prev) => {
         const next = new Set(prev)
@@ -280,462 +363,484 @@ const CrossSeedDialogComponent = ({
         return next
       })
     }
-  }, [t])
+  }, [t, toastPosition])
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-[90vw] sm:max-w-3xl flex flex-col">
-        <DialogHeader className="min-w-0 shrink-0 pb-3">
-          <DialogTitle className="text-base">{t("crossSeedDialog.title")}</DialogTitle>
-          <DialogDescription className="min-w-0 space-y-1">
-            <p className="truncate font-mono text-xs font-medium" title={sourceTorrent?.name ?? torrent?.name}>
-              {sourceTorrent?.name ?? torrent?.name ?? t("crossSeedDialog.torrentLabel")}
+  const renderApplyOutcome = (outcome: CrossSeedApplyResponse["results"][number]) => {
+    const instances = outcome.instanceResults ?? []
+    return (
+      <div className="space-y-1 pt-0.5 text-xs">
+        {outcome.error && <p className="break-words text-destructive">{outcome.error}</p>}
+        {instances.length === 0 ? (
+          <Badge variant={outcome.success ? "outline" : "destructive"}>
+            {outcome.success ? t("crossSeedDialog.status.queued") : t("crossSeedDialog.status.check")}
+          </Badge>
+        ) : instances.map(instance => {
+          const infoHash = outcome.infoHash
+          const blockInstanceId = instance.crossSeedInstanceId ?? instance.instanceId
+          const blockInstanceName = instance.crossSeedInstanceName ?? instance.instanceName
+          const pendingKey = infoHash ? getBlocklistPendingKey(blockInstanceId, infoHash) : null
+          const isBlocking = pendingKey ? blocklistPendingKeys.has(pendingKey) : false
+          const statusDisplay = getInstanceStatusDisplay(t, instance.status, instance.success)
+          return (
+            <div key={`${instance.instanceId}-${instance.status}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Badge variant={statusDisplay.variant === "success" ? "outline" : statusDisplay.variant === "warning" ? "secondary" : "destructive"}>
+                {statusDisplay.text}
+              </Badge>
+              {(instances.length > 1 || instance.crossSeedInstanceName) && (
+                <span className="font-medium">
+                  {instance.crossSeedInstanceName
+                    ? crossSeedRouteText(t, instance.instanceName, instance.crossSeedInstanceName, instance.success)
+                    : instance.instanceName}
+                </span>
+              )}
+              {instance.message && instance.message !== instance.status && (
+                <span className={cn("min-w-0 break-words", instance.success ? "text-muted-foreground" : "text-destructive/80")}>
+                  {instance.message}
+                </span>
+              )}
+              {infoHash && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleBlockInfoHash(blockInstanceId, infoHash)}
+                  disabled={isBlocking}
+                  aria-label={`${t("crossSeedDialog.blockFor")} ${blockInstanceName}`}
+                  className="relative ml-auto h-8 px-3 text-xs after:absolute after:inset-x-0 after:-inset-y-1.5 sm:h-7 sm:px-2 sm:after:hidden sideways:h-8 sideways:px-3 sideways:after:block"
+                >
+                  {isBlocking ? t("crossSeedDialog.blocking") : t("crossSeedDialog.block")}
+                </Button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const sourceName = sourceTorrent?.name ?? torrent?.name
+  const metaParts = [
+    sourceTorrent?.contentType ? t(`common:contentTypeLabels.${sourceTorrent.contentType}`, sourceTorrent.contentType) : null,
+    sourceTorrent?.category || null,
+    sourceTorrent?.size !== undefined ? formatBytes(sourceTorrent.size) : null,
+  ].filter(Boolean)
+  const allSelected = results.length > 0 && selectionCount === results.length
+
+  const Header = isMobile ? DrawerHeader : DialogHeader
+  const Title = isMobile ? DrawerTitle : DialogTitle
+  const Description = isMobile ? DrawerDescription : DialogDescription
+  const focusContent = (event: Event) => {
+    event.preventDefault()
+    const content = event.currentTarget as HTMLElement
+    content.focus()
+  }
+
+  const content = (
+    <>
+      <Header className={cn("min-w-0 shrink-0 gap-2 border-b px-5 pb-3 text-left sm:px-6 sideways:gap-1 sideways:pb-2 sideways:pl-[max(1.25rem,env(safe-area-inset-left))] sideways:pr-[max(1.25rem,env(safe-area-inset-right))]", isMobile ? "pt-3 sideways:pt-1" : "pt-5")}>
+        <Title>{t("crossSeedDialog.title")}</Title>
+        <Description asChild>
+          <div className="min-w-0 space-y-0.5 text-xs">
+            <p className="font-mono break-words text-foreground/80 sideways:truncate">
+              {sourceName ?? t("crossSeedDialog.torrentLabel")}
             </p>
-            {(sourceTorrent?.category || sourceTorrent?.size !== undefined || sourceTorrent?.contentType) && (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                {sourceTorrent?.contentType && (
-                  <Badge variant="secondary" className="h-5 text-xs font-normal capitalize">
-                    {t(`common:contentTypeLabels.${sourceTorrent.contentType}`, sourceTorrent.contentType)}
-                  </Badge>
+            {metaParts.length > 0 && <p className="sideways:hidden">{metaParts.join(" · ")}</p>}
+            {crossSeedInstanceName && <p>{t("crossSeedDialog.routedTo", { instance: crossSeedInstanceName })}</p>}
+          </div>
+        </Description>
+      </Header>
+
+      <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-5 sm:px-6 sideways:pl-[max(1.25rem,env(safe-area-inset-left))] sideways:pr-[max(1.25rem,env(safe-area-inset-right))]">
+        <div className="space-y-4 pt-4 pb-5">
+          {(sourceTorrent || analyzing) && (
+            <section className="space-y-2">
+              <div className="flex min-h-11 items-center justify-between gap-3 sm:min-h-7 sideways:min-h-11">
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("crossSeedDialog.scope.heading")}</h3>
+                  {!analyzing && canSearch && (
+                    <span className="truncate text-xs text-muted-foreground">{t("crossSeedDialog.selectedOfTotal", { selected: pickedCount, total: selectableCount })}</span>
+                  )}
+                </div>
+                {!analyzing && canSearch && !isLoading && !isSubmitting && (
+                  <div className="-mr-2 flex shrink-0 items-center">
+                    {scopeOpen && selectableCount > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onSetAllIndexers(pickedCount < selectableCount)}
+                        className="h-11 px-3 text-xs sm:h-7 sm:px-2 sideways:h-11 sideways:px-3"
+                      >
+                        {pickedCount < selectableCount ? t("crossSeedDialog.scope.selectAll") : t("crossSeedDialog.scope.selectNone")}
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-expanded={scopeOpen}
+                      onClick={() => setScopeOpen(!scopeOpen)}
+                      className="h-11 px-3 text-xs sm:h-7 sm:px-2 sideways:h-11 sideways:px-3"
+                    >
+                      {scopeOpen ? t("crossSeedDialog.scope.done") : t("crossSeedDialog.scope.change")}
+                      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", scopeOpen && "rotate-180")} />
+                    </Button>
+                  </div>
                 )}
-                {sourceTorrent?.category && <span>{t("crossSeedDialog.category", { category: sourceTorrent.category })}</span>}
-                {sourceTorrent?.size !== undefined && <span>{t("crossSeedDialog.size", { size: formatBytes(sourceTorrent.size) })}</span>}
               </div>
-            )}
-          </DialogDescription>
-          {cacheMetadata && (
-            <div className="mt-2 space-y-2 rounded-lg border border-dashed border-border/70 p-2 text-xs text-muted-foreground">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <span>
-                  {cacheMetadata.hit ? t("crossSeedDialog.servedFromCache") : t("crossSeedDialog.freshSearch")} · {cacheMetadata.scope?.replace("_", " ") ?? "torznab"}
-                </span>
-                <span>
-                  {t("crossSeedDialog.cached", { time: formatRelativeTime(cacheMetadata.cachedAt) })} · {t("crossSeedDialog.expires", { time: formatRelativeTime(cacheMetadata.expiresAt) })}
-                </span>
-              </div>
-              {onForceRefresh && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!canForceRefresh}
-                    onClick={onForceRefresh}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    {t("crossSeedDialog.refreshFromIndexers")}
-                  </Button>
-                  {!canForceRefresh && refreshCooldownLabel && (
-                    <span className="text-[11px] text-muted-foreground">{refreshCooldownLabel}</span>
+              {analyzing ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>{t("crossSeedDialog.scope.checking")}</span>
+                </div>
+              ) : canSearch && !scopeOpen ? (
+                <div className="space-y-1.5">
+                  <p className={cn("line-clamp-2 text-xs break-words text-muted-foreground", searchDone && "sideways:hidden")}>
+                    {pickedNames.length > 0 ? pickedNames.join(", ") : t("crossSeedDialog.scope.nonePicked")}
+                  </p>
+                  {attentionEntries.length > 0 && <SearchScopeEntries entries={attentionEntries} disabled />}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {!canSearch && (
+                    <div className="space-y-1 rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground">
+                      {scopeEntries.length > 0 || unsupportedNames.length > 0 ? (
+                        <p className="font-medium text-foreground">{t("crossSeedDialog.scope.nothingLeft")}</p>
+                      ) : (
+                        <>
+                          <p className="font-medium text-foreground">{t("crossSeedDialog.noIndexers")}</p>
+                          <p className="text-xs">{t("crossSeedDialog.noIndexersHelp")}</p>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <SearchScopeEntries entries={scopeEntries} disabled={isLoading} />
+                  {unsupportedNames.length > 0 && (
+                    <Collapsible open={unsupportedOpen} onOpenChange={setUnsupportedOpen}>
+                      <CollapsibleTrigger className="flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground sm:min-h-7 sideways:min-h-11">
+                        <ChevronRight className={cn("h-3 w-3 transition-transform", unsupportedOpen && "rotate-90")} />
+                        {t("crossSeedDialog.scope.unsupported", { count: unsupportedNames.length })}
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <p className="pl-4 text-xs break-words text-muted-foreground">
+                          {unsupportedNames.join(", ")}
+                        </p>
+                      </CollapsibleContent>
+                    </Collapsible>
                   )}
                 </div>
               )}
-            </div>
+            </section>
           )}
-          {partial && <HeaderWarning>{t("crossSeedDialog.partialResults")}</HeaderWarning>}
-          {queryDegraded && queryDegradedMessageKeys[queryDegraded] && <HeaderWarning>{t(queryDegradedMessageKeys[queryDegraded])}</HeaderWarning>}
-          {torznabFailed && <HeaderWarning>{t("crossSeedDialog.torznabFailed")}</HeaderWarning>}
-          {crossSeedInstanceName && (
-            <p className="mt-2 text-xs text-muted-foreground">{t("crossSeedDialog.routedTo", { instance: crossSeedInstanceName })}</p>
-          )}
-        </DialogHeader>
-        <div className="min-w-0 space-y-2 overflow-y-auto overflow-x-hidden flex-1">
-          {/* Search Scope Section */}
-          <div className="rounded-lg border border-border/60 bg-muted/30 p-2.5">
-            {indexerOptions.length > 0 || selectableGazelleIds.length > 0 ? (
-              <CrossSeedScopeSelector
-                indexerOptions={indexerOptions}
-                indexerMode={indexerMode}
-                selectedIndexerIds={selectedIndexerIds}
-                excludedIndexerIds={excludedIndexerEntries.map(entry => entry.id)}
-                onIndexerModeChange={onIndexerModeChange}
-                onToggleIndexer={onToggleIndexer}
-                onSelectAllIndexers={onSelectAllIndexers}
-                onClearIndexerSelection={onClearIndexerSelection}
-                onScopeSearch={onScopeSearch}
-                isSearching={isLoading}
-                gazelleEntries={gazelleEntries}
-                selectableGazelleIds={selectableGazelleIds}
-              />
-            ) : (
-              <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1.5">
-                  <p className="font-medium">{t("crossSeedDialog.noIndexers")}</p>
-                  <p className="text-xs">{t("crossSeedDialog.noIndexersHelp")}</p>
-                </div>
-              </div>
-            )}
-            <SearchScopeEntries torznab={scopeTorznabEntries} gazelle={scopeGazelleEntries} />
-            {(capabilityFilteredIndexerEntries.length > 0 && indexerOptions.length > 0) && (
-              <div className="mt-2 rounded-md border border-dashed border-border/60 bg-muted/30 p-2 text-xs text-muted-foreground">
-                <p className="font-medium text-[11px] text-foreground">{t("crossSeedDialog.capabilityNote")}</p>
-                <p>
-                  {t("crossSeedDialog.capabilityDescription")}
-                </p>
-                <ul className="mt-1.5 ml-4 space-y-0.5">
-                  {capabilityFilteredIndexerEntries.map(entry => (
-                    <li key={entry.id} className="break-words">• {entry.name}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
 
-          {/* Content-based filtering info */}
-          {excludedIndexerEntries.length > 0 && (
-            <Collapsible open={excludedOpen} onOpenChange={setExcludedOpen}>
-              <div className="rounded-lg border bg-accent/10">
-                <CollapsibleTrigger className="w-full p-2.5 text-left hover:bg-accent/20 transition-colors">
-                  <div className="flex items-center gap-2 text-sm text-accent-foreground">
-                    <ChevronRight className={`h-3.5 w-3.5 transition-transform ${excludedOpen ? "rotate-90" : ""}`} />
-                    <span className="font-medium">{t("crossSeedDialog.smartFilteringActive")}</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {t("crossSeedDialog.indexersFiltered", { count: excludedIndexerEntries.length })}
-                    </Badge>
-                  </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="px-2.5 pb-2.5">
-                    <p className="text-xs text-muted-foreground">
-                      {t("crossSeedDialog.excludedDescription")}
-                    </p>
-                    <ul className="mt-2 ml-4 text-xs text-muted-foreground space-y-0.5">
-                      {excludedIndexerEntries.map(entry => (
-                        <li key={entry.id} className="break-words">
-                          • {entry.name}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </CollapsibleContent>
-              </div>
-            </Collapsible>
-          )}
-          {!hasSearched && !error ? null : isLoading ? (
-            <div className="flex items-center justify-center gap-2.5 py-8 text-sm text-muted-foreground">
+          {isLoading ? (
+            <div className="flex items-center justify-center gap-2.5 border-t py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span>{t("crossSeedDialog.searchingIndexers")}</span>
             </div>
           ) : error ? (
-            <div className="space-y-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
-              <p className="break-words text-xs">{error}</p>
-              {(error.includes("rate limit") || error.includes("429") || error.includes("too many requests") ||
-                error.includes("cooldown") || error.includes("rate-limited")) ? (
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p><strong>{t("crossSeedDialog.rateLimitHelp.why")}</strong> {t("crossSeedDialog.rateLimitHelp.whyDescription")}</p>
-                    <p><strong>{t("crossSeedDialog.rateLimitHelp.whatYouCanDo")}</strong></p>
-                    <ul className="list-disc list-inside space-y-0.5 ml-2">
-                      <li>{t("crossSeedDialog.rateLimitHelp.wait")}</li>
-                      <li>{t("crossSeedDialog.rateLimitHelp.fewerIndexers")}</li>
-                      <li>{t("crossSeedDialog.rateLimitHelp.useRss")}</li>
-                      <li>{t("crossSeedDialog.rateLimitHelp.checkIndexers")}</li>
-                    </ul>
-                  </div>
-                ) : null}
-              <div className="flex gap-2">
-                <Button size="sm" onClick={onRetry} className="h-7">
-                  {t("crossSeedDialog.retry")}
-                </Button>
-                <Button size="sm" variant="outline" onClick={onClose} className="h-7">
-                  {t("crossSeedDialog.close")}
-                </Button>
-              </div>
+            <div className="space-y-1 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-xs">
+              <p className="break-words text-destructive">{error}</p>
+              {rateLimited && <p className="text-muted-foreground">{t("crossSeedDialog.rateLimitHelp.wait")}</p>}
             </div>
-          ) : (
-            <>
-              {results.length === 0 ? (
-                <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                  {t("crossSeedDialog.noMatchesFound")}
+          ) : searchDone ? (
+            <section inert={outcomesStale} className={cn("space-y-3 border-t pt-4 transition-opacity", outcomesStale && "opacity-50")}>
+              {((partial && problems.length === 0) || (queryDegraded && queryDegradedMessageKeys[queryDegraded]) || torznabFailed || problems.length > 0) && (
+                <div className="space-y-1">
+                  {partial && problems.length === 0 && <Warning>{t("crossSeedDialog.partialResults")}</Warning>}
+                  {queryDegraded && queryDegradedMessageKeys[queryDegraded] && <Warning>{t(queryDegradedMessageKeys[queryDegraded])}</Warning>}
+                  {torznabFailed && <Warning>{t("crossSeedDialog.torznabFailed")}</Warning>}
+                  {problems.map(problem => <Warning key={problem.key}>{problem.text}</Warning>)}
                 </div>
-              ) : (
+              )}
+              <div className="space-y-0.5">
+                <div className="flex min-h-11 items-center justify-between gap-3 sm:min-h-8 sideways:min-h-11">
+                  {results.length > 0 ? (
+                    <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm sm:min-h-0 sideways:min-h-11">
+                      <Checkbox
+                        checked={allSelected ? true : selectionCount > 0 ? "indeterminate" : false}
+                        onCheckedChange={() => (allSelected ? onClearSelection() : onSelectAll())}
+                        aria-label={t("crossSeedDialog.selectAll")}
+                      />
+                      <span className="whitespace-nowrap font-medium">{t("crossSeedDialog.resultsSelectedOfTotal", { selected: selectionCount, total: results.length })}</span>
+                    </label>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t("crossSeedDialog.noMatchesFound")}</p>
+                  )}
+                  {!outcomesStale && results.length > 0 && onForceRefresh && !isSubmitting && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={!canForceRefresh}
+                      onClick={onForceRefresh}
+                      className="-mr-2 h-11 shrink-0 px-3 text-xs text-muted-foreground sm:h-7 sm:px-2 sideways:h-11 sideways:px-3"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      {t("crossSeedDialog.refresh")}
+                    </Button>
+                  )}
+                </div>
+                {!outcomesStale && (cacheMetadata?.hit || refreshCooldownUntil > 0) && (
+                  <p className="text-xs text-muted-foreground">
+                    {cacheMetadata?.hit && t("crossSeedDialog.cachedAgo", { time: formatRelativeTime(cacheMetadata.cachedAt) })}
+                    {cacheMetadata?.hit && refreshCooldownUntil > 0 && " · "}
+                    {refreshCooldownUntil > 0 && <RefreshCountdown until={refreshCooldownUntil} />}
+                  </p>
+                )}
+                {applySummary && !outcomesStale && (
+                  <p
+                    role="status"
+                    className={cn(
+                      "text-sm font-medium",
+                      applySummary.level === "success" && "text-green-600 dark:text-green-500",
+                      applySummary.level === "warning" && "text-yellow-600 dark:text-yellow-500",
+                      applySummary.level === "error" && "text-destructive",
+                      applySummary.level === "info" && "text-muted-foreground"
+                    )}
+                  >
+                    {applySummary.message}
+                  </p>
+                )}
+              </div>
+
+              {results.length > 0 && (
                 <>
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate text-muted-foreground">{t("crossSeedDialog.selectReleasesToAdd")}</span>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Badge variant="outline" className="shrink-0 text-xs">
-                        {selectionCount} / {results.length}
-                      </Badge>
-                      <Button variant="outline" size="sm" onClick={onSelectAll} className="h-7">
-                        {t("crossSeedDialog.selectAll")}
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={onClearSelection} className="h-7">
-                        {t("crossSeedDialog.clear")}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
+                  <ul className="divide-y rounded-md border">
                     {results.map((result, index) => {
                       const key = getResultKey(result, index)
                       const checked = selectedKeys.has(key)
+                      const outcome = applyOutcomes.get(key)
                       return (
-                        <div key={key} className="flex items-start gap-2.5 rounded-md border p-2.5">
+                        <li
+                          key={key}
+                          className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-accent/30"
+                          onClick={(event) => {
+                            if (!(event.target as HTMLElement).closest("a, button")) onToggleSelection(result, index)
+                          }}
+                        >
                           <Checkbox
                             checked={checked}
                             onCheckedChange={() => onToggleSelection(result, index)}
                             aria-label={`${t("crossSeedDialog.select")} ${result.title}`}
-                            className="shrink-0 mt-0.5"
+                            className="mt-0.5 shrink-0"
                           />
                           <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex items-start justify-between gap-2">
-                              {result.infoUrl ? (
-                                <a
-                                  href={result.infoUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="min-w-0 flex-1 font-medium text-sm leading-tight text-primary hover:underline inline-flex items-center gap-1"
-                                  title={result.title}
-                                >
-                                  <span className="truncate">{result.title}</span>
-                                  <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
-                                </a>
-                              ) : (
-                                <span className="min-w-0 flex-1 truncate font-medium text-sm leading-tight" title={result.title}>{result.title}</span>
-                              )}
-                              <Badge variant="outline" className="shrink-0 text-xs">{result.indexer}</Badge>
-                            </div>
-                            <div className="flex min-w-0 flex-wrap gap-x-2.5 text-xs text-muted-foreground">
+                            <p className="text-sm font-medium leading-snug break-words">{result.title}</p>
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">
+                              <span className="shrink-0 font-medium text-foreground/80">{result.indexer}</span>
                               <span className="shrink-0">{formatBytes(result.size)}</span>
                               <span className="shrink-0">{t("crossSeedDialog.seeders", { count: result.seeders })}</span>
-                              {result.matchReason && <span className="min-w-0 truncate">{t("crossSeedDialog.match", { reason: result.matchReason })}</span>}
                               <span className="shrink-0">{formatISOTimestamp(result.publishDate)}</span>
+                              {result.matchReason && <span className="min-w-0 break-words">{t("crossSeedDialog.match", { reason: result.matchReason })}</span>}
                             </div>
+                            {outcome && renderApplyOutcome(outcome)}
                           </div>
-                        </div>
+                          {result.infoUrl && (
+                            <a
+                              href={result.infoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={t("crossSeedDialog.openOnIndexer", { indexer: result.indexer })}
+                              className="-my-2 -mr-2 shrink-0 rounded-md p-3.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:-my-1 sm:-mr-1.5 sm:p-2 sideways:-my-2 sideways:-mr-2 sideways:p-3.5"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          )}
+                        </li>
                       )
                     })}
-                  </div>
-                  <div className="flex flex-col gap-2 rounded-md border p-2.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Switch
-                          id="cross-seed-tag-toggle"
-                          checked={useTag}
-                          onCheckedChange={(value) => onUseTagChange(Boolean(value))}
-                        />
-                        <label htmlFor="cross-seed-tag-toggle" className="text-sm whitespace-nowrap">
-                          {t("crossSeedDialog.tagAddedTorrents")}
-                        </label>
-                      </div>
+                  </ul>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="flex min-h-11 items-center gap-3 rounded-md border px-3 py-1.5">
+                      <Label htmlFor="cross-seed-tag-name" className="flex min-h-11 shrink-0 cursor-pointer items-center sm:min-h-0 sideways:min-h-11">
+                        {t("crossSeedDialog.tag")}
+                      </Label>
                       <Input
+                        id="cross-seed-tag-name"
                         value={tagName}
                         onChange={(event) => onTagNameChange(event.target.value)}
                         placeholder="cross-seed"
                         disabled={!useTag}
-                        className="w-32 min-w-0 h-8"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        enterKeyHint="done"
+                        className="h-9 min-w-0 flex-1 sm:h-8 sideways:h-9"
                       />
+                      <label className="-my-1.5 -mr-3 flex min-h-11 shrink-0 cursor-pointer items-center pr-3 pl-1">
+                        <Switch
+                          id="cross-seed-use-tag"
+                          checked={useTag}
+                          onCheckedChange={(value) => onUseTagChange(Boolean(value))}
+                          aria-label={t("crossSeedDialog.tagAddedTorrents")}
+                        />
+                      </label>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <label htmlFor="cross-seed-start-paused" className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-1.5 text-sm font-medium">
+                      {t("crossSeedDialog.startPaused")}
                       <Switch
                         id="cross-seed-start-paused"
                         checked={startPaused}
                         onCheckedChange={(value) => onStartPausedChange(Boolean(value))}
                       />
-                      <label htmlFor="cross-seed-start-paused" className="text-sm">
-                        {t("crossSeedDialog.startPaused")}
-                      </label>
-                    </div>
+                    </label>
                   </div>
                 </>
               )}
-              {showReport && (
-                <Collapsible open={traceOpen} onOpenChange={setTraceOpen}>
-                  <div className="rounded-lg border bg-muted/20">
-                    <CollapsibleTrigger className="w-full p-2.5 text-left hover:bg-muted/40 transition-colors">
-                      <div className="flex items-center gap-2 text-sm">
-                        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${traceOpen ? "rotate-90" : ""}`} />
+
+              {decisionTrace && decisionTrace.totalResults > 0 ? (
+                <Collapsible
+                  ref={traceRef}
+                  open={traceOpen}
+                  onOpenChange={(next) => {
+                    setTraceOpen(next)
+                    if (next) {
+                      requestAnimationFrame(() => traceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+                    }
+                  }}
+                >
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-md border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent/40"
+                    >
+                      <ListTree className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="flex min-w-0 flex-1 flex-col">
                         <span className="font-medium">{t("crossSeedDialog.trace.title")}</span>
-                        {decisionTrace && (
-                          <Badge variant="secondary" className="text-xs">
-                            {t("crossSeedDialog.trace.summaryBadge", { total: decisionTrace.totalResults, matches: decisionTrace.finalMatches })}
-                          </Badge>
+                        {rejectedCount > 0 && (
+                          <span className="truncate text-xs text-muted-foreground">
+                            {t("crossSeedDialog.trace.rejectedCount", { count: rejectedCount })}
+                          </span>
                         )}
-                      </div>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="space-y-2.5 px-2.5 pb-2.5 text-xs">
-                        {decisionTrace && (
-                          <p className="text-muted-foreground">
-                            {t("crossSeedDialog.trace.summary", {
-                              total: decisionTrace.totalResults,
-                              release: decisionTrace.releaseFiltered,
-                              size: decisionTrace.sizeFiltered,
-                              late: decisionTrace.lateContentFiltered,
-                              duplicates: decisionTrace.duplicateFiltered,
-                              matches: decisionTrace.finalMatches,
-                            })}
-                          </p>
-                        )}
-                        {traceIndexerRows.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="font-medium text-foreground">{t("crossSeedDialog.trace.indexersHeading")}</p>
-                            <ul className="space-y-0.5">
-                              {traceIndexerRows.map(row => (
-                                <li key={row.indexerId} className="flex min-w-0 flex-wrap items-center gap-1.5">
-                                  <span className="min-w-0 truncate">{row.name}</span>
-                                  <Badge
-                                    variant={row.status === "error" ? "destructive" : row.status === "searched" ? "outline" : "secondary"}
-                                    className="h-4 shrink-0 px-1 text-[10px]"
-                                  >
-                                    {t(`crossSeedDialog.trace.status.${row.status === "not_covered" ? "notCovered" : row.status}`)}
-                                  </Badge>
-                                  {row.candidates > 0 && (
-                                    <span className="shrink-0 text-muted-foreground">
-                                      {t("crossSeedDialog.trace.candidateCount", { count: row.candidates })}
-                                    </span>
-                                  )}
-                                  {row.detail && <span className="min-w-0 break-words text-muted-foreground">{row.detail}</span>}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {traceReasonGroups.length > 0 && (
-                          <div className="space-y-1.5">
-                            <p className="font-medium text-foreground">{t("crossSeedDialog.trace.rejectionsHeading")}</p>
-                            {traceReasonGroups.map(group => (
-                              <div key={group.reason} className="space-y-0.5">
-                                <p className="text-muted-foreground">{t("crossSeedDialog.trace.reasonCount", { reason: group.reason, count: group.count })}</p>
-                                <ul className="ml-3 space-y-0.5">
-                                  {group.candidates.map((candidate, index) => (
-                                    <li key={`${group.reason}-${index}`} className="flex min-w-0 items-center gap-1.5">
-                                      <span className="min-w-0 truncate" title={candidate.title}>{candidate.title}</span>
-                                      <Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px]">{candidate.indexer}</Badge>
-                                      <span className="shrink-0 text-muted-foreground">{formatBytes(candidate.size)}</span>
-                                    </li>
-                                  ))}
-                                  {group.count > group.candidates.length && (
-                                    <li className="text-muted-foreground">
-                                      {t("crossSeedDialog.trace.moreCandidates", { count: group.count - group.candidates.length })}
-                                    </li>
-                                  )}
-                                </ul>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {gazelleLookups.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="font-medium text-foreground">{t("crossSeedDialog.gazelle.heading")}</p>
-                            <GazelleTraceRows lookups={gazelleLookups} />
-                          </div>
-                        )}
-                        <Button type="button" variant="outline" size="sm" onClick={handleCopyTraceReport} className="h-7">
-                          <Copy className="mr-1.5 h-3 w-3" />
-                          {t("crossSeedDialog.trace.copyReport")}
-                        </Button>
-                      </div>
-                    </CollapsibleContent>
-                  </div>
-                </Collapsible>
-              )}
-              {applyResult && (
-                <Collapsible open={applyResultOpen} onOpenChange={setApplyResultOpen}>
-                  <div className="min-w-0 space-y-2 rounded-md border">
-                    <CollapsibleTrigger className="w-full px-3 pt-2.5 pb-2 text-left hover:bg-muted/50 transition-colors">
-                      <div className="flex items-center gap-2">
-                        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${applyResultOpen ? "rotate-90" : ""}`} />
-                        <p className="text-sm font-medium">{t("crossSeedDialog.latestAddAttempt")}</p>
-                        <Badge variant="outline" className="text-xs">
-                          {applyResult.results.length}
-                        </Badge>
-                      </div>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="px-3 pb-2.5 space-y-2">
-                        {applyResult.results.map(result => (
-                          <div
-                            key={`${result.indexer}-${result.title}`}
-                            className="min-w-0 space-y-1 rounded border border-border/60 bg-muted/30 p-2.5"
-                          >
-                            <div className="flex items-center justify-between gap-2 text-sm">
-                              <span className="min-w-0 truncate">{result.indexer}</span>
-                              <Badge variant={result.success ? "outline" : "destructive"} className="shrink-0 text-xs">
-                                {result.success ? t("crossSeedDialog.status.queued") : t("crossSeedDialog.status.check")}
-                              </Badge>
-                            </div>
-                            <p className="truncate text-xs text-muted-foreground" title={result.torrentName ?? result.title}>{result.torrentName ?? result.title}</p>
-                            {result.error && <p className="break-words text-xs text-destructive">{result.error}</p>}
-                            {result.instanceResults && result.instanceResults.length > 0 && (
-                              <ul className="mt-1.5 space-y-1 text-xs">
-                                {result.instanceResults.map(instance => {
-                                  const infoHash = result.infoHash
-                                  // Only the Cross-seed instance's blocklist applies to a routed add.
-                                  const blockInstanceId = instance.crossSeedInstanceId ?? instance.instanceId
-                                  const blockInstanceName = instance.crossSeedInstanceName ?? instance.instanceName
-                                  const pendingKey = infoHash ? getBlocklistPendingKey(blockInstanceId, infoHash) : null
-                                  const isBlocking = pendingKey ? blocklistPendingKeys.has(pendingKey) : false
-                                  const statusDisplay = getInstanceStatusDisplay(t, instance.status, instance.success)
-                                  return (
-                                    <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="font-medium">
-                                          {instance.crossSeedInstanceName
-                                            ? crossSeedRouteText(t, instance.instanceName, instance.crossSeedInstanceName, instance.success)
-                                            : instance.instanceName}
-                                        </span>
-                                        <Badge
-                                          variant={statusDisplay.variant === "success" ? "outline" : statusDisplay.variant === "warning" ? "secondary" : "destructive"}
-                                          className="text-[10px] h-4 px-1"
-                                        >
-                                          {statusDisplay.text}
-                                        </Badge>
-                                        {infoHash && (
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleBlockInfoHash(blockInstanceId, infoHash!)}
-                                            disabled={isBlocking}
-                                            aria-label={`${t("crossSeedDialog.blockFor")} ${blockInstanceName}`}
-                                            title={`${t("crossSeedDialog.block")} ${infoHash}`}
-                                            className="h-5 px-2 text-[10px]"
-                                          >
-                                            {isBlocking ? t("crossSeedDialog.blocking") : t("crossSeedDialog.block")}
-                                          </Button>
-                                        )}
-                                      </div>
-                                      {instance.message && instance.message !== instance.status && (
-                                        <span className={`break-words pl-0.5 ${instance.success ? "text-muted-foreground" : "text-destructive/80"}`}>
-                                          {instance.message}
-                                        </span>
-                                      )}
-                                    </li>
-                                  )
-                                })}
-                              </ul>
-                            )}
+                      </span>
+                      <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", traceOpen && "rotate-180")} />
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="space-y-3 px-1 pt-3 text-xs">
+                      <dl className="grid grid-cols-[auto_auto] justify-start gap-x-6 gap-y-0.5">
+                        {traceStats.map(([key, value]) => (
+                          <div key={key} className="contents">
+                            <dt className="text-muted-foreground">{t(`crossSeedDialog.trace.stats.${key}`)}</dt>
+                            <dd className="tabular-nums">{value}</dd>
                           </div>
                         ))}
-                      </div>
-                    </CollapsibleContent>
-                  </div>
+                      </dl>
+                      {traceReasonGroups.length > 0 && (
+                        <div className="space-y-1.5">
+                          <p className="font-medium text-foreground">{t("crossSeedDialog.trace.rejectionsHeading")}</p>
+                          {traceReasonGroups.map(group => (
+                            <div key={group.reason} className="space-y-0.5">
+                              <p className="text-muted-foreground">{t("crossSeedDialog.trace.reasonCount", { reason: group.reason, count: group.count })}</p>
+                              <ul className="ml-3 space-y-0.5">
+                                {group.candidates.map((candidate, index) => (
+                                  <li key={`${group.reason}-${index}`} className="min-w-0 break-words">
+                                    {candidate.title}
+                                    <span className="text-muted-foreground">{` · ${candidate.indexer} · ${formatBytes(candidate.size)}`}</span>
+                                  </li>
+                                ))}
+                                {group.count > group.candidates.length && (
+                                  <li className="text-muted-foreground">
+                                    {t("crossSeedDialog.trace.moreCandidates", { count: group.count - group.candidates.length })}
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <Button type="button" variant="outline" size="sm" onClick={handleCopyTraceReport} className="h-11 sm:h-8 sideways:h-11">
+                        <Copy className="h-3.5 w-3.5" />
+                        {t("crossSeedDialog.trace.copyReport")}
+                      </Button>
+                    </div>
+                  </CollapsibleContent>
                 </Collapsible>
+              ) : (decisionTrace || gazelleLookups.length > 0) && (
+                <Button type="button" variant="ghost" size="sm" onClick={handleCopyTraceReport} className="-ml-2 h-11 px-2 text-xs text-muted-foreground sm:h-8 sideways:h-11">
+                  <Copy className="h-3.5 w-3.5" />
+                  {t("crossSeedDialog.trace.copyReport")}
+                </Button>
               )}
-            </>
-          )}
+            </section>
+          ) : null}
         </div>
-        <DialogFooter className="shrink-0">
-          <Button variant="outline" onClick={onClose}>
+      </div>
+
+      <div className="shrink-0 border-t bg-background px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sideways:pt-2 sideways:pb-[max(0.5rem,env(safe-area-inset-bottom))] sideways:pl-[max(1.25rem,env(safe-area-inset-left))] sideways:pr-[max(1.25rem,env(safe-area-inset-right))]">
+        <div className="flex gap-2 sm:justify-end">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className={cn("h-11 px-5 sm:h-10 sideways:h-11", !isLoading && !retry && !(freshResults && !allAdded) && !showSearch && !searchAgain && "flex-1 sm:flex-none")}
+          >
             {t("crossSeedDialog.close")}
           </Button>
-          <Button
-            onClick={onApply}
-            disabled={
-              isLoading ||
-              isSubmitting ||
-              results.length === 0 ||
-              selectionCount === 0
-            }
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t("crossSeedDialog.adding")}
-              </>
-            ) : (
-              t("crossSeedDialog.addSelected")
-            )}
-          </Button>
-        </DialogFooter>
+          {isLoading ? (
+            <Button disabled className="h-11 flex-1 sm:h-10 sm:min-w-36 sm:flex-none sideways:h-11">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t("crossSeedDialog.scope.searching")}
+            </Button>
+          ) : retry ? (
+            <Button
+              variant={rateLimited ? "outline" : "default"}
+              onClick={onRetry}
+              disabled={sourceTorrent !== undefined && selectableCount > 0 && pickedCount === 0}
+              className="h-11 flex-1 sm:h-10 sm:min-w-36 sm:flex-none sideways:h-11"
+            >
+              {t("crossSeedDialog.retry")}
+            </Button>
+          ) : freshResults && !allAdded ? (
+            <Button
+              onClick={onApply}
+              disabled={isSubmitting || selectionCount === 0}
+              className="h-11 flex-1 sm:h-10 sm:min-w-36 sm:flex-none sideways:h-11"
+            >
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isSubmitting ? t("crossSeedDialog.adding") : selectionCount > 0 ? t("crossSeedDialog.addCount", { count: selectionCount }) : t("crossSeedDialog.add")}
+            </Button>
+          ) : searchAgain ? (
+            <Button
+              onClick={onForceRefresh}
+              disabled={!onForceRefresh}
+              className="h-11 flex-1 sm:h-10 sm:min-w-36 sm:flex-none sideways:h-11"
+            >
+              <RefreshCw className="h-4 w-4" />
+              {t("crossSeedDialog.scope.searchAgain")}
+            </Button>
+          ) : showSearch ? (
+            <Button
+              onClick={onScopeSearch}
+              disabled={analyzing || isSubmitting || pickedCount === 0}
+              className="h-11 flex-1 sm:h-10 sm:min-w-36 sm:flex-none sideways:h-11"
+            >
+              {analyzing || pickedCount === 0 ? t("crossSeedDialog.scope.search") : t("crossSeedDialog.scope.searchCount", { count: pickedCount })}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange} dismissible={!isSubmitting}>
+        <DrawerContent className="max-h-[94dvh] outline-none" onOpenAutoFocus={focusContent}>
+          {content}
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !isSubmitting && onOpenChange(next)}>
+      <DialogContent
+        className="flex max-h-[85dvh] w-full max-w-[95vw] flex-col gap-0 p-0 !translate-y-0 !top-[7.5dvh] sm:max-w-2xl"
+        onOpenAutoFocus={focusContent}
+      >
+        {content}
       </DialogContent>
     </Dialog>
   )
@@ -827,6 +932,7 @@ function getInstanceStatusDisplay(
     case "no_match":
       return { text: t("crossSeedDialog.status.noMatch"), variant: "destructive" }
     case "rejected":
+    case "size_mismatch":
       return { text: t("crossSeedDialog.status.rejected"), variant: "destructive" }
     case "no_save_path":
       return { text: t("crossSeedDialog.status.noSavePath"), variant: "destructive" }
@@ -848,259 +954,21 @@ function getInstanceStatusDisplay(
   }
 }
 
-interface CrossSeedScopeSelectorProps {
-  indexerOptions: CrossSeedIndexerOption[]
-  indexerMode: "all" | "custom"
-  selectedIndexerIds: number[]
-  excludedIndexerIds: number[]
-  onIndexerModeChange: (mode: "all" | "custom") => void
-  onToggleIndexer: (indexerId: number) => void
-  onSelectAllIndexers: () => void
-  onClearIndexerSelection: () => void
-  onScopeSearch: () => void
-  isSearching: boolean
-  gazelleEntries: CrossSeedGazelleLookup[]
-  selectableGazelleIds: number[]
+function RefreshCountdown({ until }: { until: number }) {
+  const { t } = useTranslation("crossseed")
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  return t("crossseed:hooks.search.refreshReadyIn", { seconds: Math.max(1, Math.ceil((until - now) / 1000)) })
 }
 
-function GazelleTraceRows({ lookups }: { lookups: CrossSeedGazelleLookup[] }) {
-  const lookupText = useGazelleLookupText()
+function Warning({ children }: { children: string }) {
   return (
-    <ul className="space-y-0.5">
-      {lookups.map(lookup => (
-        <li key={lookup.site} className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <span className="min-w-0 truncate">{lookup.name}</span>
-          <span className={cn("min-w-0 break-words", gazelleStatusClass(lookup.status))}>{lookupText(lookup)}</span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-// Memoized indexer option component to prevent re-rendering
-const IndexerCheckboxItem = memo(({
-  option,
-  isChecked,
-  onToggle,
-}: {
-  option: CrossSeedIndexerOption
-  isChecked: boolean
-  onToggle: (id: number) => void
-}) => {
-  const handleChange = useCallback(() => {
-    onToggle(option.id)
-  }, [onToggle, option.id])
-
-  return (
-    <DropdownMenuCheckboxItem
-      key={option.id}
-      checked={isChecked}
-      onCheckedChange={handleChange}
-      onSelect={(event) => event.preventDefault()} // keep menu open for multi-select
-    >
-      {option.name}
-    </DropdownMenuCheckboxItem>
-  )
-})
-IndexerCheckboxItem.displayName = "IndexerCheckboxItem"
-
-const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
-  indexerOptions,
-  indexerMode,
-  selectedIndexerIds,
-  excludedIndexerIds,
-  onIndexerModeChange,
-  onToggleIndexer,
-  onSelectAllIndexers,
-  onClearIndexerSelection,
-  onScopeSearch,
-  isSearching,
-  gazelleEntries,
-  selectableGazelleIds,
-}: CrossSeedScopeSelectorProps) {
-  const { t } = useTranslation("torrents")
-  const lookupText = useGazelleLookupText()
-  // The RED/OPS entries that the user can pick count as searchable sources too.
-  const total = indexerOptions.length + selectableGazelleIds.length
-  const selectedCount = selectedIndexerIds.filter(id => selectableGazelleIds.includes(id) || indexerOptions.some(option => option.id === id)).length
-  const excludedCount = excludedIndexerIds.length
-  const disableCustomSelection = total === 0
-  const scopeSearchDisabled = isSearching || (indexerMode === "custom" && selectedCount === 0)
-
-  // Calculate the actual count of indexers that will be used for search
-  const searchIndexerCount = useMemo(() => {
-    if (indexerMode === "all") {
-      return total
-    }
-    return selectedCount
-  }, [indexerMode, total, selectedCount])
-
-  const statusText = useMemo(() => {
-    const suffix = total === 1 ? "indexer" : "indexers"
-    if (indexerMode === "all") {
-      return t("crossSeedDialog.scope.enabledIndexers", { count: total, suffix })
-    }
-    if (selectedCount === 0) {
-      return t("crossSeedDialog.scope.noneSelected")
-    }
-    return t("crossSeedDialog.scope.selectedOfTotal", { selected: selectedCount, total })
-  }, [t, indexerMode, total, selectedCount])
-
-  const searchText = useMemo(() => {
-    const suffix = searchIndexerCount === 1 ? "indexer" : "indexers"
-    return t("crossSeedDialog.scope.indexersForSearch", { count: searchIndexerCount, suffix })
-  }, [t, searchIndexerCount])
-
-  // Memoize the dropdown items to prevent recreation on each render
-  const indexerItems = useMemo(
-    () =>
-      indexerOptions.map(option => (
-        <IndexerCheckboxItem
-          key={option.id}
-          option={option}
-          isChecked={selectedIndexerIds.includes(option.id)}
-          onToggle={onToggleIndexer}
-        />
-      )),
-    [indexerOptions, selectedIndexerIds, onToggleIndexer]
-  )
-
-  // Memoize button callbacks
-  const handleAllIndexersClick = useCallback(() => {
-    onIndexerModeChange("all")
-  }, [onIndexerModeChange])
-
-  const handleCustomIndexersClick = useCallback(() => {
-    onIndexerModeChange("custom")
-  }, [onIndexerModeChange])
-
-  return (
-    <div className="space-y-2">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-medium">{t("crossSeedDialog.searchScope")}</h3>
-        </div>
-        <div className="flex flex-col items-end gap-0.5">
-          <div className="text-xs text-muted-foreground">
-            {statusText}
-          </div>
-          {excludedCount > 0 && (
-            <div className="text-xs font-medium text-primary">
-              {searchText}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        {/* Mode Selection */}
-        <div className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/30 p-0.5">
-          <Button
-            size="sm"
-            variant={indexerMode === "all" ? "secondary" : "ghost"}
-            onClick={handleAllIndexersClick}
-            disabled={isSearching}
-            className="h-7 flex-1 sm:flex-initial text-xs"
-          >
-            {t("crossSeedDialog.scope.allIndexers")}
-          </Button>
-          <Button
-            size="sm"
-            variant={indexerMode === "custom" ? "secondary" : "ghost"}
-            onClick={handleCustomIndexersClick}
-            disabled={disableCustomSelection || isSearching}
-            className="h-7 flex-1 sm:flex-initial text-xs"
-          >
-            {t("crossSeedDialog.scope.selectCustom")}
-          </Button>
-        </div>
-
-        {/* Custom Selection Dropdown + Search */}
-        <div className="flex items-center gap-2">
-          {indexerMode === "custom" && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={isSearching}
-                  className="h-7 text-xs"
-                >
-                  {selectedCount > 0 ? t("crossSeedDialog.scope.selectedCount", { count: selectedCount }) : t("crossSeedDialog.scope.selectIndexers")}
-                  <ChevronDown className="ml-1.5 h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-64" align="end">
-                <DropdownMenuLabel className="text-xs">{t("crossSeedDialog.scope.availableIndexers")}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {indexerItems}
-                {gazelleEntries.map(entry => {
-                  const selectable = selectableGazelleIds.includes(entry.indexerId)
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={entry.site}
-                      checked={selectable && selectedIndexerIds.includes(entry.indexerId)}
-                      disabled={!selectable}
-                      onCheckedChange={() => onToggleIndexer(entry.indexerId)}
-                      onSelect={(event) => event.preventDefault()}
-                    >
-                      <span className="flex min-w-0 flex-col">
-                        <span>{entry.name}</span>
-                        {!selectable && <span className="text-[11px] text-muted-foreground">{lookupText(entry)}</span>}
-                      </span>
-                    </DropdownMenuCheckboxItem>
-                  )
-                })}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={(event) => event.preventDefault()}
-                  onClick={onSelectAllIndexers}
-                  className="text-xs"
-                >
-                  {t("crossSeedDialog.scope.selectAllIndexers")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => event.preventDefault()}
-                  onClick={onClearIndexerSelection}
-                  className="text-xs"
-                >
-                  {t("crossSeedDialog.scope.clearSelection")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          <ScopeSearchButton onClick={onScopeSearch} isSearching={isSearching} disabled={scopeSearchDisabled} />
-        </div>
-      </div>
-    </div>
-  )
-})
-CrossSeedScopeSelector.displayName = "CrossSeedScopeSelector"
-
-function HeaderWarning({ children }: { children: string }) {
-  return (
-    <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
+    <div className="flex items-center gap-1.5 text-xs text-yellow-600 dark:text-yellow-500">
       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
       <span>{children}</span>
     </div>
-  )
-}
-
-function ScopeSearchButton({ onClick, isSearching, disabled }: { onClick: () => void; isSearching: boolean; disabled: boolean }) {
-  const { t } = useTranslation("torrents")
-  return (
-    <Button size="sm" onClick={onClick} disabled={disabled} className="h-7 shrink-0 text-xs">
-      {isSearching ? (
-        <>
-          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-          {t("crossSeedDialog.scope.searching")}
-        </>
-      ) : (
-        t("crossSeedDialog.scope.search")
-      )}
-    </Button>
   )
 }

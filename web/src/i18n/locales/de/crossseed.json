@@ -485,7 +485,6 @@
       "failed": "Cross-geseedete Torrents konnten nicht identifiziert werden"
     },
     "search": {
-      "noMatches": "Keine Cross-Seed-Matches gefunden",
       "noIndexers": "Konfiguriere mindestens einen Torznab-Indexer, um nach Cross-Seeds zu suchen",
       "completedOnly": "Nur abgeschlossene Torrents können cross-geseedet werden",
       "selectTracker": "Wähle mindestens einen Tracker für eine benutzerdefinierte Suche aus",

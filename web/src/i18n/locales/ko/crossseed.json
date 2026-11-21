@@ -477,7 +477,6 @@
       "failed": "cross-seed된 토렌트를 식별하지 못했습니다"
     },
     "search": {
-      "noMatches": "cross-seed 일치 항목을 찾을 수 없습니다",
       "noIndexers": "cross-seed를 검색하려면 Torznab 인덱서를 하나 이상 구성하세요",
       "completedOnly": "완료된 토렌트만 cross-seed할 수 있습니다",
       "selectTracker": "사용자 지정 검색을 실행하려면 트래커를 하나 이상 선택하세요",

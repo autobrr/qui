@@ -477,7 +477,6 @@
       "failed": "識別輔種失敗"
     },
     "search": {
-      "noMatches": "未找到輔種匹配",
       "noIndexers": "請配置至少一個 Torznab 索引器以搜尋輔種",
       "completedOnly": "僅已完成的種子可以輔種",
       "selectTracker": "請選擇至少一個 Tracker 以執行自訂搜尋",

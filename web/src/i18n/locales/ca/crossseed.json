@@ -485,7 +485,6 @@
       "failed": "No s'han pogut identificar els torrents amb cross-seed"
     },
     "search": {
-      "noMatches": "No s'ha trobat cap coincidència de cross-seed",
       "noIndexers": "Configura com a mínim un indexador de Torznab per cercar cross-seed",
       "completedOnly": "Només es pot fer cross-seed dels torrents completats",
       "selectTracker": "Selecciona com a mínim un tracker per fer una cerca personalitzada",

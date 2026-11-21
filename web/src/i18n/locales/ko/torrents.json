@@ -654,35 +654,18 @@
   "crossSeedDialog": {
     "title": "Cross-Seed 검색",
     "torrentLabel": "토렌트",
-    "category": "카테고리: {{category}}",
-    "size": "크기: {{size}}",
-    "servedFromCache": "캐시에서 제공됨",
-    "freshSearch": "새 검색",
-    "cached": "캐시됨 {{time}}",
-    "expires": "만료 {{time}}",
-    "refreshFromIndexers": "인덱서에서 새로 고침",
     "partialResults": "일부 결과만 표시 - 일부 인덱서가 응답하지 않았습니다",
     "arrLookupFailed": "메타데이터 ID 조회 실패 - 제목으로만 검색하여 결과가 불완전할 수 있습니다",
     "arrNoIds": "이 릴리스의 메타데이터 ID를 찾을 수 없음 - 제목으로만 검색했습니다",
     "torznabFailed": "Torznab 검색 실패 - RED/OPS 결과만 표시합니다",
-    "searchScope": "검색 범위",
     "noIndexers": "사용 가능한 Torznab 인덱서 없음",
     "noIndexersHelp": "cross-seed를 검색하려면 설정에서 Torznab 인덱서를 추가하거나 활성화하세요.",
-    "capabilityNote": "기능 참고",
-    "capabilityDescription": "이 인덱서에는 이 토렌트에 필요한 기능/카테고리가 없어 서버에서 건너뜁니다:",
-    "smartFilteringActive": "스마트 필터링 활성",
-    "indexersFiltered_other": "인덱서 {{count}}개 필터링됨",
-    "excludedDescription": "이 트래커에서 이미 이 릴리스를 시드 중이므로 검색에서 제외됩니다.",
     "searchingIndexers": "인덱서 검색 중…",
     "noMatchesFound": "검색에서 일치 항목을 찾을 수 없습니다.",
-    "selectReleasesToAdd": "추가할 릴리스를 선택하세요",
     "selectAll": "모두 선택",
-    "clear": "지우기",
     "tagAddedTorrents": "추가된 토렌트에 태그 지정",
     "startPaused": "일시 정지 상태로 시작",
-    "latestAddAttempt": "최근 추가 시도",
     "close": "닫기",
-    "addSelected": "선택 항목 추가",
     "adding": "추가 중…",
     "retry": "다시 시도",
     "seeders": "시더 {{count}}개",
@@ -695,37 +678,42 @@
     "missingInstance": "차단 목록에 대한 인스턴스 누락",
     "trace": {
       "title": "검색 상세",
-      "summaryBadge": "후보 {{total}}개, 일치 {{matches}}개",
-      "summary": "후보 {{total}}개가 반환되었습니다. 거부됨: 릴리스 불일치 {{release}}개, 크기 불일치 {{size}}개, 콘텐츠 필터 {{late}}개, 중복 {{duplicates}}개. 일치 {{matches}}개가 남았습니다.",
-      "indexersHeading": "인덱서",
       "status": {
-        "searched": "검색됨",
         "notCovered": "불완전",
-        "error": "오류",
-        "excluded": "제외됨"
+        "error": "오류"
       },
-      "candidateCount": "후보 {{count}}개",
       "rejectionsHeading": "거부된 후보",
       "reasonCount": "{{reason}} · {{count}}",
       "moreCandidates": "같은 이유의 후보 {{count}}개 더 있음",
       "copyReport": "보고서 복사",
       "copied": "보고서가 클립보드에 복사되었습니다",
-      "copyFailed": "보고서를 복사할 수 없습니다"
+      "copyFailed": "보고서를 복사할 수 없습니다",
+      "rejectedCount_other": "후보 {{count}}개 거부됨",
+      "stats": {
+        "returned": "Torznab 후보",
+        "release": "릴리스 불일치",
+        "size": "크기 불일치",
+        "late": "콘텐츠 필터",
+        "duplicates": "중복",
+        "matches": "Torznab 일치"
+      }
     },
     "scope": {
-      "allIndexers": "모든 인덱서",
-      "selectCustom": "사용자 지정 선택",
-      "selectedCount": "{{count}}개 선택됨",
-      "selectIndexers": "인덱서 선택",
-      "availableIndexers": "사용 가능한 인덱서",
-      "selectAllIndexers": "모두 선택",
-      "clearSelection": "선택 해제",
       "search": "검색",
       "searching": "검색 중",
-      "noneSelected": "선택 안 됨",
-      "enabledIndexers": "{{count}}개 활성화 {{suffix}}",
-      "selectedOfTotal": "{{total}}개 중 {{selected}}개 선택됨",
-      "indexersForSearch": "검색용 {{count}}개 {{suffix}}"
+      "alreadySeeded": "조회 안 함: 이미 그곳에서 시드 중",
+      "heading": "인덱서",
+      "searchCount_other": "인덱서 {{count}}개 검색",
+      "unsupported_other": "인덱서 {{count}}개는 이 콘텐츠 유형을 지원하지 않음",
+      "matchCount_other": "일치 {{count}}개",
+      "selectNone": "모두 해제",
+      "checking": "이 토렌트에 맞는 인덱서를 확인하는 중…",
+      "nothingLeft": "이 토렌트를 검색할 인덱서가 남아 있지 않습니다.",
+      "selectAll": "모두 선택",
+      "change": "변경",
+      "searchAgain": "다시 검색",
+      "done": "완료",
+      "nonePicked": "선택한 인덱서 없음"
     },
     "status": {
       "added": "추가됨",
@@ -746,17 +734,10 @@
       "belowThreshold": "건너뜀 - 임계값 미만"
     },
     "rateLimitHelp": {
-      "why": "이 현상이 발생하는 이유:",
-      "whyDescription": "트래커는 남용과 차단을 방지하기 위해 요청 빈도를 제한합니다.",
-      "whatYouCanDo": "할 수 있는 일:",
-      "wait": "30~60분 기다린 후 다시 시도하세요",
-      "fewerIndexers": "더 적은 인덱서를 선택하여 검색해 보세요",
-      "useRss": "지속적인 cross-seeding에는 RSS 자동화 기능을 사용하세요",
-      "checkIndexers": "인덱서 페이지에서 속도 제한된 항목을 확인하세요"
+      "wait": "30~60분 기다린 후 다시 시도하세요"
     },
     "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다.",
     "gazelle": {
-      "heading": "RED/OPS",
       "willAsk": "조회 예정",
       "willAskRejected": "조회 예정: 지난번에 사이트에서 API 키를 거부함",
       "match": "일치",
@@ -777,7 +758,17 @@
         "timedOut": "실패: 시간 초과",
         "other": "실패: {{detail}}"
       }
-    }
+    },
+    "cachedAgo": "캐시된 결과 · {{time}}",
+    "refresh": "새로 고침",
+    "tag": "태그",
+    "selectedOfTotal": "{{total}}개 중 {{selected}}개 선택됨",
+    "resultsSelectedOfTotal": "일치 항목 {{total}}개 중 {{selected}}개 선택됨",
+    "addCount_other": "토렌트 {{count}}개 추가",
+    "openOnIndexer": "{{indexer}}에서 열기",
+    "problem": "{{name}}: {{status}}",
+    "problemDetail": "{{name}}: {{status}} ({{detail}})",
+    "add": "추가"
   },
   "columnFilter": {
     "filterColumn": "{{column}} 필터링",

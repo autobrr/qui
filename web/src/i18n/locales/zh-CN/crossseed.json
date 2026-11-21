@@ -477,7 +477,6 @@
       "failed": "识别辅种失败"
     },
     "search": {
-      "noMatches": "未找到辅种匹配",
       "noIndexers": "请配置至少一个 Torznab 索引器以搜索辅种",
       "completedOnly": "仅已完成的种子可以辅种",
       "selectTracker": "请选择至少一个 Tracker 以运行自定义搜索",
