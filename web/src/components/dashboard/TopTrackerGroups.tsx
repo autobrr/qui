@@ -4,8 +4,9 @@
  */
 
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
-import { useTrackerGroupName } from "@/hooks/useTrackerGroupName"
+import { useTrackerGroupIcon, useTrackerGroupName } from "@/hooks/useTrackerGroupName"
 import type { TrackerGroupShares } from "@/lib/dashboard-overview"
 import { themeArea } from "@/lib/theme-areas"
 import { cn, formatBytes } from "@/lib/utils"
@@ -27,15 +28,17 @@ export function TopTrackerGroups({ shares, className }: { shares: TrackerGroupSh
   const locale = i18n.resolvedLanguage ?? i18n.language
   const colors = useSeriesColors()
   const displayName = useTrackerGroupName()
+  const groupIcon = useTrackerGroupIcon()
   const percent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 })
   const rows = [
     ...shares.top.map((share, index) => ({
       key: share.group,
       name: displayName(share.group),
+      icon: groupIcon(share.group),
       uploaded: share.uploaded,
       style: { "--series-light": colors.light[index], "--series-dark": colors.dark[index], background: "var(--series)" } as CSSProperties,
     })),
-    ...(shares.other ? [{ key: "", name: t("statistics:chart.otherCount", { groups: shares.other.groups }), uploaded: shares.other.uploaded, style: { background: OTHER_COLOR } }] : []),
+    ...(shares.other ? [{ key: "", name: t("statistics:chart.otherCount", { groups: shares.other.groups }), icon: undefined, uploaded: shares.other.uploaded, style: { background: OTHER_COLOR } }] : []),
   ]
 
   return (
@@ -58,6 +61,7 @@ export function TopTrackerGroups({ shares, className }: { shares: TrackerGroupSh
               {rows.map(row => (
                 <li key={row.key} data-testid="tracker-row" className="flex h-9 min-w-0 items-center gap-2 border-b border-border/60 text-sm tabular-nums">
                   <span className={`size-2.5 shrink-0 rounded-[3px] ${SERIES_CLASS}`} style={row.style} />
+                  {row.icon ? <TrackerIconImage {...row.icon} /> : <span className="size-4 shrink-0" />}
                   <span className="min-w-0 flex-1 truncate">{row.name}</span>
                   <span>{formatBytes(row.uploaded)}</span>
                   <span className="w-10 text-right text-muted-foreground">{percent.format(row.uploaded / shares.uploaded)}</span>

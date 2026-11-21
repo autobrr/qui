@@ -64,7 +64,7 @@ If you tap or click an offline instance, qui shows the cause and a link to the i
 
 ## Top trackers
 
-This part shows the five trackers with the most upload in the last 24 hours. Each row has the series color of the Statistics page, the name, the upload, and the share of the upload. The other trackers are one gray row **Other**. The rows add up to the upload of the last 24 hours. The [series colors](./statistics.md#series-colors) setting of the Statistics page applies to this list.
+This part shows the five trackers with the most upload in the last 24 hours. Each row has the series color of the Statistics page, the [tracker icon](./tracker-icons.md), the name, the upload, and the share of the upload. The other trackers are one gray row **Other**. Public, No tracker, and Other have no icon. The rows add up to the upload of the last 24 hours. The [series colors](./statistics.md#series-colors) setting of the Statistics page applies to this list.
 
 The **Statistics** link opens the Statistics page with the period **24 hours**. To rename or merge trackers, see [Tracker Customizations](./tracker-customizations.md).
 

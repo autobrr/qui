@@ -27,7 +27,7 @@ import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 import type { DashboardInstanceStats } from "@/lib/dashboard-overview"
 import { formatBytes } from "@/lib/utils"
 import { server } from "@/test/msw/server"
-import type { InstanceResponse, LiveSamples, ServerState, TransferHistoryInstance, TransferHistoryRow } from "@/types"
+import type { InstanceResponse, LiveSamples, ServerState, TrackerCustomization, TransferHistoryInstance, TransferHistoryRow } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string | string[], options?: Record<string, unknown>) => {
@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => {
   return {
     i18n: { t, i18n: { resolvedLanguage: "en", language: "en" } },
     incognitoMode: [false, () => {}] as [boolean, () => void],
+    trackerIcons: { data: undefined } as { data?: Record<string, string> },
     toastError: vi.fn(),
   }
 })
@@ -50,6 +51,7 @@ vi.mock("sonner", async (importOriginal) => ({
   ...await importOriginal<typeof import("sonner")>(),
   toast: { error: mocks.toastError },
 }))
+vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => mocks.trackerIcons }))
 vi.mock("@/lib/incognito", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/incognito")>(),
   useIncognitoMode: () => mocks.incognitoMode,
@@ -65,6 +67,7 @@ let toggles: number[]
 let toggleFails: boolean
 let desktop: boolean
 let liveSamples: LiveSamples
+let customizations: TrackerCustomization[]
 
 function hourRow(group: string, hoursAgo: number, uploaded: number, downloaded: number, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
   const start = Math.floor(Date.now() / HOUR) * HOUR - hoursAgo * HOUR
@@ -115,6 +118,12 @@ function rowOf(table: HTMLElement, name: string): HTMLElement {
   return within(table).getByText(name).closest("tr")!
 }
 
+function visibleText(node: Element): string {
+  const copy = node.cloneNode(true) as Element
+  copy.querySelectorAll("[aria-hidden=true]").forEach(hidden => hidden.remove())
+  return copy.textContent ?? ""
+}
+
 // The host of each open detail band, in the order of the rows.
 function openHosts(table: HTMLElement): string[] {
   return within(table).queryAllByTestId("fact-host").map(fact => fact.textContent ?? "")
@@ -140,6 +149,8 @@ beforeEach(() => {
   desktop = false
   liveSamples = { now: new Date().toISOString(), instances: [] }
   mocks.incognitoMode = [false, () => {}]
+  mocks.trackerIcons = { data: undefined }
+  customizations = []
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
     unobserve() {}
@@ -154,6 +165,7 @@ beforeEach(() => {
   server.use(
     http.get("*/api/transfer-history/status", () => HttpResponse.json({ instances: statuses })),
     http.get("*/api/live-samples", () => HttpResponse.json(liveSamples)),
+    http.get("*/api/tracker-customizations", () => HttpResponse.json(customizations)),
     http.put("*/api/client-settings", () => HttpResponse.json({})),
     http.get("*/api/instances/:id/transfer-history", ({ params }) => {
       transferRequests.push(Number(params.id))
@@ -191,7 +203,7 @@ describe("DashboardOverview, 24 h", () => {
     renderOverview([stats(1), stats(2)])
 
     const section = await screen.findByRole("region", { name: "trackers.title" })
-    const rows = within(section).getAllByTestId("tracker-row").map(row => row.textContent)
+    const rows = within(section).getAllByTestId("tracker-row").map(visibleText)
     expect(rows).toEqual([
       `a.test${formatBytes(15 * GiB)}28%`,
       `b.test${formatBytes(9 * GiB)}17%`,
@@ -201,6 +213,24 @@ describe("DashboardOverview, 24 h", () => {
       `statistics:chart.otherCount groups=2${formatBytes(9 * GiB)}17%`,
     ])
     expect(within(section).getByText("trackers.statistics").closest("a")?.getAttribute("href")).toBe("/statistics?period=24h")
+  })
+
+  it("shows the tracker icon of each Tracker group, from a domain of the customization that names the group, and none for Other", async () => {
+    mocks.trackerIcons = { data: { "a.test": "data:image/png;base64,YQ==", "b.test": "data:image/png;base64,Yg==" } }
+    customizations = [{ id: 1, displayName: "Bee", domains: ["b-alt.test", "b.test"], createdAt: "", updatedAt: "" }]
+    answer = id => id === 1
+      ? ["a.test", "Bee", "c.test", "Public", "d.test", "e.test", "f.test"].map((group, index) => hourRow(group, 2, (10 - index) * GiB, 0))
+      : []
+    renderOverview([stats(1)])
+
+    const section = await screen.findByRole("region", { name: "trackers.title" })
+    const row = (name: string) => within(section).getByText(name).closest("li")!
+    await vi.waitFor(() => expect(row("Bee").querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,Yg=="))
+    expect(row("a.test").querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,YQ==")
+    expect(row("c.test").querySelector("img")).toBeNull()
+    expect(row("c.test").querySelector("span[aria-hidden=true]")?.textContent).toBe("C")
+    expect(row("groups.public").querySelector("img, span[aria-hidden=true]")).toBeNull()
+    expect(row("statistics:chart.otherCount groups=2").querySelector("img, span[aria-hidden=true]")).toBeNull()
   })
 
   it("reads the transfer route once for each instance at open and again each 5 minutes", async () => {
