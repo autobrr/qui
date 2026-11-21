@@ -88,7 +88,6 @@
     "wholeChip_other": "{{count}} seleccionades a totes les pàgines",
     "pickAll_one": "Selecciona-les totes ({{count}})",
     "pickAll_other": "Selecciona-les totes ({{count}})",
-    "clear": "Desselecciona",
     "done": {
       "retry_one": "{{count}} fila torna a començar.",
       "retry_other": "{{count}} files tornen a començar.",

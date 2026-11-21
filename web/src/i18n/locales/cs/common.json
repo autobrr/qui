@@ -568,6 +568,7 @@
     "retry": "Zkusit znovu",
     "edit": "Upravit",
     "moreActions": "Další akce",
-    "enabled": "Povoleno"
+    "enabled": "Povoleno",
+    "clearSelection": "Zrušit výběr"
   }
 }

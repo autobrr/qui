@@ -80,6 +80,7 @@ const SYNCED_KEYS = new Set<string>([
   "qui-support-reminder-off",
   "qui-support-reminder-due",
   "qui-problem-reports-seen-at",
+  "qui-search-type",
 ])
 const SYNCED_PREFIXES = [
   "qui-cross-seed-blocklist-",

@@ -1,47 +1,43 @@
 {
   "pageTitle": "Search Indexers",
-  "pageDescription": "Search across all enabled indexers. Choose a search type.",
-  "indexerSummary": {
-    "label": "Indexers",
-    "noEnabled": "No enabled indexers",
-    "allEnabled": "All enabled ({{count}})",
-    "selected": "{{selected}} of {{total}} selected"
-  },
+  "pageDescription": "Search your indexers and add a release to qBittorrent.",
   "indexerSheet": {
-    "title": "Indexer selection",
-    "description": "Pick which indexers to include in searches.",
-    "selectAll": "Select all",
-    "clearSelection": "Clear selection",
-    "noCategories": "No categories",
     "backend": {
       "prowlarr": "Prowlarr",
       "native": "Native",
       "jackett": "Jackett"
-    },
-    "footer": "{{selected}} of {{total}} enabled indexers selected",
-    "done": "Done"
+    }
   },
   "instanceSelector": {
-    "chooseTarget": "Choose target instance",
-    "noInstances": "No instances",
-    "offline": "Offline",
-    "targetNamed": "Target: {{name}}",
-    "targetNamedOffline": "Target: {{name}} (offline)",
-    "clearSelection": "Clear selection",
-    "noInstancesConfigured": "No instances configured",
-    "addInstanceNote": "Add a download instance under Settings > Instances."
+    "offline": "Offline"
+  },
+  "picker": {
+    "indexersTitle": "Indexers to search",
+    "filter": "Filter",
+    "all": "All",
+    "none": "None",
+    "done": "Done",
+    "noMatch": "Nothing matches the filter"
+  },
+  "form": {
+    "indexers": "Indexers",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Remove {{label}}",
+    "clearFields": "Clear fields",
+    "clearQuery": "Clear the query",
+    "recentSearches": "Recent searches",
+    "noIndexersTitle": "No indexers yet",
+    "noIndexersBody": "Add an indexer to search it from this page.",
+    "noIndexersAction": "Add indexers",
+    "indexersFailed": "Failed to load indexers"
   },
   "searchForm": {
     "advanced": "Advanced",
-    "active": "Active",
-    "clear": "Clear",
     "searching": "Searching...",
     "search": "Search",
-    "advancedNote": "Optional (but recommended) Torznab parameters.",
+    "advancedNote": "IDs and numbers make the search exact on indexers that support them.",
     "searchType": "Search type",
-    "searchQuery": "Search Query",
-    "noIndexers": "No enabled indexers available. Please add and enable indexers in the",
-    "indexersPage": "Indexers page"
+    "searchQuery": "Search Query"
   },
   "searchTypes": {
     "movies": {
@@ -108,25 +104,67 @@
     }
   },
   "results": {
-    "showing": "Showing {{filtered}} of {{total}} results",
+    "count_one": "{{count}} result",
+    "count_other": "{{count}} results",
+    "filteredCount_one": "{{shown}} of {{count}} result",
+    "filteredCount_other": "{{shown}} of {{count}} results",
+    "searching_one": "Searching {{count}} indexer...",
+    "searching_other": "Searching {{count}} indexers...",
     "filterPlaceholder": "Filter results...",
-    "clearSearch": "Clear search",
-    "clearAllFilters": "Clear all column filters",
-    "pickInstance": "Pick instance",
-    "download": "Download",
-    "viewDetails": "View details",
-    "clearSelectionButton": "Clear selection",
-    "actions": "Actions",
-    "quickAddTo": "Quick add to...",
+    "clearFilters": "Clear filters",
+    "noMatches": "No result matches the filters.",
     "cachedSummary": "Cached {{cached}} · Expires {{expires}}",
-    "cacheSource": "Source: {{source}} · Scope: {{scope}}",
-    "refreshReadyIn": "Ready in {{seconds}}s",
+    "cachedAgo": "Cached · {{age}}",
+    "live": "Live",
+    "partial": "Incomplete",
+    "partialHint": "Some indexers did not answer. Refresh to ask them again.",
+    "refresh": "Refresh",
     "refreshFromIndexers": "Refresh from indexers",
+    "refreshCooldown": "You can refresh again in a moment",
+    "showMore": "Show more",
+    "shownOf": "{{shown}} of {{total}} shown",
     "categoryFallback": "Category {{id}}",
+    "noResults": "No results found",
     "noResultsFor": "No results found for \"{{query}}\"",
-    "enterQuery": "Enter a search query to get started",
-    "free": "Free",
-    "freeNeutral": "Neutral"
+    "noResultsHint": "Check the spelling, pick another search type, or search more indexers.",
+    "searchAllIndexers": "Search all indexers",
+    "failed": "The search failed",
+    "retry": "Try again",
+    "idleTitle": "Search your indexers",
+    "idleHint": "Enter a title, an IMDb ID such as tt1234567, or a TVDb ID such as tvdb 123456.",
+    "free": "Free"
+  },
+  "facets": {
+    "collection": "Service",
+    "normal": "Normal"
+  },
+  "sort": {
+    "label": "Sort",
+    "seeders": "Most seeders",
+    "newest": "Newest",
+    "oldest": "Oldest",
+    "largest": "Largest",
+    "smallest": "Smallest",
+    "title": "Title A–Z",
+    "indexer": "Indexer A–Z"
+  },
+  "columns": {
+    "age": "Age"
+  },
+  "row": {
+    "add": "Add",
+    "addTo": "Add to",
+    "more": "More actions",
+    "openIndexer": "Open on indexer",
+    "copyTitle": "Copy title",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× upload"
+  },
+  "bulk": {
+    "label": "Selected results",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "selectShown": "Select all shown"
   },
   "historyMeta": "{{type}} · {{count}} results · {{timestamp}}",
   "table": {
@@ -134,53 +172,27 @@
     "indexer": "Indexer",
     "size": "Size",
     "seeders": "Seeders",
+    "leechers": "Leechers",
     "category": "Category",
     "source": "Source",
-    "collection": "Collection",
     "group": "Group",
     "freeleech": "Freeleech",
-    "published": "Published",
     "actions": "Actions",
-    "downloadTorrent": "Download .torrent",
-    "viewDetails": "View details",
-    "noInfoUrl": "No info URL"
+    "downloadTorrent": "Download .torrent"
   },
   "refreshDialog": {
     "title": "Bypass the cache?",
     "description": "This will send the request directly to every selected indexer. Use sparingly to avoid rate limits. You can refresh again after a short cooldown.",
-    "cancel": "Cancel",
     "refreshNow": "Refresh now"
   },
   "cache": {
-    "cacheAndLive": "Cache + live",
-    "cacheHit": "Cache hit",
-    "liveFetch": "Live fetch"
+    "cacheAndLive": "Cache + live"
   },
   "card": {
-    "actions": "Actions",
-    "addToInstance": "Add to instance",
-    "addToNamed": "Add to {{name}}",
-    "addToNamedOffline": "Add to {{name}} (offline)",
-    "quickAddTo": "Quick add to...",
-    "download": "Download",
-    "viewDetails": "View details",
-    "clearSelection": "Clear selection",
-    "seeders": "{{count}} seeders",
-    "published": "Published {{date}}"
+    "addToNamed": "Add to {{name}}"
   },
   "toast": {
-    "enterSearchQuery": "Please enter a search query or fill in advanced parameters",
-    "selectIndexer": "Please select at least one indexer",
-    "noEnabledIndexers": "No enabled indexers available. Please add and enable indexers first.",
-    "noResults": "No results found",
-    "foundResults": "Found {{total}} results{{suffix}}",
-    "cached": " (cached)",
-    "searchFailed": "Search failed: {{error}}",
-    "failedToLoadIndexers": "Failed to load indexers",
-    "addInstanceFirst": "Add a download instance under Settings -> Instances",
-    "chooseInstance": "Choose an instance to add torrents",
     "noDownloadUrl": "No download URL available for this result",
-    "noInfoUrl": "No additional info available for this result",
     "invalidProtocol": "Invalid URL protocol",
     "invalidUrl": "Invalid URL format"
   }

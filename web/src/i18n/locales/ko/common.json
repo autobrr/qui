@@ -530,6 +530,7 @@
     "retry": "다시 시도",
     "edit": "편집",
     "moreActions": "추가 작업",
-    "enabled": "사용"
+    "enabled": "사용",
+    "clearSelection": "선택 해제"
   }
 }

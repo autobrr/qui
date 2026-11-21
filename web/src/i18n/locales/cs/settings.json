@@ -1249,7 +1249,7 @@
   },
   "trackerCustomizations": {
     "cardTitle": "Úpravy trackerů",
-    "cardDescription": "Přejmenujte trackery a sloučte domény jednoho trackeru do jedné položky.",
+    "cardDescription": "Přejmenujte trackery a sloučte domény jednoho trackeru do jedné položky. Vyberte trackery, které chcete přejmenovat nebo sloučit.",
     "loading": "Načítání trackerů…",
     "mergedFrom": "Spojeno s: {{domains}}",
     "original": "Původní: {{domain}}",
@@ -1314,11 +1314,10 @@
     "emptyDescription": "Trackery se zde zobrazí, jakmile bude mít instance torrenty.",
     "importButton": "Importovat",
     "exportButton": "Exportovat",
-    "selectionHint": "Vyberte trackery, které chcete přejmenovat nebo sloučit.",
+    "selectionLabel": "Vybrané trackery",
     "selectedCount_one": "{{count}} vybraný",
     "selectedCount_few": "{{count}} vybrané",
     "selectedCount_other": "{{count}} vybraných",
-    "clearSelection": "Zrušit výběr",
     "deleteDialog": {
       "title": "Smazat úpravu?",
       "description": "Trackery {{name}} budou znovu zobrazovat své vlastní domény. Tuto akci nelze vrátit zpět."

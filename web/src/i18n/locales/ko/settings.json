@@ -1231,7 +1231,7 @@
   },
   "trackerCustomizations": {
     "cardTitle": "트래커 사용자 지정",
-    "cardDescription": "트래커 이름을 바꾸고 한 트래커의 도메인을 하나의 항목으로 병합합니다.",
+    "cardDescription": "트래커 이름을 바꾸고 한 트래커의 도메인을 하나의 항목으로 병합합니다. 이름을 바꾸거나 병합할 트래커를 선택하세요.",
     "loading": "트래커를 불러오는 중…",
     "mergedFrom": "병합 출처: {{domains}}",
     "original": "원본: {{domain}}",
@@ -1292,9 +1292,8 @@
     "emptyDescription": "인스턴스에 토렌트가 있으면 트래커가 여기에 표시됩니다.",
     "importButton": "가져오기",
     "exportButton": "내보내기",
-    "selectionHint": "이름을 바꾸거나 병합할 트래커를 선택하세요.",
+    "selectionLabel": "선택한 트래커",
     "selectedCount_other": "{{count}}개 선택됨",
-    "clearSelection": "선택 해제",
     "deleteDialog": {
       "title": "사용자 지정을 삭제하시겠습니까?",
       "description": "{{name}}의 트래커가 다시 원래 도메인으로 표시됩니다. 이 작업은 취소할 수 없습니다."

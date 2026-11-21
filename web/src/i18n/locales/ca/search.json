@@ -1,47 +1,43 @@
 {
   "pageTitle": "Cerca als indexadors",
-  "pageDescription": "Cerca a tots els indexadors activats. Tria un tipus de cerca.",
-  "indexerSummary": {
-    "label": "Indexadors",
-    "noEnabled": "No hi ha cap indexador activat",
-    "allEnabled": "Tots activats ({{count}})",
-    "selected": "{{selected}} de {{total}} seleccionats"
-  },
+  "pageDescription": "Cerca als teus indexadors i afegeix una release a qBittorrent.",
   "indexerSheet": {
-    "title": "Selecció d'indexadors",
-    "description": "Tria quins indexadors s'inclouen a les cerques.",
-    "selectAll": "Selecciona'ls tots",
-    "clearSelection": "Neteja la selecció",
-    "noCategories": "Cap categoria",
     "backend": {
       "prowlarr": "Prowlarr",
       "native": "Natiu",
       "jackett": "Jackett"
-    },
-    "footer": "{{selected}} de {{total}} indexadors activats seleccionats",
-    "done": "Fet"
+    }
   },
   "instanceSelector": {
-    "chooseTarget": "Tria la instància de destinació",
-    "noInstances": "Cap instància",
-    "offline": "Fora de línia",
-    "targetNamed": "Destinació: {{name}}",
-    "targetNamedOffline": "Destinació: {{name}} (fora de línia)",
-    "clearSelection": "Neteja la selecció",
-    "noInstancesConfigured": "No hi ha cap instància configurada",
-    "addInstanceNote": "Afegeix una instància de baixada a Configuració > Instàncies."
+    "offline": "Fora de línia"
+  },
+  "picker": {
+    "indexersTitle": "Indexadors on cercar",
+    "filter": "Filtra",
+    "all": "Tots",
+    "none": "Cap",
+    "done": "Fet",
+    "noMatch": "Res no coincideix amb el filtre"
+  },
+  "form": {
+    "indexers": "Indexadors",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Elimina {{label}}",
+    "clearFields": "Neteja els camps",
+    "clearQuery": "Neteja la consulta",
+    "recentSearches": "Cerques recents",
+    "noIndexersTitle": "Encara no hi ha indexadors",
+    "noIndexersBody": "Afegeix un indexador per cercar-hi des d'aquesta pàgina.",
+    "noIndexersAction": "Afegeix indexadors",
+    "indexersFailed": "No s'han pogut carregar els indexadors"
   },
   "searchForm": {
     "advanced": "Avançat",
-    "active": "Actiu",
-    "clear": "Neteja",
     "searching": "S'està cercant...",
     "search": "Cerca",
-    "advancedNote": "Paràmetres de Torznab opcionals (però recomanats).",
+    "advancedNote": "Els ID i els números fan que la cerca sigui exacta als indexadors que els admeten.",
     "searchType": "Tipus de cerca",
-    "searchQuery": "Consulta de cerca",
-    "noIndexers": "No hi ha cap indexador activat disponible. Afegeix i activa indexadors a la",
-    "indexersPage": "pàgina Indexadors"
+    "searchQuery": "Consulta de cerca"
   },
   "searchTypes": {
     "movies": {
@@ -108,25 +104,67 @@
     }
   },
   "results": {
-    "showing": "Es mostren {{filtered}} de {{total}} resultats",
+    "count_one": "{{count}} resultat",
+    "count_other": "{{count}} resultats",
+    "filteredCount_one": "{{shown}} de {{count}} resultat",
+    "filteredCount_other": "{{shown}} de {{count}} resultats",
+    "searching_one": "S'està cercant a {{count}} indexador...",
+    "searching_other": "S'està cercant a {{count}} indexadors...",
     "filterPlaceholder": "Filtra els resultats...",
-    "clearSearch": "Neteja la cerca",
-    "clearAllFilters": "Neteja tots els filtres de columna",
-    "pickInstance": "Tria una instància",
-    "download": "Baixa",
-    "viewDetails": "Mostra els detalls",
-    "clearSelectionButton": "Neteja la selecció",
-    "actions": "Accions",
-    "quickAddTo": "Addició ràpida a...",
+    "clearFilters": "Neteja els filtres",
+    "noMatches": "Cap resultat no coincideix amb els filtres.",
     "cachedSummary": "A la memòria cau {{cached}} · Caduca {{expires}}",
-    "cacheSource": "Origen: {{source}} · Àmbit: {{scope}}",
-    "refreshReadyIn": "A punt d'aquí a {{seconds}} s",
+    "cachedAgo": "A la memòria cau · {{age}}",
+    "live": "En directe",
+    "partial": "Incomplet",
+    "partialHint": "Alguns indexadors no han respost. Actualitza per tornar-los a consultar.",
+    "refresh": "Actualitza",
     "refreshFromIndexers": "Actualitza des dels indexadors",
+    "refreshCooldown": "Podràs tornar a actualitzar d'aquí a un moment",
+    "showMore": "Mostra'n més",
+    "shownOf": "Es mostren {{shown}} de {{total}}",
     "categoryFallback": "Categoria {{id}}",
+    "noResults": "No s'ha trobat cap resultat",
     "noResultsFor": "No s'ha trobat cap resultat per a \"{{query}}\"",
-    "enterQuery": "Introdueix una consulta de cerca per començar",
-    "free": "Gratuït",
-    "freeNeutral": "Neutre"
+    "noResultsHint": "Comprova l'ortografia, tria un altre tipus de cerca o cerca a més indexadors.",
+    "searchAllIndexers": "Cerca a tots els indexadors",
+    "failed": "La cerca ha fallat",
+    "retry": "Torna-ho a provar",
+    "idleTitle": "Cerca als teus indexadors",
+    "idleHint": "Introdueix un títol, un ID d'IMDb com tt1234567 o un ID de TVDb com tvdb 123456.",
+    "free": "Gratuït"
+  },
+  "facets": {
+    "collection": "Servei",
+    "normal": "Normal"
+  },
+  "sort": {
+    "label": "Ordena",
+    "seeders": "Més llavors",
+    "newest": "Més recents",
+    "oldest": "Més antics",
+    "largest": "Més grans",
+    "smallest": "Més petits",
+    "title": "Títol A–Z",
+    "indexer": "Indexador A–Z"
+  },
+  "columns": {
+    "age": "Antiguitat"
+  },
+  "row": {
+    "add": "Afegeix",
+    "addTo": "Afegeix a",
+    "more": "Més accions",
+    "openIndexer": "Obre a l'indexador",
+    "copyTitle": "Copia el títol",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× pujada"
+  },
+  "bulk": {
+    "label": "Resultats seleccionats",
+    "selected_one": "{{count}} seleccionat",
+    "selected_other": "{{count}} seleccionats",
+    "selectShown": "Selecciona tots els mostrats"
   },
   "historyMeta": "{{type}} · {{count}} resultats · {{timestamp}}",
   "table": {
@@ -134,53 +172,27 @@
     "indexer": "Indexador",
     "size": "Mida",
     "seeders": "Llavors",
+    "leechers": "Sangoneres",
     "category": "Categoria",
     "source": "Origen",
-    "collection": "Col·lecció",
     "group": "Grup",
     "freeleech": "Freeleech",
-    "published": "Publicat",
     "actions": "Accions",
-    "downloadTorrent": "Baixa el .torrent",
-    "viewDetails": "Mostra els detalls",
-    "noInfoUrl": "Sense URL d'informació"
+    "downloadTorrent": "Baixa el .torrent"
   },
   "refreshDialog": {
     "title": "Vols ometre la memòria cau?",
     "description": "Això enviarà la petició directament a cada indexador seleccionat. Fes-ho servir amb moderació per evitar els límits de freqüència. Podràs tornar a actualitzar després d'una breu espera.",
-    "cancel": "Cancel·la",
     "refreshNow": "Actualitza ara"
   },
   "cache": {
-    "cacheAndLive": "Memòria cau + en directe",
-    "cacheHit": "Encert de memòria cau",
-    "liveFetch": "Consulta en directe"
+    "cacheAndLive": "Memòria cau + en directe"
   },
   "card": {
-    "actions": "Accions",
-    "addToInstance": "Afegeix a la instància",
-    "addToNamed": "Afegeix a {{name}}",
-    "addToNamedOffline": "Afegeix a {{name}} (fora de línia)",
-    "quickAddTo": "Addició ràpida a...",
-    "download": "Baixa",
-    "viewDetails": "Mostra els detalls",
-    "clearSelection": "Neteja la selecció",
-    "seeders": "{{count}} llavors",
-    "published": "Publicat el {{date}}"
+    "addToNamed": "Afegeix a {{name}}"
   },
   "toast": {
-    "enterSearchQuery": "Introdueix una consulta de cerca o omple els paràmetres avançats",
-    "selectIndexer": "Selecciona com a mínim un indexador",
-    "noEnabledIndexers": "No hi ha cap indexador activat disponible. Primer afegeix i activa indexadors.",
-    "noResults": "No s'ha trobat cap resultat",
-    "foundResults": "S'han trobat {{total}} resultats{{suffix}}",
-    "cached": " (a la memòria cau)",
-    "searchFailed": "La cerca ha fallat: {{error}}",
-    "failedToLoadIndexers": "No s'han pogut carregar els indexadors",
-    "addInstanceFirst": "Afegeix una instància de baixada a Configuració -> Instàncies",
-    "chooseInstance": "Tria una instància per afegir-hi torrents",
     "noDownloadUrl": "Aquest resultat no té cap URL de baixada disponible",
-    "noInfoUrl": "Aquest resultat no té informació addicional disponible",
     "invalidProtocol": "El protocol de l'URL no és vàlid",
     "invalidUrl": "El format de l'URL no és vàlid"
   }

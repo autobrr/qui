@@ -39,8 +39,15 @@
 ## Tables
 
 - In a table whose last column holds row actions, set the `pinEnd` prop on the `TableHead` and on each `TableCell` of that column. Import both from `@/components/ui/table`. Do not write your own sticky classes. When long text makes the table wider than its container, the table scrolls sideways, and the actions stay in view. Some browsers hide the sideways scrollbar, so without `pinEnd` the user does not see the actions.
+- A table takes no `pinEnd` when it stays as wide as the card at every card width: its name column has `w-full max-w-0 whitespace-normal`, so the name wraps, and each other column fits beside it at every width where that column shows. Show a wide column only from the container breakpoint where it fits, for example `hidden @3xl:table-cell`, and measure the table just above each breakpoint with the longest value of each column. The tables of Search, Transfers, and Shares work this way.
 - `pinEnd` gives the column the card background color. Use it only on a table that sits on a card.
 - Do not set `display: flex` on a `TableCell` with `pinEnd`. Put the flex layout on a `div` inside the cell.
+
+## Selection
+
+- A table or a list where the user picks rows and then acts on all of them shows those actions in `SelectionBar` from `@/components/kit/SelectionBar`. The page passes the count text in `summary`, the actions as children, and a step that changes the selection itself, for example "Select all 240", in `extra`. The bar owns Clear selection, the Escape key that clears the selection, and the phone layout. A page adds no Escape handler of its own.
+- Render the bar after the last row, inside the block that holds the rows and reaches the edges of the card, as the Search results and the Transfers list do. The bar then rests under the last row, and while more rows follow, it stays at the bottom of the screen, above the phone nav.
+- The bar sticks only while no block around it clips its overflow. Give the card `overflow-clip`, not `overflow-hidden`.
 
 ## Page layout
 

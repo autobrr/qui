@@ -84,7 +84,6 @@
     "picked_other": "{{count}}개 선택됨",
     "wholeChip_other": "모든 페이지에서 {{count}}개 선택됨",
     "pickAll_other": "모두 선택 ({{count}})",
-    "clear": "선택 해제",
     "done": {
       "retry_other": "{{count}}개 행을 다시 실행합니다.",
       "cancel_other": "qui가 {{count}}개 행을 취소합니다.",

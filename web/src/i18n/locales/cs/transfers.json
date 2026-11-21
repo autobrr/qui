@@ -92,7 +92,6 @@
     "pickAll_one": "Vybrat vše ({{count}})",
     "pickAll_few": "Vybrat vše ({{count}})",
     "pickAll_other": "Vybrat vše ({{count}})",
-    "clear": "Zrušit výběr",
     "done": {
       "retry_one": "{{count}} řádek běží znovu.",
       "retry_few": "{{count}} řádky běží znovu.",

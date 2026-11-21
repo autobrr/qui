@@ -1231,7 +1231,7 @@
   },
   "trackerCustomizations": {
     "cardTitle": "Tracker 自定义",
-    "cardDescription": "重命名 Tracker，并将同一 Tracker 的多个域名合并为一个条目。",
+    "cardDescription": "重命名 Tracker，并将同一 Tracker 的多个域名合并为一个条目。选择 Tracker 以重命名或合并。",
     "loading": "正在加载 Tracker…",
     "mergedFrom": "合并自：{{domains}}",
     "original": "原始：{{domain}}",
@@ -1292,9 +1292,8 @@
     "emptyDescription": "实例中有种子后，Tracker 会显示在这里。",
     "importButton": "导入",
     "exportButton": "导出",
-    "selectionHint": "选择 Tracker 以重命名或合并。",
+    "selectionLabel": "已选择的 Tracker",
     "selectedCount_other": "已选择 {{count}} 个",
-    "clearSelection": "清除选择",
     "deleteDialog": {
       "title": "删除自定义？",
       "description": "{{name}} 的 Tracker 将重新显示其原始域名。此操作无法撤销。"

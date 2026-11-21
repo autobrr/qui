@@ -88,7 +88,6 @@
     "wholeChip_other": "{{count}} selezionate su tutte le pagine",
     "pickAll_one": "Seleziona tutte ({{count}})",
     "pickAll_other": "Seleziona tutte ({{count}})",
-    "clear": "Deseleziona",
     "done": {
       "retry_one": "{{count}} riga riparte.",
       "retry_other": "{{count}} righe ripartono.",

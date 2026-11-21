@@ -362,7 +362,7 @@ describe("the Transfers tab", () => {
     const bar = selectionBar()!
     expect(within(bar).getByText("2 selected")).toBeTruthy()
     // The copying row can be cancelled, and the failed row can run again or go.
-    expect(within(bar).getAllByRole("button").map(button => button.textContent)).toEqual(["Retry", "Cancel", "Remove", "Clear"])
+    expect(within(bar).getAllByRole("button").map(button => button.textContent)).toEqual(["Retry", "Cancel", "Remove", "Clear selection"])
     expect((await rowOf("Show.S01.1080p-GRP")).getAttribute("data-state")).toBe("selected")
 
     fireEvent.click(within(bar).getByRole("button", { name: "Cancel" }))
@@ -375,7 +375,7 @@ describe("the Transfers tab", () => {
 
     // The export run ended, so it can only go.
     await tick("Album.2020.FLAC-XYZ")
-    expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Remove", "Clear"])
+    expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Remove", "Clear selection"])
     fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Remove" }))
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Keep the rows" }))
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
@@ -400,8 +400,19 @@ describe("the Transfers tab", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("2 rows run again.", { description: "1 row stays as it was: the action does not apply to it." }))
 
     await tick("Film.2019.2160p-ABC")
-    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Clear" }))
+    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Clear selection" }))
     expect(selectionBar()).toBeNull()
+  })
+
+  it("picks a row on a click anywhere in it, and a range with Shift, but not on a click of its buttons", async () => {
+    renderTab()
+    fireEvent.click(await screen.findByText("Film.2019.2160p-ABC"))
+    expect(within(selectionBar()!).getByText("1 selected")).toBeTruthy()
+    fireEvent.click(await screen.findByText("Doc.2018.720p-QRS"), { shiftKey: true })
+    expect(within(selectionBar()!).getByText("3 selected")).toBeTruthy()
+
+    await openDetails("Album.2020.FLAC-XYZ")
+    expect(within(selectionBar()!).getByText("3 selected")).toBeTruthy()
   })
 
   // regression: #4242
@@ -492,7 +503,7 @@ describe("the Transfers tab", () => {
 
       // The All chip offers Cancel and Remove, because the page does not know the rows of the other pages. The server
       // skips each row that a step does not fit. A retry plans each Transfer again, so it takes picked rows only.
-      expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Cancel", "Remove", "Clear"])
+      expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Cancel", "Remove", "Clear selection"])
       fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Cancel" }))
       const ask = await screen.findByRole("alertdialog")
       expect(within(ask).getByText(/^12 rows are selected\./)).toBeTruthy()

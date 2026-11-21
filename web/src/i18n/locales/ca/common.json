@@ -549,6 +549,7 @@
     "retry": "Torna-ho a provar",
     "edit": "Edita",
     "moreActions": "Més accions",
-    "enabled": "Activat"
+    "enabled": "Activat",
+    "clearSelection": "Esborra la selecció"
   }
 }

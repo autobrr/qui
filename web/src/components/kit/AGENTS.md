@@ -10,6 +10,7 @@ Pick the module by the job:
 - The items of one kind, with a switch, a state, and steps per row: `ResourceList`. Its empty tile alone: `EmptyTile`. The ids of the rows that a mutation still runs for: `usePendingIds`.
 - A form to add or edit an item, also an item to read or one that saves each change at once: `Editor`.
 - A question before a step: `ConfirmDialog`.
+- The actions for the rows that the user picked, at the end of a table or a list: `SelectionBar`. Other pages use it too. Its placement is in "Selection" in `docs/standards/frontend-review.md`.
 - A page with sections, for example Settings: `SectionedPage` in `@/components/layout`.
 
 The JSDoc on each prop is the contract. Read it before you call the module.

@@ -1,47 +1,43 @@
 {
   "pageTitle": "Indexeurs de Recherche",
-  "pageDescription": "Recherchez parmi tous les indexeurs activés. Choisissez un type de recherche.",
-  "indexerSummary": {
-    "label": "Indexeurs",
-    "noEnabled": "Aucun indexeur activé",
-    "allEnabled": "Tous activés ({{count}})",
-    "selected": "{{selected}} sur {{total}} sélectionnés"
-  },
+  "pageDescription": "Recherchez dans vos indexeurs et ajoutez une release à qBittorrent.",
   "indexerSheet": {
-    "title": "Sélection d'indexeurs",
-    "description": "Choisissez les indexeurs à inclure dans les recherches.",
-    "selectAll": "Tout sélectionner",
-    "clearSelection": "Effacer la sélection",
-    "noCategories": "Aucune catégorie",
     "backend": {
       "prowlarr": "Prowlarr",
       "native": "Natif",
       "jackett": "Jackett"
-    },
-    "footer": "{{selected}} sur {{total}} indexeurs activés sélectionnés",
-    "done": "Terminé"
+    }
   },
   "instanceSelector": {
-    "chooseTarget": "Choisir l'instance cible",
-    "noInstances": "Aucune instance",
-    "offline": "Hors ligne",
-    "targetNamed": "Cible : {{name}}",
-    "targetNamedOffline": "Cible : {{name}} (hors ligne)",
-    "clearSelection": "Effacer la sélection",
-    "noInstancesConfigured": "Aucune instance configurée",
-    "addInstanceNote": "Ajoutez une instance de téléchargement sous Paramètres > Instances."
+    "offline": "Hors ligne"
+  },
+  "picker": {
+    "indexersTitle": "Indexeurs à interroger",
+    "filter": "Filtrer",
+    "all": "Tous",
+    "none": "Aucun",
+    "done": "Terminé",
+    "noMatch": "Rien ne correspond au filtre"
+  },
+  "form": {
+    "indexers": "Indexeurs",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Retirer {{label}}",
+    "clearFields": "Effacer les champs",
+    "clearQuery": "Effacer la requête",
+    "recentSearches": "Recherches récentes",
+    "noIndexersTitle": "Aucun indexeur pour l'instant",
+    "noIndexersBody": "Ajoutez un indexeur pour l'interroger depuis cette page.",
+    "noIndexersAction": "Ajouter des indexeurs",
+    "indexersFailed": "Échec du chargement des indexeurs"
   },
   "searchForm": {
     "advanced": "Avancé",
-    "active": "Actif",
-    "clear": "Effacer",
     "searching": "Recherche en cours...",
     "search": "Rechercher",
-    "advancedNote": "Paramètres Torznab optionnels (mais recommandés).",
+    "advancedNote": "Les ID et les numéros rendent la recherche exacte sur les indexeurs qui les prennent en charge.",
     "searchType": "Type de recherche",
-    "searchQuery": "Requête de recherche",
-    "noIndexers": "Aucun indexeur activé disponible. Veuillez ajouter et activer des indexeurs dans la page",
-    "indexersPage": "Indexeurs"
+    "searchQuery": "Requête de recherche"
   },
   "searchTypes": {
     "movies": {
@@ -108,25 +104,67 @@
     }
   },
   "results": {
-    "showing": "Affichage de {{filtered}} résultats sur {{total}}",
+    "count_one": "{{count}} résultat",
+    "count_other": "{{count}} résultats",
+    "filteredCount_one": "{{shown}} sur {{count}} résultat",
+    "filteredCount_other": "{{shown}} sur {{count}} résultats",
+    "searching_one": "Recherche sur {{count}} indexeur...",
+    "searching_other": "Recherche sur {{count}} indexeurs...",
     "filterPlaceholder": "Filtrer les résultats...",
-    "clearSearch": "Effacer la recherche",
-    "clearAllFilters": "Effacer tous les filtres",
-    "pickInstance": "Choisir une instance",
-    "download": "Télécharger",
-    "viewDetails": "Voir les détails",
-    "clearSelectionButton": "Effacer la sélection",
-    "actions": "Actions",
-    "quickAddTo": "Ajout rapide à...",
+    "clearFilters": "Effacer les filtres",
+    "noMatches": "Aucun résultat ne correspond aux filtres.",
     "cachedSummary": "En cache {{cached}} · Expire {{expires}}",
-    "cacheSource": "Source : {{source}} · Portée : {{scope}}",
-    "refreshReadyIn": "Prêt dans {{seconds}}s",
+    "cachedAgo": "En cache · {{age}}",
+    "live": "En direct",
+    "partial": "Incomplet",
+    "partialHint": "Certains indexeurs n'ont pas répondu. Rafraîchissez pour les interroger à nouveau.",
+    "refresh": "Rafraîchir",
     "refreshFromIndexers": "Rafraîchir depuis les indexeurs",
+    "refreshCooldown": "Vous pourrez rafraîchir à nouveau dans un instant",
+    "showMore": "Afficher plus",
+    "shownOf": "{{shown}} sur {{total}} affichés",
     "categoryFallback": "Catégorie {{id}}",
+    "noResults": "Aucun résultat trouvé",
     "noResultsFor": "Aucun résultat trouvé pour \"{{query}}\"",
-    "enterQuery": "Entrez une requête de recherche pour commencer",
-    "free": "Gratuit",
-    "freeNeutral": "Neutre"
+    "noResultsHint": "Vérifiez l'orthographe, choisissez un autre type de recherche ou interrogez plus d'indexeurs.",
+    "searchAllIndexers": "Interroger tous les indexeurs",
+    "failed": "La recherche a échoué",
+    "retry": "Réessayer",
+    "idleTitle": "Recherchez dans vos indexeurs",
+    "idleHint": "Saisissez un titre, un ID IMDb comme tt1234567 ou un ID TVDb comme tvdb 123456.",
+    "free": "Gratuit"
+  },
+  "facets": {
+    "collection": "Service",
+    "normal": "Normal"
+  },
+  "sort": {
+    "label": "Trier",
+    "seeders": "Plus de sources",
+    "newest": "Plus récents",
+    "oldest": "Plus anciens",
+    "largest": "Plus grands",
+    "smallest": "Plus petits",
+    "title": "Titre A–Z",
+    "indexer": "Indexeur A–Z"
+  },
+  "columns": {
+    "age": "Âge"
+  },
+  "row": {
+    "add": "Ajouter",
+    "addTo": "Ajouter à",
+    "more": "Plus d'actions",
+    "openIndexer": "Ouvrir sur l'indexeur",
+    "copyTitle": "Copier le titre",
+    "discount": "{{percent}} %",
+    "upload": "{{factor}}× envoi"
+  },
+  "bulk": {
+    "label": "Résultats sélectionnés",
+    "selected_one": "{{count}} sélectionné",
+    "selected_other": "{{count}} sélectionnés",
+    "selectShown": "Sélectionner tous les résultats affichés"
   },
   "historyMeta": "{{type}} · {{count}} résultats · {{timestamp}}",
   "table": {
@@ -134,53 +172,27 @@
     "indexer": "Indexeur",
     "size": "Taille",
     "seeders": "Sources",
+    "leechers": "Leechers",
     "category": "Catégorie",
     "source": "Source",
-    "collection": "Collection",
     "group": "Groupe",
     "freeleech": "Freeleech",
-    "published": "Publié",
     "actions": "Actions",
-    "downloadTorrent": "Télécharger .torrent",
-    "viewDetails": "Voir les détails",
-    "noInfoUrl": "Aucune URL d'info"
+    "downloadTorrent": "Télécharger .torrent"
   },
   "refreshDialog": {
     "title": "Ignorer le cache ?",
     "description": "Cela enverra la requête directement à tous les indexeurs sélectionnés. À utiliser avec modération pour éviter les limites de taux. Vous pourrez rafraîchir à nouveau après un court délai.",
-    "cancel": "Annuler",
     "refreshNow": "Rafraîchir maintenant"
   },
   "cache": {
-    "cacheAndLive": "Cache + direct",
-    "cacheHit": "Succès du cache",
-    "liveFetch": "Récupération en direct"
+    "cacheAndLive": "Cache + direct"
   },
   "card": {
-    "actions": "Actions",
-    "addToInstance": "Ajouter à l'instance",
-    "addToNamed": "Ajouter à {{name}}",
-    "addToNamedOffline": "Ajouter à {{name}} (hors ligne)",
-    "quickAddTo": "Ajout rapide à...",
-    "download": "Télécharger",
-    "viewDetails": "Voir les détails",
-    "clearSelection": "Effacer la sélection",
-    "seeders": "{{count}} sources",
-    "published": "Publié {{date}}"
+    "addToNamed": "Ajouter à {{name}}"
   },
   "toast": {
-    "enterSearchQuery": "Veuillez entrer une requête ou remplir les paramètres avancés",
-    "selectIndexer": "Veuillez sélectionner au moins un indexeur",
-    "noEnabledIndexers": "Aucun indexeur activé. Veuillez d'abord ajouter et activer des indexeurs.",
-    "noResults": "Aucun résultat trouvé",
-    "foundResults": "Trouvé {{total}} résultats{{suffix}}",
-    "cached": " (en cache)",
-    "searchFailed": "Échec de la recherche : {{error}}",
-    "failedToLoadIndexers": "Échec du chargement des indexeurs",
-    "addInstanceFirst": "Ajoutez une instance de téléchargement sous Paramètres -> Instances",
-    "chooseInstance": "Choisissez une instance pour ajouter des torrents",
     "noDownloadUrl": "Aucune URL de téléchargement disponible pour ce résultat",
-    "noInfoUrl": "Aucune info supplémentaire disponible pour ce résultat",
     "invalidProtocol": "Protocole d'URL invalide",
     "invalidUrl": "Format d'URL invalide"
   }

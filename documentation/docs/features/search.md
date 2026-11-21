@@ -23,13 +23,13 @@ Each indexer row has actions to test the connection and to sync its capabilities
 
 ## Run a search
 
-1. Open **Search** and pick a search type: **Movies** (the default), **TV**, **Music**, **Books & comics**, **Apps & games**, or **Adult**. The search type sets the Torznab categories that qui sends to the indexers.
+1. Open **Search** and pick a search type: **Movies** (the default), **TV**, **Music**, **Books & comics**, **Apps & games**, or **Adult**. The search type sets the Torznab categories that qui sends to the indexers. qui remembers the search type that you pick.
 2. Enter a query. qui recognizes IMDb IDs (`tt1234567`) and TVDb IDs (`tvdb 123456`) inside the query and sends them as ID parameters.
 3. Click **Search**.
 
-By default, qui selects all enabled indexers. Click the **Indexers** button to open the selection sheet and narrow the search to specific indexers.
+By default, qui selects all enabled indexers. To search only some of them, click the **Indexers** button and pick the indexers in the list.
 
-When you focus the query field, qui suggests recent searches. Click a suggestion to restore the query, the search type, and the indexer selection, and run it again.
+When you focus the query field, qui suggests recent searches. Before your first search, the page also lists them. Click a recent search to restore the query, the search type, and the indexer selection, and run it again.
 
 ### Advanced parameters
 
@@ -49,26 +49,42 @@ Click **Advanced** to send extra Torznab parameters. A search with advanced para
 
 ## Results
 
-Results appear in a table with the columns Title, Indexer, Size, Seeders, Category, Source, Collection, Group, Freeleech, and Published. By default, the table sorts by seeders. Click a column header to change the sort.
+Results appear in a table with the columns Title, Indexer, Size, Seeders, Leechers, and Age. On a narrow screen, the values that do not fit in a column show under the title. By default, the table sorts by seeders. To change the sort, click a column header. On a narrow screen, use the **Sort** menu.
 
-The filter box narrows the visible results by title, indexer, category, source, collection, or group. Column filters provide per-column matching and include a freeleech filter for free and partial-discount results.
+The filter box narrows the results to the rows that contain each word that you type. It looks at the title, the indexer, the category, and the group.
+
+The buttons next to the filter box narrow the results by **Indexer**, **Category**, **Source**, **Service**, **Group**, or **Freeleech**. Each button opens a list of the values in the results, with the number of results for each value. A button shows only when the results have two or more values for it.
+
+When a filter is on, the count above the table shows how many results match, for example "12 of 340 results". Click the count to clear all filters.
+
+A badge next to the title shows a download discount, for example **Free** or **50%**. Another badge shows an upload bonus, for example **2× upload**.
+
+The table shows 50 results first. To show 50 more, click **Show more** below the table.
 
 ## Send a result to an instance
 
-Pick a target instance from the instance selector at the top of the page. qui remembers the choice for the current browser tab.
+Each row has a plus button (**+**) that adds the result. If you have one qBittorrent instance, the button sends the result to that instance. If you have more than one instance, the button opens a list of your instances. The add-torrent dialog opens with the download URL prefilled. You can set the category, tags, and save path before you add the torrent.
 
-Select a result row, then click **Add to (instance name)**. The add-torrent dialog opens with the download URL prefilled. You can set the category, tags, and save path before you add the torrent. The dropdown next to the button adds the result to a different instance.
+To add more than one result at a time:
 
-Each row also has two direct actions:
+1. Click the checkbox of each result that you want, or click the row. To select a range of rows, hold Shift and click the last row of the range. The checkbox in the table header selects all the results that the table shows.
+2. In the bar at the bottom of the screen, click **Add**. If you have more than one instance, pick an instance.
+
+The add-torrent dialog opens with the download URLs of all the selected results. To clear the selection, click **Clear selection** in the bar, or press Escape.
+
+If you have no instance, each row has a download button instead of the plus button. It opens the download URL in a new tab, as **Download .torrent** does.
+
+Each row has these actions. On a screen of 1440 pixels or wider, each action is a button in the row. On a narrower screen, the actions are in the **More actions** menu of the row.
 
 - **Download .torrent** opens the download URL in a new tab.
-- **View details** opens the release page on the indexer in a new tab.
+- **Open on indexer** opens the release page on the indexer in a new tab.
+- **Copy title** copies the release title.
 
 ## Search cache
 
-qui caches search results to reduce indexer load. A badge above the results shows where they came from: **Cache hit**, **Live fetch**, or **Cache + live** for a mix.
+qui caches search results to reduce indexer load. A badge above the results shows where they came from: **Cached** with the age of the cache, **Live**, or **Cache + live** for a mix. Hover over the badge to see when qui cached the results and when the cache expires. If some indexers did not answer, an **Incomplete** badge shows too.
 
-The **Refresh from indexers** button repeats the search and bypasses the cache. A confirmation dialog warns you first, and the button locks for 30 seconds after each refresh.
+The **Refresh** button repeats the search and bypasses the cache. A confirmation dialog warns you first, and the button locks for 30 seconds after each refresh.
 
 :::note
 A cache bypass sends the request directly to every selected indexer. Use it sparingly to avoid rate limits.

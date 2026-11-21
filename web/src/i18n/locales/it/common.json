@@ -549,6 +549,7 @@
     "retry": "Riprova",
     "edit": "Modifica",
     "moreActions": "Altre azioni",
-    "enabled": "Abilitato"
+    "enabled": "Abilitato",
+    "clearSelection": "Annulla selezione"
   }
 }

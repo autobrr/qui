@@ -186,6 +186,7 @@ export interface TorznabSearchResponse {
   results: TorznabSearchResult[]
   total: number
   cache?: TorznabSearchCacheMetadata
+  partial?: boolean
 }
 
 export interface TorznabSearchCacheMetadata {

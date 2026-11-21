@@ -22,4 +22,5 @@ Frontend rules for work under `web/`. Locale and translation rules live in `web/
 
 ## Code Review Rules
 
+- When a PR adds a table or a list where the user picks rows, apply "Selection" in `docs/standards/frontend-review.md`. Report a bar for the picked rows that the PR builds by hand instead of `SelectionBar`, also one above the list, and name what looks different from the bar of the Search results.
 - When a PR adds or changes `useState` in a component, apply the React state rule in `docs/standards/frontend-review.md`. Report it only when two values in the diff can reach a state that must not exist. Name that state and what the user sees, for example a spinner and an error at the same time.

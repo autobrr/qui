@@ -117,6 +117,21 @@ const rawTextFieldSelectors = [{
   message: 'Use Input or Textarea from @/components/ui, which keep the password managers away. For a raw text field, spread passwordManagerAttributes() from @/lib/password-manager.',
 }]
 
+const bottomBarMessage = 'Rows that the user picks end with SelectionBar from @/components/kit/SelectionBar, which stays at the bottom of the screen: docs/standards/frontend-review.md, "Selection". A bar at the bottom of the screen for another job goes in bottomBarAllowlist in web/eslint.config.js, with the reason as its value.'
+const bottomBarPosition = '/(^|\\s)(sticky|fixed)(\\s|$)/'
+const bottomBarEdge = '/(^|\\s)([\\w-]+:)*bottom-/'
+const bottomBarSelectors = [
+  { selector: `Literal[value=${bottomBarPosition}][value=${bottomBarEdge}]`, message: bottomBarMessage },
+  { selector: `TemplateElement[value.raw=${bottomBarPosition}][value.raw=${bottomBarEdge}]`, message: bottomBarMessage },
+]
+
+const bottomBarAllowlist = {
+  'src/components/kit/SelectionBar.tsx': 'The bar for the rows that the user picks.',
+  'src/components/layout/MobileFooterNav.tsx': 'The nav at the bottom of a phone screen.',
+  'src/components/torrents/TorrentCardsMobile.tsx': 'The torrent list on a phone has its own selection mode, over a list that loads its rows while the user scrolls.',
+  'src/components/support/SupportDialog.tsx': 'On a phone, the checkout button of the support dialog stays in view.',
+}
+
 const clientSettingMessage = 'Read and write a UI preference with useClientSetting (or readClientSetting outside React) from "@/lib/client-settings". It maps the key to the active Display profile. A direct localStorage call skips that, so every profile shares the value.'
 
 const clientSettingAllowlist = [
@@ -253,7 +268,7 @@ export default tseslint.config([
     files: ['**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
     rules: {
-      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors],
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors, ...bottomBarSelectors],
     },
   },
   {
@@ -262,6 +277,12 @@ export default tseslint.config([
     ignores: ['**/*.test.{ts,tsx}'],
     rules: {
       'no-restricted-syntax': ['error', ...gazelleSiteSelectors],
+    },
+  },
+  {
+    files: Object.keys(bottomBarAllowlist),
+    rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors],
     },
   },
   {
@@ -283,6 +304,7 @@ export default tseslint.config([
       'no-restricted-syntax': ['error',
         ...gazelleSiteSelectors,
         ...rawTextFieldSelectors,
+        ...bottomBarSelectors,
         { selector: 'Program:not(:has(ImportDeclaration[source.value=/^@.components.layout.(Page|SectionedPage)$/]))', message: pageShellMessage },
         { selector: 'Program:not(:has(JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]))', message: pageShellMessage },
         { selector: 'JSXElement[openingElement.name.name=/^[a-z]/] JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]', message: 'Render Page as the root of the page, with no HTML element around it.' },

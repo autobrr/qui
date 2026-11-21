@@ -1,47 +1,43 @@
 {
   "pageTitle": "搜尋索引器",
-  "pageDescription": "搜尋所有已啟用的索引器。選擇搜尋類型。",
-  "indexerSummary": {
-    "label": "索引器",
-    "noEnabled": "無已啟用的索引器",
-    "allEnabled": "全部啟用（{{count}}）",
-    "selected": "已選 {{selected}}/{{total}}"
-  },
+  "pageDescription": "搜尋您的索引器，並將釋出加入 qBittorrent。",
   "indexerSheet": {
-    "title": "索引器選擇",
-    "description": "選擇要包含在搜尋中的索引器。",
-    "selectAll": "全選",
-    "clearSelection": "清除選擇",
-    "noCategories": "無分類",
     "backend": {
       "prowlarr": "Prowlarr",
       "native": "原生",
       "jackett": "Jackett"
-    },
-    "footer": "已選 {{selected}}/{{total}} 個已啟用索引器",
-    "done": "完成"
+    }
   },
   "instanceSelector": {
-    "chooseTarget": "選擇目標實例",
-    "noInstances": "無實例",
-    "offline": "離線",
-    "targetNamed": "目標：{{name}}",
-    "targetNamedOffline": "目標：{{name}}（離線）",
-    "clearSelection": "清除選擇",
-    "noInstancesConfigured": "尚未配置實例",
-    "addInstanceNote": "在設定 > 實例中新增下載實例。"
+    "offline": "離線"
+  },
+  "picker": {
+    "indexersTitle": "要搜尋的索引器",
+    "filter": "篩選",
+    "all": "全選",
+    "none": "全不選",
+    "done": "完成",
+    "noMatch": "沒有符合篩選的項目"
+  },
+  "form": {
+    "indexers": "索引器",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "移除 {{label}}",
+    "clearFields": "清除欄位",
+    "clearQuery": "清除搜尋內容",
+    "recentSearches": "最近的搜尋",
+    "noIndexersTitle": "尚未設定索引器",
+    "noIndexersBody": "新增索引器後，即可在此頁面搜尋。",
+    "noIndexersAction": "新增索引器",
+    "indexersFailed": "載入索引器失敗"
   },
   "searchForm": {
     "advanced": "進階",
-    "active": "活躍",
-    "clear": "清除",
     "searching": "搜尋中……",
     "search": "搜尋",
-    "advancedNote": "可選（但推薦）的 Torznab 參數。",
+    "advancedNote": "在支援的索引器上，ID 與編號能讓搜尋精確比對。",
     "searchType": "搜尋類型",
-    "searchQuery": "搜尋內容",
-    "noIndexers": "沒有可用的已啟用索引器。請在以下頁面新增並啟用索引器：",
-    "indexersPage": "索引器頁面"
+    "searchQuery": "搜尋內容"
   },
   "searchTypes": {
     "movies": {
@@ -108,25 +104,63 @@
     }
   },
   "results": {
-    "showing": "顯示 {{filtered}}/{{total}} 條結果",
+    "count_other": "{{count}} 筆結果",
+    "filteredCount_other": "{{shown}}/{{count}} 筆結果",
+    "searching_other": "正在搜尋 {{count}} 個索引器……",
     "filterPlaceholder": "篩選結果……",
-    "clearSearch": "清除搜尋",
-    "clearAllFilters": "清除所有列篩選",
-    "pickInstance": "選擇實例",
-    "download": "下載",
-    "viewDetails": "檢視詳情",
-    "clearSelectionButton": "清除選擇",
-    "actions": "操作",
-    "quickAddTo": "快速新增到……",
+    "clearFilters": "清除篩選",
+    "noMatches": "沒有符合篩選條件的結果。",
     "cachedSummary": "已快取 {{cached}} · {{expires}} 過期",
-    "cacheSource": "來源：{{source}} · 範圍：{{scope}}",
-    "refreshReadyIn": "{{seconds}} 秒後可重新整理",
+    "cachedAgo": "已快取 · {{age}}",
+    "live": "即時",
+    "partial": "不完整",
+    "partialHint": "部分索引器未回應。重新整理即可再次查詢。",
+    "refresh": "重新整理",
     "refreshFromIndexers": "從索引器重新整理",
+    "refreshCooldown": "稍後即可再次重新整理",
+    "showMore": "顯示更多",
+    "shownOf": "已顯示 {{shown}}/{{total}}",
     "categoryFallback": "分類 {{id}}",
+    "noResults": "找不到結果",
     "noResultsFor": "未找到「{{query}}」的結果",
-    "enterQuery": "輸入搜尋內容以開始",
-    "free": "免費",
-    "freeNeutral": "中性"
+    "noResultsHint": "請檢查拼字、換一種搜尋類型，或搜尋更多索引器。",
+    "searchAllIndexers": "搜尋所有索引器",
+    "failed": "搜尋失敗",
+    "retry": "重試",
+    "idleTitle": "搜尋您的索引器",
+    "idleHint": "輸入標題、IMDb ID（例如 tt1234567）或 TVDb ID（例如 tvdb 123456）。",
+    "free": "免費"
+  },
+  "facets": {
+    "collection": "服務",
+    "normal": "一般"
+  },
+  "sort": {
+    "label": "排序",
+    "seeders": "做種者最多",
+    "newest": "最新",
+    "oldest": "最舊",
+    "largest": "最大",
+    "smallest": "最小",
+    "title": "標題 A–Z",
+    "indexer": "索引器 A–Z"
+  },
+  "columns": {
+    "age": "發布至今"
+  },
+  "row": {
+    "add": "加入",
+    "addTo": "新增到",
+    "more": "更多操作",
+    "openIndexer": "在索引器上開啟",
+    "copyTitle": "複製標題",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× 上傳"
+  },
+  "bulk": {
+    "label": "已選結果",
+    "selected_other": "已選 {{count}} 項",
+    "selectShown": "全選顯示的結果"
   },
   "historyMeta": "{{type}} · {{count}} 條結果 · {{timestamp}}",
   "table": {
@@ -134,53 +168,27 @@
     "indexer": "索引器",
     "size": "大小",
     "seeders": "做種者",
+    "leechers": "下載者",
     "category": "分類",
     "source": "來源",
-    "collection": "合集",
     "group": "分組",
     "freeleech": "Freeleech",
-    "published": "釋出時間",
     "actions": "操作",
-    "downloadTorrent": "下載 .torrent",
-    "viewDetails": "檢視詳情",
-    "noInfoUrl": "無資訊連結"
+    "downloadTorrent": "下載 .torrent"
   },
   "refreshDialog": {
     "title": "跳過快取？",
     "description": "這將直接向每個選取的索引器傳送請求。請謹慎使用以避免觸發速率限制。短暫冷卻後可再次重新整理。",
-    "cancel": "取消",
     "refreshNow": "立即重新整理"
   },
   "cache": {
-    "cacheAndLive": "快取 + 即時",
-    "cacheHit": "快取命中",
-    "liveFetch": "即時獲取"
+    "cacheAndLive": "快取 + 即時"
   },
   "card": {
-    "actions": "操作",
-    "addToInstance": "新增到實例",
-    "addToNamed": "新增到 {{name}}",
-    "addToNamedOffline": "新增到 {{name}}（離線）",
-    "quickAddTo": "快速新增到……",
-    "download": "下載",
-    "viewDetails": "檢視詳情",
-    "clearSelection": "清除選擇",
-    "seeders": "{{count}} 個做種者",
-    "published": "釋出於 {{date}}"
+    "addToNamed": "新增到 {{name}}"
   },
   "toast": {
-    "enterSearchQuery": "請輸入搜尋內容或填寫進階參數",
-    "selectIndexer": "請至少選擇一個索引器",
-    "noEnabledIndexers": "沒有可用的已啟用索引器。請先新增並啟用索引器。",
-    "noResults": "未找到結果",
-    "foundResults": "找到 {{total}} 條結果{{suffix}}",
-    "cached": "（快取）",
-    "searchFailed": "搜尋失敗：{{error}}",
-    "failedToLoadIndexers": "載入索引器失敗",
-    "addInstanceFirst": "請在設定 > 實例中新增下載實例",
-    "chooseInstance": "選擇一個實例以新增種子",
     "noDownloadUrl": "此結果沒有可用的下載連結",
-    "noInfoUrl": "此結果沒有額外的詳情資訊",
     "invalidProtocol": "URL 協議無效",
     "invalidUrl": "URL 格式無效"
   }
