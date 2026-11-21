@@ -24,7 +24,7 @@ import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { InstanceResponse, TorznabSearchCacheMetadata, TorznabSearchResult } from "@/types"
 import type { TFunction } from "i18next"
 import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, Copy, Database, Download, ExternalLink, MoreHorizontal, Plus, RefreshCw, X, Zap } from "lucide-react"
-import { memo, useCallback, useDeferredValue, useId, useMemo, useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react"
+import { memo, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -101,7 +101,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
   const filtering = text.trim() !== "" || Object.values(facets).some(values => values.length > 0)
   const selectable = actions.instances.length > 0
   const actionsInRow = useMediaQuery("(min-width: 1440px)")
-  const tips = useDeferredValue(true, false)
+  const tabbed = useFirstTab()
   const pickedResults = useMemo(() => shown.filter(result => picked.has(resultKey(result))), [shown, picked])
   const pickableKeys = useMemo(() => rows.filter(row => row.downloadUrl).map(resultKey), [rows])
 
@@ -229,7 +229,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
           <TableBody>
             {mountedRows.map(result => {
               const key = resultKey(result)
-              return <ResultRow key={key} rowKey={key} result={result} selectable={selectable} picked={picked.has(key)} onTick={tick} actionsInRow={actionsInRow} tips={tips} t={t} formatDate={formatDate} {...actions} />
+              return <ResultRow key={key} rowKey={key} result={result} selectable={selectable} picked={picked.has(key)} onTick={tick} actionsInRow={actionsInRow} tabbed={tabbed} t={t} formatDate={formatDate} {...actions} />
             })}
           </TableBody>
         </Table>
@@ -338,12 +338,12 @@ interface ResultRowProps extends ResultActions {
   picked: boolean
   onTick: (key: string, range: boolean) => void
   actionsInRow: boolean
-  tips: boolean
+  tabbed: boolean
   t: TFunction
   formatDate: (date: Date) => string
 }
 
-const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, onTick, actionsInRow, tips, t, formatDate, ...actions }: ResultRowProps) {
+const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, onTick, actionsInRow, tabbed, t, formatDate, ...actions }: ResultRowProps) {
   const titleId = useId()
   const published = Date.parse(result.publishDate)
   const age = Number.isNaN(published) ? "–" : formatNarrowAge(Date.now() - published)
@@ -355,7 +355,7 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
   return (
     <TableRow
       data-state={picked ? "selected" : undefined}
-      onPointerEnter={hovered ? undefined : event => {
+      onPointerOver={hovered ? undefined : event => {
         if (event.pointerType === "mouse") setHovered(true)
       }}
       className={cn(pickable && "cursor-pointer")}
@@ -414,7 +414,7 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
         </Tip>
       </TableCell>
       <TableCell className="cursor-default py-1 pr-3 align-top sm:pr-5" onClick={event => event.stopPropagation()}>
-        <RowActions t={t} result={result} actionsInRow={actionsInRow} tips={tips} {...actions} />
+        <RowActions t={t} result={result} actionsInRow={actionsInRow} tips={hovered || tabbed} {...actions} />
       </TableCell>
     </TableRow>
   )
@@ -494,6 +494,19 @@ function RowActions({ t, result, actionsInRow, tips, instances, onAdd, onDownloa
 interface AddTrigger {
   name: string | null
   onClick?: () => void
+}
+
+function useFirstTab() {
+  const [tabbed, setTabbed] = useState(false)
+  useEffect(() => {
+    if (tabbed) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") setTabbed(true)
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [tabbed])
+  return tabbed
 }
 
 function TipButton({ tip, ...props }: ComponentProps<typeof Button> & { tip?: string }) {

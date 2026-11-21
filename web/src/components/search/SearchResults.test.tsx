@@ -143,6 +143,8 @@ describe("SearchResults", () => {
   it("names each row button, and the exact date of a result, in a tooltip once a mouse enters the row", async () => {
     screenSize.wide = true
     renderResults([first])
+    const row = screen.getAllByRole("row")[1]
+    fireEvent.pointerOver(row, { pointerType: "mouse" })
 
     for (const name of ["Add", "Download .torrent", "Open on indexer", "Copy title"]) {
       const button = screen.getByRole("button", { name })
@@ -151,11 +153,39 @@ describe("SearchResults", () => {
       await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe(name))
     }
 
-    const row = screen.getAllByRole("row")[1]
     const cell = within(row).getAllByText(formatNarrowAge(Date.now() - Date.parse(first.publishDate))).at(-1)!
     fireEvent.pointerEnter(cell, { pointerType: "mouse" })
     fireEvent.pointerMove(cell, { pointerType: "mouse" })
     await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("2026"))
+  })
+
+  // regression: #4354
+  it("names a row button in a tooltip also when Chrome reports the mouse as coming from the parent of a button that the row above rebuilt", async () => {
+    screenSize.wide = true
+    renderResults([first, second])
+    const [, above, below] = screen.getAllByRole("row")
+    const rebuilt = within(above).getByRole("button", { name: "Copy title" })
+    const actions = rebuilt.parentElement!
+    fireEvent.pointerOver(rebuilt, { pointerType: "mouse" })
+    expect(rebuilt.isConnected).toBe(false)
+
+    fireEvent.pointerOver(within(below).getByRole("button", { name: "Copy title" }), { pointerType: "mouse", relatedTarget: actions })
+    const button = within(below).getByRole("button", { name: "Copy title" })
+    fireEvent.pointerEnter(button, { pointerType: "mouse" })
+    fireEvent.pointerMove(button, { pointerType: "mouse" })
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Copy title"))
+  })
+
+  it("names a focused row button in a tooltip after the first Tab press", async () => {
+    screenSize.wide = true
+    renderResults([first])
+
+    fireEvent.keyDown(document.body, { key: "Tab" })
+    const button = screen.getByRole("button", { name: "Copy title" })
+    fireEvent.keyDown(button, { key: "Tab" })
+    fireEvent.focus(button)
+
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Copy title"))
   })
 
   // regression: #4263
