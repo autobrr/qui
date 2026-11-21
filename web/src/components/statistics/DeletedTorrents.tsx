@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TorrentName } from "@/components/ui/torrent-name"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useIsPhone } from "@/hooks/useMediaQuery"
+import { useTrackerGroupIcon } from "@/hooks/useTrackerGroupName"
 import { api } from "@/lib/api"
 import { HISTORY_WRITE_MS } from "@/lib/statistics"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
@@ -115,6 +117,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [incognitoMode] = useIncognitoMode()
+  const groupIcon = useTrackerGroupIcon()
   const narrow = useIsPhone()
   const [cause, setCause] = useState<TransferHistoryCauseFilter>("")
   // The phone rows that the user opened with a tap, to read the whole name and cause, as a touch screen cannot show a title.
@@ -294,6 +297,8 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                     const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
                     const time = formatISOTimestamp(event.time)
                     const tracker = `${displayGroup(event.trackerGroup)}${instanceNames ? ` · ${instanceNames.get(event.instanceId)}` : ""}`
+                    const icon = groupIcon(event.trackerGroup)
+                    const trackerIcon = icon ? <TrackerIconImage {...icon} /> : <span className="size-4 shrink-0" />
                     const toggle = () => setFullNames(names => {
                       const next = new Set(names)
                       if (full) {
@@ -322,11 +327,11 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                               <TorrentName name={name} className="min-w-0 line-clamp-2" />
                             </div>
                           ) : <TorrentName name={name} className="line-clamp-2 @4xl:line-clamp-1" />}
-                          <div className={cn("truncate text-xs font-normal text-muted-foreground @4xl:hidden", line)}>{tracker}</div>
+                          <div className={cn("flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground @4xl:hidden", line)}>{trackerIcon}<span className="truncate">{tracker}</span></div>
                           <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
                           <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @4xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
                         </TableCell>
-                        <TableCell className="hidden max-w-64 truncate align-top text-muted-foreground @4xl:table-cell" title={tracker}>{tracker}</TableCell>
+                        <TableCell className="hidden max-w-64 align-top text-muted-foreground @4xl:table-cell" title={tracker}><span className="flex items-center gap-1.5">{trackerIcon}<span className="truncate">{tracker}</span></span></TableCell>
                         <TableCell className="hidden max-w-64 align-top @2xl:table-cell">{cause}</TableCell>
                         <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @4xl:pr-2">
                           {formatBytes(event.uploaded)}

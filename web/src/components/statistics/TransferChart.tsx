@@ -4,11 +4,13 @@
  */
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { byteTicks, foldOther, formatGapLength, labelledGaps, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { useTapTooltip } from "@/components/statistics/useTapTooltip"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
+import { useTrackerGroupIcon } from "@/hooks/useTrackerGroupName"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -40,6 +42,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   const colors = useSeriesColors()
   const tooltip = useTapTooltip()
   const narrow = useIsPhone()
+  const groupIcon = useTrackerGroupIcon()
 
   const config = useMemo<ChartConfig>(() => {
     const entries: ChartConfig = {}
@@ -78,6 +81,11 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   }, [bars, groups, metric])
   const hasOther = otherGroups > 0
   const keys = [...groups.map((_, index) => `s${index}`), ...(hasOther ? [OTHER] : [])]
+  const icons = useMemo(() => new Map(groups.map((group, index) => [`s${index}`, groupIcon(group)])), [groups, groupIcon])
+  const iconOf = (key: string, keepWidth: boolean) => {
+    const icon = icons.get(key)
+    return icon ? <TrackerIconImage {...icon} /> : keepWidth && <span className="size-4 shrink-0" />
+  }
 
   return (
     <ChartContainer {...tooltip.wrapper} config={config} className="aspect-auto h-[260px] w-full sm:h-[300px] sideways:h-[220px]">
@@ -113,6 +121,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
                   {keys.map(key => (
                     <div key={key} className="flex items-center gap-2">
                       <span className="size-2 shrink-0 rounded-[2px]" style={{ background: `var(--color-${key})` }} />
+                      {iconOf(key, true)}
                       <span className="min-w-0 truncate text-muted-foreground">{config[key]?.label}</span>
                       <span className="ml-auto shrink-0 whitespace-nowrap pl-4 font-medium tabular-nums">{formatBytes(row[key] as number)}</span>
                     </div>
@@ -147,6 +156,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
               {keys.map(key => (
                 <span key={key} className="inline-flex items-center gap-1.5">
                   <span className="size-2 shrink-0 rounded-[2px]" style={{ background: `var(--color-${key})`, opacity: key === OTHER ? 0.45 : 1 }} />
+                  {iconOf(key, false)}
                   {key === OTHER ? t("chart.otherCount", { groups: otherGroups }) : config[key]?.label}
                 </span>
               ))}

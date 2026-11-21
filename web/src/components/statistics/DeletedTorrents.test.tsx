@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
   return {
     i18n: { t, i18n: { resolvedLanguage: "en", language: "en" } },
     incognitoMode: [false, () => {}] as [boolean, () => void],
+    trackerIcons: { data: undefined } as { data?: Record<string, string> },
   }
 })
 
@@ -29,6 +30,8 @@ vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => mocks.i18n,
 }))
+vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => mocks.trackerIcons }))
+vi.mock("@/hooks/useTrackerCustomizations", () => ({ useTrackerCustomizations: () => ({ data: [] }) }))
 vi.mock("@/lib/incognito", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/incognito")>(),
   useIncognitoMode: () => mocks.incognitoMode,
@@ -107,6 +110,7 @@ beforeEach(() => {
     disconnect() {}
   })
   mocks.incognitoMode = [false, () => {}]
+  mocks.trackerIcons = { data: undefined }
   requests = []
   hold = undefined
   release = () => {}
@@ -479,6 +483,20 @@ describe("DeletedTorrents", () => {
     expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
     fireEvent.click(name)
     expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
+  })
+
+  it("shows the tracker icon next to the tracker of each delete, the first letter for a tracker with no icon, and none for Public", async () => {
+    mocks.trackerIcons = { data: { "a.test": "data:image/png;base64,YQ==" } }
+    deletesOf.set(1, [
+      { ...event(1, 0, 7_000, "user"), trackerGroup: "a.test" },
+      { ...event(1, 1, 6_000, "user"), trackerGroup: "c.test" },
+      { ...event(1, 2, 5_000, "user"), trackerGroup: "Public" },
+    ])
+    renderTable([instance(1, "Seedbox")])
+
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(3))
+    const trackerCells = [...document.querySelectorAll("tbody tr td:nth-child(3)")]
+    expect(trackerCells.map(cell => cell.querySelector("img")?.getAttribute("src") ?? cell.querySelector("span[aria-hidden=true]")?.textContent ?? null)).toEqual(["data:image/png;base64,YQ==", "C", null])
   })
 
   it("masks the torrent names in incognito mode", async () => {

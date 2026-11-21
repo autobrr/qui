@@ -9,8 +9,10 @@ import { RowLimit } from "@/components/statistics/RowLimit"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TorrentName } from "@/components/ui/torrent-name"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useTorrentName } from "@/hooks/useTopTorrents"
+import { useTrackerGroupIcon } from "@/hooks/useTrackerGroupName"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { buildTorrentBars, formatRatio, type StatisticsPeriod, type TopTorrent } from "@/lib/statistics"
 import { cn, formatBytes } from "@/lib/utils"
@@ -38,6 +40,7 @@ interface TopTorrentsProps {
 export function TopTorrents({ scope, torrents: shown, error, period, instances, since, displayGroup }: TopTorrentsProps) {
   const { t } = useTranslation("statistics")
   const torrentName = useTorrentName()
+  const groupIcon = useTrackerGroupIcon()
   const narrow = useIsPhone()
   const [open, setOpen] = useState<string>()
   const [allOf, setAllOf] = useState<string>()
@@ -75,6 +78,8 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
             const expanded = open === key
             const name = torrentName(torrent)
             const tracker = `${displayGroup(torrent.trackerGroup)}${instanceNames ? ` · ${instanceNames.get(torrent.instanceId)}` : ""}`
+            const icon = groupIcon(torrent.trackerGroup)
+            const trackerIcon = icon ? <TrackerIconImage {...icon} /> : <span className="size-4 shrink-0" />
             return (
               <Fragment key={key}>
                 <TableRow className={cn("cursor-pointer", expanded && "bg-muted hover:bg-muted")} onClick={() => setOpen(expanded ? undefined : key)}>
@@ -85,7 +90,7 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
                       <span className="hidden shrink-0 items-center gap-2 @2xl:flex"><TorrentMarks torrent={torrent} /></span>
                     </button>
                     <div className="flex min-w-0 items-center gap-2 pl-5.5 text-xs font-normal text-muted-foreground @2xl:hidden">
-                      <span className="truncate">{tracker}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">{trackerIcon}<span className="truncate">{tracker}</span></span>
                       <TorrentMarks torrent={torrent} />
                     </div>
                     <Facts
@@ -97,7 +102,7 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
                       className="@2xl:hidden"
                     />
                   </TableCell>
-                  <TableCell className="hidden max-w-64 truncate text-muted-foreground @2xl:table-cell" title={tracker}>{tracker}</TableCell>
+                  <TableCell className="hidden max-w-64 text-muted-foreground @2xl:table-cell" title={tracker}><span className="flex items-center gap-1.5">{trackerIcon}<span className="truncate">{tracker}</span></span></TableCell>
                   <TableCell className="pr-4 text-right tabular-nums sm:pr-6 @xl:pr-2">{formatBytes(torrent.uploaded)}</TableCell>
                   <TableCell className="hidden text-right tabular-nums @xl:table-cell">{formatBytes(torrent.downloaded)}</TableCell>
                   <TableCell className="hidden text-right tabular-nums @xl:table-cell @xl:pr-6 @2xl:pr-2">{formatRatio(torrent) ?? "–"}</TableCell>

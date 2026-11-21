@@ -3,8 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
-import { useCallback } from "react"
+import { pickTrackerIconDomain } from "@/lib/tracker-icons"
+import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
 // Names that the backend gives to the Tracker groups without a tracker domain.
@@ -20,4 +23,29 @@ export function useTrackerGroupName(): (group: string) => string {
     if (group === NO_TRACKER_GROUP) return t("groups.noTracker")
     return incognitoMode ? getLinuxTrackerDomain(group) : group
   }, [incognitoMode, t])
+}
+
+interface TrackerGroupIcon {
+  tracker: string
+  trackerIcons?: Record<string, string>
+}
+
+export function useTrackerGroupIcon(): (group: string) => TrackerGroupIcon | undefined {
+  const [incognitoMode] = useIncognitoMode()
+  const { data: trackerIcons } = useTrackerIcons()
+  const { data: customizations } = useTrackerCustomizations()
+  const domainsByName = useMemo(() => {
+    const byName = new Map<string, string[]>()
+    for (const custom of customizations ?? []) {
+      const name = custom.displayName.trim()
+      byName.set(name, [...byName.get(name) ?? [], ...custom.domains])
+    }
+    return byName
+  }, [customizations])
+  return useCallback((group: string) => {
+    if (group === PUBLIC_GROUP || group === NO_TRACKER_GROUP) return undefined
+    if (incognitoMode) return { tracker: getLinuxTrackerDomain(group), trackerIcons }
+    const domains = domainsByName.get(group)
+    return { tracker: domains ? pickTrackerIconDomain(trackerIcons, domains) : group, trackerIcons }
+  }, [incognitoMode, trackerIcons, domainsByName])
 }
