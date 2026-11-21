@@ -119,7 +119,13 @@ describe("SearchResults", () => {
     expect(screen.getAllByRole("checkbox").every(checkbox => checkbox.getAttribute("aria-checked") === "false")).toBe(true)
   })
 
-  it("shows each row action as a button on a wide screen, and a click on one leaves the row unticked", () => {
+  it("keeps the other row actions in a menu below 1440 px, shows each as a button from 1440 px, and a click on one leaves the row unticked", () => {
+    renderResults([first])
+    expect(screen.queryByRole("button", { name: "Open on indexer" })).toBeNull()
+    openMenu(screen.getByRole("button", { name: "More actions" }))
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Download .torrent", "Open on indexer", "Copy title"])
+    cleanup()
+
     screenSize.wide = true
     const onOpenInfo = vi.fn()
     renderResults([first, result({ guid: "4", infoUrl: undefined, title: "Sample.Film.2023.480p.WEB-RIG" })], undefined, onOpenInfo)
@@ -134,7 +140,7 @@ describe("SearchResults", () => {
     expect(box(first.title).getAttribute("aria-checked")).toBe("false")
   })
 
-  it("names each row button in a tooltip on hover", async () => {
+  it("names each row button, and the exact date of a result, in a tooltip once a mouse enters the row", async () => {
     screenSize.wide = true
     renderResults([first])
 
@@ -144,27 +150,12 @@ describe("SearchResults", () => {
       fireEvent.pointerMove(button, { pointerType: "mouse" })
       await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe(name))
     }
-  })
 
-  it("shows the exact date of a result in a tooltip once a mouse enters its row", async () => {
-    renderResults([first])
     const row = screen.getAllByRole("row")[1]
-    const age = formatNarrowAge(Date.now() - Date.parse(first.publishDate))
-
-    fireEvent.pointerEnter(row, { pointerType: "mouse" })
-    const cell = within(row).getAllByText(age).at(-1)!
+    const cell = within(row).getAllByText(formatNarrowAge(Date.now() - Date.parse(first.publishDate))).at(-1)!
     fireEvent.pointerEnter(cell, { pointerType: "mouse" })
     fireEvent.pointerMove(cell, { pointerType: "mouse" })
-
     await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("2026"))
-  })
-
-  it("keeps the other row actions in a menu below 1440 px", () => {
-    renderResults([first])
-
-    expect(screen.queryByRole("button", { name: "Open on indexer" })).toBeNull()
-    openMenu(screen.getByRole("button", { name: "More actions" }))
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Download .torrent", "Open on indexer", "Copy title"])
   })
 
   // regression: #4263

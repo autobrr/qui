@@ -20,7 +20,7 @@ function recorder(fail?: number) {
 }
 
 describe("addUrlsByIndexer", () => {
-  it("sends the URLs of each indexer in their own request, with the shared options", async () => {
+  it("sends the URLs of each indexer in their own request with the shared options, and reports a failed request while it adds the rest", async () => {
     const { calls, add } = recorder()
     const response = await addUrlsByIndexer(add, { category: "movies" }, ["a", "b", "c"], { a: 1, b: 2, c: 1 })
     expect(calls).toEqual([
@@ -29,21 +29,17 @@ describe("addUrlsByIndexer", () => {
     ])
     expect(response.added).toBe(3)
     expect(response.failed).toBe(0)
-  })
 
-  it("keeps one request when every URL has the same indexer or none", async () => {
-    const { calls, add } = recorder()
+    calls.length = 0
     await addUrlsByIndexer(add, {}, ["a", "b"], { a: 4, b: 4 })
     await addUrlsByIndexer(add, {}, ["typed"])
     expect(calls).toEqual([{ urls: ["a", "b"], indexerId: 4 }, { urls: ["typed"], indexerId: undefined }])
-  })
 
-  it("reports the URLs of a failed request and still adds the rest", async () => {
-    const { add } = recorder(2)
-    const response = await addUrlsByIndexer(add, {}, ["a", "b", "c"], { a: 1, b: 2, c: 2 })
-    expect(response.added).toBe(1)
-    expect(response.failed).toBe(2)
-    expect(response.failedURLs).toEqual([{ url: "b", error: "indexer down" }, { url: "c", error: "indexer down" }])
+    const failing = recorder(2)
+    const partial = await addUrlsByIndexer(failing.add, {}, ["a", "b", "c"], { a: 1, b: 2, c: 2 })
+    expect(partial.added).toBe(1)
+    expect(partial.failed).toBe(2)
+    expect(partial.failedURLs).toEqual([{ url: "b", error: "indexer down" }, { url: "c", error: "indexer down" }])
   })
 
   // regression: #4354

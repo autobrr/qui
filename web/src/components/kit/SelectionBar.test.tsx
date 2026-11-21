@@ -30,32 +30,21 @@ function renderBar() {
 }
 
 describe("SelectionBar", () => {
-  it("clears the selection on Escape", () => {
+  it("clears the selection on Escape, unless a text field, a dialog, or a menu takes the key, and stops when the bar goes away", () => {
     const onClear = renderBar()
-
-    fireEvent.keyDown(document.body, { key: "Escape" })
-    expect(onClear).toHaveBeenCalledTimes(1)
 
     fireEvent.keyDown(document.body, { key: "Enter" })
-    expect(onClear).toHaveBeenCalledTimes(1)
-  })
-
-  it("leaves the selection when a text field, a dialog, or a menu takes the Escape", () => {
-    const onClear = renderBar()
-
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Filter" }), { key: "Escape" })
     fireEvent.keyDown(screen.getByRole("button", { name: "Dialog button" }), { key: "Escape" })
     fireEvent.keyDown(screen.getByRole("button", { name: "Menu item" }), { key: "Escape" })
     fireEvent.keyDown(document.body, { key: "Escape", isComposing: true })
-
     expect(onClear).not.toHaveBeenCalled()
-  })
-
-  it("stops listening when the bar goes away", () => {
-    const onClear = renderBar()
-    cleanup()
 
     fireEvent.keyDown(document.body, { key: "Escape" })
-    expect(onClear).not.toHaveBeenCalled()
+    expect(onClear).toHaveBeenCalledTimes(1)
+
+    cleanup()
+    fireEvent.keyDown(document.body, { key: "Escape" })
+    expect(onClear).toHaveBeenCalledTimes(1)
   })
 })

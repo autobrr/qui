@@ -29,7 +29,8 @@ function result(overrides: Partial<TorznabSearchResult>): TorznabSearchResult {
 const categoryName = (r: TorznabSearchResult) => r.categoryName ?? ""
 
 describe("buildSearchRequest", () => {
-  it("sends only the fields of the search type, and drops bad numbers", () => {
+  // regression: #4354
+  it("sends only the fields of the search type, and drops bad numbers and fractions", () => {
     const params = { season: "2", episode: "x", year: "2020", imdbId: " tt0000001 " }
     const tv = buildSearchRequest({ query: "Sample Show", type: "tv", indexerIds: [1, 2], params })
     expect(tv.season).toBe(2)
@@ -43,14 +44,11 @@ describe("buildSearchRequest", () => {
     expect(movies.season).toBeUndefined()
     expect(movies.year).toBe(2020)
     expect(movies.cache_mode).toBe("bypass")
-  })
 
-  // regression: #4354
-  it("drops a fraction, which the server cannot read as a whole number", () => {
-    const request = buildSearchRequest({ query: "Sample Show", type: "tv", indexerIds: [1], params: { season: "1.5", episode: "3", limit: "2.5" } })
-    expect(request.season).toBeUndefined()
-    expect(request.episode).toBe(3)
-    expect(request.limit).toBeUndefined()
+    const fractions = buildSearchRequest({ query: "Sample Show", type: "tv", indexerIds: [1], params: { season: "1.5", episode: "3", limit: "2.5" } })
+    expect(fractions.season).toBeUndefined()
+    expect(fractions.episode).toBe(3)
+    expect(fractions.limit).toBeUndefined()
   })
 
   it("reads an IMDb ID from the query when the field is empty", () => {
@@ -66,29 +64,20 @@ describe("filterResults", () => {
     result({ guid: "c", title: "Another.Film.2023.2160p.WEB-DL-RIG", indexer: "BitHaven", group: "RIG" }),
   ]
 
-  it("needs every word of the text, in any field", () => {
+  it("needs every word of the text in any field, and a value from each selected facet", () => {
     expect(filterResults(results, "sample bithaven", {}, categoryName).map(r => r.guid)).toEqual(["b"])
-  })
-
-  it("combines facets with each other and with the text", () => {
     expect(filterResults(results, "", { group: ["RIG"], indexer: ["BitHaven"] }, categoryName).map(r => r.guid)).toEqual(["c"])
     expect(filterResults(results, "2160p", { freeleech: ["0"] }, categoryName).map(r => r.guid)).toEqual(["a"])
-  })
-
-  it("leaves out a result that has no value for a selected facet", () => {
     expect(filterResults([result({ guid: "d" })], "", { group: ["RIG"] }, categoryName)).toEqual([])
   })
 })
 
 describe("facetOptions", () => {
-  it("counts each value, skips missing ones, and puts the largest first", () => {
-    const results = [result({ group: "B" }), result({ group: "A" }), result({ group: "B" }), result({})]
-    expect(facetOptions(results, "group", categoryName)).toEqual([{ value: "B", count: 2 }, { value: "A", count: 1 }])
-  })
-
-  it("orders freeleech from free to full price", () => {
-    const results = [result({ downloadVolumeFactor: 1 }), result({ downloadVolumeFactor: 0.5 }), result({ downloadVolumeFactor: 0 })]
-    expect(facetOptions(results, "freeleech", categoryName).map(o => o.value)).toEqual(["0", "0.5", "1"])
+  it("counts each value, skips missing ones, and puts the largest first, but orders freeleech from free to full price", () => {
+    const groups = [result({ group: "B" }), result({ group: "A" }), result({ group: "B" }), result({})]
+    expect(facetOptions(groups, "group", categoryName)).toEqual([{ value: "B", count: 2 }, { value: "A", count: 1 }])
+    const discounts = [result({ downloadVolumeFactor: 1 }), result({ downloadVolumeFactor: 0.5 }), result({ downloadVolumeFactor: 0 })]
+    expect(facetOptions(discounts, "freeleech", categoryName).map(o => o.value)).toEqual(["0", "0.5", "1"])
   })
 })
 
@@ -112,13 +101,10 @@ describe("sortResults", () => {
 describe("tickResult", () => {
   const keys = ["a", "b", "c", "d"]
 
-  it("ticks one row, or the rows from the last tick when Shift is down", () => {
+  it("ticks one row, or the rows from the last tick when Shift is down, and one row when the last ticked row is gone", () => {
     expect([...tickResult(new Set(), keys, "b", null)]).toEqual(["b"])
     expect([...tickResult(new Set(["b"]), keys, "d", "b")].sort()).toEqual(["b", "c", "d"])
     expect([...tickResult(new Set(["a", "b", "c"]), keys, "a", "c")]).toEqual([])
-  })
-
-  it("ticks one row when the last ticked row is gone", () => {
     expect([...tickResult(new Set(["x"]), keys, "c", "x")].sort()).toEqual(["c", "x"])
   })
 })
