@@ -11,14 +11,15 @@ import (
 )
 
 type landing struct {
-	targetID int
-	paths    fsops.PathDialect
-	tops     map[string]struct{}
+	sourceID, targetID int
+	paths              fsops.PathDialect
+	tops               map[string]struct{}
+	held               bool
 }
 
 func (j *job) landing() landing {
 	d := j.rootPaths
-	l := landing{targetID: j.target.ID, paths: d, tops: map[string]struct{}{}}
+	l := landing{sourceID: j.source.ID, targetID: j.target.ID, paths: d, tops: map[string]struct{}{}}
 	for _, p := range j.parts {
 		for _, f := range p.plan {
 			if f.pad {
@@ -54,22 +55,35 @@ func (l landing) holdsOrIsBelow(other landing) bool {
 func (s *Service) land(id int64, own landing) (inTheWay int64, left <-chan struct{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	earlier := false
 	for other, l := range s.landings {
-		if other != id && own.meets(l) {
-			return other, s.left
+		switch {
+		case other == id:
+		case l.tops == nil:
+			earlier = earlier || other < id && l.sourceID == own.sourceID && l.targetID == own.targetID
+		case (l.held || other < id) && own.meets(l) && (inTheWay == 0 || other < inTheWay):
+			inTheWay = other
 		}
 	}
+	own.held = inTheWay == 0 && !earlier
+	if s.landings[id].tops == nil {
+		s.landed()
+	}
 	s.landings[id] = own
-	return 0, nil
+	if own.held {
+		return 0, nil
+	}
+	return inTheWay, s.left
 }
 
 func (s *Service) leave(id int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.landings[id]; !ok {
-		return
-	}
 	delete(s.landings, id)
+	s.landed()
+}
+
+func (s *Service) landed() {
 	close(s.left)
 	s.left = make(chan struct{})
 }
@@ -79,10 +93,10 @@ func (j *job) land(ctx context.Context) error {
 	waited := false
 	for {
 		other, left := j.svc.land(j.rec.ID, own)
-		if other == 0 {
+		if left == nil {
 			break
 		}
-		if !waited {
+		if other != 0 && !waited {
 			waited = true
 			j.rec.State = StateWaiting
 			j.logf("Waits for Transfer %d, which writes at the same path on %s.", other, j.target.Name)

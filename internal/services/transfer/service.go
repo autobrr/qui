@@ -155,7 +155,8 @@ type run struct {
 	// committed is set once a cancel no longer rolls the Transfer back.
 	committed bool
 	// meter counts the bytes of a Transfer that runs.
-	meter *meter
+	meter    *meter
+	targetID int
 }
 
 // NewService returns a Service whose Transfers stop when ctx ends or at
@@ -339,7 +340,7 @@ func (s *Service) enqueue(r *Record) {
 	if _, ok := s.runs[r.ID]; ok || s.closed {
 		return
 	}
-	s.runs[r.ID] = &run{}
+	s.runs[r.ID] = &run{targetID: r.TargetInstanceID}
 	q := s.queues[r.SourceInstanceID]
 	if q == nil {
 		q = &queue{}
@@ -375,6 +376,7 @@ func (s *Service) drain(sourceID int) {
 		ctx, cancel := context.WithCancel(s.ctx)
 		m := &meter{now: s.deps.Now}
 		s.runs[id].cancel, s.runs[id].meter = cancel, m
+		s.landings[id] = landing{sourceID: sourceID, targetID: s.runs[id].targetID}
 		s.mu.Unlock()
 
 		s.runOne(ctx, id, m)
@@ -390,6 +392,7 @@ func (s *Service) drain(sourceID int) {
 		if cancelled {
 			s.rollBack(context.WithoutCancel(s.ctx), id)
 		}
+		s.leave(id)
 	}
 }
 

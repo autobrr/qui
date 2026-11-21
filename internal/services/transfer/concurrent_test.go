@@ -98,7 +98,11 @@ func TestTransfersIntoOneFolderRunOneAfterTheOther(t *testing.T) {
 
 	firstID, err := r.svc.Start(t.Context(), r.request(first))
 	require.NoError(t, err)
-	<-copying
+	select {
+	case <-copying:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the first Transfer does not copy", r.get(firstID).FailureReason)
+	}
 	id, err := r.svc.Start(t.Context(), r.request(second))
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
