@@ -57,6 +57,35 @@ function updateManifestThemeColor(color: string): void {
   appleStatusBarMeta.setAttribute("content", isDarkColor ? "light-content" : "dark-content")
 }
 
+let launchImageColor = ""
+
+function updateLaunchImage(): void {
+  if ((navigator as Navigator & { standalone?: boolean }).standalone !== false) return
+
+  const color = getComputedStyle(document.documentElement).getPropertyValue("--background").trim()
+  if (color === launchImageColor) return
+
+  const { width, height } = window.screen
+  const ratio = window.devicePixelRatio || 1
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.round(width * ratio)
+  canvas.height = Math.round(height * ratio)
+  const context = canvas.getContext("2d")
+  if (!context) return
+  context.fillStyle = color
+  context.fillRect(0, 0, canvas.width, canvas.height)
+
+  let link = document.querySelector<HTMLLinkElement>("link[rel=\"apple-touch-startup-image\"]")
+  if (!link) {
+    link = document.createElement("link")
+    link.rel = "apple-touch-startup-image"
+    document.head.appendChild(link)
+  }
+  link.media = `(device-width: ${width}px) and (device-height: ${height}px) and (-webkit-device-pixel-ratio: ${ratio}) and (orientation: portrait)`
+  link.href = canvas.toDataURL("image/png")
+  launchImageColor = color
+}
+
 function isColorDark(color: string): boolean {
   const hex = color.replace("#", "")
   const r = parseInt(hex.substr(0, 2), 16)
@@ -97,6 +126,7 @@ export function initializePWANativeTheme(): void {
       }
 
       updateManifestThemeColor(themeColor)
+      updateLaunchImage()
     } catch (error) {
       console.warn("Failed to update PWA theme color:", error)
     }
