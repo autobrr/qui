@@ -77,6 +77,30 @@ describe("DiscReportButton", () => {
     fireEvent.click(getByRole("button"))
     expect(onClick).not.toHaveBeenCalled()
   })
+
+  // regression: #4358
+  it("shows its label on a tap while disabled, without a click on the row around it", () => {
+    const touchWindow = window as Window & { ontouchstart?: unknown }
+    touchWindow.ontouchstart = null
+    try {
+      const onRowClick = vi.fn()
+      const { getByRole } = render(
+        <div onClick={onRowClick}>
+          <DiscReportButton disabled onClick={() => {}} />
+        </div>,
+        { wrapper: TooltipProvider }
+      )
+
+      const wrapper = getByRole("button").parentElement!
+      fireEvent.pointerDown(wrapper, { pointerType: "touch" })
+      fireEvent.click(wrapper)
+
+      expect(getByRole("tooltip").textContent).toContain("discScan.action")
+      expect(onRowClick).not.toHaveBeenCalled()
+    } finally {
+      delete touchWindow.ontouchstart
+    }
+  })
 })
 
 describe("TorrentDiscReportDialog", () => {

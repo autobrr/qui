@@ -297,21 +297,24 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                       </span>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className={cn(
-                              "p-0.5 rounded text-muted-foreground transition-colors",
-                              incognitoMode ? "opacity-50 cursor-not-allowed" : "hover:bg-muted/80 hover:text-foreground"
-                            )}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (!incognitoMode) onRenameFile(file.name)
-                            }}
-                            disabled={incognitoMode}
-                            aria-label={t("fileTree.renameFile")}
+                          <span
+                            className={cn("inline-flex", incognitoMode && "cursor-not-allowed")}
+                            tabIndex={incognitoMode ? 0 : undefined}
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <FilePen className="h-3 w-3" />
-                          </button>
+                            <button
+                              type="button"
+                              className={cn(
+                                "p-0.5 rounded text-muted-foreground transition-colors",
+                                incognitoMode ? "pointer-events-none opacity-50" : "hover:bg-muted/80 hover:text-foreground"
+                              )}
+                              onClick={() => onRenameFile(file.name)}
+                              disabled={incognitoMode}
+                              aria-label={t("fileTree.renameFile")}
+                            >
+                              <FilePen className="h-3 w-3" />
+                            </button>
+                          </span>
                         </TooltipTrigger>
                         <TooltipContent>{t("fileTree.renameFile")}</TooltipContent>
                       </Tooltip>
@@ -429,21 +432,24 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                     </span>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className={cn(
-                            "p-0.5 rounded text-muted-foreground transition-colors",
-                            incognitoMode ? "opacity-50 cursor-not-allowed" : "hover:bg-muted/80 hover:text-foreground"
-                          )}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (!incognitoMode) onRenameFolder(node.id)
-                          }}
-                          disabled={incognitoMode}
-                          aria-label={t("fileTree.renameFolder")}
+                        <span
+                          className={cn("inline-flex", incognitoMode && "cursor-not-allowed")}
+                          tabIndex={incognitoMode ? 0 : undefined}
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <FolderPen className="h-3 w-3" />
-                        </button>
+                          <button
+                            type="button"
+                            className={cn(
+                              "p-0.5 rounded text-muted-foreground transition-colors",
+                              incognitoMode ? "pointer-events-none opacity-50" : "hover:bg-muted/80 hover:text-foreground"
+                            )}
+                            onClick={() => onRenameFolder(node.id)}
+                            disabled={incognitoMode}
+                            aria-label={t("fileTree.renameFolder")}
+                          >
+                            <FolderPen className="h-3 w-3" />
+                          </button>
+                        </span>
                       </TooltipTrigger>
                       <TooltipContent>{t("fileTree.renameFolder")}</TooltipContent>
                     </Tooltip>

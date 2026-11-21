@@ -41,23 +41,25 @@ export function DiscReportButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "p-0.5 rounded transition-colors",
-            status === "completed" ? "text-green-500" : status === "failed" ? "text-destructive" : "text-muted-foreground",
-            disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-muted/80 hover:text-foreground",
-            className
-          )}
-          onClick={(e) => {
-            e.stopPropagation()
-            if (!disabled) onClick()
-          }}
-          disabled={disabled}
-          aria-label={label}
+        <span
+          className={cn("inline-flex", disabled && "cursor-not-allowed", className)}
+          tabIndex={disabled ? 0 : undefined}
+          onClick={(e) => e.stopPropagation()}
         >
-          {active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Disc3 className="h-3 w-3" />}
-        </button>
+          <button
+            type="button"
+            className={cn(
+              "p-0.5 rounded transition-colors",
+              status === "completed" ? "text-green-500" : status === "failed" ? "text-destructive" : "text-muted-foreground",
+              disabled ? "pointer-events-none opacity-50" : "hover:bg-muted/80 hover:text-foreground"
+            )}
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={label}
+          >
+            {active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Disc3 className="h-3 w-3" />}
+          </button>
+        </span>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
