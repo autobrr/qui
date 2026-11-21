@@ -790,15 +790,12 @@
   },
   "src/components/layout/Header.tsx": {
     "qui/no-comments": {
-      "count": 39
+      "count": 37
     }
   },
   "src/components/layout/MobileFooterNav.tsx": {
     "qui/no-comments": {
-      "count": 18
-    },
-    "qui/no-native-title": {
-      "count": 2
+      "count": 17
     }
   },
   "src/components/layout/Page.tsx": {
