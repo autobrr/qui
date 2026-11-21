@@ -292,7 +292,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                     const name = incognitoMode ? getLinuxIsoName(event.hash) : event.name
                     const key = `${event.instanceId}:${event.hash}:${event.time}`
                     const full = fullNames.has(key)
-                    const cause = <Cause kind={event.cause.kind} name={event.cause.name} wrap={full} />
+                    const cause = <Cause kind={event.cause.kind} name={event.cause.name} wrap={full} openOnTap={!narrow} />
                     const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
                     const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
                     const time = formatISOTimestamp(event.time)
@@ -328,7 +328,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                             </div>
                           ) : <TorrentName name={name} className="line-clamp-2 @4xl:line-clamp-1" />}
                           <div className={cn("flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground @4xl:hidden", line)}>{trackerIcon}<span className="truncate">{tracker}</span></div>
-                          <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
+                          <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} openOnTap={!narrow} /></div>
                           <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @4xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
                         </TableCell>
                         <TableCell className="hidden max-w-64 align-top text-muted-foreground @4xl:table-cell"><span className="flex items-center gap-1.5">{trackerIcon}<TruncatedText>{tracker}</TruncatedText></span></TableCell>
@@ -393,7 +393,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
 }
 
 // An open phone row wraps the cause, as a tap on a cut name opens the row and not its tooltip.
-function Cause({ kind, name, wrap = false }: { kind: TransferHistoryCauseKind; name?: string; wrap?: boolean }) {
+function Cause({ kind, name, wrap = false, openOnTap }: { kind: TransferHistoryCauseKind; name?: string; wrap?: boolean; openOnTap: boolean }) {
   const { t } = useTranslation("statistics")
   const { icon: Icon, labelKey } = CAUSES[kind]
   if (wrap) {
@@ -409,7 +409,7 @@ function Cause({ kind, name, wrap = false }: { kind: TransferHistoryCauseKind; n
     <span className="flex min-w-0 items-center gap-1.5">
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="shrink-0 whitespace-nowrap">{t(labelKey)}</span>
-      {name && <TruncatedText openOnTap={false} className="min-w-0 text-muted-foreground">· {name}</TruncatedText>}
+      {name && <TruncatedText openOnTap={openOnTap} className="min-w-0 text-muted-foreground">· {name}</TruncatedText>}
     </span>
   )
 }

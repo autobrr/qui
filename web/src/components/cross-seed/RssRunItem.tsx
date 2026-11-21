@@ -38,7 +38,7 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
             {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
             <span className="text-xs text-muted-foreground">{t("automation.items", { count: run.totalFeedItems })}</span>
             {run.errorMessage && (
-              <TruncatedText className="min-w-0 text-xs text-muted-foreground" openOnTap={false}>
+              <TruncatedText className="min-w-0 text-xs text-muted-foreground">
                 {t("automation.runError", { message: run.errorMessage })}
               </TruncatedText>
             )}

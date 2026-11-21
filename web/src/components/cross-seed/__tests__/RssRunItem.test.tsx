@@ -76,6 +76,24 @@ describe("RSSRunItem", () => {
     expect(screen.getByRole("tooltip").textContent).toContain(`automation.runError:${message}`)
   })
 
+  // regression: #4358
+  it("shows the full cut-off run error on a tap on a phone, also when the run has no results to open", () => {
+    touchWindow.ontouchstart = null
+    const message = "all indexers unreachable"
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
+    renderWithTooltips(
+      <RSSRunItem run={makeRun({ errorMessage: message })} formatDateValue={() => "just now"} />
+    )
+
+    const error = screen.getByText(`automation.runError:${message}`)
+    fireEvent.pointerDown(error, { pointerType: "touch" })
+    fireEvent.pointerUp(error, { pointerType: "touch" })
+    fireEvent.click(error)
+
+    expect(screen.getByRole("tooltip").textContent).toContain(`automation.runError:${message}`)
+  })
+
   it("renders no error span when the run has no errorMessage", () => {
     const { container } = renderWithTooltips(
       <RSSRunItem run={makeRun({ status: "success" })} formatDateValue={() => "just now"} />

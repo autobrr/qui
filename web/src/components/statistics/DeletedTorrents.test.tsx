@@ -488,6 +488,28 @@ describe("DeletedTorrents", () => {
     expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
   })
 
+  // regression: #4358
+  it("shows a cut-off cause on a tap on a touch screen wider than a phone, where the row does not open", async () => {
+    const touchWindow = window as Window & { ontouchstart?: unknown }
+    touchWindow.ontouchstart = null
+    try {
+      vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
+      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
+      deletesOf.set(1, [event(1, 0, 5_000, "automation", "Tidy up")])
+      renderTable([instance(1, "Seedbox")])
+      await vi.waitFor(() => expect(screen.getAllByText("· Tidy up").at(-1)!.getAttribute("data-state")).toBe("closed"))
+      const cause = screen.getAllByText("· Tidy up").at(-1)!
+
+      fireEvent.pointerDown(cause, { pointerType: "touch" })
+      fireEvent.pointerUp(cause, { pointerType: "touch" })
+      fireEvent.click(cause)
+
+      expect(screen.getByRole("tooltip").textContent).toContain("· Tidy up")
+    } finally {
+      delete touchWindow.ontouchstart
+    }
+  })
+
   it("shows the tracker icon next to the tracker of each delete, the first letter for a tracker with no icon, and none for Public", async () => {
     mocks.trackerIcons = { data: { "a.test": "data:image/png;base64,YQ==" } }
     deletesOf.set(1, [

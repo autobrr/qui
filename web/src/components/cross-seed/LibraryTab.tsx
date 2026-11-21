@@ -799,7 +799,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                   {t("scan.torrentsCount", { count: run.status === "running" ? `${run.processed}/${run.totalTorrents}` : run.totalTorrents })}
                                 </span>
                                 {run.errorMessage && (
-                                  <TruncatedText className="min-w-0 text-xs text-muted-foreground" openOnTap={false}>
+                                  <TruncatedText className="min-w-0 text-xs text-muted-foreground">
                                     {t("scan.runError", { message: run.errorMessage })}
                                   </TruncatedText>
                                 )}

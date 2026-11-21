@@ -4,9 +4,9 @@
  */
 
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { ArticlesPanel } from "@/pages/RSSPage"
+import { ArticlesPanel, FeedTree } from "@/pages/RSSPage"
 import type { RSSArticle } from "@/types"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -66,5 +66,28 @@ describe("ArticlesPanel", () => {
     expect(document.querySelectorAll("[data-index]")).toHaveLength(3)
     expect(screen.queryByText("Article 0")).not.toBeNull()
     expect(screen.queryByText("Article 999")).toBeNull()
+  })
+})
+
+describe("FeedTree", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  // regression: #4358
+  it("shows the full name of a feed when it is cut off and the feed has no other title", () => {
+    delete (window as Window & { ontouchstart?: unknown }).ontouchstart
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
+    const feed = { uid: "1", url: "https://feeds.example.invalid/rss", hasError: false, isLoading: false }
+    render(
+      <TooltipProvider>
+        <FeedTree items={{ "A very long feed name": feed }} path="" onSelect={vi.fn()} onRemove={vi.fn()} onRefresh={vi.fn()} onRename={vi.fn()} onEditURL={vi.fn()} supportsEditURL={false} />
+      </TooltipProvider>
+    )
+
+    fireEvent.focus(screen.getByText("A very long feed name"))
+
+    expect(screen.getByRole("tooltip").textContent).toContain("A very long feed name")
+    vi.unstubAllGlobals()
   })
 })

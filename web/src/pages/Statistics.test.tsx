@@ -1071,6 +1071,36 @@ describe("Statistics", () => {
     }
   })
 
+  // regression: #4358
+  it("shows a cut-off tracker on a tap, and the tap still opens the row", async () => {
+    const touchWindow = window as Window & { ontouchstart?: unknown }
+    touchWindow.ontouchstart = null
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
+    try {
+      torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 1024)] : []
+      renderPage()
+      const table = await screen.findByRole("table")
+      const row = (await within(table).findByText("Alpha")).closest("tr")!
+      const tracker = row.querySelectorAll("td")[1].querySelector<HTMLElement>("[data-slot=truncated-text]")!
+
+      fireEvent.pointerDown(tracker, { pointerType: "touch" })
+      fireEvent.pointerUp(tracker, { pointerType: "touch" })
+      fireEvent.click(tracker)
+
+      expect(screen.getByRole("tooltip").textContent).toContain(tracker.textContent)
+      expect(within(table).getByText("Alpha").closest("button")?.getAttribute("aria-expanded")).toBe("true")
+    } finally {
+      vi.unstubAllGlobals()
+      delete touchWindow.ontouchstart
+    }
+  })
+
   it("opens the tooltip of a mark when the keyboard focuses it, outside the button of the row", async () => {
     torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 1024, { statisticsCrossSeed: true })] : []
     renderPage()

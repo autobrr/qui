@@ -1369,7 +1369,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                   <div>
                     {filteredCategories.map((category) => (
                       <Tooltip key={category.name} disabled={category.name === category.displayName}>
-                        <TooltipTrigger asChild>
+                        <TooltipTrigger asChild openOnTap>
                           <button
                             type="button"
                             onClick={() => setChoice({ source: "list", category: category.name })}

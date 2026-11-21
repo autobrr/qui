@@ -109,7 +109,7 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
                       className="@3xl:hidden"
                     />
                   </TableCell>
-                  <TableCell className="hidden max-w-64 text-muted-foreground @2xl:table-cell"><span className="flex items-center gap-1.5">{trackerIcon}<TruncatedText openOnTap={false}>{tracker}</TruncatedText></span></TableCell>
+                  <TableCell className="hidden max-w-64 text-muted-foreground @2xl:table-cell"><span className="flex items-center gap-1.5">{trackerIcon}<TruncatedText>{tracker}</TruncatedText></span></TableCell>
                   <TableCell className="pr-4 text-right tabular-nums sm:pr-6 @xl:pr-2">
                     {formatBytes(torrent.uploaded)}
                     <div className="text-xs text-muted-foreground @xl:hidden" data-narrow>{seeded(torrent)}</div>

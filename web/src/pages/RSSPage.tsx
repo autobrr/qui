@@ -71,6 +71,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 
 import { MultiSelect } from "@/components/ui/multi-select"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
@@ -826,7 +827,7 @@ interface FeedTreeProps {
   supportsEditURL: boolean
 }
 
-function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, onRename, onEditURL, supportsEditURL }: FeedTreeProps) {
+export function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, onRename, onEditURL, supportsEditURL }: FeedTreeProps) {
   const { t } = useTranslation("rss")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
@@ -890,14 +891,9 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
             >
               <Rss className={`h-3.5 w-3.5 flex-shrink-0 ${feed.hasError ? "text-destructive" : isSelected ? "text-primary" : "text-muted-foreground"
               }`} />
-              <Tooltip disabled={!feed.title || feed.title === name}>
-                <TooltipTrigger asChild>
-                  <span className={`flex-1 truncate text-sm ${hasUnread ? "font-medium" : ""}`}>
-                    {name}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{feed.title}</TooltipContent>
-              </Tooltip>
+              <TruncatedText className={`flex-1 text-sm ${hasUnread ? "font-medium" : ""}`} tooltipContent={feed.title && feed.title !== name ? feed.title : undefined}>
+                {name}
+              </TruncatedText>
               {feed.isLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
               {feed.hasError && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
               {hasUnread && (
