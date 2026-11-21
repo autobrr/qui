@@ -415,19 +415,17 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 					if m.normalizedGroupSiteIdentity(source.release) == announcedGroup ||
 						(source.release.Site != "") != (announcedCandidate.release.Site != "") &&
 							m.crossFieldGroupSiteFallback(source, announcedCandidate) {
-						event := log.Trace()
 						if nearMisses < nearMissDebugLimit {
-							event = log.Debug()
+							log.Debug().
+								Str("source", "cross-seed.webhook").
+								Int("instanceId", instance.ID).
+								Str("incomingName", req.TorrentName).
+								Str("existingName", torrent.Name).
+								Str("rejectReason", decision.RejectReason).
+								Str("class", string(decision.Class)).
+								Msg("Webhook check: rejected near miss")
 						}
 						nearMisses++
-						event.
-							Str("source", "cross-seed.webhook").
-							Int("instanceId", instance.ID).
-							Str("incomingName", req.TorrentName).
-							Str("existingName", torrent.Name).
-							Str("rejectReason", decision.RejectReason).
-							Str("class", string(decision.Class)).
-							Msg("Webhook check: rejected near miss")
 					}
 				}
 				continue
