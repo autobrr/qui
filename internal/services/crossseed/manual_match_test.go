@@ -580,6 +580,7 @@ func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	}
 }
 
+// regression: #4137
 func TestManualMatchPreviewShowsTheSavePathOfTheSingleAdd(t *testing.T) {
 	const name = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
 	tests := []struct {
