@@ -75,6 +75,7 @@ export function tickResult(picked: ReadonlySet<string>, keys: readonly string[],
   const on = !picked.has(key)
   const next = new Set(picked)
   const index = keys.indexOf(key)
+  if (index === -1) return next
   const last = anchor === null ? -1 : keys.indexOf(anchor)
   const from = last === -1 ? index : Math.min(last, index)
   const to = last === -1 ? index : Math.max(last, index)

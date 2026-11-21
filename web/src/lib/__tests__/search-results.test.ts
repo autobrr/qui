@@ -107,4 +107,9 @@ describe("tickResult", () => {
     expect([...tickResult(new Set(["a", "b", "c"]), keys, "a", "c")]).toEqual([])
     expect([...tickResult(new Set(["x"]), keys, "c", "x")].sort()).toEqual(["c", "x"])
   })
+
+  // regression: #4354
+  it("changes nothing for a row that left the page, also with Shift down after a tick on the last row", () => {
+    expect([...tickResult(new Set(["b"]), keys, "gone", "d")]).toEqual(["b"])
+  })
 })
