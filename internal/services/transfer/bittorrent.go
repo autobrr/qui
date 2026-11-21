@@ -250,7 +250,9 @@ func (j *job) seedFromSource(ctx context.Context, p *part, helper helpertorrent.
 	if err := j.svc.deps.Sync.SetForceStart(ctx, j.source.ID, []string{helper.InfoHash}, true); err != nil {
 		return temporary("qui cannot start the Transfer torrent on %s: %v", j.source.Name, err)
 	}
-	_, seeds, err := j.await(ctx, j.source, helper.InfoHash, j.svc.deps.Config.Polls, func(t *qbt.Torrent) bool { return t.Progress >= 1 })
+	_, seeds, err := j.await(ctx, j.source, helper.InfoHash, j.svc.deps.Config.Polls, func(t *qbt.Torrent) bool {
+		return t.Progress >= 1 && !isChecking(t.State)
+	})
 	switch {
 	case err != nil:
 		return err

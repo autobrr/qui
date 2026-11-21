@@ -216,6 +216,22 @@ func TestTransferTorrentWritesTheTemporaryNamesOfTheCopy(t *testing.T) {
 	r.requireNoHelpers(record)
 }
 
+func TestTransferTorrentConnectsAfterTheCheckOnTheSource(t *testing.T) {
+	r := newRigOn(t, overSFTP, onDisk)
+	r.connect()
+	r.src.CheckSyncs = 3
+	s := newShow(t, showName)
+	r.seed(s)
+	req := r.request(s)
+	req.Options.ForcedWay = transfer.WayBitTorrent
+
+	record := r.run(req)
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, transfer.WayBitTorrent, record.Way)
+	require.Zero(t, r.src.Calls("torrents/addPeers"), "the target reached the source at its first try")
+}
+
 // A file on the source at a name of the Transfer torrent there stops the
 // Transfer before the source renames anything: qBittorrent would move that
 // file over the file of the source.
