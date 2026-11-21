@@ -101,6 +101,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
   const filtering = text.trim() !== "" || Object.values(facets).some(values => values.length > 0)
   const selectable = actions.instances.length > 0
   const actionsInRow = useMediaQuery("(min-width: 1440px)")
+  const tips = useDeferredValue(true, false)
   const pickedResults = useMemo(() => shown.filter(result => picked.has(resultKey(result))), [shown, picked])
   const pickableKeys = useMemo(() => rows.filter(row => row.downloadUrl).map(resultKey), [rows])
 
@@ -228,7 +229,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
           <TableBody>
             {mountedRows.map(result => {
               const key = resultKey(result)
-              return <ResultRow key={key} rowKey={key} result={result} selectable={selectable} picked={picked.has(key)} onTick={tick} actionsInRow={actionsInRow} t={t} formatDate={formatDate} {...actions} />
+              return <ResultRow key={key} rowKey={key} result={result} selectable={selectable} picked={picked.has(key)} onTick={tick} actionsInRow={actionsInRow} tips={tips} t={t} formatDate={formatDate} {...actions} />
             })}
           </TableBody>
         </Table>
@@ -337,11 +338,12 @@ interface ResultRowProps extends ResultActions {
   picked: boolean
   onTick: (key: string, range: boolean) => void
   actionsInRow: boolean
+  tips: boolean
   t: TFunction
   formatDate: (date: Date) => string
 }
 
-const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, onTick, actionsInRow, t, formatDate, ...actions }: ResultRowProps) {
+const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, onTick, actionsInRow, tips, t, formatDate, ...actions }: ResultRowProps) {
   const titleId = useId()
   const published = Date.parse(result.publishDate)
   const age = Number.isNaN(published) ? "–" : formatNarrowAge(Date.now() - published)
@@ -402,7 +404,7 @@ const ResultRow = memo(function ResultRow({ rowKey, result, selectable, picked, 
       <TableCell className="hidden py-2.5 text-right align-top tabular-nums text-muted-foreground @3xl:table-cell">{result.leechers}</TableCell>
       <TableCell className="hidden py-2.5 text-right align-top tabular-nums text-muted-foreground @3xl:table-cell" title={publishedTitle}>{age}</TableCell>
       <TableCell className="cursor-default py-1 pr-3 align-top sm:pr-5" onClick={event => event.stopPropagation()}>
-        <RowActions t={t} result={result} actionsInRow={actionsInRow} {...actions} />
+        <RowActions t={t} result={result} actionsInRow={actionsInRow} tips={tips} {...actions} />
       </TableCell>
     </TableRow>
   )
@@ -418,7 +420,7 @@ function ResultMarks({ t, result }: { t: TFunction; result: TorznabSearchResult 
   )
 }
 
-function RowActions({ t, result, actionsInRow, instances, onAdd, onDownload, onOpenInfo }: ResultActions & { t: TFunction; result: TorznabSearchResult; actionsInRow: boolean }) {
+function RowActions({ t, result, actionsInRow, tips, instances, onAdd, onDownload, onOpenInfo }: ResultActions & { t: TFunction; result: TorznabSearchResult; actionsInRow: boolean; tips: boolean }) {
   const copyTitle = async () => {
     try {
       await copyTextToClipboard(result.title)
@@ -440,7 +442,7 @@ function RowActions({ t, result, actionsInRow, instances, onAdd, onDownload, onO
           {({ name, onClick }) => {
             const label = name ? t("card.addToNamed", { name }) : t("row.add")
             return (
-              <TipButton type="button" variant="ghost" size="icon" className="size-9 @2xl:size-8" onClick={onClick} aria-label={label} tip={label}>
+              <TipButton type="button" variant="ghost" size="icon" className="size-9 @2xl:size-8" onClick={onClick} aria-label={label} tip={tips ? label : undefined}>
                 <Plus className="size-4" />
               </TipButton>
             )
@@ -448,12 +450,12 @@ function RowActions({ t, result, actionsInRow, instances, onAdd, onDownload, onO
         </AddMenu>
       )}
       {result.downloadUrl && instances.length === 0 && (
-        <TipButton type="button" variant="ghost" size="icon" className="size-9 @2xl:size-8" aria-label={t("table.downloadTorrent")} tip={t("table.downloadTorrent")} onClick={() => onDownload(result)}>
+        <TipButton type="button" variant="ghost" size="icon" className="size-9 @2xl:size-8" aria-label={t("table.downloadTorrent")} tip={tips ? t("table.downloadTorrent") : undefined} onClick={() => onDownload(result)}>
           <Download className="size-4" />
         </TipButton>
       )}
       {actionsInRow ? extras.map(({ id, label, Icon, run }) => run ? (
-        <TipButton key={id} type="button" variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" aria-label={label} tip={label} onClick={run}>
+        <TipButton key={id} type="button" variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" aria-label={label} tip={tips ? label : undefined} onClick={run}>
           <Icon className="size-4" />
         </TipButton>
       ) : (
