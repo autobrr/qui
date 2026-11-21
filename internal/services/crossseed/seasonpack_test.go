@@ -791,10 +791,13 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 				{Hash: "absolute", Name: "Cool Show - 1140 [1080p][WEB][x264]-GRP", Progress: 1.0},
 				{Hash: "absolute-away", Name: "Other Show - 1140 [1080p][WEB][x264]-GRP", Progress: 1.0},
 				{Hash: "absolute-numeral", Name: "Cool Show III - 1140 [1080p][WEB][x264]-GRP", Progress: 1.0},
+				{Hash: "downloading", Name: "Cool.Show.S03E02.1080p.WEB.x264-GRP", Progress: 0.5},
+				{Hash: "downloading-copy", Name: "Cool.Show.S03E02.1080p.WEB.x264-GRP", Progress: 0.4},
 			},
 			want: []want{
 				{notInPackReason, "", 0},
 				{"episode numbering mismatch", "debug", 2},
+				{"source not settled", "debug", 1},
 			},
 		},
 	}

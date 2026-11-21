@@ -19,6 +19,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/autobrr/rls"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
@@ -1326,21 +1327,20 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	// pack" fire once per unrelated torrent and are not logged. Every other reason logs
 	// at Debug once per name and reason, because copies of one episode repeat the line.
 	logged := make(map[string]struct{})
-	logFiltered := func(candidateName, reason string) {
+	logFiltered := func(candidateName, reason string) *zerolog.Event {
 		if reason == titleMismatchReason || reason == notInPackReason {
-			return
+			return nil
 		}
 		key := candidateName + "\x00" + reason
 		if _, seen := logged[key]; seen {
-			return
+			return nil
 		}
 		logged[key] = struct{}{}
-		log.Debug().
+		return log.Debug().
 			Str("pack", packRelease.Title).
 			Int("season", packRelease.Series).
 			Str("candidate", candidateName).
-			Str("reason", reason).
-			Msg("[CROSSSEED-MATCH] Release filtered")
+			Str("reason", reason)
 	}
 
 	policy := seasonPackPolicy(settings)
@@ -1403,7 +1403,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 				if inPack && !m.titlesMatchInSourceSeason(pack, local, matchEvidence{SourceTitles: aliasTitles}) {
 					reason = titleMismatchReason
 				}
-				logFiltered(torrent.Name, reason)
+				logFiltered(torrent.Name, reason).Msg("[CROSSSEED-MATCH] Release filtered")
 				continue
 			}
 			id = targetID
@@ -1436,18 +1436,14 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		}
 		verdict := m.matchVerdict(namedRelease{release: local, rawName: torrent.Name}, namedRelease{release: packEpisode, rawName: packName}, evidence, policy)
 		if !verdict.Matched {
-			logFiltered(torrent.Name, verdict.RejectReason)
+			logFiltered(torrent.Name, verdict.RejectReason).Msg("[CROSSSEED-MATCH] Release filtered")
 			continue
 		}
 
 		// Checked last so it only fires for episodes that would otherwise satisfy
 		// the pack (announce raced the episode's download or its move).
 		if answer != sourcePass {
-			log.Debug().
-				Str("pack", packRelease.Title).
-				Int("season", packRelease.Series).
-				Str("candidate", torrent.Name).
-				Str("reason", "source not settled").
+			logFiltered(torrent.Name, "source not settled").
 				Float64("progress", torrent.Progress).
 				Str("state", string(torrent.State)).
 				Msg("[CROSSSEED-MATCH] Release filtered")
