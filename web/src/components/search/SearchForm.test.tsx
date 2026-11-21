@@ -49,18 +49,50 @@ function Form({ onRecent }: { onRecent: (search: TorznabRecentSearch) => void })
 
 describe("SearchForm", () => {
   // regression: #4354
-  it("highlights no recent search after the query is cleared, so Enter runs none", () => {
+  it("highlights no recent search once the list is cleared or dismissed, so Enter runs none", () => {
+    const onRecent = vi.fn()
+    render(<Form onRecent={onRecent} />)
+    const input = screen.getByRole("combobox", { name: "Search Query" })
+    const highlightBeta = () => {
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: "bet" } })
+      fireEvent.keyDown(input, { key: "ArrowDown" })
+      expect(screen.getByRole("option", { selected: true }).textContent).toContain("Sample Beta 2023")
+    }
+    const expectNoHighlight = () => {
+      expect(screen.getAllByRole("option").every(option => option.getAttribute("aria-selected") === "false")).toBe(true)
+      fireEvent.keyDown(input, { key: "Enter" })
+      expect(onRecent).not.toHaveBeenCalled()
+    }
+
+    highlightBeta()
+    fireEvent.click(screen.getByRole("button", { name: "Clear the query" }))
+    expectNoHighlight()
+
+    highlightBeta()
+    fireEvent.blur(input)
+    fireEvent.focus(input)
+    expectNoHighlight()
+
+    highlightBeta()
+    fireEvent.keyDown(input, { key: "Escape" })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    expectNoHighlight()
+  })
+
+  // regression: #4354
+  it("leaves the arrow keys and Enter to an input method while it composes", () => {
     const onRecent = vi.fn()
     render(<Form onRecent={onRecent} />)
     const input = screen.getByRole("combobox", { name: "Search Query" })
 
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: "bet" } })
-    fireEvent.keyDown(input, { key: "ArrowDown" })
-    fireEvent.click(screen.getByRole("button", { name: "Clear the query" }))
-
-    expect(screen.getAllByRole("option").every(option => option.getAttribute("aria-selected") === "false")).toBe(true)
-    fireEvent.keyDown(input, { key: "Enter" })
+    for (const composing of [{ isComposing: true }, { keyCode: 229 }]) {
+      fireEvent.keyDown(input, { key: "ArrowDown", ...composing })
+      expect(input.getAttribute("aria-activedescendant")).toBeNull()
+      fireEvent.keyDown(input, { key: "Enter", ...composing })
+    }
     expect(onRecent).not.toHaveBeenCalled()
   })
 })

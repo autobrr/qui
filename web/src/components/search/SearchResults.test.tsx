@@ -170,7 +170,7 @@ describe("SearchResults", () => {
   // regression: #4263
   it("offers no action that a result cannot do, and a tap on its actions leaves the row unticked", () => {
     const noPage = result({ infoUrl: undefined })
-    renderResults([noPage])
+    const onAdd = renderResults([noPage])
 
     expect(screen.queryByRole("button", { name: "Open on indexer" })).toBeNull()
     openMenu(screen.getByRole("button", { name: "More actions" }))
@@ -181,6 +181,9 @@ describe("SearchResults", () => {
     fireEvent.keyDown(document.activeElement!, { key: "Escape" })
     const add = screen.getAllByRole("button", { name: "Add" }).at(-1)!
     fireEvent.click(add)
+    openMenu(add)
+    fireEvent.click(screen.getByRole("menuitem", { name: /Stub 1/ }))
+    expect(onAdd).toHaveBeenCalledWith([noPage], 1)
     expect(box(noPage.title).getAttribute("aria-checked")).toBe("false")
     fireEvent.click(add.closest("td")!)
     expect(box(noPage.title).getAttribute("aria-checked")).toBe("false")

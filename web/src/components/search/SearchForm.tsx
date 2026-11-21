@@ -183,16 +183,21 @@ function QueryInput({ query, onQueryChange, type, recent, onRecent, inputRef }: 
   const suggestions = recent.filter(search => needle === "" || (search.query.toLowerCase().includes(needle) && search.query.toLowerCase() !== needle)).slice(0, SUGGESTION_LIMIT)
   const showList = open && suggestions.length > 0
 
-  const pick = (search: TorznabRecentSearch) => {
+  const close = () => {
     setOpen(false)
     setHighlight(-1)
+  }
+
+  const pick = (search: TorznabRecentSearch) => {
+    close()
     inputRef.current?.blur()
     onRecent(search)
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
     if (event.key === "Escape") {
-      setOpen(false)
+      close()
       return
     }
     if (!showList) {
@@ -240,7 +245,7 @@ function QueryInput({ query, onQueryChange, type, recent, onRecent, inputRef }: 
           setHighlight(-1)
         }}
         onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        onBlur={close}
         onKeyDown={onKeyDown}
         className="h-10 pr-9 pl-9"
       />

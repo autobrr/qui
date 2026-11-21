@@ -167,7 +167,7 @@ export function SearchResults({ results, cache, partial, categoryName, sort, onS
               value={SORT_OPTIONS.find(option => option.sort.key === sort.key && option.sort.desc === sort.desc)?.value}
               onValueChange={value => onSortChange(SORT_OPTIONS.find(option => option.value === value)!.sort)}
             >
-              <SelectTrigger size="sm" className="shrink-0 @3xl:hidden" aria-label={t("sort.label")}>
+              <SelectTrigger size="sm" className="shrink-0 @4xl:hidden" aria-label={t("sort.label")}>
                 <SelectValue placeholder={t("sort.label")} />
               </SelectTrigger>
               <SelectContent>
