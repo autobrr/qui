@@ -130,7 +130,7 @@ export function reportsFreeSpace(d: DashboardInstanceStats): boolean {
 }
 
 export function isLowDisk(d: DashboardInstanceStats): boolean {
-  return reportsFreeSpace(d) && (freeShare(d) ?? 1) < LOW_DISK_SHARE
+  return reportsFreeSpace(d) && (diskFreeShare(d) ?? 1) < LOW_DISK_SHARE
 }
 
 export function connectionStatusOf(d: DashboardInstanceStats): string {

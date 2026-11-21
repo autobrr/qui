@@ -83,7 +83,7 @@ This list shows each item that needs an action:
 
 If no item needs an action, the page does not show the list.
 
-A disk is almost full when the free space is less than 5% of the size of the disk. When qui cannot read the disk, qui uses 5% of the free space plus the [Unique size](#unique-size) of the instance as the limit. See [Storage and Library](#storage-and-library) for how qui reads the size of the disk. A System notice is not in this list. qui shows a System notice in the sidebar and the mobile footer.
+A disk is almost full when the free space is less than 5% of the size of the disk. qui shows this item only when it can read the disk through Local Filesystem Access or SSH access. When qui estimates the **Storage** bar, qui never marks the disk as almost full. See [Storage and Library](#storage-and-library) for how qui reads the size of the disk. A System notice is not in this list. qui shows a System notice in the sidebar and the mobile footer.
 
 ## Storage and Library
 
