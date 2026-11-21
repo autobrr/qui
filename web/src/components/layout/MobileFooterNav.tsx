@@ -4,6 +4,8 @@
  */
 
 import { openCommandPalette } from "@/components/command-palette/open"
+import { useIncognitoVariant } from "@/components/prototype/IncognitoTogglePrototype"
+import { useIncognitoMode } from "@/lib/incognito"
 import { InstanceMarkIcon } from "@/components/instances/marks/InstanceMarkIcon"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
@@ -79,6 +81,8 @@ import {
   Copyright,
   Download,
   FileText,
+  Eye,
+  EyeOff,
   GitBranch,
   HardDrive,
   Heart,
@@ -135,6 +139,8 @@ const useThemeChange = (customThemes: readonly Theme[]) => {
 
 export function MobileFooterNav() {
   const { t, i18n } = useTranslation("common")
+  const incognitoVariant = useIncognitoVariant()
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { t: tTorrents } = useTranslation("torrents")
   const location = useLocation()
   const navigate = useNavigate()
@@ -643,18 +649,31 @@ export function MobileFooterNav() {
                 </a>
               </DropdownMenuItem>
             ))}
-            {!isDemo && (
-              <>
-                <DropdownMenuSeparator />
+            {(!isDemo || incognitoVariant !== "A") && <DropdownMenuSeparator />}
+            <div className="flex items-stretch">
+              {incognitoVariant !== "A" && (
+                <DropdownMenuItem
+                  className="flex flex-1 items-center gap-2 whitespace-nowrap"
+                  onSelect={event => {
+                    event.preventDefault()
+                    setIncognitoMode(!incognitoMode)
+                  }}
+                >
+                  {incognitoMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {incognitoMode ? tTorrents("statusBar.incognitoOn") : tTorrents("statusBar.incognitoOff")}
+                </DropdownMenuItem>
+              )}
+              {incognitoVariant !== "A" && !isDemo && <div className="my-1 w-px bg-border" />}
+              {!isDemo && (
                 <DropdownMenuItem
                   onClick={() => logout()}
-                  className="text-destructive focus:text-destructive flex items-center gap-2"
+                  className="text-destructive focus:text-destructive flex shrink-0 items-center gap-2 whitespace-nowrap"
                 >
                   <LogOut className="h-4 w-4 text-destructive" />
                   {t("mobileNav.logout")}
                 </DropdownMenuItem>
-              </>
-            )}
+              )}
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -4,6 +4,7 @@
  */
 
 import { Page } from "@/components/layout/Page"
+import { IncognitoEyeButton, useIncognitoVariant } from "@/components/prototype/IncognitoTogglePrototype"
 import { DeletedTorrents } from "@/components/statistics/DeletedTorrents"
 import { EventsChart } from "@/components/statistics/EventsChart"
 import { GroupTable } from "@/components/statistics/GroupTable"
@@ -137,6 +138,7 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [incognitoMode] = useIncognitoMode()
+  const incognitoVariant = useIncognitoVariant()
   const narrow = useIsPhone()
   const { preferences } = usePersistedDateTimePreferences()
   const [savedPreset, savePreset] = useStatisticsPeriod()
@@ -334,12 +336,14 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
           {periodPicker}
           {instanceFilter}
           <SeriesColorPicker />
+          {incognitoVariant === "A" && <IncognitoEyeButton />}
         </>
       ) : (
         <>
           <SeriesColorPicker />
           {instanceFilter}
           {periodPicker}
+          {incognitoVariant === "A" && <IncognitoEyeButton />}
         </>
       )}
     >

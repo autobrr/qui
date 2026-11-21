@@ -33,6 +33,7 @@ import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { SupportButton } from "@/components/support/SupportButton"
+import { IncognitoEyeButton, useIncognitoVariant } from "@/components/prototype/IncognitoTogglePrototype"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import {
   Tooltip,
@@ -120,6 +121,7 @@ function UnifiedActionDropdown({ icon, tooltip, label, instances, onSelectInstan
 }
 
 export function Header({ sidebarIconOnly = false }: HeaderProps) {
+  const incognitoVariant = useIncognitoVariant()
   // The icon-only sidebar has no room for the name of the instance or for the Unified scope, so the header shows them.
   const showTitleOnDesktop = sidebarIconOnly
   const { t } = useTranslation("common")
@@ -640,7 +642,8 @@ export function Header({ sidebarIconOnly = false }: HeaderProps) {
       )}
 
 
-      <div className={cn("grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none", smInnerHeight)}>
+      <div className={cn("grid grid-flow-col auto-cols-auto items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none", smInnerHeight)}>
+        {incognitoVariant !== "A" && <IncognitoEyeButton variant="ghost" />}
         <SupportButton />
         <ThemeToggle />
       </div>

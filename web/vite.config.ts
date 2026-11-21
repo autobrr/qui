@@ -196,7 +196,7 @@ export default defineConfig(({ mode }) => {
     },
     proxy: {
       "/api": {
-        target: "http://localhost:7476",
+        target: `http://localhost:${process.env.PROTO_API_PORT ?? 7476}`,
         changeOrigin: true,
       },
     },

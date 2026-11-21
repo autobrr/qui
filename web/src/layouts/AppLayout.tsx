@@ -8,6 +8,7 @@ import { CommandPalette } from "@/components/command-palette/CommandPalette"
 import { MobileFooterNav } from "@/components/layout/MobileFooterNav"
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
+import { IncognitoPrototypeSwitcher } from "@/components/prototype/IncognitoTogglePrototype"
 import { ProblemReportDialogRoot } from "@/components/problem-reports/ProblemReportDialog"
 import { SupportDialogRoot } from "@/components/support/SupportDialog"
 import { ReminderBar } from "@/components/support/SupportReminder"
@@ -57,6 +58,7 @@ function AppLayoutContent() {
 
       {/* Mobile Footer Navigation */}
       <MobileFooterNav />
+      {import.meta.env.DEV && <IncognitoPrototypeSwitcher />}
 
       <CommandPalette />
       <SupportDialogRoot />

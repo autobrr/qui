@@ -4,6 +4,7 @@
  */
 
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview"
+import { useIncognitoVariant } from "@/components/prototype/IncognitoTogglePrototype"
 import { MigrationHint } from "@/components/instances/MigrationHint"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Page } from "@/components/layout/Page"
@@ -649,6 +650,7 @@ function QuickActionsDropdown({ statsData, compact = false }: { statsData: Dashb
 
 export function Dashboard() {
   const { t } = useTranslation("dashboard")
+  const incognitoVariant = useIncognitoVariant()
   const { instances, isLoading } = useInstances()
   const allInstances = useMemo(
     () => instances ?? [],
@@ -742,7 +744,7 @@ export function Dashboard() {
               </Button>
             )}
           </Link>
-          {incognitoToggle}
+          {incognitoVariant !== "B" && incognitoToggle}
         </>
       )}
     >
