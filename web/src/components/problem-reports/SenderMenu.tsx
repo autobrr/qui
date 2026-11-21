@@ -38,7 +38,7 @@ export function SenderMenu({ controls, disabled }: { controls: SenderControls; d
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" disabled={disabled} className="h-7 min-w-0 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground">
+        <Button variant="ghost" size="sm" disabled={disabled} className="h-7 min-w-0 shrink gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground">
           <Icon className={waiting ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
           <span className="truncate">{label}</span>
           <ChevronDown className="h-3 w-3 opacity-60" />
