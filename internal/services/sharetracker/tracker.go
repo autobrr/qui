@@ -292,7 +292,7 @@ func (t *Tracker) serve(w http.ResponseWriter, r *http.Request) {
 	from := middleware.GetClientIPAddr(r.Context())
 	if !from.IsValid() {
 		log.Debug().Str("remoteAddr", r.RemoteAddr).Bool("forwardedFor", r.Header.Get("X-Forwarded-For") != "").
-			Msg("share tracker: 404: no client address because all addresses are trusted proxies or X-Forwarded-For is missing")
+			Msg("share tracker: 404: no client address because all addresses are trusted proxies, or X-Forwarded-For is missing or invalid")
 		notFound(w)
 		return
 	}

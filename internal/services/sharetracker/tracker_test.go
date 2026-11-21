@@ -339,6 +339,7 @@ func TestTheTrackerAnswersEveryOtherRequestWithABare404(t *testing.T) {
 	}
 	post, err := http.NewRequestWithContext(t.Context(), http.MethodPost, r.base+valid, nil)
 	require.NoError(t, err)
+	post.Header.Set("X-Forwarded-For", recipient.from)
 	requireBare404(t, r.do(post))
 	require.Empty(t, r.reports.all())
 }
