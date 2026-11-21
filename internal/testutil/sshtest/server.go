@@ -36,17 +36,17 @@ const (
 	// ExecBSD answers --version without any GNU banner.
 	ExecBSD
 	// ExecNonPOSIX is a login shell with the GNU tools that quotes like fish:
-	// a backslash before the closing quote escapes it, so the quote stays
-	// open and the command fails on an unbalanced quote.
+	// a session request with a backslash before a closing quote fails.
 	ExecNonPOSIX
 	// ExecSplitQuote is a login shell with the GNU tools that quotes like
-	// nushell: it fails on the '\'' that closes a quote, escapes one and
-	// opens another.
+	// nushell: a session request that holds '\'' fails.
 	ExecSplitQuote
-	// ExecCsh is a login shell with the GNU tools that quotes like tcsh: it
-	// fails on a newline in single quotes, which it reads as an unmatched
-	// quote whatever its history settings.
+	// ExecCsh is a login shell with the GNU tools that quotes like tcsh: a
+	// session request with a newline in single quotes fails.
 	ExecCsh
+	ExecRestrictedBash
+	ExecLoginBanner
+	ExecNoSh
 	// ExecSFTPOnly is a key restricted to sftp: every command is refused with
 	// a message and a non-zero exit status, the way a seedbox does it.
 	ExecSFTPOnly
@@ -447,21 +447,12 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 				continue
 			}
 			_ = req.Reply(true, nil)
-			if drop := s.takeExecDrop(payload.Value); drop != nil {
-				_, _ = io.WriteString(channel, drop.output)
-				if drop.cleanExit {
-					s.sendExitStatus(channel, 0)
-				} else {
-					_ = conn.Close()
-				}
-				return
-			}
 			if s.execMode() == ExecHang {
 				s.markStalled()
 				<-stalled
 				return
 			}
-			s.sendExitStatus(channel, s.runCommand(channel, payload.Value))
+			s.runSession(conn, channel, payload.Value)
 			return
 
 		default:
@@ -590,33 +581,71 @@ func (l inMemLister) ListAt([]os.FileInfo, int64) (int, error) {
 	return 0, io.EOF
 }
 
-func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
+func (s *Server) runSession(conn *ssh.ServerConn, channel ssh.Channel, request string) {
+	if status, refused := s.loginShell(channel, request); refused {
+		s.sendExitStatus(channel, status)
+		return
+	}
+	stdin, err := io.ReadAll(channel)
+	if err != nil {
+		return
+	}
+	script := string(stdin)
+	if drop := s.takeExecDrop(script); drop != nil {
+		_, _ = io.WriteString(channel, drop.output)
+		if drop.cleanExit {
+			s.sendExitStatus(channel, 0)
+		} else {
+			_ = conn.Close()
+		}
+		return
+	}
+	s.sendExitStatus(channel, s.runCommand(channel, request, script))
+}
+
+func (s *Server) loginShell(channel ssh.Channel, request string) (status uint32, refused bool) {
 	mode := s.execMode()
 	if mode == ExecSFTPOnly {
 		_, _ = io.WriteString(channel.Stderr(), "This service allows sftp connections only.\n")
-		return 1
+		return 1, true
 	}
 	// A real login writes shell and motd noise to stderr while the command
 	// writes its own output to stdout, so both streams are busy at once.
 	_, _ = io.WriteString(channel.Stderr(), strings.Repeat("welcome to the test host\n", 64))
+	commandName, _, _ := strings.Cut(request, " ")
 	switch {
-	case mode == ExecNonPOSIX && quotedAny(command, func(q string) bool { return strings.HasSuffix(q, `\`) }):
+	case mode == ExecNonPOSIX && quotedAny(request, func(q string) bool { return strings.HasSuffix(q, `\`) }):
 		_, _ = io.WriteString(channel.Stderr(), "fish: Unexpected end of string, quotes are not balanced\n")
-		return 127
-	case mode == ExecSplitQuote && strings.Contains(command, `'\''`):
+		return 127, true
+	case mode == ExecSplitQuote && strings.Contains(request, `'\''`):
 		_, _ = io.WriteString(channel.Stderr(), "Error: nu::parser::unexpected_eof\n")
-		return 1
-	case mode == ExecCsh && quotedAny(command, func(q string) bool { return strings.Contains(q, "\n") }):
+		return 1, true
+	case mode == ExecCsh && quotedAny(request, func(q string) bool { return strings.Contains(q, "\n") }):
 		_, _ = io.WriteString(channel.Stderr(), "Unmatched '''.\n")
-		return 1
-	case strings.Contains(command, "--version") && mode == ExecUutils:
+		return 1, true
+	case mode == ExecRestrictedBash && strings.Contains(commandName, "/"):
+		_, _ = io.WriteString(channel.Stderr(), "bash: "+commandName+": restricted: cannot specify `/' in command names\n")
+		return 1, true
+	case mode == ExecNoSh && commandName == "sh":
+		_, _ = io.WriteString(channel.Stderr(), "bash: sh: command not found\n")
+		return 127, true
+	case mode == ExecLoginBanner:
+		_, _ = io.WriteString(channel, "Welcome to the test host\n")
+	}
+	return 0, false
+}
+
+func (s *Server) runCommand(channel ssh.Channel, request, script string) uint32 {
+	mode := s.execMode()
+	switch {
+	case strings.Contains(script, "--version") && mode == ExecUutils:
 		_, _ = io.WriteString(channel, versionBannerUutils)
-	case strings.Contains(command, "--version") && mode != ExecBSD:
+	case strings.Contains(script, "--version") && mode != ExecBSD:
 		_, _ = io.WriteString(channel, versionBannerGNU)
-	case strings.Contains(command, "--version"):
+	case strings.Contains(script, "--version"):
 		_, _ = io.WriteString(channel, "find: unknown option --version\nstat: unknown option --version\n")
 	default:
-		return s.runShell(channel, command)
+		return s.runShell(channel, request, script)
 	}
 	return 0
 }

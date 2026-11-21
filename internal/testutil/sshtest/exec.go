@@ -12,18 +12,19 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// runShell runs command through the local sh, the way sshd hands it to the
-// login shell, against the same filesystem the sftp subsystem serves. It
-// records the words the shell will see, so a test can assert the quoting.
-func (s *Server) runShell(channel ssh.Channel, command string) uint32 {
+// runShell runs request through the local sh with script on its stdin, the
+// way sshd hands a session to the login shell, against the filesystem the
+// sftp subsystem serves. It records the words of script for the quoting tests.
+func (s *Server) runShell(channel ssh.Channel, request, script string) uint32 {
 	s.mu.Lock()
-	s.commands = append(s.commands, shellWords(command))
+	s.commands = append(s.commands, shellWords(script))
 	s.mu.Unlock()
 
 	// The command ends on its own: a client that gives up closes only the
 	// channel, which a command that writes nothing does not see.
 	//nolint:gosec // G204: a test server runs the commands its own test sent
-	cmd := exec.CommandContext(context.Background(), "sh", "-c", command)
+	cmd := exec.CommandContext(context.Background(), "sh", "-c", request)
+	cmd.Stdin = strings.NewReader(script)
 	cmd.Stdout = channel
 	cmd.Stderr = channel.Stderr()
 	err := cmd.Run()
@@ -36,8 +37,8 @@ func (s *Server) runShell(channel ssh.Channel, command string) uint32 {
 	return 0
 }
 
-// Commands returns the words of each command the server ran through the
-// shell, in order.
+// Commands returns the words of each command the shell read from the stdin
+// of a session, in order.
 func (s *Server) Commands() [][]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

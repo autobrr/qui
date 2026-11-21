@@ -92,13 +92,14 @@ The test shows a tier and a list of checks.
 | **Free space (statvfs)** | The server reports free disk space. The automation setting **Path on server** and the real disk usage in the **Storage** bars on the Dashboard need it. Without it, the bars show an estimate. |
 | **Hardlinks (hardlink@openssh.com)** | The server can create hardlinks. Cross-seed hardlink mode needs it. |
 | **Limits extension** | The server reports its SFTP limits. No feature needs it. |
-| **Commands** | The login can run a shell. |
+| **Commands** | The login can run commands with `sh`. |
 | **GNU find and stat** | The host has the GNU version of `find`, and the GNU or the uutils version of `stat`. |
 
-qui gets the tier **SFTP + commands** when the login runs a POSIX shell and the host has GNU `find` and a `stat` from GNU coreutils or uutils coreutils. Ubuntu 25.10 and later use the `stat` from uutils coreutils. A normal Linux server has both tools. qui gets the tier **SFTP** in these cases:
+qui gets the tier **SFTP + commands** when the login can run commands and the host has GNU `find` and a `stat` from GNU coreutils or uutils coreutils. Ubuntu 25.10 and later use the `stat` from uutils coreutils. A normal Linux server has both tools. qui works with every login shell, for example bash, zsh, fish, tcsh, or nushell, because qui gives each command to `sh` on the host. qui gets the tier **SFTP** in these cases:
 
 - The provider limits the login to SFTP.
-- The login shell is not a POSIX shell, for example fish.
+- The login shell prints text to standard output each time that it starts, for example a welcome message from `.bashrc`.
+- The login shell cannot find `sh`.
 - The host has other versions of the tools, for example BSD or macOS.
 
 The other pages name the two tiers by what qui can do:
