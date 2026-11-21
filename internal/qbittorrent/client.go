@@ -1003,8 +1003,6 @@ func (c *Client) prunePeerSyncManagers(snapshot *qbt.SyncSnapshot) {
 
 // applyOptimisticCacheUpdate applies optimistic updates for the given hashes and action
 func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ map[string]any) {
-	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
-
 	now := time.Now()
 	var snapshot torrentIndex = noTorrents{}
 	if syncManager := c.SyncOwner(); syncManager != nil {
@@ -1029,7 +1027,7 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ ma
 				UpdatedAt:     now,
 				Action:        action,
 			}, 30*time.Second)
-			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for " + action)
+			log.Trace().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for " + action)
 		}
 	}
 

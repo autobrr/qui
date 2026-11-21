@@ -4876,7 +4876,6 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 			if err := client.SetTags(ctx, hashes, tags); err != nil {
 				return err
 			}
-			log.Debug().Str("webAPIVersion", client.GetWebAPIVersion()).Msg("Used SetTags API directly")
 			return nil
 		}
 
