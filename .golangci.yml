@@ -119,6 +119,9 @@ linters:
         - pattern: ^automations\.CrossMatcher\.OpenCrossMatchSession$
           pkg: ^github\.com/autobrr/qui/internal/services/automations$
           msg: ask the run session in internal/services/automations/run_session.go for Shared-file groups (ADR 0042)
+        - pattern: ^(jackett\.Service\.(Search|SearchWithScope)|crossseed\.Service\.searchOnce|dirscan\.JackettSearcher\.SearchWithScope)$
+          pkg: ^github\.com/autobrr/qui/internal/services/(jackett|crossseed|dirscan)$
+          msg: run a search for one source through the search gatherer in internal/services/crossseed/search_gather.go (ADR 0072)
         - pattern: ^automations\.(Service\.freeSpaceBytes|freeSpaceLedger\.(startBytes|projectsDeletes|deleteMode|includeHardlinks|freedBytes|countedPaths|countedMembers))$
           pkg: ^github\.com/autobrr/qui/internal/services/automations$
           msg: ask the free space ledger in internal/services/automations/free_space_ledger.go
@@ -293,6 +296,11 @@ linters:
         linters:
           - forbidigo
         text: source apply module
+
+      - path: internal/services/crossseed/search_gather\.go$|internal/services/dirscan/search_pass\.go$|internal/services/jackett/|internal/api/handlers/jackett\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: ADR 0072
 
       # Only the run session reads Shared-file groups in automations (ADR 0042).
       - path: internal/services/automations/run_session\.go$|internal/services/crossseed/|_test\.go$

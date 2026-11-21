@@ -30,7 +30,7 @@
       "publicAddress": "Публічна адреса",
       "publicAddressDescription": "URL, за яким інтернет досягає цього порту, з проксі перед ним для HTTPS. Його містить .torrent кожного Поширення, тому зміна чекає, доки Поширення на трекері qui не завершаться.",
       "trustedProxies": "Довірені проксі",
-      "trustedProxiesDescription": "Адреси або діапазони CIDR, по одному на рядок. qui читає переслану адресу клієнта лише від цих проксі.",
+      "trustedProxiesDescription": "Вкажіть лише адреси або діапазони CIDR ваших проксі, по одному на рядок, а не мережі клієнтів. qui читає переслану адресу клієнта лише від цих проксі.",
       "trackerUrl": "URL трекера",
       "trackerUrlDescription": "URL оголошення http, https або udp.",
       "publicAddressPlaceholder": "https://share.example.com",

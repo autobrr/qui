@@ -1276,7 +1276,7 @@
   },
   "src/components/torrents/CrossSeedDialog.tsx": {
     "qui/no-comments": {
-      "count": 25
+      "count": 8
     }
   },
   "src/components/torrents/CrossSeedWarning.tsx": {
@@ -1342,11 +1342,6 @@
   "src/components/torrents/ManualCrossSeedDialog.tsx": {
     "qui/no-comments": {
       "count": 14
-    }
-  },
-  "src/components/torrents/SearchScopeEntries.tsx": {
-    "qui/no-comments": {
-      "count": 1
     }
   },
   "src/components/torrents/SelectAllHotkey.tsx": {
@@ -2076,12 +2071,12 @@
   },
   "src/hooks/useCrossSeedSearch.test.tsx": {
     "qui/no-comments": {
-      "count": 50
+      "count": 43
     }
   },
   "src/hooks/useCrossSeedSearch.tsx": {
     "qui/no-comments": {
-      "count": 11
+      "count": 10
     }
   },
   "src/hooks/useCrossSeedSettings.ts": {
@@ -2976,7 +2971,7 @@
   },
   "src/lib/gazelle-lookup.ts": {
     "qui/no-comments": {
-      "count": 5
+      "count": 4
     }
   },
   "src/lib/incognito.ts": {

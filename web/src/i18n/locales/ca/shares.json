@@ -30,7 +30,7 @@
       "publicAddress": "Adreça pública",
       "publicAddressDescription": "La URL a través de la qual internet arriba a aquest port, amb un servidor intermediari al davant per a HTTPS. El .torrent de cada Compartició la porta, així que un canvi espera fins que acabin les Comparticions al tracker de qui.",
       "trustedProxies": "Servidors intermediaris de confiança",
-      "trustedProxiesDescription": "Adreces o rangs CIDR, una per línia. qui només llegeix l'adreça del client reenviada des d'aquests servidors intermediaris.",
+      "trustedProxiesDescription": "Introdueix només les adreces o els rangs CIDR dels teus servidors intermediaris, no les xarxes dels clients, una per línia. qui només llegeix l'adreça del client reenviada des d'aquests servidors intermediaris.",
       "trackerUrl": "URL del tracker",
       "trackerUrlDescription": "Una URL d'anunci http, https o udp.",
       "publicAddressPlaceholder": "https://share.example.com",

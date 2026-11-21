@@ -232,6 +232,7 @@ func (b *rowEditedDuringWalk) WalkDir(ctx context.Context, root string, opts fso
 
 // remoteRunSearcher answers by search query and records every query.
 type remoteRunSearcher struct {
+	noIDSearchCaps
 	indexerID int
 	results   map[string][]jackett.SearchResult
 	queries   []string

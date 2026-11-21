@@ -66,13 +66,3 @@ export function gazelleStatusClass(status: CrossSeedGazelleLookup["status"]): st
   if (status === "match") return "text-primary"
   return "text-muted-foreground"
 }
-
-const notSelected: CrossSeedGazelleLookupReason = "not_selected"
-
-/** gazelleEntryForPick shows a planned RED/OPS entry that the user did not pick as not selected. */
-export function gazelleEntryForPick(entry: CrossSeedGazelleLookup, picked: boolean): CrossSeedGazelleLookup {
-  if (picked || entry.status !== "will_ask") {
-    return entry
-  }
-  return { ...entry, status: "not_asked", reason: notSelected }
-}

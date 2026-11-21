@@ -30,7 +30,7 @@
       "publicAddress": "Öffentliche Adresse",
       "publicAddressDescription": "Die URL, unter der das Internet diesen Port erreicht, mit einem Proxy davor für HTTPS. Die .torrent jeder Freigabe enthält sie, daher wartet eine Änderung, bis die Freigaben auf dem Tracker von qui enden.",
       "trustedProxies": "Vertrauenswürdige Proxys",
-      "trustedProxiesDescription": "Adressen oder CIDR-Bereiche, eine pro Zeile. qui liest die weitergeleitete Client-Adresse nur von diesen Proxys.",
+      "trustedProxiesDescription": "Gib nur Adressen oder CIDR-Bereiche deiner Proxys an, eine pro Zeile, und keine Client-Netzwerke. qui liest die weitergeleitete Client-Adresse nur von diesen Proxys.",
       "trackerUrl": "Tracker-URL",
       "trackerUrlDescription": "Eine http-, https- oder udp-Announce-URL.",
       "publicAddressPlaceholder": "https://share.example.com",

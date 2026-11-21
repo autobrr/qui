@@ -495,7 +495,6 @@
       "failed": "Selhala identifikace křížově sdílených torrentů"
     },
     "search": {
-      "noMatches": "Žádné křížově sdílené shody nebyly nalezeny",
       "noIndexers": "Konfigurujte alespoň jeden Torznab indexer pro hledání křížových sdílení",
       "completedOnly": "Křížová sdílení mohou být pouze u dokončených torrentů",
       "selectTracker": "Vyberte alespoň jeden tracker pro spuštění vlastního hledání",

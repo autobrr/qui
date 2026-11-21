@@ -38,7 +38,7 @@ The dialog and the action have the same fields:
 | **Leave the torrent stopped on the target** | qui adds the torrent on the target and does not start it. |
 | **Way** | How the files go to the target. See [Ways](#ways). |
 
-qui runs one Transfer at a time for each source instance. The other Transfers of that source wait. Before a Transfer starts, qui checks the free space on the target, and reserves the space for each running Transfer to the same target.
+qui runs three Transfers at a time for each source instance. The other Transfers of that source wait. If two Transfers write at the same path on the target, they run one after the other, and the second Transfer uses the files of the first. Before a Transfer starts, qui checks the free space on the target, and reserves the space for each running Transfer to the same target.
 
 On qBittorrent 5.1 and 5.2 with no file access to the target, qBittorrent reports the free space only at its default save path. For another save path, the summary shows "Free space unknown".
 

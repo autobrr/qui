@@ -36,7 +36,7 @@ var (
 // Config bounds the waits and the flushes of a Transfer.
 type Config struct {
 	// Polls and PollInterval bound each wait for qBittorrent. CheckPolls
-	// bounds the wait for the check of every piece on the target.
+	// bounds the wait for the check of every piece on the target or the source.
 	Polls        int
 	CheckPolls   int
 	PollInterval time.Duration
@@ -65,10 +65,11 @@ type Config struct {
 	// the instance syncs every 2 seconds, and the Transfers page reads the
 	// progress every 3 seconds: the age lies between the two.
 	SnapshotAge time.Duration
+	PerSource   int
 }
 
 func DefaultConfig() Config {
-	return Config{Polls: 30, CheckPolls: 3600, PollInterval: time.Second, FlushBytes: 64 << 20, ReadBytes: 16 << 20,
+	return Config{PerSource: 3, Polls: 30, CheckPolls: 3600, PollInterval: time.Second, FlushBytes: 64 << 20, ReadBytes: 16 << 20,
 		Reconnects: 6, ReconnectWait: 10 * time.Second, WakeInterval: time.Minute,
 		ExportPolls: 10, ExportPollInterval: 3 * time.Second, PeerPolls: 120, SnapshotAge: 2500 * time.Millisecond}
 }
@@ -106,8 +107,8 @@ type Deps struct {
 	Config Config
 }
 
-// Service runs Transfers: one at a time for each Transfer source, in the
-// order they started.
+// Service runs Transfers: Config.PerSource at a time for each Transfer
+// source, in the order they started.
 type Service struct {
 	deps   Deps
 	adder  *torrentadd.Adder
@@ -119,15 +120,16 @@ type Service struct {
 
 	mu     sync.Mutex
 	closed bool
-	// queues holds the Transfers of each source, the running one first. A
-	// source is in it while its worker runs, also when a cancel emptied its
-	// queue before the worker took the first Transfer.
-	queues map[int][]int64
+	// queues holds the queue of each source while one of its workers runs.
+	queues map[int]*queue
 	// runs holds each Transfer that is queued, runs, or is being cancelled.
 	runs map[int64]*run
 	// reserved is the free space that the running Transfers need on each
 	// target, and freed what the runs gave back there since the start.
 	reserved, freed map[int]int64
+	landings        map[int64]landing
+	arrivals        int64
+	left            chan struct{}
 	// exports holds a place for each Export run that runs.
 	exports chan struct{}
 	// purged is when qui last removed the rows that finished more than
@@ -141,6 +143,11 @@ type Service struct {
 	rollingBack sync.Mutex
 }
 
+type queue struct {
+	waiting []int64
+	workers int
+}
+
 // run is a Transfer that the Service holds.
 type run struct {
 	// cancel stops the Transfer while it runs.
@@ -149,7 +156,8 @@ type run struct {
 	// committed is set once a cancel no longer rolls the Transfer back.
 	committed bool
 	// meter counts the bytes of a Transfer that runs.
-	meter *meter
+	meter    *meter
+	targetID int
 }
 
 // NewService returns a Service whose Transfers stop when ctx ends or at
@@ -170,10 +178,12 @@ func NewService(ctx context.Context, deps Deps) *Service {
 		ctx:      ctx,
 		cancel:   cancel,
 		ticked:   make(chan struct{}),
-		queues:   map[int][]int64{},
+		queues:   map[int]*queue{},
 		runs:     map[int64]*run{},
 		reserved: map[int]int64{},
 		freed:    map[int]int64{},
+		landings: map[int64]landing{},
+		left:     make(chan struct{}),
 		exports:  make(chan struct{}, exportsAtATime),
 	}
 	s.purge()                           //nolint:contextcheck // the Service runs on its own context, s.ctx
@@ -331,42 +341,54 @@ func (s *Service) enqueue(r *Record) {
 	if _, ok := s.runs[r.ID]; ok || s.closed {
 		return
 	}
-	s.runs[r.ID] = &run{}
-	queue, working := s.queues[r.SourceInstanceID]
-	s.queues[r.SourceInstanceID] = append(queue, r.ID)
-	if !working {
+	s.runs[r.ID] = &run{targetID: r.TargetInstanceID}
+	q := s.queues[r.SourceInstanceID]
+	if q == nil {
+		q = &queue{}
+		s.queues[r.SourceInstanceID] = q
+	}
+	q.waiting = append(q.waiting, r.ID)
+	if q.workers < max(s.deps.Config.PerSource, 1) {
+		q.workers++
 		s.wg.Go(func() { s.drain(r.SourceInstanceID) })
 	}
 }
 
-// drain runs the Transfers of one source until its queue is empty.
+// drain runs the Transfers of one source, one after the other, until none
+// waits.
 func (s *Service) drain(sourceID int) {
 	for {
 		s.mu.Lock()
-		queue := s.queues[sourceID]
-		if len(queue) == 0 || s.ctx.Err() != nil {
+		q := s.queues[sourceID]
+		if len(q.waiting) == 0 || s.ctx.Err() != nil {
 			// A stop leaves the queued Transfers to the next start.
-			for _, id := range queue {
+			for _, id := range q.waiting {
 				delete(s.runs, id)
 			}
-			delete(s.queues, sourceID)
+			q.waiting = nil
+			if q.workers--; q.workers == 0 {
+				delete(s.queues, sourceID)
+			}
 			s.mu.Unlock()
 			return
 		}
-		id := queue[0]
+		id := q.waiting[0]
+		q.waiting = q.waiting[1:]
 		ctx, cancel := context.WithCancel(s.ctx)
 		m := &meter{now: s.deps.Now}
 		s.runs[id].cancel, s.runs[id].meter = cancel, m
+		s.arrivals++
+		s.landings[id] = landing{order: s.arrivals, sourceID: sourceID, targetID: s.runs[id].targetID}
 		s.mu.Unlock()
 
 		s.runOne(ctx, id, m)
 		cancel()
 
 		s.mu.Lock()
-		s.queues[sourceID] = s.queues[sourceID][1:]
 		cancelled := s.runs[id].cancelled
 		if !cancelled {
 			delete(s.runs, id)
+			s.leave(id)
 		}
 		s.mu.Unlock()
 		// A cancel that came while the run ended still rolls it back.
@@ -465,10 +487,9 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 	}
 	if held {
 		r.cancelled = true
-		// An Export run is held but sits in no queue: a source key without
-		// a worker would stop the next Transfer of the source.
-		if queue, ok := s.queues[record.SourceInstanceID]; ok {
-			s.queues[record.SourceInstanceID] = slices.DeleteFunc(queue, func(queued int64) bool { return queued == id })
+		// An Export run is held but waits in no queue.
+		if q := s.queues[record.SourceInstanceID]; q != nil {
+			q.waiting = slices.DeleteFunc(q.waiting, func(queued int64) bool { return queued == id })
 		}
 	}
 	if ended {
@@ -520,6 +541,7 @@ func (s *Service) rollBack(ctx context.Context, id int64) {
 	defer func() {
 		s.mu.Lock()
 		delete(s.runs, id)
+		s.leave(id)
 		s.mu.Unlock()
 	}()
 	record, err := s.deps.Store.Get(ctx, id)

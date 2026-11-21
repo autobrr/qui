@@ -10,6 +10,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme="system"
       className="toaster group"
+      mobileOffset={{ top: "calc(env(safe-area-inset-top) + 16px)" }}
       style={
         {
           "--normal-bg": "var(--popover)",

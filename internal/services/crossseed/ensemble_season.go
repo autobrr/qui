@@ -213,21 +213,29 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 	}
 
 	source := s.matcher().readName(torrent.Name)
-	searchReq := s.matcher().buildTorznabRequest(torznabRequestInput{
+	gatherIn := s.matcher().buildTorznabRequest(torznabRequestInput{
 		torrentName: torrent.Name,
 		source:      source,
 		contentInfo: DetermineContentType(source.release),
 		indexerIDs:  state.resolvedTorznabIndexerIDs,
-	}).req
+	})
+	gatherIn.AltTitle = ""
+	gatherIn.AltTitleSeason = nil
+	gatherIn.LogPrefix = "[CROSSSEED-ENSEMBLE]"
+	searchReq := gatherIn.Req
+	if len(searchReq.Categories) > 0 {
+		searchReq.Categories = s.jackettService.GetOptimalCategoriesForIndexers(ctx, searchReq.Categories, searchReq.IndexerIDs)
+	}
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
 
-	resp, err := s.searchOnce(searchCtx, searchReq)
+	usable := func(res jackett.SearchResult) bool { return s.ensemblePackAdmissible(res.Title, key) }
+	resp, _, answered, err := s.newSearchGatherer(usable).Gather(ctx, searchCtx, gatherIn)
 	if err != nil {
 		if ctx.Err() != nil {
 			return false, ctx.Err()
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, errSearchTimedOut) {
 			s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, "search timed out")
 			return true, nil
 		}
@@ -236,7 +244,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		// waits the interval, and a scheduled run counts it toward its cap.
 		return true, err
 	}
-	if len(resp.CoveredIndexerIDs) > 0 {
+	if answered {
 		state.torznabSearched = true
 	}
 
@@ -262,19 +270,7 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 	attemptedNames := make(map[string]struct{})
 
 	for _, res := range resp.Results {
-		candidate := s.releaseCache.Parse(res.Title)
-		if !isTVSeasonPack(candidate) {
-			continue
-		}
-		// A multi-season range pack can never assemble from one season's
-		// episodes; admitting one is a guaranteed wasted download.
-		if isSeasonRangePack(res.Title) {
-			continue
-		}
-		if s.stringNormalizer.Normalize(candidate.Title) != key.normalizedTitle {
-			continue
-		}
-		if key.season > 0 && candidate.Series != key.season {
+		if !s.ensemblePackAdmissible(res.Title, key) {
 			continue
 		}
 		// The same pack circulates under one name with a distinct GUID per
@@ -343,6 +339,16 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 		return
 	}
 	s.finishSearchCandidate(state, successCount, failedAttempt)
+}
+
+func (s *Service) ensemblePackAdmissible(title string, key ensembleGroupKey) bool {
+	candidate := s.releaseCache.Parse(title)
+	// A multi-season range pack can never assemble from one season's
+	// episodes; admitting one is a guaranteed wasted download.
+	return isTVSeasonPack(candidate) &&
+		!isSeasonRangePack(title) &&
+		s.stringNormalizer.Normalize(candidate.Title) == key.normalizedTitle &&
+		(key.season == 0 || candidate.Series == key.season)
 }
 
 // recordEnsembleOutcome appends a summary result row for an ensemble candidate

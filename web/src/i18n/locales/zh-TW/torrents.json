@@ -654,35 +654,18 @@
   "crossSeedDialog": {
     "title": "搜尋輔種",
     "torrentLabel": "種子",
-    "category": "分類：{{category}}",
-    "size": "大小：{{size}}",
-    "servedFromCache": "從快取提供",
-    "freshSearch": "全新搜尋",
-    "cached": "已快取 {{time}}",
-    "expires": "過期 {{time}}",
-    "refreshFromIndexers": "從索引器重新整理",
     "partialResults": "部分結果：部分索引器未回應",
     "arrLookupFailed": "中繼資料 ID 查詢失敗：僅按標題搜尋，結果可能不完整",
     "arrNoIds": "未找到該資源的中繼資料 ID：僅按標題搜尋",
     "torznabFailed": "Torznab 搜尋失敗：僅顯示 RED/OPS 結果",
-    "searchScope": "搜尋範圍",
     "noIndexers": "沒有可用的 Torznab 索引器",
     "noIndexersHelp": "在設定中新增或啟用 Torznab 索引器以搜尋輔種。",
-    "capabilityNote": "功能說明",
-    "capabilityDescription": "這些索引器缺少此種子所需的功能/分類，伺服器將跳過它們：",
-    "smartFilteringActive": "智慧篩選已啟用",
-    "indexersFiltered_other": "{{count}} 個索引器已篩選",
-    "excludedDescription": "您已從這些 Tracker 做種此版本，因此它們已被排除在搜尋之外。",
     "searchingIndexers": "正在搜尋索引器...",
     "noMatchesFound": "搜尋中未找到匹配項。",
-    "selectReleasesToAdd": "選擇要新增的釋出",
     "selectAll": "全選",
-    "clear": "清除",
     "tagAddedTorrents": "為新增的種子打標籤",
     "startPaused": "暫停啟動",
-    "latestAddAttempt": "最近新增嘗試",
     "close": "關閉",
-    "addSelected": "新增所選",
     "adding": "正在新增...",
     "retry": "重試",
     "seeders": "{{count}} 個做種者",
@@ -694,38 +677,43 @@
     "addedToBlocklist": "已新增到封鎖清單",
     "missingInstance": "封鎖清單缺少實例",
     "trace": {
-      "title": "搜尋明細",
-      "summaryBadge": "{{total}} 個候選，{{matches}} 個匹配項",
-      "summary": "共傳回 {{total}} 個候選。被拒絕：發布資訊不符 {{release}} 個，大小不符 {{size}} 個，內容過濾 {{late}} 個，重複 {{duplicates}} 個。剩餘 {{matches}} 個匹配項。",
-      "indexersHeading": "索引器",
+      "title": "搜尋詳情",
       "status": {
-        "searched": "已搜尋",
         "notCovered": "未完成",
-        "error": "錯誤",
-        "excluded": "已排除"
+        "error": "錯誤"
       },
-      "candidateCount": "{{count}} 個候選",
       "rejectionsHeading": "被拒絕的候選",
       "reasonCount": "{{reason}} · {{count}}",
       "moreCandidates": "還有 {{count}} 個相同原因的候選",
       "copyReport": "複製報告",
       "copied": "報告已複製到剪貼簿",
-      "copyFailed": "無法複製報告"
+      "copyFailed": "無法複製報告",
+      "rejectedCount_other": "拒絕了 {{count}} 個候選",
+      "stats": {
+        "returned": "Torznab 候選",
+        "release": "發行不相符",
+        "size": "大小不相符",
+        "late": "內容篩選",
+        "duplicates": "重複",
+        "matches": "Torznab 相符"
+      }
     },
     "scope": {
-      "allIndexers": "所有索引器",
-      "selectCustom": "自訂選擇",
-      "selectedCount": "已選 {{count}} 個",
-      "selectIndexers": "選擇索引器",
-      "availableIndexers": "可用索引器",
-      "selectAllIndexers": "全選",
-      "clearSelection": "清除選擇",
       "search": "搜尋",
       "searching": "正在搜尋",
-      "noneSelected": "未選擇",
-      "enabledIndexers": "{{count}} 個已啟用{{suffix}}",
-      "selectedOfTotal": "已選 {{selected}}/{{total}}",
-      "indexersForSearch": "{{count}} 個{{suffix}}可供搜尋"
+      "alreadySeeded": "未查詢：您已在那裡做種",
+      "heading": "索引器",
+      "searchCount_other": "搜尋 {{count}} 個索引器",
+      "unsupported_other": "另有 {{count}} 個索引器不支援此內容類型",
+      "matchCount_other": "{{count}} 個相符",
+      "selectNone": "全不選",
+      "checking": "正在檢查適合此種子的索引器…",
+      "nothingLeft": "沒有可以搜尋此種子的索引器。",
+      "selectAll": "全選",
+      "change": "變更",
+      "searchAgain": "重新搜尋",
+      "done": "完成",
+      "nonePicked": "未選擇索引器"
     },
     "status": {
       "added": "已新增",
@@ -746,17 +734,10 @@
       "belowThreshold": "已跳過 - 低於閾值"
     },
     "rateLimitHelp": {
-      "why": "為什麼會這樣：",
-      "whyDescription": "Tracker 限制請求頻率以防止濫用和封鎖。",
-      "whatYouCanDo": "您可以做的：",
-      "wait": "等待 30-60 分鐘後再試",
-      "fewerIndexers": "嘗試選擇更少的索引器進行搜尋",
-      "useRss": "使用 RSS 自動化功能進行持續輔種",
-      "checkIndexers": "檢查索引器頁面以檢視哪些被限流"
+      "wait": "等待 30-60 分鐘後再試"
     },
     "routedTo": "輔種將新增到輔種實例 {{instance}}。",
     "gazelle": {
-      "heading": "RED/OPS",
       "willAsk": "將查詢",
       "willAskRejected": "將查詢：網站上次拒絕了 API 金鑰",
       "match": "相符",
@@ -777,7 +758,17 @@
         "timedOut": "失敗：逾時",
         "other": "失敗：{{detail}}"
       }
-    }
+    },
+    "cachedAgo": "快取結果 · {{time}}",
+    "refresh": "重新整理",
+    "tag": "標籤",
+    "selectedOfTotal": "已選 {{selected}} / {{total}}",
+    "resultsSelectedOfTotal": "已選相符項目 {{selected}} / {{total}}",
+    "addCount_other": "新增 {{count}} 個種子",
+    "openOnIndexer": "在 {{indexer}} 上開啟",
+    "problem": "{{name}}：{{status}}",
+    "problemDetail": "{{name}}：{{status}}（{{detail}}）",
+    "add": "新增"
   },
   "columnFilter": {
     "filterColumn": "篩選 {{column}}",

@@ -191,6 +191,9 @@ func (s *Server) renameFile(w http.ResponseWriter, param func(string) string) {
 		t.staleNames = slices.Clone(names)
 	}
 	t.staleLists = s.StaleFileLists
+	if t.add != nil && t.add.seedMode && t.add.missing {
+		t.add.reload = true
+	}
 	names[index] = newPath
 	t.Layout, t.Files = NoRootFolder, names
 	to := filepath.Join(onHost(save), filepath.FromSlash(newPath))

@@ -4,10 +4,7 @@
 package dirscan
 
 import (
-	"cmp"
 	"context"
-	"errors"
-	"fmt"
 	"strconv"
 
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -30,6 +27,7 @@ type Searcher struct {
 // JackettSearcher is the interface for the jackett service search functionality.
 type JackettSearcher interface {
 	SearchWithScope(ctx context.Context, req *jackett.TorznabSearchRequest, scope string) error
+	IndexerIDsWithIDSearchCaps(ctx context.Context, req *jackett.TorznabSearchRequest) []int
 }
 
 // NewSearcher creates a new searcher.
@@ -43,66 +41,13 @@ func NewSearcher(jackettService JackettSearcher, parser *Parser) *Searcher {
 	}
 }
 
-// SearchRequest contains parameters for searching a searchee.
-type SearchRequest struct {
-	// Searchee to search for
-	Searchee *Searchee
-
-	// Metadata parsed from the searchee name (optional, will be parsed if nil)
-	Metadata *SearcheeMetadata
-
-	// IndexerIDs to search (empty = all enabled indexers)
-	IndexerIDs []int
-
-	// Categories to search (optional, but recommended for better results).
-	Categories []int
-
-	// QueryOverride replaces the query derived from Metadata. Retry passes set it
-	// to search the same searchee under an alternate title.
-	QueryOverride string
-
-	// OmitYear drops the year parameter. The yearless retry sets it after a
-	// year-constrained pass found nothing.
-	OmitYear bool
-
-	// OnAllComplete is called when all search jobs complete with the final results
-	OnAllComplete func(response *jackett.SearchResponse, err error)
-}
-
-// Search searches Torznab indexers for torrents matching a searchee.
-// Uses embedded IDs first (most accurate), then falls back to title + year.
-func (s *Searcher) Search(ctx context.Context, req *SearchRequest) error {
-	if req.Searchee == nil {
-		return errors.New("searchee is required")
-	}
-
-	ctx = jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
-
-	// Parse metadata if not provided
-	meta := req.Metadata
-	if meta == nil {
-		meta = s.parser.Parse(req.Searchee.Name)
-	}
-
-	// Build the search request
-	searchReq := s.buildSearchRequest(meta, req)
-
-	// Execute the search with dir-scan scope
-	if err := s.jackettService.SearchWithScope(ctx, searchReq, SearchScope); err != nil {
-		return fmt.Errorf("search indexers: %w", err)
-	}
-	return nil
-}
-
-// buildSearchRequest constructs a TorznabSearchRequest from parsed metadata.
-func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest) *jackett.TorznabSearchRequest {
+func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, indexerIDs, categories []int) *jackett.TorznabSearchRequest {
 	searchReq := &jackett.TorznabSearchRequest{
 		ReleaseName:      meta.OriginalName,
-		Categories:       req.Categories,
-		IndexerIDs:       req.IndexerIDs,
+		Categories:       categories,
+		IndexerIDs:       indexerIDs,
 		Limit:            torznabDirScanSearchLimit,
 		ReturnAllResults: true,
-		OnAllComplete:    req.OnAllComplete,
 	}
 
 	// Priority 1: Use embedded external IDs if available (most accurate)
@@ -112,7 +57,7 @@ func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest
 	}
 
 	// Always set the query for fallback/combined search
-	searchReq.Query = cmp.Or(req.QueryOverride, buildSearchQuery(meta))
+	searchReq.Query = buildSearchQuery(meta)
 
 	// Apply TV-specific parameters
 	if meta.IsTV {
@@ -125,7 +70,7 @@ func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest
 	}
 
 	// Year hurts TV searches on many indexers; keep it for movies only.
-	if meta.Year > 0 && meta.IsMovie && !req.OmitYear {
+	if meta.Year > 0 && meta.IsMovie {
 		searchReq.Year = meta.Year
 	}
 

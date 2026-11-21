@@ -158,7 +158,7 @@ function SettingsSection({ saved, query }: { saved: ShareSettings; query: UseQue
               <Field label={t("settings.tracker.trustedProxies")} help={t("settings.tracker.trustedProxiesDescription")}>
                 <Textarea
                   rows={3}
-                  placeholder={"172.17.0.1\n10.0.0.0/8"}
+                  placeholder={"127.0.0.1\n172.17.0.1"}
                   value={draft.trustedProxies}
                   onChange={(e) => update({ trustedProxies: e.target.value })}
                   spellCheck={false}

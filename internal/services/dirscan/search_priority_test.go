@@ -13,6 +13,7 @@ import (
 )
 
 type capturingJackettSearcher struct {
+	noIDSearchCaps
 	priority jackett.RateLimitPriority
 	req      *jackett.TorznabSearchRequest
 	scope    string
@@ -27,19 +28,17 @@ func (c *capturingJackettSearcher) SearchWithScope(ctx context.Context, req *jac
 		c.priority = priority
 		c.captured = true
 	}
+	req.OnAllComplete(&jackett.SearchResponse{}, nil)
 	return nil
 }
 
 func TestSearcher_SearchUsesBackgroundPriorityAndFixedWindow(t *testing.T) {
 	capture := &capturingJackettSearcher{}
 	searcher := NewSearcher(capture, NewParser(nil))
-
-	req := &SearchRequest{
-		Searchee: &Searchee{Name: "Example.Movie.2024.1080p.WEB-DL"},
-	}
+	meta := searcher.parser.Parse("Example.Movie.2024.1080p.WEB-DL")
 
 	ctx := jackett.WithSearchPriority(t.Context(), jackett.RateLimitPriorityInteractive)
-	err := searcher.Search(ctx, req)
+	_, err := searcher.searchPass(ctx, searcher.buildSearchRequest(meta, nil, nil))
 	require.NoError(t, err)
 
 	require.True(t, capture.captured)

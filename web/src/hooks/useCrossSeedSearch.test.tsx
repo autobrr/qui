@@ -56,6 +56,12 @@ vi.mock("@/components/torrents/CrossSeedDialog", () => ({
   CrossSeedDialog: () => null,
 }))
 
+let phone = false
+vi.mock("@/hooks/useMediaQuery", async importOriginal => ({
+  ...await importOriginal<typeof import("@/hooks/useMediaQuery")>(),
+  useIsPhone: () => phone,
+}))
+
 import { api } from "@/lib/api"
 import { toast } from "sonner"
 import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
@@ -189,6 +195,7 @@ describe("useCrossSeedSearch", () => {
   })
 
   afterEach(() => {
+    phone = false
     vi.useRealTimers()
     vi.clearAllMocks()
   })
@@ -481,11 +488,11 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
     await act(async () => {
-      resolveSearch(makeSearchResponse({ results: [] }))
+      resolveSearch(makeSearchResponse({ results: [makeResult({ guid: "guid-late" })] }))
       await Promise.resolve()
     })
 
-    expect(mockedToast.info).not.toHaveBeenCalledWith("hooks.search.noMatches")
+    expect(dialogProps(result).results).toEqual([])
   })
 
   it("forwards the partial flag from the search response to the dialog", async () => {
@@ -549,7 +556,7 @@ describe("useCrossSeedSearch", () => {
     expect(options?.findIndividualEpisodes).toBe(true)
   })
 
-  it("shows a no-matches toast when the search returns no results", async () => {
+  it("leaves an empty search to the dialog, with no toast", async () => {
     mockedApi.searchCrossSeedTorrent.mockResolvedValue(
       makeSearchResponse({ results: [] })
     )
@@ -566,10 +573,12 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
 
-    expect(mockedToast.info).toHaveBeenCalledWith("hooks.search.noMatches")
+    expect(dialogProps(result).hasSearched).toBe(true)
+    expect(dialogProps(result).results).toEqual([])
+    expect(mockedToast.info).not.toHaveBeenCalled()
   })
 
-  it("forwards a failed RED/OPS lookup instead of a no-matches toast", async () => {
+  it("forwards a failed RED/OPS lookup to the dialog", async () => {
     const lookups: CrossSeedGazelleLookup[] = [{ ...red, status: "no_match" }, { ...ops, status: "failed", reason: "timed_out" }]
     mockedApi.searchCrossSeedTorrent.mockResolvedValue(
       makeSearchResponse({ results: [], gazelleLookups: lookups })
@@ -588,10 +597,9 @@ describe("useCrossSeedSearch", () => {
     })
 
     expect(dialogProps(result).gazelleEntries).toEqual(lookups)
-    expect(mockedToast.info).not.toHaveBeenCalledWith("hooks.search.noMatches")
   })
 
-  it("forwards the Torznab failure note instead of a no-matches toast", async () => {
+  it("forwards the Torznab failure note to the dialog", async () => {
     mockedApi.searchCrossSeedTorrent.mockResolvedValue(
       makeSearchResponse({ results: [], torznabFailed: true })
     )
@@ -609,11 +617,10 @@ describe("useCrossSeedSearch", () => {
     })
 
     expect(dialogProps(result).torznabFailed).toBe(true)
-    expect(mockedToast.info).not.toHaveBeenCalledWith("hooks.search.noMatches")
   })
 
   it("applies a cooldown on force-refresh and recovers after 30s", async () => {
-    const { result, rerender } = await renderSettled()
+    const { result } = await renderSettled()
     // Switch to fake timers only after the background queries have settled so
     // renderSettled's real-timer waitFor isn't starved.
     vi.useFakeTimers()
@@ -638,18 +645,13 @@ describe("useCrossSeedSearch", () => {
 
     // cooldown engaged -> not available and a label is exposed
     expect(dialogProps(result).canForceRefresh).toBe(false)
-    expect(dialogProps(result).refreshCooldownLabel).toBe(
-      "hooks.search.refreshReadyIn"
-    )
+    expect(dialogProps(result).refreshCooldownUntil).toBeGreaterThan(0)
 
-    // after the cooldown elapses it becomes available again
-    // The hook reads the clock at render; the torrent list re-renders it.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000)
     })
-    rerender()
     expect(dialogProps(result).canForceRefresh).toBe(true)
-    expect(dialogProps(result).refreshCooldownLabel).toBeUndefined()
+    expect(dialogProps(result).refreshCooldownUntil).toBe(0)
   })
 
   it("wraps rate-limit search failures and preserves the error on close", async () => {
@@ -669,12 +671,8 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
 
-    // The raw error text is classified as rate-limited, wrapped via the
-    // rateLimitSearch key, and surfaced with the long (10s) toast duration.
-    expect(mockedToast.error).toHaveBeenCalledWith(
-      expect.stringContaining("hooks.search.rateLimitSearch"),
-      { duration: 10000 }
-    )
+    expect(dialogProps(result).error).toEqual(expect.stringContaining("hooks.search.rateLimitSearch"))
+    expect(mockedToast.error).not.toHaveBeenCalled()
     expect(result.current.isCrossSeedSearching).toBe(false)
     // error surfaced on the dialog
     const errorBeforeClose = dialogProps(result).error
@@ -686,6 +684,31 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
     expect(dialogProps(result).error).toBe(errorBeforeClose)
+  })
+
+  it("shows the add outcome in the drawer, not in a toast, on a phone", async () => {
+    phone = true
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ results: [makeResult({ guid: "guid-phone" })] }))
+    mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
+      results: [{ title: "Some Release", indexer: "indexer-1", success: true, instanceResults: [{ instanceId: 1, instanceName: "inst", success: true, status: "added", class: "added" }] }],
+    } as never)
+
+    const { result } = await renderSettled()
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-phone" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(mockedToast.success).not.toHaveBeenCalled()
+    expect((dialogProps(result).applyOutcomes as Map<string, unknown>).size).toBe(1)
+    expect(dialogProps(result).applySummary).toEqual({ level: "success", message: "hooks.search.applySuccess:1" })
   })
 
   it("applies selected results and invalidates torrent queries", async () => {
@@ -746,6 +769,7 @@ describe("useCrossSeedSearch", () => {
     expect(mockedToast.success).toHaveBeenCalledWith("hooks.search.applySuccess:1")
     expect(mockedToast.warning).not.toHaveBeenCalled()
     expect(mockedToast.error).not.toHaveBeenCalled()
+    expect(dialogProps(result).selectionCount).toBe(0)
 
     // both torrent caches invalidated so the list/counts refresh after apply
     expect(invalidateSpy).toHaveBeenCalledWith({
@@ -837,6 +861,34 @@ describe("useCrossSeedSearch", () => {
 
     expect(mockedToast.warning).toHaveBeenCalledWith("hooks.search.applyPartial:1/1")
     expect(mockedToast.success).not.toHaveBeenCalled()
+  })
+
+  it("unticks each sent result and keeps its outcome, also for a failed add", async () => {
+    const results = [makeResult({ guid: "guid-landed", title: "Cedar Harbor A" }), makeResult({ guid: "guid-failed", title: "Cedar Harbor B" })]
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ results }))
+    mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
+      results: [
+        { title: "Cedar Harbor A", indexer: "indexer-1", success: true, instanceResults: [{ instanceId: 1, instanceName: "a", success: true, status: "added", class: "added" }] },
+        { title: "Cedar Harbor B", indexer: "indexer-1", success: false, instanceResults: [{ instanceId: 1, instanceName: "a", success: false, status: "size_mismatch", class: "failed" }] },
+      ],
+    } as never)
+
+    const { result } = await renderSettled()
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-mixed" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    expect(dialogProps(result).selectionCount).toBe(2)
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(dialogProps(result).selectionCount).toBe(0)
+    expect([...(dialogProps(result).applyOutcomes as Map<string, unknown>).keys()]).toEqual(["guid-landed", "guid-failed"])
   })
 
   it("maps an all-failed apply result to an error toast", async () => {
@@ -987,7 +1039,7 @@ describe("useCrossSeedSearch", () => {
       await (dialogProps(result).onApply as () => Promise<void>)()
     })
 
-    expect(mockedToast.error).toHaveBeenCalledWith("apply boom")
+    expect(mockedToast.error).toHaveBeenCalledWith("apply boom", { position: undefined })
     expect(mockedToast.success).not.toHaveBeenCalled()
   })
 
@@ -1004,12 +1056,7 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
 
-    // analyze is the first network call on open; its rate-limited rejection is
-    // wrapped via the DISTINCT rateLimitAnalyze key with the long toast duration.
-    expect(mockedToast.error).toHaveBeenCalledWith(
-      expect.stringContaining("hooks.search.rateLimitAnalyze"),
-      { duration: 10000 }
-    )
+    expect(mockedToast.error).not.toHaveBeenCalled()
     expect(dialogProps(result).error).toBeTruthy()
     expect(dialogProps(result).error).toEqual(
       expect.stringContaining("hooks.search.rateLimitAnalyze")
@@ -1025,11 +1072,9 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
 
-    // switch to custom indexer mode without selecting any indexer
+    const [only] = dialogProps(result).indexerOptions as Array<{ id: number }>
     act(() => {
-      ;(
-        dialogProps(result).onIndexerModeChange as (m: "all" | "custom") => void
-      )("custom")
+      ;(dialogProps(result).onToggleIndexer as (id: number) => void)(only.id)
     })
 
     await act(async () => {
@@ -1062,14 +1107,19 @@ describe("useCrossSeedSearch", () => {
       return rendered.result
     }
 
-    async function searchCustom(result: { current: HookResult }, ids: number[]) {
+    function toggle(result: { current: HookResult }, id: number) {
       act(() => {
-        ;(dialogProps(result).onIndexerModeChange as (m: "all" | "custom") => void)("custom")
+        ;(dialogProps(result).onToggleIndexer as (id: number) => void)(id)
       })
-      for (const id of ids) {
-        act(() => {
-          ;(dialogProps(result).onToggleIndexer as (id: number) => void)(id)
-        })
+    }
+
+    async function searchCustom(result: { current: HookResult }, ids: number[]) {
+      const all = [
+        ...(dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id),
+        ...(dialogProps(result).selectableGazelleIds as number[]),
+      ]
+      for (const id of all.filter(id => !ids.includes(id))) {
+        toggle(result, id)
       }
       await act(async () => {
         ;(dialogProps(result).onScopeSearch as () => void)()
@@ -1096,6 +1146,77 @@ describe("useCrossSeedSearch", () => {
       const options = mockedApi.searchCrossSeedTorrent.mock.calls[0][2]
       expect(options?.indexerIds).toEqual([1])
       expect(options?.gazelleSites).toBeUndefined()
+    })
+
+    it("picks the rest when the user takes one entry out, and all again when the user puts it back", async () => {
+      const result = await openWithPlan()
+
+      toggle(result, ops.indexerId)
+      expect(dialogProps(result).indexerMode).toBe("custom")
+      expect(dialogProps(result).selectedIndexerIds).toEqual([1])
+
+      toggle(result, ops.indexerId)
+      expect(dialogProps(result).indexerMode).toBe("all")
+      expect(dialogProps(result).selectedIndexerIds).toEqual([])
+    })
+
+    it("lists the indexers that the user already seeds from, without the ones that a site replaces", async () => {
+      mockedApi.listTorznabIndexers.mockResolvedValue([
+        makeIndexer({ id: 1, name: "generic" }),
+        makeIndexer({ id: 2, name: "seeded" }),
+        makeIndexer({ id: 3, name: "tv only" }),
+        makeIndexer({ id: 7, name: "Redacted" }),
+      ])
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({
+        name: "t", hash: "hash-plan", gazellePlan: plan, availableIndexers: [1, 2, 7], excludedIndexers: { 2: "seeded", 7: "Redacted" },
+      } as never)
+      const { result } = await renderSettled()
+      await act(async () => {
+        result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-plan" }))
+        await Promise.resolve()
+      })
+
+      expect(dialogProps(result).alreadySeededIndexers).toEqual([{ id: 2, name: "seeded" }])
+      expect(dialogProps(result).unsupportedIndexers).toEqual([{ id: 3, name: "tv only" }])
+      expect((dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id)).toEqual([1])
+    })
+
+    it("keeps the analysis while a search runs", async () => {
+      mockedApi.listTorznabIndexers.mockResolvedValue([
+        makeIndexer({ id: 1, name: "generic" }),
+        makeIndexer({ id: 2, name: "seeded" }),
+        makeIndexer({ id: 3, name: "tv only" }),
+      ])
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({
+        name: "t", hash: "hash-keep", gazellePlan: plan, availableIndexers: [1, 2], excludedIndexers: { 2: "seeded" },
+      } as never)
+      mockedApi.searchCrossSeedTorrent.mockReturnValue(new Promise(() => {}) as never)
+      const { result } = await renderSettled()
+      await act(async () => {
+        result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-keep" }))
+        await Promise.resolve()
+      })
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+
+      expect(dialogProps(result).isLoading).toBe(true)
+      expect(dialogProps(result).sourceTorrent).toMatchObject({ hash: "hash-keep" })
+      expect((dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id)).toEqual([1])
+      expect(dialogProps(result).alreadySeededIndexers).toEqual([{ id: 2, name: "seeded" }])
+    })
+
+    it("picks no entry, then each entry again, from the select controls", async () => {
+      const result = await openWithPlan()
+      act(() => (dialogProps(result).onSetAllIndexers as (picked: boolean) => void)(false))
+
+      expect(dialogProps(result).indexerMode).toBe("custom")
+      expect(dialogProps(result).selectedIndexerIds).toEqual([])
+
+      act(() => (dialogProps(result).onSetAllIndexers as (picked: boolean) => void)(true))
+
+      expect(dialogProps(result).indexerMode).toBe("all")
     })
 
     it("asks only RED/OPS when the user picks only a RED/OPS entry", async () => {
@@ -1125,9 +1246,7 @@ describe("useCrossSeedSearch", () => {
       expect(dialogProps(result).gazelleEntries).toEqual(lookups)
       expect(dialogProps(result).gazelleLookups).toEqual(lookups)
 
-      act(() => {
-        ;(dialogProps(result).onToggleIndexer as (id: number) => void)(ops.indexerId)
-      })
+      toggle(result, ops.indexerId)
 
       expect(dialogProps(result).gazelleEntries).toEqual(plan)
       expect(dialogProps(result).gazelleLookups).toEqual(lookups)
