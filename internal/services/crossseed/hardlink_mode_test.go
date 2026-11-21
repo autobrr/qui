@@ -113,95 +113,6 @@ func TestResolveTrackerDisplayName(t *testing.T) {
 	}
 }
 
-func TestLinkDestDir(t *testing.T) {
-	filesWithRoot := []hardlinktree.TorrentFile{
-		{Path: "Movie/video.mkv", Size: 1000},
-		{Path: "Movie/subs.srt", Size: 100},
-	}
-	filesRootless := []hardlinktree.TorrentFile{
-		{Path: "video.mkv", Size: 1000},
-		{Path: "subs.srt", Size: 100},
-	}
-
-	// Link mode always uses contentLayout=Original, so every preset adds the
-	// torrent's own root folder, or an isolation folder for a rootless torrent.
-	tests := []struct {
-		name           string
-		preset         string
-		files          []hardlinktree.TorrentFile
-		wantTopFolder  string
-		wantDestDir    string
-		trackerDisplay string
-	}{
-		{name: "flat with root folder", preset: "flat", files: filesWithRoot, wantTopFolder: "/hardlinks/Movie", wantDestDir: "/hardlinks"},
-		{name: "flat rootless", preset: "flat", files: filesRootless, wantTopFolder: "/hardlinks/My.Movie.2024", wantDestDir: "/hardlinks/My.Movie.2024"},
-		{name: "unknown preset is flat", preset: "unknown", files: filesWithRoot, wantTopFolder: "/hardlinks/Movie", wantDestDir: "/hardlinks"},
-		{name: "by-tracker with root folder", preset: "by-tracker", trackerDisplay: "MyTracker", files: filesWithRoot, wantTopFolder: "/hardlinks/MyTracker/Movie", wantDestDir: "/hardlinks/MyTracker"},
-		{name: "by-tracker rootless", preset: "by-tracker", trackerDisplay: "MyTracker", files: filesRootless, wantTopFolder: "/hardlinks/MyTracker/My.Movie.2024", wantDestDir: "/hardlinks/MyTracker/My.Movie.2024"},
-		{name: "by-instance with root folder", preset: "by-instance", files: filesWithRoot, wantTopFolder: "/hardlinks/qbt-main/Movie", wantDestDir: "/hardlinks/qbt-main"},
-		{name: "by-instance rootless", preset: "by-instance", files: filesRootless, wantTopFolder: "/hardlinks/qbt-main/My.Movie.2024", wantDestDir: "/hardlinks/qbt-main/My.Movie.2024"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var customizations []*models.TrackerCustomization
-			if tt.trackerDisplay != "" {
-				customizations = []*models.TrackerCustomization{
-					{DisplayName: tt.trackerDisplay, Domains: []string{"tracker.example.com"}},
-				}
-			}
-			s := &Service{trackerCustomizationStore: &mockTrackerCustomizationStore{customizations: customizations}}
-			instance := &models.Instance{ID: 1, Name: "qbt-main", HardlinkBaseDir: "/hardlinks", HardlinkDirPreset: tt.preset}
-			candidate := CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt-main"}
-
-			presetDir := s.linkPresetDir(t.Context(), fsops.SlashPaths, instance, "/hardlinks", candidate, "tracker.example.com", &CrossSeedRequest{})
-			topFolder, destDir := linkDestDir(fsops.SlashPaths, presetDir, "My.Movie.2024", tt.files)
-			assert.Equal(t, tt.wantTopFolder, topFolder)
-			assert.Equal(t, tt.wantDestDir, destDir)
-		})
-	}
-}
-
-func TestLinkPresetDir_SanitizesNames(t *testing.T) {
-	mockStore := &mockTrackerCustomizationStore{
-		customizations: []*models.TrackerCustomization{
-			{DisplayName: "Tracker<>:\"/\\|?*Name", Domains: []string{"tracker.example.com"}},
-		},
-	}
-
-	s := &Service{
-		trackerCustomizationStore: mockStore,
-	}
-
-	instance := &models.Instance{
-		ID:                1,
-		Name:              "qbt1",
-		HardlinkBaseDir:   "/hardlinks",
-		HardlinkDirPreset: "by-tracker",
-	}
-
-	candidate := CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"}
-	req := &CrossSeedRequest{}
-
-	result := s.linkPresetDir(
-		t.Context(),
-		fsops.HostPaths,
-		instance,
-		instance.HardlinkBaseDir,
-		candidate,
-		"tracker.example.com", // incoming tracker domain
-		req,
-	)
-
-	// Should not contain illegal path characters
-	for _, c := range []string{"<", ">", ":", "\"", "|", "?", "*"} {
-		assert.NotContains(t, result, c, "result should not contain %q", c)
-	}
-
-	// Should contain the sanitized name
-	assert.Contains(t, result, "TrackerName")
-}
-
 func TestRankBaseDirs(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -351,23 +262,6 @@ func TestProcessHardlinkMode_ByTrackerUsesTrackerCustomization(t *testing.T) {
 	require.Len(t, adds.added, 1)
 	assert.Equal(t, filepath.Join(linksDir, "Custom"), adds.added[0]["savepath"])
 	assert.FileExists(t, filepath.Join(linksDir, "Custom", "Movie", "movie.mkv"))
-}
-
-func TestPreviewLinkBaseDir_UsesRankedOrder(t *testing.T) {
-	root := t.TempDir()
-	dirA := filepath.Join(root, "a", "cross-seed")
-	dirB := filepath.Join(root, "b", "cross-seed")
-	savePath := filepath.Join(root, "b", "movies")
-	for _, dir := range []string{dirA, dirB, savePath} {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-
-	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true, UseHardlinks: true, HardlinkBaseDir: dirA + "," + dirB}
-	s := &Service{instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: instance}}}
-	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
-
-	got, _ := s.previewLinkBaseDir(t.Context(), instance, savePath)
-	assert.Equal(t, dirB, got)
 }
 
 func TestSafeTorrentRelativeFilePath(t *testing.T) {

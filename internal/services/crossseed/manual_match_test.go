@@ -7,15 +7,17 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -369,7 +371,9 @@ func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 	t.Parallel()
 
 	const instanceID = 1
-	instance := &models.Instance{ID: instanceID, Name: "main", UseHardlinks: true, HardlinkBaseDir: "/links"}
+	root := t.TempDir()
+	downloads, links := filepath.Join(root, "downloads"), filepath.Join(root, "links")
+	instance := &models.Instance{ID: instanceID, Name: "main", HasLocalFilesystemAccess: true, UseHardlinks: true, HardlinkBaseDir: links}
 
 	const (
 		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
@@ -377,13 +381,16 @@ func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 		size         = int64(4 << 20)
 	)
 	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
+	require.NoError(t, os.MkdirAll(filepath.Join(downloads, incomingName), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloads, incomingName, fileName), make([]byte, size), 0o600))
 
-	validated := qbt.Torrent{Hash: "6666666666666666666666666666666666666666", Name: incomingName, SavePath: "/downloads", Progress: 1, Size: size}
+	validated := qbt.Torrent{Hash: "6666666666666666666666666666666666666666", Name: incomingName, SavePath: downloads, Progress: 1, Size: size}
 	zeroOverlap := qbt.Torrent{Hash: "7777777777777777777777777777777777777777", Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
 	svc := manualMatchTestService(instance, []qbt.Torrent{validated, zeroOverlap}, map[string]qbt.TorrentFiles{
 		validated.Hash:   {{Name: incomingName + "/" + fileName, Size: size}},
 		zeroOverlap.Hash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
 	})
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 
 	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, zeroOverlap.Hash)
 	require.NoError(t, err)
@@ -393,8 +400,7 @@ func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 	}
 	require.Contains(t, byHash, validated.Hash)
 	require.Contains(t, byHash, zeroOverlap.Hash)
-	require.True(t, strings.HasPrefix(filepath.ToSlash(byHash[validated.Hash].EffectiveSavePath), "/links"),
-		"validated pick previews the link destination, got %q", byHash[validated.Hash].EffectiveSavePath)
+	require.Equal(t, links, byHash[validated.Hash].EffectiveSavePath, "validated pick previews the link destination")
 	require.Equal(t, "/downloads", byHash[zeroOverlap.Hash].EffectiveSavePath,
 		"zero-overlap pick previews the target save path (regular add)")
 }
@@ -568,6 +574,57 @@ func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
 			})
 			require.EqualError(t, err, tt.want.Error())
 			require.Empty(t, sync.addOptions)
+		})
+	}
+}
+
+func TestManualMatchPreviewShowsTheSavePathOfTheSingleAdd(t *testing.T) {
+	const name = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+	tests := []struct {
+		name  string
+		files []string
+	}{
+		{name: "root folder", files: []string{name + ".mkv", name + ".nfo"}},
+		{name: "rootless", files: []string{name + ".mkv"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			downloads := filepath.Join(root, "downloads")
+			linksParent := filepath.Join(root, "links")
+			torrentBytes := createTestTorrent(t, name, tt.files, 16384)
+			meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+			require.NoError(t, err)
+			for _, f := range meta.Files {
+				p := filepath.Join(downloads, filepath.FromSlash(f.Name))
+				require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+				require.NoError(t, os.WriteFile(p, make([]byte, f.Size), 0o600))
+			}
+
+			existingBase := filepath.Join(root, "existing")
+			require.NoError(t, os.Mkdir(existingBase, 0o755))
+			instance := &models.Instance{
+				ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
+				HardlinkBaseDir: filepath.Join(linksParent, "cross-seed") + "," + existingBase, HardlinkDirPreset: "by-tracker",
+			}
+			target := qbt.Torrent{Hash: "9999999999999999999999999999999999999999", Name: name, SavePath: downloads, Progress: 1, Size: meta.Info.TotalLength()}
+			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{target.Hash: meta.Files})
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+
+			resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, target.Hash)
+			require.NoError(t, err)
+			require.Len(t, resp.Proposals, 1)
+			preview := resp.Proposals[0].EffectiveSavePath
+			require.NoDirExists(t, linksParent, "the preview writes nothing")
+
+			adds := withLinkAdder(svc)
+			result := svc.processHardlinkMode(t.Context(), linkCheck(instance.ID, meta.HashV1),
+				CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name},
+				torrentBytes, meta.HashV1, meta.Name, &CrossSeedRequest{},
+				&target, "exact", meta.Files, meta.Files, &qbt.TorrentProperties{SavePath: downloads}, "", "")
+			require.True(t, result.Success, "result: %+v", result)
+			require.Len(t, adds.added, 1)
+			require.Equal(t, adds.added[0]["savepath"], preview)
 		})
 	}
 }

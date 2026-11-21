@@ -152,6 +152,56 @@ func linkSources(d fsops.PathDialect, pairs []catalogFilePair, toLink []hardlink
 	return links, nil
 }
 
+type singleAddTorrent struct {
+	hash, name                 string
+	files                      qbt.TorrentFiles
+	trackerDomain, indexerName string
+}
+
+func (s *Service) planSingleAddTree(
+	ctx context.Context,
+	backend fsops.Backend,
+	instance *models.Instance,
+	candidate CrossSeedCandidate,
+	torrent singleAddTorrent,
+	toLink []hardlinktree.TorrentFile,
+	matchedFiles qbt.TorrentFiles,
+	savePath string,
+) (*linktree.TreePlan, error) {
+	d := backend.Paths()
+	existing := make([]hardlinktree.ExistingFile, 0, len(matchedFiles))
+	for _, f := range matchedFiles {
+		existing = append(existing, hardlinktree.ExistingFile{
+			AbsPath: d.Join(savePath, d.FromSlash(f.Name)),
+			RelPath: f.Name,
+			Size:    f.Size,
+		})
+	}
+	links, err := linkSources(d, candidate.filePairs, toLink, existing)
+	if err != nil {
+		return nil, &linktree.Error{Kind: linktree.InvalidPlan, Err: err}
+	}
+
+	torrentFiles := make([]string, 0, len(torrent.files))
+	for _, f := range torrent.files {
+		torrentFiles = append(torrentFiles, f.Name)
+	}
+	cfg, _ := linktree.ConfigOf(instance)
+	var trackerFolder string
+	if cfg.Preset == linktree.PresetByTracker {
+		trackerFolder = linktree.TrackerFolderName(ctx, s.trackerCustomizationStore, torrent.trackerDomain, torrent.indexerName)
+	}
+	_, receiverName := candidate.receiver()
+	return linktree.Plan(ctx, linktree.Request{
+		Backend:        backend,
+		Config:         cfg,
+		TrackerFolder:  trackerFolder,
+		InstanceFolder: receiverName,
+		Torrent:        linktree.Torrent{InfoHash: torrent.hash, Name: torrent.name, Files: torrentFiles},
+		Links:          links,
+	})
+}
+
 // processLinkMode attempts to add a cross-seed torrent by creating a linked
 // file tree that matches the incoming torrent's layout, which removes the need
 // for reuse+rename alignment.
@@ -325,18 +375,6 @@ func (s *Service) processLinkMode(
 	}
 	d := backend.Paths()
 
-	// Build existing files list (all files on disk from matched torrent), so
-	// that the match can pick the source file of each target by path, name,
-	// and size.
-	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
-	for _, f := range candidateFiles {
-		existingFiles = append(existingFiles, hardlinktree.ExistingFile{
-			AbsPath: d.Join(props.SavePath, d.FromSlash(f.Name)),
-			RelPath: f.Name,
-			Size:    f.Size,
-		})
-	}
-
 	// The partial pool registers its members on the Source instance, so a routed add stays out.
 	pooledCompletion := candidate.route == nil && s.partialPool.joinEnabled(ctx, instance, hasExtras, req, facts.Verify != VerifyNone || addPolicy.DiscLayout)
 	var poolDescriptors []partialPoolFileDescriptor
@@ -356,32 +394,13 @@ func (s *Service) processLinkMode(
 			Msg(logPrefix + what)
 	}
 
-	links, err := linkSources(d, candidate.filePairs, candidateTorrentFilesToLink, existingFiles)
-	if err != nil {
-		logLinkError(zerolog.ErrorLevel, err, planFailed)
-		return handlePlanError(fmt.Sprintf("Failed to build %s plan: %v", mode.name, err))
-	}
-
-	// The module links in the Original layout, which matches the structure of
-	// the incoming torrent. The add sets contentLayout=Original for the same reason.
-	torrentFiles := make([]string, 0, len(sourceFiles))
-	for _, f := range sourceFiles {
-		torrentFiles = append(torrentFiles, f.Name)
-	}
-	cfg, _ := linktree.ConfigOf(instance)
-	var trackerFolder string
-	if cfg.Preset == linktree.PresetByTracker {
-		trackerFolder = linktree.TrackerFolderName(ctx, s.trackerCustomizationStore, ParseTorrentAnnounceDomain(torrentBytes), req.IndexerName)
-	}
-	_, receiverName := candidate.receiver()
-	plan, err := linktree.Plan(ctx, linktree.Request{
-		Backend:        backend,
-		Config:         cfg,
-		TrackerFolder:  trackerFolder,
-		InstanceFolder: receiverName,
-		Torrent:        linktree.Torrent{InfoHash: torrentHash, Name: torrentName, Files: torrentFiles},
-		Links:          links,
-	})
+	plan, err := s.planSingleAddTree(ctx, backend, instance, candidate, singleAddTorrent{
+		hash:          torrentHash,
+		name:          torrentName,
+		files:         sourceFiles,
+		trackerDomain: ParseTorrentAnnounceDomain(torrentBytes),
+		indexerName:   req.IndexerName,
+	}, candidateTorrentFilesToLink, candidateFiles, props.SavePath)
 	var tree *linktree.Tree
 	if err == nil {
 		tree, err = plan.Create(ctx)
