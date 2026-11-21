@@ -78,8 +78,9 @@ type job struct {
 	reserved  int64
 	// helper is the infohash of a helper torrent on the target that qui has
 	// not removed yet.
-	helper        string
-	stoppedSource bool
+	helper         string
+	stoppedSource  bool
+	changedNothing bool
 	// made holds the temporary files on the target, with their size when the
 	// run found them.
 	made map[*groupFile]int64
@@ -204,6 +205,7 @@ func (j *job) prepare(ctx context.Context) error {
 		return err
 	}
 	if err := j.land(ctx); err != nil {
+		j.changedNothing = !resumed
 		return err
 	}
 	if !j.blind {
@@ -562,7 +564,7 @@ func (j *job) rollBack(ctx context.Context) {
 	// A Transfer records the prepare step before it changes anything. One
 	// that never got there has nothing to take back, so its end asks the
 	// instances nothing.
-	if j.rec.Kind == KindTransfer && !j.reached(stepPrepare) {
+	if j.rec.Kind == KindTransfer && (!j.reached(stepPrepare) || j.changedNothing) {
 		j.logf("Cancelled.")
 		_ = j.finish(ctx, StateCancelled)
 		return

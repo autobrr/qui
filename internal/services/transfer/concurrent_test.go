@@ -4,7 +4,9 @@
 package transfer_test
 
 import (
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -133,4 +135,55 @@ func TestTransfersIntoOneFolderRunOneAfterTheOther(t *testing.T) {
 	require.Equal(t, contents(first, showName), tree(t, r.dstDir))
 	require.True(t, r.dst.Has(first.hash))
 	require.True(t, r.dst.Has(second.hash))
+}
+
+func TestCancelOfATransferThatWaitsForItsPathLeavesTheTarget(t *testing.T) {
+	r := newRig(t, func(c *transfer.Config) { c.PerSource = 2 })
+	first := newShow(t, showName)
+	r.seed(first)
+	extra := first.files["Show.S01E01.mkv"]
+	data, hash := qbtstub.NewContentTorrent(t, showName, 32, qbtstub.ContentFile{Path: "Extras/Show.Extras.mkv", Data: extra})
+	write(t, filepath.Join(r.srcDir, "cross", showName, "Extras"), map[string][]byte{"Show.Extras.mkv": extra})
+	r.src.Seed(data, r.srcPath("cross"))
+
+	copying, held := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	t.Cleanup(release)
+	startCopy := sync.OnceFunc(func() { close(copying) })
+	r.disk.onWrite = func(string) {
+		startCopy()
+		<-held
+	}
+
+	firstID, err := r.svc.Start(t.Context(), r.request(first))
+	require.NoError(t, err)
+	select {
+	case <-copying:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the first Transfer does not copy", r.get(firstID).FailureReason)
+	}
+	id, err := r.svc.Start(t.Context(), r.request(show{data: data, hash: hash}))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		record, err := r.store.Get(t.Context(), id)
+		if err != nil {
+			return false
+		}
+		return slices.ContainsFunc(record.Log, func(line transfer.LogLine) bool { return strings.Contains(line.Message, "Waits for Transfer") })
+	}, 5*time.Second, time.Millisecond, "the second Transfer does not wait")
+
+	folder := filepath.Join(r.dstDir, showName, "Extras")
+	require.NoError(t, os.Mkdir(folder, 0o755))
+	require.NoError(t, r.svc.Cancel(t.Context(), id))
+	require.Eventually(t, func() bool {
+		record, err := r.store.Get(t.Context(), id)
+		return err == nil && !record.FinishedAt.IsZero()
+	}, 5*time.Second, time.Millisecond, "the cancel does not end the second Transfer")
+	require.DirExists(t, folder, "the cancel of a Transfer that only waited removes a folder that the first Transfer made")
+	release()
+	r.svc.Wait()
+
+	require.Equal(t, transfer.StateCancelled, r.get(id).State)
+	record := r.get(firstID)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 }
