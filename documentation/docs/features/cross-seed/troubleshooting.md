@@ -40,7 +40,11 @@ An exact reported size is evidence, not byte verification. qui still checks the 
 
 ### Season pack vs episodes
 
-By default, season packs only match other season packs. If you enable **Cross-seed episodes from packs** under Cross-Seed > Matching rules, season packs match individual episode releases.
+By default, season packs only match other season packs. If you enable **Cross-seed episodes from packs** under Cross-Seed > Matching rules, season packs match individual episode releases. [A tracker is missing from the search](#a-tracker-is-missing-from-the-search) explains how season packs and episodes affect which trackers qui searches.
+
+### A tracker is missing from the search
+
+qui does not search a tracker when you already seed the same release from that tracker. That release can be the torrent that you search for, or another torrent of the same release that holds all files of the torrent that you search for. A single episode that you seed from a tracker does not stop qui from searching that tracker for the season pack. A season pack that you seed from a tracker does not stop qui from searching that tracker for one of its episodes. The search dialog lists the skipped trackers under **Smart Filtering Active**.
 
 ### Prowlarr filters remove expected results
 
