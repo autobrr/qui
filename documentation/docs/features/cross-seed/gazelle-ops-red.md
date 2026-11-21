@@ -43,23 +43,24 @@ Each search for one torrent reports one RED/OPS lookup for each site: a match, n
 
 ### Search dialog
 
-The **Search Scope** section of the **Search Cross-Seeds** dialog lists each Torznab indexer by name, and always two more entries: **Redacted (API)** and **Orpheus (API)**. An entry that the next search does not ask is grey. When a site has an API key, the list does not show the Torznab indexer of that site, because qui asks the site through its API.
+The **Indexers** section of the **Search Cross-Seeds** dialog names the indexers that the next search asks. A RED or OPS site that has an API key shows as **Redacted (API)** or **Orpheus (API)**. When a site has an API key, the dialog does not show the Torznab indexer of that site, because qui asks the site through its API.
 
-When the dialog opens, each entry shows the plan:
+To leave an indexer out of one search, select **Change** and clear its check box. If you select only Torznab indexers, the search asks no Gazelle site. If you select only Gazelle sites, the search asks no Torznab indexer.
+
+Below the check boxes, the dialog lists each site that the search does not ask, with the reason:
 
 | Text | Meaning |
 | --- | --- |
-| will ask | The search asks the site. |
-| will ask: the site rejected the API key last time | The search asks the site, but the System notice for its key is open. |
 | not asked: the torrent comes from Redacted | The torrent comes from that site. qui asks only the other site. |
 | not asked: you already seed it there | A copy of the release already seeds on that site, or the instance already holds its content. |
-| not asked: not music | Most of the bytes of the torrent are not audio, e-book, or comic files. |
 | not asked: no API key | The site has no API key. The entry links to the settings. |
 | not asked: off | Gazelle matching is off. The entry links to the settings. |
 
-An entry that qui does not ask is grey, and you cannot select it. With **Select Custom**, you can leave a site out of one search. Then the entry shows "not asked: not selected". If you select only Torznab indexers, the search asks no Gazelle site. If you select only Gazelle entries, the search asks no Torznab indexer.
+A site that is not asked because most of the bytes of the torrent are not audio, e-book, or comic files is in the line of indexers that do not support the content type.
 
-After the search, each entry shows the outcome: "match", "no match", "failed: the site rejected the API key", "failed: timed out", or "failed:" and the error. A match from a Gazelle site shows **Redacted (API)** or **Orpheus (API)** as its indexer.
+If the site rejected the API key on the last search, its entry shows "will ask: the site rejected the API key last time". The dialog also shows this text, and the entries that link to the settings, when the list of check boxes is closed.
+
+After the search, a site with a match shows the number of matches. A match from a Gazelle site shows **Redacted (API)** or **Orpheus (API)** as its indexer. If a lookup fails, the dialog shows the name of the site above the results, with "failed: the site rejected the API key", "failed: timed out", or "failed:" and the error.
 
 The search report that you copy from the dialog has a `RED/OPS:` section with one line for each site. The report is there also when the search asked no Torznab indexer.
 

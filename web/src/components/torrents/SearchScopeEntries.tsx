@@ -4,50 +4,78 @@
  */
 
 import { Link } from "@tanstack/react-router"
+import { AlertTriangle } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { useGazelleLookupText } from "@/hooks/useGazelleLookupText"
-import { gazelleSettingsReasons, gazelleStatusClass } from "@/lib/gazelle-lookup"
+import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
-import type { CrossSeedGazelleLookup } from "@/types"
 
-export type TorznabScopeEntry = { id: number; name: string; asked: boolean }
-
-type SearchScopeEntriesProps = {
-  torznab: TorznabScopeEntry[]
-  gazelle: CrossSeedGazelleLookup[]
+export type ScopeEntry = {
+  key: string
+  name: string
+  status: string
+  picked: boolean | null
+  note?: string
+  noteClass?: string
+  settingsLink?: boolean
+  attention?: boolean
+  onToggle?: () => void
 }
 
-/**
- * SearchScopeEntries lists each Torznab indexer and each RED/OPS site of a
- * search. An entry that the search does not ask is grey. A RED/OPS entry also
- * shows its plan or its outcome.
- */
-export function SearchScopeEntries({ torznab, gazelle }: SearchScopeEntriesProps) {
+type SearchScopeEntriesProps = {
+  entries: ScopeEntry[]
+  disabled: boolean
+}
+
+export function SearchScopeEntries({ entries, disabled }: SearchScopeEntriesProps) {
   const { t } = useTranslation("torrents")
-  const lookupText = useGazelleLookupText()
-  if (torznab.length === 0 && gazelle.length === 0) {
-    return null
-  }
-  const entryClass = "inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1 rounded border border-border/60 bg-background/40 px-1.5 py-0.5"
+  const pickable = entries.filter(entry => entry.picked !== null)
+  const skipped = entries.filter(entry => entry.picked === null)
   return (
-    <ul className="mt-2 flex flex-wrap gap-1 text-xs" aria-label={t("crossSeedDialog.searchScope")}>
-      {torznab.map(entry => (
-        <li key={entry.id} data-status={entry.asked ? "will_ask" : "not_asked"} className={cn(entryClass, !entry.asked && "opacity-50")}>
-          <span className="min-w-0 truncate">{entry.name}</span>
-        </li>
-      ))}
-      {gazelle.map(entry => (
-        <li key={entry.site} data-status={entry.status} className={cn(entryClass, entry.status === "not_asked" && "opacity-60")}>
-          <span className="font-medium">{entry.name}</span>
-          <span className={cn("min-w-0 break-words", gazelleStatusClass(entry.status))}>{lookupText(entry)}</span>
-          {entry.status === "not_asked" && gazelleSettingsReasons.has(entry.reason) && (
-            <Link to="/settings" search={{ tab: "indexers" }} className="text-muted-foreground underline underline-offset-2 hover:text-foreground">
-              {t("crossSeedDialog.gazelle.openSettings")}
-            </Link>
-          )}
-        </li>
-      ))}
-    </ul>
+    <>
+      {pickable.length > 0 && (
+        <ul className="grid grid-cols-1 gap-x-4 sm:grid-cols-2" aria-label={t("crossSeedDialog.scope.heading")}>
+          {pickable.map(entry => (
+            <li key={entry.key} data-status={entry.status} className="min-w-0">
+              <label
+                className={cn(
+                  "-mx-2 flex min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent/40 sm:min-h-8 sm:gap-2.5 sm:py-1 sideways:min-h-11 sideways:gap-3 sideways:py-1.5",
+                  disabled && "cursor-not-allowed opacity-60"
+                )}
+              >
+                <Checkbox checked={Boolean(entry.picked)} disabled={disabled} onCheckedChange={entry.onToggle} className="shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className={cn("min-w-0 break-words", !entry.picked && "text-muted-foreground")}>{entry.name}</span>
+                    {(entry.status === "error" || entry.status === "failed" || entry.status === "not_covered") && (
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-yellow-600 dark:text-yellow-500" aria-hidden />
+                    )}
+                  </span>
+                  {entry.note && <span className={cn("block break-words text-xs", entry.noteClass ?? "text-muted-foreground")}>{entry.note}</span>}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      {skipped.length > 0 && (
+        <ul className="space-y-0.5 text-xs text-muted-foreground">
+          {skipped.map(entry => (
+            <li key={entry.key} data-status={entry.status} className="min-w-0 break-words">
+              <span className="font-medium text-foreground/80">{entry.name}</span>
+              {entry.note && <span>{" · "}{entry.note}</span>}
+              {entry.settingsLink && (
+                <>
+                  {" · "}
+                  <Link to="/settings" search={{ tab: "indexers" }} className="-my-3 inline-block py-3 underline underline-offset-2 hover:text-foreground sm:my-0 sm:py-0 sideways:-my-3 sideways:py-3">
+                    {t("crossSeedDialog.gazelle.openSettings")}
+                  </Link>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   )
 }
