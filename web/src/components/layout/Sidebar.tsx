@@ -444,7 +444,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
 
         <div className="mt-auto space-y-3 pt-2 empty:hidden">
           <SystemNoticeList iconOnly={iconOnly} />
-          <UpdateBanner iconOnly={iconOnly} />
+          <UpdateBanner iconOnly={iconOnly} installInSettings={flyout} />
         </div>
       </nav>
 

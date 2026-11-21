@@ -39,14 +39,14 @@ let updateBodies: unknown[] = []
 let queryClient: QueryClient
 let router: AnyRouter
 
-function renderBanner() {
+function renderBanner(props: { installInSettings?: boolean } = {}) {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory({ initialEntries: ["/settings"] }) })
   return render(
     <RouterContextProvider router={router}>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <UpdateBanner />
+          <UpdateBanner {...props} />
         </TooltipProvider>
       </QueryClientProvider>
     </RouterContextProvider>
@@ -121,6 +121,18 @@ async function advance(ms: number) {
 }
 
 describe("Install update", () => {
+  it("sends Install to the dialog in Settings when installInSettings is set", async () => {
+    renderBanner({ installInSettings: true })
+    const install = await screen.findByRole("link", { name: "settings:application.update.button" })
+    expect(install.getAttribute("href")).toBe("/settings?tab=application&modal=install-update")
+    expect(screen.queryByRole("button", { name: "application.update.button" })).toBeNull()
+
+    fireEvent.click(install)
+    await vi.waitFor(() => expect(router.state.location.search).toEqual({ tab: "application", modal: "install-update" }))
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(updateBodies).toEqual([])
+  })
+
   it.each([
     ["container", "https://getqui.com/docs/getting-started/docker/"],
     ["disabled", "https://getqui.com/docs/configuration/reference/#settings"],
