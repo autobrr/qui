@@ -113,7 +113,28 @@
     },
     "privacy": {
       "anonymous": "Anonymně: bez jména a účtu. brrbin neukládá IP adresu.",
+      "signedIn": "Správci vidí vaše jméno účtu {{provider}} ({{name}}) a mohou vás kontaktovat.",
       "link": "Zásady ochrany soukromí"
+    },
+    "sender": {
+      "label": "Odeslat jako",
+      "anonymous": "Anonymně",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Přihlásit se přes {{provider}}",
+      "signOut": "Odhlásit se",
+      "waiting": "Čekání na {{provider}}",
+      "errors": {
+        "discordNotMember": "Váš účet Discord není na Discord serveru autobrr. Připojte se na server a přihlaste se znovu, nebo odešlete anonymně.",
+        "refused": "Přihlášení zamítnuto: {{reason}}",
+        "expired": "Přihlášení vypršelo. Přihlaste se znovu.",
+        "popupBlocked": "Váš prohlížeč zablokoval přihlašovací okno. Povolte vyskakovací okna pro qui a pak se přihlaste znovu.",
+        "unavailable": "brrbin vás teď nemůže přihlásit. Zkuste to později.",
+        "startFailed": "Přihlášení se nepodařilo spustit: {{message}}",
+        "signOutFailed": "Nepodařilo se odhlásit: {{message}}"
+      }
     },
     "newerRelease": "Používáte {{running}}. Vyšla verze <release>{{newer}}</release>.",
     "send": "Odeslat",

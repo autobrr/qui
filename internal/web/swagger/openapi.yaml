@@ -7563,6 +7563,154 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/problem-reports/sender:
+    get:
+      tags:
+        - Problem Reports
+      summary: Read the Sender
+      description: >-
+        Returns who the next Problem report comes from: Anonymous, or the GitHub or Discord name of the sign-in that
+        qui holds. qui makes no request to brrbin for it, and never returns the sign-in token. A token that qui can
+        no longer decrypt is dropped, and the Sender is anonymous. It answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in
+        the config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: The Sender
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemReportSender'
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+        '500':
+          description: Failed to read the sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/problem-reports/sign-in:
+    post:
+      tags:
+        - Problem Reports
+      summary: Start a sign-in with GitHub or Discord
+      description: >-
+        Asks brrbin for a sign-in and returns the URL of its page, which the browser opens in a popup. qui makes the
+        Install key first when none exists. qui's server then polls brrbin at the interval that brrbin gave, until
+        the sign-in is done, refused or expired, and stores the token encrypted. A new start replaces a pending
+        sign-in. It answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in
+        the config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider:
+                  type: string
+                  enum: [github, discord]
+      responses:
+        '200':
+          description: The sign-in started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+                    description: The URL of the sign-in page on brrbin
+        '400':
+          description: The body is not JSON, or the provider is not github or discord
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+        '500':
+          description: Failed to read or make the Install key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: brrbin did not answer, or answered with an error (unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - Problem Reports
+      summary: Read the state of the sign-in
+      description: >-
+        Returns the state of the sign-in that the last start began. qui makes no request to brrbin for it. The state
+        is expired when qui holds no sign-in, as after a restart. It answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in
+        the config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: The state of the sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemReportSignInState'
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+    delete:
+      tags:
+        - Problem Reports
+      summary: Sign out
+      description: >-
+        Stops a pending sign-in, ends the sign-in on brrbin, and forgets it, so the Sender is anonymous. qui forgets
+        the sign-in also when brrbin does not answer. An anonymous Sender gets 204 and qui makes no request to brrbin.
+        It answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in
+        the config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      responses:
+        '204':
+          description: The Sender is anonymous
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+        '500':
+          description: Failed to read or forget the sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/shares:
     post:
       tags:
@@ -11219,6 +11367,33 @@ components:
           type: string
           format: date-time
           description: When qui last saw the status change. A new report has its sentAt.
+
+    ProblemReportSender:
+      type: object
+      description: Who a Problem report comes from
+      required: [anonymous]
+      properties:
+        anonymous:
+          type: boolean
+          description: true while qui holds no sign-in
+        provider:
+          type: string
+          enum: [github, discord]
+          description: Present when the Sender is signed in
+        name:
+          type: string
+          description: The display name that the maintainers see. Present when the Sender is signed in.
+    ProblemReportSignInState:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [pending, done, refused, expired]
+          description: pending while qui polls brrbin, done once qui stored the sign-in, refused when brrbin refused it, expired when it ran out or qui holds none
+        reason:
+          type: string
+          description: Why brrbin refused the sign-in, for example discord_not_member. Present when the state is refused.
 
     VersionResponse:
       type: object

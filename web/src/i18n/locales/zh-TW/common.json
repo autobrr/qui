@@ -99,7 +99,28 @@
     },
     "privacy": {
       "anonymous": "匿名：無姓名，無帳號。brrbin 不保留 IP 位址。",
+      "signedIn": "維護者可以看到你的 {{provider}} 名稱（{{name}}），並可能會聯絡你。",
       "link": "隱私權政策"
+    },
+    "sender": {
+      "label": "傳送身分",
+      "anonymous": "匿名",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "使用 {{provider}} 登入",
+      "signOut": "登出",
+      "waiting": "正在等待 {{provider}}",
+      "errors": {
+        "discordNotMember": "你的 Discord 帳號不在 autobrr Discord 伺服器中。請加入該伺服器後重新登入，或匿名傳送。",
+        "refused": "登入遭拒絕：{{reason}}",
+        "expired": "登入已過期。請重新登入。",
+        "popupBlocked": "你的瀏覽器封鎖了登入視窗。請允許 qui 開啟彈出式視窗，然後重新登入。",
+        "unavailable": "brrbin 現在無法為你登入。請稍後再試。",
+        "startFailed": "無法開始登入：{{message}}",
+        "signOutFailed": "無法登出：{{message}}"
+      }
     },
     "newerRelease": "目前執行 {{running}}。新版本 <release>{{newer}}</release> 已發布。",
     "send": "傳送",

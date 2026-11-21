@@ -25,6 +25,7 @@ type Request struct {
 	Report json.RawMessage `json:"report,omitempty"`
 	// Image is the image part of a POST /api/reports.
 	Image []byte `json:"image,omitempty"`
+	Body  []byte `json:"body,omitempty"`
 }
 
 // Status is the Report status that brrbin answers for a report.
@@ -46,6 +47,26 @@ type storedReport struct {
 	status     Status
 }
 
+const (
+	SignInPending = "pending"
+	SignInDone    = "done"
+	SignInRefused = "refused"
+	SignInExpired = "expired"
+)
+
+type SignInOutcome struct {
+	State  string `json:"state"`
+	Name   string `json:"name,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type signIn struct {
+	installKey string
+	provider   string
+	outcome    SignInOutcome
+	token      string
+}
+
 // Fake answers POST /api/reports with 201 and a report id, also for a
 // repeated submissionId. GET /api/install/reports answers the Report status
 // of each listed report of the install, and DELETE /api/reports/{id} deletes
@@ -61,6 +82,16 @@ type Fake struct {
 	held         chan struct{}
 	bySubmission map[string]string
 	reports      map[string]*storedReport
+
+	SignInInterval    float64
+	BrokenSignInStart map[string]any
+	signIns           map[string]*signIn
+	pendingByKey      map[string]string
+	newestSignIn      string
+	minted            int
+	pageOutcome       SignInOutcome
+	tokens            map[string]string
+	polls             chan string
 }
 
 type refusal struct {
@@ -69,7 +100,40 @@ type refusal struct {
 }
 
 func New() *Fake {
-	return &Fake{bySubmission: map[string]string{}, reports: map[string]*storedReport{}}
+	return &Fake{
+		bySubmission:   map[string]string{},
+		reports:        map[string]*storedReport{},
+		SignInInterval: 1,
+		signIns:        map[string]*signIn{},
+		pendingByKey:   map[string]string{},
+		pageOutcome:    SignInOutcome{State: SignInDone, Name: "fake-user"},
+		tokens:         map[string]string{},
+		polls:          make(chan string, 1024),
+	}
+}
+
+func (f *Fake) EndSignIn(outcome SignInOutcome) (token string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.endSignIn(f.newestSignIn, outcome)
+}
+
+func (f *Fake) endSignIn(pollToken string, outcome SignInOutcome) string {
+	pending, ok := f.signIns[pollToken]
+	if !ok || pending.outcome.State != SignInPending {
+		return ""
+	}
+	pending.outcome = outcome
+	if outcome.State == SignInDone {
+		f.minted++
+		pending.token = fmt.Sprintf("brt_fake%d", f.minted)
+		f.tokens[pending.token] = pending.installKey
+	}
+	return pending.token
+}
+
+func (f *Fake) SignInPolls() <-chan string {
+	return f.polls
 }
 
 // Refuse makes each later report get status and {"error": reason}. A status
@@ -143,6 +207,14 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.statuses(w, r)
 	case r.Method == http.MethodDelete && isDelete:
 		f.delete(w, r, deleteID)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/report-sign-in":
+		f.startSignIn(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/report-sign-in/poll":
+		f.pollSignIn(w, r)
+	case r.Method == http.MethodDelete && r.URL.Path == "/api/report-sign-in":
+		f.signOut(w, r)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/report-sign-in/"):
+		f.signInPage(w, r)
 	default:
 		f.record(Request{Method: r.Method, Path: r.URL.RequestURI(), Header: r.Header.Clone()})
 		http.NotFound(w, r)
@@ -169,6 +241,14 @@ func (f *Fake) control(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.SetStatus(body.ID, body.Status)
+	case r.Method == http.MethodPost && r.URL.Path == "/fake/sign-in":
+		var body SignInOutcome
+		if !decode(w, r, &body) {
+			return
+		}
+		f.mu.Lock()
+		f.pageOutcome = body
+		f.mu.Unlock()
 	case r.Method == http.MethodPost && r.URL.Path == "/fake/forget":
 		var body struct {
 			ID string `json:"id"`
@@ -239,6 +319,96 @@ func (f *Fake) delete(w http.ResponseWriter, r *http.Request, id string) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (f *Fake) startSignIn(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	f.record(Request{Method: r.Method, Path: r.URL.Path, Header: r.Header.Clone(), Body: body})
+	installKey := r.Header.Get("X-Install-Key")
+	if installKey == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "install_key_required"})
+		return
+	}
+	if f.BrokenSignInStart != nil {
+		writeJSON(w, http.StatusOK, f.BrokenSignInStart)
+		return
+	}
+	var start struct {
+		Provider string `json:"provider"`
+	}
+	if json.Unmarshal(body, &start) != nil || (start.Provider != "github" && start.Provider != "discord") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_provider"})
+		return
+	}
+	f.mu.Lock()
+	f.endSignIn(f.pendingByKey[installKey], SignInOutcome{State: SignInExpired})
+	f.minted++
+	pollToken := fmt.Sprintf("poll%d", f.minted)
+	f.signIns[pollToken] = &signIn{installKey: installKey, provider: start.Provider, outcome: SignInOutcome{State: SignInPending}}
+	f.pendingByKey[installKey] = pollToken
+	f.newestSignIn = pollToken
+	interval := f.SignInInterval
+	f.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"url":       "http://" + r.Host + "/report-sign-in/" + pollToken,
+		"pollToken": pollToken,
+		"interval":  interval,
+	})
+}
+
+func (f *Fake) pollSignIn(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	f.record(Request{Method: r.Method, Path: r.URL.Path, Header: r.Header.Clone(), Body: body})
+	var poll struct {
+		PollToken string `json:"pollToken"`
+	}
+	_ = json.Unmarshal(body, &poll)
+	answer := map[string]string{"state": SignInExpired}
+	f.mu.Lock()
+	if pending, ok := f.signIns[poll.PollToken]; ok && pending.installKey == r.Header.Get("X-Install-Key") {
+		answer["state"] = pending.outcome.State
+		switch pending.outcome.State {
+		case SignInDone:
+			answer["token"], answer["provider"], answer["name"] = pending.token, pending.provider, pending.outcome.Name
+			delete(f.signIns, poll.PollToken)
+		case SignInRefused:
+			answer["reason"] = pending.outcome.Reason
+		}
+	}
+	f.mu.Unlock()
+	select {
+	case f.polls <- poll.PollToken:
+	default:
+	}
+	writeJSON(w, http.StatusOK, answer)
+}
+
+func (f *Fake) signOut(w http.ResponseWriter, r *http.Request) {
+	f.record(Request{Method: r.Method, Path: r.URL.Path, Header: r.Header.Clone()})
+	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	f.mu.Lock()
+	ok := f.tokenWorks(r)
+	delete(f.tokens, token)
+	f.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token_rejected"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (f *Fake) tokenWorks(r *http.Request) bool {
+	token, isBearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	installKey, known := f.tokens[token]
+	return isBearer && known && installKey == r.Header.Get("X-Install-Key")
+}
+
+func (f *Fake) signInPage(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.endSignIn(strings.TrimPrefix(r.URL.Path, "/report-sign-in/"), f.pageOutcome)
+	f.mu.Unlock()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, "<!doctype html><title>fake brrbin sign-in</title><p>The fake brrbin ended this sign-in.</p><script>window.close()</script>")
+}
+
 func (f *Fake) record(req Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -290,6 +460,15 @@ func (f *Fake) report(w http.ResponseWriter, r *http.Request) {
 	if refused != nil {
 		writeJSON(w, refused.Status, map[string]string{"error": refused.Reason})
 		return
+	}
+	if r.Header.Get("Authorization") != "" {
+		f.mu.Lock()
+		ok := f.tokenWorks(r)
+		f.mu.Unlock()
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token_rejected"})
+			return
+		}
 	}
 
 	var report struct {

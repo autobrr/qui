@@ -106,7 +106,28 @@
     },
     "privacy": {
       "anonymous": "Anônimo: sem nome, sem conta. O brrbin não guarda endereço IP.",
+      "signedIn": "Os mantenedores veem seu nome no {{provider}} ({{name}}) e podem entrar em contato com você.",
       "link": "Política de privacidade"
+    },
+    "sender": {
+      "label": "Enviar como",
+      "anonymous": "Anônimo",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Entrar com {{provider}}",
+      "signOut": "Sair",
+      "waiting": "Aguardando {{provider}}",
+      "errors": {
+        "discordNotMember": "Sua conta do Discord não está no servidor do autobrr no Discord. Entre no servidor e faça login de novo, ou envie anonimamente.",
+        "refused": "Login recusado: {{reason}}",
+        "expired": "O login expirou. Entre de novo.",
+        "popupBlocked": "Seu navegador bloqueou a janela de login. Permita pop-ups para o qui e entre de novo.",
+        "unavailable": "O brrbin não pode fazer seu login agora. Tente de novo mais tarde.",
+        "startFailed": "Não foi possível iniciar o login: {{message}}",
+        "signOutFailed": "Não foi possível sair: {{message}}"
+      }
     },
     "newerRelease": "Você usa {{running}}. <release>{{newer}}</release> já saiu.",
     "send": "Enviar",

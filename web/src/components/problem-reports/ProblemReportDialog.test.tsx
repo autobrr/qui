@@ -17,7 +17,14 @@ import "@/i18n"
 import { api } from "@/lib/api"
 import { _resetClientSettingsForTests, parseJsonNumber, readClientSetting, writeClientSetting } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
-import type { ApplicationInfo, ListedProblemReport, ProblemReportFacts, ProblemReportPayload } from "@/types"
+import type {
+  ApplicationInfo,
+  ListedProblemReport,
+  ProblemReportFacts,
+  ProblemReportPayload,
+  ProblemReportSender,
+  ProblemReportSignInState
+} from "@/types"
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({ toastSuccess: vi.fn(), toastError: vi.fn() }))
 vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }))
@@ -42,8 +49,43 @@ function serve(facts: ProblemReportFacts = baseFacts, info: Partial<ApplicationI
   server.use(
     http.get("*/api/application/info", () => HttpResponse.json(info)),
     http.get("*/api/problem-reports/facts", () => HttpResponse.json(facts)),
+    http.get("*/api/problem-reports/sender", () => HttpResponse.json({ anonymous: true })),
     http.get("*/api/problem-reports", () => HttpResponse.json([]))
   )
+}
+
+const octocat: ProblemReportSender = { anonymous: false, provider: "github", name: "octocat" }
+const signInURL = "https://bin.getqui.com/report-sign-in/p1"
+
+function serveSender(...senders: ProblemReportSender[]) {
+  let calls = 0
+  server.use(http.get("*/api/problem-reports/sender", () => HttpResponse.json(senders[Math.min(calls++, senders.length - 1)])))
+}
+
+function serveSignIn(states: ProblemReportSignInState[], start: () => Response = () => HttpResponse.json({ url: signInURL })) {
+  const calls = { started: [] as string[], reads: 0, signOuts: 0 }
+  server.use(
+    http.post("*/api/problem-reports/sign-in", async ({ request }) => {
+      calls.started.push(((await request.json()) as { provider: string }).provider)
+      return start()
+    }),
+    http.get("*/api/problem-reports/sign-in", () => HttpResponse.json(states[Math.min(calls.reads++, states.length - 1)])),
+    http.delete("*/api/problem-reports/sign-in", () => {
+      calls.signOuts++
+      return new HttpResponse(null, { status: 204 })
+    })
+  )
+  return calls
+}
+
+function stubPopup() {
+  const popup = { opener: window as Window | null, location: { href: "" }, close: vi.fn() }
+  const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window)
+  return { popup, open }
+}
+
+function openSenderMenu(sender: string) {
+  fireEvent.keyDown(screen.getByRole("button", { name: sender }), { key: "Enter" })
 }
 
 /** Answers the list route with reports, and counts its calls. */
@@ -75,7 +117,7 @@ function serveSend(answers: Response[] = []) {
 }
 
 function mount() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
   render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -129,6 +171,8 @@ afterEach(() => {
   cleanup()
   toastSuccess.mockReset()
   toastError.mockReset()
+  vi.restoreAllMocks()
+  vi.useRealTimers()
   localStorage.clear()
   _resetClientSettingsForTests()
 })
@@ -386,6 +430,193 @@ describe("ProblemReportDialog", () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Report sent"))
     expect(screen.queryByRole("dialog")).not.toBeNull()
     expect(second.textField.value).toBe("Another problem")
+  })
+})
+
+describe("Sender", () => {
+  it("sends as Anonymous at first, and offers a sign-in with GitHub and with Discord", async () => {
+    serve()
+    mount()
+
+    await openDialog()
+    const privacy = await screen.findByText(/^Anonymous: no name, no account\. brrbin keeps no IP address\./)
+    expect(privacy.querySelector("a")?.getAttribute("href")).toBe("https://bin.getqui.com/privacy")
+    openSenderMenu("Anonymous")
+
+    expect(screen.getByRole("menuitemradio", { name: "Anonymous" }).getAttribute("aria-checked")).toBe("true")
+    expect(screen.getByRole("menuitem", { name: "Sign in with GitHub" })).not.toBeNull()
+    expect(screen.getByRole("menuitem", { name: "Sign in with Discord" })).not.toBeNull()
+    expect(screen.queryByRole("menuitem", { name: "Sign out" })).toBeNull()
+  })
+
+  it("after a sign-in, names the sender in the menu and in the privacy line, and offers Sign out", async () => {
+    serve()
+    serveSender(octocat)
+    mount()
+
+    await openDialog()
+    const privacy = await screen.findByText(/^The maintainers see your GitHub name \(octocat\) and may contact you\./)
+    expect(privacy.querySelector("a")?.getAttribute("href")).toBe("https://bin.getqui.com/privacy")
+    openSenderMenu("octocat")
+
+    const signedIn = screen.getByRole("menuitemradio", { name: /^octocat/ })
+    expect(signedIn.getAttribute("aria-checked")).toBe("true")
+    expect(signedIn.textContent).toBe("octocatGitHub")
+    expect(screen.getByRole("menuitemradio", { name: "Anonymous" }).getAttribute("aria-checked")).toBe("false")
+    expect(screen.getByRole("menuitem", { name: "Sign out" })).not.toBeNull()
+    expect(screen.queryByRole("menuitem", { name: /^Sign in with/ })).toBeNull()
+  })
+
+  it("opens the sign-in page in a popup, waits while it is pending, and then sends as the name", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    serve()
+    serveSender({ anonymous: true }, { anonymous: false, provider: "discord", name: "wumpus" })
+    const signIn = serveSignIn([{ state: "pending" }, { state: "done" }])
+    const { popup, open } = stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+
+    expect(open).toHaveBeenCalledTimes(1)
+    await screen.findByRole("button", { name: "Waiting for Discord" })
+    await waitFor(() => expect(signIn.reads).toBe(1))
+    expect(signIn.started).toEqual(["discord"])
+    expect(popup.location.href).toBe(signInURL)
+    expect(popup.opener).toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+
+    await screen.findByRole("button", { name: "wumpus" })
+    expect(screen.getByText(/^The maintainers see your Discord name \(wumpus\) and may contact you\./)).not.toBeNull()
+    expect(signIn.reads).toBe(2)
+  })
+
+  it.each<[string, ProblemReportSignInState, string]>([
+    [
+      "a Discord account outside the autobrr server",
+      { state: "refused", reason: "discord_not_member" },
+      "Your Discord account is not in the autobrr Discord server. Join the server and sign in again, or send anonymously.",
+    ],
+    ["another refusal", { state: "refused", reason: "account_too_new" }, "Sign-in refused: account_too_new"],
+    ["a sign-in that expired", { state: "expired" }, "Sign-in expired. Sign in again."],
+  ])("for %s, says why the sign-in ended and stays Anonymous", async (_name, state, message) => {
+    serve()
+    serveSignIn([state])
+    stubPopup()
+    mount()
+
+    const { textField } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe(message)
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+    expect(textField.value).toBe("Torrents vanish")
+  })
+
+  it("closes the popup and says so when brrbin cannot start a sign-in", async () => {
+    serve()
+    const signIn = serveSignIn([], () => HttpResponse.json({ error: "unavailable" }, { status: 502 }))
+    const { popup } = stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe("brrbin cannot sign you in right now. Try again later.")
+    expect(popup.close).toHaveBeenCalledTimes(1)
+    expect(popup.location.href).toBe("")
+    expect(signIn.reads).toBe(0)
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+  })
+
+  it("starts no sign-in and says so when the browser blocks the popup", async () => {
+    serve()
+    const signIn = serveSignIn([])
+    vi.spyOn(window, "open").mockReturnValue(null)
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Your browser blocked the sign-in window. Allow pop-ups for qui, then sign in again.")
+    expect(signIn.started).toEqual([])
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+  })
+
+  it("reads the sender again when the user comes back to the tab, as another tab can sign in or out", async () => {
+    serve()
+    serveSender({ anonymous: true }, octocat)
+    mount()
+
+    await openDialog()
+    await screen.findByText(/^Anonymous: no name, no account\./)
+    act(() => {
+      window.dispatchEvent(new Event("visibilitychange"))
+    })
+
+    await screen.findByRole("button", { name: "octocat" })
+    expect(screen.getByText(/^The maintainers see your GitHub name \(octocat\) and may contact you\./)).not.toBeNull()
+  })
+
+  it("stops a pending sign-in when the user picks Anonymous", async () => {
+    serve()
+    const signIn = serveSignIn([{ state: "pending" }])
+    stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(signIn.reads).toBe(1))
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Anonymous" }))
+
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(signIn.signOuts).toBe(1)
+  })
+
+  it("signs out and sends as Anonymous again", async () => {
+    serve()
+    serveSender(octocat)
+    const signIn = serveSignIn([])
+    mount()
+
+    await openDialog()
+    await screen.findByRole("button", { name: "octocat" })
+    openSenderMenu("octocat")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }))
+
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(signIn.signOuts).toBe(1)
+    expect(screen.getByText(/^Anonymous: no name, no account\./)).not.toBeNull()
+  })
+
+  it("when brrbin rejects the sign-in on Send, says that it ended, keeps the text, and keeps the user on the page", async () => {
+    serve()
+    serveSender(octocat, { anonymous: true })
+    serveSend([HttpResponse.json({ error: "token_rejected" }, { status: 409 })])
+    mount()
+    const page = window.location.href
+
+    const { textField, sendButton } = await openDialog()
+    await screen.findByRole("button", { name: "octocat" })
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Your sign-in ended. Sign in again, then send.")
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(textField.value).toBe("Torrents vanish")
+    expect(screen.queryByRole("dialog")).not.toBeNull()
+    expect(window.location.href).toBe(page)
   })
 })
 

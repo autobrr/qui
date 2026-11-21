@@ -120,7 +120,28 @@
     },
     "privacy": {
       "anonymous": "Анонімно: без імені та облікового запису. brrbin не зберігає IP-адресу.",
+      "signedIn": "Супровідники бачать ваше ім'я в {{provider}} ({{name}}) і можуть зв'язатися з вами.",
       "link": "Політика конфіденційності"
+    },
+    "sender": {
+      "label": "Надіслати як",
+      "anonymous": "Анонімно",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Увійти через {{provider}}",
+      "signOut": "Вийти",
+      "waiting": "Очікування {{provider}}",
+      "errors": {
+        "discordNotMember": "Ваш обліковий запис Discord не на сервері Discord autobrr. Приєднайтеся до сервера й увійдіть знову або надішліть анонімно.",
+        "refused": "Вхід відхилено: {{reason}}",
+        "expired": "Час входу минув. Увійдіть знову.",
+        "popupBlocked": "Ваш браузер заблокував вікно входу. Дозвольте спливні вікна для qui, а потім увійдіть знову.",
+        "unavailable": "brrbin зараз не може виконати вхід. Спробуйте пізніше.",
+        "startFailed": "Не вдалося почати вхід: {{message}}",
+        "signOutFailed": "Не вдалося вийти: {{message}}"
+      }
     },
     "newerRelease": "У вас {{running}}. Вже вийшла версія <release>{{newer}}</release>.",
     "send": "Надіслати",

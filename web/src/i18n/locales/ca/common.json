@@ -106,7 +106,28 @@
     },
     "privacy": {
       "anonymous": "Anònim: sense nom ni compte. brrbin no guarda cap adreça IP.",
+      "signedIn": "Els mantenidors veuen el teu nom de {{provider}} ({{name}}) i et poden contactar.",
       "link": "Política de privadesa"
+    },
+    "sender": {
+      "label": "Envia com a",
+      "anonymous": "Anònim",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Inicia la sessió amb {{provider}}",
+      "signOut": "Tanca la sessió",
+      "waiting": "S'està esperant {{provider}}",
+      "errors": {
+        "discordNotMember": "El teu compte de Discord no és al servidor de Discord d'autobrr. Uneix-te al servidor i torna a iniciar la sessió, o envia de manera anònima.",
+        "refused": "Inici de sessió rebutjat: {{reason}}",
+        "expired": "L'inici de sessió ha caducat. Torna a iniciar la sessió.",
+        "popupBlocked": "El teu navegador ha bloquejat la finestra d'inici de sessió. Permet les finestres emergents per a qui i torna a iniciar la sessió.",
+        "unavailable": "brrbin no pot iniciar la sessió ara mateix. Torna-ho a provar més tard.",
+        "startFailed": "No s'ha pogut iniciar la sessió: {{message}}",
+        "signOutFailed": "No s'ha pogut tancar la sessió: {{message}}"
+      }
     },
     "newerRelease": "Fas servir {{running}}. Ja ha sortit <release>{{newer}}</release>.",
     "send": "Envia",

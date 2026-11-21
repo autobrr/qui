@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -171,6 +172,53 @@ func (h *ProblemReportHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func (h *ProblemReportHandler) Sender(w http.ResponseWriter, r *http.Request) {
+	sender, err := h.service.Sender(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read the Problem report Sender")
+		RespondError(w, http.StatusInternalServerError, "read the sender: "+err.Error())
+		return
+	}
+	RespondJSON(w, http.StatusOK, sender)
+}
+
+func (h *ProblemReportHandler) StartSignIn(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Provider string `json:"provider"`
+	}
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 1<<10), &req); err != nil {
+		RespondError(w, http.StatusBadRequest, "the body must be JSON with a provider")
+		return
+	}
+	url, err := h.service.StartSignIn(r.Context(), req.Provider)
+	if refusal, ok := errors.AsType[*problemreport.RefusalError](err); ok {
+		RespondError(w, refusal.Status, refusal.Reason)
+		return
+	}
+	switch {
+	case errors.Is(err, problemreport.ErrInvalidRequest):
+		RespondError(w, http.StatusBadRequest, err.Error())
+	case err != nil:
+		log.Error().Err(err).Msg("Failed to start a Problem report sign-in")
+		RespondError(w, http.StatusInternalServerError, "start the sign-in: "+err.Error())
+	default:
+		RespondJSON(w, http.StatusOK, map[string]string{"url": url})
+	}
+}
+
+func (h *ProblemReportHandler) SignInState(w http.ResponseWriter, _ *http.Request) {
+	RespondJSON(w, http.StatusOK, h.service.SignInState())
+}
+
+func (h *ProblemReportHandler) SignOut(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.SignOut(r.Context()); err != nil {
+		log.Error().Err(err).Msg("Failed to sign out of Problem reports")
+		RespondError(w, http.StatusInternalServerError, "sign out: "+err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func splitList(raw string) []string {

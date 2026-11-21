@@ -611,13 +611,14 @@ func TestProblemReportSendSurvivesAClosedTab(t *testing.T) {
 }
 
 func TestProblemReportSignedInSend(t *testing.T) {
-	rig := newReportRig(t, reportRigOptions{})
+	rig := signInRig(t)
 	_, facts := rig.facts("startedFrom=menu")
-	require.NoError(t, rig.store.SaveSignIn(t.Context(), models.ProblemReportSignIn{Token: "brrbin-token-123", Provider: "github", Name: "someone"}))
+	token := rig.signIn("github", "someone")
+	signedIn := len(rig.fake.Requests())
 
 	status, _ := rig.send(menuReport("text", facts, "none", nil), nil)
 	require.Equal(t, http.StatusCreated, status)
-	assert.Equal(t, "Bearer brrbin-token-123", rig.fake.Requests()[0].Header.Get("Authorization"))
+	assert.Equal(t, "Bearer "+token, rig.brrbinRequests(signedIn)[0].Header.Get("Authorization"))
 
 	rig.fake.Refuse(http.StatusUnauthorized, "token_rejected")
 	report := menuReport("text", facts, "none", nil)
@@ -632,23 +633,24 @@ func TestProblemReportSignedInSend(t *testing.T) {
 
 func TestProblemReportImageRefusedBeforeBrrbin(t *testing.T) {
 	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
-	rig := newReportRig(t, reportRigOptions{})
+	rig := signInRig(t)
 	_, facts := rig.facts("startedFrom=menu")
 
 	status, answer := rig.send(menuReport("text", facts, "none", nil), png)
 	assert.Equal(t, http.StatusBadRequest, status, answer)
 	assert.Empty(t, rig.fake.Requests(), "an anonymous image never reaches brrbin")
 
-	require.NoError(t, rig.store.SaveSignIn(t.Context(), models.ProblemReportSignIn{Token: "brrbin-token-123", Provider: "discord", Name: "someone"}))
+	rig.signIn("discord", "someone")
+	signedIn := len(rig.fake.Requests())
 	tooLarge := append(slices.Clone(png), make([]byte, problemreport.MaxImageSize)...)
 	status, answer = rig.send(menuReport("text", facts, "none", nil), tooLarge)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, status)
 	assert.Equal(t, "too_large", answer["error"])
-	assert.Empty(t, rig.fake.Requests())
+	assert.Empty(t, rig.brrbinRequests(signedIn))
 
 	status, _ = rig.send(menuReport("text", facts, "none", nil), png)
 	require.Equal(t, http.StatusCreated, status)
-	assert.Equal(t, png, rig.fake.Requests()[0].Image)
+	assert.Equal(t, png, rig.brrbinRequests(signedIn)[0].Image)
 }
 
 // regression: #4288
@@ -700,6 +702,10 @@ func TestProblemReportRoutesWhenOff(t *testing.T) {
 				{http.MethodPost, "/api/problem-reports"},
 				{http.MethodGet, "/api/problem-reports"},
 				{http.MethodDelete, "/api/problem-reports/r1"},
+				{http.MethodGet, "/api/problem-reports/sender"},
+				{http.MethodPost, "/api/problem-reports/sign-in"},
+				{http.MethodGet, "/api/problem-reports/sign-in"},
+				{http.MethodDelete, "/api/problem-reports/sign-in"},
 			} {
 				req, err := http.NewRequestWithContext(t.Context(), route.Method, rig.srv.URL+route.Path, strings.NewReader("{}"))
 				require.NoError(t, err)

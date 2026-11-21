@@ -13,6 +13,9 @@ import type {
   ListedProblemReport,
   ProblemReportFacts,
   ProblemReportPayload,
+  ProblemReportProvider,
+  ProblemReportSender,
+  ProblemReportSignInState,
   ProblemReportStartedFrom,
   SentProblemReport,
   AppPreferences,
@@ -2574,6 +2577,22 @@ class ApiClient {
   /** Throws an APIError whose message is `unavailable` when brrbin cannot delete the report. */
   async deleteProblemReport(id: string): Promise<void> {
     await this.request<void>(`/problem-reports/${encodeURIComponent(id)}`, { method: "DELETE" })
+  }
+
+  async getProblemReportSender(): Promise<ProblemReportSender> {
+    return this.request<ProblemReportSender>("/problem-reports/sender")
+  }
+
+  async startProblemReportSignIn(provider: ProblemReportProvider): Promise<{ url: string }> {
+    return this.request<{ url: string }>("/problem-reports/sign-in", { method: "POST", body: JSON.stringify({ provider }) })
+  }
+
+  async getProblemReportSignInState(): Promise<ProblemReportSignInState> {
+    return this.request<ProblemReportSignInState>("/problem-reports/sign-in")
+  }
+
+  async signOutOfProblemReports(): Promise<void> {
+    await this.request<void>("/problem-reports/sign-in", { method: "DELETE" })
   }
 
   async getVersion(): Promise<VersionInfo> {

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -125,6 +126,9 @@ type Service struct {
 	client  *http.Client
 	sources Sources
 	now     func() time.Time
+
+	signInMu sync.Mutex
+	signIn   *signInAttempt
 }
 
 func NewService(baseURL string, client *http.Client, store *models.ProblemReportStore, sources Sources) *Service {
