@@ -765,6 +765,7 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 			locals: []qbt.Torrent{
 				{Hash: "ok", Name: "Cool.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
 				{Hash: "grp", Name: "Cool.Show.S03E02.1080p.WEB.x264-OTHER", Progress: 1.0},
+				{Hash: "grp-copy", Name: "Cool.Show.S03E02.1080p.WEB.x264-OTHER", Progress: 1.0},
 				{Hash: "other1", Name: "Other.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
 				{Hash: "other2", Name: "Third.Show.S01E05.1080p.WEB.x264-GRP", Progress: 1.0},
 			},

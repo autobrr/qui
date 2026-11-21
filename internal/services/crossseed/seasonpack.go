@@ -1323,12 +1323,18 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	// logFiltered emits the field that filtered an episode candidate. It is the grep
 	// target the season-pack troubleshooting docs point users at. The loop below reads
 	// every cached episode on the instance, so "title mismatch" and "episode not in
-	// pack" fire once per unrelated torrent and are not logged. Every other reason is
-	// bounded by the pack size and is what a user debugs, so it logs at Debug.
+	// pack" fire once per unrelated torrent and are not logged. Every other reason logs
+	// at Debug once per candidate name, because copies of one episode repeat the line.
+	logged := make(map[string]struct{})
 	logFiltered := func(candidateName, reason string) {
 		if reason == titleMismatchReason || reason == notInPackReason {
 			return
 		}
+		key := candidateName + "\x00" + reason
+		if _, seen := logged[key]; seen {
+			return
+		}
+		logged[key] = struct{}{}
 		log.Debug().
 			Str("pack", packRelease.Title).
 			Int("season", packRelease.Series).
