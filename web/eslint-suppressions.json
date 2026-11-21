@@ -72,6 +72,9 @@
   "src/components/command-palette/CommandPaletteContent.tsx": {
     "qui/no-comments": {
       "count": 12
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/components/command-palette/open.ts": {
@@ -127,11 +130,17 @@
   "src/components/cross-seed/CrossSeedRouteForm.tsx": {
     "qui/no-comments": {
       "count": 33
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/cross-seed/DirScanTab.tsx": {
     "qui/no-comments": {
       "count": 26
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/cross-seed/HardlinkModeSettings.tsx": {
@@ -142,6 +151,9 @@
   "src/components/cross-seed/LibraryTab.tsx": {
     "qui/no-comments": {
       "count": 12
+    },
+    "qui/no-native-title": {
+      "count": 5
     }
   },
   "src/components/cross-seed/RouteProtectionConfirm.tsx": {
@@ -152,6 +164,9 @@
   "src/components/cross-seed/RssRunItem.tsx": {
     "qui/no-comments": {
       "count": 2
+    },
+    "qui/no-native-title": {
+      "count": 5
     }
   },
   "src/components/cross-seed/RssTab.tsx": {
@@ -172,6 +187,9 @@
   "src/components/cross-seed/SeasonPackRunsPanel.tsx": {
     "qui/no-comments": {
       "count": 3
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/cross-seed/SourceCardFields.tsx": {
@@ -247,6 +265,9 @@
   "src/components/dashboard/InstanceList.tsx": {
     "qui/no-comments": {
       "count": 14
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/dashboard/SidePanels.tsx": {
@@ -297,21 +318,33 @@
   "src/components/display-profiles/DisplayProfileChip.tsx": {
     "qui/no-comments": {
       "count": 3
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/display-profiles/DisplayProfileEditor.tsx": {
     "qui/no-comments": {
       "count": 6
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/display-profiles/DisplayProfileIconPicker.tsx": {
     "qui/no-comments": {
+      "count": 2
+    },
+    "qui/no-native-title": {
       "count": 2
     }
   },
   "src/components/display-profiles/DisplayProfileList.tsx": {
     "qui/no-comments": {
       "count": 5
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/display-profiles/DisplayProfileSheet.tsx": {
@@ -417,6 +450,9 @@
   "src/components/indexers/IndexerToolbar.tsx": {
     "qui/no-comments": {
       "count": 7
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/indexers/IndexersPage.test.tsx": {
@@ -427,6 +463,9 @@
   "src/components/indexers/IndexersPage.tsx": {
     "qui/no-comments": {
       "count": 6
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/indexers/SearchHistoryPanel.tsx": {
@@ -489,6 +528,11 @@
       "count": 5
     }
   },
+  "src/components/instances/marks/InstanceMarkEditor.tsx": {
+    "qui/no-native-title": {
+      "count": 2
+    }
+  },
   "src/components/instances/preferences/CompletionOverview.tsx": {
     "qui/no-comments": {
       "count": 9
@@ -502,6 +546,9 @@
   "src/components/instances/preferences/InstancePreferencesDialog.tsx": {
     "qui/no-comments": {
       "count": 3
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/instances/preferences/InstanceSSHPanel.test.tsx": {
@@ -572,6 +619,9 @@
   "src/components/instances/preferences/PreferenceWidgets.tsx": {
     "qui/no-comments": {
       "count": 22
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/instances/preferences/PreferencesForm.tsx": {
@@ -617,6 +667,9 @@
   "src/components/instances/preferences/WorkflowDialog.tsx": {
     "qui/no-comments": {
       "count": 181
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/instances/preferences/WorkflowJsonEditDialog.tsx": {
@@ -627,6 +680,9 @@
   "src/components/instances/preferences/WorkflowPreviewDialog.tsx": {
     "qui/no-comments": {
       "count": 20
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/instances/preferences/WorkflowsOverview.test.tsx": {
@@ -707,6 +763,9 @@
   "src/components/kit/ResourceList.tsx": {
     "qui/no-comments": {
       "count": 22
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/kit/Section.tsx": {
@@ -737,6 +796,9 @@
   "src/components/layout/MobileFooterNav.tsx": {
     "qui/no-comments": {
       "count": 18
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/components/layout/Page.tsx": {
@@ -757,6 +819,9 @@
   "src/components/layout/Sidebar.tsx": {
     "qui/no-comments": {
       "count": 10
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/components/layout/SystemNoticeMenuItems.test.tsx": {
@@ -862,6 +927,9 @@
   "src/components/settings/ApiKeysManager.tsx": {
     "qui/no-comments": {
       "count": 1
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/settings/ApplicationSettings.tsx": {
@@ -882,6 +950,9 @@
   "src/components/settings/ClientApiKeysManager.tsx": {
     "qui/no-comments": {
       "count": 9
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/settings/ExternalProgramsManager.test.tsx": {
@@ -922,6 +993,9 @@
   "src/components/settings/LogSettingsPanel.tsx": {
     "qui/no-comments": {
       "count": 37
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/settings/NotificationsManager.switch.test.tsx": {
@@ -1037,6 +1111,9 @@
   "src/components/spreadsheet/SpreadsheetSheetTabs.tsx": {
     "qui/no-comments": {
       "count": 3
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/statistics/DeletedTorrents.test.tsx": {
@@ -1047,6 +1124,9 @@
   "src/components/statistics/DeletedTorrents.tsx": {
     "qui/no-comments": {
       "count": 25
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/components/statistics/EventsChart.tsx": {
@@ -1102,6 +1182,9 @@
   "src/components/statistics/TopTorrents.tsx": {
     "qui/no-comments": {
       "count": 6
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/statistics/TransferChart.test.tsx": {
@@ -1117,6 +1200,9 @@
   "src/components/statistics/YearView.tsx": {
     "qui/no-comments": {
       "count": 12
+    },
+    "qui/no-native-title": {
+      "count": 3
     }
   },
   "src/components/statistics/useBucketFormat.ts": {
@@ -1197,11 +1283,17 @@
   "src/components/themes/LicenseManager.tsx": {
     "qui/no-comments": {
       "count": 15
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/themes/QuickThemeRow.tsx": {
     "qui/no-comments": {
       "count": 2
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/themes/ThemeLayoutSettings.test.tsx": {
@@ -1227,6 +1319,9 @@
   "src/components/themes/ThemeSelector.tsx": {
     "qui/no-comments": {
       "count": 14
+    },
+    "qui/no-native-title": {
+      "count": 4
     }
   },
   "src/components/themes/ThemeThumbnail.tsx": {
@@ -1242,16 +1337,25 @@
   "src/components/torrents/AddTorrentDialog.tsx": {
     "qui/no-comments": {
       "count": 36
+    },
+    "qui/no-native-title": {
+      "count": 3
     }
   },
   "src/components/torrents/AddTorrentPickers.tsx": {
     "qui/no-comments": {
       "count": 14
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/components/torrents/CategorySubmenu.tsx": {
     "qui/no-comments": {
       "count": 15
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/torrents/CategoryTree.tsx": {
@@ -1322,6 +1426,9 @@
   "src/components/torrents/FilterSidebar.tsx": {
     "qui/no-comments": {
       "count": 135
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/components/torrents/FilterViewsSection.test.tsx": {
@@ -1362,21 +1469,33 @@
   "src/components/torrents/TorrentCardsMobile.tsx": {
     "qui/no-comments": {
       "count": 91
+    },
+    "qui/no-native-title": {
+      "count": 3
     }
   },
   "src/components/torrents/TorrentContextMenu.tsx": {
     "qui/no-comments": {
       "count": 20
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/torrents/TorrentCreationTasks.tsx": {
     "qui/no-comments": {
       "count": 7
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/components/torrents/TorrentCreatorDialog.tsx": {
     "qui/no-comments": {
       "count": 16
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/torrents/TorrentDetailsPanel.tabs.test.tsx": {
@@ -1402,6 +1521,9 @@
   "src/components/torrents/TorrentDialogs.tsx": {
     "qui/no-comments": {
       "count": 49
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/components/torrents/TorrentDiscReportDialog.test.tsx": {
@@ -1412,11 +1534,17 @@
   "src/components/torrents/TorrentDiscReportDialog.tsx": {
     "qui/no-comments": {
       "count": 10
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/torrents/TorrentFileTree.tsx": {
     "qui/no-comments": {
       "count": 10
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/components/torrents/TorrentListEmptyState.tsx": {
@@ -1437,6 +1565,9 @@
   "src/components/torrents/TorrentTableColumns.tsx": {
     "qui/no-comments": {
       "count": 18
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/torrents/TorrentTableOptimized.tsx": {
@@ -1487,15 +1618,24 @@
   "src/components/torrents/details/GeneralTabHorizontal.tsx": {
     "qui/no-comments": {
       "count": 15
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/torrents/details/MobileDetails.tsx": {
     "qui/no-comments": {
       "count": 7
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/torrents/details/PeerClientIcon.tsx": {
     "qui/no-comments": {
+      "count": 1
+    },
+    "qui/no-native-title": {
       "count": 1
     }
   },
@@ -1507,11 +1647,19 @@
   "src/components/torrents/details/PeersTable.tsx": {
     "qui/no-comments": {
       "count": 2
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/torrents/details/PieceBar.tsx": {
     "qui/no-comments": {
       "count": 9
+    }
+  },
+  "src/components/torrents/details/StatRow.tsx": {
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/torrents/details/TorrentFileTable.tsx": {
@@ -1627,6 +1775,9 @@
   "src/components/transfers/TransferDetailsDialog.tsx": {
     "qui/no-comments": {
       "count": 7
+    },
+    "qui/no-native-title": {
+      "count": 5
     }
   },
   "src/components/transfers/TransferDialog.test.tsx": {
@@ -1637,6 +1788,9 @@
   "src/components/transfers/TransferDialog.tsx": {
     "qui/no-comments": {
       "count": 26
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/transfers/TransferForm.tsx": {
@@ -1727,6 +1881,9 @@
   "src/components/ui/ThemeToggle.tsx": {
     "qui/no-comments": {
       "count": 11
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/ui/UpdateBanner.tsx": {
@@ -1752,6 +1909,9 @@
   "src/components/ui/copy-button.tsx": {
     "qui/no-comments": {
       "count": 4
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/ui/field-help.test.tsx": {
@@ -1847,6 +2007,9 @@
   "src/components/ui/torrent-name.tsx": {
     "qui/no-comments": {
       "count": 2
+    },
+    "qui/no-native-title": {
+      "count": 1
     }
   },
   "src/components/ui/truncated-text.test.tsx": {
@@ -3347,11 +3510,19 @@
   "src/pages/InstanceBackups.tsx": {
     "qui/no-comments": {
       "count": 5
+    },
+    "qui/no-native-title": {
+      "count": 2
     }
   },
   "src/pages/Login.tsx": {
     "qui/no-comments": {
       "count": 2
+    }
+  },
+  "src/pages/RSSPage.tsx": {
+    "qui/no-native-title": {
+      "count": 6
     }
   },
   "src/pages/Settings.sections.test.tsx": {
