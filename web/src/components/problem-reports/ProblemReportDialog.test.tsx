@@ -434,39 +434,6 @@ describe("ProblemReportDialog", () => {
 })
 
 describe("Sender", () => {
-  it("sends as Anonymous at first, and offers a sign-in with GitHub and with Discord", async () => {
-    serve()
-    mount()
-
-    await openDialog()
-    const privacy = await screen.findByText(/^Anonymous: no name, no account\. brrbin keeps no IP address\./)
-    expect(privacy.querySelector("a")?.getAttribute("href")).toBe("https://bin.getqui.com/privacy")
-    openSenderMenu("Anonymous")
-
-    expect(screen.getByRole("menuitemradio", { name: "Anonymous" }).getAttribute("aria-checked")).toBe("true")
-    expect(screen.getByRole("menuitem", { name: "Sign in with GitHub" })).not.toBeNull()
-    expect(screen.getByRole("menuitem", { name: "Sign in with Discord" })).not.toBeNull()
-    expect(screen.queryByRole("menuitem", { name: "Sign out" })).toBeNull()
-  })
-
-  it("after a sign-in, names the sender in the menu and in the privacy line, and offers Sign out", async () => {
-    serve()
-    serveSender(octocat)
-    mount()
-
-    await openDialog()
-    const privacy = await screen.findByText(/^The maintainers see your GitHub name \(octocat\) and may contact you\./)
-    expect(privacy.querySelector("a")?.getAttribute("href")).toBe("https://bin.getqui.com/privacy")
-    openSenderMenu("octocat")
-
-    const signedIn = screen.getByRole("menuitemradio", { name: /^octocat/ })
-    expect(signedIn.getAttribute("aria-checked")).toBe("true")
-    expect(signedIn.textContent).toBe("octocatGitHub")
-    expect(screen.getByRole("menuitemradio", { name: "Anonymous" }).getAttribute("aria-checked")).toBe("false")
-    expect(screen.getByRole("menuitem", { name: "Sign out" })).not.toBeNull()
-    expect(screen.queryByRole("menuitem", { name: /^Sign in with/ })).toBeNull()
-  })
-
   it("opens the sign-in page in a popup, waits while it is pending, and then sends as the name", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     serve()

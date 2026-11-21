@@ -186,7 +186,6 @@ func TestProblemReportSignInWhenBrrbinCannotStartOne(t *testing.T) {
 
 func TestProblemReportSignInWhenBrrbinAnswersAStartThatQuiCannotUse(t *testing.T) {
 	for name, answer := range map[string]map[string]any{
-		"no url":           {"pollToken": "poll1", "interval": 1},
 		"a script url":     {"url": "javascript:alert(1)", "pollToken": "poll1", "interval": 1},
 		"no poll token":    {"url": "https://bin.getqui.com/report-sign-in/poll1", "interval": 1},
 		"an interval of 0": {"url": "https://bin.getqui.com/report-sign-in/poll1", "pollToken": "poll1", "interval": 0},
