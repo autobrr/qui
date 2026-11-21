@@ -51,6 +51,7 @@ function renderTab(instances: InstanceResponse[]) {
 afterEach(cleanup)
 
 describe("MobileClientsTab", () => {
+  // regression: #4359
   it("opens the only enabled instance directly, with no menu", async () => {
     const { container } = renderTab([instance(1, "main", true), instance(2, "spare", false)])
 
