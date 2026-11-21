@@ -1324,7 +1324,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	// target the season-pack troubleshooting docs point users at. The loop below reads
 	// every cached episode on the instance, so "title mismatch" and "episode not in
 	// pack" fire once per unrelated torrent and are not logged. Every other reason logs
-	// at Debug once per candidate name, because copies of one episode repeat the line.
+	// at Debug once per name and reason, because copies of one episode repeat the line.
 	logged := make(map[string]struct{})
 	logFiltered := func(candidateName, reason string) {
 		if reason == titleMismatchReason || reason == notInPackReason {
@@ -1398,12 +1398,10 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			schemeOK := (localSeasonless && origin.absolute) || (!localSeasonless && origin.seasoned)
 			if !inPack || !schemeOK {
 				reason := packEpisodeRejectReason(inPack)
-				if inPack {
-					titled := *parsed
-					titled.Series = targetID.series
-					if !m.titlesMatch(&titled, packRelease, torrent.Name, packName, aliasTitles) {
-						reason = titleMismatchReason
-					}
+				pack := namedRelease{release: packRelease, rawName: packName}
+				local := namedRelease{release: parsed, rawName: torrent.Name}
+				if inPack && !m.titlesMatchInSourceSeason(pack, local, matchEvidence{SourceTitles: aliasTitles}) {
+					reason = titleMismatchReason
 				}
 				logFiltered(torrent.Name, reason)
 				continue

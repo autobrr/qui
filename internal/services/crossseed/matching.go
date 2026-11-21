@@ -249,12 +249,6 @@ func (m matcher) compareTitles(comparison *releaseComparison, source, candidate 
 	}
 }
 
-func (m matcher) titlesMatch(source, candidate *rls.Release, sourceName, candidateName string, candidateExtraTitles []string) bool {
-	var comparison releaseComparison
-	m.compareTitles(&comparison, source, candidate, sourceName, candidateName, nil, candidateExtraTitles)
-	return comparison.matched()
-}
-
 // titleSetsMatch reports whether two sets of normalized release titles name the
 // same work. The extra titles are ARR aliases of the other side.
 func titleSetsMatch(sourceTitles, candidateTitles, sourceExtraTitles, candidateExtraTitles []string) bool {
