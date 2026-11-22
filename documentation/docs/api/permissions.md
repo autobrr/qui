@@ -44,7 +44,7 @@ Each area offers only the levels in this table.
 | Arr | Read Arr instances, resolve an external ID | Not offered | Add, edit, delete, and test Arr instances |
 | Notifications | Read targets and events | Not offered | Add, edit, delete, and test targets |
 | Settings | Read client settings, tracker customizations, the dashboard, filter views, and the database shrink status | Not offered | Change these items, the theme settings, the custom themes, and the Statistics settings. Dismiss the result of a database shrink and the "Shrink failed" notice |
-| Logs | Read log settings, exclusions, files, and the log stream | Not offered | Change log settings and exclusions |
+| Logs | Read log settings, exclusions, files, and the log stream | Not offered | Change log settings and exclusions, except the log file path. See [Browser-only routes](#browser-only-routes) |
 | System | Application information | Not offered | Not offered |
 
 A `.torrent` file and a backup hold tracker passkeys, so their downloads need `write`. A key without `Torrents: write` also gets tracker URLs with the passkey hidden.
@@ -85,6 +85,8 @@ The Browser-only routes are:
 - The Transfer routes under `/api/transfers`
 - The Share routes under `/api/shares`, also the Share settings and the download of the `.torrent` file of a Share
 
+The log file path is a Browser-only setting on a route that API keys can use. `PUT /api/log-settings` accepts a key with `Logs: write` for Log level, max size, and max backups. It returns `403 API key not allowed; use the web UI` and changes nothing when a key sends a `path` that differs from the current one. A key can send the current `path` back unchanged.
+
 ## 403 messages
 
 A key that cannot use a route gets one of these `403` bodies:
@@ -94,7 +96,7 @@ A key that cannot use a route gets one of these `403` bodies:
 | `API key needs Torrents: write` | The key does not hold this Permission. | Add the Permission to the key. |
 | `API key cannot reach instance 2` | The Instance limit of the key does not hold this instance. | Change the Instance limit, or change the request. |
 | `API key with an instance limit cannot use this route` | This is a cross-seed or Dir Scan route, or a route that spans instances. | Use a key with no Instance limit. |
-| `API key not allowed; use the web UI` | This is a Browser-only route. | Use the web UI. No Permission opens this route. |
+| `API key not allowed; use the web UI` | This is a Browser-only route, or the request changes the log file path. | Use the web UI. No Permission allows this. |
 
 These checks apply only to API keys. A signed-in browser has full access, and a `403` from a key check does not sign you out.
 

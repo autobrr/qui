@@ -84,12 +84,18 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 // signs the user out on a 403 with that word.
 func BrowserOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey); ok {
-			http.Error(w, "API key not allowed; use the web UI", http.StatusForbidden)
-			return
+		if PassesBrowserOnly(w, r) {
+			next.ServeHTTP(w, r)
 		}
-		next.ServeHTTP(w, r)
 	})
+}
+
+func PassesBrowserOnly(w http.ResponseWriter, r *http.Request) bool {
+	if _, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey); ok {
+		http.Error(w, "API key not allowed; use the web UI", http.StatusForbidden)
+		return false
+	}
+	return true
 }
 
 // RequirePermission refuses an API key that lacks the Permission. Register it

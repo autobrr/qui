@@ -261,6 +261,9 @@ func (c *AppConfig) UpdateLogSettings(update LogSettingsUpdate) (LogSettingsResp
 	if err := validateLockedFields(update, c.GetLockedLogSettings()); err != nil {
 		return LogSettingsResponse{}, err
 	}
+	if update.Path != nil && *update.Path != "" && !strings.EqualFold(filepath.Ext(*update.Path), ".log") {
+		return LogSettingsResponse{}, errors.New("log file path must end in .log")
+	}
 
 	oldLevel := c.Config.LogLevel
 	oldPath := c.Config.LogPath
