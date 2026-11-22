@@ -77,95 +77,16 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		return nil, err
 	}
 
-	// filepath.WalkDir does not descend a root that is a symlink, so a followed
-	// root walks its target and reports each entry under root.
-	walked := root
-	if opts.FollowRoot {
-		if fi, err := os.Lstat(root); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-			if walked, err = filepath.EvalSymlinks(root); err != nil {
-				return nil, err
-			}
-		}
+	walked, err := walkTarget(root, opts.FollowRoot)
+	if err != nil {
+		return nil, err
 	}
 
 	ch := make(chan fsops.WalkEntry, 64)
 	go func() {
 		defer close(ch)
 		walkErr := filepath.WalkDir(walked, func(path string, d fs.DirEntry, walkErr error) error {
-			if ctx.Err() != nil {
-				return fs.SkipAll
-			}
-
-			// d is nil when filepath.WalkDir cannot stat the root (TOCTOU
-			// between our pre-check and the walk's internal stat).
-			if d == nil {
-				return walkErr
-			}
-
-			if walked != root {
-				rel, err := filepath.Rel(walked, path)
-				if err != nil {
-					return err
-				}
-				path = filepath.Join(root, rel)
-			}
-
-			if opts.Skip(d.Name(), path, d.IsDir(), path == root) {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-
-			entry := fsops.WalkEntry{
-				Path: path}
-
-			rel, err := filepath.Rel(root, path)
-			if err == nil {
-				entry.RelPath = rel
-			}
-
-			if walkErr != nil {
-				entry.Err = walkErr
-			} else if fi, err := d.Info(); err != nil {
-				// An entry that vanished or can't be stat'd is skipped by
-				// default, not surfaced: consumers (orphanscan, dirscan)
-				// skipped such files pre-migration, and emitting it as Err
-				// would read as a walk failure and abort whole scans. Err
-				// stays reserved for enumeration-level failures. Delete
-				// preflights opt in via EmitStatErrors so they can fail
-				// closed instead.
-				if !opts.EmitStatErrors {
-					return nil
-				}
-				entry.StatErr = err
-			} else {
-				entry.Size = fi.Size()
-				entry.ModTime = fi.ModTime()
-				entry.Mode = localFileMode(path, fi.Mode(), false)
-				entry.IsDir = fi.IsDir()
-				entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
-
-				if opts.WantFileID && entry.Mode.IsRegular() {
-					fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
-					if fidErr != nil {
-						// Identity failure must not read as an unreadable
-						// entry — that would abort whole scans over one odd
-						// file. Callers that need identity check FileIDErr.
-						entry.FileIDErr = fidErr
-					} else {
-						entry.FileID = fid
-						entry.Nlinks = nlinks
-					}
-				}
-			}
-
-			select {
-			case ch <- entry:
-			case <-ctx.Done():
-				return fs.SkipAll
-			}
-			return nil
+			return visitWalkEntry(ctx, ch, root, walked, opts, path, d, walkErr)
 		})
 		// Surface a walk abort as a final entry so the caller knows the walk
 		// did not complete. Per-entry enumeration errors (unreadable
@@ -184,6 +105,108 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		}
 	}()
 	return ch, nil
+}
+
+// filepath.WalkDir does not descend a root that is a symlink, so a followed
+// root walks its target and reports each entry under root.
+func walkTarget(root string, followRoot bool) (string, error) {
+	if !followRoot {
+		return root, nil
+	}
+	if fi, err := os.Lstat(root); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return filepath.EvalSymlinks(root)
+	}
+	return root, nil
+}
+
+func visitWalkEntry(ctx context.Context, ch chan<- fsops.WalkEntry, root, walked string, opts fsops.WalkOptions, path string, d fs.DirEntry, walkErr error) error {
+	if ctx.Err() != nil {
+		return fs.SkipAll
+	}
+
+	// d is nil when filepath.WalkDir cannot stat the root (TOCTOU
+	// between our pre-check and the walk's internal stat).
+	if d == nil {
+		return walkErr
+	}
+
+	if walked != root {
+		rel, err := filepath.Rel(walked, path)
+		if err != nil {
+			return err
+		}
+		path = filepath.Join(root, rel)
+	}
+
+	if opts.Skip(d.Name(), path, d.IsDir(), path == root) {
+		if d.IsDir() {
+			return filepath.SkipDir
+		}
+		return nil
+	}
+
+	entry, ok := newWalkEntry(root, path, d, walkErr, opts)
+	if !ok {
+		return nil
+	}
+
+	select {
+	case ch <- entry:
+	case <-ctx.Done():
+		return fs.SkipAll
+	}
+	return nil
+}
+
+func newWalkEntry(root, path string, d fs.DirEntry, walkErr error, opts fsops.WalkOptions) (fsops.WalkEntry, bool) {
+	entry := fsops.WalkEntry{
+		Path: path}
+
+	rel, err := filepath.Rel(root, path)
+	if err == nil {
+		entry.RelPath = rel
+	}
+
+	if walkErr != nil {
+		entry.Err = walkErr
+		return entry, true
+	}
+
+	fi, err := d.Info()
+	if err != nil {
+		// An entry that vanished or can't be stat'd is skipped by
+		// default, not surfaced: consumers (orphanscan, dirscan)
+		// skipped such files pre-migration, and emitting it as Err
+		// would read as a walk failure and abort whole scans. Err
+		// stays reserved for enumeration-level failures. Delete
+		// preflights opt in via EmitStatErrors so they can fail
+		// closed instead.
+		if !opts.EmitStatErrors {
+			return entry, false
+		}
+		entry.StatErr = err
+		return entry, true
+	}
+
+	entry.Size = fi.Size()
+	entry.ModTime = fi.ModTime()
+	entry.Mode = localFileMode(path, fi.Mode(), false)
+	entry.IsDir = fi.IsDir()
+	entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
+
+	if opts.WantFileID && entry.Mode.IsRegular() {
+		fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
+		if fidErr != nil {
+			// Identity failure must not read as an unreadable
+			// entry — that would abort whole scans over one odd
+			// file. Callers that need identity check FileIDErr.
+			entry.FileIDErr = fidErr
+		} else {
+			entry.FileID = fid
+			entry.Nlinks = nlinks
+		}
+	}
+	return entry, true
 }
 
 func (b *Backend) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) {
