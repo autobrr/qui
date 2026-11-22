@@ -124,18 +124,26 @@ func TestStaleNolintNames(t *testing.T) {
 	}
 }
 
-func TestSuppressionGrowth(t *testing.T) {
+func TestSuppressionProblems(t *testing.T) {
 	parse := func(raw string) counts {
 		got, err := parseSuppressions([]byte(raw))
 		require.NoError(t, err)
-		return counts{suppressionsRule: got}
+		return got
 	}
-	was := parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}, "no-undef": {"count": 9}}}`)
-	assert.Empty(t, growth(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 1}, "no-undef": {"count": 20}}}`), was))
-	assert.Empty(t, growth(parse(`{"src/b.tsx": {"qui/no-comments": {"count": 1}}, "src/c.tsx": {"qui/no-comments": {"count": 1}}}`), was), "a move keeps the total level")
+	was := parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}, "qui/no-direct-effect": {"count": 1}}}`)
+	assert.Empty(t, suppressionProblems(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 1}, "qui/no-direct-effect": {"count": 1}}}`), was))
+	assert.Empty(t, suppressionProblems(parse(`{"src/b.tsx": {"qui/no-comments": {"count": 1}}, "src/c.tsx": {"qui/no-comments": {"count": 1}, "qui/no-direct-effect": {"count": 1}}}`), was), "a move keeps the total level")
+	assert.Empty(t, suppressionProblems(was, parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}}}`)), "a rule that the base does not hold starts with its counts")
 	assert.Equal(t, []string{
-		"qui/no-comments: the total grew from 2 to 3. The total only shrinks: a moved comment keeps it level, a new comment does not.",
-	}, growth(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}}, "src/b.tsx": {"qui/no-comments": {"count": 1}}}`), was))
+		"web/eslint-suppressions.json: the total of qui/no-comments grew from 2 to 3. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report as its ESLint message says.",
+		"web/eslint-suppressions.json: the total of qui/no-direct-effect grew from 1 to 2. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report as its ESLint message says.",
+	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}, "qui/no-direct-effect": {"count": 1}}, "src/b.tsx": {"qui/no-comments": {"count": 1}, "qui/no-direct-effect": {"count": 1}}}`), was))
+	assert.Equal(t, []string{
+		"web/eslint-suppressions.json: holds 20 reports of no-undef. Only qui/no-comments and qui/no-direct-effect may have entries there. Fix each report as its ESLint message says, and delete the entries.",
+	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}, "qui/no-direct-effect": {"count": 1}, "no-undef": {"count": 20}}}`), was))
+	assert.Equal(t, []string{
+		"web/eslint-suppressions.json: has no entry left for qui/no-direct-effect. Delete it from suppressedRules in scripts/ratchet/comments.go, so that its reports cannot come back without a change there.",
+	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}}}`), was), "a rule whose last entry goes leaves suppressedRules")
 }
 
 func TestGrowthOfGoComments(t *testing.T) {

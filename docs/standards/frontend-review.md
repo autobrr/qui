@@ -2,11 +2,8 @@
 
 ## React Effects
 
-- Use `useEffect` only to sync with external systems: DOM, subscriptions, network.
-- Avoid derived state in Effects; calculate during render or use `useMemo` for expensive compute.
-- Put user-driven logic in event handlers.
-- To reset state, prefer a `key` or render-time adjustment.
-- Fetch Effects must guard stale responses with cleanup/abort.
+- ESLint reports an effect in a component as `qui/no-direct-effect`, and its message names what to write instead. ADR 0073 has the reason.
+- A hook in `effectHooks` of `web/eslint.config.js` hides one effect behind one named job. Its effect cleans up, and a fetch in it drops a stale response.
 - Reference: https://react.dev/learn/you-might-not-need-an-effect
 
 ## React state
