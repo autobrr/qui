@@ -22,7 +22,6 @@ func (b *Backend) Statfs(ctx context.Context, path string) (*fsops.StatfsResult,
 	if err := unix.Statfs(path, &stat); err != nil {
 		return nil, fmt.Errorf("statfs %s: %w", path, err)
 	}
-	//nolint:gosec,unconvert // int64 cast needed for macOS (uint32) even though Linux is already int64
 	return &fsops.StatfsResult{
 		BytesAvailable: int64(stat.Bavail) * int64(stat.Bsize),
 		BytesTotal:     int64(stat.Blocks) * int64(stat.Bsize),

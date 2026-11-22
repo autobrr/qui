@@ -61,7 +61,7 @@ func (c *Client) Ping(ctx context.Context) error {
 
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("connection failed: %w", err)
 	}
@@ -114,7 +114,7 @@ func (c *Client) ParseTitleLookupResult(ctx context.Context, title string) (*Ext
 
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -307,7 +307,7 @@ func (c *Client) getJSON(ctx context.Context, path string, params url.Values, ta
 	}
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}

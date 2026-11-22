@@ -1987,8 +1987,6 @@ func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Requ
 
 // GetTorrentPieceStates returns the download state of each piece for a torrent.
 // States: 0 = not downloaded, 1 = downloading, 2 = downloaded
-//
-//nolint:dupl // Handler pattern is intentionally similar to other torrent detail handlers
 func (h *TorrentsHandler) GetTorrentPieceStates(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {

@@ -769,7 +769,7 @@ const (
 // maximum, see matchesBetween. SYSTEM_DAY and SYSTEM_YEAR do not wrap: a month
 // boundary depends on the month length, and years do not cycle.
 //
-//nolint:exhaustive // Only cyclic clock fields belong here.
+
 func (f ConditionField) WrapsBetween() bool {
 	switch f {
 	case FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemMonth:
