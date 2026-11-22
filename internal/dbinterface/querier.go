@@ -16,6 +16,7 @@ type TxQuerier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	Commit() error
 	Rollback() error
+	Dialect() string
 }
 
 type Querier interface {
@@ -23,9 +24,11 @@ type Querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (TxQuerier, error)
+	Dialect() string
 }
 
-type dialectProvider interface {
+// DialectProvider exposes a SQL dialect identifier (for example "sqlite" or "postgres").
+type DialectProvider interface {
 	Dialect() string
 }
 
@@ -33,19 +36,15 @@ type deferForeignKeysTx interface {
 	DeferForeignKeyChecks(ctx context.Context) error
 }
 
-func DialectOf(q any) string {
+func DialectOf(q DialectProvider) string {
 	if q == nil {
-		return "sqlite"
+		panic("dbinterface.DialectOf: nil querier")
 	}
-	provider, ok := q.(dialectProvider)
-	if !ok {
-		return "sqlite"
-	}
-	dialect := strings.TrimSpace(provider.Dialect())
+	dialect := strings.ToLower(strings.TrimSpace(q.Dialect()))
 	if dialect == "" {
-		return "sqlite"
+		panic("dbinterface.DialectOf: empty dialect")
 	}
-	return strings.ToLower(dialect)
+	return dialect
 }
 
 func DeferForeignKeyChecks(ctx context.Context, tx TxQuerier) error {

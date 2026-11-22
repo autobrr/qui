@@ -12,7 +12,35 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func newStringPoolTestDB(tb testing.TB) *sql.DB {
+type sqliteTestTx struct {
+	*sql.Tx
+}
+
+func (sqliteTestTx) Dialect() string {
+	return "sqlite"
+}
+
+type sqliteTestDB struct {
+	*sql.DB
+}
+
+func (d *sqliteTestDB) Begin() (*sqliteTestTx, error) {
+	tx, err := d.DB.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return &sqliteTestTx{Tx: tx}, nil
+}
+
+func (d *sqliteTestDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sqliteTestTx, error) {
+	tx, err := d.DB.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &sqliteTestTx{Tx: tx}, nil
+}
+
+func newStringPoolTestDB(tb testing.TB) *sqliteTestDB {
 	tb.Helper()
 
 	db, err := sql.Open("sqlite", ":memory:")
@@ -31,7 +59,7 @@ func newStringPoolTestDB(tb testing.TB) *sql.DB {
 		tb.Fatalf("Failed to create table: %v", err)
 	}
 
-	return db
+	return &sqliteTestDB{DB: db}
 }
 
 func TestInternStringsBatch(t *testing.T) {

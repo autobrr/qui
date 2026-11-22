@@ -49,10 +49,18 @@ func (t *capturingTx) Rollback() error {
 	return t.tx.Rollback()
 }
 
+func (t *capturingTx) Dialect() string {
+	return "sqlite"
+}
+
 type capturingQuerier struct {
 	db        *sql.DB
 	onExec    func(query string, args []any)
 	onBeginTx func(tx *capturingTx)
+}
+
+func (q *capturingQuerier) Dialect() string {
+	return "sqlite"
 }
 
 func (q *capturingQuerier) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {

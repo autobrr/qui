@@ -38,10 +38,18 @@ func (m *mockTx) Rollback() error {
 	return m.Tx.Rollback()
 }
 
+func (m *mockTx) Dialect() string {
+	return "sqlite"
+}
+
 func newMockQuerier(db *sql.DB) *mockQuerier {
 	return &mockQuerier{
 		DB: db,
 	}
+}
+
+func (m *mockQuerier) Dialect() string {
+	return "sqlite"
 }
 
 func (m *mockQuerier) GetOrCreateStringID() string {
