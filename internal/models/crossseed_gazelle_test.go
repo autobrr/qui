@@ -179,6 +179,7 @@ func checkSearchRunGazelleSummary(t *testing.T, db *database.DB) {
 	require.Equal(t, run.GazelleSummary, runs[0].GazelleSummary)
 }
 
+// regression: #4379
 func TestCrossSeedStore_SearchRunDropsRetiredGazelleReasons(t *testing.T) {
 	ctx := t.Context()
 	db := testdb.NewMigratedSQLite(t, "crossseed-search-run-retired-gazelle-reasons")

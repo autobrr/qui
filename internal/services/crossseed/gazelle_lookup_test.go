@@ -548,6 +548,7 @@ func TestExecuteCompletionSearch_GazelleOffSaysNothingAboutREDOPS(t *testing.T) 
 	require.NotContains(t, notifier.Events()[0].Message, "RED/OPS")
 }
 
+// regression: #4379
 func TestSearchReportFacts_NamesEachGazelleSite(t *testing.T) {
 	tests := []struct {
 		name     string
