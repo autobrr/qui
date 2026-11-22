@@ -12,7 +12,7 @@ Before this decision, the bot fixed only Go files. ADR 0073 holds 226 effects in
 The `web` lane uses what ADR 0020 set up: the `claude` environment, the same Console workspace, federation rule, and $5 stop per run, and the `qui-rabbit` app for the push. The agent never holds the app token. The lanes differ in four places:
 
 - **Files.** The agent can edit the picked file, its test files (`<name>.test.ts` or `<name>.test.tsx`, next to the file or in `__tests__`), and `web/eslint-suppressions.json`. It leaves an effect that needs a new hook file or a change in another file, and names it in the pull request.
-- **Commands.** The agent can run ESLint, `tsc`, and Vitest through `pnpm --dir web exec`, and `go run ./scripts/ratchet`. The workflow then runs `pnpm lint`, `tsc -b`, and the whole frontend test suite before it saves the patch.
+- **Commands.** The agent can run ESLint, `tsc`, and Vitest through `pnpm --dir web exec`, and `go run ./scripts/ratchet`. The workflow then saves the patch and runs `pnpm lint`, `tsc -b`, and the whole frontend test suite. If a check fails, the pull request still opens, as a draft that names the check.
 - **Branch.** `ratchet/web/<rule>/<file>/<run id>`. A `web` pull request that is closed without a merge skips its rule and file for good, as in ADR 0020.
 - **Title.** `refactor(web): drop effects in <file>`.
 
