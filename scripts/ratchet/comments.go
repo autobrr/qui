@@ -17,38 +17,72 @@ import (
 	"strings"
 
 	"github.com/autobrr/qui/scripts/comments/gocomments"
+	"github.com/autobrr/qui/scripts/offlog"
 )
 
 const (
 	commentsLinter   = "comments"
+	offlogLinter     = "offlog"
 	suppressionsPath = "web/eslint-suppressions.json"
 )
 
 var suppressedRules = []string{"qui/no-comments", "qui/no-direct-effect", "react-hooks/exhaustive-deps", "react-refresh/only-export-components"}
 
 func goComments() (map[string]int, error) {
+	got := map[string]int{}
+	err := eachTrackedGoFile(func(path string, src []byte) error {
+		n, err := gocomments.Count(path, src)
+		if n > 0 {
+			got[path] = n
+		}
+		return err
+	})
+	return got, err
+}
+
+func offLogLines() (map[string][]int, error) {
+	got := map[string][]int{}
+	err := eachTrackedGoFile(func(path string, src []byte) error {
+		lines, err := offlog.Lines(path, src)
+		if len(lines) > 0 {
+			got[path] = lines
+		}
+		return err
+	})
+	return got, err
+}
+
+func eachTrackedGoFile(visit func(path string, src []byte) error) error {
 	paths, err := gocomments.Tracked()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	got := map[string]int{}
 	for _, path := range paths {
 		src, err := os.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
-		n, err := gocomments.Count(path, src)
-		if err != nil {
-			return nil, err
-		}
-		if n > 0 {
-			got[path] = n
+		if err := visit(path, src); err != nil {
+			return err
 		}
 	}
-	return got, nil
+	return nil
+}
+
+func offLogProblems(lines map[string][]int, allow map[string]int) []string {
+	var problems []string
+	for _, file := range slices.Sorted(maps.Keys(lines)) {
+		if len(lines[file]) <= allow[file] {
+			continue
+		}
+		for _, line := range lines[file] {
+			problems = append(problems, fmt.Sprintf("%s:%d: a DEBUG or INFO line about a feature that is off. Delete the line, or write it at TRACE. See docs/standards/logging.md.", file, line))
+		}
+	}
+	return problems
 }
 
 func writeCommentCounts() error {

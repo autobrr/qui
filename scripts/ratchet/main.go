@@ -44,6 +44,14 @@ func main() {
 	if got[commentsLinter], err = goComments(); err != nil {
 		fail(err)
 	}
+	offLines, err := offLogLines()
+	if err != nil {
+		fail(err)
+	}
+	got[offlogLinter] = map[string]int{}
+	for file, lines := range offLines {
+		got[offlogLinter][file] = len(lines)
+	}
 	raw, err := os.ReadFile(allowlistPath)
 	if err != nil {
 		fail(err)
@@ -68,6 +76,7 @@ func main() {
 	}
 
 	problems := compare(got, allow, baseAllow)
+	problems = append(problems, offLogProblems(offLines, allow[offlogLinter])...)
 	enabled, err := enabledLinters()
 	if err != nil {
 		fail(err)
