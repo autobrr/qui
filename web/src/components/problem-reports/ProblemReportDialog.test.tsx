@@ -624,7 +624,49 @@ describe("Draft", () => {
     expect(reports[1].text).toBe("Torrents vanish after a restart")
     expect(reports[1].submissionId).not.toBe(reports[0].submissionId)
   })
+
+  // regression: #4381
+  it("shows the draft that another tab stored while the dialog was closed", async () => {
+    serve()
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    storeDraftFromAnotherTab({ text: "Uploads stall", logScope: "all" })
+
+    const second = await openDialog()
+
+    expect(second.textField.value).toBe("Uploads stall")
+  })
+
+  // regression: #4381
+  it("keeps a draft that another tab changed when a Send from a closed dialog succeeds", async () => {
+    serve()
+    let answer: (response: Response) => void = () => {}
+    server.use(http.post("*/api/problem-reports", () => new Promise<Response>((resolve) => { answer = resolve })))
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(sendButton().disabled).toBe(true))
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const stored = JSON.parse(localStorage.getItem("qui-problem-report-draft") as string) as { attempt: unknown }
+    storeDraftFromAnotherTab({ text: "Torrents vanish after a restart", logScope: "all", attempt: stored.attempt })
+    answer(HttpResponse.json({ id: "r1" }, { status: 201 }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1))
+
+    expect(JSON.parse(localStorage.getItem("qui-problem-report-draft") as string)).toEqual({ text: "Torrents vanish after a restart", logScope: "all" })
+  })
 })
+
+function storeDraftFromAnotherTab(draft: object) {
+  localStorage.setItem("qui-problem-report-draft", JSON.stringify(draft))
+  window.dispatchEvent(new StorageEvent("storage", { key: "qui-problem-report-draft" }))
+}
 
 describe("Sender", () => {
   it("opens the sign-in page in a popup, waits while it is pending, and then sends as the name", async () => {

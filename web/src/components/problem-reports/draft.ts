@@ -83,17 +83,16 @@ export function finishProblemReportDraftSend(attempt: ProblemReportAttempt) {
   else writeDraft({ text: draft.text, logScope: draft.logScope })
 }
 
+window.addEventListener("storage", (event) => {
+  if (event.key !== null && event.key !== DRAFT_KEY) return
+  cache = undefined
+  for (const listener of listeners) listener()
+})
+
 function subscribe(listener: () => void) {
   listeners.add(listener)
-  const onStorage = (event: StorageEvent) => {
-    if (event.key !== null && event.key !== DRAFT_KEY) return
-    cache = undefined
-    listener()
-  }
-  window.addEventListener("storage", onStorage)
   return () => {
     listeners.delete(listener)
-    window.removeEventListener("storage", onStorage)
   }
 }
 
