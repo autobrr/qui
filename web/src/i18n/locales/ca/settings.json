@@ -144,6 +144,37 @@
       "submit": "Desa els canvis",
       "saving": "S'està desant..."
     },
+    "templates": {
+      "title": "Plantilla",
+      "help": "Substitueix els permisos de sota pels que necessita una eina i esborra el límit d'instàncies quan calgui. Pots canviar qualsevol casella després.",
+      "pick": "Tria una plantilla",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "Webhooks de Cross-Seed i paquets de temporada (no client de descàrrega)"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "Llista d'instàncies i totals de transferència (0.5.0 o posterior)"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "Giny de qui. Limita la clau a una instància només si el giny defineix instance"
+        },
+        "arrDirScan": {
+          "name": "Sonarr, Radarr, Lidarr, Readarr",
+          "description": "Només webhook d'explorador de directoris (client: Proxy del client)"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "Extensió del navegador per afegir torrents"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension (Cross-Seed)",
+          "description": "Afegeix torrents, coincidència manual i paquets de temporada"
+        }
+      }
+    },
     "permissions": {
       "title": "Permisos",
       "help": "L'escriptura inclou la lectura i l'execució. L'execució no inclou la lectura, perquè la configuració conté credencials.",

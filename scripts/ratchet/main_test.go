@@ -155,3 +155,12 @@ func TestGrowthOfGoComments(t *testing.T) {
 		"b.go: the gocognit entry grew from 0 to 1. The allowlist only shrinks.",
 	}, growth(counts{commentsLinter: {"a.go": 5}, "gocognit": {"b.go": 1}}, base))
 }
+
+func TestOffLogProblems(t *testing.T) {
+	lines := map[string][]int{"grown.go": {12, 40}, "level.go": {7}}
+	allow := map[string]int{"grown.go": 1, "level.go": 1}
+	assert.Equal(t, []string{
+		"grown.go:12: a DEBUG or INFO line about a feature that is off. Delete the line, or write it at TRACE. See docs/standards/logging.md.",
+		"grown.go:40: a DEBUG or INFO line about a feature that is off. Delete the line, or write it at TRACE. See docs/standards/logging.md.",
+	}, offLogProblems(lines, allow))
+}
