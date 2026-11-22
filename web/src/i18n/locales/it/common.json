@@ -106,7 +106,28 @@
     },
     "privacy": {
       "anonymous": "Anonimo: nessun nome, nessun account. brrbin non conserva alcun indirizzo IP.",
+      "signedIn": "I maintainer vedono il tuo nome {{provider}} ({{name}}) e possono contattarti.",
       "link": "Informativa sulla privacy"
+    },
+    "sender": {
+      "label": "Invia come",
+      "anonymous": "Anonimo",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Accedi con {{provider}}",
+      "signOut": "Esci",
+      "waiting": "In attesa di {{provider}}",
+      "errors": {
+        "discordNotMember": "Il tuo account Discord non è nel server Discord di autobrr. Unisciti al server e accedi di nuovo, accedi con GitHub oppure invia in modo anonimo.",
+        "refused": "Accesso rifiutato: {{reason}}",
+        "expired": "Accesso scaduto. Accedi di nuovo.",
+        "popupBlocked": "Il tuo browser ha bloccato la finestra di accesso. Consenti i pop-up per qui, poi accedi di nuovo.",
+        "unavailable": "brrbin non può farti accedere in questo momento. Riprova più tardi.",
+        "startFailed": "Impossibile avviare l'accesso: {{message}}",
+        "signOutFailed": "Impossibile uscire: {{message}}"
+      }
     },
     "newerRelease": "Stai usando {{running}}. È disponibile <release>{{newer}}</release>.",
     "send": "Invia",

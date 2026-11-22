@@ -4,6 +4,7 @@
 package problemreport
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -175,7 +176,7 @@ func (s *Service) fetchStatuses(ctx context.Context, installKey string, ids []st
 	for i, id := range ids {
 		escaped[i] = url.QueryEscape(id)
 	}
-	status, body, err := s.callBrrbin(ctx, installKey, http.MethodGet, "/api/install/reports?ids="+strings.Join(escaped, ","))
+	status, body, err := s.callBrrbin(ctx, installKey, http.MethodGet, "/api/install/reports?ids="+strings.Join(escaped, ","), "", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +213,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	// From here brrbin can delete the report, so a closed tab must not keep
 	// its row. callBrrbin has its own timeout.
 	ctx = context.WithoutCancel(ctx)
-	status, _, err := s.callBrrbin(ctx, installKey, http.MethodDelete, "/api/reports/"+url.PathEscape(id))
+	status, _, err := s.callBrrbin(ctx, installKey, http.MethodDelete, "/api/reports/"+url.PathEscape(id), "", nil)
 	switch {
 	case err != nil:
 		log.Warn().Err(err).Str("reportID", id).Msg("brrbin did not answer a Problem report delete")
@@ -229,14 +230,20 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *Service) callBrrbin(ctx context.Context, installKey, method, path string) (int, []byte, error) {
+func (s *Service) callBrrbin(ctx context.Context, installKey, method, path, token string, jsonBody []byte) (int, []byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimSuffix(s.baseURL, "/")+path, nil)
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimSuffix(s.baseURL, "/")+path, bytes.NewReader(jsonBody))
 	if err != nil {
 		return 0, nil, err
 	}
 	req.Header.Set("X-Install-Key", installKey)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if jsonBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return 0, nil, err

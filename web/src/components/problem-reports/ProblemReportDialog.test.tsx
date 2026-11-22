@@ -5,11 +5,12 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { HttpResponse, http } from "msw"
+import { HttpResponse, delay, http } from "msw"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { closeProblemReport } from "@/components/problem-reports/open"
 import { ProblemReportButton, ProblemReportDialogRoot, ProblemReportMenuItem } from "@/components/problem-reports/ProblemReportDialog"
+import { SENDER_KEY } from "@/components/problem-reports/sender"
 import { SENT_REPORTS_KEY } from "@/components/problem-reports/sent-reports"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -17,7 +18,14 @@ import "@/i18n"
 import { api } from "@/lib/api"
 import { _resetClientSettingsForTests, parseJsonNumber, readClientSetting, writeClientSetting } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
-import type { ApplicationInfo, ListedProblemReport, ProblemReportFacts, ProblemReportPayload } from "@/types"
+import type {
+  ApplicationInfo,
+  ListedProblemReport,
+  ProblemReportFacts,
+  ProblemReportPayload,
+  ProblemReportSender,
+  ProblemReportSignInState
+} from "@/types"
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({ toastSuccess: vi.fn(), toastError: vi.fn() }))
 vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }))
@@ -42,8 +50,43 @@ function serve(facts: ProblemReportFacts = baseFacts, info: Partial<ApplicationI
   server.use(
     http.get("*/api/application/info", () => HttpResponse.json(info)),
     http.get("*/api/problem-reports/facts", () => HttpResponse.json(facts)),
+    http.get("*/api/problem-reports/sender", () => HttpResponse.json({ anonymous: true })),
     http.get("*/api/problem-reports", () => HttpResponse.json([]))
   )
+}
+
+const octocat: ProblemReportSender = { anonymous: false, provider: "github", name: "octocat" }
+const signInURL = "https://bin.getqui.com/report-sign-in/p1"
+
+function serveSender(...senders: ProblemReportSender[]) {
+  let calls = 0
+  server.use(http.get("*/api/problem-reports/sender", () => HttpResponse.json(senders[Math.min(calls++, senders.length - 1)])))
+}
+
+function serveSignIn(states: ProblemReportSignInState[], start: () => Response = () => HttpResponse.json({ url: signInURL })) {
+  const calls = { started: [] as string[], reads: 0, signOuts: 0 }
+  server.use(
+    http.post("*/api/problem-reports/sign-in", async ({ request }) => {
+      calls.started.push(((await request.json()) as { provider: string }).provider)
+      return start()
+    }),
+    http.get("*/api/problem-reports/sign-in", () => HttpResponse.json(states[Math.min(calls.reads++, states.length - 1)])),
+    http.delete("*/api/problem-reports/sign-in", () => {
+      calls.signOuts++
+      return new HttpResponse(null, { status: 204 })
+    })
+  )
+  return calls
+}
+
+function stubPopup() {
+  const popup = { opener: window as Window | null, location: { href: "" }, close: vi.fn() }
+  const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window)
+  return { popup, open }
+}
+
+function openSenderMenu(sender: string) {
+  fireEvent.keyDown(screen.getByRole("button", { name: sender }), { key: "Enter" })
 }
 
 /** Answers the list route with reports, and counts its calls. */
@@ -60,22 +103,25 @@ function withQui(qui: Partial<ProblemReportFacts["qui"]>): ProblemReportFacts {
   return { ...baseFacts, qui: { ...baseFacts.qui, ...qui } }
 }
 
-/** Records each report that reaches the send route, and answers with the next answer, or 201. */
+/** Records each report and its sender that reach the send route, and answers with the next answer, or 201. */
 function serveSend(answers: Response[] = []) {
   const reports: ProblemReportPayload[] = []
+  const senders: ProblemReportSender[] = []
   server.use(http.post("*/api/problem-reports", async ({ request }) => {
-    const report = JSON.parse((await request.formData()).get("report") as string) as ProblemReportPayload
+    const form = await request.formData()
+    const report = JSON.parse(form.get("report") as string) as ProblemReportPayload
     reports.push(report)
+    senders.push(JSON.parse(form.get("sender") as string) as ProblemReportSender)
     return answers[reports.length - 1] ?? HttpResponse.json(
       { id: "r1", submissionId: report.submissionId, title: "t", sentAt: "2026-11-19T09:00:00Z", status: "received", text: report.text },
       { status: 201 }
     )
   }))
-  return reports
+  return { reports, senders }
 }
 
 function mount() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
   render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -129,6 +175,8 @@ afterEach(() => {
   cleanup()
   toastSuccess.mockReset()
   toastError.mockReset()
+  vi.restoreAllMocks()
+  vi.useRealTimers()
   localStorage.clear()
   _resetClientSettingsForTests()
 })
@@ -246,7 +294,7 @@ describe("ProblemReportDialog", () => {
     ["Leave out", { scope: "none", lines: [] }],
   ])("sends the log lines of the scope %s", async (option, logs) => {
     serve()
-    const reports = serveSend()
+    const { reports } = serveSend()
     mount()
 
     const { textField, sendButton } = await openDialog()
@@ -273,7 +321,7 @@ describe("ProblemReportDialog", () => {
 
   it("names a newer release above Send and lets the user send anyway", async () => {
     serve(withQui({ version: "1.30.0", newerRelease: { version: "v1.36.0", url: "https://github.com/autobrr/qui/releases/tag/v1.36.0" } }))
-    const reports = serveSend()
+    const { reports } = serveSend()
     mount()
 
     const { textField, sendButton } = await openDialog()
@@ -345,7 +393,7 @@ describe("ProblemReportDialog", () => {
   // regression: #4288
   it("retries a refused report with the same submission id", async () => {
     serve()
-    const reports = serveSend([
+    const { reports } = serveSend([
       HttpResponse.json({ error: "anonymous_full" }, { status: 429 }),
       HttpResponse.json({ error: "Problem reports are off in the qui config." }, { status: 403 }),
     ])
@@ -386,6 +434,243 @@ describe("ProblemReportDialog", () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Report sent"))
     expect(screen.queryByRole("dialog")).not.toBeNull()
     expect(second.textField.value).toBe("Another problem")
+  })
+})
+
+describe("Sender", () => {
+  it("opens the sign-in page in a popup, waits while it is pending, and then sends as the name", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    serve()
+    serveSender({ anonymous: true }, { anonymous: false, provider: "discord", name: "wumpus" })
+    const signIn = serveSignIn([{ state: "pending" }, { state: "done" }])
+    const { senders } = serveSend()
+    const { popup, open } = stubPopup()
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+
+    expect(open).toHaveBeenCalledTimes(1)
+    await screen.findByRole("button", { name: "Waiting for Discord" })
+    await waitFor(() => expect(signIn.reads).toBe(1))
+    expect(signIn.started).toEqual(["discord"])
+    expect(popup.location.href).toBe(signInURL)
+    expect(popup.opener).toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+
+    await screen.findByRole("button", { name: "wumpus" })
+    expect(screen.getByText(/^The maintainers see your Discord name \(wumpus\) and may contact you\./)).not.toBeNull()
+    expect(signIn.reads).toBe(2)
+
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(senders).toEqual([{ anonymous: false, provider: "discord", name: "wumpus" }]))
+  })
+
+  it.each<[string, ProblemReportSignInState, string]>([
+    [
+      "a Discord account outside the autobrr server",
+      { state: "refused", reason: "discord_not_member" },
+      "Your Discord account is not in the autobrr Discord server. Join the server and sign in again, sign in with GitHub, or send anonymously.",
+    ],
+    ["another refusal", { state: "refused", reason: "account_too_new" }, "Sign-in refused: account_too_new"],
+    ["a sign-in that expired", { state: "expired" }, "Sign-in expired. Sign in again."],
+  ])("for %s, says why the sign-in ended and stays Anonymous", async (_name, state, message) => {
+    serve()
+    serveSignIn([state])
+    stubPopup()
+    mount()
+
+    const { textField } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe(message)
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+    expect(textField.value).toBe("Torrents vanish")
+  })
+
+  it("closes the popup and says so when brrbin cannot start a sign-in", async () => {
+    serve()
+    const signIn = serveSignIn([], () => HttpResponse.json({ error: "unavailable" }, { status: 502 }))
+    const { popup } = stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe("brrbin cannot sign you in right now. Try again later.")
+    expect(popup.close).toHaveBeenCalledTimes(1)
+    expect(popup.location.href).toBe("")
+    expect(signIn.reads).toBe(0)
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+  })
+
+  it("starts no sign-in and says so when the browser blocks the popup", async () => {
+    serve()
+    const signIn = serveSignIn([])
+    vi.spyOn(window, "open").mockReturnValue(null)
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Your browser blocked the sign-in window. Allow pop-ups for qui, then sign in again.")
+    expect(signIn.started).toEqual([])
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+  })
+
+  // regression: #4360
+  it("keeps watching a pending sign-in when the browser blocks the popup of another one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    serve()
+    serveSender({ anonymous: true }, octocat)
+    const signIn = serveSignIn([{ state: "pending" }, { state: "done" }])
+    const { open } = stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(signIn.reads).toBe(1))
+    open.mockReturnValue(null)
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+    await screen.findByRole("alert")
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+
+    await screen.findByRole("button", { name: "octocat" })
+    expect(signIn.started).toEqual(["github"])
+  })
+
+  it("reads the sender again when the user comes back to the tab, as another tab can sign in or out", async () => {
+    serve()
+    serveSender({ anonymous: true }, octocat)
+    mount()
+
+    await openDialog()
+    await screen.findByText(/^Anonymous: no name, no account\./)
+    act(() => {
+      window.dispatchEvent(new Event("visibilitychange"))
+    })
+
+    await screen.findByRole("button", { name: "octocat" })
+    expect(screen.getByText(/^The maintainers see your GitHub name \(octocat\) and may contact you\./)).not.toBeNull()
+  })
+
+  it("stops a pending sign-in when the user picks Anonymous", async () => {
+    serve()
+    const signIn = serveSignIn([{ state: "pending" }])
+    stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(signIn.reads).toBe(1))
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Anonymous" }))
+
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(signIn.signOuts).toBe(1)
+  })
+
+  // regression: #4360
+  it("signs out and sends as Anonymous again", async () => {
+    serve()
+    serveSender(octocat)
+    const signIn = serveSignIn([])
+    const { senders } = serveSend()
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    await screen.findByRole("button", { name: "octocat" })
+    openSenderMenu("octocat")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }))
+
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(signIn.signOuts).toBe(1)
+    expect(screen.getByText(/^Anonymous: no name, no account\./)).not.toBeNull()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(senders).toEqual([{ anonymous: true }]))
+  })
+
+  // regression: #4360
+  it("stays Anonymous after a sign-out when a sender read from before it answers later", async () => {
+    serve()
+    let releaseRead = () => {}
+    const heldRead = new Promise<void>((resolve) => { releaseRead = resolve })
+    let reads = 0
+    server.use(http.get("*/api/problem-reports/sender", async () => {
+      if (++reads === 2) await heldRead
+      return HttpResponse.json(octocat)
+    }))
+    const signIn = serveSignIn([])
+    const queryClient = mount()
+
+    await openDialog()
+    await screen.findByRole("button", { name: "octocat" })
+    act(() => {
+      window.dispatchEvent(new Event("visibilitychange"))
+    })
+    await waitFor(() => expect(reads).toBe(2))
+    openSenderMenu("octocat")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }))
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(signIn.signOuts).toBe(1)
+
+    releaseRead()
+    await waitFor(() => expect(queryClient.getQueryState(SENDER_KEY)?.fetchStatus).toBe("idle"))
+
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+    expect(screen.getByText(/^Anonymous: no name, no account\./)).not.toBeNull()
+  })
+
+  // regression: #4360
+  it("sends as Anonymous while qui has not answered which sender it holds", async () => {
+    serve()
+    server.use(http.get("*/api/problem-reports/sender", async () => {
+      await delay("infinite")
+    }))
+    const { senders } = serveSend()
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+
+    await waitFor(() => expect(senders).toEqual([{ anonymous: true }]))
+  })
+
+  it("when brrbin rejects the sign-in on Send, says that it ended, keeps the text, and keeps the user on the page", async () => {
+    serve()
+    serveSender(octocat, { anonymous: true })
+    serveSend([HttpResponse.json({ error: "token_rejected" }, { status: 409 })])
+    mount()
+    const page = window.location.href
+
+    const { textField, sendButton } = await openDialog()
+    await screen.findByRole("button", { name: "octocat" })
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Your sign-in ended. Sign in again, then send.")
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(textField.value).toBe("Torrents vanish")
+    expect(screen.queryByRole("dialog")).not.toBeNull()
+    expect(window.location.href).toBe(page)
   })
 })
 

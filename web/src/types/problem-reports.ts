@@ -97,6 +97,16 @@ export interface ProblemReportPayload {
   searchScope?: ProblemReportSearchScope
 }
 
+export type ProblemReportProvider = "github" | "discord"
+
+export type ProblemReportSender =
+  | { anonymous: true }
+  | { anonymous: false; provider: ProblemReportProvider; name: string }
+
+export type ProblemReportSignInState =
+  | { state: "pending" | "done" | "expired" }
+  | { state: "refused"; reason?: string }
+
 export interface SentProblemReport {
   id: string
   submissionId: string

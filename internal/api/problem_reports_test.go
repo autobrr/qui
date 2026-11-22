@@ -217,19 +217,29 @@ func (rig *reportRig) facts(query string) (int, problemreport.Facts) {
 // send posts a report JSON, and an image when image is not nil.
 func (rig *reportRig) send(report map[string]any, image []byte) (int, map[string]any) {
 	rig.t.Helper()
-	status, raw := rig.do(rig.sendRequest(rig.t.Context(), report, image))
+	return rig.sendAs(nil, report, image)
+}
+
+func (rig *reportRig) sendAs(shown *problemreport.Sender, report map[string]any, image []byte) (int, map[string]any) {
+	rig.t.Helper()
+	status, raw := rig.do(rig.sendRequest(rig.t.Context(), shown, report, image))
 	var answer map[string]any
 	require.NoError(rig.t, json.Unmarshal(raw, &answer), string(raw))
 	return status, answer
 }
 
-func (rig *reportRig) sendRequest(ctx context.Context, report map[string]any, image []byte) *http.Request {
+func (rig *reportRig) sendRequest(ctx context.Context, shown *problemreport.Sender, report map[string]any, image []byte) *http.Request {
 	rig.t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="report"`}, "Content-Type": {"application/json"}})
 	require.NoError(rig.t, err)
 	require.NoError(rig.t, json.NewEncoder(part).Encode(report))
+	if shown != nil {
+		part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="sender"`}, "Content-Type": {"application/json"}})
+		require.NoError(rig.t, err)
+		require.NoError(rig.t, json.NewEncoder(part).Encode(shown))
+	}
 	if image != nil {
 		part, err := writer.CreateFormFile("image", "screen.png")
 		require.NoError(rig.t, err)
@@ -592,7 +602,7 @@ func TestProblemReportSendSurvivesAClosedTab(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		resp, err := http.DefaultClient.Do(rig.sendRequest(ctx, menuReport("text", facts, "none", nil), nil))
+		resp, err := http.DefaultClient.Do(rig.sendRequest(ctx, nil, menuReport("text", facts, "none", nil), nil))
 		if err == nil {
 			resp.Body.Close()
 		}
@@ -611,18 +621,20 @@ func TestProblemReportSendSurvivesAClosedTab(t *testing.T) {
 }
 
 func TestProblemReportSignedInSend(t *testing.T) {
-	rig := newReportRig(t, reportRigOptions{})
+	rig := signInRig(t)
 	_, facts := rig.facts("startedFrom=menu")
-	require.NoError(t, rig.store.SaveSignIn(t.Context(), models.ProblemReportSignIn{Token: "brrbin-token-123", Provider: "github", Name: "someone"}))
+	token := rig.signIn("github", "someone")
+	signedIn := len(rig.fake.Requests())
+	shown := &problemreport.Sender{Provider: "github", Name: "someone"}
 
-	status, _ := rig.send(menuReport("text", facts, "none", nil), nil)
+	status, _ := rig.sendAs(shown, menuReport("text", facts, "none", nil), nil)
 	require.Equal(t, http.StatusCreated, status)
-	assert.Equal(t, "Bearer brrbin-token-123", rig.fake.Requests()[0].Header.Get("Authorization"))
+	assert.Equal(t, "Bearer "+token, rig.brrbinRequests(signedIn)[0].Header.Get("Authorization"))
 
 	rig.fake.Refuse(http.StatusUnauthorized, "token_rejected")
 	report := menuReport("text", facts, "none", nil)
 	report["submissionId"] = "7d1e0c4b-2a39-4f5e-8b6c-9a0d1e2f3a4b"
-	status, answer := rig.send(report, nil)
+	status, answer := rig.sendAs(shown, report, nil)
 	assert.Equal(t, http.StatusConflict, status)
 	assert.Equal(t, "token_rejected", answer["error"])
 	signIn, err := rig.store.SignIn(t.Context())
@@ -632,23 +644,58 @@ func TestProblemReportSignedInSend(t *testing.T) {
 
 func TestProblemReportImageRefusedBeforeBrrbin(t *testing.T) {
 	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
-	rig := newReportRig(t, reportRigOptions{})
+	rig := signInRig(t)
 	_, facts := rig.facts("startedFrom=menu")
 
 	status, answer := rig.send(menuReport("text", facts, "none", nil), png)
 	assert.Equal(t, http.StatusBadRequest, status, answer)
 	assert.Empty(t, rig.fake.Requests(), "an anonymous image never reaches brrbin")
 
-	require.NoError(t, rig.store.SaveSignIn(t.Context(), models.ProblemReportSignIn{Token: "brrbin-token-123", Provider: "discord", Name: "someone"}))
+	rig.signIn("discord", "someone")
+	signedIn := len(rig.fake.Requests())
+	shown := &problemreport.Sender{Provider: "discord", Name: "someone"}
 	tooLarge := append(slices.Clone(png), make([]byte, problemreport.MaxImageSize)...)
-	status, answer = rig.send(menuReport("text", facts, "none", nil), tooLarge)
+	status, answer = rig.sendAs(shown, menuReport("text", facts, "none", nil), tooLarge)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, status)
 	assert.Equal(t, "too_large", answer["error"])
-	assert.Empty(t, rig.fake.Requests())
+	assert.Empty(t, rig.brrbinRequests(signedIn))
 
-	status, _ = rig.send(menuReport("text", facts, "none", nil), png)
+	status, _ = rig.sendAs(shown, menuReport("text", facts, "none", nil), png)
 	require.Equal(t, http.StatusCreated, status)
-	assert.Equal(t, png, rig.fake.Requests()[0].Image)
+	assert.Equal(t, png, rig.brrbinRequests(signedIn)[0].Image)
+}
+
+// regression: #4360
+func TestProblemReportSendKeepsToTheSenderTheDialogShowed(t *testing.T) {
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
+	rig := signInRig(t)
+	_, facts := rig.facts("startedFrom=menu")
+	rig.signIn("github", "someone")
+	signedIn := len(rig.fake.Requests())
+
+	status, answer := rig.sendAs(&problemreport.Sender{Anonymous: true}, menuReport("text", facts, "none", nil), nil)
+	require.Equal(t, http.StatusCreated, status, answer)
+	sent := rig.brrbinRequests(signedIn)
+	require.Len(t, sent, 1)
+	assert.Empty(t, sent[0].Header.Get("Authorization"), "a report that the dialog showed as Anonymous carries no sign-in")
+
+	status, answer = rig.send(menuReport("text", facts, "none", nil), png)
+	assert.Equal(t, http.StatusBadRequest, status, answer)
+
+	for _, shown := range []problemreport.Sender{{Provider: "discord", Name: "someone"}, {Provider: "github", Name: "someone else"}} {
+		status, answer = rig.sendAs(&shown, menuReport("text", facts, "none", nil), nil)
+		assert.Equal(t, http.StatusConflict, status, shown)
+		assert.Equal(t, "token_rejected", answer["error"], shown)
+	}
+	signIn, err := rig.store.SignIn(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, signIn, "qui keeps the sign-in that it stores")
+
+	require.NoError(t, rig.store.ClearSignIn(t.Context()))
+	status, answer = rig.sendAs(&problemreport.Sender{Provider: "github", Name: "someone"}, menuReport("text", facts, "none", nil), nil)
+	assert.Equal(t, http.StatusConflict, status)
+	assert.Equal(t, "token_rejected", answer["error"])
+	assert.Len(t, rig.brrbinRequests(signedIn), 1, "only the anonymous report reached brrbin")
 }
 
 // regression: #4288
@@ -700,6 +747,10 @@ func TestProblemReportRoutesWhenOff(t *testing.T) {
 				{http.MethodPost, "/api/problem-reports"},
 				{http.MethodGet, "/api/problem-reports"},
 				{http.MethodDelete, "/api/problem-reports/r1"},
+				{http.MethodGet, "/api/problem-reports/sender"},
+				{http.MethodPost, "/api/problem-reports/sign-in"},
+				{http.MethodGet, "/api/problem-reports/sign-in"},
+				{http.MethodDelete, "/api/problem-reports/sign-in"},
 			} {
 				req, err := http.NewRequestWithContext(t.Context(), route.Method, rig.srv.URL+route.Path, strings.NewReader("{}"))
 				require.NoError(t, err)

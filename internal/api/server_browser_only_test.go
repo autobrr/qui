@@ -57,6 +57,10 @@ var browserOnlyRoutes = []routeKey{
 	{http.MethodPost, "/api/problem-reports"},
 	{http.MethodGet, "/api/problem-reports"},
 	{http.MethodDelete, "/api/problem-reports/r1"},
+	{http.MethodGet, "/api/problem-reports/sender"},
+	{http.MethodPost, "/api/problem-reports/sign-in"},
+	{http.MethodGet, "/api/problem-reports/sign-in"},
+	{http.MethodDelete, "/api/problem-reports/sign-in"},
 	// Last: a session that reaches logout ends.
 	{http.MethodPost, "/api/auth/logout"},
 }

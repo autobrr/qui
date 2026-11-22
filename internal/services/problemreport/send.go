@@ -138,13 +138,20 @@ func validate(report Report, image *Image) error {
 // Send cleans the report and sends it to brrbin. It answers a *RefusalError when
 // brrbin refuses it or cannot take it, and an ErrInvalidRequest error when
 // qui refuses it before any request to brrbin.
-func (s *Service) Send(ctx context.Context, report Report, image *Image) (*SentReport, error) {
+func (s *Service) Send(ctx context.Context, report Report, image *Image, shown Sender) (*SentReport, error) {
 	if err := validate(report, image); err != nil {
 		return nil, err
 	}
-	signIn, err := s.store.SignIn(ctx)
-	if err != nil {
-		return nil, err
+	var signIn *models.ProblemReportSignIn
+	if !shown.Anonymous {
+		stored, err := s.store.SignIn(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if stored == nil || stored.Provider != shown.Provider || stored.Name != shown.Name {
+			return nil, &RefusalError{Status: http.StatusConflict, Reason: ReasonTokenRejected}
+		}
+		signIn = stored
 	}
 	if image != nil && signIn == nil {
 		return nil, fmt.Errorf("%w: an anonymous report cannot carry an image", ErrInvalidRequest)
