@@ -112,7 +112,7 @@ func (b noIdentityBackend) WalkDir(ctx context.Context, root string, opts fsops.
 			select {
 			case out <- e:
 			case <-ctx.Done():
-				for range in { //nolint:revive // drain to release the inner walk
+				for range in {
 				}
 				return
 			}
@@ -465,7 +465,7 @@ func (b flippingBackend) WalkDir(ctx context.Context, root string, opts fsops.Wa
 			select {
 			case out <- entry:
 			case <-ctx.Done():
-				for range ch { //nolint:revive // drain so the inner walk can exit
+				for range ch {
 				}
 				return
 			}

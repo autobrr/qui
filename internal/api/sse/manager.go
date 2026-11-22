@@ -2358,7 +2358,7 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 		interval = defaultSyncInterval
 	}
 
-	ctx, cancel := context.WithCancel(m.ctx) //nolint:gosec // G118: cancel is stored in syncLoopState and called on stop/restart/shutdown
+	ctx, cancel := context.WithCancel(m.ctx)
 	loop := &syncLoopState{
 		cancel:   cancel,
 		interval: interval,
@@ -2461,7 +2461,7 @@ func (m *StreamManager) forceSync(parent context.Context, instanceID int) {
 }
 
 func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
-	ctx, cancel := context.WithCancel(m.ctx) //nolint:gosec // G118: cancel is stored in heartbeatLoopState and called on stop/shutdown
+	ctx, cancel := context.WithCancel(m.ctx)
 	loop := &heartbeatLoopState{cancel: cancel}
 
 	go func() {

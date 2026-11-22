@@ -22,14 +22,14 @@ func (s *Server) runShell(channel ssh.Channel, request, script string) uint32 {
 
 	// The command ends on its own: a client that gives up closes only the
 	// channel, which a command that writes nothing does not see.
-	//nolint:gosec // G204: a test server runs the commands its own test sent
+
 	cmd := exec.CommandContext(context.Background(), "sh", "-c", request)
 	cmd.Stdin = strings.NewReader(script)
 	cmd.Stdout = channel
 	cmd.Stderr = channel.Stderr()
 	err := cmd.Run()
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-		return uint32(exitErr.ExitCode()) //nolint:gosec // an exit code fits
+		return uint32(exitErr.ExitCode())
 	}
 	if err != nil {
 		return 127

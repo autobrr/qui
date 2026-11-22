@@ -124,7 +124,7 @@ func checkDirContainsInUseFile(ctx context.Context, target string, protected *pr
 	}
 	defer func() {
 		cancelWalk()
-		for range ch { //nolint:revive // drain channel to release the walk goroutine
+		for range ch {
 		}
 	}()
 	for entry := range ch {

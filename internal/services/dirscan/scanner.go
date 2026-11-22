@@ -111,7 +111,7 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 	}
 	defer func() {
 		cancelWalk()
-		for range ch { //nolint:revive // drain channel to release the walk goroutine
+		for range ch {
 		}
 	}()
 

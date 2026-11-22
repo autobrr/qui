@@ -66,7 +66,7 @@ func (b *aliasWalkBackend) WalkDir(ctx context.Context, root string, opts fsops.
 			select {
 			case out <- e:
 			case <-ctx.Done():
-				for range in { //nolint:revive // drain to release the inner walk
+				for range in {
 				}
 				return
 			}

@@ -159,7 +159,7 @@ func (s *Service) usageUnder(ctx context.Context, instance *models.Instance, roo
 	}
 	defer func() {
 		cancel()
-		for range entries { //nolint:revive // drain channel to release the walk goroutine
+		for range entries {
 		}
 	}()
 

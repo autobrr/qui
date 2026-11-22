@@ -297,8 +297,8 @@ func (h *LogsHandler) sendHistory(w http.ResponseWriter, flusher http.Flusher, h
 }
 
 func writeSSEData(w http.ResponseWriter, data string) error {
-	_, err := fmt.Fprintf(w, "data: %s\n\n", data) //nolint:gosec // G705: an SSE stream is text/event-stream, never rendered as HTML
-	return err                                     //nolint:wrapcheck // SSE write errors are terminal; wrapping adds no value
+	_, err := fmt.Fprintf(w, "data: %s\n\n", data)
+	return err
 }
 
 func (h *LogsHandler) streamLoop(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, sub *logstream.Subscriber) {
@@ -330,7 +330,7 @@ func (h *LogsHandler) streamLoop(ctx context.Context, w http.ResponseWriter, flu
 
 func writeSSEComment(w http.ResponseWriter, comment string) error {
 	_, err := fmt.Fprintf(w, ": %s\n\n", comment)
-	return err //nolint:wrapcheck // SSE write errors are terminal; wrapping adds no value
+	return err
 }
 
 // GetHub returns the log hub from the handler's config.

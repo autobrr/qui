@@ -99,7 +99,6 @@ func (t *RetryTransport) retryBackoff(req *http.Request, attempt int, err error,
 	return backoff, true
 }
 
-//nolint:wrapcheck // Callers expect unwrapped context errors from transports.
 func waitForRetry(req *http.Request, backoff time.Duration) error {
 	select {
 	case <-req.Context().Done():
@@ -182,7 +181,6 @@ func canRetryForbidden(req *http.Request, proxyCtx *proxyContext, replay request
 	return replay.replayable && req.GetBody != nil
 }
 
-//nolint:wrapcheck // RoundTrip should not wrap errors - callers expect unwrapped transport errors
 func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var lastErr error
 

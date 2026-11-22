@@ -76,7 +76,7 @@ func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cac
 	}
 
 	// Update last_used timestamp, ignoring failures so we don't block serving cached data
-	s.touches.Go(func() { //nolint:gosec // G118: cache touch must outlive the read that triggered it
+	s.touches.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cacheMaintenanceTimeout)
 		defer cancel()
 		s.touchEntry(ctx, id)

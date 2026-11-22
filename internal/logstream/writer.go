@@ -38,7 +38,7 @@ func (sw *SwitchableWriter) Write(p []byte) (n int, err error) {
 
 	n, err = target.w.Write(p)
 	if err != nil {
-		return n, err //nolint:wrapcheck // io.Writer interface compliance
+		return n, err
 	}
 
 	if sw.hub != nil {

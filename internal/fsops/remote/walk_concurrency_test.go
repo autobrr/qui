@@ -116,7 +116,7 @@ func TestWalkDir_CancelLeavesNoGoroutines(t *testing.T) {
 				<-ch
 			}
 			tt.stop(b, cancel)
-			for range ch { //nolint:revive // drain
+			for range ch {
 			}
 			assert.Zero(t, walkGoroutines(), "walker goroutines left after the walk closed its channel")
 		})
