@@ -963,7 +963,7 @@ func (*completionPollingSyncMock) GetDirectoryContentCtx(context.Context, int, s
 	return nil, nil
 }
 
-// regression: #4378
+// regression: #4379
 func TestHandleTorrentCompletion_CompletionSearchOffWritesNoLog(t *testing.T) {
 	const instanceWithoutSettings = 2
 	svc := &Service{completionStore: setupCompletionStoreForQueueTests(t)}

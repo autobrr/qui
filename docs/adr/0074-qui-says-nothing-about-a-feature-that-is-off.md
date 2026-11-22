@@ -5,7 +5,7 @@ date: 2026-11-22
 
 # qui says nothing about a feature that is off
 
-qui writes no log line at DEBUG or above, no run summary count, no notification line, and no dialog row about a feature that is off or not set up. DEBUG is the default log level, so each of these reaches the user. A user with RED/OPS off and no account on either site saw both sites in a Library Scan run line, read it as "qui sends my data to these trackers", and stopped the scan (#4378).
+qui writes no log line at DEBUG or above, no run summary count, no notification line, and no dialog row about a feature that is off or not set up. DEBUG is the default log level, so each of these reaches the user. A user with RED/OPS off and no account on either site saw both sites in a Library Scan run line, read it as "qui sends my data to these trackers", and stopped the scan (#4379).
 
 Two states are exceptions, because the user must act. A feature that is on and cannot work gets one message, for example RED/OPS on with no API key. A safety setting that is off gets a warning, for example authentication. A settings screen is also exempt, because it is where the user turns the feature on.
 

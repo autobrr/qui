@@ -511,7 +511,7 @@ func TestPlanMarksSiteWithOpenRejectedNotice(t *testing.T) {
 
 var gazelleWords = []string{"RED/OPS", "gazelle", "redacted", "orpheus"}
 
-// regression: #4378
+// regression: #4379
 func TestSearchRunLoop_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
 	name := "Artist - Album (2024) [WEB FLAC]"
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 31), Name: name, Progress: 1.0, Size: 123, Tracker: otherTracker}
@@ -527,7 +527,7 @@ func TestSearchRunLoop_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
 	require.Empty(t, state.run.GazelleSummary)
 }
 
-// regression: #4378
+// regression: #4379
 func TestExecuteCompletionSearch_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: false}
 	svc := newGazelleSeamService(t, otherTracker, settings, nil)
