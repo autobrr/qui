@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 
 export const SENT_REPORTS_KEY = ["problem-reports", "sent"]
+export const SEND_REPORT_KEY = ["problem-reports", "send"]
 
 /**
  * Sent reports with their Report statuses. Each mount asks qui, and so brrbin, again: qui asks brrbin only when the

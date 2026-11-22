@@ -165,7 +165,8 @@
         "issue": "Převedeno na issue #{{number}}",
         "issueClosed": "Issue #{{number}} uzavřeno",
         "closed": "Uzavřeno: {{reason}}",
-        "closedNoReason": "Uzavřeno"
+        "closedNoReason": "Uzavřeno",
+        "notSent": "Neodesláno"
       },
       "delete": "Smazat hlášení",
       "deleteUnavailable": "brrbin teď nemůže mazat hlášení. Zkuste to později.",

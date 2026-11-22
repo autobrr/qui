@@ -149,7 +149,8 @@
         "issue": "이슈 #{{number}} 등록됨",
         "issueClosed": "이슈 #{{number}} 닫힘",
         "closed": "닫힘: {{reason}}",
-        "closedNoReason": "닫힘"
+        "closedNoReason": "닫힘",
+        "notSent": "전송되지 않음"
       },
       "delete": "신고 삭제",
       "deleteUnavailable": "brrbin이 지금은 신고를 삭제할 수 없습니다. 나중에 다시 시도하세요.",

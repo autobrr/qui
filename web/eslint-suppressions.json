@@ -875,7 +875,7 @@
   },
   "src/components/problem-reports/ProblemReportDialog.tsx": {
     "qui/no-comments": {
-      "count": 12
+      "count": 10
     },
     "qui/no-direct-effect": {
       "count": 1

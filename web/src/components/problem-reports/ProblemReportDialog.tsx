@@ -10,10 +10,17 @@ import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "reac
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import {
+  finishProblemReportDraftSend,
+  startProblemReportDraftSend,
+  updateProblemReportDraft,
+  useProblemReportDraft,
+  type ProblemReportAttempt
+} from "@/components/problem-reports/draft"
 import { closeProblemReport, openProblemReport, useProblemReportOpenState } from "@/components/problem-reports/open"
 import { SENDER_KEY, useSender, type SenderControls } from "@/components/problem-reports/sender"
 import { SenderMenu, SignInNote } from "@/components/problem-reports/SenderMenu"
-import { useSentReports } from "@/components/problem-reports/sent-reports"
+import { SEND_REPORT_KEY, useSentReports } from "@/components/problem-reports/sent-reports"
 import { SentReportsEntry, SentReportsView } from "@/components/problem-reports/SentReports"
 import { Button } from "@/components/ui/button"
 import { CopyButton } from "@/components/ui/copy-button"
@@ -89,7 +96,6 @@ export function ProblemReportDialogRoot() {
           wide && !sent ? "flex h-[min(44rem,calc(100dvh-4rem))] flex-col overflow-hidden sm:max-w-4xl xl:max-w-5xl" : "max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
         )}
       >
-        {/* The dialog unmounts its content when it closes, so each open starts a new report. Sent reports only hides the form, so it keeps its text. */}
         <div className={sent ? "hidden" : "contents"}>
           <ProblemReportForm startedFrom={startedFrom} wide={wide} hidden={sent} />
         </div>
@@ -103,10 +109,7 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
   const { t } = useTranslation("common")
   const queryClient = useQueryClient()
   const textRef = useRef<HTMLTextAreaElement>(null)
-  const [text, setText] = useState("")
-  const [logScope, setLogScope] = useState<ProblemReportLogScope>("all")
-  // One id for each open, so that a retry of the same report stores no second row.
-  const [submissionId] = useState(newSubmissionId)
+  const { text, logScope, attempt } = useProblemReportDraft()
   // Read once, so that what the dialog shows is what Send posts.
   const [browser] = useState(browserFacts)
   const [failed] = useState(failedRequests)
@@ -118,18 +121,22 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
   })
   const senderControls = useSender()
   const sendMutation = useMutation({
-    mutationFn: (facts: ProblemReportFacts) => api.sendProblemReport({
-      submissionId,
-      text,
+    mutationKey: SEND_REPORT_KEY,
+    mutationFn: ({ facts, sent }: { facts: ProblemReportFacts; sent: ProblemReportAttempt }) => api.sendProblemReport({
+      submissionId: sent.submissionId,
+      text: sent.text,
       startedFrom,
       qui: facts.qui,
       instances: facts.instances,
       notices: facts.notices,
       browser,
       failedRequests: [...failed],
-      logs: { scope: logScope, lines: logLines(facts, logScope) },
+      logs: { scope: sent.logScope, lines: logLines(facts, sent.logScope) },
     }, senderControls.sender ?? { anonymous: true }),
-    onSuccess: () => toast.success(t("problemReports.sent")),
+    onSuccess: (_report, { sent }) => {
+      finishProblemReportDraftSend(sent)
+      toast.success(t("problemReports.sent"))
+    },
     onError: (error) => {
       if (error instanceof APIError && error.message === "token_rejected") void queryClient.invalidateQueries({ queryKey: SENDER_KEY })
     },
@@ -140,7 +147,7 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
   const facts = factsQuery.data
   const canSend = facts !== undefined && text.trim() !== "" && !sendMutation.isPending
   const send = () => {
-    if (canSend) sendMutation.mutate(facts, { onSuccess: closeProblemReport })
+    if (canSend) sendMutation.mutate({ facts, sent: startProblemReportDraftSend(newSubmissionId) }, { onSuccess: closeProblemReport })
   }
 
   // autoFocus works only on mount, so the text takes the focus back after Sent reports.
@@ -150,6 +157,8 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
     wasHidden.current = hidden
   }, [hidden])
 
+  const setText = (next: string) => updateProblemReportDraft({ text: next })
+  const setLogScope = (next: ProblemReportLogScope) => updateProblemReportDraft({ logScope: next })
   const report: Report = { startedFrom, text, setText, logScope, setLogScope, facts, browser, failed, sending: sendMutation.isPending, send, textRef }
   const notes = (
     <>
@@ -157,7 +166,7 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
         <p role="alert" className="text-xs text-destructive">{t("problemReports.factsFailed", { message: factsQuery.error.message })}</p>
       )}
       <SignInNote signIn={senderControls.signIn} />
-      {sendMutation.isError ? <Refusal error={sendMutation.error} /> : senderControls.sender && <PrivacyLine sender={senderControls.sender} />}
+      {sendMutation.isError && attempt ? <Refusal error={sendMutation.error} /> : senderControls.sender && <PrivacyLine sender={senderControls.sender} />}
       {facts?.qui.newerRelease && <NewerRelease running={facts.qui.version} newer={facts.qui.newerRelease} />}
     </>
   )
