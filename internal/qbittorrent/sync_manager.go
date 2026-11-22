@@ -596,7 +596,6 @@ type SyncManager struct {
 	trackerHealthCancel  map[int]context.CancelFunc // cancel funcs for background loops
 	trackerHealthKick    map[int]chan struct{}      // early-pass requests, see KickTrackerHealthRefresh
 	trackerHealthSeen    map[int]chan seenTrackers
-	trackerHealthPassAt  map[int]time.Time
 	trackerHealthRefresh time.Duration // refresh interval (default 60s)
 	// qBittorrent reports "updating" right after an announce, so a kicked pass
 	// waits the settle delay after the latest kick for the outcome to land. Kicked
@@ -678,7 +677,6 @@ func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCus
 		trackerHealthCancel:       make(map[int]context.CancelFunc),
 		trackerHealthKick:         make(map[int]chan struct{}),
 		trackerHealthSeen:         make(map[int]chan seenTrackers),
-		trackerHealthPassAt:       make(map[int]time.Time),
 		trackerHealthRefresh:      60 * time.Second,
 		trackerHealthKickSettle:   3 * time.Second,
 		trackerHealthKickInterval: 10 * time.Second,
@@ -847,7 +845,6 @@ func (sm *SyncManager) StopTrackerHealthRefresh(instanceID int) {
 	}
 	delete(sm.trackerHealthKick, instanceID)
 	delete(sm.trackerHealthSeen, instanceID)
-	delete(sm.trackerHealthPassAt, instanceID)
 	delete(sm.trackerHealthCache, instanceID)
 	delete(sm.trackerHealthFlagged, instanceID)
 	delete(sm.automationTrackerDetails, instanceID)
@@ -973,7 +970,6 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents 
 	previous := sm.trackerHealthCache[instanceID]
 	healthChanged := previous == nil || !maps.Equal(previous.byHash, byHash)
 	sm.trackerHealthCache[instanceID] = snapshot
-	sm.trackerHealthPassAt[instanceID] = started
 	sm.trackerHealthMu.Unlock()
 
 	// Queue icon fetches for discovered tracker domains. We do this here (in the

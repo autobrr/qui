@@ -191,3 +191,23 @@ func TestOlderTrackersReadIsDroppedWhenItFinishesLast(t *testing.T) {
 	require.Empty(t, rig.pass(t))
 	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "the next pass keeps the details of the newer read")
 }
+
+// regression: #4371
+func TestTrackersReadAppliesAfterAPassThatReusedOlderDetails(t *testing.T) {
+	t.Parallel()
+
+	rig := newFlagsRig(t)
+	rig.pass(t)
+	rig.set(func() {
+		rig.torrents[flagsHashError].trackers = []qbt.TorrentTracker{
+			{Url: "https://error.example.invalid/announce", Status: qbt.TrackerStatusNotWorking, Message: "Unregistered torrent"},
+		}
+	})
+	read := rig.queueTrackersRead(t, flagsHashError)
+
+	require.Empty(t, rig.pass(t), "the flags did not change, so the pass reuses the old details")
+	require.Equal(t, TrackerHealthError, rig.health(t)[flagsHashError])
+
+	rig.sm.applySeenTrackers(t.Context(), 1, read)
+	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "the read is newer than the details the pass reused")
+}
