@@ -22,11 +22,6 @@ var (
 	writes      = []string{"Msg", "Msgf", "Send"}
 )
 
-func Count(path string, src []byte) (int, error) {
-	lines, err := Lines(path, src)
-	return len(lines), err
-}
-
 func Lines(path string, src []byte) ([]int, error) {
 	if strings.HasSuffix(path, "_test.go") {
 		return nil, nil
@@ -52,7 +47,7 @@ func Lines(path string, src []byte) ([]int, error) {
 				}
 				return false
 			case *ast.CallExpr:
-				if writesAtQuietLevel(v) && (off || saysOff(v.Args)) {
+				if writesAtQuietLevel(v) && (off || saysOff(v)) {
 					lines = append(lines, fset.Position(v.Pos()).Line)
 				}
 			}
@@ -84,15 +79,16 @@ func writesAtQuietLevel(call *ast.CallExpr) bool {
 	}
 }
 
-func saysOff(args []ast.Expr) bool {
-	return slices.ContainsFunc(args, func(arg ast.Expr) bool {
-		lit, ok := arg.(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
-			return false
-		}
-		text, err := strconv.Unquote(lit.Value)
-		return err == nil && offMessage.MatchString(text)
-	})
+func saysOff(write *ast.CallExpr) bool {
+	if len(write.Args) == 0 {
+		return false
+	}
+	lit, ok := write.Args[0].(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return false
+	}
+	message, err := strconv.Unquote(lit.Value)
+	return err == nil && offMessage.MatchString(message)
 }
 
 func testsOff(cond ast.Expr) bool {
@@ -102,7 +98,13 @@ func testsOff(cond ast.Expr) bool {
 	case *ast.UnaryExpr:
 		return v.Op == token.NOT && onName.MatchString(switchName(v.X))
 	case *ast.BinaryExpr:
-		return (v.Op == token.LAND || v.Op == token.LOR) && (testsOff(v.X) || testsOff(v.Y))
+		switch v.Op {
+		case token.LAND:
+			return testsOff(v.X) || testsOff(v.Y)
+		case token.LOR:
+			return testsOff(v.X) && testsOff(v.Y)
+		}
+		return false
 	}
 	return offName.MatchString(switchName(cond))
 }
