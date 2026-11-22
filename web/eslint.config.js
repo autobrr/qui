@@ -7,6 +7,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 import { noComments } from './scripts/no-comments-rule.mjs'
+import { noDirectEffect } from './scripts/no-direct-effect-rule.mjs'
 import { noNativeTitle } from './scripts/no-native-title-rule.mjs'
 
 const copyGroupImportPattern = {
@@ -162,6 +163,12 @@ const clientSettingAllowlist = [
   // Bypass: the theme variation keeps its own localStorage key.
   'src/hooks/usePersistedThemeVariation.ts',
 ]
+
+const effectHooks = {
+  'src/hooks/useDebounce.ts': 'Gives a value after it has stayed the same for a delay.',
+  'src/hooks/useDelayedVisibility.ts': 'Says when the tab has been hidden for a delay.',
+  'src/hooks/useNow.ts': 'Gives the time, and renders again each minute.',
+}
 
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
@@ -372,10 +379,17 @@ export default tseslint.config([
     },
   },
   {
-    plugins: { qui: { rules: { 'no-comments': noComments, 'no-native-title': noNativeTitle } } },
+    plugins: { qui: { rules: { 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
     rules: {
       'qui/no-comments': 'error',
       'qui/no-native-title': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**', ...Object.keys(effectHooks)],
+    rules: {
+      'qui/no-direct-effect': 'error',
     },
   },
 ])
