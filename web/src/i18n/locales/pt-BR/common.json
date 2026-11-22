@@ -157,7 +157,8 @@
         "issue": "Virou a issue #{{number}}",
         "issueClosed": "Issue #{{number}} fechada",
         "closed": "Fechado: {{reason}}",
-        "closedNoReason": "Fechado"
+        "closedNoReason": "Fechado",
+        "notSent": "Não enviado"
       },
       "delete": "Excluir relato",
       "deleteUnavailable": "O brrbin não pode excluir relatos agora. Tente de novo mais tarde.",

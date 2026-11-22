@@ -3,14 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query"
 import { MessageSquareWarning, Trash2 } from "lucide-react"
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { clearProblemReportDraft, isNotSent, useProblemReportDraft, type ProblemReportDraft } from "@/components/problem-reports/draft"
 import { showProblemReportView } from "@/components/problem-reports/open"
-import { SENT_REPORTS_KEY, useSentReports } from "@/components/problem-reports/sent-reports"
+import { SEND_REPORT_KEY, SENT_REPORTS_KEY, useSentReports } from "@/components/problem-reports/sent-reports"
 import { Button } from "@/components/ui/button"
 import { DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -26,6 +27,7 @@ import type { ListedProblemReport } from "@/types"
  */
 const SEEN_AT_KEY = "qui-problem-reports-seen-at"
 const SEEN_AT = { defaultValue: null as number | null, parse: parseJsonNumber }
+const TITLE_LENGTH = 80
 
 /** The number of reports whose status changed after the send and after seenAt. */
 function changedCount(reports: ListedProblemReport[], seenAt: number | null): number {
@@ -39,9 +41,10 @@ function changedCount(reports: ListedProblemReport[], seenAt: number | null): nu
 export function SentReportsEntry({ reports }: { reports: ListedProblemReport[] | undefined }) {
   const { t } = useTranslation("common")
   const [seenAt] = useClientSetting(SEEN_AT_KEY, SEEN_AT)
-  if (!reports || reports.length === 0) return null
+  const notSent = useNotSent(useProblemReportDraft())
+  if (!notSent && (!reports || reports.length === 0)) return null
 
-  const changed = changedCount(reports, seenAt)
+  const changed = changedCount(reports ?? [], seenAt)
   return (
     <Button
       variant="ghost"
@@ -66,6 +69,8 @@ export function SentReportsView() {
   const { t } = useTranslation("common")
   const { data } = useSentReports()
   const reports = data ?? []
+  const draft = useProblemReportDraft()
+  const notSent = useNotSent(draft)
   const headingRef = useRef<HTMLHeadingElement>(null)
 
   useEffect(() => {
@@ -88,8 +93,9 @@ export function SentReportsView() {
         </div>
       </div>
       <ul className="space-y-0.5 px-2 pb-3 pl-9 pt-3">
+        {notSent && <NotSentRow text={draft.text} />}
         {reports.map((report) => <SentReportRow key={report.id} report={report} />)}
-        {reports.length === 0 && <li className="px-2 py-1.5 text-xs text-muted-foreground">{t("problemReports.sentReports.empty")}</li>}
+        {reports.length === 0 && !notSent && <li className="px-2 py-1.5 text-xs text-muted-foreground">{t("problemReports.sentReports.empty")}</li>}
       </ul>
       <div className="flex items-center gap-2 border-t px-4 py-2.5 pl-11">
         <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={() => showProblemReportView("compose")}>
@@ -97,6 +103,53 @@ export function SentReportsView() {
         </Button>
       </div>
     </>
+  )
+}
+
+function useNotSent(draft: ProblemReportDraft): boolean {
+  const sending = useIsMutating({ mutationKey: SEND_REPORT_KEY }) > 0
+  return !sending && isNotSent(draft)
+}
+
+function NotSentRow({ text }: { text: string }) {
+  const { t } = useTranslation("common")
+  return (
+    <li className="flex items-start gap-3 rounded-md px-2 py-1.5 hover:bg-accent/60">
+      <span className="mt-1.5 flex h-2 w-4 items-center justify-center">
+        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-yellow-500 ring-[3px] ring-yellow-500/20" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block break-words text-sm font-medium">{draftTitle(text)}</span>
+        <span className="block break-words text-xs text-muted-foreground">{t("problemReports.sentReports.status.notSent")}</span>
+      </span>
+      <DeleteButton onClick={clearProblemReportDraft} />
+    </li>
+  )
+}
+
+function draftTitle(text: string): string {
+  const first = text.trim().split("\n", 1)[0].trim()
+  return Array.from(first).slice(0, TITLE_LENGTH).join("")
+}
+
+function DeleteButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  const { t } = useTranslation("common")
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("problemReports.sentReports.delete")}
+          disabled={disabled}
+          onClick={onClick}
+          className="size-6 text-muted-foreground hover:text-foreground"
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">{t("problemReports.sentReports.delete")}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -125,21 +178,7 @@ function SentReportRow({ report }: { report: ListedProblemReport }) {
         <ReportStatus report={report} />
       </span>
       <span className="mt-0.5 text-xs tabular-nums text-muted-foreground">{formatDateOnly(Math.floor(Date.parse(report.sentAt) / 1000))}</span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t("problemReports.sentReports.delete")}
-            disabled={deleteMutation.isPending}
-            onClick={() => deleteMutation.mutate()}
-            className="size-6 text-muted-foreground hover:text-foreground"
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">{t("problemReports.sentReports.delete")}</TooltipContent>
-      </Tooltip>
+      <DeleteButton onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending} />
     </li>
   )
 }

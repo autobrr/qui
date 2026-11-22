@@ -157,7 +157,8 @@
         "issue": "Became issue #{{number}}",
         "issueClosed": "Issue #{{number}} closed",
         "closed": "Closed: {{reason}}",
-        "closedNoReason": "Closed"
+        "closedNoReason": "Closed",
+        "notSent": "Not sent"
       },
       "delete": "Delete report",
       "deleteUnavailable": "brrbin cannot delete reports right now. Try again later.",
