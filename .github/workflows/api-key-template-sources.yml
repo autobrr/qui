@@ -1,0 +1,29 @@
+name: API key template sources
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test the checker
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_check_template_sources.py'
+      - name: Compare the pinned files with upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B .github/scripts/check_template_sources.py

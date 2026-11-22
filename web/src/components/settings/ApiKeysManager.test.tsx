@@ -5,11 +5,12 @@
 
 import { PERMISSION_AREAS, type ApiKeyPermission } from "@/lib/api-key-permissions"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
+import { stubPhone } from "@/test/stubPhone"
 import type { ApiKey, ApiKeyRequest } from "@/types"
 
 const stubs = vi.hoisted(() => ({
@@ -39,11 +40,14 @@ vi.mock("@/lib/api", () => ({
 }))
 
 // Radix Checkbox sizes its hidden form input through ResizeObserver, which jsdom lacks.
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
+function stubResizeObserver() {
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+}
+stubResizeObserver()
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ApiKeysManager } from "./ApiKeysManager"
@@ -82,7 +86,11 @@ beforeEach(() => {
   stubs.updateGate = null
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  stubResizeObserver()
+})
 
 describe("ApiKeysManager create dialog", () => {
   // regression: #3858
@@ -193,6 +201,79 @@ describe("ApiKeysManager create dialog", () => {
     await user.click(save)
     await screen.findByText("the-raw-key")
     expect(stubs.created).toEqual([{ name: "k", permissions: [{ area: "torrents", level: "read" }], instanceIds: [1] }])
+  })
+})
+
+describe("ApiKeysManager templates", () => {
+  it("ticks the access of the tool and clears an Instance limit that its routes refuse", async () => {
+    const { user, dialog } = await openCreateDialog()
+    await user.type(within(dialog).getByLabelText("Name"), "autobrr")
+    await user.click(box(dialog, "Torrents: write")!)
+    await user.click(await within(dialog).findByRole("checkbox", { name: "seedbox" }))
+
+    await user.click(within(dialog).getByRole("button", { name: "autobrr" }))
+
+    expect(within(dialog).getByRole("button", { name: "autobrr" }).getAttribute("aria-pressed")).toBe("true")
+    expect(within(dialog).getByText("Cross-seed and season-pack webhooks (not download client)")).toBeTruthy()
+    expect(isChecked(box(dialog, "Torrents: write"))).toBe(false)
+    expect(isChecked(box(dialog, "Cross-seed: run"))).toBe(true)
+    expect(isChecked(within(dialog).getByRole("checkbox", { name: "seedbox" }))).toBe(false)
+    await user.click(within(dialog).getByRole("button", { name: "Create API Key" }))
+    await screen.findByText("the-raw-key")
+    expect(stubs.created).toEqual([{ name: "autobrr", permissions: [{ area: "crossSeed", level: "run" }], instanceIds: [] }])
+  })
+
+  it("narrows a key that holds every Permission and keeps its Instance limit", async () => {
+    stubs.keys = [{ ...key, permissions: PERMISSION_AREAS.map(({ area, levels }) => ({ area, level: levels.at(-1)! })), instanceIds: [1] }]
+    const user = userEvent.setup()
+    renderManager()
+    await user.click(await screen.findByRole("button", { name: "Edit dashboard" }))
+    const dialog = await screen.findByRole("dialog")
+
+    await user.click(within(dialog).getByRole("button", { name: "dashbrr" }))
+    await user.click(within(dialog).getByRole("button", { name: "Save changes" }))
+
+    await waitFor(() => expect(stubs.updated).toEqual([{
+      name: "dashboard",
+      permissions: [{ area: "instances", level: "read" }],
+      instanceIds: [1],
+    }]))
+  })
+
+  it("asks for a name only when the user tries to create the key", async () => {
+    const { user, dialog } = await openCreateDialog()
+    await user.click(within(dialog).getByLabelText("Name"))
+    await user.click(within(dialog).getByRole("button", { name: "dashbrr" }))
+    expect(within(dialog).queryByText("Name is required")).toBeNull()
+
+    await user.click(within(dialog).getByRole("button", { name: "Create API Key" }))
+    expect(within(dialog).getByText("Name is required")).toBeTruthy()
+    expect(stubs.created).toEqual([])
+  })
+
+  it("drops the mark of the template once the user changes a box", async () => {
+    const { user, dialog } = await openCreateDialog()
+    await user.click(within(dialog).getByRole("button", { name: "dashbrr" }))
+    await user.click(box(dialog, "Torrents: read")!)
+
+    expect(within(dialog).getByRole("button", { name: "dashbrr" }).getAttribute("aria-pressed")).toBe("false")
+    expect(within(dialog).queryByText("Instance list and transfer totals (dashbrr 0.5.0 or later)")).toBeNull()
+  })
+
+  it("lists the templates in a drawer on a phone", async () => {
+    stubPhone("upright")
+    const { user, dialog } = await openCreateDialog()
+    expect(within(dialog).queryByRole("button", { name: "autobrr" })).toBeNull()
+
+    await user.click(within(dialog).getByRole("button", { name: "Pick a template" }))
+    const drawer = await screen.findByRole("dialog", { name: "Pick a template" })
+    await waitFor(() => expect(drawer.contains(document.activeElement)).toBe(true))
+    fireEvent.click(within(drawer).getByRole("button", { name: /^qui-extension \(cross-seed\)/ }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Pick a template" })).toBeNull())
+    expect(within(dialog).getByRole("button", { name: "qui-extension (cross-seed)" })).toBeTruthy()
+    expect(isChecked(box(dialog, "Cross-seed: write"))).toBe(true)
+    expect(isChecked(box(dialog, "Torrents: write"))).toBe(true)
   })
 })
 

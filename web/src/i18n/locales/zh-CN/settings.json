@@ -144,6 +144,37 @@
       "submit": "保存更改",
       "saving": "正在保存..."
     },
+    "templates": {
+      "title": "模板",
+      "help": "将下方权限替换为该工具所需的权限，并在需要时清除实例限制。之后您仍可更改任意复选框。",
+      "pick": "选择模板",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "辅种与季包 Webhook（不用于下载客户端）"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "实例列表与传输总量（需 dashbrr 0.5.0 或更高版本）"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "qui 小组件。仅当小组件只显示一个实例时，才将密钥限制到该实例"
+        },
+        "arrDirScan": {
+          "name": "Sonarr、Radarr、Lidarr、Readarr",
+          "description": "仅用于目录扫描器 Webhook；下载客户端请使用客户端代理"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "从浏览器添加种子的浏览器扩展"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension（辅种）",
+          "description": "添加种子、手动辅种匹配和季包组装"
+        }
+      }
+    },
     "permissions": {
       "title": "权限",
       "help": "写入包含读取和运行。运行不包含读取，因为设置中保存着凭据。",

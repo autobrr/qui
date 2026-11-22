@@ -144,6 +144,37 @@
       "submit": "Änderungen speichern",
       "saving": "Wird gespeichert..."
     },
+    "templates": {
+      "title": "Vorlage",
+      "help": "Ersetzt die Berechtigungen unten durch das, was ein Tool braucht, und hebt das Instanzlimit bei Bedarf auf. Danach kannst du jedes Feld anpassen.",
+      "pick": "Vorlage wählen",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "Cross-Seed- und Staffelpaket-Webhooks (nicht Download-Client)"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "Instanzliste und Transfer-Summen (ab dashbrr 0.5.0)"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "qui-Widget. Begrenze den Schlüssel nur, wenn das Widget eine einzelne Instanz zeigt"
+        },
+        "arrDirScan": {
+          "name": "Sonarr, Radarr, Lidarr, Readarr",
+          "description": "Nur Verzeichnis-Scanner-Webhook; Download-Clients nutzen Client-Proxy"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "Browser-Erweiterung zum Hinzufügen von Torrents"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension (Cross-Seed)",
+          "description": "Torrents hinzufügen, manueller Abgleich und Staffelpakete"
+        }
+      }
+    },
     "permissions": {
       "title": "Berechtigungen",
       "help": "Schreiben umfasst Lesen und Ausführen. Ausführen umfasst nicht Lesen, weil Einstellungen Zugangsdaten enthalten.",

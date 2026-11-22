@@ -144,6 +144,37 @@
       "submit": "Salva modifiche",
       "saving": "Salvataggio..."
     },
+    "templates": {
+      "title": "Modello",
+      "help": "Sostituisce i permessi qui sotto con quelli richiesti da uno strumento e rimuove il limite di istanze se serve. Puoi cambiare ogni casella dopo.",
+      "pick": "Scegli un modello",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "Webhook Cross-Seed e pacchetti stagione (non client di download)"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "Elenco istanze e totali di trasferimento (dashbrr 0.5.0 o successivo)"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "Widget qui. Limita la chiave a un'istanza solo se il widget ne mostra una"
+        },
+        "arrDirScan": {
+          "name": "Sonarr, Radarr, Lidarr, Readarr",
+          "description": "Solo webhook dello scanner di directory; i client usano Proxy client"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "Estensione del browser per aggiungere torrent"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension (Cross-Seed)",
+          "description": "Aggiunta torrent, abbinamento manuale e pacchetti stagione"
+        }
+      }
+    },
     "permissions": {
       "title": "Permessi",
       "help": "La scrittura include lettura ed esecuzione. L'esecuzione non include la lettura, perché le impostazioni contengono credenziali.",

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { accessByArea, PERMISSION_AREAS, summarizePermissions, type ApiKeyPermission, type PermissionArea } from "../api-key-permissions"
+import { accessByArea, keyAccessReducer, PERMISSION_AREAS, summarizePermissions, type ApiKeyPermission, type PermissionArea } from "../api-key-permissions"
 
 const everything: ApiKeyPermission[] = PERMISSION_AREAS.flatMap(({ area, levels }) => levels.includes("write")
   ? [{ area, level: "write" as const }]
@@ -75,5 +75,37 @@ describe("accessByArea", () => {
     expect(access.find(({ area }) => area === "torrents")?.levels).toEqual(["write"])
     expect(access.find(({ area }) => area === "rss")?.levels).toEqual(["read", "run"])
     expect(access.find(({ area }) => area === "logs")?.levels).toEqual([])
+  })
+})
+
+describe("keyAccessReducer", () => {
+  const picked = { permissions: everything, instanceIds: [1, 2], template: null }
+
+  it("replaces the Permissions and clears an Instance limit that the routes of the tool refuse", () => {
+    expect(keyAccessReducer(picked, { type: "applyTemplate", id: "autobrr" })).toEqual({
+      permissions: [{ area: "crossSeed", level: "run" }],
+      instanceIds: [],
+      template: "autobrr",
+    })
+  })
+
+  it("keeps the Instance limit when the tool works with one", () => {
+    expect(keyAccessReducer(picked, { type: "applyTemplate", id: "dashbrr" })).toEqual({
+      permissions: [{ area: "instances", level: "read" }],
+      instanceIds: [1, 2],
+      template: "dashbrr",
+    })
+  })
+
+  it("forgets the template once the user changes a Permission", () => {
+    const applied = keyAccessReducer(picked, { type: "applyTemplate", id: "dashbrr" })
+    expect(keyAccessReducer(applied, { type: "togglePermission", area: "torrents", level: "read" }).template).toBeNull()
+  })
+
+  it("keeps the template through an Instance limit only when the tool works with one", () => {
+    const dashbrr = keyAccessReducer(picked, { type: "applyTemplate", id: "dashbrr" })
+    expect(keyAccessReducer(dashbrr, { type: "toggleInstance", id: 3 }).template).toBe("dashbrr")
+    const autobrr = keyAccessReducer(picked, { type: "applyTemplate", id: "autobrr" })
+    expect(keyAccessReducer(autobrr, { type: "toggleInstance", id: 3 }).template).toBeNull()
   })
 })

@@ -102,13 +102,19 @@ These checks apply only to API keys. A signed-in browser has full access, and a 
 
 ## Permissions for integrations
 
-| Integration | Permission |
-|---|---|
-| [autobrr cross-seed](../features/cross-seed/autobrr.md) | `Cross-seed: run` |
-| [Season packs](../features/cross-seed/season-packs.md), check and apply | `Cross-seed: run` |
-| [Season packs](../features/cross-seed/season-packs.md), run list | `Cross-seed: read` |
-| [Dir Scan webhook](../features/cross-seed/dir-scan.md) | `Dir Scan: run` |
-| [External programs](../features/external-programs.md), run a program | `External programs: run` |
-| A dashboard that shows torrents | `Torrents: read`. Add `Instances: read` if the dashboard lists the instances |
+The create and edit dialogs in **Settings → API keys** include a **Template** picker with templates for the first six integrations below. Picking a template fills in the Permissions that the tool needs, clears the Instance limit when the tool's routes refuse one, and lets you change any box afterwards.
 
-The cross-seed and Dir Scan integrations need a key with no Instance limit.
+| Integration | Permissions | Instance limit |
+|---|---|---|
+| [autobrr](../features/cross-seed/autobrr.md) cross-seed and [season-pack](../features/cross-seed/season-packs.md) webhooks | `Cross-seed: run` | Not allowed |
+| [dashbrr](https://github.com/autobrr/dashbrr) (0.5.0 or later) | `Instances: read` | Allowed |
+| [Homepage](https://gethomepage.dev/widgets/services/qui/) qui widget | `Torrents: read` | Only with `instance` set |
+| Sonarr, Radarr, Lidarr, Readarr ([Dir Scan webhook](../features/cross-seed/dir-scan.md) only) | `Dir Scan: run` | Not allowed |
+| [qui-extension](https://github.com/s0up4200/qui-extension) | `Instances: read`, `Torrents: write` | Allowed |
+| [qui-extension](https://github.com/s0up4200/qui-extension) with cross-seed (manual match and season-pack assembly) | `Instances: read`, `Torrents: write`, `Cross-seed: write` | Not allowed |
+| [Season packs](../features/cross-seed/season-packs.md), run list | `Cross-seed: read` | Not allowed |
+| [External programs](../features/external-programs.md), run a program | `External programs: run` | Allowed |
+
+- **Download clients:** autobrr, Sonarr, Radarr, Lidarr, and Readarr use a separate Client proxy key when they connect to qBittorrent through qui. The templates above are only for webhooks (External filter and webhook actions in autobrr, and **Settings → Connect → Webhook** in the Arr apps). See [Reverse Proxy](../features/reverse-proxy.md).
+- **dashbrr:** Use dashbrr 0.5.0 or later. Older versions read totals from the torrent list and show session totals instead of all-time totals.
+- **Homepage:** The template keeps your Instance limit. With `instance` set, limit the key to that instance. Without `instance`, the widget reads all instances through the cross-instance torrent route, which refuses a key with an Instance limit, so leave the limit empty.

@@ -1,0 +1,35 @@
+{
+  "quiRoutesOnly": ["autobrr", "arrDirScan"],
+  "tools": [
+    {
+      "name": "dashbrr",
+      "repo": "autobrr/dashbrr",
+      "ref": "develop",
+      "templates": ["dashbrr"],
+      "files": {
+        "internal/services/qui/qui.go": "7c0aa74f20aee3ccb45be0215d455cfa08a9cc89",
+        "internal/api/handlers/poller.go": "b99a1e3da21501dfa0ad7d901fabf9b265680997",
+        "internal/commands/service_qui.go": "f3da226b83c979e9321a7eb970a5aae6163e8070"
+      }
+    },
+    {
+      "name": "Homepage",
+      "repo": "gethomepage/homepage",
+      "ref": "dev",
+      "templates": ["homepage"],
+      "files": {
+        "src/widgets/qui/widget.js": "31b9f7f6f42bb81cb959f841dec46a4a284e9815",
+        "src/widgets/qui/component.jsx": "457086e03d2d7f7d4e32918971598ffc52bdce00"
+      }
+    },
+    {
+      "name": "qui-extension",
+      "repo": "s0up4200/qui-extension",
+      "ref": "main",
+      "templates": ["quiExtension", "quiExtensionCrossSeed"],
+      "files": {
+        "lib/api.ts": "2ed95627b34ab28dc21d1f36dfeed0524020452e"
+      }
+    }
+  ]
+}

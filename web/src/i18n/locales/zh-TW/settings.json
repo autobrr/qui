@@ -144,6 +144,37 @@
       "submit": "儲存變更",
       "saving": "正在儲存..."
     },
+    "templates": {
+      "title": "範本",
+      "help": "將下方權限替換為該工具所需的權限，並在需要時清除實例限制。之後您仍可更改任意核取方塊。",
+      "pick": "選擇範本",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "輔種與季包 Webhook（不用於下載用戶端）"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "實例清單與傳輸總量（需 dashbrr 0.5.0 或更高版本）"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "qui 小工具。僅在小工具只顯示一個實例時，才將金鑰限制到該實例"
+        },
+        "arrDirScan": {
+          "name": "Sonarr、Radarr、Lidarr、Readarr",
+          "description": "僅用於目錄掃描器 Webhook；下載用戶端請使用用戶端代理"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "從瀏覽器新增種子的瀏覽器擴充功能"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension（輔種）",
+          "description": "新增種子、手動輔種配對與季包組裝"
+        }
+      }
+    },
     "permissions": {
       "title": "權限",
       "help": "寫入包含讀取和執行。執行不包含讀取，因為設定中保存著憑證。",
