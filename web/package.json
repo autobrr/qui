@@ -27,7 +27,7 @@
     "check:i18n:ko": "node scripts/check-locale-coverage.mjs ko",
     "check:i18n:pt-br": "node scripts/check-locale-coverage.mjs pt-BR",
     "check:i18n:ca": "node scripts/check-locale-coverage.mjs ca",
-    "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\" \"scripts/**/*.mjs\"",
+    "lint": "eslint --max-warnings 0 \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\" \"scripts/**/*.mjs\"",
     "format": "eslint --fix \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\" \"scripts/**/*.mjs\"",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -169,6 +169,9 @@
   "src/components/cross-seed/RouteProtectionConfirm.tsx": {
     "qui/no-comments": {
       "count": 13
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
     }
   },
   "src/components/cross-seed/RssRunItem.tsx": {
@@ -899,6 +902,12 @@
   "src/components/query-builder/ConditionGroup.tsx": {
     "qui/no-comments": {
       "count": 12
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 4
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
     }
   },
   "src/components/query-builder/FieldCombobox.tsx": {
@@ -1383,6 +1392,9 @@
   "src/components/torrents/CategoryTree.tsx": {
     "qui/no-comments": {
       "count": 11
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
     }
   },
   "src/components/torrents/ColumnFilterPopover.tsx": {
@@ -1408,6 +1420,9 @@
       "count": 8
     },
     "qui/no-direct-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
       "count": 1
     }
   },
@@ -1922,8 +1937,16 @@
       "count": 6
     }
   },
+  "src/components/ui/badge.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
   "src/components/ui/button.tsx": {
     "qui/no-comments": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
       "count": 1
     }
   },
@@ -1978,6 +2001,9 @@
   "src/components/ui/multi-select.tsx": {
     "qui/no-comments": {
       "count": 6
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
     }
   },
   "src/components/ui/path-cell.tsx": {
@@ -1990,6 +2016,9 @@
       "count": 5
     },
     "qui/no-direct-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
       "count": 1
     }
   },
@@ -2082,6 +2111,11 @@
       "count": 13
     }
   },
+  "src/contexts/LayoutRouteContext.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
   "src/contexts/MobileScrollContext.test.tsx": {
     "qui/no-comments": {
       "count": 4
@@ -2092,6 +2126,9 @@
       "count": 5
     },
     "qui/no-direct-effect": {
+      "count": 2
+    },
+    "react-refresh/only-export-components": {
       "count": 2
     }
   },
@@ -2106,11 +2143,17 @@
     },
     "qui/no-direct-effect": {
       "count": 11
+    },
+    "react-refresh/only-export-components": {
+      "count": 4
     }
   },
   "src/contexts/TorrentSelectionContext.tsx": {
     "qui/no-comments": {
       "count": 6
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
     }
   },
   "src/demo/api.ts": {
@@ -2322,6 +2365,9 @@
     },
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 2
     }
   },
   "src/hooks/useCrossSeedSettings.ts": {
@@ -2443,6 +2489,9 @@
       "count": 8
     },
     "qui/no-direct-effect": {
+      "count": 2
+    },
+    "react-hooks/exhaustive-deps": {
       "count": 2
     }
   },
@@ -2599,6 +2648,9 @@
   "src/hooks/usePersistedLogExclusions.ts": {
     "qui/no-comments": {
       "count": 3
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
     }
   },
   "src/hooks/usePersistedLogLevels.ts": {
@@ -3732,15 +3784,54 @@
   "src/routes/_authenticated.tsx": {
     "qui/no-comments": {
       "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/automations.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/backups.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/cross-seed.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
     }
   },
   "src/routes/_authenticated/instances.$instanceId.tsx": {
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
     }
   },
   "src/routes/_authenticated/instances.index.tsx": {
     "qui/no-direct-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/rss.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/settings.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/transfers.tsx": {
+    "react-refresh/only-export-components": {
       "count": 1
     }
   },
@@ -3750,6 +3841,14 @@
     },
     "qui/no-direct-effect": {
       "count": 3
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/routes/index.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
     }
   },
   "src/test/mockFilters.ts": {

@@ -5,7 +5,7 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 ## Commands
 
 - `make precommit`: `check-mojibake` and `generate`, then fmt + gofix on changed files, then `make lint`, `make lint-ratchet`, `make typecheck-frontend`, `make check-i18n`, and `make test-frontend-changed`.
-- `make lint`: golangci-lint on Go issues that are new since the `origin/develop` merge-base, then the `unused` linter on the whole repo, then the full `pnpm lint`. A change can make unchanged code unused, so the `unused` run does not stop at changed lines. A frontend lint error in any file fails it, not only an error in a changed file.
+- `make lint`: golangci-lint on Go issues that are new since the `origin/develop` merge-base, then the `unused` linter on the whole repo, then the full `pnpm lint`. A change can make unchanged code unused, so the `unused` run does not stop at changed lines. A frontend lint error in any file fails it, not only an error in a changed file. `pnpm lint` also fails on a warning, so each frontend rule is `error` or off. CI runs the same full `pnpm lint` when a pull request changes a file under `web/`.
 - `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. CI runs it on each pull request. The target compares with the allowlist at the merge base of `origin/develop` and your branch, so a count that `develop` lowered after your branch started is not growth. In a shallow clone without that merge base, the target compares with `origin/develop`. If a merge is not committed yet, or your `origin/develop` is behind, the target reports growth that is not real. Commit the merge first, or run `git fetch origin develop`.
 - `make typecheck-frontend`: `tsc -b` in `web/`, the type check that the frontend build runs first. ESLint and Vitest do not report type errors.
 - `make test-frontend-changed`: the whole Vitest suite, when the branch changes a file that the frontend reads since the `origin/develop` merge-base, an uncommitted or untracked file included. Those files are each file under `web/`, and each file outside `web/` that a file under `web/src` names by a relative path, for example the theme files in `internal/themes/assets/`. The target finds only a path that is one string and starts with `../`. CI runs the suite on each pull request that changes code. Without `origin/develop`, the suite always runs.
@@ -65,12 +65,14 @@ Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file and
 
 ### Suppressed ESLint Rules
 
-`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Two rules have entries:
+`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Four rules have entries:
 
 - `qui/no-comments` reports each comment.
 - `qui/no-direct-effect` reports each call of `useEffect`, `useLayoutEffect`, or `useInsertionEffect` outside the tests and outside the hooks in `effectHooks` of `web/eslint.config.js`. ADR 0073 has the reason.
+- `react-hooks/exhaustive-deps` reports a hook whose dependency list does not match the values that the hook reads.
+- `react-refresh/only-export-components` reports a file that exports a component and another value, because fast refresh then reloads the whole file.
 
-After you delete a comment or an effect, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 7 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 7 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
+After you fix a report of one of these rules, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 7 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 7 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
 
 A new rule that old code breaks starts the same way: add its name to `suppressedRules`, and write its reports to the file one time with `pnpm exec eslint --suppress-rule <rule>` and the paths of the `lint` script in `web/package.json`.
 
