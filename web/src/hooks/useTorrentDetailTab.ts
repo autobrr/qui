@@ -5,6 +5,7 @@
 
 import { useSyncStream, type StreamState } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
+import { isNeverCompletedTimestamp } from "@/lib/dateTimeUtils"
 import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { resolveStreamRow } from "@/lib/torrent-utils"
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentProperties, TorrentStreamPayload, TorrentTracker, WebSeed } from "@/types"
@@ -172,9 +173,9 @@ function reloadKey(row: Torrent): string {
 }
 
 // mergeLiveRow puts the values of the live row over the properties that load
-// one time. The other fields (comment, creator, save path) keep the loaded
-// value. The piece counts come from the row only on qBittorrent 5.2 and later,
-// where pieces_num is set.
+// one time. The other fields (comment, creator) keep the loaded value. The
+// piece counts come from the row only on qBittorrent 5.2 and later, where
+// pieces_num is set.
 function mergeLiveRow(properties: TorrentProperties, row: Torrent | null): TorrentProperties {
   if (!row) {
     return properties
@@ -193,6 +194,11 @@ function mergeLiveRow(properties: TorrentProperties, row: Torrent | null): Torre
     total_uploaded: row.uploaded,
     time_elapsed: row.time_active,
     seeding_time: row.seeding_time,
+    save_path: row.save_path,
+    download_path: row.download_path,
+    dl_limit: row.dl_limit,
+    up_limit: row.up_limit,
+    completion_date: isNeverCompletedTimestamp(row.completion_on) ? -1 : row.completion_on,
   }
 }
 

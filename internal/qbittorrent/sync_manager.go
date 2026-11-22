@@ -595,7 +595,8 @@ type SyncManager struct {
 	trackerHealthCache   map[int]*TrackerHealthSnapshot
 	trackerHealthCancel  map[int]context.CancelFunc // cancel funcs for background loops
 	trackerHealthKick    map[int]chan struct{}      // early-pass requests, see KickTrackerHealthRefresh
-	trackerHealthRefresh time.Duration              // refresh interval (default 60s)
+	trackerHealthSeen    map[int]chan seenTrackers
+	trackerHealthRefresh time.Duration // refresh interval (default 60s)
 	// qBittorrent reports "updating" right after an announce, so a kicked pass
 	// waits the settle delay after the latest kick for the outcome to land. Kicked
 	// passes are full-library rebuilds, so they are rate-limited; the ticker still
@@ -675,6 +676,7 @@ func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCus
 		trackerHealthCache:        make(map[int]*TrackerHealthSnapshot),
 		trackerHealthCancel:       make(map[int]context.CancelFunc),
 		trackerHealthKick:         make(map[int]chan struct{}),
+		trackerHealthSeen:         make(map[int]chan seenTrackers),
 		trackerHealthRefresh:      60 * time.Second,
 		trackerHealthKickSettle:   3 * time.Second,
 		trackerHealthKickInterval: 10 * time.Second,
@@ -812,9 +814,11 @@ func (sm *SyncManager) StartTrackerHealthRefresh(instanceID int) {
 	sm.trackerHealthCancel[instanceID] = cancel
 	kick := make(chan struct{}, 1)
 	sm.trackerHealthKick[instanceID] = kick
+	seen := make(chan seenTrackers, seenTrackersQueue)
+	sm.trackerHealthSeen[instanceID] = seen
 	sm.trackerHealthMu.Unlock()
 
-	go sm.trackerHealthRefreshLoop(refreshCtx, instanceID, kick)
+	go sm.trackerHealthRefreshLoop(refreshCtx, instanceID, kick, seen)
 }
 
 // KickTrackerHealthRefresh asks the instance's health loop for an early pass, so a
@@ -840,13 +844,14 @@ func (sm *SyncManager) StopTrackerHealthRefresh(instanceID int) {
 		delete(sm.trackerHealthCancel, instanceID)
 	}
 	delete(sm.trackerHealthKick, instanceID)
+	delete(sm.trackerHealthSeen, instanceID)
 	delete(sm.trackerHealthCache, instanceID)
 	delete(sm.trackerHealthFlagged, instanceID)
 	delete(sm.automationTrackerDetails, instanceID)
 }
 
 // trackerHealthRefreshLoop runs in the background and periodically refreshes tracker health counts.
-func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID int, kick <-chan struct{}) {
+func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID int, kick <-chan struct{}, seen <-chan seenTrackers) {
 	log.Debug().Int("instanceID", instanceID).Msg("Starting tracker health refresh loop")
 
 	// Do an initial refresh immediately
@@ -872,6 +877,8 @@ func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID 
 		case <-kickTimer.C:
 			lastKicked = time.Now()
 			sm.refreshTrackerHealthCounts(ctx, instanceID)
+		case s := <-seen:
+			sm.applySeenTrackers(ctx, instanceID, s)
 		}
 	}
 }
@@ -2734,15 +2741,19 @@ func (sm *SyncManager) GetTorrentProperties(ctx context.Context, instanceID int,
 // GetTorrentTrackers gets trackers for a specific torrent
 func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, hash string) ([]qbt.TorrentTracker, error) {
 	// Get client and sync manager
-	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get trackers (real-time)
+	noteRead := sm.beginTrackersRead(instanceID, syncManager, hash)
 	trackers, err := client.GetTorrentTrackersCtx(ctx, hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent trackers: %w", err)
+	}
+
+	if trackers != nil {
+		noteRead(trackers)
 	}
 
 	// Queue icon fetches for discovered trackers

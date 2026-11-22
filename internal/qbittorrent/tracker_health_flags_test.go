@@ -112,6 +112,13 @@ func newFlagsRig(t *testing.T) *flagsRig {
 				out = append(out, map[string]any{"hash": hash, "added_on": tor.addedOn, "trackers": tor.trackers})
 			}
 			_ = json.MarshalWrite(w, out)
+		case "/api/v2/torrents/trackers":
+			tor, ok := rig.torrents[r.URL.Query().Get("hash")]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.MarshalWrite(w, tor.trackers)
 		default:
 			http.NotFound(w, r)
 		}
