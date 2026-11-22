@@ -70,7 +70,7 @@ Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file and
 A line counts when its level is DEBUG or INFO, and one of these is true:
 
 - A message literal says `disabled`, `not enabled`, `not configured`, `turned off`, or `is off`.
-- The line is in the body of an `if` that tests an off switch: `!x.Enabled`, `x.Disabled`, `disabled()`, a name that ends in `Off`, or the `else` of `if x.Enabled`. A name that ends in `Active` or `Configured` counts like `Enabled`.
+- The line is in the body of an `if` that tests an off switch: `!x.Enabled`, `x.Disabled`, `disabled()`, a name that ends in `Off`, or the `else` of `if x.Enabled`. A name that ends in `Active` or `Configured` counts like `Enabled`. With `&&` and `||`, the line counts only when the condition proves that the switch is off: `!x.Enabled && y` does, and `x.Disabled || y` does not.
 
 When a file has more lines than its entry allows, the command prints the position of each counted line in that file. Delete the line, or write it at TRACE. A warning or an error never counts, so this rule has no `nolint` marker.
 

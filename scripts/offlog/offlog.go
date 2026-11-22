@@ -41,9 +41,9 @@ func Lines(path string, src []byte) ([]int, error) {
 					walk(v.Init, off)
 				}
 				walk(v.Cond, off)
-				walk(v.Body, off || testsOff(v.Cond))
+				walk(v.Body, off || impliesOff(v.Cond, true))
 				if v.Else != nil {
-					walk(v.Else, off || onName.MatchString(switchName(v.Cond)))
+					walk(v.Else, off || impliesOff(v.Cond, false))
 				}
 				return false
 			case *ast.CallExpr:
@@ -91,22 +91,26 @@ func saysOff(write *ast.CallExpr) bool {
 	return err == nil && offMessage.MatchString(message)
 }
 
-func testsOff(cond ast.Expr) bool {
+func impliesOff(cond ast.Expr, holds bool) bool {
 	switch v := cond.(type) {
 	case *ast.ParenExpr:
-		return testsOff(v.X)
+		return impliesOff(v.X, holds)
 	case *ast.UnaryExpr:
-		return v.Op == token.NOT && onName.MatchString(switchName(v.X))
+		return v.Op == token.NOT && impliesOff(v.X, !holds)
 	case *ast.BinaryExpr:
-		switch v.Op {
-		case token.LAND:
-			return testsOff(v.X) || testsOff(v.Y)
-		case token.LOR:
-			return testsOff(v.X) && testsOff(v.Y)
+		x, y := impliesOff(v.X, holds), impliesOff(v.Y, holds)
+		switch {
+		case v.Op == token.LAND && holds, v.Op == token.LOR && !holds:
+			return x || y
+		case v.Op == token.LAND, v.Op == token.LOR:
+			return x && y
 		}
 		return false
 	}
-	return offName.MatchString(switchName(cond))
+	if holds {
+		return offName.MatchString(switchName(cond))
+	}
+	return onName.MatchString(switchName(cond))
 }
 
 func switchName(e ast.Expr) string {
