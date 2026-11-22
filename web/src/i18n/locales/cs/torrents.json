@@ -867,9 +867,8 @@
       "match": "shoda",
       "noMatch": "žádná shoda",
       "openSettings": "Otevřít nastavení",
+      "noApiKeys": "RED/OPS je zapnuto, ale není nastaven žádný klíč API",
       "notAsked": {
-        "disabled": "nedotázán: vypnuto",
-        "noApiKey": "nedotázán: chybí klíč API",
         "cooldown": "nedotázán: nedávno prohledán",
         "notSelected": "nedotázán: nevybrán",
         "sourceSite": "nedotázán: torrent pochází z {{site}}",

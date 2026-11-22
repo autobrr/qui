@@ -1407,7 +1407,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 	if len(scope.torznabIndexerIDs) == 0 && !scope.asksGazelle() {
 		s.recordGazelleLookups(state, scope.gazelle)
-		s.stampSearchHistory(ctx, state, torrent.Hash, processedAt, staleExcludedIndexerIDs, scope.gazelle)
+		s.stampSearchHistory(ctx, state, torrent.Hash, processedAt, staleExcludedIndexerIDs, scope.gazelle, scope.gazelleKeyMissing)
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
@@ -1451,7 +1451,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	if !canceled {
 		s.recordGazelleLookups(state, lookups)
 	}
-	s.stampSearchHistory(ctx, state, torrent.Hash, processedAt, coveredIndexerIDs, lookups)
+	s.stampSearchHistory(ctx, state, torrent.Hash, processedAt, coveredIndexerIDs, lookups, scope.gazelleKeyMissing)
 	gazelleFailed := false
 	for _, l := range lookups {
 		if l.Status == GazelleFailed && !canceled {
@@ -1542,19 +1542,19 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 // stampSearchHistory stamps the Torznab indexers in coveredIndexerIDs for the
 // torrent and its duplicates, and the RED/OPS cooldown when the lookups need no
 // retry.
-func (s *Service) stampSearchHistory(ctx context.Context, state *searchRunState, hash string, processedAt time.Time, coveredIndexerIDs []int, lookups []GazelleLookup) {
+func (s *Service) stampSearchHistory(ctx context.Context, state *searchRunState, hash string, processedAt time.Time, coveredIndexerIDs []int, lookups []GazelleLookup, gazelleKeyMissing bool) {
 	if s.automationStore == nil {
 		return
 	}
-	gazelleStamped := s.stampTorrentSearchHistory(ctx, state.opts.InstanceID, hash, processedAt, coveredIndexerIDs, lookups)
+	gazelleStamped := s.stampTorrentSearchHistory(ctx, state.opts.InstanceID, hash, processedAt, coveredIndexerIDs, lookups, gazelleKeyMissing)
 	s.propagateDuplicateSearchHistory(ctx, state, hash, processedAt, coveredIndexerIDs, gazelleStamped)
 }
 
 // stampTorrentSearchHistory stamps the Torznab indexers in coveredIndexerIDs
 // for one torrent, and the RED/OPS cooldown when the lookups need no retry. It
 // reports whether it stamped the RED/OPS cooldown.
-func (s *Service) stampTorrentSearchHistory(ctx context.Context, instanceID int, hash string, processedAt time.Time, coveredIndexerIDs []int, lookups []GazelleLookup) bool {
-	gazelleStamped := gazelleCooldownDue(lookups)
+func (s *Service) stampTorrentSearchHistory(ctx context.Context, instanceID int, hash string, processedAt time.Time, coveredIndexerIDs []int, lookups []GazelleLookup, gazelleKeyMissing bool) bool {
+	gazelleStamped := gazelleCooldownDue(lookups, gazelleKeyMissing)
 	if gazelleStamped {
 		if histErr := s.automationStore.UpsertSearchHistory(ctx, instanceID, hash, processedAt); histErr != nil {
 			log.Debug().Err(histErr).Msg("failed to update search history")

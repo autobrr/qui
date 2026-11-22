@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { HttpResponse, delay, http } from "msw"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
+import { _resetProblemReportDraftForTests } from "@/components/problem-reports/draft"
 import { closeProblemReport } from "@/components/problem-reports/open"
 import { ProblemReportButton, ProblemReportDialogRoot, ProblemReportMenuItem } from "@/components/problem-reports/ProblemReportDialog"
 import { SENDER_KEY } from "@/components/problem-reports/sender"
@@ -179,6 +180,7 @@ afterEach(() => {
   vi.useRealTimers()
   localStorage.clear()
   _resetClientSettingsForTests()
+  _resetProblemReportDraftForTests()
 })
 
 describe("Problem report entry point", () => {
@@ -436,6 +438,235 @@ describe("ProblemReportDialog", () => {
     expect(second.textField.value).toBe("Another problem")
   })
 })
+
+describe("Draft", () => {
+  it("keeps the text and the log choice across a close and a reopen", async () => {
+    serve()
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    pickLogScope("Warnings and errors")
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+
+    const second = await openDialog()
+
+    expect(second.textField.value).toBe("Torrents vanish")
+    expect(screen.getByRole("combobox", { name: "Log lines to include" }).textContent).toBe("Warnings and errors")
+  })
+
+  it("clears the draft after a successful Send", async () => {
+    serve()
+    serveSend()
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    pickLogScope("Warnings and errors")
+    fireEvent.click(first.sendButton())
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+
+    const second = await openDialog()
+
+    expect(second.textField.value).toBe("")
+    expect(screen.getByRole("combobox", { name: "Log lines to include" }).textContent).toBe("Everything recent")
+  })
+
+  it("sends a second Send of the same draft with the same submission id, also after a close and a reopen", async () => {
+    serve()
+    const { reports } = serveSend([HttpResponse.json({ error: "unavailable" }, { status: 502 })])
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(first.sendButton())
+    await screen.findByRole("alert")
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const second = await openDialog()
+    fireEvent.click(second.sendButton())
+
+    await waitFor(() => expect(reports).toHaveLength(2))
+    expect(reports[1].submissionId).toBe(reports[0].submissionId)
+    expect(reports[1].text).toBe("Torrents vanish")
+  })
+
+  it("sends a draft from an earlier page load with its submission id", async () => {
+    const submissionId = "0b6f8a52-3c1e-4d7a-9f20-5e8c1b2a4d6f"
+    localStorage.setItem("qui-problem-report-draft", JSON.stringify({
+      text: "Torrents vanish",
+      logScope: "none",
+      attempt: { submissionId, text: "Torrents vanish", logScope: "none" },
+    }))
+    serve()
+    const { reports } = serveSend()
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    expect(textField.value).toBe("Torrents vanish")
+    fireEvent.click(sendButton())
+
+    await waitFor(() => expect(reports).toHaveLength(1))
+    expect(reports[0].submissionId).toBe(submissionId)
+    expect(reports[0].logs).toEqual({ scope: "none", lines: [] })
+  })
+
+  it("after a 429 anonymous_full, shows the draft on top of Sent reports as Not sent, and its Delete clears the draft", async () => {
+    serve()
+    serveSend([HttpResponse.json({ error: "anonymous_full" }, { status: 429 })])
+    serveSentReports([listed({ id: "r1", title: "Uploads stall" })])
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    expect(screen.getByRole("button", { name: /^Sent reports/ })).not.toBeNull()
+    fireEvent.change(textField, { target: { value: "Torrents vanish\nafter a restart" } })
+    fireEvent.click(sendButton())
+    await screen.findByRole("alert")
+    fireEvent.click(screen.getByRole("button", { name: /^Sent reports/ }))
+
+    const rows = Array.from((await screen.findByRole("list")).querySelectorAll("li"))
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "Torrents vanishNot sent",
+      expect.stringContaining("Uploads stallReceived"),
+    ])
+    fireEvent.click(rows[0].querySelector("button") as HTMLButtonElement)
+
+    await waitFor(() => expect(screen.queryByText("Torrents vanish")).toBeNull())
+    expect(screen.getByText("Uploads stall")).not.toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Back to report" }))
+    expect((screen.getByRole("textbox", { name: "Your report" }) as HTMLTextAreaElement).value).toBe("")
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("makes a new submission id when the text or the log choice changes after a failed Send", async () => {
+    serve()
+    const { reports } = serveSend([
+      HttpResponse.json({ error: "unavailable" }, { status: 502 }),
+      HttpResponse.json({ error: "unavailable" }, { status: 502 }),
+      HttpResponse.json({ error: "unavailable" }, { status: 502 }),
+    ])
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(sendButton().disabled).toBe(false))
+    fireEvent.change(textField, { target: { value: "Torrents vanish after a restart" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(reports).toHaveLength(2))
+    await waitFor(() => expect(sendButton().disabled).toBe(false))
+    pickLogScope("Leave out")
+    fireEvent.click(sendButton())
+
+    await waitFor(() => expect(reports).toHaveLength(3))
+    expect(new Set(reports.map((report) => report.submissionId)).size).toBe(3)
+  })
+
+  it("shows no Not sent draft while its Send runs", async () => {
+    serve()
+    let answer: (response: Response) => void = () => {}
+    server.use(http.post("*/api/problem-reports", () => new Promise<Response>((resolve) => { answer = resolve })))
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(sendButton().disabled).toBe(true))
+
+    expect(screen.queryByRole("button", { name: /^Sent reports/ })).toBeNull()
+    answer(HttpResponse.json({ error: "unavailable" }, { status: 502 }))
+    expect(await screen.findByRole("button", { name: /^Sent reports/ })).not.toBeNull()
+  })
+
+  it("shows Sent reports with the Not sent draft while no report was sent", async () => {
+    serve()
+    serveSend([HttpResponse.json({ error: "anonymous_full" }, { status: 429 })])
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    expect(screen.queryByRole("button", { name: /^Sent reports/ })).toBeNull()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    expect(screen.queryByRole("button", { name: /^Sent reports/ })).toBeNull()
+    fireEvent.click(sendButton())
+    await screen.findByRole("alert")
+    fireEvent.click(screen.getByRole("button", { name: /^Sent reports/ }))
+
+    const rows = Array.from((await screen.findByRole("list")).querySelectorAll("li"))
+    expect(rows.map((row) => row.textContent)).toEqual(["Torrents vanishNot sent"])
+  })
+
+  it("keeps a text that the user changed while an earlier Send ran, and sends it as a new report", async () => {
+    serve()
+    let answer: (response: Response) => void = () => {}
+    const reports: ProblemReportPayload[] = []
+    server.use(http.post("*/api/problem-reports", async ({ request }) => {
+      reports.push(JSON.parse((await request.formData()).get("report") as string) as ProblemReportPayload)
+      if (reports.length > 1) return HttpResponse.json({ id: "r2" }, { status: 201 })
+      return new Promise<Response>((resolve) => { answer = resolve })
+    }))
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(first.sendButton())
+    await waitFor(() => expect(reports).toHaveLength(1))
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const second = await openDialog()
+    fireEvent.change(second.textField, { target: { value: "Torrents vanish after a restart" } })
+    answer(HttpResponse.json({ id: "r1" }, { status: 201 }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1))
+
+    expect(second.textField.value).toBe("Torrents vanish after a restart")
+    fireEvent.click(second.sendButton())
+    await waitFor(() => expect(reports).toHaveLength(2))
+    expect(reports[1].text).toBe("Torrents vanish after a restart")
+    expect(reports[1].submissionId).not.toBe(reports[0].submissionId)
+  })
+
+  // regression: #4381
+  it("shows the draft that another tab stored while the dialog was closed", async () => {
+    serve()
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    storeDraftFromAnotherTab({ text: "Uploads stall", logScope: "all" })
+
+    const second = await openDialog()
+
+    expect(second.textField.value).toBe("Uploads stall")
+  })
+
+  // regression: #4381
+  it("keeps a draft that another tab changed when a Send from a closed dialog succeeds", async () => {
+    serve()
+    let answer: (response: Response) => void = () => {}
+    server.use(http.post("*/api/problem-reports", () => new Promise<Response>((resolve) => { answer = resolve })))
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(sendButton().disabled).toBe(true))
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const stored = JSON.parse(localStorage.getItem("qui-problem-report-draft") as string) as { attempt: unknown }
+    storeDraftFromAnotherTab({ text: "Torrents vanish after a restart", logScope: "all", attempt: stored.attempt })
+    answer(HttpResponse.json({ id: "r1" }, { status: 201 }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1))
+
+    expect(JSON.parse(localStorage.getItem("qui-problem-report-draft") as string)).toEqual({ text: "Torrents vanish after a restart", logScope: "all" })
+  })
+})
+
+function storeDraftFromAnotherTab(draft: object) {
+  localStorage.setItem("qui-problem-report-draft", JSON.stringify(draft))
+  window.dispatchEvent(new StorageEvent("storage", { key: "qui-problem-report-draft" }))
+}
 
 describe("Sender", () => {
   it("opens the sign-in page in a popup, waits while it is pending, and then sends as the name", async () => {

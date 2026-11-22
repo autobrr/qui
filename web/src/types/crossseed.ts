@@ -26,15 +26,13 @@ export interface CrossSeedTorrentInfo {
   filteredIndexers?: number[]
   excludedIndexers?: Record<number, string>
   contentMatches?: string[]
-  /** What a search asks each RED/OPS site: will_ask, or not_asked with its reason. */
+  /** What a search asks each RED/OPS site that has an API key: will_ask, or not_asked with its reason. */
   gazellePlan?: CrossSeedGazelleLookup[]
 }
 
 export type CrossSeedGazelleLookupStatus = "will_ask" | "match" | "no_match" | "not_asked" | "failed"
 
 export type CrossSeedGazelleLookupReason =
-  | "disabled"
-  | "no_api_key"
   | "cooldown"
   | "not_selected"
   | "source_site"

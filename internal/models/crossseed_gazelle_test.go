@@ -178,3 +178,37 @@ func checkSearchRunGazelleSummary(t *testing.T, db *database.DB) {
 	require.Len(t, runs, 1)
 	require.Equal(t, run.GazelleSummary, runs[0].GazelleSummary)
 }
+
+// regression: #4379
+func TestCrossSeedStore_SearchRunDropsRetiredGazelleReasons(t *testing.T) {
+	ctx := t.Context()
+	db := testdb.NewMigratedSQLite(t, "crossseed-search-run-retired-gazelle-reasons")
+	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instances, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{InstanceID: instance.ID, Status: models.CrossSeedSearchRunStatusRunning})
+	require.NoError(t, err)
+
+	run.GazelleSummary = []models.CrossSeedGazelleSiteSummary{
+		{Site: "redacted.sh", Name: "Redacted", NotAsked: map[string]int{"no_api_key": 122}},
+		{Site: "orpheus.network", Name: "Orpheus", Asked: 3, NotAsked: map[string]int{"no_api_key": 2, "not_music": 1}},
+	}
+	require.NoError(t, store.UpdateSearchRunProgress(ctx, run))
+	got, err := store.GetSearchRun(ctx, run.ID)
+	require.NoError(t, err)
+	require.Equal(t, []models.CrossSeedGazelleSiteSummary{
+		{Site: "orpheus.network", Name: "Orpheus", Asked: 3, NotAsked: map[string]int{"not_music": 1}},
+	}, got.GazelleSummary)
+
+	run.GazelleSummary = []models.CrossSeedGazelleSiteSummary{
+		{Site: "redacted.sh", Name: "Redacted", NotAsked: map[string]int{"disabled": 122}},
+		{Site: "orpheus.network", Name: "Orpheus", NotAsked: map[string]int{"disabled": 122}},
+	}
+	require.NoError(t, store.UpdateSearchRunProgress(ctx, run))
+	got, err = store.GetSearchRun(ctx, run.ID)
+	require.NoError(t, err)
+	require.Empty(t, got.GazelleSummary)
+}

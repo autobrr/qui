@@ -599,8 +599,8 @@ func (s *Service) detectGazelleSourceSite(torrent *qbt.Torrent) (string, bool) {
 }
 
 // searchGazelleMatches asks each RED/OPS site that the Search scope marks
-// will_ask, at the same time, and returns one outcome for each site in the
-// order of the scope.
+// will_ask, at the same time, and returns one outcome for each lookup of the
+// scope, in the same order.
 func (s *Service) searchGazelleMatches(
 	ctx context.Context,
 	sourceTorrent *qbt.Torrent,
@@ -725,8 +725,8 @@ func (s *Service) askGazelleSite(
 
 type gazelleSearchOutcome struct {
 	results []TorrentSearchResult
-	// lookups holds one outcome for each RED/OPS site, in the order of the
-	// site table.
+	// lookups holds one outcome for each RED/OPS site that has an API key, in
+	// the order of the site table.
 	lookups []GazelleLookup
 }
 

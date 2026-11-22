@@ -157,7 +157,8 @@
         "issue": "Wurde zu Issue #{{number}}",
         "issueClosed": "Issue #{{number}} geschlossen",
         "closed": "Geschlossen: {{reason}}",
-        "closedNoReason": "Geschlossen"
+        "closedNoReason": "Geschlossen",
+        "notSent": "Nicht gesendet"
       },
       "delete": "Meldung löschen",
       "deleteUnavailable": "brrbin kann gerade keine Meldungen löschen. Versuche es später erneut.",

@@ -875,7 +875,7 @@
   },
   "src/components/problem-reports/ProblemReportDialog.tsx": {
     "qui/no-comments": {
-      "count": 12
+      "count": 10
     },
     "qui/no-direct-effect": {
       "count": 1
@@ -1014,6 +1014,9 @@
     }
   },
   "src/components/settings/InstancesSettings.tsx": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 4
     }
@@ -2107,6 +2110,9 @@
     }
   },
   "src/config/themes.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 13
     }
@@ -2227,6 +2233,9 @@
     }
   },
   "src/hooks/torrent-table/useCompactViewSort.ts": {
+    "qui/layer-order": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -2237,6 +2246,9 @@
     }
   },
   "src/hooks/torrent-table/useRevealRow.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     },
@@ -2258,6 +2270,9 @@
     }
   },
   "src/hooks/torrent-table/useTorrentTableArrowNavigation.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 9
     },
@@ -2266,6 +2281,9 @@
     }
   },
   "src/hooks/torrent-table/useTorrentTableColumns.ts": {
+    "qui/layer-order": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -2289,6 +2307,9 @@
     }
   },
   "src/hooks/torrent-table/useTorrentTableVirtualization.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 19
     },
@@ -2360,6 +2381,9 @@
     }
   },
   "src/hooks/useCrossSeedSearch.tsx": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 10
     },
@@ -2919,6 +2943,9 @@
     }
   },
   "src/i18n/index.ts": {
+    "qui/layer-order": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 20
     }
@@ -3149,6 +3176,9 @@
     }
   },
   "src/lib/category-utils.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     }
@@ -3242,6 +3272,9 @@
     }
   },
   "src/lib/dateTimeUtils.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 14
     }
@@ -3328,7 +3361,7 @@
   },
   "src/lib/gazelle-lookup.ts": {
     "qui/no-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/lib/incognito.ts": {
@@ -3502,6 +3535,9 @@
     }
   },
   "src/lib/sync-stream-state.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 15
     }
@@ -3597,6 +3633,9 @@
     }
   },
   "src/lib/torrent-table/column-label.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }
@@ -3617,6 +3656,9 @@
     }
   },
   "src/lib/torrent-table/row-height.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }
@@ -3652,6 +3694,9 @@
     }
   },
   "src/lib/tracker-utils.tsx": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -3736,6 +3781,9 @@
     }
   },
   "src/pages/Settings.tsx": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }
@@ -3897,8 +3945,16 @@
     }
   },
   "src/types/app.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 14
+    }
+  },
+  "src/types/auth.ts": {
+    "qui/layer-order": {
+      "count": 1
     }
   },
   "src/types/automation.ts": {
@@ -3972,6 +4028,9 @@
     }
   },
   "src/utils/pwaNativeTheme.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -3982,6 +4041,9 @@
     }
   },
   "src/utils/theme.ts": {
+    "qui/layer-order": {
+      "count": 5
+    },
     "qui/no-comments": {
       "count": 32
     }
@@ -3992,6 +4054,9 @@
     }
   },
   "src/utils/themeLoader.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }

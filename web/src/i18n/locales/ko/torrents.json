@@ -743,9 +743,8 @@
       "match": "일치",
       "noMatch": "일치 없음",
       "openSettings": "설정 열기",
+      "noApiKeys": "RED/OPS가 켜져 있지만 설정된 API 키가 없음",
       "notAsked": {
-        "disabled": "조회 안 함: 꺼짐",
-        "noApiKey": "조회 안 함: API 키 없음",
         "cooldown": "조회 안 함: 최근에 검색함",
         "notSelected": "조회 안 함: 선택되지 않음",
         "sourceSite": "조회 안 함: 토렌트 출처가 {{site}}",

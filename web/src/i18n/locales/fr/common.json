@@ -157,7 +157,8 @@
         "issue": "Devenu le ticket #{{number}}",
         "issueClosed": "Ticket #{{number}} fermé",
         "closed": "Fermé : {{reason}}",
-        "closedNoReason": "Fermé"
+        "closedNoReason": "Fermé",
+        "notSent": "Non envoyé"
       },
       "delete": "Supprimer le rapport",
       "deleteUnavailable": "brrbin ne peut pas supprimer de rapports pour le moment. Réessayez plus tard.",

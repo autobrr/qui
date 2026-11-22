@@ -30,7 +30,7 @@ export interface ProblemReportSearchScope {
   torznabSkipped: ProblemReportIndexer[]
   /** Why the search asks no Torznab indexer. */
   torznabSkipReason?: string
-  gazelleSites: { site: string; status: CrossSeedGazelleLookupStatus; reason?: CrossSeedGazelleLookupReason }[]
+  gazelleSites: { site: string; status: CrossSeedGazelleLookupStatus; reason?: CrossSeedGazelleLookupReason | "disabled" | "no_api_key" }[]
 }
 
 export type ProblemReportStartedFrom = "menu" | "notice" | "search"

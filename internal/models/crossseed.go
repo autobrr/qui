@@ -2182,9 +2182,26 @@ func scanCrossSeedSearchRun(scanner interface {
 		if err := jsonv2.Unmarshal([]byte(gazelleJSON.String), &run.GazelleSummary); err != nil {
 			return nil, fmt.Errorf("decode RED/OPS summary: %w", err)
 		}
+		run.GazelleSummary = withoutRetiredGazelleReasons(run.GazelleSummary)
 	}
 
 	return &run, nil
+}
+
+func withoutRetiredGazelleReasons(summary []CrossSeedGazelleSiteSummary) []CrossSeedGazelleSiteSummary {
+	var kept []CrossSeedGazelleSiteSummary
+	for _, site := range summary {
+		delete(site.NotAsked, "disabled")
+		delete(site.NotAsked, "no_api_key")
+		if len(site.NotAsked) == 0 {
+			site.NotAsked = nil
+		}
+		if site.Asked == 0 && site.Matched == 0 && site.Failed == 0 && site.NotAsked == nil {
+			continue
+		}
+		kept = append(kept, site)
+	}
+	return kept
 }
 
 // encodeGazelleSummary returns NULL for a run that decided on no RED/OPS site.

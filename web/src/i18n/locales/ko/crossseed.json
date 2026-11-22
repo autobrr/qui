@@ -188,8 +188,6 @@
       "siteWithNotAsked": "{{counts}}, 조회 안 함 {{notAsked}} ({{reasons}})",
       "reasonCount": "{{count}} {{reason}}",
       "reasons": {
-        "disabled": "꺼짐",
-        "noApiKey": "API 키 없음",
         "cooldown": "최근에 검색함",
         "sourceSite": "이 사이트 출처",
         "alreadySeeded": "이미 시드 중",

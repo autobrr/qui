@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import js from '@eslint/js'
 import stylistic from '@stylistic/eslint-plugin'
 import reactHooks from 'eslint-plugin-react-hooks'
@@ -6,6 +8,7 @@ import { globalIgnores } from 'eslint/config'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+import { layerOrder } from './scripts/layer-order-rule.mjs'
 import { noComments } from './scripts/no-comments-rule.mjs'
 import { noDirectEffect } from './scripts/no-direct-effect-rule.mjs'
 import { noNativeTitle } from './scripts/no-native-title-rule.mjs'
@@ -162,7 +165,10 @@ const clientSettingAllowlist = [
   'src/hooks/usePersistedDeleteFiles.ts',
   // Bypass: the theme variation keeps its own localStorage key.
   'src/hooks/usePersistedThemeVariation.ts',
+  'src/components/problem-reports/draft.ts',
 ]
+
+const layers = ['types', 'utils', 'config', 'i18n', 'lib', 'contexts', 'hooks', 'components', 'layouts', 'pages', 'routes']
 
 const effectHooks = {
   'src/hooks/useDebounce.ts': 'Gives a value after it has stayed the same for a delay.',
@@ -379,7 +385,7 @@ export default tseslint.config([
     },
   },
   {
-    plugins: { qui: { rules: { 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
+    plugins: { qui: { rules: { 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
     rules: {
       'qui/no-comments': 'error',
       'qui/no-native-title': 'error',
@@ -390,6 +396,13 @@ export default tseslint.config([
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**', ...Object.keys(effectHooks)],
     rules: {
       'qui/no-direct-effect': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**'],
+    rules: {
+      'qui/layer-order': ['error', { root: path.join(import.meta.dirname, 'src'), layers }],
     },
   },
 ])

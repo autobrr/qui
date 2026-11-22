@@ -743,9 +743,8 @@
       "match": "匹配",
       "noMatch": "无匹配",
       "openSettings": "打开设置",
+      "noApiKeys": "RED/OPS 已启用，但未设置 API 密钥",
       "notAsked": {
-        "disabled": "未查询：已关闭",
-        "noApiKey": "未查询：无 API 密钥",
         "cooldown": "未查询：最近已搜索",
         "notSelected": "未查询：未选择",
         "sourceSite": "未查询：种子来自 {{site}}",

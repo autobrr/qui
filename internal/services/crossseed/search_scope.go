@@ -38,9 +38,10 @@ const (
 type searchScope struct {
 	sourceInstanceID  int
 	torznabIndexerIDs []int
-	// gazelle holds one decision for each RED/OPS site, in the order of the
-	// site table: will_ask, or not_asked with its reason.
-	gazelle []GazelleLookup
+	// gazelle holds one decision for each RED/OPS site that has an API key, in
+	// the order of the site table. It is empty when RED/OPS is off.
+	gazelle           []GazelleLookup
+	gazelleKeyMissing bool
 	// exportedTorrent is the torrent file that the local RED/OPS checks read,
 	// so the lookup does not export it again.
 	exportedTorrent []byte
@@ -130,21 +131,25 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 		scope = searchScope{skipReason: torznabErr.Error(), torznabErr: torznabErr}
 	}
 	scope.gazelle = decideGazelleSites(f)
+	scope.gazelleKeyMissing = gazelleKeyMissing(f)
 	if !f.torznabOff || scope.asksGazelle() || f.skipGazelle {
 		return scope
 	}
 	if len(f.gazelleKeys) == 0 {
 		return searchScope{err: fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)}
 	}
-	if !gazelleCooldownDue(scope.gazelle) {
+	if !gazelleCooldownDue(scope.gazelle, scope.gazelleKeyMissing) {
 		scope.skipReason = noGazelleKeySkipReason
 	}
 	return scope
 }
 
-// decideGazelleSites decides for each RED/OPS site whether the search asks it.
-// When more than one rule applies, the first rule in the switch wins.
+// decideGazelleSites decides for each RED/OPS site with an API key whether the
+// search asks it. When more than one rule applies, the first rule wins.
 func decideGazelleSites(f searchScopeFacts) []GazelleLookup {
+	if f.gazelleOff {
+		return []GazelleLookup{}
+	}
 	// A copy from RED/OPS skips the music check, because the tracker proves
 	// that RED/OPS can host the content.
 	fromGazelle := f.sourceSite != "" || len(f.duplicateSourceSites) > 0
@@ -152,23 +157,19 @@ func decideGazelleSites(f searchScopeFacts) []GazelleLookup {
 	out := make([]GazelleLookup, 0, len(sites))
 	for _, site := range sites {
 		host := site.Host
-		d := GazelleLookup{
-			Site:         host,
-			Name:         site.DisplayName,
-			ShortName:    site.ShortName,
-			IndexerID:    site.IndexerID,
-			Status:       GazelleWillAsk,
-			seededByCopy: host == f.sourceSite || slices.Contains(f.duplicateSourceSites, host),
+		if !slices.Contains(f.gazelleKeys, host) {
+			continue
 		}
-		hasKey := slices.Contains(f.gazelleKeys, host)
-		if hasKey {
-			d.ReplacedIndexerIDs = replacedTorznabIndexers(f.gazelleTorznabIndexers, host)
+		d := GazelleLookup{
+			Site:               host,
+			Name:               site.DisplayName,
+			ShortName:          site.ShortName,
+			IndexerID:          site.IndexerID,
+			Status:             GazelleWillAsk,
+			ReplacedIndexerIDs: replacedTorznabIndexers(f.gazelleTorznabIndexers, host),
+			seededByCopy:       gazelleSeededByCopy(f, host),
 		}
 		switch {
-		case f.gazelleOff:
-			d = d.notAsked(GazelleReasonDisabled)
-		case !hasKey:
-			d = d.notAsked(GazelleReasonNoAPIKey)
 		case f.skipGazelle:
 			d = d.notAsked(GazelleReasonCooldown)
 		case f.gazelleSelected != nil && !slices.Contains(f.gazelleSelected, host):
@@ -185,6 +186,19 @@ func decideGazelleSites(f searchScopeFacts) []GazelleLookup {
 		out = append(out, d)
 	}
 	return out
+}
+
+func gazelleSeededByCopy(f searchScopeFacts, host string) bool {
+	return host == f.sourceSite || slices.Contains(f.duplicateSourceSites, host)
+}
+
+func gazelleKeyMissing(f searchScopeFacts) bool {
+	if f.gazelleOff {
+		return false
+	}
+	return slices.ContainsFunc(gazellemusic.Sites(), func(site gazellemusic.Site) bool {
+		return !slices.Contains(f.gazelleKeys, site.Host) && !gazelleSeededByCopy(f, site.Host)
+	})
 }
 
 func replacedTorznabIndexers(gazelleIndexers map[int]string, host string) []int {

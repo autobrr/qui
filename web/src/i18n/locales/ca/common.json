@@ -157,7 +157,8 @@
         "issue": "Convertit en incidència #{{number}}",
         "issueClosed": "Incidència #{{number}} tancada",
         "closed": "Tancat: {{reason}}",
-        "closedNoReason": "Tancat"
+        "closedNoReason": "Tancat",
+        "notSent": "No enviat"
       },
       "delete": "Esborra l'informe",
       "deleteUnavailable": "brrbin no pot esborrar informes ara mateix. Torna-ho a provar més tard.",
