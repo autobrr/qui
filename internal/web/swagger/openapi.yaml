@@ -6652,7 +6652,7 @@ paths:
       tags:
         - System
       summary: Update log settings
-      description: Update log configuration. Changes are applied immediately.
+      description: Update log configuration. Changes apply immediately. Only a signed-in browser can change `path`. An API key can send the current `path` unchanged.
       requestBody:
         required: true
         content:
@@ -6667,7 +6667,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/LogSettings'
         '400':
-          description: Invalid settings or attempting to modify locked fields
+          description: Invalid settings, a non-empty new `path` that does not end in `.log`, or an attempt to modify locked fields
+        '403':
+          description: 'The API key does not hold `Logs: write`, or it sends a `path` that differs from the current one'
 
   /api/log-exclusions:
     get:
@@ -10702,7 +10704,7 @@ components:
           example: "debug"
         path:
           type: string
-          description: Path to log file
+          description: Path to log file. A new path must end in `.log`, or be empty to log to stdout only. Only a signed-in browser can change it.
           example: "/var/log/qui/qui.log"
         maxSize:
           type: integer

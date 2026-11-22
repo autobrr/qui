@@ -188,6 +188,13 @@ func (h *LogsHandler) UpdateLogSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if update.Path != nil && *update.Path == h.appConfig.GetLogSettings().Path {
+		update.Path = nil
+	}
+	if update.Path != nil && !middleware.PassesBrowserOnly(w, r) {
+		return
+	}
+
 	// Validate log level if provided
 	if update.Level != nil {
 		validLevels := map[string]bool{

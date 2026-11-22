@@ -16,11 +16,13 @@ The **Log settings** section is below the live log. Change the fields, then clic
 | Field | Description | Default |
 |-------|-------------|---------|
 | Log level | One of `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR` | `DEBUG` |
-| Log file path | File to write logs to. Leave empty to log to stdout only. | empty |
+| Log file path | File to write logs to. Leave empty to log to stdout only. A new path must end in `.log`. | empty |
 | Max size (MB) | File size that starts a rotation. Minimum 1. | 50 |
 | Max backups | Number of rotated files that qui keeps. `0` keeps all. | 10 |
 
 qui writes these values to `config.toml` and applies them immediately. The same keys are also available as `config.toml` entries and environment variables. See [Configuration Reference](./reference.md) and [Environment Variables](./environment.md) for the full tables.
+
+An API key with `Logs: write` changes the other fields, not the log file path. See [Browser-only routes](../api/permissions.md#browser-only-routes). The `.log` rule applies only to a new path set here. A path that is already set stays, and qui uses `logPath` from `config.toml`, `QUI__LOG_PATH`, and `--log-path` as they are.
 
 :::note
 If an environment variable such as `QUI__LOG_LEVEL` sets a value, the matching field shows a lock and **Set by an environment variable**, and you cannot change it from the UI. Change or remove the environment variable instead. The `--log-path` flag of `qui serve` also locks the **Log file path** field. Remove the flag to edit the path in the UI.
