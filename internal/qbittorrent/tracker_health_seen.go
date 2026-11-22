@@ -73,6 +73,10 @@ func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, se
 		} else {
 			cache := sm.trackerDetailsFor(sm.trackerHealthFlagged, instanceID)
 			cache.mu.Lock()
+			if prev, ok := cache.byHash[seen.hash]; ok && seen.at.Before(prev.fetchedAt) {
+				cache.mu.Unlock()
+				return
+			}
 			if cache.byHash == nil {
 				cache.byHash = make(map[string]trackerDetail)
 			}
