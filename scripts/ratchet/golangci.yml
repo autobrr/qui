@@ -5,6 +5,7 @@
 version: "2"
 
 run:
+  allow-parallel-runners: true
   tests: false
   relative-path-mode: gomod
 
