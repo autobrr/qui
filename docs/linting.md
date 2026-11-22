@@ -38,7 +38,7 @@ To prove that a new forbidigo or depguard rule fires, add a temporary violation 
 
 ## Ratchet
 
-The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The count for a file can only go down. `go run ./scripts/ratchet` applies six rules:
+The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The count for a file can only go down. `go run ./scripts/ratchet` applies seven rules:
 
 1. A file reports no more problems than its entry allows. A file without an entry must have no problems.
 2. An entry is not higher than the number that the file reports. When you fix a problem, lower the count of its file in the same change, and delete the entry at 0.
@@ -46,6 +46,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 4. No `nolint` comment hides `gocognit`. Split the function.
 5. The comment totals do not grow. See "Comments" below.
 6. A `nolint` comment names only linters that `.golangci.yml` or `scripts/ratchet/golangci.yml` runs. A name of a linter that is off hides nothing: delete it.
+7. `web/eslint-suppressions.json` has entries only for the rules in `suppressedRules` of `scripts/ratchet/comments.go`, and the total of each rule does not grow. See "Suppressed ESLint Rules" below.
 
 - The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
@@ -58,9 +59,20 @@ Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file and
 `docs/standards/simplicity.md` bans comments. The ratchet holds the comments from before the ban, in two places:
 
 - **Go:** the `comments` key of `allowlist.json` is not a golangci-lint linter. The ratchet command counts the comments in each tracked Go file itself, with `scripts/comments/gocomments`. Rules 1 and 2 apply to each file. For rule 3, the command compares the total of all files with the total on the base branch, so a comment that moves to another file with its code does not fail the check. Move its count to the entry of the new file.
-- **TypeScript:** ESLint reports each comment as `qui/no-comments`. `web/eslint-suppressions.json` records the number of reports that each file had when the rule was added, and ESLint fails a file that has more reports, or fewer. After you delete a comment, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Rule 5 compares the total in that file with the total on the base branch. Do not add to it with `--suppress-rule`.
+- **TypeScript:** ESLint reports each comment as `qui/no-comments`, one of the suppressed ESLint rules below.
 
 `web/scripts/no-comments-rule.mjs` and `scripts/comments/gocomments` list the markers that are not comments for this rule. The ESLint rule has no fix, because `make fmt` runs `eslint --fix` and must not delete a comment that nobody read. The `/delete-comment` skill sorts the comments of a file and deletes them.
+
+### Suppressed ESLint Rules
+
+`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Two rules have entries:
+
+- `qui/no-comments` reports each comment.
+- `qui/no-direct-effect` reports each call of `useEffect`, `useLayoutEffect`, or `useInsertionEffect` outside the tests and outside the hooks in `effectHooks` of `web/eslint.config.js`. ADR 0073 has the reason.
+
+After you delete a comment or an effect, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 7 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check.
+
+A new rule that old code breaks starts the same way: add its name to `suppressedRules`, and write its reports to the file one time with `pnpm exec eslint --suppress-rule <rule>` and the paths of the `lint` script in `web/package.json`.
 
 ## Policy
 

@@ -177,7 +177,7 @@ func growth(allow, base counts) []string {
 		if _, ok := base[linter]; !ok {
 			continue
 		}
-		if linter == commentsLinter || linter == suppressionsRule {
+		if linter == commentsLinter {
 			if now, was := sum(allow[linter]), sum(base[linter]); now > was {
 				problems = append(problems, fmt.Sprintf("%s: the total grew from %d to %d. The total only shrinks: a moved comment keeps it level, a new comment does not.", linter, was, now))
 			}

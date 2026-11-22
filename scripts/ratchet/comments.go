@@ -10,8 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 
 	"github.com/autobrr/qui/scripts/comments/gocomments"
 )
@@ -19,8 +22,9 @@ import (
 const (
 	commentsLinter   = "comments"
 	suppressionsPath = "web/eslint-suppressions.json"
-	suppressionsRule = "qui/no-comments"
 )
+
+var suppressedRules = []string{"qui/no-comments", "qui/no-direct-effect"}
 
 func goComments() (map[string]int, error) {
 	paths, err := gocomments.Tracked()
@@ -89,20 +93,40 @@ func suppressionGrowth(base string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s at %s: %w", suppressionsPath, base, err)
 	}
-	return growth(counts{suppressionsRule: now}, counts{suppressionsRule: was}), nil
+	return suppressionProblems(now, was), nil
 }
 
-func parseSuppressions(raw []byte) (map[string]int, error) {
+func suppressionProblems(now, was counts) []string {
+	var problems []string
+	for _, rule := range slices.Sorted(maps.Keys(now)) {
+		if !slices.Contains(suppressedRules, rule) {
+			problems = append(problems, fmt.Sprintf("%s: holds %d reports of %s. Only %s may have entries there. Fix each report as its ESLint message says, and delete the entries.", suppressionsPath, sum(now[rule]), rule, strings.Join(suppressedRules, " and ")))
+			continue
+		}
+		if _, ok := was[rule]; !ok {
+			continue
+		}
+		if total, before := sum(now[rule]), sum(was[rule]); total > before {
+			problems = append(problems, fmt.Sprintf("%s: the total of %s grew from %d to %d. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report as its ESLint message says.", suppressionsPath, rule, before, total))
+		}
+	}
+	return problems
+}
+
+func parseSuppressions(raw []byte) (counts, error) {
 	var files map[string]map[string]struct {
 		Count int `json:"count"`
 	}
 	if err := json.Unmarshal(raw, &files); err != nil {
 		return nil, err
 	}
-	got := map[string]int{}
+	got := counts{}
 	for file, rules := range files {
-		if rule, ok := rules[suppressionsRule]; ok {
-			got["web/"+file] = rule.Count
+		for rule, entry := range rules {
+			if got[rule] == nil {
+				got[rule] = map[string]int{}
+			}
+			got[rule]["web/"+file] = entry.Count
 		}
 	}
 	return got, nil
