@@ -143,6 +143,7 @@ describe("useTorrentDetailTab general", () => {
     expect(result.current.data?.row?.dlspeed).toBe(500)
   })
 
+  // regression: #4371
   it("shows a move, new speed limits, and the completion from the live row without a new fetch", async () => {
     const { result } = renderTab("general")
     await waitFor(() => expect(result.current.data?.properties).toBeDefined())

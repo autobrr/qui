@@ -46,6 +46,13 @@ func (sm *SyncManager) beginTrackersRead(instanceID int, owner *syncowner.Owner,
 }
 
 func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, seen seenTrackers) {
+	sm.trackerHealthMu.RLock()
+	passAt := sm.trackerHealthPassAt[instanceID]
+	sm.trackerHealthMu.RUnlock()
+	if seen.at.Before(passAt) {
+		return
+	}
+
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil || !client.Supports(CapTrackerHealth) {
 		return

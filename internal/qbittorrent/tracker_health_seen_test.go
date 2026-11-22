@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -57,6 +58,7 @@ func (rig *flagsRig) readTrackers(t *testing.T, hash string) {
 	rig.sm.applySeenTrackers(t.Context(), 1, rig.queueTrackersRead(t, hash))
 }
 
+// regression: #4371
 func TestTrackersReadUpdatesLabelBeforeDetailsExpire(t *testing.T) {
 	t.Parallel()
 
@@ -79,6 +81,7 @@ func TestTrackersReadUpdatesLabelBeforeDetailsExpire(t *testing.T) {
 	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "the next pass keeps the label of the read")
 }
 
+// regression: #4371
 func TestTrackersReadGivesNoLabelWithoutAnnounceFlags(t *testing.T) {
 	t.Parallel()
 
@@ -94,6 +97,7 @@ func TestTrackersReadGivesNoLabelWithoutAnnounceFlags(t *testing.T) {
 	require.NotContains(t, rig.health(t), flagsHashHealthy, "qBittorrent reports no announce problem, as the pass reads it")
 }
 
+// regression: #4371
 func TestTrackersReadIsDroppedWhenFlagsChangeBeforeItApplies(t *testing.T) {
 	t.Parallel()
 
@@ -115,6 +119,7 @@ func TestTrackersReadIsDroppedWhenFlagsChangeBeforeItApplies(t *testing.T) {
 	require.Equal(t, TrackerHealthDown, rig.health(t)[flagsHashError])
 }
 
+// regression: #4371
 func TestTrackersReadKeepsTheFlagsFromBeforeTheRequest(t *testing.T) {
 	t.Parallel()
 
@@ -132,4 +137,31 @@ func TestTrackersReadKeepsTheFlagsFromBeforeTheRequest(t *testing.T) {
 	noteRead(stale)
 	rig.sm.applySeenTrackers(t.Context(), 1, takeRead(t, seen))
 	require.Equal(t, TrackerHealthError, rig.health(t)[flagsHashError], "a response that started before the flag change sets no label")
+}
+
+// regression: #4371
+func TestTrackersReadIsDroppedWhenAPassFetchedNewerDetails(t *testing.T) {
+	t.Parallel()
+
+	rig := newFlagsRig(t)
+	rig.pass(t)
+	read := rig.queueTrackersRead(t, flagsHashError)
+	read.at = read.at.Add(-time.Second)
+
+	rig.set(func() {
+		rig.torrents[flagsHashError].trackers = []qbt.TorrentTracker{
+			{Url: "https://error.example.invalid/announce", Status: qbt.TrackerStatusNotWorking, Message: "Unregistered torrent"},
+		}
+	})
+	maxAge := rig.sm.trackerHealthDetailMaxAge
+	rig.sm.trackerHealthDetailMaxAge = 0
+	require.Equal(t, [][]string{{flagsHashDown, flagsHashError}}, sortedRequests(rig.pass(t)), "the pass fetches the expired details")
+	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError])
+
+	rig.sm.applySeenTrackers(t.Context(), 1, read)
+	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "a read from before the pass sets no label")
+
+	rig.sm.trackerHealthDetailMaxAge = maxAge
+	require.Empty(t, rig.pass(t))
+	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "the next pass keeps the details of the earlier pass")
 }
