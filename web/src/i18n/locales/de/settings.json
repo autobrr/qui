@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "qui-Widget. Begrenze den Schlüssel nur, wenn das Widget eine einzelne Instanz zeigt"
+          "description": "qui-Widget. Begrenze den Schlüssel nur, wenn das Widget instance setzt"
         },
         "arrDirScan": {
           "name": "Sonarr, Radarr, Lidarr, Readarr",

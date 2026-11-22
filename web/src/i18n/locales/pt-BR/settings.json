@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "Widget do qui. Limite a chave a uma instância só se o widget mostrar uma"
+          "description": "Widget do qui. Limite a chave a uma instância só se o widget definir instance"
         },
         "arrDirScan": {
           "name": "Sonarr, Radarr, Lidarr, Readarr",

@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "qui widget. Limit the key to an instance only if the widget shows one instance"
+          "description": "qui widget. Limit the key to an instance only when the widget sets instance"
         },
         "arrDirScan": {
           "name": "Sonarr, Radarr, Lidarr, Readarr",

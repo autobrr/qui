@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "Віджет qui. Обмежуйте ключ екземпляром, лише якщо віджет показує один екземпляр"
+          "description": "Віджет qui. Обмежуйте ключ екземпляром, лише якщо у віджеті задано instance"
         },
         "arrDirScan": {
           "name": "Sonarr, Radarr, Lidarr, Readarr",

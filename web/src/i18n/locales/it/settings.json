@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "Widget qui. Limita la chiave a un'istanza solo se il widget ne mostra una"
+          "description": "Widget qui. Limita la chiave a un'istanza solo se il widget imposta instance"
         },
         "arrDirScan": {
           "name": "Sonarr, Radarr, Lidarr, Readarr",

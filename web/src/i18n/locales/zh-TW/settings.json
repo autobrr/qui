@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "qui 小工具。僅在小工具只顯示一個實例時，才將金鑰限制到該實例"
+          "description": "qui 小工具。僅在小工具設定了 instance 時，才將金鑰限制到該實例"
         },
         "arrDirScan": {
           "name": "Sonarr、Radarr、Lidarr、Readarr",

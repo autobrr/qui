@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "Giny de qui. Limita'l a una instància només si el giny en mostra una"
+          "description": "Giny de qui. Limita la clau a una instància només si el giny defineix instance"
         },
         "arrDirScan": {
           "name": "Sonarr, Radarr, Lidarr, Readarr",

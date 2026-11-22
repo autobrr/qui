@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "qui 小组件。仅当小组件只显示一个实例时，才将密钥限制到该实例"
+          "description": "qui 小组件。仅当小组件设置了 instance 时，才将密钥限制到该实例"
         },
         "arrDirScan": {
           "name": "Sonarr、Radarr、Lidarr、Readarr",

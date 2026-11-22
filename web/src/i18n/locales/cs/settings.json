@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "Widget qui. Omezte klíč na instanci, jen když widget zobrazuje jednu instanci"
+          "description": "Widget qui. Omezte klíč na instanci, jen když widget nastavuje instance"
         },
         "arrDirScan": {
           "name": "Sonarr, Radarr, Lidarr, Readarr",

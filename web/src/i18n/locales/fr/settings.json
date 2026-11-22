@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "Widget qui. Limitez la clé à une instance seulement si le widget en affiche une"
+          "description": "Widget qui. Limitez la clé à une instance seulement si le widget définit instance"
         },
         "arrDirScan": {
           "name": "Sonarr, Radarr, Lidarr, Readarr",

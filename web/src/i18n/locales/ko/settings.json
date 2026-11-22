@@ -159,7 +159,7 @@
         },
         "homepage": {
           "name": "Homepage",
-          "description": "qui 위젯. 위젯이 인스턴스 하나만 표시할 때만 키를 그 인스턴스로 제한하세요"
+          "description": "qui 위젯. 위젯에 instance를 설정한 경우에만 키를 인스턴스로 제한하세요"
         },
         "arrDirScan": {
           "name": "Sonarr, Radarr, Lidarr, Readarr",
