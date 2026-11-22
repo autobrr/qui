@@ -28,8 +28,7 @@ function TabsList({
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.List>) {
   const listRef = React.useRef<HTMLDivElement>(null)
-  const [indicatorStyle, setIndicatorStyle] = React.useState({ x: 0, width: 0 })
-  const [isReady, setIsReady] = React.useState(false)
+  const [indicatorStyle, setIndicatorStyle] = React.useState<{ x: number; width: number } | null>(null)
 
   const updateIndicator = React.useCallback(() => {
     const list = listRef.current
@@ -38,14 +37,12 @@ function TabsList({
     const activeTab = list.querySelector<HTMLElement>("[data-state=\"active\"]")
     if (!activeTab) return
 
-    setIndicatorStyle({
-      x: activeTab.offsetLeft,
-      width: activeTab.offsetWidth,
-    })
-    setIsReady(true)
+    const x = activeTab.offsetLeft
+    const width = activeTab.offsetWidth
+    setIndicatorStyle(prev => (prev && prev.x === x && prev.width === width ? prev : { x, width }))
   }, [])
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     const list = listRef.current
     if (!list) return
 
@@ -80,12 +77,14 @@ function TabsList({
       )}
       {...props}
     >
-      <motion.div
-        className="bg-background dark:bg-input/30 border border-muted-foreground/30 absolute left-0 top-0.75 bottom-0.75 rounded-md shadow-sm"
-        animate={{ x: indicatorStyle.x, width: indicatorStyle.width }}
-        transition={{ type: "spring", stiffness: 350, damping: 30 }}
-        style={{ opacity: isReady ? 1 : 0 }}
-      />
+      {indicatorStyle && (
+        <motion.div
+          className="bg-background dark:bg-input/30 border border-muted-foreground/30 absolute left-0 top-0.75 bottom-0.75 rounded-md shadow-sm"
+          initial={false}
+          animate={{ x: indicatorStyle.x, width: indicatorStyle.width }}
+          transition={{ type: "spring", stiffness: 350, damping: 30 }}
+        />
+      )}
       {children}
     </TabsPrimitive.List>
   )
