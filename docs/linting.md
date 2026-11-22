@@ -74,7 +74,7 @@ A line counts when its level is DEBUG or INFO, and one of these is true:
 
 When a file has more lines than its entry allows, the command prints the position of each counted line in that file. Delete the line, or write it at TRACE. A warning or an error never counts, so this rule has no `nolint` marker.
 
-The counter reads only the syntax tree. It does not see a message in a variable, a message that a helper function writes, a `switch` case, or a notification. The silence test that `docs/standards/logging.md` asks for is the first guard, and the counter is the second.
+The counter reads only the syntax tree. It cannot read the text of a message that a variable holds, and it does not take a `switch` case for a test of an off switch, so a line there counts only by the other rule. It does not see a line that a helper function writes, or a notification. The silence test that `docs/standards/logging.md` asks for is the first guard, and the counter is the second.
 
 ### Suppressed ESLint Rules
 
