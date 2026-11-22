@@ -274,7 +274,7 @@ describe("ProblemReportDialog", () => {
     expect(report.text).toBe("Torrents vanish")
     expect(report.startedFrom).toBe("menu")
     expect(report.submissionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
-    expect(report.logs).toEqual({ scope: "warnings", lines: ["WRN disk almost full"] })
+    expect(report.logs).toEqual({ scope: "all", lines: ["DBG sync done", "INF started", "WRN disk almost full"] })
     expect(report.qui).toEqual(baseFacts.qui)
     expect(report.instances).toEqual(baseFacts.instances)
     // regression: #4288
@@ -290,7 +290,7 @@ describe("ProblemReportDialog", () => {
   })
 
   it.each([
-    ["Everything recent", { scope: "all", lines: baseFacts.logs.all }],
+    ["Warnings and errors", { scope: "warnings", lines: baseFacts.logs.warnings }],
     ["Leave out", { scope: "none", lines: [] }],
   ])("sends the log lines of the scope %s", async (option, logs) => {
     serve()

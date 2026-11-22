@@ -104,7 +104,7 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
   const queryClient = useQueryClient()
   const textRef = useRef<HTMLTextAreaElement>(null)
   const [text, setText] = useState("")
-  const [logScope, setLogScope] = useState<ProblemReportLogScope>("warnings")
+  const [logScope, setLogScope] = useState<ProblemReportLogScope>("all")
   // One id for each open, so that a retry of the same report stores no second row.
   const [submissionId] = useState(newSubmissionId)
   // Read once, so that what the dialog shows is what Send posts.
