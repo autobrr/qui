@@ -29,6 +29,7 @@ import (
 
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/pkg/httphelpers"
+	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 var envPrefix = "QUI__"
@@ -952,7 +953,7 @@ func (c *AppConfig) resolveConfigPath(configDirOrPath string) string {
 func (c *AppConfig) resolveDataDir() {
 	switch {
 	case c.Config.DataDir != "":
-		c.dataDir = c.Config.DataDir
+		c.dataDir = pathutil.NormalizeWindowsDrivePath(c.Config.DataDir)
 	case c.viper.ConfigFileUsed() != "":
 		c.dataDir = filepath.Dir(c.viper.ConfigFileUsed())
 	default:
@@ -973,7 +974,7 @@ func (c *AppConfig) SetDataDir(dir string) {
 }
 
 func (c *AppConfig) GetBackupDir() string {
-	dir := strings.TrimSpace(c.Config.Live().BackupDir)
+	dir := pathutil.NormalizeWindowsDrivePath(strings.TrimSpace(c.Config.Live().BackupDir))
 	if dir == "" {
 		return filepath.Join(c.dataDir, "backups")
 	}
