@@ -164,37 +164,40 @@ func TestBackupDirDefaultsUnderDataDir(t *testing.T) {
 		svc.ResolveBackupPath("backups/torrents/ab/x.torrent"))
 }
 
+func toGitBashDrivePath(t *testing.T, winPath string) string {
+	t.Helper()
+	vol := filepath.VolumeName(winPath)
+	require.Len(t, vol, 2)
+	return "/" + strings.ToLower(vol[:1]) + filepath.ToSlash(winPath[2:])
+}
+
 // regression: #4309
 func TestWindowsGitBashBackupRootConsistency(t *testing.T) {
-	t.Run("normalizes all drive letters in BackupDir and DataDir on Windows", func(t *testing.T) {
-		svcBackup := NewService(nil, nil, Config{WorkerCount: 1, BackupDir: "/d/qui-backups"}, nil)
-		svcData := NewService(nil, nil, Config{WorkerCount: 1, DataDir: "/e/qui-data"}, nil)
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific Git Bash drive path test")
+	}
 
-		if runtime.GOOS == "windows" {
-			assert.Equal(t, `D:\qui-backups`, filepath.Clean(svcBackup.root))
-			assert.Equal(t, `D:\qui-backups\torrents`, filepath.Clean(svcBackup.cacheDir))
-			assert.Equal(t, `D:\qui-backups\torrents\ab\x.torrent`,
-				filepath.Clean(svcBackup.ResolveBackupPath("backups/torrents/ab/x.torrent")))
+	t.Run("normalizes Git Bash BackupDir and DataDir in NewService on Windows", func(t *testing.T) {
+		realBackupRoot := t.TempDir()
+		realDataDir := t.TempDir()
 
-			assert.Equal(t, `E:\qui-data\backups`, filepath.Clean(svcData.root))
-			assert.Equal(t, `E:\qui-data\backups\torrents`, filepath.Clean(svcData.cacheDir))
-			assert.Equal(t, `E:\qui-data\backups\torrents\ab\x.torrent`,
-				filepath.Clean(svcData.ResolveBackupPath("backups/torrents/ab/x.torrent")))
-		} else {
-			assert.Equal(t, "/d/qui-backups", svcBackup.root)
-			assert.Equal(t, "/e/qui-data/backups", svcData.root)
-		}
+		svcBackup := NewService(nil, nil, Config{WorkerCount: 1, BackupDir: toGitBashDrivePath(t, realBackupRoot)}, nil)
+		svcData := NewService(nil, nil, Config{WorkerCount: 1, DataDir: toGitBashDrivePath(t, realDataDir)}, nil)
+
+		assert.Equal(t, filepath.Clean(realBackupRoot), filepath.Clean(svcBackup.root))
+		assert.Equal(t, filepath.Join(realBackupRoot, "torrents"), filepath.Clean(svcBackup.cacheDir))
+		assert.Equal(t, filepath.Join(realBackupRoot, "torrents", "ab", "x.torrent"),
+			filepath.Clean(svcBackup.ResolveBackupPath("backups/torrents/ab/x.torrent")))
+
+		assert.Equal(t, filepath.Join(realDataDir, "backups"), filepath.Clean(svcData.root))
+		assert.Equal(t, filepath.Join(realDataDir, "backups", "torrents"), filepath.Clean(svcData.cacheDir))
+		assert.Equal(t, filepath.Join(realDataDir, "backups", "torrents", "ab", "x.torrent"),
+			filepath.Clean(svcData.ResolveBackupPath("backups/torrents/ab/x.torrent")))
 	})
 
 	t.Run("ImportManifestFromDir, resolveBasePaths, and ResolveBackupPath agree on Git Bash root", func(t *testing.T) {
-		if runtime.GOOS != "windows" {
-			t.Skip("Windows-specific Git Bash drive path test")
-		}
-
 		realRoot := t.TempDir()
-		vol := filepath.VolumeName(realRoot)
-		require.Len(t, vol, 2)
-		gitBashRoot := "/" + strings.ToLower(vol[:1]) + filepath.ToSlash(realRoot[2:])
+		gitBashRoot := toGitBashDrivePath(t, realRoot)
 
 		db := setupTestBackupDB(t)
 		instanceID := insertTestInstance(t, db, "win-gitbash")
