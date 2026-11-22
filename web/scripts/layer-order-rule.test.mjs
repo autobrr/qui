@@ -29,6 +29,7 @@ tester.run("layer-order", layerOrder, {
     { code: "import { router } from \"@/router\"", filename: file("lib/links.ts"), options },
     { code: "import { harness } from \"@/test/harness\"", filename: file("lib/links.ts"), options },
     { code: "const load = (name) => import(name)", filename: file("lib/links.ts"), options },
+    { code: "const load = (name) => import(`@/pages/${name}`)", filename: file("lib/links.ts"), options },
     { code: "export const one = 1", filename: file("lib/links.ts"), options },
     { code: "import { Page } from \"@/pages/Home\"", filename: path.resolve("scripts/tool.mjs"), options },
   ],
@@ -41,6 +42,9 @@ tester.run("layer-order", layerOrder, {
     { code: "export { Badge } from \"@/components/ui/badge\"", filename: file("hooks/index.ts"), options, errors: upward("hooks", "components") },
     { code: "export * from \"@/components/ui/badge\"", filename: file("hooks/index.ts"), options, errors: upward("hooks", "components") },
     { code: "const load = () => import(\"@/pages/Home\")", filename: file("components/Nav.tsx"), options, errors: upward("components", "pages") },
+    { code: "const load = () => import(`@/pages/Home`)", filename: file("components/Nav.tsx"), options, errors: upward("components", "pages") },
+    { code: "type Props = import(\"@/components/ui/badge\").Props", filename: file("lib/tracker.ts"), options, languageOptions: typescript, errors: upward("lib", "components") },
+    { code: "let loaded: typeof import(\"../hooks/useThing\") | undefined", filename: file("lib/dates.ts"), options, languageOptions: typescript, errors: upward("lib", "hooks") },
     { code: "import { a } from \"@/hooks/a\"\nimport { b } from \"@/components/b\"", filename: file("lib/both.ts"), options, errors: [...upward("lib", "hooks"), ...upward("lib", "components")] },
   ],
 })

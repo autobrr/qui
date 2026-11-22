@@ -32,8 +32,9 @@ export const layerOrder = {
     if (!from) return {}
     const check = (node) => {
       const source = node.source
-      if (source?.type !== "Literal" || typeof source.value !== "string") return
-      const target = targetOf(root, context.filename, source.value)
+      const specifier = source?.type === "TemplateLiteral" && source.expressions.length === 0 ? source.quasis[0].value.cooked : source?.value
+      if (typeof specifier !== "string") return
+      const target = targetOf(root, context.filename, specifier)
       const to = target && layerOf(root, layers, target)
       if (to && layers.indexOf(to) > layers.indexOf(from)) {
         context.report({ node: source, messageId: "upward", data: { from, to, order: layers.join(", ") } })
@@ -44,6 +45,7 @@ export const layerOrder = {
       ImportExpression: check,
       ExportNamedDeclaration: check,
       ExportAllDeclaration: check,
+      TSImportType: check,
     }
   },
 }
