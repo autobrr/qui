@@ -31,7 +31,7 @@ type flagsTorrent struct {
 	trackers []qbt.TorrentTracker
 }
 
-// flagsRig is a qBittorrent 5.2 stub. Each test sets the torrents, their
+// flagsRig is a qBittorrent stub, 5.2 by default. Each test sets the torrents, their
 // announce flags, and the tracker lists that torrents/info returns.
 type flagsRig struct {
 	sm   *SyncManager
@@ -47,6 +47,15 @@ type flagsRig struct {
 }
 
 func newFlagsRig(t *testing.T) *flagsRig {
+	t.Helper()
+	rig := newFlagsRigAt(t, "2.15.1")
+	client, err := rig.sm.clientPool.GetClient(t.Context(), 1)
+	require.NoError(t, err)
+	require.True(t, client.Supports(CapAnnounceFlags))
+	return rig
+}
+
+func newFlagsRigAt(t *testing.T, webAPI string) *flagsRig {
 	t.Helper()
 
 	added := time.Now().Add(-2 * time.Hour).Unix()
@@ -79,7 +88,7 @@ func newFlagsRig(t *testing.T) *flagsRig {
 		case "/api/v2/auth/login":
 			_, _ = io.WriteString(w, "Ok.")
 		case "/api/v2/app/webapiVersion":
-			_, _ = io.WriteString(w, "2.15.1")
+			_, _ = io.WriteString(w, webAPI)
 		case "/api/v2/sync/maindata":
 			rig.rid++
 			torrents := make(map[string]map[string]any, len(rig.torrents))
@@ -112,6 +121,13 @@ func newFlagsRig(t *testing.T) *flagsRig {
 				out = append(out, map[string]any{"hash": hash, "added_on": tor.addedOn, "trackers": tor.trackers})
 			}
 			_ = json.MarshalWrite(w, out)
+		case "/api/v2/torrents/trackers":
+			tor, ok := rig.torrents[r.URL.Query().Get("hash")]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.MarshalWrite(w, tor.trackers)
 		default:
 			http.NotFound(w, r)
 		}
@@ -121,7 +137,6 @@ func newFlagsRig(t *testing.T) *flagsRig {
 	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
-	require.True(t, client.Supports(CapAnnounceFlags))
 
 	rig.sm = NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 	rig.sm.SetSyncEventSink(rig.sink)

@@ -134,8 +134,26 @@ describe("useTorrentDetailTab general", () => {
       total_uploaded: 1500,
       time_elapsed: 100,
       seeding_time: 50,
+      save_path: "/downloads",
+      download_path: "",
+      dl_limit: 0,
+      up_limit: 0,
+      completion_date: -1,
     })
     expect(result.current.data?.row?.dlspeed).toBe(500)
+  })
+
+  // regression: #4371
+  it("shows a move, new speed limits, and the completion from the live row without a new fetch", async () => {
+    const { result } = renderTab("general")
+    await waitFor(() => expect(result.current.data?.properties).toBeDefined())
+    sendRow({ state: "downloading", save_path: "/data/seeding", completion_on: 0 })
+    sendRow({ state: "uploading", save_path: "/data/moved", download_path: "/data/incomplete", dl_limit: 2048, up_limit: 1024, completion_on: 1700000000 })
+
+    const properties = result.current.data?.properties
+    expect([properties?.save_path, properties?.download_path, properties?.dl_limit, properties?.up_limit, properties?.completion_date])
+      .toEqual(["/data/moved", "/data/incomplete", 2048, 1024, 1700000000])
+    expect(mocks.getTorrentProperties).toHaveBeenCalledTimes(1)
   })
 
   it("shows live piece counts from a qBittorrent 5.2 row", async () => {
