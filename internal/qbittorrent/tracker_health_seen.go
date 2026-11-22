@@ -76,6 +76,13 @@ func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, se
 			cache.byHash[seen.hash] = trackerDetail{flags: seen.flags, trackers: trackers, fetchedAt: seen.at}
 			cache.mu.Unlock()
 		}
+	} else {
+		sm.trackerHealthMu.RLock()
+		passAt := sm.trackerHealthPassAt[instanceID]
+		sm.trackerHealthMu.RUnlock()
+		if seen.at.Before(passAt) {
+			return
+		}
 	}
 
 	if sm.setTrackerHealth(instanceID, seen.hash, trackerHealthOf(torrent, trackers, seen.at)) {

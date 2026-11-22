@@ -211,3 +211,24 @@ func TestTrackersReadAppliesAfterAPassThatReusedOlderDetails(t *testing.T) {
 	rig.sm.applySeenTrackers(t.Context(), 1, read)
 	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "the read is newer than the details the pass reused")
 }
+
+// regression: #4371
+func TestTrackersReadIsDroppedWhenAPassFetchedNewerTrackersOn51(t *testing.T) {
+	t.Parallel()
+
+	rig := newFlagsRigAt(t, "2.11.6")
+	rig.pass(t)
+	require.Equal(t, TrackerHealthError, rig.health(t)[flagsHashError])
+	read := rig.queueTrackersRead(t, flagsHashError)
+
+	rig.set(func() {
+		rig.torrents[flagsHashError].trackers = []qbt.TorrentTracker{
+			{Url: "https://error.example.invalid/announce", Status: qbt.TrackerStatusNotWorking, Message: "Unregistered torrent"},
+		}
+	})
+	rig.pass(t)
+	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "qBittorrent 5.1 fetches every torrent on each pass")
+
+	rig.sm.applySeenTrackers(t.Context(), 1, read)
+	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "a read from before the pass sets no label")
+}
