@@ -183,6 +183,7 @@ func TestBackupDirResolution(t *testing.T) {
 				return configPath, envDir, envDir
 			},
 		},
+		// regression: #4309
 		{
 			name: "git_bash_drive_backup_dir",
 			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
@@ -196,6 +197,7 @@ func TestBackupDirResolution(t *testing.T) {
 				return configPath, "", expected
 			},
 		},
+		// regression: #4309
 		{
 			name: "git_bash_drive_data_dir_fallback",
 			prepare: func(t *testing.T, tmpDir string) (string, string, string) {

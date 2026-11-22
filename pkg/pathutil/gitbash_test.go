@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// regression: #4309
 func TestNormalizeGitBashDrivePath(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -82,6 +83,7 @@ func TestNormalizeGitBashDrivePath(t *testing.T) {
 	}
 }
 
+// regression: #4309
 func TestNormalizeWindowsDrivePath(t *testing.T) {
 	input := "/d/qui/backups"
 	got := NormalizeWindowsDrivePath(input)

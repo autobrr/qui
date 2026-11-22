@@ -164,6 +164,7 @@ func TestBackupDirDefaultsUnderDataDir(t *testing.T) {
 		svc.ResolveBackupPath("backups/torrents/ab/x.torrent"))
 }
 
+// regression: #4309
 func TestWindowsGitBashBackupRootConsistency(t *testing.T) {
 	t.Run("normalizes all drive letters in BackupDir and DataDir on Windows", func(t *testing.T) {
 		svcBackup := NewService(nil, nil, Config{WorkerCount: 1, BackupDir: "/d/qui-backups"}, nil)
