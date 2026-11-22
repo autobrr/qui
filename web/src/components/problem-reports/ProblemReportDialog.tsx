@@ -39,6 +39,7 @@ import type {
 
 const PRIVACY_URL = "https://bin.getqui.com/privacy"
 const WIDE_QUERY = "(min-width: 1024px)"
+const PINNED_LOGS_QUERY = "(min-height: 640px)"
 
 /** The icon button that opens the report dialog. Renders nothing while Problem reports are unavailable. */
 export function ProblemReportButton({ className }: { className?: string }) {
@@ -351,25 +352,28 @@ function SentWithIt({ report, loading }: { report: Report; loading: boolean }) {
 function WhatGetsSent({ report, loading }: { report: Report; loading: boolean }) {
   const { t } = useTranslation("common")
   const rows = useFactRows(report)
+  const pinned = useMediaQuery(PINNED_LOGS_QUERY)
   const { facts } = report
 
   return (
-    <aside aria-label={t("problemReports.whatGetsSent")} className="min-h-0 overflow-y-auto border-l bg-muted/30 pb-4">
-      <div className="px-4 pr-10 pt-4">
+    <aside aria-label={t("problemReports.whatGetsSent")} className={cn("min-h-0 border-l bg-muted/30", pinned ? "flex flex-col overflow-hidden" : "overflow-y-auto")}>
+      <div className="px-4 pb-3 pr-10 pt-4">
         <p className="text-sm font-semibold leading-snug">{t("problemReports.whatGetsSent")}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{t("problemReports.whatGetsSentNote")}</p>
       </div>
       {loading ? (
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t("problemReports.loadingFacts")}</p>
+        <p className="px-4 text-xs text-muted-foreground">{t("problemReports.loadingFacts")}</p>
       ) : facts && (
         <>
-          <Rows rows={rows} className="mt-3" />
-          <div className="space-y-2 px-4 pt-4">
+          <div className={cn("border-y", pinned && "min-h-0 flex-1 overflow-y-auto")}>
+            <Rows rows={rows} className="border-y-0" />
+          </div>
+          <div className={cn("space-y-2 px-4 pb-4", pinned ? "shrink-0 pt-3" : "pt-4")}>
             <div className="flex items-center gap-2 text-[13px]">
               <span className={cn("min-w-0 flex-1 font-medium", report.logScope === "none" && "text-muted-foreground line-through")}>{t("problemReports.logs.title")}</span>
               <LogScope report={report} />
             </div>
-            {report.logScope !== "none" && <LogBox lines={logLines(facts, report.logScope)} />}
+            {report.logScope !== "none" && <LogBox lines={logLines(facts, report.logScope)} compact={pinned} />}
             <LogNotes facts={facts} logScope={report.logScope} />
           </div>
         </>
@@ -417,14 +421,14 @@ function LogNotes({ facts, logScope }: { facts: ProblemReportFacts; logScope: Pr
  * The cause box of a System notice, with one block per log line, so that a wrapped line hangs under its own start.
  * Memoized: each keystroke in the text re-renders the form, and the box can hold 1,000 lines.
  */
-const LogBox = memo(function LogBox({ lines }: { lines: string[] }) {
+const LogBox = memo(function LogBox({ lines, compact }: { lines: string[]; compact?: boolean }) {
   const { t } = useTranslation("common")
   if (lines.length === 0) {
     return <p className="text-xs text-muted-foreground">{t("problemReports.logs.empty")}</p>
   }
   return (
     <div className="flex items-start gap-1 rounded-md border bg-muted/40 py-1 pl-2.5 pr-1">
-      <code className="max-h-52 min-w-0 flex-1 overflow-y-auto py-0.5 font-mono text-[11px] leading-relaxed text-muted-foreground">
+      <code className={cn("min-w-0 flex-1 overflow-y-auto py-0.5 font-mono text-[11px] leading-relaxed text-muted-foreground", compact ? "max-h-36" : "max-h-52")}>
         {lines.map((line, index) => <span key={index} className="block break-words pl-4 -indent-4">{line}</span>)}
       </code>
       <CopyButton value={lines.join("\n")} label={t("problemReports.logs.title")} className="size-6" iconClassName="size-3" />
