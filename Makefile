@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit prepush deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -254,6 +254,10 @@ generate:
 precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend check-i18n test-frontend-changed
 	@echo "Pre-commit checks passed."
 
+# The checks before a push, picked from the files that the branch changes: precommit and the tests of the changed Go packages, or only the script and workflow checks when nothing else changed
+prepush:
+	@sh scripts/prepush.sh
+
 # Warn when the local golangci-lint is not the version that CI pins, because lint and lint-ratchet can then find problems that CI does not
 lint-version:
 	@pin=$$(sed -n 's/^ *version: \(v[0-9.]*\)$$/\1/p' .github/workflows/lint.yml | head -1); \
@@ -363,6 +367,7 @@ help:
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
 	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields, API key areas)"
 	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet + frontend type and i18n checks + frontend tests when web/ or internal/ changed)"
+	@echo "  make prepush        - Run the checks before a push, picked from the changed files (precommit + tests of changed Go packages, or the workflow and script checks)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"
