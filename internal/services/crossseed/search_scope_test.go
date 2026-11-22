@@ -241,19 +241,19 @@ func TestDecideSearchScope(t *testing.T) {
 			want:  scopeWant{torznab: []int{1}},
 		},
 		{
-			name:  "RED/OPS off is disabled for each site, before a missing key",
-			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleOff: true, musicCheckPassed: true},
-			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonDisabled, ops: GazelleReasonDisabled}},
+			name:  "RED/OPS off decides on no site, also with both keys",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleOff: true, gazelleKeys: bothKeys, musicCheckPassed: true},
+			want:  scopeWant{torznab: []int{1}, noLookup: []string{red, ops}},
 		},
 		{
-			name:  "a missing API key wins over a failed music check",
+			name:  "a site with no API key gets no lookup, and a failed music check on the other site starts the cooldown",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleKeys: []string{red}},
-			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonNotMusic, ops: GazelleReasonNoAPIKey}, cooldown: true},
+			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonNotMusic}, noLookup: []string{ops}, cooldown: true},
 		},
 		{
-			name:  "a missing API key wins over the source site",
+			name:  "a source site with no API key gets no lookup",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, gazelleKeys: []string{ops}},
-			want:  scopeWant{torznab: []int{1}, asks: []string{ops}, reasons: map[string]GazelleLookupReason{red: GazelleReasonNoAPIKey}},
+			want:  scopeWant{torznab: []int{1}, asks: []string{ops}, noLookup: []string{red}},
 		},
 		{
 			name:  "the cooldown wins over a site that the user left out",
@@ -293,7 +293,7 @@ func TestDecideSearchScope(t *testing.T) {
 		{
 			name:  "a RED source with an OPS copy and only an OPS key starts the cooldown",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, duplicateSourceSites: []string{ops}, gazelleKeys: []string{ops}},
-			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonNoAPIKey, ops: GazelleReasonAlreadySeeded}, cooldown: true},
+			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{ops: GazelleReasonAlreadySeeded}, noLookup: []string{red}, cooldown: true},
 		},
 	}
 
@@ -312,8 +312,11 @@ func TestDecideSearchScope(t *testing.T) {
 			for host, reason := range tt.want.reasons {
 				require.Equal(t, reason, gazelleLookupOf(t, got.gazelle, host).Reason, host)
 			}
+			for _, host := range tt.want.noLookup {
+				require.NotContains(t, gazelleStatuses(got.gazelle), host)
+			}
 			if len(tt.want.asks) == 0 {
-				require.Equal(t, tt.want.cooldown, gazelleCooldownDue(got.gazelle), "RED/OPS cooldown")
+				require.Equal(t, tt.want.cooldown, gazelleCooldownDue(got.gazelle, got.gazelleKeyMissing), "RED/OPS cooldown")
 			}
 		})
 	}
@@ -328,6 +331,7 @@ type scopeWant struct {
 	torznabErr error
 	asks       []string
 	reasons    map[string]GazelleLookupReason
+	noLookup   []string
 	cooldown   bool
 }
 
@@ -466,20 +470,60 @@ func newTorznabSearchRunFixture(t *testing.T, dbName, trackerURL string, torrent
 	})
 	state.opts.DisableTorznab = false
 	state.resolvedTorznabIndexerIDs = []int{1}
+	addMusicIndexer(svc, state.opts.InstanceID, torrent.Hash, trackerURL)
+	return svc, state
+}
+
+func addMusicIndexer(svc *Service, instanceID int, hash, trackerURL string) {
 	svc.jackettService = newJackettServiceWithIndexers([]*models.TorznabIndexer{{
 		ID: 1, Name: "Music Indexer", Enabled: true, BaseURL: trackerURL, Backend: models.TorznabBackendNative, TimeoutSeconds: 5,
 		Capabilities: []string{"search", "music-search", "audio-search"},
 		Categories:   []models.TorznabIndexerCategory{{IndexerID: 1, CategoryID: 3000, CategoryName: "Audio"}},
 	}})
 	svc.asyncFilteringCache = ttlcache.New[string, *AsyncIndexerFilteringState]()
-	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(state.opts.InstanceID, torrent.Hash), &AsyncIndexerFilteringState{
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, hash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
 		ContentCompleted:      true,
 		CapabilityIndexers:    []int{1},
 		FilteredIndexers:      []int{1},
 		contentType:           "music",
 	}, ttlcache.DefaultTTL)
-	return svc, state
+}
+
+func torznabMatchTracker(t *testing.T, title string) string {
+	t.Helper()
+	var trackerURL string
+	tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dl" {
+			_, _ = w.Write([]byte("d4:infod4:name3:abcee"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = fmt.Fprintf(w, `<rss version="2.0"><channel><title>Music</title><item><title>%s</title><guid>torznab-guid</guid><size>123</size><enclosure url="%s/dl" length="123" type="application/x-bittorrent" /></item></channel></rss>`, title, trackerURL)
+	}))
+	t.Cleanup(tracker.Close)
+	trackerURL = tracker.URL
+	return trackerURL
+}
+
+func TestSearchRunLoop_MissingKeyWithoutSearchStartsNoGazelleCooldown(t *testing.T) {
+	name := "Artist - Album (2024) [WEB FLAC]"
+	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 13), Name: name, Progress: 1.0, Size: 1_000, Tracker: redTracker}
+	svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-missing-key-no-cooldown", &hashFilteringSyncManager{
+		torrents:    []qbt.Torrent{torrent},
+		filesByHash: map[string]qbt.TorrentFiles{torrent.Hash: {{Name: name + "/01 - Track.flac", Size: 1_000}}},
+	})
+	red, err := gazellemusic.NewClient("redacted.sh", "http://127.0.0.1:9", "red-key")
+	require.NoError(t, err)
+	state.gazelleClients = &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"redacted.sh": red}}
+
+	runSearchLoopToCompletion(t, svc, state)
+
+	require.Len(t, state.run.Results, 1)
+	require.Equal(t, noGazelleKeySkipReason, state.run.Results[0].Message)
+	_, found, err := svc.automationStore.GetSearchHistory(t.Context(), state.opts.InstanceID, torrent.Hash)
+	require.NoError(t, err)
+	require.False(t, found, "an OPS key that the user adds later must work at the next run")
 }
 
 // A Library Scan where Torznab finds a match and RED/OPS runs out of time adds

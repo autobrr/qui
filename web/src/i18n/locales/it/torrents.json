@@ -805,9 +805,8 @@
       "match": "corrispondenza",
       "noMatch": "nessuna corrispondenza",
       "openSettings": "Apri impostazioni",
+      "noApiKeys": "RED/OPS è attivo, ma non è impostata alcuna chiave API",
       "notAsked": {
-        "disabled": "non interrogato: disattivato",
-        "noApiKey": "non interrogato: nessuna chiave API",
         "cooldown": "non interrogato: cercato di recente",
         "notSelected": "non interrogato: non selezionato",
         "sourceSite": "non interrogato: il torrent proviene da {{site}}",

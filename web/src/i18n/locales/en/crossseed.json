@@ -191,8 +191,6 @@
       "siteWithNotAsked": "{{counts}}, {{notAsked}} not asked ({{reasons}})",
       "reasonCount": "{{count}} {{reason}}",
       "reasons": {
-        "disabled": "off",
-        "noApiKey": "no API key",
         "cooldown": "searched recently",
         "sourceSite": "from the site",
         "alreadySeeded": "already seeded",

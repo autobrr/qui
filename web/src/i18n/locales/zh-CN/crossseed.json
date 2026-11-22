@@ -188,8 +188,6 @@
       "siteWithNotAsked": "{{counts}}，未查询 {{notAsked}}（{{reasons}}）",
       "reasonCount": "{{count}} {{reason}}",
       "reasons": {
-        "disabled": "已关闭",
-        "noApiKey": "无 API 密钥",
         "cooldown": "最近已搜索",
         "sourceSite": "来自该站点",
         "alreadySeeded": "已在做种",

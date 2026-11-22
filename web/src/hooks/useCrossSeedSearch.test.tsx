@@ -248,7 +248,7 @@ describe("useCrossSeedSearch", () => {
       findIndividualEpisodes: false,
       gazelleEnabled: true,
     } as never)
-    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }, { ...ops, status: "not_asked", reason: "no_api_key" }]
+    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }]
     mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-gazelle", gazellePlan: plan } as never)
     const { result } = await renderSettled()
     expect(result.current.canCrossSeedSearch).toBe(true)
@@ -259,6 +259,7 @@ describe("useCrossSeedSearch", () => {
     })
     expect(mockedToast.error).not.toHaveBeenCalled()
     expect(dialogProps(result).selectableGazelleIds).toEqual([red.indexerId])
+    expect(dialogProps(result).gazelleKeysMissing).toBe(false)
 
     await act(async () => {
       ;(dialogProps(result).onScopeSearch as () => void)()
@@ -266,6 +267,20 @@ describe("useCrossSeedSearch", () => {
     })
     expect(mockedApi.searchCrossSeedTorrent).toHaveBeenCalledTimes(1)
     expect(mockedApi.searchCrossSeedTorrent.mock.calls[0][2]?.indexerIds).toBeUndefined()
+  })
+
+  it("tells the dialog that RED/OPS is on and no site has an API key", async () => {
+    mockedApi.listTorznabIndexers.mockResolvedValue([])
+    mockedApi.getCrossSeedSettings.mockResolvedValue({ findIndividualEpisodes: false, gazelleEnabled: true } as never)
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-no-keys", gazellePlan: [] } as never)
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-no-keys" }))
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).gazelleKeysMissing).toBe(true)
   })
 
   it("blocks when RED/OPS keys are set but RED/OPS is off and no indexer is enabled", async () => {

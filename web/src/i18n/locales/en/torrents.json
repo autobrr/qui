@@ -805,9 +805,8 @@
       "match": "match",
       "noMatch": "no match",
       "openSettings": "Open settings",
+      "noApiKeys": "RED/OPS is on, but no API key is set",
       "notAsked": {
-        "disabled": "not asked: off",
-        "noApiKey": "not asked: no API key",
         "cooldown": "not asked: searched recently",
         "notSelected": "not asked: not selected",
         "sourceSite": "not asked: the torrent comes from {{site}}",

@@ -261,7 +261,7 @@ func TestSearchTorrentMatches_SlowGazelleKeepsTorznabResults(t *testing.T) {
 	require.Equal(t, GazelleReasonTimedOut, gazelleLookupOf(t, resp.GazelleLookups, "orpheus.network").Reason)
 	require.Len(t, resp.Results, 1)
 	require.Equal(t, "torznab-guid", resp.Results[0].GUID)
-	require.False(t, gazelleCooldownDue(resp.GazelleLookups), "a RED/OPS timeout must start no cooldown")
+	require.False(t, gazelleCooldownDue(resp.GazelleLookups, false), "a RED/OPS timeout must start no cooldown")
 }
 
 // A RED/OPS-only dialog search that runs out of time returns an empty result
@@ -275,7 +275,7 @@ func TestSearchTorrentMatches_SlowGazelleOnlyReturnsEmptyResultWithNote(t *testi
 	require.NoError(t, err)
 	require.Equal(t, GazelleReasonTimedOut, gazelleLookupOf(t, resp.GazelleLookups, "orpheus.network").Reason)
 	require.Empty(t, resp.Results)
-	require.False(t, gazelleCooldownDue(resp.GazelleLookups))
+	require.False(t, gazelleCooldownDue(resp.GazelleLookups, false))
 }
 
 // A caller that cancels while RED/OPS still waits gets the cancellation, not a

@@ -28,7 +28,7 @@ import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { SearchScopeEntries, type ScopeEntry } from "@/components/torrents/SearchScopeEntries"
 import { useGazelleLookupText } from "@/hooks/useGazelleLookupText"
-import { gazelleReportLines, gazelleSettingsReasons, gazelleStatusClass } from "@/lib/gazelle-lookup"
+import { gazelleReportLines, gazelleStatusClass } from "@/lib/gazelle-lookup"
 import type {
   CrossSeedApplyResponse,
   CrossSeedGazelleLookup,
@@ -77,6 +77,7 @@ export interface CrossSeedDialogProps {
   unsupportedIndexers: CrossSeedIndexerOption[]
   /** The RED/OPS sites for the scope list: the outcome of the last search while the pick is the same, else the plan. */
   gazelleEntries: CrossSeedGazelleLookup[]
+  gazelleKeysMissing?: boolean
   /** The outcome of each RED/OPS site in the last search, for the report. */
   gazelleLookups?: CrossSeedGazelleLookup[]
   /** The pseudo indexer IDs of the RED/OPS entries that the user can pick. */
@@ -137,6 +138,7 @@ const CrossSeedDialogComponent = ({
   alreadySeededIndexers,
   unsupportedIndexers,
   gazelleEntries,
+  gazelleKeysMissing = false,
   gazelleLookups: lastLookups,
   selectableGazelleIds,
   indexerMode,
@@ -233,8 +235,7 @@ const CrossSeedDialogComponent = ({
     const gazelle = gazelleEntries.filter(entry => entry.reason !== "not_music").map((entry): ScopeEntry => {
       const base = { key: entry.site, name: entry.name, status: entry.status }
       if (!selectableGazelleIds.includes(entry.indexerId)) {
-        const settingsLink = gazelleSettingsReasons.has(entry.reason)
-        return { ...base, picked: null, note: lookupText(entry), settingsLink, attention: settingsLink }
+        return { ...base, picked: null, note: lookupText(entry) }
       }
       const picked = isPicked(entry.indexerId)
       const quiet = entry.reason === "not_selected" || entry.status === "no_match" || entry.status === "failed" || (entry.status === "will_ask" && entry.reason !== "key_rejected")
@@ -258,11 +259,14 @@ const CrossSeedDialogComponent = ({
       note: t("crossSeedDialog.scope.alreadySeeded"),
     }))
 
-    return [...torznab, ...gazelle.filter(entry => entry.picked !== null), ...gazelle.filter(entry => entry.picked === null), ...alreadySeeded]
+    const noGazelleKeys: ScopeEntry[] = gazelleKeysMissing ? [{ key: "gazelle-no-keys", name: t("crossSeedDialog.gazelle.noApiKeys"), status: "not_asked", picked: null, settingsLink: true, attention: true }] : []
+
+    return [...torznab, ...gazelle.filter(entry => entry.picked !== null), ...gazelle.filter(entry => entry.picked === null), ...noGazelleKeys, ...alreadySeeded]
   }, [
     alreadySeededIndexers,
     decisionTrace?.indexers,
     gazelleEntries,
+    gazelleKeysMissing,
     indexerOptions,
     isPicked,
     lookupText,

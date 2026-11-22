@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"testing/synctest"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/systemnotice"
+	"github.com/autobrr/qui/internal/testutil/logbudget"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -84,7 +86,7 @@ func gazelleStatuses(lookups []GazelleLookup) map[string]string {
 	return out
 }
 
-// A dialog search reports one RED/OPS lookup for each site.
+// A dialog search reports one RED/OPS lookup for each site that has an API key.
 func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 	match := func(context.Context) (*gazellemusic.Match, error) {
 		return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
@@ -131,10 +133,10 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 			want:     map[string]string{"redacted.sh": "no_match ", "orpheus.network": "not_asked not_selected"},
 		},
 		{
-			name:     "RED/OPS off is disabled for both sites",
+			name:     "RED/OPS off reports no lookup",
 			tracker:  otherTracker,
 			settings: &models.CrossSeedAutomationSettings{GazelleEnabled: false, RedactedAPIKey: "red-key", OrpheusAPIKey: "ops-key"},
-			want:     map[string]string{"redacted.sh": "not_asked disabled", "orpheus.network": "not_asked disabled"},
+			want:     map[string]string{},
 		},
 	}
 	for _, tt := range tests {
@@ -311,7 +313,7 @@ func TestExecuteCompletionSearch_NotificationHasGazelleLine(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, notifier.Events(), 1)
-	require.Contains(t, notifier.Events()[0].Message, "\nRED/OPS: Redacted match, Orpheus not asked (no API key)")
+	require.Contains(t, strings.Split(notifier.Events()[0].Message, "\n"), "RED/OPS: Redacted match")
 }
 
 // A Library Scan stores one RED/OPS summary for the run, and adds no row for a
@@ -332,9 +334,9 @@ func TestSearchRunLoop_StoresGazelleSummary(t *testing.T) {
 	runSearchLoopToCompletion(t, svc, state)
 
 	want := []models.CrossSeedGazelleSiteSummary{
-		{Site: "redacted.sh", Name: "Redacted", NotAsked: map[string]int{"no_api_key": 2}},
 		{Site: "orpheus.network", Name: "Orpheus", Asked: 1, NotAsked: map[string]int{"not_music": 1}},
 	}
+	require.Equal(t, want, state.run.GazelleSummary)
 	stored, err := svc.automationStore.GetSearchRun(t.Context(), state.run.ID)
 	require.NoError(t, err)
 	require.Equal(t, want, stored.GazelleSummary)
@@ -505,4 +507,78 @@ func TestPlanMarksSiteWithOpenRejectedNotice(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"redacted.sh": "will_ask key_rejected", "orpheus.network": "will_ask "}, gazelleStatuses(plan))
+}
+
+var gazelleWords = []string{"RED/OPS", "gazelle", "redacted", "orpheus"}
+
+// regression: #4378
+func TestSearchRunLoop_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
+	name := "Artist - Album (2024) [WEB FLAC]"
+	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 31), Name: name, Progress: 1.0, Size: 123, Tracker: otherTracker}
+	svc, state := newTorznabSearchRunFixture(t, "crossseed-runloop-gazelle-off", torznabMatchTracker(t, name), torrent, qbt.TorrentFiles{{Name: name + "/01 - Track.flac", Size: 123}})
+	state.gazelleClients = &gazelleClientSet{off: true}
+	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		return &CrossSeedResponse{Success: true}, nil
+	}
+
+	logbudget.AssertSilent(t, func() { runSearchLoopToCompletion(t, svc, state) }, gazelleWords...)
+
+	require.Equal(t, 1, state.run.TorrentsWithCrossSeeds, "the Torznab match must be added")
+	require.Empty(t, state.run.GazelleSummary)
+}
+
+// regression: #4378
+func TestExecuteCompletionSearch_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
+	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: false}
+	svc := newGazelleSeamService(t, otherTracker, settings, nil)
+	addMusicIndexer(svc, gazelleSeamInstanceID, gazelleSeamHash, torznabMatchTracker(t, gazelleSeamName))
+	notifier := &recordingNotifier{}
+	svc.notifier = notifier
+	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		return &CrossSeedResponse{Success: true}, nil
+	}
+	source := qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: otherTracker}
+
+	logbudget.AssertSilent(t, func() {
+		err := svc.executeCompletionSearch(t.Context(), gazelleSeamInstanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{InstanceID: gazelleSeamInstanceID, Enabled: true})
+		require.NoError(t, err)
+	}, gazelleWords...)
+
+	require.Len(t, notifier.Events(), 1, "the Torznab match must be added")
+	require.NotContains(t, notifier.Events()[0].Message, "RED/OPS")
+}
+
+func TestSearchReportFacts_NamesEachGazelleSite(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings *models.CrossSeedAutomationSettings
+		want     []ReportGazelleSite
+	}{
+		{
+			name:     "RED/OPS off",
+			settings: &models.CrossSeedAutomationSettings{GazelleEnabled: false, RedactedAPIKey: "red-key"},
+			want: []ReportGazelleSite{
+				{Site: "redacted.sh", Status: GazelleNotAsked, Reason: "disabled"},
+				{Site: "orpheus.network", Status: GazelleNotAsked, Reason: "disabled"},
+			},
+		},
+		{
+			name:     "one site has no API key",
+			settings: &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key"},
+			want: []ReportGazelleSite{
+				{Site: "redacted.sh", Status: GazelleWillAsk},
+				{Site: "orpheus.network", Status: GazelleNotAsked, Reason: "no_api_key"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newGazelleSeamService(t, otherTracker, tt.settings, nil)
+
+			facts, err := svc.SearchReportFacts(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, facts.SearchScope.GazelleSites)
+		})
+	}
 }

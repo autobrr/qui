@@ -191,8 +191,6 @@
       "siteWithNotAsked": "{{counts}}, {{notAsked}} no consultats ({{reasons}})",
       "reasonCount": "{{count}} {{reason}}",
       "reasons": {
-        "disabled": "desactivat",
-        "noApiKey": "sense clau API",
         "cooldown": "cercat fa poc",
         "sourceSite": "del lloc",
         "alreadySeeded": "ja compartit",

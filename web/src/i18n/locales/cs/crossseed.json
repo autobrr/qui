@@ -196,8 +196,6 @@
       "siteWithNotAsked": "{{counts}}, nedotázáno {{notAsked}} ({{reasons}})",
       "reasonCount": "{{count}} {{reason}}",
       "reasons": {
-        "disabled": "vypnuto",
-        "noApiKey": "chybí klíč API",
         "cooldown": "nedávno prohledán",
         "sourceSite": "z tohoto webu",
         "alreadySeeded": "už seedováno",

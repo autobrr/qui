@@ -55,8 +55,6 @@ const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720
 const MIN_SCHEDULE_VALUE = 1
 
 const gazelleReasonKeys: Partial<Record<CrossSeedGazelleLookupReason, string>> = {
-  disabled: "scan.gazelleSummary.reasons.disabled",
-  no_api_key: "scan.gazelleSummary.reasons.noApiKey",
   cooldown: "scan.gazelleSummary.reasons.cooldown",
   source_site: "scan.gazelleSummary.reasons.sourceSite",
   already_seeded: "scan.gazelleSummary.reasons.alreadySeeded",

@@ -197,8 +197,6 @@
       "siteWithNotAsked": "{{counts}}, не запитано {{notAsked}} ({{reasons}})",
       "reasonCount": "{{count}} {{reason}}",
       "reasons": {
-        "disabled": "вимкнено",
-        "noApiKey": "немає API-ключа",
         "cooldown": "нещодавно шукали",
         "sourceSite": "із цього сайту",
         "alreadySeeded": "вже роздається",
