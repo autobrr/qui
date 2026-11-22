@@ -65,6 +65,7 @@ func TestAllowedHostsRequiresRestart(t *testing.T) {
 			require.NoError(t, os.WriteFile(path, []byte(`allowedHosts = ["qui.test"]`), 0o600))
 			cfg, err := New(path)
 			require.NoError(t, err)
+			t.Cleanup(cfg.StopWatching)
 			reloaded := make(chan []string, 1)
 			cfg.RegisterReloadListener(func(conf *domain.Config) {
 				select {
