@@ -7,37 +7,52 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"reflect"
 	"strings"
 )
 
-type TxQuerier interface {
+type DialectProvider interface {
+	Dialect() string
+}
+
+type queryExecutor interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+type TxQuerier interface {
+	queryExecutor
+	DialectProvider
 	Commit() error
 	Rollback() error
-	Dialect() string
 }
 
 type Querier interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	queryExecutor
+	DialectProvider
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (TxQuerier, error)
-	Dialect() string
-}
-
-// DialectProvider exposes a SQL dialect identifier (for example "sqlite" or "postgres").
-type DialectProvider interface {
-	Dialect() string
 }
 
 type deferForeignKeysTx interface {
 	DeferForeignKeyChecks(ctx context.Context) error
 }
 
-func DialectOf(q DialectProvider) string {
+func isNilDialectProvider(q DialectProvider) bool {
 	if q == nil {
+		return true
+	}
+	v := reflect.ValueOf(q)
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
+func DialectOf(q DialectProvider) string {
+	if isNilDialectProvider(q) {
 		panic("dbinterface.DialectOf: nil querier")
 	}
 	dialect := strings.ToLower(strings.TrimSpace(q.Dialect()))
