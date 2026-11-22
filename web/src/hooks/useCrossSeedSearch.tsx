@@ -307,7 +307,7 @@ export function useCrossSeedSearch(instanceId: number) {
     runCrossSeedSearch(crossSeedTorrent, undefined, { bypassCache: true })
   }, [crossSeedTorrent, runCrossSeedSearch])
 
-  // Before the dialog opens there is no plan. With RED/OPS on, the dialog says which site lacks a key.
+  // Before the dialog opens there is no plan. With RED/OPS on and no API key, the dialog says so.
   const canCrossSeedSearch = sortedEnabledIndexers.length > 0 || Boolean(crossSeedSettings?.gazelleEnabled)
 
   const loadAnalysis = useCallback(
@@ -631,6 +631,7 @@ export function useCrossSeedSearch(instanceId: number) {
       partial={crossSeedSearchResponse?.partial ?? false}
       queryDegraded={crossSeedSearchResponse?.queryDegraded}
       gazelleEntries={gazelleLookups && searchedPick === currentPick ? gazelleLookups : gazellePlan ?? []}
+      gazelleKeysMissing={Boolean(crossSeedSettings?.gazelleEnabled) && gazellePlan?.length === 0}
       gazelleLookups={gazelleLookups}
       selectableGazelleIds={selectableGazelleIds}
       torznabFailed={crossSeedSearchResponse?.torznabFailed ?? false}

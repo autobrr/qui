@@ -743,9 +743,8 @@
       "match": "相符",
       "noMatch": "無相符",
       "openSettings": "開啟設定",
+      "noApiKeys": "RED/OPS 已啟用，但未設定 API 金鑰",
       "notAsked": {
-        "disabled": "未查詢：已關閉",
-        "noApiKey": "未查詢：無 API 金鑰",
         "cooldown": "未查詢：最近已搜尋",
         "notSelected": "未查詢：未選取",
         "sourceSite": "未查詢：種子來自 {{site}}",

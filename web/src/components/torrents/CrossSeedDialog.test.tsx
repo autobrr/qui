@@ -427,13 +427,11 @@ describe("CrossSeedDialog search scope", () => {
     expect(entryRow("Orpheus (API)")?.textContent).toContain("crossSeedDialog.gazelle.willAskRejected")
   })
 
-  it("links a site with no API key to the RED/OPS settings", () => {
-    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }, { ...ops, status: "not_asked", reason: "no_api_key" }]
-    render(<CrossSeedDialog {...baseProps} gazelleEntries={plan} />)
+  it("links to the RED/OPS settings when RED/OPS is on and no site has an API key", () => {
+    render(<CrossSeedDialog {...baseProps} gazelleKeysMissing />)
 
-    const link = entryRow("Orpheus (API)")?.querySelector("a")
+    const link = entryRow("crossSeedDialog.gazelle.noApiKeys")?.querySelector("a")
     expect(link?.getAttribute("data-tab")).toBe("indexers")
-    expect(entryRow("Redacted (API)")?.querySelector("a")).toBeNull()
   })
 
   it("shows the outcome of each site after the search, and the RED/OPS section without a decision trace", () => {

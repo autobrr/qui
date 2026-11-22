@@ -188,8 +188,6 @@
       "siteWithNotAsked": "{{counts}}，未查詢 {{notAsked}}（{{reasons}}）",
       "reasonCount": "{{count}} {{reason}}",
       "reasons": {
-        "disabled": "已關閉",
-        "noApiKey": "無 API 金鑰",
         "cooldown": "最近已搜尋",
         "sourceSite": "來自該網站",
         "alreadySeeded": "已在做種",

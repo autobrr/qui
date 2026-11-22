@@ -7,6 +7,8 @@ import (
 	"context"
 	"slices"
 	"strconv"
+
+	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
 // SearchReportFacts are the Match policy and the Search scope of a manual
@@ -53,7 +55,31 @@ type ReportIndexer struct {
 type ReportGazelleSite struct {
 	Site   string              `json:"site"`
 	Status GazelleLookupStatus `json:"status"`
-	Reason GazelleLookupReason `json:"reason,omitempty"`
+	Reason ReportGazelleReason `json:"reason,omitempty"`
+}
+
+type ReportGazelleReason string
+
+const (
+	reportGazelleDisabled ReportGazelleReason = "disabled"
+	reportGazelleNoAPIKey ReportGazelleReason = "no_api_key"
+)
+
+func reportGazelleSites(scope searchScope) []ReportGazelleSite {
+	sites := gazellemusic.Sites()
+	rows := make([]ReportGazelleSite, 0, len(sites))
+	for _, site := range sites {
+		row := ReportGazelleSite{Site: site.Host, Status: GazelleNotAsked, Reason: reportGazelleNoAPIKey}
+		i := slices.IndexFunc(scope.gazelle, func(l GazelleLookup) bool { return l.Site == site.Host })
+		switch {
+		case i >= 0:
+			row.Status, row.Reason = scope.gazelle[i].Status, ReportGazelleReason(scope.gazelle[i].Reason)
+		case scope.facts.gazelleOff:
+			row.Reason = reportGazelleDisabled
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 // SearchReportFacts returns the Match policy and the Search scope that a
@@ -74,7 +100,7 @@ func (s *Service) SearchReportFacts(ctx context.Context, instanceID int, hash st
 		TorznabIndexers:   []ReportIndexer{},
 		TorznabSkipped:    []ReportIndexer{},
 		TorznabSkipReason: search.scope.skipReason,
-		GazelleSites:      make([]ReportGazelleSite, 0, len(search.scope.gazelle)),
+		GazelleSites:      reportGazelleSites(search.scope),
 	}
 	skipped := skippedTorznabIndexers(search.scope.facts, search.scope.torznabIndexerIDs, search.scope.skipReason)
 	if len(search.scope.torznabIndexerIDs)+len(skipped) > 0 && s.jackettService != nil {
@@ -99,10 +125,6 @@ func (s *Service) SearchReportFacts(ctx context.Context, instanceID int, hash st
 		slices.SortFunc(scope.TorznabIndexers, byID)
 		slices.SortFunc(scope.TorznabSkipped, byID)
 	}
-	for _, lookup := range search.scope.gazelle {
-		scope.GazelleSites = append(scope.GazelleSites, ReportGazelleSite{Site: lookup.Site, Status: lookup.Status, Reason: lookup.Reason})
-	}
-
 	return &SearchReportFacts{
 		MatchPolicy: ReportMatchPolicy{
 			TitleRescue:                policy.TitleRescue,

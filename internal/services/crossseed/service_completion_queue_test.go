@@ -22,6 +22,7 @@ import (
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/testutil/logbudget"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -960,4 +961,14 @@ func TestHandleTorrentCompletion_BurstReadsSettingsOncePerInstance(t *testing.T)
 
 func (*completionPollingSyncMock) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
 	return nil, nil
+}
+
+// regression: #4379
+func TestHandleTorrentCompletion_CompletionSearchOffWritesNoLog(t *testing.T) {
+	const instanceWithoutSettings = 2
+	svc := &Service{completionStore: setupCompletionStoreForQueueTests(t)}
+
+	logbudget.AssertSilent(t, func() {
+		svc.HandleTorrentCompletion(t.Context(), instanceWithoutSettings, qbt.Torrent{Hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Name: "first", Progress: 1.0, CompletionOn: 123})
+	})
 }

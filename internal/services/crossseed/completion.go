@@ -112,7 +112,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	}
 
 	if !completionSettings.Enabled {
-		logCompletionSkip(instanceID, &torrent, "[CROSSSEED-COMPLETION] Completion search disabled for this instance")
 		return
 	}
 
@@ -140,7 +139,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			return
 		}
 		if !completionSettings.Enabled {
-			logCompletionSkip(instanceID, &torrent, "[CROSSSEED-COMPLETION] Completion search disabled during delay")
 			return
 		}
 		if s.shouldSkipCompletionTorrent(instanceID, &torrent, completionSettings) {
@@ -194,7 +192,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 	if !completionSettings.Enabled {
-		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Completion search disabled for this instance")
 		return
 	}
 	if s.shouldSkipCompletionTorrent(instanceID, readyTorrent, completionSettings) {
@@ -769,7 +766,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}, scope, gazelleClients)
 	if searchResp != nil {
 		logCompletionGazelleLookups(instanceID, torrent, searchResp.GazelleLookups)
-		s.stampCompletionSearchHistory(ctx, instanceID, torrent.Hash, startedAt, searchResp)
+		s.stampCompletionSearchHistory(ctx, instanceID, torrent.Hash, startedAt, searchResp, scope.gazelleKeyMissing)
 	}
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -875,7 +872,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	return nil
 }
 
-// logCompletionGazelleLookups writes one line for each RED/OPS site: Info for a
+// logCompletionGazelleLookups writes one line for each RED/OPS lookup: Info for a
 // match, Warn for a failure, and Debug for the rest.
 func logCompletionGazelleLookups(instanceID int, torrent *qbt.Torrent, lookups []GazelleLookup) {
 	for _, l := range lookups {
@@ -928,9 +925,9 @@ func hasCrossSeedTag(rawTags string) bool {
 // pass of a completion search, and the RED/OPS lookups that need no retry, as
 // the Library Scan does. A failed or rate-limited indexer stays unmarked, so
 // the next scheduled run asks it again.
-func (s *Service) stampCompletionSearchHistory(ctx context.Context, instanceID int, hash string, searchedAt time.Time, resp *TorrentSearchResponse) {
+func (s *Service) stampCompletionSearchHistory(ctx context.Context, instanceID int, hash string, searchedAt time.Time, resp *TorrentSearchResponse, gazelleKeyMissing bool) {
 	if s.automationStore == nil || ctx.Err() != nil {
 		return
 	}
-	s.stampTorrentSearchHistory(ctx, instanceID, hash, searchedAt, resp.CoveredIndexerIDs, resp.GazelleLookups)
+	s.stampTorrentSearchHistory(ctx, instanceID, hash, searchedAt, resp.CoveredIndexerIDs, resp.GazelleLookups, gazelleKeyMissing)
 }

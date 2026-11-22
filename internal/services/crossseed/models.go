@@ -130,9 +130,9 @@ type TorrentInfo struct {
 	FilteredIndexers  []int          `json:"filtered_indexers,omitempty"`  // Indexers available after content filtering
 	ExcludedIndexers  map[int]string `json:"excluded_indexers,omitempty"`  // Indexers excluded by content filtering with reasons
 	ContentMatches    []string       `json:"content_matches,omitempty"`    // Existing torrents that match this content
-	// GazellePlan holds, for the search dialog, what a search asks each
-	// RED/OPS site: will_ask, or not_asked with its reason.
-	GazellePlan []GazelleLookup `json:"gazellePlan,omitempty"`
+	// GazellePlan holds, for the search dialog, what a search asks each RED/OPS
+	// site that has an API key: will_ask, or not_asked with its reason.
+	GazellePlan []GazelleLookup `json:"gazellePlan,omitzero"`
 	// Disc layout detection
 	DiscLayout bool   `json:"disc_layout,omitempty"` // True if this torrent contains disc-based media (Blu-ray/DVD)
 	DiscMarker string `json:"disc_marker,omitempty"` // The marker directory name (e.g., "BDMV" or "VIDEO_TS") if DiscLayout is true
@@ -302,8 +302,8 @@ type TorrentSearchResponse struct {
 	// QueryDegraded is set when the ARR external-ID lookup could not supply IDs
 	// and the Torznab search fell back to a title-only text query.
 	QueryDegraded string `json:"query_degraded,omitempty"`
-	// GazelleLookups holds one RED/OPS lookup for each site, in the order of
-	// the site table.
+	// GazelleLookups holds one RED/OPS lookup for each site that has an API
+	// key, in the order of the site table.
 	GazelleLookups []GazelleLookup `json:"gazelleLookups"`
 	// TorznabFailed is set when the Torznab search failed and the results come
 	// only from RED/OPS.

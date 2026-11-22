@@ -31,8 +31,6 @@ const (
 type GazelleLookupReason string
 
 const (
-	GazelleReasonDisabled      GazelleLookupReason = "disabled"
-	GazelleReasonNoAPIKey      GazelleLookupReason = "no_api_key"
 	GazelleReasonCooldown      GazelleLookupReason = "cooldown"
 	GazelleReasonNotSelected   GazelleLookupReason = "not_selected"
 	GazelleReasonSourceSite    GazelleLookupReason = "source_site"
@@ -43,8 +41,8 @@ const (
 	GazelleReasonError         GazelleLookupReason = "error"
 )
 
-// GazelleLookup is the RED/OPS lookup of one site for one search: the plan
-// before the search, or the outcome after it.
+// GazelleLookup is the RED/OPS lookup of one site that has an API key, for one
+// search: the plan before the search, or the outcome after it.
 type GazelleLookup struct {
 	// Site is the API host of the site.
 	Site      string              `json:"site"`
@@ -79,24 +77,18 @@ func (l GazelleLookup) failed(reason GazelleLookupReason, detail string) Gazelle
 // gazelleCooldownDue reports whether the lookups of one torrent need no retry,
 // so the Library Scan stamps the RED/OPS cooldown of the torrent. A failed
 // lookup needs a retry. A search that asks no site stamps the cooldown for a
-// failed music check, and when a copy seeds on each site that has a key. A
-// missing API key stamps none, so a key that the user adds later works at the
-// next run.
-func gazelleCooldownDue(lookups []GazelleLookup) bool {
-	var lookedUp, keyed, missingKey bool
+// failed music check, and when a copy seeds on each site that has a key.
+// keyMissing is gazelleKeyMissing of the Search scope: a missing API key stamps
+// none, so a key that the user adds later works at the next run.
+func gazelleCooldownDue(lookups []GazelleLookup, keyMissing bool) bool {
+	lookedUp := false
 	for _, l := range lookups {
-		switch {
-		case l.Status == GazelleFailed, l.Reason == GazelleReasonCooldown, l.Reason == GazelleReasonNotSelected:
+		if l.Status == GazelleFailed || l.Reason == GazelleReasonCooldown || l.Reason == GazelleReasonNotSelected {
 			return false
-		case l.Reason == GazelleReasonDisabled:
-		case l.Reason == GazelleReasonNoAPIKey:
-			missingKey = missingKey || !l.seededByCopy
-		default:
-			keyed = true
-			lookedUp = lookedUp || !l.seededByCopy
 		}
+		lookedUp = lookedUp || !l.seededByCopy
 	}
-	return lookedUp || (keyed && !missingKey)
+	return lookedUp || (len(lookups) > 0 && !keyMissing)
 }
 
 // gazelleRequestsSent reports whether a lookup sent a request to a site.
@@ -128,10 +120,6 @@ func gazelleOutcomeText(l GazelleLookup) string {
 
 func gazelleReasonText(l GazelleLookup) string {
 	switch l.Reason {
-	case GazelleReasonDisabled:
-		return "off"
-	case GazelleReasonNoAPIKey:
-		return "no API key"
 	case GazelleReasonCooldown:
 		return "searched recently"
 	case GazelleReasonNotSelected:

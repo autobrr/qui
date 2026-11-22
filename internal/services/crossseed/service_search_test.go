@@ -1440,9 +1440,9 @@ func TestSearchGazelleMatches_SkipsWhenLegacyTargetHashExistsLocally(t *testing.
 		},
 	}
 
-	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	lookups, cooldownDue := lookupGazelleCooldownForTest(t, svc, sourceTorrent, sourceFiles, clients)
 	require.Equal(t, GazelleReasonAlreadySeeded, gazelleLookupOf(t, lookups, "orpheus.network").Reason, "an APL-flagged OPS copy already seeded must skip the remote lookup")
-	require.True(t, gazelleCooldownDue(lookups), "nothing to look up counts as done, so the cooldown is stamped")
+	require.True(t, cooldownDue, "nothing to look up counts as done, so the cooldown is stamped")
 	require.False(t, gazelleRequestsSent(lookups))
 	require.Equal(t, 0, callCount)
 }
@@ -1474,13 +1474,13 @@ func TestSearchGazelleMatches_FailedLookupDoesNotComplete(t *testing.T) {
 		},
 	}
 
-	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	lookups, cooldownDue := lookupGazelleCooldownForTest(t, svc, sourceTorrent, sourceFiles, clients)
 	ops := gazelleLookupOf(t, lookups, "orpheus.network")
 	require.Equal(t, GazelleFailed, ops.Status)
 	require.Equal(t, GazelleReasonError, ops.Reason)
 	require.Contains(t, ops.Detail, "rate limit exceeded")
 	require.True(t, gazelleRequestsSent(lookups), "the run still paces after a failed request")
-	require.False(t, gazelleCooldownDue(lookups))
+	require.False(t, cooldownDue)
 }
 
 // A non-OPS/RED source with both keys looks up both sites. One site
@@ -1520,10 +1520,10 @@ func TestSearchGazelleMatches_OneFailedTargetIsNotCompleted(t *testing.T) {
 		},
 	}
 
-	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	lookups, cooldownDue := lookupGazelleCooldownForTest(t, svc, sourceTorrent, sourceFiles, clients)
 	require.Equal(t, GazelleNoMatch, gazelleLookupOf(t, lookups, "redacted.sh").Status)
 	require.Equal(t, GazelleFailed, gazelleLookupOf(t, lookups, "orpheus.network").Status)
-	require.False(t, gazelleCooldownDue(lookups), "the failed site must keep the torrent eligible")
+	require.False(t, cooldownDue, "the failed site must keep the torrent eligible")
 }
 
 func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *testing.T) {
@@ -1595,9 +1595,9 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 		},
 	}
 
-	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	lookups, cooldownDue := lookupGazelleCooldownForTest(t, svc, sourceTorrent, sourceFiles, clients)
 	require.Equal(t, GazelleReasonAlreadySeeded, gazelleLookupOf(t, lookups, "orpheus.network").Reason, "should skip Gazelle search when target tracker content exists locally")
-	require.True(t, gazelleCooldownDue(lookups), "nothing to look up counts as done, so the cooldown is stamped")
+	require.True(t, cooldownDue, "nothing to look up counts as done, so the cooldown is stamped")
 	require.Equal(t, 0, callCount)
 }
 
@@ -1822,9 +1822,9 @@ func TestSearchGazelleMatches_DoesNotSkipWhenTargetTrackerContentDoesNotMatch(t 
 		},
 	}
 
-	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	lookups, cooldownDue := lookupGazelleCooldownForTest(t, svc, sourceTorrent, sourceFiles, clients)
 	require.Equal(t, GazelleNoMatch, gazelleLookupOf(t, lookups, "orpheus.network").Status, "should attempt Gazelle lookup when local content is on non-target tracker")
-	require.True(t, gazelleCooldownDue(lookups))
+	require.True(t, cooldownDue)
 	require.Equal(t, 1, callCount)
 }
 
@@ -2374,9 +2374,16 @@ func stubGazelleMatchLookupError(t *testing.T, lookupErr error) {
 // runs its RED/OPS lookup, the way a trigger does.
 func lookupGazelleForTest(t *testing.T, svc *Service, torrent *qbt.Torrent, files qbt.TorrentFiles, clients *gazelleClientSet) []GazelleLookup {
 	t.Helper()
+	lookups, _ := lookupGazelleCooldownForTest(t, svc, torrent, files, clients)
+	return lookups
+}
+
+func lookupGazelleCooldownForTest(t *testing.T, svc *Service, torrent *qbt.Torrent, files qbt.TorrentFiles, clients *gazelleClientSet) (lookups []GazelleLookup, cooldownDue bool) {
+	t.Helper()
 	scope := svc.collectSearchScope(t.Context(), 1, torrent, searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()}, false)
 	require.NoError(t, scope.err)
-	return svc.startGazelleSearch(t.Context(), torrent, files, scope, clients)().lookups
+	lookups = svc.startGazelleSearch(t.Context(), torrent, files, scope, clients)().lookups
+	return lookups, gazelleCooldownDue(lookups, scope.gazelleKeyMissing)
 }
 
 func gazelleLookupOf(t *testing.T, lookups []GazelleLookup, site string) GazelleLookup {

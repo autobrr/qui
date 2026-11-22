@@ -12858,7 +12858,7 @@ components:
           description: The marker directory name (e.g., "BDMV" or "VIDEO_TS") if disc_layout is true
         gazellePlan:
           type: array
-          description: For the search dialog, what a search asks each RED/OPS site. The status is will_ask or not_asked.
+          description: For the search dialog, what a search asks each RED/OPS site that has an API key. The status is will_ask or not_asked. The list is empty when RED/OPS is off or no site has an API key.
           items:
             $ref: '#/components/schemas/CrossSeedGazelleLookup'
 
@@ -12882,7 +12882,7 @@ components:
         reason:
           type: string
           description: Why the search did not ask the site, or why the lookup failed
-          enum: [disabled, no_api_key, cooldown, not_selected, source_site, already_seeded, not_music, key_rejected, timed_out, error]
+          enum: [cooldown, not_selected, source_site, already_seeded, not_music, key_rejected, timed_out, error]
         detail:
           type: string
           description: Error text of a failed lookup
@@ -13032,7 +13032,7 @@ components:
             - arr_no_ids
         gazelleLookups:
           type: array
-          description: One RED/OPS lookup for each site, in a fixed site order. A site that timed out or failed has the status failed; the results hold the matches of the other sites and of Torznab.
+          description: One RED/OPS lookup for each site that has an API key, in a fixed site order. The list is empty when RED/OPS is off. A site that timed out or failed has the status failed; the results hold the matches of the other sites and of Torznab.
           items:
             $ref: '#/components/schemas/CrossSeedGazelleLookup'
         torznab_failed:
