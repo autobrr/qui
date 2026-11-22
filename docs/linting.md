@@ -52,7 +52,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
 - If you move code that has ratchet problems into a new file, or rename such a file, the new path needs an allowlist entry. Rule 3 then fails with "the entry grew from 0 to N", also when the totals do not change. No flag skips rule 3, so a maintainer merges that pull request past the failed check.
 
-Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `comments` entries.
+Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go` lane fixes up to 5 problems in one file of `allowlist.json` and uses the `ratchet` label. ADR 0020 describes it. It does not take the `comments` entries. The `web` lane removes up to 3 effects that `qui/no-direct-effect` holds in one file of `web/eslint-suppressions.json` and uses the `ratchet-web` label. ADR 0075 describes it. A lane opens no pull request while one with its label is open.
 
 ### Comments
 
