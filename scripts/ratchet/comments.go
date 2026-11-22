@@ -24,7 +24,7 @@ const (
 	suppressionsPath = "web/eslint-suppressions.json"
 )
 
-var suppressedRules = []string{"qui/no-comments", "qui/no-direct-effect"}
+var suppressedRules = []string{"qui/no-comments", "qui/no-direct-effect", "react-hooks/exhaustive-deps", "react-refresh/only-export-components"}
 
 func goComments() (map[string]int, error) {
 	paths, err := gocomments.Tracked()
@@ -93,19 +93,19 @@ func suppressionGrowth(base string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s at %s: %w", suppressionsPath, base, err)
 	}
-	return suppressionProblems(now, was), nil
+	return suppressionProblems(now, was, suppressedRules), nil
 }
 
-func suppressionProblems(now, was counts) []string {
+func suppressionProblems(now, was counts, rules []string) []string {
 	var problems []string
-	for _, rule := range suppressedRules {
+	for _, rule := range rules {
 		if _, ok := now[rule]; !ok {
 			problems = append(problems, fmt.Sprintf("%s: has no entry left for %s. Delete it from suppressedRules in scripts/ratchet/comments.go, so that its reports cannot come back without a change there.", suppressionsPath, rule))
 		}
 	}
 	for _, rule := range slices.Sorted(maps.Keys(now)) {
-		if !slices.Contains(suppressedRules, rule) {
-			problems = append(problems, fmt.Sprintf("%s: holds %d reports of %s. Only %s may have entries there. Fix each report as its ESLint message says, and delete the entries.", suppressionsPath, sum(now[rule]), rule, strings.Join(suppressedRules, " and ")))
+		if !slices.Contains(rules, rule) {
+			problems = append(problems, fmt.Sprintf("%s: holds %d reports of %s. Only these rules may have entries there: %s. Fix each report as its ESLint message says, and delete the entries.", suppressionsPath, sum(now[rule]), rule, strings.Join(rules, ", ")))
 			continue
 		}
 		if _, ok := was[rule]; !ok {

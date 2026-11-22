@@ -188,9 +188,9 @@ export default tseslint.config([
       'react-hooks': reactHooks,
     },
     rules: {
-      '@stylistic/quotes': ['warn', 'double'],
+      '@stylistic/quotes': ['error', 'double'],
       '@stylistic/comma-dangle': [
-        'warn',
+        'error',
         {
           arrays: 'always-multiline',
           objects: 'always-multiline',
@@ -200,14 +200,14 @@ export default tseslint.config([
         },
       ],
       '@stylistic/indent': ['error', 2, { 'SwitchCase': 1 }],
-      '@stylistic/no-trailing-spaces': ['warn'],
+      '@stylistic/no-trailing-spaces': ['error'],
       '@stylistic/object-curly-spacing': ['error', 'always'],
-      '@typescript-eslint/no-unused-vars': ['warn', { ignoreRestSiblings: true }],
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
       '@typescript-eslint/no-explicit-any': 'error',
       'linebreak-style': ['error', 'unix'],
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      'react-refresh/only-export-components': ['error', { allowConstantExport: true }],
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/exhaustive-deps': 'error',
     }
   },
   {
