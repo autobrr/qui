@@ -1377,7 +1377,6 @@ func getNowUnix(evalCtx *EvalContext) int64 {
 	return time.Now().Unix()
 }
 
-//nolint:exhaustive // Only age-backed fields are supported.
 func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.Torrent) float64 {
 	var ts int64
 	switch field {

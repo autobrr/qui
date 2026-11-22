@@ -889,7 +889,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) }) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
+	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) })
 
 	RespondJSON(w, http.StatusCreated, response)
 }
@@ -1011,7 +1011,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) }) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
+	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) })
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -1142,7 +1142,7 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 	} else {
 		// Clear backoff state and errors when re-enabling instance
 		h.clientPool.ResetFailureTracking(instanceID)
-		h.connectionTests.Go(func() { h.testConnectionAsync(instanceID) }) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
+		h.connectionTests.Go(func() { h.testConnectionAsync(instanceID) })
 	}
 
 	response := h.buildQuickInstanceResponse(instance)

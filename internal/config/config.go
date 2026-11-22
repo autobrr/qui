@@ -593,7 +593,6 @@ func (c *AppConfig) notifyListeners() {
 	}
 }
 
-//nolint:funlen // config template is inherently long
 func (c *AppConfig) writeDefaultConfig(path string) error {
 	if _, err := os.Stat(path); err == nil {
 		log.Debug().Msgf("Config file already exists at: %s", path)

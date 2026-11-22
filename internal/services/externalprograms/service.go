@@ -471,7 +471,7 @@ func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) (cm
 					Str("source", "TERM_PROGRAM").
 					Str("command", cmdLine).
 					Msg("using terminal emulator for external program")
-				return exec.CommandContext(ctx, cmdName, args...), true //nolint:gosec // intentional external program execution
+				return exec.CommandContext(ctx, cmdName, args...), true
 			}
 		}
 	}
@@ -485,7 +485,7 @@ func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) (cm
 					Str("source", "detection").
 					Str("command", cmdLine).
 					Msg("using terminal emulator for external program")
-				return exec.CommandContext(ctx, cmdName, args...), true //nolint:gosec // intentional external program execution
+				return exec.CommandContext(ctx, cmdName, args...), true
 			}
 		}
 	}
@@ -493,7 +493,7 @@ func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) (cm
 	log.Warn().
 		Str("command", cmdLine).
 		Msg("no terminal emulator found, running command in background")
-	return exec.CommandContext(ctx, "sh", "-c", cmdLine), false //nolint:gosec // intentional external program execution
+	return exec.CommandContext(ctx, "sh", "-c", cmdLine), false
 }
 
 func (s *Service) IsPathAllowed(programPath string) bool {

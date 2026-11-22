@@ -29,6 +29,7 @@ linters:
     - mirror
     - misspell
     - noctx
+    - nolintlint
     - perfsprint
     - prealloc
     - revive
@@ -44,19 +45,19 @@ linters:
         models-is-a-leaf:
           files: ["**/internal/models/**"]
           deny:
-            - { pkg: github.com/autobrr/qui/internal/api, desc: "models never imports api, services, or qbittorrent" }
-            - { pkg: github.com/autobrr/qui/internal/services, desc: "models never imports api, services, or qbittorrent" }
-            - { pkg: github.com/autobrr/qui/internal/qbittorrent, desc: "models never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/api, desc: "models never imports api, services, or qbittorrent; move the shared type into models, or let the caller pass the value in" }
+            - { pkg: github.com/autobrr/qui/internal/services, desc: "models never imports api, services, or qbittorrent; move the shared type into models, or let the caller pass the value in" }
+            - { pkg: github.com/autobrr/qui/internal/qbittorrent, desc: "models never imports api, services, or qbittorrent; move the shared type into models, or let the caller pass the value in" }
         services-never-import-api:
           files: ["**/internal/services/**"]
           deny:
-            - { pkg: github.com/autobrr/qui/internal/api, desc: services never import api }
+            - { pkg: github.com/autobrr/qui/internal/api, desc: "services never import api; put the logic in the service and let the handler call it" }
         database-is-a-leaf:
           files: ["**/internal/database/**", "!$test"]
           deny:
-            - { pkg: github.com/autobrr/qui/internal/api, desc: "database never imports api, services, or qbittorrent" }
-            - { pkg: github.com/autobrr/qui/internal/services, desc: "database never imports api, services, or qbittorrent" }
-            - { pkg: github.com/autobrr/qui/internal/qbittorrent, desc: "database never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/api, desc: "database never imports api, services, or qbittorrent; let the caller pass the value in" }
+            - { pkg: github.com/autobrr/qui/internal/services, desc: "database never imports api, services, or qbittorrent; let the caller pass the value in" }
+            - { pkg: github.com/autobrr/qui/internal/qbittorrent, desc: "database never imports api, services, or qbittorrent; let the caller pass the value in" }
         qbittorrent-never-imports-up:
           list-mode: lax
           files: ["**/internal/qbittorrent/**"]
@@ -64,12 +65,12 @@ linters:
             # The sync manager queues tracker icon fetches. Removing this edge is a separate change.
             - github.com/autobrr/qui/internal/services/trackericons
           deny:
-            - { pkg: github.com/autobrr/qui/internal/api, desc: qbittorrent never imports api or services }
-            - { pkg: github.com/autobrr/qui/internal/services, desc: qbittorrent never imports api or services }
+            - { pkg: github.com/autobrr/qui/internal/api, desc: "qbittorrent never imports api or services; declare the interface that it needs in qbittorrent and let the caller set it, as SyncManager.SetFilesManager does" }
+            - { pkg: github.com/autobrr/qui/internal/services, desc: "qbittorrent never imports api or services; declare the interface that it needs in qbittorrent and let the caller set it, as SyncManager.SetFilesManager does" }
         pkg-never-imports-internal:
           files: ["**/pkg/**", "!$test"]
           deny:
-            - { pkg: github.com/autobrr/qui/internal, desc: pkg packages stand alone and never import internal }
+            - { pkg: github.com/autobrr/qui/internal, desc: "pkg packages stand alone and never import internal; move the helper into pkg, or keep the caller in internal" }
         sftp-stays-in-the-file-layer:
           files:
             - $all
@@ -84,6 +85,10 @@ linters:
           deny:
             - { pkg: github.com/autobrr/rls, desc: the search gatherer asks the usable predicate and never parses a title (ADR 0007) }
             - { pkg: github.com/autobrr/qui/pkg/releases, desc: the search gatherer asks the usable predicate and never parses a title (ADR 0007) }
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
 
     forbidigo:
       analyze-types: true
@@ -379,6 +384,13 @@ linters:
           - gosec
         text: "G703"
         source: "tmpFile\\.Name\\(\\)|filepath\\.Dir\\(destPath\\)|os\\.Open\\(archivePath\\)"
+
+      # The type of a stat field differs between Linux and macOS, so the
+      # conversion is redundant on one of them, and an inline nolint would be
+      # unused on the other.
+      - path: (internal/fsops/local/statfs_unix|pkg/hardlink/fileid_unix)\.go
+        linters:
+          - unconvert
 
       # The generated config template contains a commented-out password field.
       # Scoped to the template literal itself, which cannot carry a nolint.

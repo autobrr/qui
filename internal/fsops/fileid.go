@@ -65,7 +65,7 @@ func remoteScope(hostPort string) uint32 {
 	defer remoteScopes.Unlock()
 	id, ok := remoteScopes.ids[hostPort]
 	if !ok {
-		id = uint32(len(remoteScopes.ids)) + 1 //nolint:gosec // a handful of instances, never 4 billion
+		id = uint32(len(remoteScopes.ids)) + 1
 		remoteScopes.ids[hostPort] = id
 	}
 	return id

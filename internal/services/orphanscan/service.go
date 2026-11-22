@@ -1833,7 +1833,6 @@ func checkReadinessGates(client healthChecker) error {
 	return nil
 }
 
-//nolint:exhaustive // Only transient torrent states belong here; all others are non-transient.
 func isTransientTorrentStateForOrphanScan(state qbt.TorrentState) bool {
 	switch state {
 	case qbt.TorrentStateMetaDl,

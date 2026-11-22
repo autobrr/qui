@@ -1259,7 +1259,7 @@ func (s *Service) fetchCacheEntry(ctx context.Context, sig *searchCacheSignature
 	if entry == nil || len(coverage) == 0 {
 		return nil, nil, false
 	}
-	s.background.Go(func() { //nolint:gosec // G118: cache touch must outlive the lookup, bounded by its own timeout
+	s.background.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		s.searchCache.Touch(ctx, entry.ID)

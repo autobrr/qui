@@ -68,7 +68,11 @@ func main() {
 	}
 
 	problems := compare(got, allow, baseAllow)
-	hidden, err := hiddenGocognit()
+	enabled, err := enabledLinters()
+	if err != nil {
+		fail(err)
+	}
+	hidden, err := nolintProblems(enabled)
 	if err != nil {
 		fail(err)
 	}
@@ -205,9 +209,30 @@ func merge[V any](a, b map[string]V) map[string]V {
 	return m
 }
 
-func hiddenGocognit() ([]string, error) {
-	out, err := exec.CommandContext(context.Background(), "git", "grep", "-lz", "nolint",
-		"--", "*.go", ":!*_test.go").Output()
+func enabledLinters() (map[string]bool, error) {
+	enabled := map[string]bool{}
+	for _, config := range []string{".golangci.yml", configPath} {
+		out, err := exec.CommandContext(context.Background(), "golangci-lint", "linters", "-c", config, "--json").Output()
+		if err != nil {
+			return nil, fmt.Errorf("golangci-lint linters -c %s: %w", config, err)
+		}
+		var list struct {
+			Enabled []struct {
+				Name string `json:"name"`
+			}
+		}
+		if err := json.Unmarshal(out, &list); err != nil {
+			return nil, fmt.Errorf("golangci-lint linters -c %s: %w", config, err)
+		}
+		for _, linter := range list.Enabled {
+			enabled[linter.Name] = true
+		}
+	}
+	return enabled, nil
+}
+
+func nolintProblems(enabled map[string]bool) ([]string, error) {
+	out, err := exec.CommandContext(context.Background(), "git", "grep", "-lz", "nolint", "--", "*.go").Output()
 	if err != nil {
 		// git grep exits 1 when nothing matches.
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1 {
@@ -224,8 +249,11 @@ func hiddenGocognit() ([]string, error) {
 		}
 		for _, group := range f.Comments {
 			for _, c := range group.List {
-				if hidesGocognit(c.Text) {
+				if !strings.HasSuffix(path, "_test.go") && hidesGocognit(c.Text) {
 					problems = append(problems, fmt.Sprintf("%s: %s: do not hide gocognit. Split the function.", fset.Position(c.Pos()), c.Text))
+				}
+				for _, name := range staleNolintNames(c.Text, enabled) {
+					problems = append(problems, fmt.Sprintf("%s: %s: no golangci-lint config runs %s, so the nolint hides nothing. Delete the name.", fset.Position(c.Pos()), c.Text, name))
 				}
 			}
 		}
@@ -233,24 +261,41 @@ func hiddenGocognit() ([]string, error) {
 	return problems, nil
 }
 
-// hidesGocognit reports whether golangci-lint reads comment as a nolint
-// directive that covers gocognit. It follows extractInlineRangeFromComment in
-// golangci-lint v2.14.0 pkg/result/processors/nolint_filter.go, where a bare
-// "nolint", "nolint " and any "nolint:all" prefix hide every linter.
+func staleNolintNames(comment string, enabled map[string]bool) []string {
+	var stale []string
+	for _, name := range nolintNames(comment) {
+		if name != "" && name != "all" && !enabled[name] {
+			stale = append(stale, name)
+		}
+	}
+	return stale
+}
+
 func hidesGocognit(comment string) bool {
+	names := nolintNames(comment)
+	return slices.Contains(names, "gocognit") || slices.Contains(names, "all")
+}
+
+// nolintNames returns the linters that a nolint directive names, or "all". It
+// follows extractInlineRangeFromComment in golangci-lint v2.14.0
+// pkg/result/processors/nolint_filter.go, where a bare "nolint", "nolint "
+// and any "nolint:all" prefix hide every linter.
+func nolintNames(comment string) []string {
 	text := strings.TrimLeft(comment, "/ ")
 	list, ok := strings.CutPrefix(text, "nolint:")
 	switch {
 	case !ok:
-		return text == "nolint" || strings.HasPrefix(text, "nolint ")
+		if text == "nolint" || strings.HasPrefix(text, "nolint ") {
+			return []string{"all"}
+		}
+		return nil
 	case strings.HasPrefix(list, "all"):
-		return true
+		return []string{"all"}
 	}
 	list, _, _ = strings.Cut(list, "//")
+	var names []string
 	for item := range strings.SplitSeq(list, ",") {
-		if name := strings.ToLower(strings.TrimSpace(item)); name == "gocognit" || name == "all" {
-			return true
-		}
+		names = append(names, strings.ToLower(strings.TrimSpace(item)))
 	}
-	return false
+	return names
 }

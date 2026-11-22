@@ -3059,12 +3059,12 @@ const (
 // The print is stored, so it is the same after a restart and on every OS and CPU.
 func FilesPrint(t qbt.Torrent) int64 {
 	buf := make([]byte, 0, 16+len(t.ContentPath))
-	buf = binary.LittleEndian.AppendUint64(buf, uint64(t.TotalSize)) //nolint:gosec // The bytes, not the value, feed the hash.
-	buf = binary.LittleEndian.AppendUint64(buf, uint64(t.Size))      //nolint:gosec // The bytes, not the value, feed the hash.
+	buf = binary.LittleEndian.AppendUint64(buf, uint64(t.TotalSize))
+	buf = binary.LittleEndian.AppendUint64(buf, uint64(t.Size))
 	buf = append(buf, t.ContentPath[strings.LastIndexAny(t.ContentPath, `/\`)+1:]...)
 	h := fnv.New64a()
 	_, _ = h.Write(buf)
-	return int64(h.Sum64()) //nolint:gosec // database/sql rejects a uint64 with the high bit set.
+	return int64(h.Sum64())
 }
 
 // filesBackstopFor spreads the backstop over [filesBackstop/2, filesBackstop)
@@ -3073,7 +3073,7 @@ func filesBackstopFor(hash string) time.Duration {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(hash))
 	half := filesBackstop / 2
-	return half + time.Duration(h.Sum64()%uint64(half/time.Second))*time.Second //nolint:gosec // The modulus keeps the value under 11.5 h.
+	return half + time.Duration(h.Sum64()%uint64(half/time.Second))*time.Second
 }
 
 // current reports whether mode serves the cached entry of hash at now. live is

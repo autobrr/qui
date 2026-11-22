@@ -105,6 +105,25 @@ func TestHidesGocognit(t *testing.T) {
 	}
 }
 
+func TestStaleNolintNames(t *testing.T) {
+	enabled := map[string]bool{"gosec": true, "gocognit": true}
+	tests := []struct {
+		comment string
+		want    []string
+	}{
+		{"//nolint:gosec // reason", nil},
+		{"//nolint:gosec,gocognit", nil},
+		{"//nolint", nil},
+		{"//nolint:all", nil},
+		{"// see nolint:funlen", nil},
+		{"//nolint:funlen // reason", []string{"funlen"}},
+		{"//nolint:gosec, Funlen,dupl // gosec is fine", []string{"funlen", "dupl"}},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, staleNolintNames(tt.comment, enabled), tt.comment)
+	}
+}
+
 func TestSuppressionGrowth(t *testing.T) {
 	parse := func(raw string) counts {
 		got, err := parseSuppressions([]byte(raw))

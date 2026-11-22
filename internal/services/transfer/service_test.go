@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/sha1" //nolint:gosec // BitTorrent v1 pieces are SHA-1
+	"crypto/sha1"
 	"errors"
 	"io"
 	"io/fs"
@@ -896,7 +896,7 @@ func singleFileTorrent(t *testing.T, name string, data []byte) ([]byte, string) 
 	t.Helper()
 	info := metainfo.Info{Name: name, PieceLength: 16, Length: int64(len(data))}
 	for chunk := range slices.Chunk(data, 16) {
-		sum := sha1.Sum(chunk) //nolint:gosec // BitTorrent v1 pieces are SHA-1
+		sum := sha1.Sum(chunk)
 		info.Pieces = append(info.Pieces, sum[:]...)
 	}
 	infoBytes, err := bencode.Marshal(info)

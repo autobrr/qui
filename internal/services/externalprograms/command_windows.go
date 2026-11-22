@@ -35,7 +35,7 @@ func (s *Service) buildDirectCommand(ctx context.Context, program *models.Extern
 		cmd.SysProcAttr.CreationFlags = windows.CREATE_NO_WINDOW
 		return cmd, executionPolicy{releaseOnStart: true, reportAfterExit: true}
 	}
-	cmd := exec.CommandContext(ctx, programPath, args...) //nolint:gosec // intentional external program execution
+	cmd := exec.CommandContext(ctx, programPath, args...)
 	// Suppress console windows without hiding the window of a GUI program.
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	return cmd, executionPolicy{releaseOnStart: isWindowsGUIExecutable(programPath)}

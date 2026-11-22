@@ -507,7 +507,7 @@ func recordInUse(ctx context.Context, root string, protected *protectedPaths, ba
 	}
 	defer func() {
 		cancelWalk()
-		for range ch { //nolint:revive // drain channel to avoid leaking sender goroutine
+		for range ch {
 		}
 	}()
 	for entry := range ch {
@@ -577,7 +577,7 @@ func walkScanRootWithUnitFilter(
 	}
 	defer func() {
 		cancelWalk()
-		for range ch { //nolint:revive // drain channel to avoid leaking sender goroutine
+		for range ch {
 		}
 	}()
 

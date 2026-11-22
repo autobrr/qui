@@ -536,7 +536,7 @@ func scopeAfterRescan(info *torrentFileInfo, instance *models.Instance, fileIDMa
 		if uniquePaths > 1 {
 			hasInside = true
 		}
-		if lf.nlink > uint64(uniquePaths) { //nolint:gosec // uniquePaths is always positive
+		if lf.nlink > uint64(uniquePaths) {
 			hasOutside = true
 		}
 		if hasInside && hasOutside {
@@ -774,8 +774,6 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 
 // buildHardlinkIndex constructs a fresh hardlink index by scanning all torrent files once.
 // The complexity is inherent to the single-pass algorithm that avoids multiple filesystem scans.
-//
-//nolint:gocyclo,funlen,revive // complexity is inherent to the single-pass design
 func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torrents []*qbt.Torrent, digest string, routed *crossseedroute.RoutedTorrents, routedDigest string) *HardlinkIndex {
 	startTime := time.Now()
 	index := &HardlinkIndex{
@@ -1153,7 +1151,7 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 func collectDeficitFileIDs(state *hardlinkBuildState) map[fsops.FileKey]*fileIDTracker {
 	deficitSet := make(map[fsops.FileKey]*fileIDTracker)
 	for fileID, tracker := range state.globalFileIDMap {
-		if tracker.nlink > uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
+		if tracker.nlink > uint64(tracker.uniquePathCount) {
 			deficitSet[fileID] = &fileIDTracker{nlink: tracker.nlink, uniquePathCount: tracker.uniquePathCount}
 		}
 	}
@@ -1304,7 +1302,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 				crossSeen[fullPath] = struct{}{}
 				tracker.uniquePathCount++
 
-				if tracker.nlink <= uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
+				if tracker.nlink <= uint64(tracker.uniquePathCount) {
 					delete(deficitSet, key)
 				}
 			}
@@ -1348,7 +1346,7 @@ func scopeForTorrent(info *torrentFileInfo, state *hardlinkBuildState) string {
 		if tracker.uniquePathCount > 1 {
 			hasInside = true
 		}
-		if tracker.nlink > uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
+		if tracker.nlink > uint64(tracker.uniquePathCount) {
 			hasOutside = true
 		}
 		if hasInside && hasOutside {

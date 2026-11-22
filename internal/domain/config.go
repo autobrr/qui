@@ -26,7 +26,7 @@ type Config struct {
 	AllowedHosts []string `toml:"allowedHosts" mapstructure:"-"`
 	// Loaded once at startup, so mapstructure skips it on reload.
 	ExperimentalFeatures []string `toml:"experimentalFeatures" mapstructure:"-"`
-	//nolint:gosec // Config schema requires this field name; value is provided by runtime configuration.
+
 	SessionSecret            string `toml:"sessionSecret" mapstructure:"sessionSecret"`
 	SessionCookieSecure      bool   `toml:"sessionCookieSecure" mapstructure:"sessionCookieSecure"`
 	LogLevel                 string `toml:"logLevel" mapstructure:"logLevel"`
