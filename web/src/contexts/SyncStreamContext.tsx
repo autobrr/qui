@@ -632,7 +632,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const url = api.getTorrentsStreamBatchUrl(normalized, { activity: wantActivity })
       closeConnection({ preserveRetry: true })
 
-      const handleNetworkError = (_event?: Event) => {
+      const handleNetworkError = () => {
         closeConnection({ preserveRetry: true })
 
         Object.values(streamsRef.current).forEach(entry => {
@@ -657,12 +657,12 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       // So: while CONNECTING, do nothing and let native retry proceed. Only escalate
       // (teardown + our own backoff) when the source is terminal/CLOSED or gone.
       // The 15s stale watchdog still escalates a connection stuck in CONNECTING.
-      const handleSourceError = (event?: Event) => {
+      const handleSourceError = () => {
         const source = connectionRef.current.source
         if (source && source.readyState === EventSource.CONNECTING) {
           return
         }
-        handleNetworkError(event)
+        handleNetworkError()
       }
 
       // Watchdog: any inbound event (init/update/delta/stream-error/heartbeat) proves
