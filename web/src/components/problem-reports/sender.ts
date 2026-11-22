@@ -81,7 +81,10 @@ export function useSender(): SenderControls {
       setWatched(null)
       startMutation.reset()
     },
-    onSuccess: () => queryClient.setQueryData<ProblemReportSender>(SENDER_KEY, { anonymous: true }),
+    onSuccess: async () => {
+      await queryClient.cancelQueries({ queryKey: SENDER_KEY })
+      queryClient.setQueryData<ProblemReportSender>(SENDER_KEY, { anonymous: true })
+    },
     onError: (error) => toast.error(t("problemReports.sender.errors.signOutFailed", { message: error.message })),
   })
 

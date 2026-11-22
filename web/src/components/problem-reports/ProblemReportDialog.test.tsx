@@ -10,6 +10,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { closeProblemReport } from "@/components/problem-reports/open"
 import { ProblemReportButton, ProblemReportDialogRoot, ProblemReportMenuItem } from "@/components/problem-reports/ProblemReportDialog"
+import { SENDER_KEY } from "@/components/problem-reports/sender"
 import { SENT_REPORTS_KEY } from "@/components/problem-reports/sent-reports"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -604,6 +605,37 @@ describe("Sender", () => {
     fireEvent.change(textField, { target: { value: "Torrents vanish" } })
     fireEvent.click(sendButton())
     await waitFor(() => expect(senders).toEqual([{ anonymous: true }]))
+  })
+
+  // regression: #4360
+  it("stays Anonymous after a sign-out when a sender read from before it answers later", async () => {
+    serve()
+    let releaseRead = () => {}
+    const heldRead = new Promise<void>((resolve) => { releaseRead = resolve })
+    let reads = 0
+    server.use(http.get("*/api/problem-reports/sender", async () => {
+      if (++reads === 2) await heldRead
+      return HttpResponse.json(octocat)
+    }))
+    const signIn = serveSignIn([])
+    const queryClient = mount()
+
+    await openDialog()
+    await screen.findByRole("button", { name: "octocat" })
+    act(() => {
+      window.dispatchEvent(new Event("visibilitychange"))
+    })
+    await waitFor(() => expect(reads).toBe(2))
+    openSenderMenu("octocat")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }))
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(signIn.signOuts).toBe(1)
+
+    releaseRead()
+    await waitFor(() => expect(queryClient.getQueryState(SENDER_KEY)?.fetchStatus).toBe("idle"))
+
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+    expect(screen.getByText(/^Anonymous: no name, no account\./)).not.toBeNull()
   })
 
   // regression: #4360
