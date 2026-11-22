@@ -149,7 +149,8 @@
         "issue": "已转为 Issue #{{number}}",
         "issueClosed": "Issue #{{number}} 已关闭",
         "closed": "已关闭：{{reason}}",
-        "closedNoReason": "已关闭"
+        "closedNoReason": "已关闭",
+        "notSent": "未发送"
       },
       "delete": "删除报告",
       "deleteUnavailable": "brrbin 现在无法删除报告。请稍后再试。",

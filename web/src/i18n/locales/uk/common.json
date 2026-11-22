@@ -173,7 +173,8 @@
         "issue": "Перетворено на issue #{{number}}",
         "issueClosed": "Issue #{{number}} закрито",
         "closed": "Закрито: {{reason}}",
-        "closedNoReason": "Закрито"
+        "closedNoReason": "Закрито",
+        "notSent": "Не надіслано"
       },
       "delete": "Видалити звіт",
       "deleteUnavailable": "brrbin зараз не може видаляти звіти. Спробуйте пізніше.",

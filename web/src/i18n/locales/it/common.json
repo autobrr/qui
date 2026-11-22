@@ -157,7 +157,8 @@
         "issue": "Diventata issue #{{number}}",
         "issueClosed": "Issue #{{number}} chiusa",
         "closed": "Chiusa: {{reason}}",
-        "closedNoReason": "Chiusa"
+        "closedNoReason": "Chiusa",
+        "notSent": "Non inviato"
       },
       "delete": "Elimina segnalazione",
       "deleteUnavailable": "brrbin non può eliminare segnalazioni in questo momento. Riprova più tardi.",

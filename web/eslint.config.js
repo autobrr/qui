@@ -161,6 +161,7 @@ const clientSettingAllowlist = [
   'src/hooks/usePersistedDeleteFiles.ts',
   // Bypass: the theme variation keeps its own localStorage key.
   'src/hooks/usePersistedThemeVariation.ts',
+  'src/components/problem-reports/draft.ts',
 ]
 
 export default tseslint.config([
