@@ -144,6 +144,37 @@
       "submit": "Enregistrer les modifications",
       "saving": "Enregistrement..."
     },
+    "templates": {
+      "title": "Modèle",
+      "help": "Remplace les permissions ci-dessous par celles dont un outil a besoin et efface la limite d'instances si nécessaire. Vous pouvez tout modifier ensuite.",
+      "pick": "Choisir un modèle",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "Webhooks Cross-Seed et packs de saison (pas client de téléchargement)"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "Liste des instances et totaux de transfert (dashbrr 0.5.0 ou plus)"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "Widget qui. Limitez la clé à une instance seulement si le widget définit instance"
+        },
+        "arrDirScan": {
+          "name": "Sonarr, Radarr, Lidarr, Readarr",
+          "description": "Webhook d'analyse de répertoires seul ; clients via Proxy Client"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "Extension de navigateur pour ajouter des torrents"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension (Cross-Seed)",
+          "description": "Ajout de torrents, correspondance manuelle et packs de saison"
+        }
+      }
+    },
     "permissions": {
       "title": "Permissions",
       "help": "L'écriture inclut la lecture et l'exécution. L'exécution n'inclut pas la lecture, car les paramètres contiennent des identifiants.",
