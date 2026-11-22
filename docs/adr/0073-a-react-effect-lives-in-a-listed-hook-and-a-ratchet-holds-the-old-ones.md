@@ -16,6 +16,7 @@ The 226 calls are in `web/eslint-suppressions.json`, so the ban is a ratchet, as
 - A job that needs a new effect costs a new hook and a line in `effectHooks`, and a reviewer sees both in the diff.
 - A pull request that removes an effect also lowers the count of its file, with `pnpm exec eslint --prune-suppressions <file>`.
 - `scripts/ratchet` fails on an entry in `web/eslint-suppressions.json` for any rule that `suppressedRules` in `scripts/ratchet/comments.go` does not list. Before this decision, `eslint --suppress-rule` could hide the reports of any rule there.
+- `scripts/ratchet` also fails when a rule in `suppressedRules` has no entry left. The change that removes the last effect deletes `qui/no-direct-effect` from the list, so a later change cannot add effects to the file again without a change to the list.
 
 ## Considered options
 

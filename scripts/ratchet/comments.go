@@ -98,6 +98,11 @@ func suppressionGrowth(base string) ([]string, error) {
 
 func suppressionProblems(now, was counts) []string {
 	var problems []string
+	for _, rule := range suppressedRules {
+		if _, ok := now[rule]; !ok {
+			problems = append(problems, fmt.Sprintf("%s: has no entry left for %s. Delete it from suppressedRules in scripts/ratchet/comments.go, so that its reports cannot come back without a change there.", suppressionsPath, rule))
+		}
+	}
 	for _, rule := range slices.Sorted(maps.Keys(now)) {
 		if !slices.Contains(suppressedRules, rule) {
 			problems = append(problems, fmt.Sprintf("%s: holds %d reports of %s. Only %s may have entries there. Fix each report as its ESLint message says, and delete the entries.", suppressionsPath, sum(now[rule]), rule, strings.Join(suppressedRules, " and ")))
