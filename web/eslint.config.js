@@ -7,6 +7,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 import { noComments } from './scripts/no-comments-rule.mjs'
+import { noDirectEffect } from './scripts/no-direct-effect-rule.mjs'
 import { noNativeTitle } from './scripts/no-native-title-rule.mjs'
 
 const copyGroupImportPattern = {
@@ -164,6 +165,12 @@ const clientSettingAllowlist = [
   'src/components/problem-reports/draft.ts',
 ]
 
+const effectHooks = {
+  'src/hooks/useDebounce.ts': 'Gives a value after it has stayed the same for a delay.',
+  'src/hooks/useDelayedVisibility.ts': 'Says when the tab has been hidden for a delay.',
+  'src/hooks/useNow.ts': 'Gives the time, and renders again each minute.',
+}
+
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
   {
@@ -182,9 +189,9 @@ export default tseslint.config([
       'react-hooks': reactHooks,
     },
     rules: {
-      '@stylistic/quotes': ['warn', 'double'],
+      '@stylistic/quotes': ['error', 'double'],
       '@stylistic/comma-dangle': [
-        'warn',
+        'error',
         {
           arrays: 'always-multiline',
           objects: 'always-multiline',
@@ -194,14 +201,14 @@ export default tseslint.config([
         },
       ],
       '@stylistic/indent': ['error', 2, { 'SwitchCase': 1 }],
-      '@stylistic/no-trailing-spaces': ['warn'],
+      '@stylistic/no-trailing-spaces': ['error'],
       '@stylistic/object-curly-spacing': ['error', 'always'],
-      '@typescript-eslint/no-unused-vars': ['warn', { ignoreRestSiblings: true }],
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
       '@typescript-eslint/no-explicit-any': 'error',
       'linebreak-style': ['error', 'unix'],
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      'react-refresh/only-export-components': ['error', { allowConstantExport: true }],
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/exhaustive-deps': 'error',
     }
   },
   {
@@ -373,10 +380,17 @@ export default tseslint.config([
     },
   },
   {
-    plugins: { qui: { rules: { 'no-comments': noComments, 'no-native-title': noNativeTitle } } },
+    plugins: { qui: { rules: { 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
     rules: {
       'qui/no-comments': 'error',
       'qui/no-native-title': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**', ...Object.keys(effectHooks)],
+    rules: {
+      'qui/no-direct-effect': 'error',
     },
   },
 ])
