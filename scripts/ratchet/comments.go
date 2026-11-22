@@ -30,7 +30,7 @@ var suppressedRules = []string{"qui/layer-order", "qui/no-comments", "qui/no-dir
 
 func goComments() (map[string]int, error) {
 	got := map[string]int{}
-	err := eachTrackedGoFile(func(path string, src []byte) error {
+	err := eachGoFile(func(path string, src []byte) error {
 		n, err := gocomments.Count(path, src)
 		if n > 0 {
 			got[path] = n
@@ -42,7 +42,7 @@ func goComments() (map[string]int, error) {
 
 func offLogLines() (map[string][]int, error) {
 	got := map[string][]int{}
-	err := eachTrackedGoFile(func(path string, src []byte) error {
+	err := eachGoFile(func(path string, src []byte) error {
 		lines, err := offlog.Lines(path, src)
 		if len(lines) > 0 {
 			got[path] = lines
@@ -52,8 +52,8 @@ func offLogLines() (map[string][]int, error) {
 	return got, err
 }
 
-func eachTrackedGoFile(visit func(path string, src []byte) error) error {
-	paths, err := gocomments.Tracked()
+func eachGoFile(visit func(path string, src []byte) error) error {
+	paths, err := gocomments.Files()
 	if err != nil {
 		return err
 	}

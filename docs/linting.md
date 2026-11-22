@@ -58,14 +58,14 @@ Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go
 
 `docs/standards/simplicity.md` bans comments. The ratchet holds the comments from before the ban, in two places:
 
-- **Go:** the `comments` key of `allowlist.json` is not a golangci-lint linter. The ratchet command counts the comments in each tracked Go file itself, with `scripts/comments/gocomments`. Rules 1 and 2 apply to each file. For rule 3, the command compares the total of all files with the total on the base branch, so a comment that moves to another file with its code does not fail the check. Move its count to the entry of the new file.
+- **Go:** the `comments` key of `allowlist.json` is not a golangci-lint linter. The ratchet command counts the comments itself, in each Go file that git tracks and in each new one that git does not ignore, with `scripts/comments/gocomments`. Rules 1 and 2 apply to each file. For rule 3, the command compares the total of all files with the total on the base branch, so a comment that moves to another file with its code does not fail the check. Move its count to the entry of the new file.
 - **TypeScript:** ESLint reports each comment as `qui/no-comments`, one of the suppressed ESLint rules below.
 
 `web/scripts/no-comments-rule.mjs` and `scripts/comments/gocomments` list the markers that are not comments for this rule. The ESLint rule has no fix, because `make fmt` runs `eslint --fix` and must not delete a comment that nobody read. The `/delete-comment` skill sorts the comments of a file and deletes them.
 
 ### Lines About an Off Feature
 
-`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to each file.
+`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in the same files itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to each file.
 
 A line counts when its level is DEBUG or INFO, and one of these is true:
 
