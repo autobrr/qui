@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/api/ctxkeys"
@@ -120,8 +121,11 @@ func TestLogsHandler_UpdateLogSettings_Path(t *testing.T) {
 		name       string
 		key        *models.APIKey
 		file       string
+		level      string
 		wantStatus int
 		wantBody   string
+		wantFile   string
+		wantLevel  string
 	}{
 		{
 			name:       "an API key cannot change the path",
@@ -129,21 +133,53 @@ func TestLogsHandler_UpdateLogSettings_Path(t *testing.T) {
 			file:       "other.log",
 			wantStatus: http.StatusForbidden,
 			wantBody:   "API key not allowed; use the web UI",
+			wantFile:   "qui.log",
+			wantLevel:  "INFO",
+		},
+		{
+			name:       "an API key can send the current path with another setting",
+			key:        logsWrite,
+			file:       "qui.log",
+			level:      "debug",
+			wantStatus: http.StatusOK,
+			wantFile:   "qui.log",
+			wantLevel:  "DEBUG",
 		},
 		{
 			name:       "a new path must end in .log",
 			file:       "other.txt",
 			wantStatus: http.StatusBadRequest,
 			wantBody:   "log file path must end in .log",
+			wantFile:   "qui.log",
+			wantLevel:  "INFO",
+		},
+		{
+			name:       "a browser can change the path",
+			file:       "other.log",
+			wantStatus: http.StatusOK,
+			wantFile:   "other.log",
+			wantLevel:  "INFO",
+		},
+		{
+			name:       "a browser can turn the log file off",
+			file:       "",
+			wantStatus: http.StatusOK,
+			wantFile:   "",
+			wantLevel:  "INFO",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, logDir := createTestConfigWithLogDir(t)
+			stopLogSettings(t, handler)
 			router := logsTestRouter(handler)
 
-			body, err := jsonv2.Marshal(map[string]string{"path": filepath.Join(logDir, tt.file)})
+			update := map[string]string{"path": logsTestPath(logDir, tt.file)}
+			if tt.level != "" {
+				update["level"] = tt.level
+			}
+			body, err := jsonv2.Marshal(update)
 			require.NoError(t, err)
 
 			ctx := t.Context()
@@ -154,14 +190,16 @@ func TestLogsHandler_UpdateLogSettings_Path(t *testing.T) {
 			router.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodPut, "/log-settings", bytes.NewReader(body)))
 
 			require.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
-			require.Equal(t, tt.wantBody, strings.TrimSpace(rec.Body.String()))
+			if tt.wantBody != "" {
+				require.Equal(t, tt.wantBody, strings.TrimSpace(rec.Body.String()))
+			}
 
 			rec = httptest.NewRecorder()
 			router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/log-settings", http.NoBody))
 			var settings config.LogSettingsResponse
 			require.NoError(t, jsonv2.UnmarshalRead(rec.Body, &settings))
-			require.Equal(t, filepath.Join(logDir, "qui.log"), settings.Path)
-			require.Equal(t, "INFO", settings.Level)
+			require.Equal(t, logsTestPath(logDir, tt.wantFile), settings.Path)
+			require.Equal(t, tt.wantLevel, settings.Level)
 		})
 	}
 }
@@ -475,6 +513,24 @@ func logsTestRouter(handler *LogsHandler) *chi.Mux {
 	router := chi.NewRouter()
 	handler.Routes(router)
 	return router
+}
+
+func logsTestPath(logDir, file string) string {
+	if file == "" {
+		return ""
+	}
+	return filepath.Join(logDir, file)
+}
+
+func stopLogSettings(t *testing.T, handler *LogsHandler) {
+	t.Helper()
+
+	level := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		handler.appConfig.StopWatching()
+		require.NoError(t, handler.appConfig.GetLogManager().Apply("info", "", 0, 0))
+		zerolog.SetGlobalLevel(level)
+	})
 }
 
 func writeLogsTestFile(t *testing.T, dir, name, content string) {

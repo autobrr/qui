@@ -41,6 +41,9 @@ type AppConfig struct {
 
 	configMu sync.Mutex
 
+	watchMu      sync.Mutex
+	watchStopped bool
+
 	listenersMu sync.RWMutex
 	listeners   []func(*domain.Config)
 
@@ -283,6 +286,11 @@ func (c *AppConfig) watchConfig() {
 	// from the watcher goroutine without a lock, so setting it after WatchConfig
 	// races with an event that arrives right away.
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
+		c.watchMu.Lock()
+		defer c.watchMu.Unlock()
+		if c.watchStopped {
+			return
+		}
 		log.Info().Msgf("Config file changed: %s", e.Name)
 		// An editor can save in several writes, and a part-written file can
 		// clear keys such as oidcAllowedSubject. Read the file once it is quiet.
@@ -290,6 +298,12 @@ func (c *AppConfig) watchConfig() {
 		c.reload()
 	})
 	c.viper.WatchConfig()
+}
+
+func (c *AppConfig) StopWatching() {
+	c.watchMu.Lock()
+	defer c.watchMu.Unlock()
+	c.watchStopped = true
 }
 
 const configReloadDelay = 200 * time.Millisecond
