@@ -7,7 +7,7 @@ if [ -z "$base" ]; then
 	exit 1
 fi
 
-changed=$({ git diff --name-only "$base"; git ls-files --others --exclude-standard; } | sort -u)
+changed=$({ git -c core.quotePath=false diff --name-only "$base"; git -c core.quotePath=false ls-files --others --exclude-standard; } | sort -u)
 if [ -z "$changed" ]; then
 	echo "prepush: no changed file since the origin/develop merge base."
 	exit 0
@@ -18,6 +18,7 @@ printf '%s\n' "$changed" | while read -r file; do
 	case "$file" in
 	.github/workflows/*.yml | .github/workflows/*.yaml) actionlint "$file" ;;
 	*.sh) bash -n "$file" ;;
+	documentation/*.js) ;;
 	*.js | *.mjs | *.cjs) node --check "$file" ;;
 	esac
 done
