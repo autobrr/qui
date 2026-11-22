@@ -23,5 +23,5 @@ The 28 imports are in `web/eslint-suppressions.json`, so the rule is a ratchet, 
 
 - **A rule in `docs/standards/frontend-review.md`.** Rejected. Nothing fails when a change skips it.
 - **`no-restricted-imports` with one block for each folder.** Rejected. In a flat config, the last block that matches a file replaces the options of the same rule in earlier blocks, and `web/eslint.config.js` already uses the rule for other bans. Each folder block would turn those bans off for its files.
-- **A boundaries plugin from npm.** Rejected for now. The rule is 50 lines with no dependency. A plugin is the better choice if the feature folders under `components` get an order of their own.
+- **A boundaries plugin from npm.** Rejected for now. The rule is about 50 lines with no dependency. A plugin is the better choice if the feature folders under `components` get an order of their own.
 - **Fix the 28 imports in the same change.** Rejected. Each one needs a decision on where the shared code belongs.
