@@ -6,11 +6,13 @@ package proxy
 import (
 	"context"
 	"encoding/json/v2"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,5 +141,67 @@ func TestProxyListsKeepTheAnnounceURL(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 		require.Equal(t, []row{{Tracker: announce}}, response.Torrents)
+	})
+}
+
+// regression: #4308
+func TestTorrentSearchWithoutLimitReturnsAllTorrents(t *testing.T) {
+	t.Parallel()
+
+	const total = 100_001
+	var b strings.Builder
+	b.Grow(total * 56)
+	b.WriteString(`{"rid":1,"full_update":true,"torrents":{`)
+	for i := range total {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		fmt.Fprintf(&b, `"%06x":{"name":"t-%d","state":"stalledUP","progress":1}`, i, i)
+	}
+	b.WriteString(`}}`)
+
+	handler, instanceID := newInfoTestHandler(t, b.String())
+	request := func(path string) *http.Request {
+		ctx := context.WithValue(t.Context(), ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "sonarr", InstanceID: instanceID})
+		ctx = context.WithValue(ctx, InstanceIDContextKey, instanceID)
+		return httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	}
+
+	t.Run("omitted limit returns every matching torrent", func(t *testing.T) {
+		t.Parallel()
+		rec := httptest.NewRecorder()
+		handler.handleTorrentSearch(rec, request("/api/v2/torrents/search"))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		var response struct {
+			Torrents []struct {
+				Hash string `json:"hash"`
+			} `json:"torrents"`
+			Total   int  `json:"total"`
+			HasMore bool `json:"hasMore"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		require.Len(t, response.Torrents, total)
+		require.Equal(t, total, response.Total)
+		require.False(t, response.HasMore)
+	})
+
+	t.Run("explicit limit still paginates", func(t *testing.T) {
+		t.Parallel()
+		rec := httptest.NewRecorder()
+		handler.handleTorrentSearch(rec, request("/api/v2/torrents/search?limit=25"))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		var response struct {
+			Torrents []struct {
+				Hash string `json:"hash"`
+			} `json:"torrents"`
+			Total   int  `json:"total"`
+			HasMore bool `json:"hasMore"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		require.Len(t, response.Torrents, 25)
+		require.Equal(t, total, response.Total)
+		require.True(t, response.HasMore)
 	})
 }
