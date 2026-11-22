@@ -19,6 +19,9 @@ tester.run("no-direct-effect", noDirectEffect, {
     "import { useEffect } from \"react\"\nconst run = (useEffect) => useEffect(() => {}, [])",
     "import { useDebounce } from \"@/hooks/useDebounce\"\nconst term = useDebounce(text, 300)",
     "import { useEffect } from \"react\"\nconst hook = useEffect",
+    "import * as React from \"react\"\nReact[hook](() => {}, [])",
+    "import * as React from \"react\"\nReact[`useEffect${suffix}`](() => {}, [])",
+    "import * as React from \"react\"\nconst run = (React) => React[\"useEffect\"](() => {}, [])",
   ],
   invalid: [
     { code: "import { useEffect } from \"react\"\nuseEffect(() => {}, [])", errors: banned },
@@ -27,6 +30,8 @@ tester.run("no-direct-effect", noDirectEffect, {
     { code: "import { useEffect as useSync } from \"react\"\nuseSync(() => {}, [])", errors: banned },
     { code: "import * as React from \"react\"\nReact.useEffect(() => {}, [])", errors: banned },
     { code: "import React from \"react\"\nReact.useLayoutEffect(() => {}, [])", errors: banned },
+    { code: "import * as React from \"react\"\nReact[\"useEffect\"](() => {}, [])", errors: banned },
+    { code: "import React from \"react\"\nReact[`useInsertionEffect`](() => {}, [])", errors: banned },
     { code: "import { useEffect } from \"react\"\nfunction Row() { useEffect(() => {}, []); useEffect(() => {}, []) }", errors: [...banned, ...banned] },
   ],
 })

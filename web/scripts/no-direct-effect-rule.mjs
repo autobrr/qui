@@ -9,6 +9,12 @@ function reactImport(scope, name) {
   }
 }
 
+function memberName({ computed, property }) {
+  if (!computed) return property.name
+  if (property.type === "Literal") return property.value
+  if (property.type === "TemplateLiteral" && property.expressions.length === 0) return property.quasis[0].value.cooked
+}
+
 export const noDirectEffect = {
   meta: {
     type: "problem",
@@ -29,8 +35,8 @@ export const noDirectEffect = {
           }
           return
         }
-        if (callee.type !== "MemberExpression" || callee.computed || callee.object.type !== "Identifier") return
-        if (!effectHooks.has(callee.property.name)) return
+        if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier") return
+        if (!effectHooks.has(memberName(callee))) return
         const specifier = reactImport(scope, callee.object.name)
         if (specifier && specifier.type !== "ImportSpecifier") {
           context.report({ node: callee, messageId: "banned" })
