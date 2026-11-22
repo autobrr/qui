@@ -20,7 +20,7 @@ export const noDirectEffect = {
     type: "problem",
     schema: [],
     messages: {
-      banned: "An effect runs after render, and a wrong one fails without an error: a missed cleanup, a stale value, or a second render for state that render could compute. Do the job without one. Compute a value from props or state during render. Reset state with a key. Answer a click or a change in its handler. Read an outside store with useSyncExternalStore, and fetch with useQuery. For a delay, a clock, or a screen size, call useDebounce, useDelayedVisibility, useNow, or useMediaQuery from @/hooks. When the job does need an effect, write one hook that hides it behind a named job, and add its file to effectHooks in web/eslint.config.js with that job.",
+      banned: "An effect runs after render, and a wrong one fails without an error: a missed cleanup, a stale value, or a second render for state that render could compute. Do the job without one. Compute a value from props or state during render. Reset state with a key. Answer a click or a change in its handler, and when one event changes several values, change them in one useReducer action. Read an outside store with useSyncExternalStore, and fetch with useQuery. For a delay, a clock, or a screen size, call useDebounce, useDelayedVisibility, useNow, or useMediaQuery from @/hooks. When the job does need an effect, write one hook that hides it behind a named job, and add its file to effectHooks in web/eslint.config.js with that job.",
     },
   },
   create(context) {
