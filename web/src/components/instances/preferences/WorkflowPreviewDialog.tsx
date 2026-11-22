@@ -425,9 +425,9 @@ export function WorkflowPreviewDialog({
                               tracker={torrent.tracker}
                               trackerIcons={trackerIcons}
                             />
-                            <span className="truncate max-w-[100px]" title={torrent.tracker}>
+                            <TruncatedText className="max-w-[100px]" tooltipContent={trackerCustom?.displayName ? torrent.tracker : undefined}>
                               {trackerCustom?.displayName ?? torrent.tracker}
-                            </span>
+                            </TruncatedText>
                           </div>
                         </td>
                         <td className="p-2 max-w-[280px]">

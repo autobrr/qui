@@ -9,6 +9,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { useOpenSystemNotice } from "@/hooks/useSystemNotices"
 import "@/i18n"
 import type { SystemNotice } from "@/types"
@@ -22,7 +23,7 @@ const open: SystemNotice[] = [
 function Menu({ notices }: { notices: SystemNotice[] }) {
   const openNotice = useOpenSystemNotice(notices)
   return (
-    <>
+    <TooltipProvider>
       <DropdownMenu defaultOpen>
         <DropdownMenuTrigger>menu</DropdownMenuTrigger>
         <DropdownMenuContent>
@@ -30,7 +31,7 @@ function Menu({ notices }: { notices: SystemNotice[] }) {
         </DropdownMenuContent>
       </DropdownMenu>
       <SystemNoticeDialog notice={openNotice.notice} returnFocusTo={openNotice.menuButton} onClose={openNotice.close} />
-    </>
+    </TooltipProvider>
   )
 }
 

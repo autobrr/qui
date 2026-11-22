@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TorrentName } from "@/components/ui/torrent-name"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useTorrentName } from "@/hooks/useTopTorrents"
 import { useTrackerGroupIcon } from "@/hooks/useTrackerGroupName"
@@ -90,12 +91,12 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
                     <div className="flex min-w-0 items-center gap-2">
                       <button type="button" aria-expanded={expanded} className="flex min-w-0 items-center gap-2 text-left">
                         {expanded ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
-                        <TorrentName name={name} className={expanded ? undefined : "line-clamp-2 @2xl:line-clamp-1"} />
+                        <TorrentName name={name} openOnTap={false} className={expanded ? undefined : "line-clamp-2 @2xl:line-clamp-1"} />
                       </button>
                       <span className="hidden shrink-0 items-center gap-2 @2xl:flex"><TorrentMarks torrent={torrent} /></span>
                     </div>
                     <div className="flex min-w-0 items-center gap-2 pl-5.5 text-xs font-normal text-muted-foreground @2xl:hidden">
-                      <span className="flex min-w-0 items-center gap-1.5">{trackerIcon}<span className="truncate">{tracker}</span></span>
+                      <span className="flex min-w-0 items-center gap-1.5">{trackerIcon}<TruncatedText>{tracker}</TruncatedText></span>
                       <TorrentMarks torrent={torrent} />
                     </div>
                     <Facts
@@ -108,7 +109,7 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
                       className="@3xl:hidden"
                     />
                   </TableCell>
-                  <TableCell className="hidden max-w-64 text-muted-foreground @2xl:table-cell" title={tracker}><span className="flex items-center gap-1.5">{trackerIcon}<span className="truncate">{tracker}</span></span></TableCell>
+                  <TableCell className="hidden max-w-64 text-muted-foreground @2xl:table-cell"><span className="flex items-center gap-1.5">{trackerIcon}<TruncatedText>{tracker}</TruncatedText></span></TableCell>
                   <TableCell className="pr-4 text-right tabular-nums sm:pr-6 @xl:pr-2">
                     {formatBytes(torrent.uploaded)}
                     <div className="text-xs text-muted-foreground @xl:hidden" data-narrow>{seeded(torrent)}</div>

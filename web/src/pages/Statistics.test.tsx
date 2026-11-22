@@ -231,6 +231,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   // A test that opens a Select or uses Show fewer stubs it, as jsdom has no layout.
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
   localStorage.clear()
@@ -395,12 +396,12 @@ describe("Statistics", () => {
     renderPage()
     await screen.findByText("periods.custom")
     applyRange("2026-01-06")
-    await screen.findAllByTitle("First.Range-GRP")
+    await screen.findAllByText("First.Range-GRP")
 
     applyRange("2026-01-07")
-    await vi.waitFor(() => expect(screen.queryAllByTitle("First.Range-GRP")).toHaveLength(0))
+    await vi.waitFor(() => expect(screen.queryAllByText("First.Range-GRP")).toHaveLength(0))
     releaseSecond()
-    await screen.findAllByTitle("Second.Range-GRP")
+    await screen.findAllByText("Second.Range-GRP")
   })
 
   it("moves a preset period forward while the page stays open, and keeps the old numbers until the new ones load", async () => {
@@ -978,7 +979,7 @@ describe("Statistics", () => {
     const marks = (name: string) => within(table).getByText(name).closest("td")?.querySelector("[role=img]")?.getAttribute("aria-label")
     expect([marks("Alpha"), marks("Charlie"), marks("Bravo")]).toEqual([undefined, "topTorrents.crossSeed", "topTorrents.deleted"])
     expect(cells(table, "Alpha").slice(1)).toEqual(["a.test · Seedbox", "3 KiB", "0 B", "∞", "table.seededValue value=3.00", "1 KiB"])
-    expect(within(table).getAllByTitle("a.test · Seedbox").length).toBeGreaterThan(0)
+    expect(within(table).getAllByText("a.test · Seedbox").length).toBeGreaterThan(0)
     const asked = requests.filter(request => request.groupBy === "torrent")
     expect(asked.map(request => [request.instanceId, request.bucket, request.limit, request.group])).toEqual([[1, "total", "10", null], [2, "total", "10", null]])
   })
@@ -1067,6 +1068,69 @@ describe("Statistics", () => {
       expect(within(table).getByText("Alpha").closest("button")?.getAttribute("aria-expanded")).toBe("false")
     } finally {
       vi.unstubAllGlobals()
+      delete touchWindow.ontouchstart
+    }
+  })
+
+  // regression: #4358
+  it("shows a cut-off tracker on a tap, and the tap still opens the row", async () => {
+    const touchWindow = window as Window & { ontouchstart?: unknown }
+    touchWindow.ontouchstart = null
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
+    try {
+      torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 1024)] : []
+      renderPage()
+      const table = await screen.findByRole("table")
+      const row = (await within(table).findByText("Alpha")).closest("tr")!
+      const tracker = row.querySelectorAll("td")[1].querySelector<HTMLElement>("[data-slot=truncated-text]")!
+
+      fireEvent.pointerDown(tracker, { pointerType: "touch" })
+      fireEvent.pointerUp(tracker, { pointerType: "touch" })
+      fireEvent.click(tracker)
+
+      expect(screen.getByRole("tooltip").textContent).toContain(tracker.textContent)
+      expect(within(table).getByText("Alpha").closest("button")?.getAttribute("aria-expanded")).toBe("true")
+    } finally {
+      vi.unstubAllGlobals()
+      delete touchWindow.ontouchstart
+    }
+  })
+
+  // regression: #4358
+  it("shows a cut-off tracker on a tap on a phone, where the tracker sits under the name, and the tap still opens the row", async () => {
+    const touchWindow = window as Window & { ontouchstart?: unknown }
+    touchWindow.ontouchstart = null
+    stubPhone("upright")
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
+    try {
+      torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 1024)] : []
+      renderPage()
+      const table = await screen.findByRole("table")
+      const row = (await within(table).findByText("Alpha")).closest("tr")!
+      const [nameCell, trackerCell] = row.querySelectorAll("td")
+      const trackerText = trackerCell.querySelector("[data-slot=truncated-text]")!.textContent
+      const tracker = [...nameCell.querySelectorAll<HTMLElement>("[data-slot=truncated-text]")].find(element => element.textContent === trackerText)
+
+      expect(tracker).toBeDefined()
+      fireEvent.pointerDown(tracker!, { pointerType: "touch" })
+      fireEvent.pointerUp(tracker!, { pointerType: "touch" })
+      fireEvent.click(tracker!)
+
+      expect(screen.getByRole("tooltip").textContent).toContain(trackerText)
+      expect(within(table).getByText("Alpha").closest("button")?.getAttribute("aria-expanded")).toBe("true")
+    } finally {
       delete touchWindow.ontouchstart
     }
   })

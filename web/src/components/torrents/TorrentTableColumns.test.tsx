@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import i18n from "@/i18n"
 import type { Torrent } from "@/types"
 import { cleanup, render } from "@testing-library/react"
@@ -95,7 +96,7 @@ describe("name column", () => {
     const column = createColumns({ incognitoMode: false }, i18n.getFixedT(null, "torrents"))
       .find(col => "accessorKey" in col && col.accessorKey === "name")!
     const cell = column.cell as (ctx: { row: { original: Torrent } }) => ReactElement
-    return render(cell({ row: { original: { name: "Example.Show.S01E01-GRP", ...original } as Torrent } })).container.textContent ?? ""
+    return render(cell({ row: { original: { name: "Example.Show.S01E01-GRP", ...original } as Torrent } }), { wrapper: TooltipProvider }).container.textContent ?? ""
   }
 
   it("shows the badge of a helper torrent", () => {

@@ -10,6 +10,7 @@ import { Section } from "@/components/kit/Section"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import {
   useActivateLicense,
@@ -223,22 +224,26 @@ export function LicenseManager({
                   <span className="sr-only">{t("themes.license.discord.opensInNewTab")}</span>
                 </a>
                 {t("themes.license.discord.afterLink")}{" "}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await copyTextToClipboard("/verify")
-                      toast.success(t("themes.license.copiedVerify"))
-                    } catch {
-                      toast.error(t("themes.license.failedCopyVerify"))
-                    }
-                  }}
-                  className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-semibold tracking-[-0.01em] text-foreground shadow-sm transition-colors hover:bg-muted cursor-pointer"
-                  aria-label={t("themes.license.discord.copyVerifyAriaLabel")}
-                  title={t("themes.license.discord.copyVerifyTitle")}
-                >
-                  {t("themes.license.discord.verifyCommand")}
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await copyTextToClipboard("/verify")
+                          toast.success(t("themes.license.copiedVerify"))
+                        } catch {
+                          toast.error(t("themes.license.failedCopyVerify"))
+                        }
+                      }}
+                      className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-semibold tracking-[-0.01em] text-foreground shadow-sm transition-colors hover:bg-muted cursor-pointer"
+                      aria-label={t("themes.license.discord.copyVerifyAriaLabel")}
+                    >
+                      {t("themes.license.discord.verifyCommand")}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("themes.license.discord.copyVerifyTitle")}</TooltipContent>
+                </Tooltip>
                 {" "}{t("themes.license.discord.afterVerify")} <span className="font-medium text-foreground">{t("themes.license.discord.channel")}</span>{t("themes.license.discord.suffix")}
               </p>
             </div>

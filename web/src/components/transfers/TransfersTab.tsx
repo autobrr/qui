@@ -351,8 +351,8 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
         />
       </TableCell>
       <TableCell className="w-full max-w-0 align-top whitespace-normal">
-        {/* The name wraps in full on touch, where no pointer shows its title. */}
-        <div id={nameId} className="font-medium pointer-fine:line-clamp-2"><TorrentName name={display.name(row)} /></div>
+        {/* The name wraps in full on touch, where no pointer opens its tooltip. */}
+        <div id={nameId} className="font-medium"><TorrentName name={display.name(row)} className="pointer-fine:line-clamp-2" /></div>
         {/* The dot stays with the fact before it, so a wrapped line does not start with a dot. */}
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
           {/* A narrow table has no Size column, so the route line starts with the size. */}

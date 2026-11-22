@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Progress } from "@/components/ui/progress"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { DiscScans } from "@/hooks/useDiscScans"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
@@ -38,24 +39,30 @@ export function DiscReportButton({
     ? t("discScan.actionActive")
     : status === "completed" ? t("discScan.actionReady") : status === "failed" ? t("discScan.actionFailed") : t("discScan.action")
   return (
-    <button
-      type="button"
-      className={cn(
-        "p-0.5 rounded transition-colors",
-        status === "completed" ? "text-green-500" : status === "failed" ? "text-destructive" : "text-muted-foreground",
-        disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-muted/80 hover:text-foreground",
-        className
-      )}
-      onClick={(e) => {
-        e.stopPropagation()
-        if (!disabled) onClick()
-      }}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-    >
-      {active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Disc3 className="h-3 w-3" />}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn("inline-flex", disabled && "cursor-not-allowed", className)}
+          tabIndex={disabled ? 0 : undefined}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className={cn(
+              "p-0.5 rounded transition-colors",
+              status === "completed" ? "text-green-500" : status === "failed" ? "text-destructive" : "text-muted-foreground",
+              disabled ? "pointer-events-none opacity-50" : "hover:bg-muted/80 hover:text-foreground"
+            )}
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={label}
+          >
+            {active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Disc3 className="h-3 w-3" />}
+          </button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 

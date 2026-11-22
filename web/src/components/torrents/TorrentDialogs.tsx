@@ -29,6 +29,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { api } from "@/lib/api"
 import {
   buildTagEditorItems,
@@ -613,7 +615,6 @@ export const SetLocationDialog = memo(function SetLocationDialog({
                       <button
                         key={entry}
                         type="button"
-                        title={entry}
                         className={cn(
                           "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
                           (highlightedIndex === idx) ? "bg-accent text-accent-foreground" : "hover:bg-accent/70"
@@ -621,7 +622,7 @@ export const SetLocationDialog = memo(function SetLocationDialog({
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => handleSelect(entry)}
                       >
-                        <span className="block truncate text-left">{entry}</span>
+                        <TruncatedText className="block text-left" openOnTap={false}>{entry}</TruncatedText>
                       </button>
                     ))}
                   </div>
@@ -1367,22 +1368,25 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
 
                   <div>
                     {filteredCategories.map((category) => (
-                      <button
-                        key={category.name}
-                        type="button"
-                        onClick={() => setChoice({ source: "list", category: category.name })}
-                        className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                          choice.source === "list" && choice.category === category.name ? "bg-accent" : ""
-                        }`}
-                        title={category.name}
-                      >
-                        <span
-                          className="text-sm"
-                          style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
-                        >
-                          {category.displayName}
-                        </span>
-                      </button>
+                      <Tooltip key={category.name} disabled={category.name === category.displayName}>
+                        <TooltipTrigger asChild openOnTap>
+                          <button
+                            type="button"
+                            onClick={() => setChoice({ source: "list", category: category.name })}
+                            className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                              choice.source === "list" && choice.category === category.name ? "bg-accent" : ""
+                            }`}
+                          >
+                            <span
+                              className="text-sm"
+                              style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                            >
+                              {category.displayName}
+                            </span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>{category.name}</TooltipContent>
+                      </Tooltip>
                     ))}
                   </div>
 

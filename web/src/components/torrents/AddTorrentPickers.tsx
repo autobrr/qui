@@ -13,6 +13,7 @@ import {
   ResponsiveCommandPopover,
   useResponsiveMobile
 } from "@/components/ui/responsive-command-popover"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { parseTypedTags } from "@/lib/add-torrent-tags"
 import { cn } from "@/lib/utils"
 import type { Category } from "@/types"
@@ -269,7 +270,7 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
                   value={tag}
                   selected={selectedSet.has(tag)}
                   onSelect={() => toggle(tag)}
-                  label={<span className="truncate" title={tag}>{tag}</span>}
+                  label={<TruncatedText openOnTap={false}>{tag}</TruncatedText>}
                   hint={known.has(tag) ? undefined : t("addTorrentDialog.options.newTag")}
                 />
               ))}
@@ -289,7 +290,7 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
               key={tag}
               className="inline-flex h-8 max-w-full items-center rounded-md border bg-secondary pl-2.5 text-xs text-secondary-foreground sm:h-7 sm:pl-2"
             >
-              <span className="truncate" title={tag}>{tag}</span>
+              <TruncatedText>{tag}</TruncatedText>
               {!known.has(tag) && (
                 <span className="ml-1 text-[10px] text-muted-foreground">{t("addTorrentDialog.options.newTag")}</span>
               )}

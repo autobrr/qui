@@ -26,7 +26,9 @@ function useIsTouchDevice() {
   return isTouchDevice
 }
 
-const TooltipProvider = TooltipPrimitive.Provider
+function TooltipProvider({ delayDuration = 400, ...props }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  return <TooltipPrimitive.Provider delayDuration={delayDuration} {...props} />
+}
 
 // Context to share tooltip state between components
 const TooltipContext = React.createContext<{

@@ -145,9 +145,14 @@ function DataStatus({ d }: { d: DashboardInstanceStats }) {
         : undefined
   if (!status) return null
   return (
-    <span role="img" aria-label={status.label} title={status.label} className="shrink-0">
-      <status.Icon className={cn("size-3.5", status.className)} aria-hidden="true" />
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild openOnTap="only">
+        <span role="img" aria-label={status.label} className="shrink-0">
+          <status.Icon className={cn("size-3.5", status.className)} aria-hidden="true" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{status.label}</TooltipContent>
+    </Tooltip>
   )
 }
 

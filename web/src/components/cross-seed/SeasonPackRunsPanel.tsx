@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useInstances } from "@/hooks/useInstances"
 import { useClientSetting } from "@/lib/client-settings"
 import { crossSeedRouteStatusKeys, crossSeedRouteText } from "@/lib/cross-seed-utils"
@@ -235,7 +236,7 @@ export function SeasonPackRunsPanel({
                             <Badge variant="outline" className="uppercase">{t(`seasonPackRuns.phases.${run.phase}`, run.phase)}</Badge>
                             {reasonLabel && <span className="text-xs text-muted-foreground">· {reasonLabel}</span>}
                           </div>
-                          <p className="truncate text-sm font-medium" title={run.torrentName}>{run.torrentName}</p>
+                          <TruncatedText className="block text-sm font-medium">{run.torrentName}</TruncatedText>
                           {run.message && <p className="line-clamp-2 text-xs text-muted-foreground">{run.message}</p>}
                         </div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:w-80 md:grid-cols-3">

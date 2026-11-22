@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next"
 import { Editor } from "@/components/kit/Editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   DEFAULT_INSTANCE_MARK,
   INSTANCE_MARK_COLORS,
@@ -211,35 +212,38 @@ function InstanceMarkPickerBody({ mark, autoLetters, automaticRef, onChange, onD
             const label = t(color ? COLOR_LABEL_KEYS[color] : "mark.colors.none")
             const swatch = instanceMarkColorProps(color)
             return (
-              <button
-                key={color ?? "none"}
-                type="button"
-                role="radio"
-                data-index={index}
-                tabIndex={checked ? 0 : -1}
-                aria-checked={checked}
-                aria-label={label}
-                title={label}
-                onClick={() => onChange({ ...mark, color })}
-                className={cn(
-                  "grid aspect-square w-full max-w-11 place-items-center justify-self-center rounded-full sm:size-8",
-                  optionClassName,
-                  swatch.className
-                )}
-                style={swatch.style}
-              >
-                <span
-                  className={cn(
-                    "relative size-5 overflow-hidden rounded-full ring-offset-2 ring-offset-background",
-                    color && "bg-current",
-                    checked ? "ring-2 ring-foreground" : "ring-1 ring-border"
-                  )}
-                >
-                  {color === null && (
-                    <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 -rotate-45 bg-muted-foreground" />
-                  )}
-                </span>
-              </button>
+              <Tooltip key={color ?? "none"}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    role="radio"
+                    data-index={index}
+                    tabIndex={checked ? 0 : -1}
+                    aria-checked={checked}
+                    aria-label={label}
+                    onClick={() => onChange({ ...mark, color })}
+                    className={cn(
+                      "grid aspect-square w-full max-w-11 place-items-center justify-self-center rounded-full sm:size-8",
+                      optionClassName,
+                      swatch.className
+                    )}
+                    style={swatch.style}
+                  >
+                    <span
+                      className={cn(
+                        "relative size-5 overflow-hidden rounded-full ring-offset-2 ring-offset-background",
+                        color && "bg-current",
+                        checked ? "ring-2 ring-foreground" : "ring-1 ring-border"
+                      )}
+                    >
+                      {color === null && (
+                        <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 -rotate-45 bg-muted-foreground" />
+                      )}
+                    </span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{label}</TooltipContent>
+              </Tooltip>
             )
           })}
         </div>
@@ -268,24 +272,27 @@ function InstanceMarkPickerBody({ mark, autoLetters, automaticRef, onChange, onD
                   const pressed = index === selectedIcon
                   const label = t(entry.labelKey)
                   return (
-                    <button
-                      key={entry.name}
-                      type="button"
-                      data-index={index}
-                      data-current={pressed || undefined}
-                      tabIndex={index === (iconTabStop ?? Math.max(selectedIcon, 0)) ? 0 : -1}
-                      aria-label={label}
-                      aria-pressed={pressed}
-                      title={label}
-                      onFocus={() => setIconTabStop(index)}
-                      onClick={() => {
-                        setIconTabStop(index)
-                        onChange({ ...mark, icon: entry.name, letters: "" })
-                      }}
-                      className={cn("grid h-7 w-full place-items-center rounded-md max-sm:h-11", optionClassName, pressed && pressedClassName)}
-                    >
-                      <entry.Icon className={cn("size-[18px]", pressed && colorProps.className)} style={pressed ? colorProps.style : undefined} />
-                    </button>
+                    <Tooltip key={entry.name}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          data-index={index}
+                          data-current={pressed || undefined}
+                          tabIndex={index === (iconTabStop ?? Math.max(selectedIcon, 0)) ? 0 : -1}
+                          aria-label={label}
+                          aria-pressed={pressed}
+                          onFocus={() => setIconTabStop(index)}
+                          onClick={() => {
+                            setIconTabStop(index)
+                            onChange({ ...mark, icon: entry.name, letters: "" })
+                          }}
+                          className={cn("grid h-7 w-full place-items-center rounded-md max-sm:h-11", optionClassName, pressed && pressedClassName)}
+                        >
+                          <entry.Icon className={cn("size-[18px]", pressed && colorProps.className)} style={pressed ? colorProps.style : undefined} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>{label}</TooltipContent>
+                    </Tooltip>
                   )
                 })}
               </div>

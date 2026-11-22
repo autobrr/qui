@@ -427,9 +427,14 @@ export const createColumns = ({
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
             {helper && (
-              <Badge variant="outline" className={cn("text-xs mr-1.5", badgePadding)} title={helperHint}>
-                {helper === "share" ? helperShareLabel : helperTransferLabel}
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild openOnTap="only">
+                  <Badge variant="outline" className={cn("text-xs mr-1.5", badgePadding)}>
+                    {helper === "share" ? helperShareLabel : helperTransferLabel}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>{helperHint}</TooltipContent>
+              </Tooltip>
             )}
             {displayName}
           </div>

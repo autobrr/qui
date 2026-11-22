@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { crossSeedRouteKey, crossSeedRoutesKey, useCrossSeedRoute, useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
@@ -392,12 +393,11 @@ function RoutePathInput({ baseDir, crossSeedInstanceId, value, onChange, disable
                 <button
                   key={entry}
                   type="button"
-                  title={entry}
                   className={cn("w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground", highlightedIndex === index && "bg-accent text-accent-foreground")}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleSelect(entry)}
                 >
-                  <span className="block truncate text-left">{entry}</span>
+                  <TruncatedText className="block text-left" openOnTap={false}>{entry}</TruncatedText>
                 </button>
               ))}
             </div>

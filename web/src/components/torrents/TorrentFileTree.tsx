@@ -8,6 +8,7 @@ import { DiscReportButton } from "@/components/torrents/TorrentDiscReportDialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { SortIcon } from "@/components/ui/sort-icon"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
 import { buildFileTree, discPathOf, sortFileTree, toggleFileSort, type FileSort, type FileSortColumn, type FileTreeNode } from "@/lib/file-tree"
 import { reconcileExpandedFolders } from "@/lib/file-tree-expansion"
@@ -294,22 +295,29 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                         <span className="mx-1">·</span>
                         {formatBytes(file.size)}
                       </span>
-                      <button
-                        type="button"
-                        className={cn(
-                          "p-0.5 rounded text-muted-foreground transition-colors",
-                          incognitoMode ? "opacity-50 cursor-not-allowed" : "hover:bg-muted/80 hover:text-foreground"
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (!incognitoMode) onRenameFile(file.name)
-                        }}
-                        disabled={incognitoMode}
-                        aria-label={t("fileTree.renameFile")}
-                        title={t("fileTree.renameFile")}
-                      >
-                        <FilePen className="h-3 w-3" />
-                      </button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className={cn("inline-flex", incognitoMode && "cursor-not-allowed")}
+                            tabIndex={incognitoMode ? 0 : undefined}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              className={cn(
+                                "p-0.5 rounded text-muted-foreground transition-colors",
+                                incognitoMode ? "pointer-events-none opacity-50" : "hover:bg-muted/80 hover:text-foreground"
+                              )}
+                              onClick={() => onRenameFile(file.name)}
+                              disabled={incognitoMode}
+                              aria-label={t("fileTree.renameFile")}
+                            >
+                              <FilePen className="h-3 w-3" />
+                            </button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("fileTree.renameFile")}</TooltipContent>
+                      </Tooltip>
                       {discReportButton}
                     </div>
                   </div>
@@ -422,22 +430,29 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                       <span className="mx-1">·</span>
                       {formatBytes(node.totalSize)}
                     </span>
-                    <button
-                      type="button"
-                      className={cn(
-                        "p-0.5 rounded text-muted-foreground transition-colors",
-                        incognitoMode ? "opacity-50 cursor-not-allowed" : "hover:bg-muted/80 hover:text-foreground"
-                      )}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        if (!incognitoMode) onRenameFolder(node.id)
-                      }}
-                      disabled={incognitoMode}
-                      aria-label={t("fileTree.renameFolder")}
-                      title={t("fileTree.renameFolder")}
-                    >
-                      <FolderPen className="h-3 w-3" />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={cn("inline-flex", incognitoMode && "cursor-not-allowed")}
+                          tabIndex={incognitoMode ? 0 : undefined}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            className={cn(
+                              "p-0.5 rounded text-muted-foreground transition-colors",
+                              incognitoMode ? "pointer-events-none opacity-50" : "hover:bg-muted/80 hover:text-foreground"
+                            )}
+                            onClick={() => onRenameFolder(node.id)}
+                            disabled={incognitoMode}
+                            aria-label={t("fileTree.renameFolder")}
+                          >
+                            <FolderPen className="h-3 w-3" />
+                          </button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("fileTree.renameFolder")}</TooltipContent>
+                    </Tooltip>
                     {discReportButton}
                   </div>
                 </div>

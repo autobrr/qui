@@ -4,6 +4,7 @@
  */
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { cn } from "@/lib/utils"
 import { memo } from "react"
 
@@ -38,18 +39,17 @@ export const StatRow = memo(function StatRow({
   const content = (
     <div className={cn("flex items-center gap-1.5 text-xs", className)}>
       <span className="text-muted-foreground shrink-0">{label}:</span>
-      <span
+      <TruncatedText
         className={cn(
-          "font-medium truncate",
+          "font-medium",
           monospace && "font-mono",
           highlightClass,
           valueClassName
         )}
         style={valueStyle}
-        title={typeof value === "string" ? value : undefined}
       >
         {value}
-      </span>
+      </TruncatedText>
     </div>
   )
 

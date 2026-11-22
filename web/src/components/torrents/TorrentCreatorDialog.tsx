@@ -38,6 +38,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
@@ -77,7 +78,6 @@ function PathSuggestions({ suggestions, highlightedIndex, onSelect, listRef }: P
             <button
               key={entry}
               type="button"
-              title={entry}
               className={cn(
                 "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
                 highlightedIndex === idx? "bg-accent text-accent-foreground": "hover:bg-accent/70"
@@ -85,7 +85,7 @@ function PathSuggestions({ suggestions, highlightedIndex, onSelect, listRef }: P
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => onSelect(entry)}
             >
-              <span className="block truncate text-left">{entry}</span>
+              <TruncatedText className="block text-left" openOnTap={false}>{entry}</TruncatedText>
             </button>
           ))}
         </div>

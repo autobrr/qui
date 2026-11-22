@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import { INSTANCE_MARK_COLORS, type InstanceMark } from "@/lib/instance-marks"
 
@@ -33,7 +34,7 @@ function withMark(mark: InstanceMark) {
 
 function renderEditor() {
   const onOpenChange = vi.fn()
-  render(<InstanceMarkEditor open onOpenChange={onOpenChange} instanceId={1} name="main" autoLetters="MA" />)
+  render(<InstanceMarkEditor open onOpenChange={onOpenChange} instanceId={1} name="main" autoLetters="MA" />, { wrapper: TooltipProvider })
   return onOpenChange
 }
 

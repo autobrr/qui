@@ -6,6 +6,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { changeLanguage } from "@/i18n"
 import { _resetClientSettingsForTests, createDisplayProfile, markClientSettingsUnavailable, getDisplayProfiles } from "@/lib/client-settings"
 
@@ -13,7 +14,7 @@ import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
 function renderDialog() {
   const onOpenChange = vi.fn()
-  render(<NewDisplayProfileDialog open onOpenChange={onOpenChange} />)
+  render(<TooltipProvider><NewDisplayProfileDialog open onOpenChange={onOpenChange} /></TooltipProvider>)
   return { onOpenChange }
 }
 
@@ -29,9 +30,17 @@ beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
   markClientSettingsUnavailable()
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe("NewDisplayProfileDialog", () => {
   it("names the profile of this browser as the one that it copies", () => {

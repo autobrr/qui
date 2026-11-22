@@ -21,6 +21,7 @@ import { Section } from "@/components/kit/Section"
 import { usePendingIds } from "@/components/kit/use-pending-ids"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { api } from "@/lib/api"
 import type { TorznabIndexer } from "@/types"
 
@@ -266,7 +267,7 @@ function IndexersSection({ query }: { query: UseQueryResult<TorznabIndexer[]> })
               },
             ],
             detail: indexer.last_test_status === "error" && indexer.last_test_error && !testing.has(indexer.id)
-              ? <p className="line-clamp-2 text-xs text-destructive [overflow-wrap:anywhere]" title={indexer.last_test_error}>{indexer.last_test_error}</p>
+              ? <TruncatedText wrap className="line-clamp-2 text-xs text-destructive [overflow-wrap:anywhere]">{indexer.last_test_error}</TruncatedText>
               : undefined,
           })}
           empty={filtered

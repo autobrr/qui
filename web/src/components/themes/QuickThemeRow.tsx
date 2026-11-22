@@ -8,6 +8,7 @@ import type { MouseEvent, PointerEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Theme } from "@/config/themes"
 import type { ThemeThumbnailPalette } from "@/lib/theme-thumbnail"
 import { cn } from "@/lib/utils"
@@ -62,27 +63,30 @@ export function QuickThemeVariations({ variations, selected, onSelect, className
   return (
     <span role="group" data-slot="theme-variations" aria-label={t("themes.current.colors")} className={cn("flex flex-wrap items-center gap-1", className)}>
       {variations.map((v) => (
-        <button
-          key={v.id}
-          type="button"
-          aria-pressed={selected === v.id}
-          aria-label={v.id}
-          title={v.id}
-          onPointerDown={keepInParent}
-          onClick={(event) => {
-            keepInParent(event)
-            onSelect(v.id)
-          }}
-          className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        >
-          <span
-            className={cn(
-              "size-5 rounded-full ring-offset-2 ring-offset-popover",
-              selected === v.id ? "ring-2 ring-foreground" : "ring-1 ring-border"
-            )}
-            style={{ backgroundColor: v.color }}
-          />
-        </button>
+        <Tooltip key={v.id}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-pressed={selected === v.id}
+              aria-label={v.id}
+              onPointerDown={keepInParent}
+              onClick={(event) => {
+                keepInParent(event)
+                onSelect(v.id)
+              }}
+              className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              <span
+                className={cn(
+                  "size-5 rounded-full ring-offset-2 ring-offset-popover",
+                  selected === v.id ? "ring-2 ring-foreground" : "ring-1 ring-border"
+                )}
+                style={{ backgroundColor: v.color }}
+              />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{v.id}</TooltipContent>
+        </Tooltip>
       ))}
     </span>
   )

@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TorrentName } from "@/components/ui/torrent-name"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useTrackerGroupIcon } from "@/hooks/useTrackerGroupName"
@@ -232,8 +233,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     const measure = () => {
       const cut = new Set<string>()
       for (const row of node.querySelectorAll<HTMLElement>("tr[data-delete]")) {
-        // The name and the cause carry a title with their whole text.
-        if ([...row.querySelectorAll("span[title]")].some(span => span.scrollHeight > span.clientHeight + 1 || span.scrollWidth > span.clientWidth + 1)) {
+        if ([...row.querySelectorAll("span[data-slot=truncated-text]")].some(span => span.scrollHeight > span.clientHeight + 1 || span.scrollWidth > span.clientWidth + 1)) {
           cut.add(row.dataset.delete!)
         }
       }
@@ -292,7 +292,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                     const name = incognitoMode ? getLinuxIsoName(event.hash) : event.name
                     const key = `${event.instanceId}:${event.hash}:${event.time}`
                     const full = fullNames.has(key)
-                    const cause = <Cause kind={event.cause.kind} name={event.cause.name} wrap={full} />
+                    const cause = <Cause kind={event.cause.kind} name={event.cause.name} wrap={full} openOnTap={!narrow} />
                     const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
                     const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
                     const time = formatISOTimestamp(event.time)
@@ -318,7 +318,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                           {opens ? (
                             <button type="button" aria-expanded={full} className="flex w-full min-w-0 items-start gap-2 text-left">
                               {full ? <ChevronDown className="mt-1 size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />}
-                              <TorrentName name={name} className={cn("min-w-0", !full && "line-clamp-2")} />
+                              <TorrentName name={name} openOnTap={false} className={cn("min-w-0", !full && "line-clamp-2")} />
                             </button>
                           ) : narrow ? (
                             <div className="flex w-full min-w-0 items-start gap-2">
@@ -328,10 +328,10 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                             </div>
                           ) : <TorrentName name={name} className="line-clamp-2 @4xl:line-clamp-1" />}
                           <div className={cn("flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground @4xl:hidden", line)}>{trackerIcon}<span className="truncate">{tracker}</span></div>
-                          <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
+                          <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} openOnTap={!narrow} /></div>
                           <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @4xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
                         </TableCell>
-                        <TableCell className="hidden max-w-64 align-top text-muted-foreground @4xl:table-cell" title={tracker}><span className="flex items-center gap-1.5">{trackerIcon}<span className="truncate">{tracker}</span></span></TableCell>
+                        <TableCell className="hidden max-w-64 align-top text-muted-foreground @4xl:table-cell"><span className="flex items-center gap-1.5">{trackerIcon}<TruncatedText>{tracker}</TruncatedText></span></TableCell>
                         <TableCell className="hidden max-w-64 align-top @2xl:table-cell">{cause}</TableCell>
                         <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @4xl:pr-2">
                           {formatBytes(event.uploaded)}
@@ -392,8 +392,8 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   )
 }
 
-// An open phone row wraps the cause, as a touch screen cannot show the title of a cut name.
-function Cause({ kind, name, wrap = false }: { kind: TransferHistoryCauseKind; name?: string; wrap?: boolean }) {
+// An open phone row wraps the cause, as a tap on a cut name opens the row and not its tooltip.
+function Cause({ kind, name, wrap = false, openOnTap }: { kind: TransferHistoryCauseKind; name?: string; wrap?: boolean; openOnTap: boolean }) {
   const { t } = useTranslation("statistics")
   const { icon: Icon, labelKey } = CAUSES[kind]
   if (wrap) {
@@ -409,7 +409,7 @@ function Cause({ kind, name, wrap = false }: { kind: TransferHistoryCauseKind; n
     <span className="flex min-w-0 items-center gap-1.5">
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="shrink-0 whitespace-nowrap">{t(labelKey)}</span>
-      {name && <span className="min-w-0 truncate text-muted-foreground" title={name}>· {name}</span>}
+      {name && <TruncatedText openOnTap={openOnTap} className="min-w-0 text-muted-foreground">· {name}</TruncatedText>}
     </span>
   )
 }

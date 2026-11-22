@@ -50,10 +50,10 @@ import { Switch } from "@/components/ui/switch"
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useIndexerTrackerDomains } from "@/hooks/useIndexerTrackerDomains"
@@ -2342,16 +2342,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Label>{t("preferences.workflowDialog.priority.title")}</Label>
-                    <TooltipProvider delayDuration={300}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-4 w-4 text-muted-foreground hover:text-foreground cursor-help transition-colors" />
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-[300px]">
-                          <p>{t("preferences.workflowDialog.priority.description")}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-muted-foreground hover:text-foreground cursor-help transition-colors" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-[300px]">
+                        <p>{t("preferences.workflowDialog.priority.description")}</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                   <Select
                     value={formState.sortingType}
@@ -2655,22 +2653,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <div className="rounded-lg border p-3 space-y-3 bg-muted/30">
                     <div className="flex items-center gap-2">
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.grouping.title")}</Label>
-                      <TooltipProvider delayDuration={150}>
-                        <Tooltip>
-                          <TooltipTrigger asChild openOnTap>
-                            <button
-                              type="button"
-                              className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                              aria-label={t("preferences.workflowDialog.grouping.aria")}
-                            >
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="max-w-[340px]">
-                            <p>{t("preferences.workflowDialog.grouping.tooltip")}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild openOnTap>
+                          <button
+                            type="button"
+                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                            aria-label={t("preferences.workflowDialog.grouping.aria")}
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[340px]">
+                          <p>{t("preferences.workflowDialog.grouping.tooltip")}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
 
                     <p className="text-xs text-muted-foreground">
@@ -3407,22 +3403,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     <Label htmlFor={`use-display-name-${index}`} className="text-sm cursor-pointer whitespace-nowrap">
                                       {t("preferences.workflowDialog.tag.useDisplayName")}
                                     </Label>
-                                    <TooltipProvider delayDuration={150}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild openOnTap>
-                                          <button
-                                            type="button"
-                                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                                            aria-label={t("preferences.workflowDialog.tag.aboutDisplayNames")}
-                                          >
-                                            <Info className="h-3.5 w-3.5" />
-                                          </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="max-w-[280px]">
-                                          <p>{t("preferences.workflowDialog.tag.displayNameDescription")}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild openOnTap>
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                                          aria-label={t("preferences.workflowDialog.tag.aboutDisplayNames")}
+                                        >
+                                          <Info className="h-3.5 w-3.5" />
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-[280px]">
+                                        <p>{t("preferences.workflowDialog.tag.displayNameDescription")}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
                                   </div>
                                 )}
                                 {!tagAction.useTrackerAsTag && (
@@ -3568,22 +3562,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <Label htmlFor="block-if-cross-seed" className="text-sm cursor-pointer">
                               {t("preferences.workflowDialog.move.skipIfCrossSeedsDontMatch")}
                             </Label>
-                            <TooltipProvider delayDuration={150}>
-                              <Tooltip>
-                                <TooltipTrigger asChild openOnTap>
-                                  <button
-                                    type="button"
-                                    className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
-                                    aria-label={t("preferences.workflowDialog.move.aboutSkipping")}
-                                  >
-                                    <Info className="h-3.5 w-3.5" />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-[320px]">
-                                  <p>{t("preferences.workflowDialog.move.skipDescription")}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild openOnTap>
+                                <button
+                                  type="button"
+                                  className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
+                                  aria-label={t("preferences.workflowDialog.move.aboutSkipping")}
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[320px]">
+                                <p>{t("preferences.workflowDialog.move.skipDescription")}</p>
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                         </div>
                       </div>
@@ -3883,26 +3875,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <TooltipProvider delayDuration={150}>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div>
-                                          <SelectItem
-                                            value="delete"
-                                            className="text-destructive focus:text-destructive"
-                                            disabled={keepFilesDisabled}
-                                          >
-                                            {t("preferences.workflowDialog.delete.keepFiles")}
-                                          </SelectItem>
-                                        </div>
-                                      </TooltipTrigger>
-                                      {keepFilesDisabled && (
-                                        <TooltipContent side="left" className="max-w-[280px]">
-                                          <p>{t("preferences.workflowDialog.delete.keepFilesDisabledReason")}</p>
-                                        </TooltipContent>
-                                      )}
-                                    </Tooltip>
-                                  </TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <SelectItem
+                                          value="delete"
+                                          className="text-destructive focus:text-destructive"
+                                          disabled={keepFilesDisabled}
+                                        >
+                                          {t("preferences.workflowDialog.delete.keepFiles")}
+                                        </SelectItem>
+                                      </div>
+                                    </TooltipTrigger>
+                                    {keepFilesDisabled && (
+                                      <TooltipContent side="left" className="max-w-[280px]">
+                                        <p>{t("preferences.workflowDialog.delete.keepFilesDisabledReason")}</p>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
                                   <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">{t("preferences.workflowDialog.delete.withFiles")}</SelectItem>
                                   <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">{t("preferences.workflowDialog.delete.withFilesPreserveCrossSeeds")}</SelectItem>
                                   <SelectItem value="deleteWithFilesIncludeCrossSeeds" className="text-destructive focus:text-destructive">{t("preferences.workflowDialog.delete.withFilesIncludeCrossSeeds")}</SelectItem>
@@ -3914,34 +3904,32 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         {/* Include Hardlinks checkbox - only for deleteWithFilesIncludeCrossSeeds mode */}
                         {formState.exprDeleteMode === "deleteWithFilesIncludeCrossSeeds" && (
                           <div className="flex items-center gap-2">
-                            <TooltipProvider delayDuration={150}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={formState.exprIncludeHardlinks}
-                                      onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
-                                      // A checked box stays clickable, so a workflow whose instance lost the option can clear it.
-                                      disabled={!hasTrustedIdentity && !formState.exprIncludeHardlinks}
-                                      className="h-3.5 w-3.5 rounded border-border disabled:pointer-events-none disabled:opacity-50"
-                                    />
-                                    <span className={!hasTrustedIdentity ? "opacity-50" : ""}>
-                                      {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
-                                    </span>
-                                  </label>
-                                </TooltipTrigger>
-                                <TooltipContent side="left" className="max-w-[320px]">
-                                  {hasTrustedIdentity ? (
-                                    <p>{t("preferences.workflowDialog.delete.includeHardlinkedCopiesDescription")}</p>
-                                  ) : isRemoteInstance ? (
-                                    <p>{t("preferences.workflowDialog.delete.remoteNotAvailable")}</p>
-                                  ) : (
-                                    <p>{t("preferences.workflowDialog.delete.localAccessRequired")}</p>
-                                  )}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={formState.exprIncludeHardlinks}
+                                    onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
+                                    // A checked box stays clickable, so a workflow whose instance lost the option can clear it.
+                                    disabled={!hasTrustedIdentity && !formState.exprIncludeHardlinks}
+                                    className="h-3.5 w-3.5 rounded border-border disabled:pointer-events-none disabled:opacity-50"
+                                  />
+                                  <span className={!hasTrustedIdentity ? "opacity-50" : ""}>
+                                    {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
+                                  </span>
+                                </label>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-[320px]">
+                                {hasTrustedIdentity ? (
+                                  <p>{t("preferences.workflowDialog.delete.includeHardlinkedCopiesDescription")}</p>
+                                ) : isRemoteInstance ? (
+                                  <p>{t("preferences.workflowDialog.delete.remoteNotAvailable")}</p>
+                                ) : (
+                                  <p>{t("preferences.workflowDialog.delete.localAccessRequired")}</p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                         )}
                       </div>
@@ -3955,22 +3943,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <div className="rounded-lg border p-3 space-y-2">
                     <div className="flex items-center gap-1.5">
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.freeSpace.title")}</Label>
-                      <TooltipProvider delayDuration={150}>
-                        <Tooltip>
-                          <TooltipTrigger asChild openOnTap>
-                            <button
-                              type="button"
-                              className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                              aria-label={t("preferences.workflowDialog.freeSpace.aria")}
-                            >
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="left" className="max-w-[320px]">
-                            <p>{t("preferences.workflowDialog.freeSpace.description")}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild openOnTap>
+                          <button
+                            type="button"
+                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                            aria-label={t("preferences.workflowDialog.freeSpace.aria")}
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left" className="max-w-[320px]">
+                          <p>{t("preferences.workflowDialog.freeSpace.description")}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                     <Select
                       value={formState.exprFreeSpaceSourceType}
@@ -4009,7 +3995,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5">
                           <Label htmlFor="free-space-allowance" className="text-xs">{t("preferences.workflowDialog.freeSpace.allowanceLabel")}</Label>
-                          <TooltipProvider delayDuration={150}><FieldHelp>{t("preferences.workflowDialog.freeSpace.allowanceHelp", { decimalUnit: t("preferences.workflowDialog.freeSpace.allowanceUnits.TB"), binaryUnit: unitLabel("TiB") })}</FieldHelp></TooltipProvider>
+                          <FieldHelp>{t("preferences.workflowDialog.freeSpace.allowanceHelp", { decimalUnit: t("preferences.workflowDialog.freeSpace.allowanceUnits.TB"), binaryUnit: unitLabel("TiB") })}</FieldHelp>
                         </div>
                         <div className="flex gap-2">
                           <Input
@@ -4049,7 +4035,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         {formState.exprFreeSpaceSourceType === "allowance" && (
                           <div className="flex items-center gap-1.5">
                             <Label htmlFor="free-space-source-path" className="text-xs">{t("preferences.workflowDialog.freeSpace.allowancePathLabel")}</Label>
-                            <TooltipProvider delayDuration={150}><FieldHelp>{t("preferences.workflowDialog.freeSpace.allowancePathHelp")}</FieldHelp></TooltipProvider>
+                            <FieldHelp>{t("preferences.workflowDialog.freeSpace.allowancePathHelp")}</FieldHelp>
                           </div>
                         )}
                         <div className="relative">
@@ -4093,7 +4079,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 <button
                                   key={entry}
                                   type="button"
-                                  title={entry}
                                   className={cn(
                                     "w-full px-3 py-1.5 text-xs text-left",
                                     freeSpaceHighlightedIndex === idx ? "bg-accent text-accent-foreground" : "hover:bg-accent hover:text-accent-foreground"
@@ -4101,7 +4086,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   onMouseDown={(e) => e.preventDefault()}
                                   onClick={() => handleFreeSpacePathSelectSuggestion(entry)}
                                 >
-                                  <span className="block truncate">{entry}</span>
+                                  <TruncatedText className="block" openOnTap={false}>{entry}</TruncatedText>
                                 </button>
                               ))}
                             </div>
@@ -4125,22 +4110,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
                       <Label className="text-xs">{t("preferences.workflowDialog.category.skipIfCrossSeedExists")}</Label>
-                      <TooltipProvider delayDuration={150}>
-                        <Tooltip>
-                          <TooltipTrigger asChild openOnTap>
-                            <button
-                              type="button"
-                              className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                              aria-label={t("preferences.workflowDialog.category.aboutSkipping")}
-                            >
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-[320px]">
-                            <p>{t("preferences.workflowDialog.category.skipHelp")}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild openOnTap>
+                          <button
+                            type="button"
+                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                            aria-label={t("preferences.workflowDialog.category.aboutSkipping")}
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[320px]">
+                          <p>{t("preferences.workflowDialog.category.skipHelp")}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                     <MultiSelect
                       options={categoryOptions}
@@ -4285,22 +4268,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     </SelectContent>
                   </Select>
                   {deleteUsesFreeSpace && (
-                    <TooltipProvider delayDuration={150}>
-                      <Tooltip>
-                        <TooltipTrigger asChild openOnTap>
-                          <button
-                            type="button"
-                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                            aria-label={t("preferences.workflowDialog.interval.cooldownAria")}
-                          >
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-[280px]">
-                          <p>{t("preferences.workflowDialog.interval.cooldownDescription")}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild openOnTap>
+                        <button
+                          type="button"
+                          className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                          aria-label={t("preferences.workflowDialog.interval.cooldownAria")}
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[280px]">
+                        <p>{t("preferences.workflowDialog.interval.cooldownDescription")}</p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                   {deleteUsesFreeSpace && formState.intervalSeconds === 60 && (
                     <span className="text-xs text-yellow-500">{t("preferences.workflowDialog.interval.cooldownWarning")}</span>

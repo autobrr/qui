@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
@@ -114,9 +115,9 @@ export function MobileClientsTab() {
           {activeInstances.length}
         </Badge>
       </div>
-      <span className="block max-w-full truncate text-center">
+      <TruncatedText className="block max-w-full text-center" openOnTap={false}>
         {currentInstanceLabel ?? t("mobileNav.clients")}
-      </span>
+      </TruncatedText>
     </>
   )
 
@@ -166,7 +167,9 @@ export function MobileClientsTab() {
                 className="flex items-center gap-2 min-w-0"
               >
                 <InstanceMarkIcon instanceId={instance.id} problem={!instance.connected} />
-                <span className="flex-1 min-w-0 truncate">{instance.name}</span>
+                <TruncatedText className="flex-1 min-w-0" openOnTap={false}>
+                  {instance.name}
+                </TruncatedText>
                 {!instance.connected && <span className="sr-only">{t("header.disconnected")}</span>}
                 <span className="flex items-center gap-1.5">
                   {hasRss && (

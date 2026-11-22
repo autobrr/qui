@@ -8,6 +8,8 @@ import { Facts, type Fact } from "@/components/kit/Facts"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { SIDEWAYS_PHONE_QUERY, useIsMobile, useMediaQuery } from "@/hooks/useMediaQuery"
 import { formatDateOnly, formatISOTimestamp, formatRelativeTime, formatTimeOnly } from "@/lib/dateTimeUtils"
 import { transfersApi, type TransferDetail, type TransferMember, type TransferState, type TransferStep } from "@/lib/transfers-api"
@@ -70,8 +72,8 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
       <DialogContent className="flex h-[min(38rem,90dvh)] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:h-[min(32rem,85dvh)] sm:max-w-2xl lg:max-w-4xl">
         <DialogHeader className="space-y-0 border-b px-6 pt-5 pb-4 pr-12 text-left max-md:px-4 max-md:pr-12">
           <DialogTitle>{t(data?.kind === "export" ? "details.exportTitle" : "details.title")}</DialogTitle>
-          <DialogDescription className="line-clamp-2 [overflow-wrap:anywhere]" title={data ? display.name(data) : undefined}>
-            {data ? display.name(data) : t("details.loading")}
+          <DialogDescription className="[overflow-wrap:anywhere]">
+            <TruncatedText wrap className="line-clamp-2">{data ? display.name(data) : t("details.loading")}</TruncatedText>
           </DialogDescription>
           {data && (
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 pt-1 text-xs text-muted-foreground">
@@ -204,7 +206,7 @@ function TorrentRow({ member, crossSeed }: { member: TransferMember; crossSeed: 
   return (
     <li className="space-y-1.5 px-4 py-3">
       <div className="flex items-start gap-2">
-        <span className="min-w-0 flex-1 text-sm font-medium [overflow-wrap:anywhere]" title={name}>{name}</span>
+        <span className="min-w-0 flex-1 text-sm font-medium [overflow-wrap:anywhere]">{name}</span>
         {crossSeed && <Badge variant="secondary" className="shrink-0 font-normal">{t("summary.crossSeed")}</Badge>}
       </div>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -215,8 +217,18 @@ function TorrentRow({ member, crossSeed }: { member: TransferMember; crossSeed: 
       </dl>
       {labels.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {member.category && <Badge variant="secondary" className="font-normal" title={t("form.category")}>{member.category}</Badge>}
-          {member.tags.map(tag => <Badge key={tag} variant="outline" className="font-normal text-muted-foreground" title={t("form.tags")}>{tag}</Badge>)}
+          {member.category && (
+            <Tooltip>
+              <TooltipTrigger asChild><Badge variant="secondary" className="font-normal">{member.category}</Badge></TooltipTrigger>
+              <TooltipContent>{t("form.category")}</TooltipContent>
+            </Tooltip>
+          )}
+          {member.tags.map(tag => (
+            <Tooltip key={tag}>
+              <TooltipTrigger asChild><Badge variant="outline" className="font-normal text-muted-foreground">{tag}</Badge></TooltipTrigger>
+              <TooltipContent>{t("form.tags")}</TooltipContent>
+            </Tooltip>
+          ))}
         </div>
       )}
     </li>
@@ -299,9 +311,14 @@ function dayBreaks(times: readonly string[]): (string | null)[] {
 
 function Clock({ at, day, className }: { at: string; day?: string | null; className?: string }) {
   return (
-    <time dateTime={at} title={formatISOTimestamp(at)} className={cn("shrink-0 tabular-nums text-muted-foreground", className)}>
-      {day && `${day} · `}
-      {formatTimeOnly(Date.parse(at) / 1000, undefined, true)}
-    </time>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <time dateTime={at} className={cn("shrink-0 tabular-nums text-muted-foreground", className)}>
+          {day && `${day} · `}
+          {formatTimeOnly(Date.parse(at) / 1000, undefined, true)}
+        </time>
+      </TooltipTrigger>
+      <TooltipContent>{formatISOTimestamp(at)}</TooltipContent>
+    </Tooltip>
   )
 }

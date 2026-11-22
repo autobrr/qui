@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { _resetClientSettingsForTests, markClientSettingsUnavailable } from "@/lib/client-settings"
 import type { LogSettings } from "@/types"
 
@@ -65,7 +66,7 @@ afterEach(() => {
 
 function renderPanel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<QueryClientProvider client={client}><LogSettingsPanel /></QueryClientProvider>)
+  return render(<QueryClientProvider client={client}><TooltipProvider><LogSettingsPanel /></TooltipProvider></QueryClientProvider>)
 }
 
 const save = () => fireEvent.click(screen.getByRole("button", { name: "logs.configuration.saveSettings" }))
@@ -100,7 +101,7 @@ describe("LogSettingsPanel", () => {
     renderPanel()
     act(() => FakeEventSource.instances[0].onmessage?.({ data: JSON.stringify({ level: "info", time: "2026-01-02T03:04:05Z", message: "tick", n: 1 }) }))
 
-    screen.getByTitle("logs.viewer.muteSimilarEntries").focus()
+    screen.getByRole("button", { name: "info" }).focus()
     await user.keyboard("{Enter}")
 
     await waitFor(() => expect(mocks.updateLogExclusions).toHaveBeenCalledWith({ patterns: ["tick"] }))

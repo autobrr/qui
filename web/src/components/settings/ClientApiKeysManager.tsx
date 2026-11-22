@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { CopyButton } from "@/components/ui/copy-button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { getBaseUrl } from "@/lib/base-url"
@@ -214,16 +215,20 @@ function NewKeyNotice({ newKey, onDone }: { newKey: NewClientApiKey; onDone: () 
         >
           {url}
         </code>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={toggleLabel}
-          title={toggleLabel}
-          className="size-8 shrink-0 text-muted-foreground hover:text-foreground max-sm:size-10"
-          onClick={() => setIncognitoMode(!incognitoMode)}
-        >
-          {incognitoMode ? <Eye /> : <EyeOff />}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={toggleLabel}
+              className="size-8 shrink-0 text-muted-foreground hover:text-foreground max-sm:size-10"
+              onClick={() => setIncognitoMode(!incognitoMode)}
+            >
+              {incognitoMode ? <Eye /> : <EyeOff />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{toggleLabel}</TooltipContent>
+        </Tooltip>
         <CopyButton value={url} label={t("clientApiKeys.newKey.proxyUrl")} className="size-8 max-sm:size-10" iconClassName="size-4" />
       </div>
       <div className="flex justify-end">

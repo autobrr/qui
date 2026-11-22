@@ -7,6 +7,7 @@ import { useId, type KeyboardEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { DisplayProfileColor } from "@/lib/display-profiles"
 import { cn } from "@/lib/utils"
 
@@ -59,22 +60,25 @@ export function DisplayProfileIconPicker({ icon, color, onIconChange, onColorCha
                   const pressed = entry.name === icon
                   const label = t(entry.labelKey)
                   return (
-                    <button
-                      key={entry.name}
-                      type="button"
-                      data-icon-index={index}
-                      tabIndex={index === tabStop ? 0 : -1}
-                      aria-label={label}
-                      aria-pressed={pressed}
-                      title={label}
-                      onClick={() => onIconChange(entry.name)}
-                      className={cn(
-                        "grid size-9 place-items-center rounded-md outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                        pressed && "bg-accent ring-1 ring-foreground/40"
-                      )}
-                    >
-                      <entry.Icon className="size-[18px]" />
-                    </button>
+                    <Tooltip key={entry.name}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          data-icon-index={index}
+                          tabIndex={index === tabStop ? 0 : -1}
+                          aria-label={label}
+                          aria-pressed={pressed}
+                          onClick={() => onIconChange(entry.name)}
+                          className={cn(
+                            "grid size-9 place-items-center rounded-md outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                            pressed && "bg-accent ring-1 ring-foreground/40"
+                          )}
+                        >
+                          <entry.Icon className="size-[18px]" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>{label}</TooltipContent>
+                    </Tooltip>
                   )
                 })}
               </div>
@@ -88,27 +92,30 @@ export function DisplayProfileIconPicker({ icon, color, onIconChange, onColorCha
                 const pressed = option.color === color
                 const label = t(option.labelKey)
                 return (
-                  <button
-                    key={option.labelKey}
-                    type="button"
-                    aria-pressed={pressed}
-                    aria-label={label}
-                    title={label}
-                    onClick={() => onColorChange(option.color)}
-                    className={cn("grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", option.className)}
-                  >
-                    <span
-                      className={cn(
-                        "relative size-5 overflow-hidden rounded-full ring-offset-2 ring-offset-popover",
-                        option.color && "bg-current",
-                        pressed ? "ring-2 ring-foreground" : "ring-1 ring-border"
-                      )}
-                    >
-                      {option.color === null && (
-                        <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 -rotate-45 bg-muted-foreground" />
-                      )}
-                    </span>
-                  </button>
+                  <Tooltip key={option.labelKey}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-pressed={pressed}
+                        aria-label={label}
+                        onClick={() => onColorChange(option.color)}
+                        className={cn("grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", option.className)}
+                      >
+                        <span
+                          className={cn(
+                            "relative size-5 overflow-hidden rounded-full ring-offset-2 ring-offset-popover",
+                            option.color && "bg-current",
+                            pressed ? "ring-2 ring-foreground" : "ring-1 ring-border"
+                          )}
+                        >
+                          {option.color === null && (
+                            <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 -rotate-45 bg-muted-foreground" />
+                          )}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{label}</TooltipContent>
+                  </Tooltip>
                 )
               })}
             </div>

@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   settings: {
@@ -55,11 +55,21 @@ vi.mock("@/lib/api", () => ({
 }))
 
 import type { CrossSeedAutomationSettings, SeasonPackRun } from "@/types"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { SeasonPacksTab } from "../SeasonPacksTab"
+
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
   localStorage.clear()
 })
 
@@ -67,7 +77,9 @@ function renderTab() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <SeasonPacksTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
+      <TooltipProvider>
+        <SeasonPacksTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }

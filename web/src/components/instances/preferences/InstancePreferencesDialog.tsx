@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { cn } from "@/lib/utils"
@@ -259,7 +260,7 @@ export function InstancePreferencesDialog({
               )}
             </DialogTitle>
             <DialogDescription>
-              {t("preferences.dialog.configureDescription")} <strong className="truncate max-w-xs inline-block align-bottom" title={displayInstanceName}>{displayInstanceName}</strong>
+              {t("preferences.dialog.configureDescription")} <strong><TruncatedText className="max-w-xs inline-block align-bottom">{displayInstanceName}</TruncatedText></strong>
             </DialogDescription>
           </DialogHeader>
 

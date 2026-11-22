@@ -4,9 +4,10 @@
  */
 
 import { RenameTorrentFileDialog, SetCategoryDialog, TagEditorDialog } from "@/components/torrents/TorrentDialogs"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -121,11 +122,12 @@ describe("SetCategoryDialog", () => {
         hashCount={1}
         onConfirm={onConfirm}
         initialCategory={initialCategory}
-      />
+      />,
+      { wrapper: TooltipProvider }
     )
     return { input: document.getElementById("newCategory") as HTMLInputElement, onConfirm }
   }
-  const row = (name: string) => screen.getByTitle(name)
+  const row = (name: string) => screen.getByRole("button", { name })
 
   // regression: #2512
   it("keeps a typed name that extends an existing category", async () => {
@@ -158,6 +160,37 @@ describe("SetCategoryDialog", () => {
     await userEvent.click(row("anime"))
     await userEvent.click(screen.getByText("dialogs.setCategory.setCategory"))
     expect(onConfirm).toHaveBeenCalledWith("anime")
+  })
+
+  // regression: #4358
+  it("shows the full path of a subcategory on a tap, and the tap still selects it", () => {
+    const touchWindow = window as Window & { ontouchstart?: unknown }
+    touchWindow.ontouchstart = null
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
+    try {
+      render(
+        <SetCategoryDialog
+          open
+          onOpenChange={() => {}}
+          availableCategories={{ "A/shared": { name: "A/shared", savePath: "" }, "B/shared": { name: "B/shared", savePath: "" } }}
+          hashCount={1}
+          onConfirm={vi.fn()}
+          useSubcategories
+        />,
+        { wrapper: TooltipProvider }
+      )
+      const first = screen.getAllByRole("button", { name: "shared" })[0]
+
+      fireEvent.pointerDown(first, { pointerType: "touch" })
+      fireEvent.pointerUp(first, { pointerType: "touch" })
+      fireEvent.click(first)
+
+      expect(screen.getByRole("tooltip").textContent).toContain("A/shared")
+      expect(first.classList.contains("bg-accent")).toBe(true)
+    } finally {
+      vi.unstubAllGlobals()
+      delete touchWindow.ontouchstart
+    }
   })
 
   it("prefills a listed category on its row and an unlisted one in the field", () => {

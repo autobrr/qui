@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import type { DiscScans } from "@/hooks/useDiscScans"
 import type { DiscScanRun } from "@/types"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
@@ -55,7 +56,7 @@ function scansWith(current?: DiscScanRun, startState: Partial<DiscScans["start"]
 describe("DiscReportButton", () => {
   it("labels the states: no report, active, cached, failed", () => {
     const labels = ([undefined, "pending", "scanning", "completed", "failed", "canceled"] as const).map((status) => {
-      const { getByRole, unmount } = render(<DiscReportButton status={status} onClick={() => {}} />)
+      const { getByRole, unmount } = render(<DiscReportButton status={status} onClick={() => {}} />, { wrapper: TooltipProvider })
       const label = getByRole("button").getAttribute("aria-label")
       unmount()
       return label
@@ -72,9 +73,33 @@ describe("DiscReportButton", () => {
 
   it("does not fire while disabled", () => {
     const onClick = vi.fn()
-    const { getByRole } = render(<DiscReportButton disabled onClick={onClick} />)
+    const { getByRole } = render(<DiscReportButton disabled onClick={onClick} />, { wrapper: TooltipProvider })
     fireEvent.click(getByRole("button"))
     expect(onClick).not.toHaveBeenCalled()
+  })
+
+  // regression: #4358
+  it("shows its label on a tap while disabled, without a click on the row around it", () => {
+    const touchWindow = window as Window & { ontouchstart?: unknown }
+    touchWindow.ontouchstart = null
+    try {
+      const onRowClick = vi.fn()
+      const { getByRole } = render(
+        <div onClick={onRowClick}>
+          <DiscReportButton disabled onClick={() => {}} />
+        </div>,
+        { wrapper: TooltipProvider }
+      )
+
+      const wrapper = getByRole("button").parentElement!
+      fireEvent.pointerDown(wrapper, { pointerType: "touch" })
+      fireEvent.click(wrapper)
+
+      expect(getByRole("tooltip").textContent).toContain("discScan.action")
+      expect(onRowClick).not.toHaveBeenCalled()
+    } finally {
+      delete touchWindow.ontouchstart
+    }
   })
 })
 

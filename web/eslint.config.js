@@ -117,6 +117,15 @@ const rawTextFieldSelectors = [{
   message: 'Use Input or Textarea from @/components/ui, which keep the password managers away. For a raw text field, spread passwordManagerAttributes() from @/lib/password-manager.',
 }]
 
+const tooltipDelaySelector = {
+  selector: 'JSXAttribute[name.name="delayDuration"]',
+  message: 'Every tooltip opens after the delay of TooltipProvider in @/components/ui/tooltip. Leave out delayDuration.',
+}
+const tooltipProviderSelector = {
+  selector: 'JSXOpeningElement[name.name="TooltipProvider"]',
+  message: 'App renders the one TooltipProvider. Leave out this provider, so that its tooltips open after the app-wide delay.',
+}
+
 const bottomBarMessage = 'Rows that the user picks end with SelectionBar from @/components/kit/SelectionBar, which stays at the bottom of the screen: docs/standards/frontend-review.md, "Selection". A bar at the bottom of the screen for another job goes in bottomBarAllowlist in web/eslint.config.js, with the reason as its value.'
 const bottomBarPosition = '/(^|\\s)(sticky|fixed)(\\s|$)/'
 const bottomBarEdge = '/(^|\\s)([\\w-]+:)*bottom-/'
@@ -268,7 +277,7 @@ export default tseslint.config([
     files: ['**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
     rules: {
-      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors, ...bottomBarSelectors],
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors, ...bottomBarSelectors, tooltipDelaySelector, tooltipProviderSelector],
     },
   },
   {
@@ -276,13 +285,37 @@ export default tseslint.config([
     files: ['src/components/ui/**'],
     ignores: ['**/*.test.{ts,tsx}'],
     rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, tooltipDelaySelector, tooltipProviderSelector],
+    },
+  },
+  {
+    files: ['src/components/ui/tooltip.tsx'],
+    rules: {
       'no-restricted-syntax': ['error', ...gazelleSiteSelectors],
+    },
+  },
+  {
+    files: ['src/App.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors, ...bottomBarSelectors, tooltipDelaySelector],
+    },
+  },
+  {
+    files: ['src/components/layout/Sidebar.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors, ...bottomBarSelectors, tooltipProviderSelector],
+    },
+  },
+  {
+    files: ['src/components/ui/SystemNoticeList.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, tooltipProviderSelector],
     },
   },
   {
     files: Object.keys(bottomBarAllowlist),
     rules: {
-      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors],
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors, tooltipDelaySelector, tooltipProviderSelector],
     },
   },
   {
@@ -305,6 +338,8 @@ export default tseslint.config([
         ...gazelleSiteSelectors,
         ...rawTextFieldSelectors,
         ...bottomBarSelectors,
+        tooltipDelaySelector,
+        tooltipProviderSelector,
         { selector: 'Program:not(:has(ImportDeclaration[source.value=/^@.components.layout.(Page|SectionedPage)$/]))', message: pageShellMessage },
         { selector: 'Program:not(:has(JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]))', message: pageShellMessage },
         { selector: 'JSXElement[openingElement.name.name=/^[a-z]/] JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]', message: 'Render Page as the root of the page, with no HTML element around it.' },

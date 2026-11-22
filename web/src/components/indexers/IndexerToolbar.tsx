@@ -12,6 +12,7 @@ import { Editor } from "@/components/kit/Editor"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 
 const FILTER_GROUPS = [
@@ -215,11 +216,10 @@ function Segmented<V extends string>({ label, value, options, onChange, aside }:
         {options.map((option) => (
           <label
             key={option.value}
-            title={option.label}
             className="flex h-8 min-w-0 flex-auto cursor-pointer items-center justify-center rounded-md border border-transparent px-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground has-checked:border-muted-foreground/30 has-checked:bg-background has-checked:text-foreground has-checked:shadow-sm has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 dark:has-checked:bg-input/30 pointer-coarse:h-9"
           >
             <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} className="sr-only" />
-            <span className="truncate">{option.label}</span>
+            <TruncatedText openOnTap={false}>{option.label}</TruncatedText>
           </label>
         ))}
       </div>

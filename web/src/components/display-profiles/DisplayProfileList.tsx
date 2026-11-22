@@ -7,6 +7,7 @@ import { Check, ChevronRight, Funnel, Plus } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import type { DisplayProfile } from "@/lib/display-profiles"
 import { cn } from "@/lib/utils"
 
@@ -51,8 +52,8 @@ export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit,
             >
               <DisplayProfileTile profile={profile} size="md" />
               <span className="min-w-0 flex-1">
-                {/* A touch screen shows no title, so there the name wraps. */}
-                <span className="block text-sm font-medium [overflow-wrap:anywhere] pointer-fine:truncate" title={profile.name}>{profile.name}</span>
+                {/* A tap here opens the profile, not a tooltip, so on a touch screen the name wraps. */}
+                <TruncatedText wrap openOnTap={false} className="block text-sm font-medium [overflow-wrap:anywhere] pointer-fine:truncate">{profile.name}</TruncatedText>
                 {profile.id === active.id && (
                   <span className="flex items-center gap-1 text-xs font-medium text-primary">
                     <Check aria-hidden="true" className="size-3 shrink-0" />

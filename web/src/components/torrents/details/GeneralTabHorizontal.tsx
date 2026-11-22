@@ -220,9 +220,9 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                   {t("generalTab.createdBy")}
                 </span>
-                <span className="min-w-0 flex-1 text-xs text-muted-foreground truncate" title={displayCreatedBy}>
+                <TruncatedText className="min-w-0 flex-1 text-xs text-muted-foreground">
                   {renderTextWithLinks(displayCreatedBy)}
-                </span>
+                </TruncatedText>
               </div>
             )}
           </div>

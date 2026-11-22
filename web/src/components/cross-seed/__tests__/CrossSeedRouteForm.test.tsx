@@ -7,10 +7,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import type { ChangeEvent, ReactNode } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { toast } from "sonner"
 
 import i18n from "@/i18n"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { server } from "@/test/msw/server"
 import { crossSeedRoutesKey } from "@/hooks/useCrossSeedRoutes"
 import type { CrossSeedRoute, CrossSeedRouteStatus, CrossSeedRouteTestResult, FilesystemCapabilities, Instance } from "@/types"
@@ -44,9 +45,18 @@ vi.mock("@/components/ui/select", () => ({
 
 import { CrossSeedRouteForm } from "../CrossSeedRouteForm"
 
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
 
 const localCapabilities: FilesystemCapabilities = { read: true, identity: true, trustedIdentity: true, write: true, content: true }
@@ -96,7 +106,9 @@ function renderForm(instance: Instance, canWriteLocally = instance.capabilities.
   seed?.(queryClient)
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <CrossSeedRouteForm instance={instance} localWrite={canWriteLocally} />
+      <TooltipProvider>
+        <CrossSeedRouteForm instance={instance} localWrite={canWriteLocally} />
+      </TooltipProvider>
     </QueryClientProvider>
   )
   return { ...view, queryClient }

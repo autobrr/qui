@@ -19,6 +19,7 @@ import { Sun, Moon, Monitor, Palette, ListChecks } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import {
@@ -197,19 +198,22 @@ export const ThemeToggle: React.FC = () => {
                     className="flex flex-wrap items-center gap-1 pb-1 pl-13"
                   >
                     {variations.map((v) => (
-                      <DropdownMenuPrimitive.RadioItem
-                        key={v.id}
-                        value={v.id}
-                        aria-label={v.id}
-                        title={v.id}
-                        onSelect={(event) => event.preventDefault()}
-                        className="group grid size-7 cursor-default place-items-center rounded-full outline-hidden focus:bg-accent"
-                      >
-                        <span
-                          className="size-5 rounded-full ring-1 ring-border ring-offset-2 ring-offset-popover group-data-[state=checked]:ring-2 group-data-[state=checked]:ring-foreground"
-                          style={{ backgroundColor: v.color }}
-                        />
-                      </DropdownMenuPrimitive.RadioItem>
+                      <Tooltip key={v.id}>
+                        <TooltipTrigger asChild openOnTap={false}>
+                          <DropdownMenuPrimitive.RadioItem
+                            value={v.id}
+                            aria-label={v.id}
+                            onSelect={(event) => event.preventDefault()}
+                            className="group grid size-7 cursor-default place-items-center rounded-full outline-hidden focus:bg-accent"
+                          >
+                            <span
+                              className="size-5 rounded-full ring-1 ring-border ring-offset-2 ring-offset-popover group-data-[state=checked]:ring-2 group-data-[state=checked]:ring-foreground"
+                              style={{ backgroundColor: v.color }}
+                            />
+                          </DropdownMenuPrimitive.RadioItem>
+                        </TooltipTrigger>
+                        <TooltipContent>{v.id}</TooltipContent>
+                      </Tooltip>
                     ))}
                   </DropdownMenuPrimitive.RadioGroup>
                 )}
