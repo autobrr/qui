@@ -61,7 +61,7 @@ def comments(line, state, js):
         if top == "/*":
             end = line.find("*/", at)
             stop = len(line) if end < 0 else end
-            found.append((line[mark:stop + 2], line[at:stop]))
+            found.append((line[mark:stop + 2], line[at:stop], at > mark))
             at, stack = (stop, stack) if end < 0 else (end + 2, stack[:-1])
         elif top == "`":
             at = (TEMPLATE if js else RAW).match(line, at).end()
@@ -70,7 +70,7 @@ def comments(line, state, js):
             elif line.startswith("${", at):
                 stack, regex, at = (*stack, "${"), True, at + 2
         elif line.startswith("//", at):
-            found.append((line[at:], line[at + 2:]))
+            found.append((line[at:], line[at + 2:], True))
             break
         elif line.startswith("/*", at):
             stack, mark, at = (*stack, "/*"), at, at + 2
@@ -119,7 +119,7 @@ def scan(path, lines, side, pattern, js):
         if line[0] in (" ", side):
             texts, state = comments(line[1:], state, js)
             if line[0] == side:
-                found += [Found(path, number, text.strip()) for text, body in texts if pattern.match(body)]
+                found += [Found(path, number, text.strip()) for text, body, opens in texts if pattern.match(body) and (opens or side == "+")]
                 plain += [Found(path, number, line[1:].strip()) for _ in pattern.finditer(line[1:])]
         number += line[0] != "-"
     return plain if state[0] else found

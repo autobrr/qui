@@ -159,6 +159,31 @@ index 1111111..2222222 100644
  console.log(1)
 """
 
+BLOCK_REMOVED = """diff --git a/web/src/h.ts b/web/src/h.ts
+--- a/web/src/h.ts
++++ b/web/src/h.ts
+@@ -1,9 +1,2 @@
+-/* the reason
+-eslint-disable-next-line no-console
+-*/
+-/*
+-eslint-disable-next-line no-console -- the CLI prints its result
+-*/
+-/* eslint-disable no-alert -- the user confirms the delete
+-*/
++// eslint-disable-next-line no-console -- the CLI prints its result
+ console.log(1)
+diff --git a/pkg/a/a.go b/pkg/a/a.go
+--- a/pkg/a/a.go
++++ b/pkg/a/a.go
+@@ -1,4 +1,2 @@
+-/*
+-nolint:gosec
+-*/
++//nolint:gosec // the path comes from the config
+ var data, _ = os.ReadFile(path)
+"""
+
 TWO_ON_ONE_LINE = """diff --git a/web/src/c.ts b/web/src/c.ts
 index 1111111..2222222 100644
 --- a/web/src/c.ts
@@ -295,6 +320,11 @@ class ExceptionsTest(unittest.TestCase):
             ("web/src/d.ts", 5, "eslint-disable no-console -- the CLI prints its result"),
         ])
         self.assertEqual(removed, [])
+
+    def test_a_removed_directive_counts_only_on_the_line_where_its_block_comment_opens(self):
+        added, removed = exceptions(BLOCK_REMOVED)
+        self.assertEqual(len(added), 2)
+        self.assertEqual(texts(removed), [("web/src/h.ts", 1, "/* eslint-disable no-alert -- the user confirms the delete")])
 
     def test_a_regex_literal_is_not_a_string_or_a_comment(self):
         added, _ = exceptions(WEB_REGEX)
