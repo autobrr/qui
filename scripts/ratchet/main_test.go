@@ -217,3 +217,32 @@ func TestCountMapAny(t *testing.T) {
 		})
 	}
 }
+
+func TestCountTestSleeps(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"real sleep", `import "time"; func TestX(t *testing.T) { time.Sleep(time.Second) }`, 1},
+		{"sleep in a bubble", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { synctest.Test(t, func(t *testing.T) { time.Sleep(time.Second) }) }`, 0},
+		{"sleep in a bubble in parentheses", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { synctest.Test(t, (func(t *testing.T) { time.Sleep(time.Second) })) }`, 0},
+		{"sleep after a bubble", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { synctest.Test(t, func(*testing.T) {}); time.Sleep(time.Second) }`, 1},
+		{"sleep in a factory that runs before the bubble", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { synctest.Test(t, func() func(*testing.T) { time.Sleep(time.Second); return func(*testing.T) {} }()) }`, 1},
+		{"sleep in a callback that a factory returns", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { synctest.Test(t, func() func(*testing.T) { return func(*testing.T) { time.Sleep(time.Second) } }()) }`, 0},
+		{"sleep beside a bubble that waits", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { time.Sleep(time.Second); synctest.Test(t, func(t *testing.T) { synctest.Wait() }) }`, 1},
+		{"helper that waits on the bubble", `import ("testing/synctest"; "time"); func wait(d time.Duration) { time.Sleep(d); synctest.Wait() }`, 0},
+		{"literal that waits on the bubble", `import ("testing/synctest"; "time"); var wait = func(d time.Duration) { time.Sleep(d); synctest.Wait() }`, 0},
+		{"helper without a wait", `import "time"; func wait(d time.Duration) { time.Sleep(d) }`, 1},
+		{"renamed import", `import clock "time"; func TestX(t *testing.T) { clock.Sleep(1) }`, 1},
+		{"sleep as a value", `import "time"; var sleep = time.Sleep`, 1},
+		{"no time import", `func TestX(t *testing.T) { time.Sleep(1) }`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := countTestSleeps("x_test.go", []byte("package x\n"+tt.src+"\n"))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, n)
+		})
+	}
+}

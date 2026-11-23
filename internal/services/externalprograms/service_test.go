@@ -1041,6 +1041,7 @@ func TestService_Execute_LimitsConcurrentPrograms(t *testing.T) {
 	ctx := t.Context()
 	dir := t.TempDir()
 	script := filepath.Join(dir, "block.sh")
+	//nolint:gosec // G306: the test runs this script, so it must be executable
 	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
 d=$(dirname "$0")
 touch "$d/started-$1"
@@ -1111,6 +1112,7 @@ func TestService_Execute_LimitsTerminalFallback(t *testing.T) {
 
 	dir := t.TempDir()
 	script := filepath.Join(dir, "block.sh")
+	//nolint:gosec // G306: the test runs this script, so it must be executable
 	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
 d=$(dirname "$0")
 touch "$d/started-$1"

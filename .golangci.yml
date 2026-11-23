@@ -402,8 +402,12 @@ linters:
 
       # Test fixtures are allowed to hold obvious fake credentials, build
       # requests without a context, and set cookies without the production
-      # attributes.
+      # attributes. gosec still checks the mode of a written file (G306), as
+      # docs/standards/tests.md asks.
+      - path: _test\.go
+        linters:
+          - noctx
       - path: _test\.go
         linters:
           - gosec
-          - noctx
+        text: "^G(?:[0-24-9]|3[1-9]|30[0-57-9])"

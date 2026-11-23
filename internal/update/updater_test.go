@@ -206,6 +206,7 @@ func newInstallFixture(t *testing.T) installFixture {
 	certificate, key := generateECDSACertificate(t)
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "qui")
+	//nolint:gosec // G306: the fixture stands for an installed binary, which is executable
 	require.NoError(t, os.WriteFile(binary, []byte("qui 1.30.0"), 0o700))
 
 	source := &fakeSource{releases: []fakeRelease{
@@ -358,6 +359,7 @@ func TestInstallReportsReleaseWithoutAssetForThisPlatform(t *testing.T) {
 func withTray(t *testing.T, f installFixture, archive map[string][]byte) string {
 	t.Helper()
 	tray := filepath.Join(f.dir, "qui-tray")
+	//nolint:gosec // G306: the fixture stands for an installed binary, which is executable
 	require.NoError(t, os.WriteFile(tray, []byte("qui-tray 1.30.0"), 0o700))
 	f.source.releases[1] = signedArchiveRelease(t, f.key, 2, "1.31.0", archive)
 	return tray

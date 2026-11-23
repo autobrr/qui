@@ -18,6 +18,12 @@ These rules apply to Go and TypeScript code.
 - Group package interfaces by domain under `internal/<area>`.
 - Keep interfaces small (<=5 methods).
 
+## Types and boundaries
+
+- Parse external data where it enters qui: a request body, a response from qBittorrent or a tracker, a config file, a file name from a torrent. After that point, trust the type, and do not check the value again.
+- Make an illegal state impossible to build. One value with named cases is better than two flags that must not be true at the same time, as the `useReducer` rule in `frontend-review.md` asks.
+- Give values that share a raw type but mean different things a type each, so that the compiler catches a mix-up: `models.PermissionArea` and `models.PermissionLevel` are both strings. `paths.md` keeps host paths and backend paths apart, and the `mapany` ratchet ("Maps of Any" in `docs/linting.md`) asks for a struct, not a `map[string]any`.
+
 ## Comments
 
 Comments are banned in Go and TypeScript code. `make lint-ratchet` counts them in Go, and the ESLint rule `qui/no-comments` reports them in `web/`. "Ratchet" in `docs/linting.md` describes both checks.
