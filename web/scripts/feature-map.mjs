@@ -4,6 +4,7 @@ import path from "node:path"
 import { parseArgs } from "node:util"
 import ts from "typescript"
 
+const scriptPath = fs.realpathSync(import.meta.filename)
 const saved = "web/feature-map.json"
 const overlays = new Set(["AlertDialogContent", "DialogContent", "DrawerContent", "SheetContent"])
 
@@ -167,7 +168,7 @@ export function atBase(root, base) {
   return JSON.parse(git("show", `${base}:${saved}`))
 }
 
-if (import.meta.main) {
+if (fs.existsSync(process.argv[1] ?? "") && fs.realpathSync(process.argv[1]) === scriptPath) {
   const { values } = parseArgs({ options: { write: { type: "boolean" }, base: { type: "string" }, where: { type: "string" } } })
   const web = path.resolve(import.meta.dirname, "..")
   const root = path.dirname(web)

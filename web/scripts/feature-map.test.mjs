@@ -154,3 +154,7 @@ test("atBase reads the map at a commit, and fails on a map that it cannot read",
   assert.deepEqual(atBase(repo, good), { dialogs: {} })
   assert.throws(() => atBase(repo, bad), SyntaxError)
 })
+
+test("the script runs its command line when node starts it", () => {
+  assert.throws(() => execFileSync(process.execPath, [path.join(import.meta.dirname, "feature-map.mjs"), "--unknown"], { stdio: "pipe" }), /Unknown option '--unknown'/)
+})
