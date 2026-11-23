@@ -44,7 +44,13 @@ func countTestSleeps(path string, src []byte) (int, error) {
 		case *ast.FuncDecl, *ast.FuncLit:
 			return !callsDirectly(node, synctestPkg, "Wait")
 		case *ast.CallExpr:
-			return !isSelector(node.Fun, synctestPkg, "Test")
+			if !isSelector(node.Fun, synctestPkg, "Test") {
+				return true
+			}
+			for _, arg := range node.Args {
+				n += sleepsBeforeBubble(arg, timePkg)
+			}
+			return false
 		case *ast.SelectorExpr:
 			if isSelector(node, timePkg, "Sleep") {
 				n++
@@ -53,6 +59,32 @@ func countTestSleeps(path string, src []byte) (int, error) {
 		return true
 	})
 	return n, nil
+}
+
+func sleepsBeforeBubble(root ast.Node, timePkg string) int {
+	n := 0
+	ast.Inspect(root, func(node ast.Node) bool {
+		switch node := node.(type) {
+		case *ast.CallExpr:
+			lit, now := ast.Unparen(node.Fun).(*ast.FuncLit)
+			if !now {
+				return true
+			}
+			n += sleepsBeforeBubble(lit.Body, timePkg)
+			for _, arg := range node.Args {
+				n += sleepsBeforeBubble(arg, timePkg)
+			}
+			return false
+		case *ast.FuncLit:
+			return false
+		case *ast.SelectorExpr:
+			if isSelector(node, timePkg, "Sleep") {
+				n++
+			}
+		}
+		return true
+	})
+	return n
 }
 
 func callsDirectly(root ast.Node, pkg, name string) bool {
