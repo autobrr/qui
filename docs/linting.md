@@ -52,7 +52,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
 - If you move code that has ratchet problems into another file, or rename such a file, move its count to the entry of the new path in the same change. Rule 3 fails only when the total of a linter grows, and its message names each entry that grew. ADR 0077 has the reason.
 
-Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go` lane fixes up to 5 problems in one file of `allowlist.json` and uses the `ratchet` label. ADR 0020 describes it. It does not take the `comments`, `offlog`, or `mapany` entries. The `web` lane removes up to 3 effects that `qui/no-direct-effect` holds in one file of `web/eslint-suppressions.json` and uses the `ratchet-web` label. ADR 0075 describes it. A lane opens no pull request while one with its label is open.
+Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `comments`, `offlog`, or `mapany` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
 
 ### Comments
 
@@ -95,6 +95,18 @@ Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The
 After you fix a report of one of these rules, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 6 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 6 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
 
 A new rule that old code breaks starts the same way: add its name to `suppressedRules`, and write its reports to the file one time with `pnpm exec eslint --suppress-rule <rule>` and the paths of the `lint` script in `web/package.json`.
+
+### Held Effects
+
+A run of a coding agent on the machine of a maintainer removes the effects that `qui/no-direct-effect` holds, one file in each pull request. Nothing in the repository starts a run. ADR 0084 has the reason. One run does these steps:
+
+1. Run `gh pr list --label ratchet-web --state open`. If it lists a pull request, stop.
+2. List the files, the fewest effects first: `jq -r 'to_entries | map({f: "web/\(.key)", n: (.value["qui/no-direct-effect"].count // 0)} | select(.n > 0)) | sort_by(.n, .f)[] | "\(.n) \(.f)"' web/eslint-suppressions.json`.
+3. Take the first file. If `gh pr list --head "effects/<file>" --state closed --json number,mergedAt` lists a pull request that did not merge, take the next file.
+4. Replace up to 3 of its effects as the message of the rule says, and keep the behaviour the same. An effect that the job needs moves into a hook of its own, with a line in `effectHooks`.
+5. Lower the entry of the file with `pnpm exec eslint --prune-suppressions <file>` in `web/`.
+6. Open each page that shows the file in a browser, on the base branch and on the change, and compare what the replaced effects did. A removed effect can change when a component renders, and no test shows that.
+7. Open the pull request from the branch `effects/<file>`, with the title `refactor(web): drop effects in <name of the file>` and the labels `ratchet-web` and `web`.
 
 ### File Size
 

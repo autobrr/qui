@@ -1,7 +1,6 @@
 // Runs one agent session with the Claude Agent SDK: a discussion triage, or a
-// lint ratchet fix when AGENT_PROFILE is ratchet or ratchet-web. The workflows
-// call this script instead of claude-code-action, so the run counts as Agent
-// SDK usage.
+// lint ratchet fix when AGENT_PROFILE is ratchet. The workflows call this
+// script instead of claude-code-action, so the run counts as Agent SDK usage.
 // See docs/adr/0017-discussion-triage-runs-on-a-capped-console-workspace.md
 // and docs/adr/0020-the-lint-ratchet-bot-opens-pull-requests-as-a-github-app.md.
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -53,19 +52,6 @@ if (env.GH_TOKEN) {
   delete env.GH_TOKEN;
 }
 
-const ratchet = (commands) => ({
-  prompt: env.RATCHET_PROMPT,
-  tools: ["Read", "Grep", "Glob", "Edit", "Bash"],
-  allowedTools: [
-    "Read",
-    "Grep",
-    "Glob",
-    ...(env.RATCHET_FILES ?? "").split("\n").filter(Boolean).map((file) => `Edit(./${file})`),
-    "Bash(go run ./scripts/ratchet:*)",
-    ...commands,
-  ],
-});
-
 // The built-in tools that exist in the run, and the calls that need no
 // permission. Some tools, such as Agent, need no permission, so allowedTools
 // alone does not remove them.
@@ -92,11 +78,26 @@ const profiles = {
       ]),
     ],
   },
-  // A ratchet run edits the files in RATCHET_FILES, which the pick step of
-  // ratchet.yml writes. It has no GitHub token: the workflow commits and opens
-  // the pull request.
-  ratchet: ratchet(["Bash(go build:*)", "Bash(go vet:*)", "Bash(go test:*)", "Bash(gofmt:*)", "Bash(golangci-lint run:*)"]),
-  "ratchet-web": ratchet(["Bash(pnpm --dir web exec eslint:*)", "Bash(pnpm --dir web exec tsc:*)", "Bash(pnpm --dir web exec vitest:*)"]),
+  // The ratchet edits one file, its test and the allowlist. It has no GitHub
+  // token: the workflow commits and opens the pull request.
+  ratchet: {
+    prompt: env.RATCHET_PROMPT,
+    tools: ["Read", "Grep", "Glob", "Edit", "Bash"],
+    allowedTools: [
+      "Read",
+      "Grep",
+      "Glob",
+      `Edit(./${env.RATCHET_FILE})`,
+      `Edit(./${env.RATCHET_FILE?.replace(/\.go$/, "_test.go")})`,
+      "Edit(./scripts/ratchet/allowlist.json)",
+      "Bash(go run ./scripts/ratchet:*)",
+      "Bash(go build:*)",
+      "Bash(go vet:*)",
+      "Bash(go test:*)",
+      "Bash(gofmt:*)",
+      "Bash(golangci-lint run:*)",
+    ],
+  },
 };
 const profile = profiles[env.AGENT_PROFILE ?? "triage"];
 
