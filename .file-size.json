@@ -1,0 +1,9 @@
+{
+  "max_bytes": 20000,
+  "extensions": [".go", ".js", ".mjs", ".py", ".sh", ".ts", ".tsx"],
+  "skip": [
+    "web/src/components/query-builder/fields.generated.ts",
+    "web/src/lib/api-key-permissions.generated.ts",
+    "web/src/routeTree.gen.ts"
+  ]
+}
