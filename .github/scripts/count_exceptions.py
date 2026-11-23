@@ -1,30 +1,23 @@
 import argparse
 import json
+import pathlib
 import re
 import subprocess
 import sys
 from collections import Counter
 from typing import NamedTuple
 
-from count_test_growth import header_path
-
 LABEL = "exceptions-approved"
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 WEB_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 PATHSPECS = ["*.go", *(f"*{suffix}" for suffix in WEB_SUFFIXES)]
 GO_EXCEPTION = re.compile(r"\s*(?:nolint|#nosec|gosec:disable|exhaustive:ignore)\b")
 WEB_EXCEPTION = re.compile(r"\s*(?:eslint-disable|[*/\s]*@ts-(?:expect-error|ignore|nocheck))\b")
-QUOTES = "\"'"
-WORD = re.compile(r"[\w$]+")
-REGEX = re.compile(r"/(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\\\[])+/")
-TEMPLATE = re.compile(r"(?:\\.?|\$(?!\{)|[^`\\$])*")
-RAW = re.compile(r"[^`]*")
-KEYWORDS = {"return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"}
-OPERAND_ENDS = ")]}<"
-START = ((), True)
-LOST = "lost"
-HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
+LANGUAGES = {
+    "go": (GO_EXCEPTION, ["go", "run", "./scripts/exceptions"]),
+    "web": (WEB_EXCEPTION, ["node", ".github/scripts/exceptions/comments.mjs"]),
+}
 SHOWN = 200
-WHOLE_FILE = "-U2147483647"
 FIX = (
     "An exception hides a report of a check. Fix each report instead: "
     "change the code until the check passes, and delete the exception."
@@ -42,122 +35,48 @@ class Found(NamedTuple):
     text: str
 
 
-def closing(line, at, quote):
-    while at < len(line):
-        if line[at] == "\\":
-            at += 2
-        elif line[at] == quote:
-            return at
-        else:
-            at += 1
+class Comment(NamedTuple):
+    line: int
+    text: str
+
+
+class Side(NamedTuple):
+    path: str
+    text: str = ""
+    comments: tuple = ()
+    broken: bool = False
+
+
+def language(path):
+    if path.endswith(".go"):
+        return "go"
+    if path.endswith(WEB_SUFFIXES):
+        return "web"
     return None
 
 
-def continued(line):
-    return (len(line) - len(line.rstrip("\\"))) % 2 == 1
+def body(comment):
+    if comment.text.startswith("/*"):
+        return comment.text[2:-2] if len(comment.text) >= 4 and comment.text.endswith("*/") else comment.text[2:]
+    return comment.text[2:]
 
 
-def comments(line, state, js):
-    stack, regex = state
-    found, at, mark = [], 0, 0
-    while at < len(line):
-        top = stack[-1] if stack else ""
-        char = line[at]
-        if top == "/*":
-            end = line.find("*/", at)
-            stop = len(line) if end < 0 else end
-            found.append((line[mark:stop + 2], line[at:stop], at > mark))
-            at, stack = (stop, stack) if end < 0 else (end + 2, stack[:-1])
-        elif top == LOST:
-            break
-        elif top and top in QUOTES:
-            end = closing(line, at, top)
-            at = len(line) if end is None else end + 1
-            if end is not None:
-                stack, regex = stack[:-1], False
-            elif not continued(line):
-                stack = (LOST,)
-        elif top == "`":
-            at = (TEMPLATE if js else RAW).match(line, at).end()
-            if line.startswith("`", at):
-                stack, regex, at = stack[:-1], False, at + 1
-            elif line.startswith("${", at):
-                stack, regex, at = (*stack, "${"), True, at + 2
-        elif line.startswith("//", at):
-            found.append((line[at:], line[at + 2:], True))
-            break
-        elif line.startswith("/*", at):
-            stack, mark, at = (*stack, "/*"), at, at + 2
-        elif char == "`":
-            stack, at = (*stack, "`"), at + 1
-        elif char in QUOTES:
-            end = closing(line, at + 1, char)
-            if end is None and js and continued(line):
-                stack, at = (*stack, char), len(line)
-            else:
-                at, regex = (at + 1, regex) if end is None else (end + 1, False)
-        elif line.startswith(("++", "--"), at):
-            at += 2
-        elif js and regex and (match := REGEX.match(line, at)):
-            at, regex = match.end(), False
-        elif match := WORD.match(line, at):
-            at, regex = match.end(), match.group() in KEYWORDS
-        else:
-            if char == "{" and stack:
-                stack = (*stack, "{")
-            elif char == "}" and stack:
-                stack = stack[:-1]
-            regex = regex if char.isspace() else char not in OPERAND_ENDS
-            at += 1
-    return found, (stack, regex)
-
-
-def files(diff):
-    path, lines, in_hunk = None, [], False
-    for line in diff.splitlines():
-        if line.startswith("diff --git "):
-            if path:
-                yield path, lines
-            path, lines, in_hunk = None, [], False
-        elif not in_hunk and line.startswith(("--- ", "+++ ")):
-            path = header_path(line) or path
-        elif line.startswith("@@") or in_hunk and line[:1] in (" ", "+", "-"):
-            in_hunk = True
-            lines.append(line)
-    if path:
-        yield path, lines
-
-
-def scan(path, lines, side, pattern, js):
-    found, plain, state, number = [], [], START, 0
-    for line in lines:
-        if line.startswith("@@"):
-            start = HUNK.match(line)
-            state, number = START, int(start.group(1)) if start else 0
-            continue
-        if line[0] in (" ", side):
-            texts, state = comments(line[1:], state, js)
-            if line[0] == side:
-                found += [Found(path, number, text.strip()) for text, body, opens in texts if pattern.match(body) and (opens or side == "+")]
-                plain += [Found(path, number, line[1:].strip()) for _ in pattern.finditer(line[1:])]
-        number += line[0] != "-"
-    if state[0]:
-        return plain if side == "+" else []
+def generous(side, pattern):
+    found = []
+    for comment in side.comments:
+        shown = comment.text.split("\n")
+        for offset, line in enumerate(body(comment).split("\n")):
+            if pattern.match(line if offset == 0 else line.lstrip(" \t*")):
+                found.append(Found(side.path, comment.line + offset, shown[offset].strip()))
     return found
 
 
-def exceptions(diff):
-    added, removed = [], []
-    for path, lines in files(diff):
-        if path.endswith(".go"):
-            pattern, js = GO_EXCEPTION, False
-        elif path.endswith(WEB_SUFFIXES):
-            pattern, js = WEB_EXCEPTION, True
-        else:
-            continue
-        added += scan(path, lines, "+", pattern, js)
-        removed += scan(path, lines, "-", pattern, js)
-    return added, removed
+def strict(side, pattern):
+    return [Found(side.path, comment.line, comment.text.split("\n")[0].strip()) for comment in side.comments if pattern.match(body(comment).split("\n")[0])]
+
+
+def plain(side, pattern):
+    return [Found(side.path, number, line.strip()) for number, line in enumerate(side.text.split("\n"), 1) for _ in pattern.finditer(line)]
 
 
 def new(added, removed):
@@ -169,6 +88,78 @@ def new(added, removed):
         else:
             result.append(found)
     return result
+
+
+def compare(base, head, pattern):
+    if base.broken or head.broken:
+        return new(plain(head, pattern), plain(base, pattern)), []
+    return new(generous(head, pattern), generous(base, pattern)), new(strict(base, pattern), strict(head, pattern))
+
+
+def changes(base, head):
+    out = git("diff", "--raw", "--numstat", "-z", "--no-abbrev", "--no-ext-diff", "-M", f"{base}...{head}", "--", *PATHSPECS).decode(errors="replace")
+    fields = iter(out.split("\0"))
+    for meta in fields:
+        if not meta.startswith(":"):
+            return
+        _, _, old_blob, new_blob, status = meta.split(" ")
+        old_blob, new_blob = (blob if blob.strip("0") else "" for blob in (old_blob, new_blob))
+        old_path = next(fields)
+        new_path = next(fields) if status[0] in "RC" else old_path
+        old_side, new_side = (old_path, old_blob), (new_path, new_blob)
+        if old_blob and new_blob and language(old_path) == language(new_path):
+            yield language(new_path), old_side, new_side
+            continue
+        if old_blob and language(old_path):
+            yield language(old_path), old_side, (old_path, "")
+        if new_blob and language(new_path):
+            yield language(new_path), (new_path, ""), new_side
+
+
+def git(*args, stdin=None):
+    return subprocess.run(["git", *args], input=stdin, stdout=subprocess.PIPE, check=True).stdout
+
+
+def blobs(ids):
+    wanted = sorted(set(filter(None, ids)))
+    out = git("cat-file", "--batch", stdin="".join(f"{blob}\n" for blob in wanted).encode())
+    texts, at = dict.fromkeys(["", *wanted], ""), 0
+    for blob in wanted:
+        end = out.index(b"\n", at)
+        header = out[at:end].split()
+        at = end + 1
+        if len(header) == 3:
+            size = int(header[2])
+            if header[1] == b"blob":
+                texts[blob] = out[at:at + size].decode(errors="replace")
+            at += size + 1
+    return texts
+
+
+def listings(command, sources):
+    if not sources:
+        return []
+    out = subprocess.run(command, cwd=ROOT, input=json.dumps(sources), stdout=subprocess.PIPE, check=True, encoding="utf-8").stdout
+    return json.loads(out)
+
+
+def sides(pairs):
+    texts = blobs(blob for _, *both in pairs for _, blob in both)
+    filled = {}
+    for name, (_, command) in LANGUAGES.items():
+        flat = [Side(path, texts[blob]) for lang, *both in pairs if lang == name for path, blob in both]
+        listed = listings(command, [{"name": side.path, "text": side.text} for side in flat])
+        filled[name] = iter(side._replace(comments=tuple(Comment(c["line"], c["text"]) for c in entry["comments"]), broken=entry["broken"]) for side, entry in zip(flat, listed, strict=True))
+    return [(name, next(filled[name]), next(filled[name])) for name, *_ in pairs]
+
+
+def exceptions(base, head):
+    added, removed = [], []
+    for name, old, head_side in sides(list(changes(base, head))):
+        more, fewer = compare(old, head_side, LANGUAGES[name][0])
+        added += more
+        removed += fewer
+    return added, removed
 
 
 def plural(n, word):
@@ -186,23 +177,13 @@ def report(added, removed, approved):
     return [*lines, FIX, ASK], False
 
 
-def git_diff(base, head):
-    return subprocess.run(
-        ["git", "-c", "core.quotePath=true", "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", WHOLE_FILE, "-M", f"{base}...{head}", "--", *PATHSPECS],
-        check=True,
-        capture_output=True,
-        text=True,
-        errors="replace",
-    ).stdout
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Fail when a change adds more lint exceptions than it removes, unless a maintainer approved them with a label.")
     parser.add_argument("base")
     parser.add_argument("head")
     parser.add_argument("--labels", default="[]", help="the labels of the pull request, as a JSON list of names")
     args = parser.parse_args(argv)
-    added, removed = exceptions(git_diff(args.base, args.head))
+    added, removed = exceptions(args.base, args.head)
     lines, passed = report(added, removed, LABEL in json.loads(args.labels))
     print("\n".join(lines))
     return 0 if passed else 1

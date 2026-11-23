@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "24.15.0"
+
 jobs:
   count:
     name: New lint exceptions
@@ -23,8 +26,19 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install the TypeScript parser
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix .github/scripts/exceptions
       - name: Test the counter
-        run: python3 -B -m unittest discover -s .github/scripts -p 'test_count_exceptions.py'
+        run: |
+          python3 -B -m unittest discover -s .github/scripts -p 'test_count_exceptions.py'
+          node --test ".github/scripts/exceptions/*.test.mjs"
       - name: Count the new lint exceptions
         env:
           BASE: ${{ github.event.pull_request.base.sha }}

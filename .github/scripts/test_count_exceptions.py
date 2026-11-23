@@ -8,458 +8,95 @@ import unittest
 from unittest import mock
 
 import count_exceptions
-from count_exceptions import ASK, FIX, Found, exceptions, git_diff, new, report
-
-GO_ADDED = """diff --git a/internal/a/a.go b/internal/a/a.go
-index 1111111..2222222 100644
---- a/internal/a/a.go
-+++ b/internal/a/a.go
-@@ -10,0 +11,6 @@ func run() {
-+	//nolint:gosec // the path comes from the config
-+	data, _ := os.ReadFile(path)
-+	sum := md5.Sum(data) // #nosec G401
-+	//exhaustive:ignore
-+	switch kind {
-+	_ = run() //nolint:errcheck // best effort
-"""
-
-GO_DIRECTIVE = """diff --git a/internal/a/b.go b/internal/a/b.go
-index 1111111..2222222 100644
---- a/internal/a/b.go
-+++ b/internal/a/b.go
-@@ -3,0 +4,3 @@
-+	//gosec:disable G304 -- the path comes from the config
-+	data, _ := os.ReadFile(path)
-+	name := "//gosec:disable G304"
-"""
-
-GO_NOT_EXCEPTIONS = """diff --git a/scripts/ratchet/main.go b/scripts/ratchet/main.go
-index 1111111..2222222 100644
---- a/scripts/ratchet/main.go
-+++ b/scripts/ratchet/main.go
-@@ -1,0 +2,5 @@
-+	list, ok := strings.CutPrefix(text, "nolint:")
-+	want := "//nolint:gocognit"
-+	linters = append(linters, "nolintlint")
-+	//nolintlint is a linter
-+	url := "https://example.invalid/#nosec"
-+	{"directives", "package p\\n\\n//nolint:gosec // reason\\nvar y = 1 // #nosec G115\\n", 0},
-+	raw := `//nolint:gosec`
-+	quote := '"' + "//nolint:gosec"
-+	run() // see the nolint below
-+	escaped := "\\" //nolint:gosec"
-+	two := `\\` + `//nolint:gosec`
-"""
-
-GO_AFTER_A_STRING = """diff --git a/pkg/a/a_test.go b/pkg/a/a_test.go
-index 1111111..2222222 100644
---- a/pkg/a/a_test.go
-+++ b/pkg/a/a_test.go
-@@ -30,0 +31,3 @@
-+		{name: "it's \\"closed\\"", err: errors.New("wsasend: aborted")}, //nolint:err113 // a fixture
-+		path := `C:\\` //nolint:gosec // a raw string has no escapes
-+	run() /* first */ /* #nosec G204 */
-"""
-
-WEB_ADDED = """diff --git a/web/src/a.tsx b/web/src/a.tsx
-index 1111111..2222222 100644
---- a/web/src/a.tsx
-+++ b/web/src/a.tsx
-@@ -4,0 +5,4 @@
-+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the ref is stable
-+    {/* eslint-disable-next-line qui/no-native-title -- the browser draws it */}
-+  const value = input as any // eslint-disable-line @typescript-eslint/no-explicit-any -- the library has no types
-+    // @ts-expect-error the backend injects it
-@@ -40,0 +45,2 @@
-+/* eslint-enable */
-+const text = "eslint-disable is a directive"
-+  "// eslint-disable-next-line no-console",
-+  const template = `// eslint-disable-next-line no-console`
-+  const quoted = '// @ts-ignore'
-+  // the docs name eslint-disable-next-line
-+  // eslint-disabled is not a directive
-+  const tick = `\\`// eslint-disable-line`
-@@ -60,0 +72,2 @@
-+      <p>Don't stop</p> {/* eslint-disable-line qui/no-native-title -- one quote does not open a string */}
-+  const pattern = "\\"" // @ts-ignore
-+// @ts-nocheck
-"""
-
-MOVED = """diff --git a/internal/a/a.go b/internal/a/a.go
-index 1111111..2222222 100644
---- a/internal/a/a.go
-+++ b/internal/a/a.go
-@@ -11,2 +10,0 @@ func run() {
--	//nolint:gosec // the path comes from the config
--	data, _ := os.ReadFile(path)
-diff --git a/internal/a/read.go b/internal/a/read.go
-new file mode 100644
-index 0000000..3333333
---- /dev/null
-+++ b/internal/a/read.go
-@@ -0,0 +1,3 @@
-+package a
-+		//nolint:gosec // the path comes from the config
-+		data, _ := os.ReadFile(path)
-"""
-
-SWAPPED = MOVED + """diff --git a/web/src/b.ts b/web/src/b.ts
-index 1111111..2222222 100644
---- a/web/src/b.ts
-+++ b/web/src/b.ts
-@@ -7 +7 @@
--// @ts-ignore
-+// @ts-expect-error the type of the event is wrong upstream
-@@ -20,0 +21 @@
-+// eslint-disable-next-line no-console -- the CLI prints its result
-"""
-
-GO_RAW_STRING = """diff --git a/pkg/a/a_test.go b/pkg/a/a_test.go
-index 1111111..2222222 100644
---- a/pkg/a/a_test.go
-+++ b/pkg/a/a_test.go
-@@ -1,2 +1,7 @@
- package a
- 
-+const fixture = `
-+//nolint:gosec // a fixture
-+/* #nosec G304 */`
-+
-+var data, _ = os.ReadFile(path) //nolint:gosec // the path comes from the config
-"""
-
-GO_FIXTURE_LINE_REMOVED = """diff --git a/pkg/a/a_test.go b/pkg/a/a_test.go
-index 1111111..2222222 100644
---- a/pkg/a/a_test.go
-+++ b/pkg/a/a_test.go
-@@ -1,6 +1,6 @@
- package a
- 
- const fixture = `
--//nolint:gosec // a fixture
- `
-+var data, _ = os.ReadFile(path) //nolint:gosec // the path comes from the config
-"""
-
-TS_DOC_COMMENT = """diff --git a/scripts/e.ts b/scripts/e.ts
-index 1111111..2222222 100644
---- a/scripts/e.ts
-+++ b/scripts/e.ts
-@@ -1,2 +1,7 @@
- const first = 1
-+/** @ts-expect-error the type of the package is wrong */
-+const second: string = first
-+/// @ts-ignore
-+const third: string = first
-+/** @param name the text that names @ts-ignore */
- const last = 2
-"""
-
-WEB_POSTFIX = """diff --git a/web/src/h.ts b/web/src/h.ts
-index 1111111..2222222 100644
---- a/web/src/h.ts
-+++ b/web/src/h.ts
-@@ -1,2 +1,3 @@
- let n = 0
-+const half = n++ / 2 // eslint-disable-line no-plusplus -- a counter
- const last = 2
-"""
-
-WEB_CONTINUED = """diff --git a/web/src/i.ts b/web/src/i.ts
-index 1111111..2222222 100644
---- a/web/src/i.ts
-+++ b/web/src/i.ts
-@@ -1,5 +1,5 @@
- const first = 1
--const text = "the help says \\
--and then \\
--// eslint-disable-line no-console"
-+// eslint-disable-next-line no-console -- the CLI prints its result
-+const more = "one \\
-+two" // eslint-disable-line quotes -- the name has an apostrophe
- console.log(first)
-"""
-
-WEB_UNCLOSED = """diff --git a/web/src/j.tsx b/web/src/j.tsx
-index 1111111..2222222 100644
---- a/web/src/j.tsx
-+++ b/web/src/j.tsx
-@@ -1,2 +1,5 @@
- const first = 1
-+const view = <div>Don't use C:\\
-+{/* eslint-disable-next-line no-console -- the example logs once */}
-+const label = 'x' // @ts-ignore
- }
-"""
-
-WEB_MULTILINE = """diff --git a/web/src/d.ts b/web/src/d.ts
-index 1111111..2222222 100644
---- a/web/src/d.ts
-+++ b/web/src/d.ts
-@@ -1,4 +1,10 @@
- /*
--the old text
-+eslint-disable no-alert -- the user confirms the delete
- */
-+/*
-+eslint-disable no-console -- the CLI prints its result
-+*/
-+const help = `
-+// eslint-disable-next-line no-console -- a line of the help text
-+`
- console.log(1)
-"""
-
-BLOCK_REMOVED = """diff --git a/web/src/h.ts b/web/src/h.ts
---- a/web/src/h.ts
-+++ b/web/src/h.ts
-@@ -1,9 +1,2 @@
--/* the reason
--eslint-disable-next-line no-console
--*/
--/*
--eslint-disable-next-line no-console -- the CLI prints its result
--*/
--/* eslint-disable no-alert -- the user confirms the delete
--*/
-+// eslint-disable-next-line no-console -- the CLI prints its result
- console.log(1)
-diff --git a/pkg/a/a.go b/pkg/a/a.go
---- a/pkg/a/a.go
-+++ b/pkg/a/a.go
-@@ -1,4 +1,2 @@
--/*
--nolint:gosec
--*/
-+//nolint:gosec // the path comes from the config
- var data, _ = os.ReadFile(path)
-"""
-
-TWO_ON_ONE_LINE = """diff --git a/web/src/c.ts b/web/src/c.ts
-index 1111111..2222222 100644
---- a/web/src/c.ts
-+++ b/web/src/c.ts
-@@ -3 +3 @@
--/* eslint-disable no-console -- the CLI prints its result */
-+/* eslint-disable no-console -- the CLI prints its result */ /* eslint-disable no-alert -- the user confirms the delete */
-"""
-
-WEB_REGEX = """diff --git a/web/src/e.ts b/web/src/e.ts
---- a/web/src/e.ts
-+++ b/web/src/e.ts
-@@ -1 +1,8 @@
- export {}
-+const tick = /`/
-+const marks = (text) => text.replace(/[/*'"]/g, "") // @ts-ignore
-+const half = total / 2 // @ts-ignore
-+const third = (total) / 3 // @ts-ignore
-+function backtick() { return /`/ }
-+// eslint-disable-next-line no-console -- the CLI prints its result
-+console.log(tick, marks, half, third)
-"""
-
-WEB_SUBSTITUTION = """diff --git a/web/src/f.ts b/web/src/f.ts
---- a/web/src/f.ts
-+++ b/web/src/f.ts
-@@ -1 +1,7 @@
- export {}
-+const line = `a ${
-+  [{ brace: `}` }].join() +
-+  // eslint-disable-next-line no-console -- the CLI prints its result
-+  console.log()
-+} // @ts-ignore`
-+// @ts-ignore
-"""
-
-WEB_LOST = """diff --git a/web/src/g.tsx b/web/src/g.tsx
---- a/web/src/g.tsx
-+++ b/web/src/g.tsx
-@@ -1,3 +1,3 @@
- export const Help = () => <p>press ` to search</p>
--// @ts-ignore
-+console.log("@ts-ignore") // eslint-disable-line no-console -- the CLI prints its result
- const name = "@ts-nocheck"
-"""
-
-DELETED_FILE = """diff --git a/web/src/old.ts b/web/src/old.ts
-deleted file mode 100644
-index 3333333..0000000
---- a/web/src/old.ts
-+++ /dev/null
-@@ -1,2 +0,0 @@
--// eslint-disable-next-line no-console
--console.log(1)
-"""
-
-OTHER_FILES = """diff --git a/docs/linting.md b/docs/linting.md
-index 1111111..2222222 100644
---- a/docs/linting.md
-+++ b/docs/linting.md
-@@ -1,0 +2,2 @@
-+Use an inline //nolint:gosec // reason
-+// eslint-disable-next-line no-console
-"""
-
+from count_exceptions import ASK, FIX, GO_EXCEPTION, WEB_EXCEPTION, Comment, Found, Side, compare, generous, new, report, strict
 
 IDENTITY = {name: "qui" for name in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME")} | {name: "qui@example.invalid" for name in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL")}
+REASON = "//nolint:gosec // the path comes from the config"
+
+
+def go(*comments, text="", broken=False):
+    return Side("a.go", text, tuple(Comment(*comment) for comment in comments), broken)
+
+
+def web(*comments, text="", broken=False):
+    return Side("a.ts", text, tuple(Comment(*comment) for comment in comments), broken)
 
 
 def texts(found):
     return [(item.path, item.line, item.text) for item in found]
 
 
-class ExceptionsTest(unittest.TestCase):
-    def test_go_exceptions_with_their_lines(self):
-        added, removed = exceptions(GO_ADDED)
-        self.assertEqual(texts(added), [
-            ("internal/a/a.go", 11, "//nolint:gosec // the path comes from the config"),
-            ("internal/a/a.go", 13, "// #nosec G401"),
-            ("internal/a/a.go", 14, "//exhaustive:ignore"),
-            ("internal/a/a.go", 16, "//nolint:errcheck // best effort"),
-        ])
-        self.assertEqual(removed, [])
+class RulesTest(unittest.TestCase):
+    def test_go_directives(self):
+        side = go((3, REASON), (4, "// #nosec G401"), (5, "//exhaustive:ignore"), (6, "//gosec:disable G304 -- the path comes from the config"), (7, "/* #nosec G204 */"))
+        self.assertEqual([item.line for item in generous(side, GO_EXCEPTION)], [3, 4, 5, 6, 7])
 
-    def test_a_gosec_directive(self):
-        self.assertEqual(texts(exceptions(GO_DIRECTIVE)[0]), [("internal/a/b.go", 4, "//gosec:disable G304 -- the path comes from the config")])
-
-    def test_go_text_that_only_names_an_exception(self):
-        self.assertEqual(exceptions(GO_NOT_EXCEPTIONS), ([], []))
-
-    def test_go_exceptions_after_a_string_or_another_comment(self):
-        added, _ = exceptions(GO_AFTER_A_STRING)
-        self.assertEqual(texts(added), [
-            ("pkg/a/a_test.go", 31, "//nolint:err113 // a fixture"),
-            ("pkg/a/a_test.go", 32, "//nolint:gosec // a raw string has no escapes"),
-            ("pkg/a/a_test.go", 33, "/* #nosec G204 */"),
-        ])
-
-    def test_web_exceptions_with_their_lines(self):
-        added, removed = exceptions(WEB_ADDED)
-        self.assertEqual([(item.line, item.text.split(" -- ")[0]) for item in added], [
-            (5, "// eslint-disable-next-line react-hooks/exhaustive-deps"),
-            (6, "/* eslint-disable-next-line qui/no-native-title"),
-            (7, "// eslint-disable-line @typescript-eslint/no-explicit-any"),
-            (8, "// @ts-expect-error the backend injects it"),
-            (72, "/* eslint-disable-line qui/no-native-title"),
-            (73, "// @ts-ignore"),
-            (74, "// @ts-nocheck"),
-        ])
-        self.assertEqual(removed, [])
-
-    def test_each_exception_on_a_line_counts(self):
-        added, removed = exceptions(TWO_ON_ONE_LINE)
-        self.assertEqual(texts(added), [
-            ("web/src/c.ts", 3, "/* eslint-disable no-console -- the CLI prints its result */"),
-            ("web/src/c.ts", 3, "/* eslint-disable no-alert -- the user confirms the delete */"),
-        ])
-        self.assertEqual(texts(new(added, removed)), [("web/src/c.ts", 3, "/* eslint-disable no-alert -- the user confirms the delete */")])
-
-    def test_a_string_over_several_lines_holds_no_exception(self):
-        added, removed = exceptions(GO_RAW_STRING)
-        self.assertEqual(texts(added), [("pkg/a/a_test.go", 7, "//nolint:gosec // the path comes from the config")])
-        self.assertEqual(removed, [])
-
-    def test_a_string_that_opens_on_an_unchanged_line(self):
-        added, removed = exceptions(GO_FIXTURE_LINE_REMOVED)
-        self.assertEqual(texts(added), [("pkg/a/a_test.go", 5, "//nolint:gosec // the path comes from the config")])
-        self.assertEqual(removed, [])
-
-    def test_a_directive_on_its_own_line_of_a_block_comment(self):
-        added, removed = exceptions(WEB_MULTILINE)
-        self.assertEqual(texts(added), [
-            ("web/src/d.ts", 2, "eslint-disable no-alert -- the user confirms the delete"),
-            ("web/src/d.ts", 5, "eslint-disable no-console -- the CLI prints its result"),
-        ])
-        self.assertEqual(removed, [])
+    def test_comments_that_only_name_a_directive(self):
+        side = go((1, "//nolintlint is a linter"), (2, "// see the nolint below"), (3, "// the docs name #nosec"))
+        self.assertEqual(generous(side, GO_EXCEPTION), [])
+        side = web((1, "// the docs name eslint-disable-next-line"), (2, "// eslint-disabled is not a directive"), (3, "/** @param name the text that names @ts-ignore */"))
+        self.assertEqual(generous(side, WEB_EXCEPTION), [])
 
     def test_a_ts_directive_after_the_stars_or_slashes_of_its_comment(self):
-        added, removed = exceptions(TS_DOC_COMMENT)
-        self.assertEqual(texts(added), [
-            ("scripts/e.ts", 2, "/** @ts-expect-error the type of the package is wrong */"),
-            ("scripts/e.ts", 4, "/// @ts-ignore"),
+        side = web((1, "/** @ts-expect-error the type of the package is wrong */"), (3, "/// @ts-ignore"))
+        self.assertEqual(texts(generous(side, WEB_EXCEPTION)), [("a.ts", 1, "/** @ts-expect-error the type of the package is wrong */"), ("a.ts", 3, "/// @ts-ignore")])
+        self.assertEqual(len(strict(side, WEB_EXCEPTION)), 2)
+
+    def test_generous_counts_each_line_of_a_block_comment_and_strict_only_the_first(self):
+        block = "/* eslint-disable no-alert -- the user confirms the delete\n * eslint-disable no-console -- the CLI prints its result\n  @ts-ignore */"
+        side = web((4, block), (9, "/*\neslint-disable-next-line no-console\n*/"))
+        self.assertEqual(texts(generous(side, WEB_EXCEPTION)), [
+            ("a.ts", 4, "/* eslint-disable no-alert -- the user confirms the delete"),
+            ("a.ts", 5, "* eslint-disable no-console -- the CLI prints its result"),
+            ("a.ts", 6, "@ts-ignore */"),
+            ("a.ts", 10, "eslint-disable-next-line no-console"),
         ])
+        self.assertEqual(texts(strict(side, WEB_EXCEPTION)), [("a.ts", 4, "/* eslint-disable no-alert -- the user confirms the delete")])
+
+    def test_an_unchanged_comment_cancels_on_both_sides(self):
+        base = go((3, REASON), (9, "/*\nnolint:gosec\n*/"))
+        head = go((5, REASON), (12, "/*\nnolint:gosec\n*/"))
+        self.assertEqual(compare(base, head, GO_EXCEPTION), ([], []))
+
+    def test_added_and_removed_as_multisets_by_text(self):
+        base = go((3, REASON))
+        head = go((3, REASON), (8, REASON), (9, "//nolint:errcheck // best effort"))
+        added, removed = compare(base, head, GO_EXCEPTION)
+        self.assertEqual(texts(added), [("a.go", 8, REASON), ("a.go", 9, "//nolint:errcheck // best effort")])
         self.assertEqual(removed, [])
+        self.assertEqual(compare(head, base, GO_EXCEPTION), ([], [Found("a.go", 8, REASON), Found("a.go", 9, "//nolint:errcheck // best effort")]))
 
-    def test_a_removed_directive_counts_only_on_the_line_where_its_block_comment_opens(self):
-        added, removed = exceptions(BLOCK_REMOVED)
-        self.assertEqual(len(added), 2)
-        self.assertEqual(texts(removed), [("web/src/h.ts", 1, "/* eslint-disable no-alert -- the user confirms the delete")])
+    def test_a_removed_directive_on_a_later_line_of_a_block_comment_gives_no_credit(self):
+        base = web((1, "/* the reason\neslint-disable-next-line no-console\n*/"))
+        self.assertEqual(compare(base, web(), WEB_EXCEPTION), ([], []))
+        self.assertEqual(len(compare(web(), base, WEB_EXCEPTION)[0]), 1)
 
-    def test_a_regex_literal_is_not_a_string_or_a_comment(self):
-        added, _ = exceptions(WEB_REGEX)
-        self.assertEqual([(item.line, item.text) for item in added], [
-            *((line, "// @ts-ignore") for line in (3, 4, 5)),
-            (7, "// eslint-disable-next-line no-console -- the CLI prints its result"),
-        ])
-
-    def test_a_division_after_a_postfix_operator_is_no_regex(self):
-        added, removed = exceptions(WEB_POSTFIX)
-        self.assertEqual(texts(added), [("web/src/h.ts", 2, "// eslint-disable-line no-plusplus -- a counter")])
-
-    def test_a_quoted_string_that_a_backslash_continues_holds_no_exception(self):
-        added, removed = exceptions(WEB_CONTINUED)
-        self.assertEqual(texts(added), [
-            ("web/src/i.ts", 2, "// eslint-disable-next-line no-console -- the CLI prints its result"),
-            ("web/src/i.ts", 4, "// eslint-disable-line quotes -- the name has an apostrophe"),
-        ])
-        self.assertEqual(removed, [])
-
-    def test_a_continued_string_that_never_closes_is_a_misread_file(self):
-        added, removed = exceptions(WEB_UNCLOSED)
-        self.assertEqual(texts(added), [
-            ("web/src/j.tsx", 3, "{/* eslint-disable-next-line no-console -- the example logs once */}"),
-            ("web/src/j.tsx", 4, "const label = 'x' // @ts-ignore"),
-        ])
-
-    def test_a_comment_in_a_template_substitution(self):
-        added, _ = exceptions(WEB_SUBSTITUTION)
-        self.assertEqual(texts(added), [
-            ("web/src/f.ts", 4, "// eslint-disable-next-line no-console -- the CLI prints its result"),
-            ("web/src/f.ts", 7, "// @ts-ignore"),
-        ])
-
-    def test_a_file_that_the_scan_misreads_counts_each_added_text_and_credits_no_removed_line(self):
-        added, removed = exceptions(WEB_LOST)
+    def test_a_misread_file_counts_each_text_on_the_head_lines_without_a_base_twin(self):
         line = 'console.log("@ts-ignore") // eslint-disable-line no-console -- the CLI prints its result'
-        self.assertEqual(texts(added), [("web/src/g.tsx", 2, line), ("web/src/g.tsx", 2, line)])
-        self.assertEqual(removed, [])
-
-    def test_removed_exceptions(self):
-        added, removed = exceptions(DELETED_FILE)
-        self.assertEqual(added, [])
-        self.assertEqual(texts(removed), [("web/src/old.ts", 0, "// eslint-disable-next-line no-console")])
-
-    def test_files_that_are_not_code(self):
-        self.assertEqual(exceptions(OTHER_FILES), ([], []))
-
-    def test_a_moved_exception_is_not_new(self):
-        added, removed = exceptions(MOVED)
-        self.assertEqual((len(added), len(removed)), (1, 1))
-        self.assertEqual(new(added, removed), [])
+        base = web((2, "// @ts-ignore"), text="export const a = 1\n// @ts-ignore\nconst name = '@ts-nocheck'\n")
+        head = web((2, line), text=f"export const a = 1\n{line}\nconst name = '@ts-nocheck'\n", broken=True)
+        self.assertEqual(texts(compare(base, head, WEB_EXCEPTION)[0]), [("a.ts", 2, line), ("a.ts", 2, line)])
+        self.assertEqual(compare(base, head, WEB_EXCEPTION)[1], [])
+        self.assertEqual(compare(base._replace(broken=True), head._replace(broken=False), WEB_EXCEPTION), compare(base, head, WEB_EXCEPTION))
 
     def test_new_names_only_the_exceptions_without_a_removed_twin(self):
-        added, removed = exceptions(SWAPPED)
-        self.assertEqual(texts(new(added, removed)), [
-            ("web/src/b.ts", 7, "// @ts-expect-error the type of the event is wrong upstream"),
-            ("web/src/b.ts", 21, "// eslint-disable-next-line no-console -- the CLI prints its result"),
-        ])
+        added = [Found("a.go", 1, REASON), Found("b.go", 2, REASON), Found("b.go", 3, "// #nosec G115")]
+        self.assertEqual(new(added, [Found("c.go", 0, REASON)]), added[1:])
 
-    def test_two_equal_exceptions_and_one_removed_twin(self):
-        same = "//nolint:gosec // the path comes from the config"
-        added = [Found("a.go", 1, same), Found("b.go", 2, same)]
-        self.assertEqual(new(added, [Found("c.go", 0, same)]), [Found("b.go", 2, same)])
+
+SWAPPED = [Found("internal/a/read.go", 2, REASON), Found("web/src/b.ts", 7, "// @ts-expect-error the type of the event is wrong upstream"), Found("web/src/b.ts", 21, "// eslint-disable-next-line no-console -- the CLI prints its result")]
 
 
 class ReportTest(unittest.TestCase):
     def test_no_more_than_removed_passes_without_the_label(self):
-        for diff in ("", MOVED, DELETED_FILE):
-            lines, passed = report(*exceptions(diff), approved=False)
-            self.assertTrue(passed, diff)
+        for added, removed in (([], []), (SWAPPED[:1], SWAPPED[:1]), ([], SWAPPED)):
+            lines, passed = report(added, removed, approved=False)
+            self.assertTrue(passed)
             self.assertEqual(len(lines), 1)
             self.assertIn("It needs no approval.", lines[0])
 
     def test_more_than_removed_fails_and_lists_the_new_ones(self):
-        lines, passed = report(*exceptions(SWAPPED), approved=False)
+        lines, passed = report(SWAPPED, [Found("internal/a/a.go", 11, REASON), Found("web/src/b.ts", 7, "// @ts-ignore")], approved=False)
         self.assertFalse(passed)
         self.assertEqual(lines, [
             "This pull request adds 3 lint exceptions and removes 2. The new ones:",
@@ -471,48 +108,79 @@ class ReportTest(unittest.TestCase):
         ])
 
     def test_the_label_approves_the_new_ones(self):
-        lines, passed = report(*exceptions(GO_ADDED), approved=True)
+        lines, passed = report(SWAPPED, [], approved=True)
         self.assertTrue(passed)
-        self.assertEqual(lines[0], "This pull request adds 4 lint exceptions and removes 0. The new ones:")
+        self.assertEqual(lines[0], "This pull request adds 3 lint exceptions and removes 0. The new ones:")
         self.assertEqual(lines[-1], 'A maintainer approved them with the label "exceptions-approved".')
         self.assertNotIn(ASK, lines)
 
     def test_one_exception_is_singular(self):
-        lines, _ = report([Found("a.go", 1, "//nolint:gosec // reason")], [], approved=False)
+        lines, _ = report([Found("a.go", 1, REASON)], [], approved=False)
         self.assertEqual(lines[0], "This pull request adds 1 lint exception and removes 0. The new ones:")
-
-    def test_only_the_exact_label_approves(self):
-        for labels, want in (('["chore", "exceptions-approved"]', 0), ('["chore", "not-exceptions-approved"]', 1), ("[]", 1)):
-            with mock.patch.object(count_exceptions, "git_diff", return_value=GO_ADDED), contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(count_exceptions.main(["base", "head", "--labels", labels]), want, labels)
-
-    def test_a_change_without_new_exceptions_exits_with_zero(self):
-        with mock.patch.object(count_exceptions, "git_diff", return_value=MOVED), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(count_exceptions.main(["base", "head"]), 0)
 
     def test_a_long_line_is_cut(self):
         lines, _ = report([Found("a.go", 1, "//nolint:gosec // " + "x" * 500)], [], approved=False)
         self.assertEqual(len(lines[1]), len("  a.go:1: ") + 200)
 
+    def test_only_the_exact_label_approves(self):
+        for labels, want in (('["chore", "exceptions-approved"]', 0), ('["chore", "not-exceptions-approved"]', 1), ("[]", 1)):
+            with mock.patch.object(count_exceptions, "exceptions", return_value=(SWAPPED, [])), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(count_exceptions.main(["base", "head", "--labels", labels]), want, labels)
 
-class GitDiffTest(unittest.TestCase):
-    def test_the_diff_holds_the_unchanged_lines(self):
+    def test_a_change_without_new_exceptions_exits_with_zero(self):
+        with mock.patch.object(count_exceptions, "exceptions", return_value=(SWAPPED[:1], SWAPPED[:1])), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(count_exceptions.main(["base", "head"]), 0)
+
+
+class EndToEndTest(unittest.TestCase):
+    def run_main(self, before, after):
         def git(*args):
             return subprocess.run(["git", "-c", "commit.gpgSign=false", *args], check=True, capture_output=True, text=True).stdout.strip()
 
-        def commit(text, *parent):
-            pathlib.Path("a.go").write_text(text)
-            git("add", "a.go")
+        def commit(files, *parent):
+            for path in pathlib.Path().iterdir():
+                if path.is_file():
+                    path.unlink()
+            for path, text in files.items():
+                pathlib.Path(path).write_text(text)
+            git("add", "-A")
             return git("commit-tree", git("write-tree"), "-m", "x", *parent)
 
         env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")} | IDENTITY
         with tempfile.TemporaryDirectory() as root, contextlib.chdir(root), mock.patch.dict(os.environ, env, clear=True):
             git("init", "-q")
-            base = commit("package a\n\nconst fixture = `\n//nolint:gosec // a fixture\n`\n")
-            head = commit("package a\n\nconst fixture = `\n`\nvar data, _ = os.ReadFile(path) //nolint:gosec // the path comes from the config\n", "-p", base)
-            added, removed = exceptions(git_diff(base, head))
-        self.assertEqual(texts(added), [("a.go", 5, "//nolint:gosec // the path comes from the config")])
-        self.assertEqual(removed, [])
+            base = commit(before)
+            head = commit(after, "-p", base)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = count_exceptions.main(["--labels", "[]", base, head])
+        return code, out.getvalue()
+
+    def test_both_helpers_on_a_real_change(self):
+        before = {
+            "a.go": "package a\n\nconst fixture = `\n//nolint:gosec // a fixture\n`\n",
+            "old.ts": "// eslint-disable-next-line no-console -- the CLI prints its result\nconsole.log(1)\n",
+            "moved.go": f"package a\n\nvar data, _ = os.ReadFile(path) {REASON}\n",
+        }
+        after = {
+            "a.go": f"package a\n\nconst fixture = `\n`\n\nvar data, _ = os.ReadFile(path) {REASON}\n",
+            "b.tsx": "const view = <p>Don't</p> // @ts-ignore\nconst help = `\n// eslint-disable-next-line no-console\n`\n",
+            "renamed.go": f"package a\n\nvar data, _ = os.ReadFile(path) {REASON}\n",
+        }
+        code, out = self.run_main(before, after)
+        self.assertEqual(code, 1)
+        self.assertEqual(out.splitlines()[:3], [
+            "This pull request adds 2 lint exceptions and removes 1. The new ones:",
+            f"  a.go:6: {REASON}",
+            "  b.tsx:1: // @ts-ignore",
+        ])
+
+    def test_a_directive_on_an_unchanged_line_that_the_change_makes_active(self):
+        before = {"a.ts": "export const help = `\n// @ts-nocheck\n`\n"}
+        after = {"a.ts": "export const help = 1\n// @ts-nocheck\n\n"}
+        code, out = self.run_main(before, after)
+        self.assertEqual(code, 1)
+        self.assertIn("  a.ts:2: // @ts-nocheck", out.splitlines())
 
 
 if __name__ == "__main__":
