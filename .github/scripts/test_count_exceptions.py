@@ -141,6 +141,20 @@ index 1111111..2222222 100644
 +var data, _ = os.ReadFile(path) //nolint:gosec // the path comes from the config
 """
 
+TS_DOC_COMMENT = """diff --git a/scripts/e.ts b/scripts/e.ts
+index 1111111..2222222 100644
+--- a/scripts/e.ts
++++ b/scripts/e.ts
+@@ -1,2 +1,7 @@
+ const first = 1
++/** @ts-expect-error the type of the package is wrong */
++const second: string = first
++/// @ts-ignore
++const third: string = first
++/** @param name the text that names @ts-ignore */
+ const last = 2
+"""
+
 WEB_MULTILINE = """diff --git a/web/src/d.ts b/web/src/d.ts
 index 1111111..2222222 100644
 --- a/web/src/d.ts
@@ -318,6 +332,14 @@ class ExceptionsTest(unittest.TestCase):
         self.assertEqual(texts(added), [
             ("web/src/d.ts", 2, "eslint-disable no-alert -- the user confirms the delete"),
             ("web/src/d.ts", 5, "eslint-disable no-console -- the CLI prints its result"),
+        ])
+        self.assertEqual(removed, [])
+
+    def test_a_ts_directive_after_the_stars_or_slashes_of_its_comment(self):
+        added, removed = exceptions(TS_DOC_COMMENT)
+        self.assertEqual(texts(added), [
+            ("scripts/e.ts", 2, "/** @ts-expect-error the type of the package is wrong */"),
+            ("scripts/e.ts", 4, "/// @ts-ignore"),
         ])
         self.assertEqual(removed, [])
 
