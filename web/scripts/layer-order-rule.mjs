@@ -1,13 +1,10 @@
 import path from "node:path"
 
+import { localImports } from "./local-imports.mjs"
+
 function layerOf(root, layers, file) {
   const [first] = path.relative(root, file).split(path.sep)
   return layers.includes(first) ? first : undefined
-}
-
-function targetOf(root, file, source) {
-  if (source.startsWith("@/")) return path.join(root, source.slice(2))
-  if (source.startsWith(".")) return path.resolve(path.dirname(file), source)
 }
 
 export const layerOrder = {
@@ -30,22 +27,11 @@ export const layerOrder = {
     const [{ root, layers }] = context.options
     const from = layerOf(root, layers, context.filename)
     if (!from) return {}
-    const check = (node) => {
-      const source = node.source
-      const specifier = source?.type === "TemplateLiteral" && source.expressions.length === 0 ? source.quasis[0].value.cooked : source?.value
-      if (typeof specifier !== "string") return
-      const target = targetOf(root, context.filename, specifier)
-      const to = target && layerOf(root, layers, target)
+    return localImports(context, root, (node, target) => {
+      const to = layerOf(root, layers, target)
       if (to && layers.indexOf(to) > layers.indexOf(from)) {
-        context.report({ node: source, messageId: "upward", data: { from, to, order: layers.join(", ") } })
+        context.report({ node, messageId: "upward", data: { from, to, order: layers.join(", ") } })
       }
-    }
-    return {
-      ImportDeclaration: check,
-      ImportExpression: check,
-      ExportNamedDeclaration: check,
-      ExportAllDeclaration: check,
-      TSImportType: check,
-    }
+    })
   },
 }
