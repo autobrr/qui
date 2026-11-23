@@ -84,12 +84,10 @@ func fileSizeProblems(base string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	//nolint:gosec // the developer or CI picks -base
 	tree, err := exec.CommandContext(context.Background(), "git", "ls-tree", "-r", "-l", "-z", base).Output()
 	if err != nil {
 		return nil, fmt.Errorf("git ls-tree %s: %w", base, err)
 	}
-	//nolint:gosec // the developer or CI picks -base
 	renames, err := exec.CommandContext(context.Background(), "git", "diff", "--name-status", "-M", "-z", "--diff-filter=R", base, "--").Output()
 	if err != nil {
 		return nil, fmt.Errorf("git diff %s: %w", base, err)
