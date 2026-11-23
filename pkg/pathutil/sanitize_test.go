@@ -4,8 +4,10 @@
 package pathutil
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // regression: #4073
@@ -254,6 +256,75 @@ func FuzzTorrentFilePathMatchesReference(f *testing.F) {
 		}
 		if err != nil || got != want {
 			t.Fatalf("TorrentFilePath(%q, %q, %q) = %q, %v; want %q", root, dir, file, got, err, want)
+		}
+	})
+}
+
+func checkPathSegment(t *testing.T, call, got string) {
+	t.Helper()
+	if got == "" {
+		t.Fatalf("%s is empty", call)
+	}
+	if i := strings.IndexFunc(got, func(r rune) bool { return r < 0x20 || strings.ContainsRune(`<>:"/\|?*`, r) }); i >= 0 {
+		t.Fatalf("%s = %q holds %q, which a Windows file name cannot hold", call, got, got[i])
+	}
+	if strings.HasSuffix(got, ".") || strings.HasSuffix(got, " ") {
+		t.Fatalf("%s = %q ends in a dot or a space", call, got)
+	}
+}
+
+func FuzzSanitizePathSegment(f *testing.F) {
+	for _, seed := range []string{
+		"",
+		"Movie.2024.1080p",
+		"a/b\\c:d*e?f\"g<h>i|j",
+		"name. . ",
+		"..",
+		"\x00\x1f",
+		"CON",
+		"con.txt",
+		"LPT1 ",
+		"COM\u00b9.log",
+		"\xff\xfe",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, name string) {
+		got := SanitizePathSegment(name)
+		call := fmt.Sprintf("SanitizePathSegment(%q)", name)
+		checkPathSegment(t, call, got)
+		if IsWindowsDeviceName(got) {
+			t.Fatalf("%s = %q is a Windows device name", call, got)
+		}
+	})
+}
+
+func FuzzIsolationFolder(f *testing.F) {
+	for _, seed := range []string{
+		"",
+		"Movie",
+		strings.Repeat("a", 300),
+		strings.Repeat("\u00e9", 200),
+		strings.Repeat("a", 244) + "\u00e9",
+		strings.Repeat("a", 240) + ". . . .x",
+		strings.Repeat(".", 300),
+		strings.Repeat(".", 250) + "x",
+		strings.Repeat("\xff", 300),
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, name string) {
+		got := IsolationFolder(name)
+		call := fmt.Sprintf("IsolationFolder(%q)", name)
+		checkPathSegment(t, call, got)
+		if hashed := HashedIsolationFolder("0123456789abcdef", name); len(hashed) > 255 {
+			t.Fatalf("HashedIsolationFolder of %q has %d bytes, more than the 255 of a file name", name, len(hashed))
+		}
+		if utf8.ValidString(name) && !utf8.ValidString(got) {
+			t.Fatalf("%s = %q cuts a character in two", call, got)
+		}
+		if full := SanitizePathSegment(name); got != "_" && !strings.HasPrefix(full, got) {
+			t.Fatalf("%s = %q is not the start of %q", call, got, full)
 		}
 	})
 }
