@@ -179,10 +179,7 @@ func IsolationFolder(name string) string {
 	for cut > 0 && !utf8.RuneStart(result[cut]) {
 		cut--
 	}
-	if result = strings.TrimRight(result[:cut], ". "); result == "" {
-		return "_"
-	}
-	return result
+	return SanitizePathSegment(result[:cut])
 }
 
 // HashedIsolationFolder returns <IsolationFolder>--<shortHash>, where shortHash
