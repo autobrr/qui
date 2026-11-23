@@ -18,7 +18,7 @@ import (
 func TestFiles(t *testing.T) {
 	vars, err := exec.CommandContext(t.Context(), "git", "rev-parse", "--local-env-vars").Output()
 	require.NoError(t, err)
-	for _, name := range strings.Fields(string(vars)) {
+	for name := range strings.FieldsSeq(string(vars)) {
 		t.Setenv(name, "")
 		require.NoError(t, os.Unsetenv(name))
 	}
