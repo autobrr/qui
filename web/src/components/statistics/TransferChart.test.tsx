@@ -47,6 +47,12 @@ function bar(start: string, gapSeconds: number): StatisticsBar {
   return { start: Date.parse(start), width: "hour", gapSeconds, bytes: new Map([["a.test", { uploaded: 100, downloaded: 0 }]]) }
 }
 
+const twoDaysOfHours = Array.from({ length: 24 }, (_, index) => ({ ...bar("2026-01-10T00:00:00Z", 0), start: new Date(2026, 0, 10, 12 + index).getTime() }))
+
+function dayNames(container: HTMLElement): SVGTextElement[] {
+  return [...container.querySelectorAll<SVGTextElement>("text")].filter(text => text.textContent?.includes(", Jan "))
+}
+
 describe("TransferChart", () => {
   it("marks each bar that includes a Recording gap", () => {
     const bars = [bar("2026-01-10T10:00:00Z", 0), bar("2026-01-10T11:00:00Z", 5400), bar("2026-01-10T12:00:00Z", 0)]
@@ -101,16 +107,23 @@ describe("TransferChart", () => {
   })
 
   it("names each day of an hour chart, and hides a name that is wider than its day", () => {
-    const bars = Array.from({ length: 24 }, (_, index) => ({ ...bar("2026-01-10T00:00:00Z", 0), start: new Date(2026, 0, 10, 12 + index).getTime() }))
-    const names = (container: HTMLElement) => [...container.querySelectorAll<SVGTextElement>(".recharts-reference-area text")]
-      .map(text => [text.textContent, text.style.visibility])
-    const chart = <TransferChart bars={bars} groups={["a.test"]} metric="uploaded" unit="hour" displayName={group => group} />
+    const names = (container: HTMLElement) => dayNames(container).map(text => [text.textContent, text.style.visibility])
+    const chart = <TransferChart bars={twoDaysOfHours} groups={["a.test"]} metric="uploaded" unit="hour" displayName={group => group} />
 
     expect(names(render(chart).container)).toEqual([["Sat, Jan 10", ""], ["Sun, Jan 11", ""]])
     cleanup()
 
     measuredTextWidth.value = 10_000
     expect(names(render(chart).container)).toEqual([["Sat, Jan 10", "hidden"], ["Sun, Jan 11", "hidden"]])
+  })
+
+  // regression: #4441
+  it("draws the day names over the bars", () => {
+    const { container } = render(<TransferChart bars={twoDaysOfHours} groups={["a.test"]} metric="uploaded" unit="hour" displayName={group => group} />)
+
+    const lastBar = [...container.querySelectorAll(".recharts-bar-rectangle")].at(-1)!
+    expect(dayNames(container).map(name => lastBar.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING))
+      .toEqual([Node.DOCUMENT_POSITION_FOLLOWING, Node.DOCUMENT_POSITION_FOLLOWING])
   })
 
   it("colors the series from the selected set", () => {

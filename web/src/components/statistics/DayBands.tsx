@@ -5,7 +5,7 @@
 
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import type { DayBand, HourAxis } from "@/lib/statistics"
-import { ReferenceArea } from "recharts"
+import { DefaultZIndexes, ReferenceArea, ZIndexLayer } from "recharts"
 
 const LABEL_PADDING = 6
 
@@ -32,17 +32,19 @@ function DayBandShape({ x = 0, y = 0, width = 0, height = 0, band, label, center
     <g>
       {band.shaded && <rect x={x} y={y} width={width} height={height} fill="var(--muted-foreground)" fillOpacity={0.12} />}
       {band.midnightLine && <line x1={x} x2={x} y1={y} y2={y + height} stroke="var(--muted-foreground)" />}
-      <text
-        ref={hideWhenWiderThanBand}
-        x={centered ? x + width / 2 : x + LABEL_PADDING}
-        y={y + 12}
-        textAnchor={centered ? "middle" : "start"}
-        fill="var(--foreground)"
-        fontSize={11}
-        fontWeight={600}
-      >
-        {label}
-      </text>
+      <ZIndexLayer zIndex={DefaultZIndexes.label}>
+        <text
+          ref={hideWhenWiderThanBand}
+          x={centered ? x + width / 2 : x + LABEL_PADDING}
+          y={y + 12}
+          textAnchor={centered ? "middle" : "start"}
+          fill="var(--foreground)"
+          fontSize={11}
+          fontWeight={600}
+        >
+          {label}
+        </text>
+      </ZIndexLayer>
     </g>
   )
 }
