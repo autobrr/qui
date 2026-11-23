@@ -14,6 +14,8 @@ const tester = new RuleTester()
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "entry-files-"))
 fs.mkdirSync(path.join(root, "components/torrents/details"), { recursive: true })
+fs.mkdirSync(path.join(root, "components/torrents/filters"), { recursive: true })
+fs.writeFileSync(path.join(root, "components/torrents/filters.tsx"), "")
 after(() => fs.rmSync(root, { recursive: true }))
 
 const options = [{ root, features: "components" }]
@@ -28,6 +30,7 @@ tester.run("entry-files", entryFiles, {
     { code: "import { Icon } from \"./marks/Icon\"", filename: file("components/instances/InstanceCard.tsx"), options },
     { code: "import { Icon } from \"../marks/Icon\"", filename: file("components/instances/preferences/Dialog.tsx"), options },
     { code: "import { Panel } from \"@/components/torrents/details\"", filename: file("components/torrents/Table.tsx"), options },
+    { code: "import { Filters } from \"@/components/torrents/filters\"", filename: file("components/layout/Shell.tsx"), options },
     { code: "import { Footer } from \"@/components/Footer\"", filename: file("pages/Home.tsx"), options },
     { code: "import { Table } from \"@/components/torrents\"", filename: file("pages/Home.tsx"), options },
     { code: "import { row } from \"@/lib/torrent-table/rows/display\"", filename: file("components/torrents/Table.tsx"), options },

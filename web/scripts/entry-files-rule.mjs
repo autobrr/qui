@@ -3,6 +3,8 @@ import path from "node:path"
 
 import { localImports } from "./local-imports.mjs"
 
+const extensions = [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"]
+
 function placeOf(root, features, file) {
   const [first, feature, ...inside] = path.relative(root, file).split(path.sep)
   return first === features && inside.length > 0 ? { feature, inside } : undefined
@@ -30,7 +32,8 @@ export const entryFiles = {
     return localImports(context, root, (node, target) => {
       const to = placeOf(root, features, target)
       if (!to || to.feature === own) return
-      if (to.inside.length > 1 || fs.statSync(target, { throwIfNoEntry: false })?.isDirectory()) {
+      const folder = fs.statSync(target, { throwIfNoEntry: false })?.isDirectory() && !extensions.some((extension) => fs.existsSync(target + extension))
+      if (to.inside.length > 1 || folder) {
         context.report({ node, messageId: "inner", data: { target: path.relative(root, target).split(path.sep).join("/"), feature: `${features}/${to.feature}` } })
       }
     })
