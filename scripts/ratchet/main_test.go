@@ -160,3 +160,25 @@ func TestOffLogProblems(t *testing.T) {
 		"grown.go:40: a DEBUG or INFO line about a feature that is off. Delete the line, or write it at TRACE. See docs/standards/logging.md.",
 	}, offLogProblems(lines, allow))
 }
+
+func TestCountMapAny(t *testing.T) {
+	tests := []struct {
+		name string
+		decl string
+		want int
+	}{
+		{"any value", `var x = map[string]any{"a": 1}`, 1},
+		{"empty interface value", `func f(m map[string]interface{}) {}`, 1},
+		{"nested", `type T struct{ M map[string][]map[string]any; N map[string]any }`, 2},
+		{"typed value", `var x map[string]string`, 0},
+		{"other key", `var x map[int]any`, 0},
+		{"interface with a method", `var x map[string]interface{ M() }`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := countMapAny("x.go", []byte("package x\n"+tt.decl+"\n"))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, n)
+		})
+	}
+}
