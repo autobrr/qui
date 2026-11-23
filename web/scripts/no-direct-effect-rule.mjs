@@ -15,6 +15,19 @@ function memberName({ computed, property }) {
   if (property.type === "TemplateLiteral" && property.expressions.length === 0) return property.quasis[0].value.cooked
 }
 
+export function effectCallee(sourceCode, node) {
+  const { callee } = node
+  const scope = sourceCode.getScope(node)
+  if (callee.type === "Identifier") {
+    const specifier = reactImport(scope, callee.name)
+    return specifier?.type === "ImportSpecifier" && effectHooks.has(specifier.imported.name) ? callee : undefined
+  }
+  if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier") return undefined
+  if (!effectHooks.has(memberName(callee))) return undefined
+  const specifier = reactImport(scope, callee.object.name)
+  return specifier && specifier.type !== "ImportSpecifier" ? callee : undefined
+}
+
 export const noDirectEffect = {
   meta: {
     type: "problem",
@@ -26,21 +39,8 @@ export const noDirectEffect = {
   create(context) {
     return {
       CallExpression(node) {
-        const { callee } = node
-        const scope = context.sourceCode.getScope(node)
-        if (callee.type === "Identifier") {
-          const specifier = reactImport(scope, callee.name)
-          if (specifier?.type === "ImportSpecifier" && effectHooks.has(specifier.imported.name)) {
-            context.report({ node: callee, messageId: "banned" })
-          }
-          return
-        }
-        if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier") return
-        if (!effectHooks.has(memberName(callee))) return
-        const specifier = reactImport(scope, callee.object.name)
-        if (specifier && specifier.type !== "ImportSpecifier") {
-          context.report({ node: callee, messageId: "banned" })
-        }
+        const callee = effectCallee(context.sourceCode, node)
+        if (callee) context.report({ node: callee, messageId: "banned" })
       },
     }
   },
