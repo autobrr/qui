@@ -8,6 +8,7 @@ import { globalIgnores } from 'eslint/config'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+import { disableReason } from './scripts/disable-reason-rule.mjs'
 import { layerOrder } from './scripts/layer-order-rule.mjs'
 import { noComments } from './scripts/no-comments-rule.mjs'
 import { noDirectEffect } from './scripts/no-direct-effect-rule.mjs'
@@ -385,8 +386,9 @@ export default tseslint.config([
     },
   },
   {
-    plugins: { qui: { rules: { 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
+    plugins: { qui: { rules: { 'disable-reason': disableReason, 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
     rules: {
+      'qui/disable-reason': 'error',
       'qui/no-comments': 'error',
       'qui/no-native-title': 'error',
     },

@@ -78,8 +78,9 @@ The counter reads only the syntax tree. It cannot read the text of a message tha
 
 ### Suppressed ESLint Rules
 
-`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Five rules have entries:
+`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Six rules have entries:
 
+- `qui/disable-reason` reports an `eslint-disable` comment that gives no reason. See "Exceptions" below.
 - `qui/layer-order` reports an import from a folder of `web/src` that comes later in the folder order than the folder of the file. `layers` in `web/eslint.config.js` holds the order, and the tests are outside the rule. ADR 0076 has the reason.
 - `qui/no-comments` reports each comment.
 - `qui/no-direct-effect` reports each call of `useEffect`, `useLayoutEffect`, or `useInsertionEffect` outside the tests and outside the hooks in `effectHooks` of `web/eslint.config.js`. ADR 0073 has the reason.
@@ -103,6 +104,17 @@ The ratchet command fails a file that crosses the limit, and a new file that sta
 When the check fails, move code out of the file. The message of the check gives the five rules for the move. If the moved code has ratchet problems, move their counts in `allowlist.json` in the same change (rule 3).
 
 Only a maintainer makes `.file-size.json` looser: a higher `max_bytes`, a new `skip` entry, or one extension less. The command fails on such a change, also when a maintainer makes it, and the maintainer merges it past the failed check. If a file is generated, or a move needs a new folder or a new exported name, stop and ask the maintainer.
+
+## Exceptions
+
+An exception is a comment that hides the report of a check on its line: `//nolint`, `#nosec`, and `//exhaustive:ignore` in Go, and `eslint-disable`, `@ts-expect-error`, `@ts-ignore`, and `@ts-nocheck` in the frontend. Two rules apply, and ADR 0079 has the reason.
+
+- **An exception gives its reason on the line.** golangci-lint demands `//nolint:<linter> // reason`. ESLint demands `eslint-disable-next-line <rule> -- <reason>` with the rule `qui/disable-reason`, and a description after `@ts-expect-error`. The 13 `eslint-disable` comments from before the rule are held as a suppressed ESLint rule. `qui/disable-reason` cannot report `/* eslint-disable */` without a rule name, because that comment turns the rule off too. The count below includes that comment.
+- **A pull request that adds more exceptions than it removes needs the approval of a maintainer.** `.github/workflows/exceptions.yml` runs `.github/scripts/count_exceptions.py` on each pull request. The script counts the exceptions on the added lines and on the removed lines of the Go, TypeScript, and JavaScript files, so an exception that moves with its code adds nothing. When the pull request adds more than it removes, the check fails and lists the new exceptions. The check passes when a maintainer sets the label `exceptions-approved`.
+
+When the check fails, fix the report that each new exception hides, and delete the exception. If the code is right on purpose, keep the exception with its reason, and ask a maintainer for the label. Only a maintainer sets the label, not the author of the pull request and not a coding agent.
+
+The workflow runs the script of the base branch and reads the pull request only as a diff, so a pull request cannot change its own check. A change to the script or the workflow takes effect after it merges.
 
 ## Policy
 
