@@ -76,3 +76,7 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      # The counter reads the frontend with the parser that web/ uses, so both move to a new major together.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
