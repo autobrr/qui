@@ -57,23 +57,25 @@ function SystemNoticeRow({ notice, now, iconOnly }: { notice: SystemNotice; now:
     <Popover open={open} onOpenChange={setOpen}>
       <Tooltip delayDuration={150} disabled={!iconOnly || open}>
         <PopoverTrigger asChild>
-          <TooltipTrigger
-            openOnTap={false}
-            className={cn(
-              "group flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm font-medium short:py-1 short:text-13/5 text-sidebar-foreground outline-none transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
-              iconOnly && "overflow-hidden whitespace-nowrap"
-            )}
-          >
-            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
-              <SystemNoticeDot severity={notice.severity} fresh={isFreshSystemNotice(notice.openedAt, now)} />
-            </span>
-            <span className={cn("flex min-w-0 flex-1 items-center gap-3", fadeClassName, iconOnly && "min-w-45 shrink-0 opacity-0")}>
-              <span className="min-w-0 flex-1 truncate">{short}</span>
-              <span className="text-xs font-normal tabular-nums text-sidebar-foreground/50 group-hover:hidden group-data-[state=open]:hidden">
-                {formatNarrowAge(now - Date.parse(notice.openedAt))}
+          <TooltipTrigger asChild openOnTap={false}>
+            <button
+              type="button"
+              className={cn(
+                "group flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm font-medium short:py-1 short:text-13/5 text-sidebar-foreground outline-none transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                iconOnly && "overflow-hidden whitespace-nowrap"
+              )}
+            >
+              <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                <SystemNoticeDot severity={notice.severity} fresh={isFreshSystemNotice(notice.openedAt, now)} />
               </span>
-              <ChevronRight className="hidden h-3.5 w-3.5 text-sidebar-foreground/60 group-hover:block group-data-[state=open]:block" />
-            </span>
+              <span className={cn("flex min-w-0 flex-1 items-center gap-3", fadeClassName, iconOnly && "min-w-45 shrink-0 opacity-0")}>
+                <span className="min-w-0 flex-1 truncate">{short}</span>
+                <span className="text-xs font-normal tabular-nums text-sidebar-foreground/50 group-hover:hidden group-data-[state=open]:hidden">
+                  {formatNarrowAge(now - Date.parse(notice.openedAt))}
+                </span>
+                <ChevronRight className="hidden h-3.5 w-3.5 text-sidebar-foreground/60 group-hover:block group-data-[state=open]:block" />
+              </span>
+            </button>
           </TooltipTrigger>
         </PopoverTrigger>
         <TooltipContent side="right" className="max-w-64 text-xs">{short}</TooltipContent>

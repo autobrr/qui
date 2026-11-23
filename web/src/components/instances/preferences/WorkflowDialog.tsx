@@ -2511,14 +2511,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     <div className="flex items-center gap-2">
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.grouping.title")}</Label>
                       <Tooltip>
-                        <TooltipTrigger asChild openOnTap>
-                          <button
-                            type="button"
-                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                            aria-label={t("preferences.workflowDialog.grouping.aria")}
-                          >
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
+                        <TooltipTrigger
+                          className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                          aria-label={t("preferences.workflowDialog.grouping.aria")}
+                        >
+                          <Info className="h-3.5 w-3.5" />
                         </TooltipTrigger>
                         <TooltipContent side="right" className="max-w-[340px]">
                           <p>{t("preferences.workflowDialog.grouping.tooltip")}</p>
@@ -3241,14 +3238,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       {t("preferences.workflowDialog.tag.useDisplayName")}
                                     </Label>
                                     <Tooltip>
-                                      <TooltipTrigger asChild openOnTap>
-                                        <button
-                                          type="button"
-                                          className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                                          aria-label={t("preferences.workflowDialog.tag.aboutDisplayNames")}
-                                        >
-                                          <Info className="h-3.5 w-3.5" />
-                                        </button>
+                                      <TooltipTrigger
+                                        className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                                        aria-label={t("preferences.workflowDialog.tag.aboutDisplayNames")}
+                                      >
+                                        <Info className="h-3.5 w-3.5" />
                                       </TooltipTrigger>
                                       <TooltipContent className="max-w-[280px]">
                                         <p>{t("preferences.workflowDialog.tag.displayNameDescription")}</p>
@@ -3398,14 +3392,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               {t("preferences.workflowDialog.move.skipIfCrossSeedsDontMatch")}
                             </Label>
                             <Tooltip>
-                              <TooltipTrigger asChild openOnTap>
-                                <button
-                                  type="button"
-                                  className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
-                                  aria-label={t("preferences.workflowDialog.move.aboutSkipping")}
-                                >
-                                  <Info className="h-3.5 w-3.5" />
-                                </button>
+                              <TooltipTrigger
+                                className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
+                                aria-label={t("preferences.workflowDialog.move.aboutSkipping")}
+                              >
+                                <Info className="h-3.5 w-3.5" />
                               </TooltipTrigger>
                               <TooltipContent className="max-w-[320px]">
                                 <p>{t("preferences.workflowDialog.move.skipDescription")}</p>
@@ -3772,14 +3763,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     <div className="flex items-center gap-1.5">
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.freeSpace.title")}</Label>
                       <Tooltip>
-                        <TooltipTrigger asChild openOnTap>
-                          <button
-                            type="button"
-                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                            aria-label={t("preferences.workflowDialog.freeSpace.aria")}
-                          >
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
+                        <TooltipTrigger
+                          className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                          aria-label={t("preferences.workflowDialog.freeSpace.aria")}
+                        >
+                          <Info className="h-3.5 w-3.5" />
                         </TooltipTrigger>
                         <TooltipContent side="left" className="max-w-[320px]">
                           <p>{t("preferences.workflowDialog.freeSpace.description")}</p>
@@ -3935,14 +3923,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     <div className="flex items-center gap-1.5">
                       <Label size="sm">{t("preferences.workflowDialog.category.skipIfCrossSeedExists")}</Label>
                       <Tooltip>
-                        <TooltipTrigger asChild openOnTap>
-                          <button
-                            type="button"
-                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                            aria-label={t("preferences.workflowDialog.category.aboutSkipping")}
-                          >
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
+                        <TooltipTrigger
+                          className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                          aria-label={t("preferences.workflowDialog.category.aboutSkipping")}
+                        >
+                          <Info className="h-3.5 w-3.5" />
                         </TooltipTrigger>
                         <TooltipContent className="max-w-[320px]">
                           <p>{t("preferences.workflowDialog.category.skipHelp")}</p>
@@ -4092,14 +4077,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   </Select>
                   {deleteUsesFreeSpace && (
                     <Tooltip>
-                      <TooltipTrigger asChild openOnTap>
-                        <button
-                          type="button"
-                          className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                          aria-label={t("preferences.workflowDialog.interval.cooldownAria")}
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
+                      <TooltipTrigger
+                        className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                        aria-label={t("preferences.workflowDialog.interval.cooldownAria")}
+                      >
+                        <Info className="h-3.5 w-3.5" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[280px]">
                         <p>{t("preferences.workflowDialog.interval.cooldownDescription")}</p>
