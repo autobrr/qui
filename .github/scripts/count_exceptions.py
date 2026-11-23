@@ -122,7 +122,9 @@ def scan(path, lines, side, pattern, js):
                 found += [Found(path, number, text.strip()) for text, body, opens in texts if pattern.match(body) and (opens or side == "+")]
                 plain += [Found(path, number, line[1:].strip()) for _ in pattern.finditer(line[1:])]
         number += line[0] != "-"
-    return plain if state[0] else found
+    if state[0]:
+        return plain if side == "+" else []
+    return found
 
 
 def exceptions(diff):

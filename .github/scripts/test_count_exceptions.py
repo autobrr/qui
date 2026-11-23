@@ -362,11 +362,11 @@ class ExceptionsTest(unittest.TestCase):
             ("web/src/f.ts", 7, "// @ts-ignore"),
         ])
 
-    def test_a_file_that_the_scan_misreads_counts_each_exception_text(self):
+    def test_a_file_that_the_scan_misreads_counts_each_added_text_and_credits_no_removed_line(self):
         added, removed = exceptions(WEB_LOST)
         line = 'console.log("@ts-ignore") // eslint-disable-line no-console -- the CLI prints its result'
         self.assertEqual(texts(added), [("web/src/g.tsx", 2, line), ("web/src/g.tsx", 2, line)])
-        self.assertEqual(texts(removed), [("web/src/g.tsx", 2, "// @ts-ignore")])
+        self.assertEqual(removed, [])
 
     def test_removed_exceptions(self):
         added, removed = exceptions(DELETED_FILE)
