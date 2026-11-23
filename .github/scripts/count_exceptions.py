@@ -13,6 +13,14 @@ WEB_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 PATHSPECS = ["*.go", *(f"*{suffix}" for suffix in WEB_SUFFIXES)]
 GO_EXCEPTION = re.compile(r"\s*(?:nolint|#nosec|gosec:disable|exhaustive:ignore)\b")
 WEB_EXCEPTION = re.compile(r"\s*(?:eslint-disable|[*/\s]*@ts-(?:expect-error|ignore|nocheck))\b")
+TS_DIRECTIVE = r"@ts-(?:expect-error|ignore|nocheck)"
+CREDIT = {
+    GO_EXCEPTION: {"//": GO_EXCEPTION, "/*": GO_EXCEPTION},
+    WEB_EXCEPTION: {
+        "//": re.compile(rf"\s*eslint-disable\b|/?\s*{TS_DIRECTIVE}\b"),
+        "/*": re.compile(rf"\s*eslint-disable\b|[*/]*\s*{TS_DIRECTIVE}\b"),
+    },
+}
 LANGUAGES = {
     "go": (GO_EXCEPTION, ["go", "run", "./scripts/exceptions"]),
     "web": (WEB_EXCEPTION, ["node", ".github/scripts/exceptions/comments.mjs"]),
@@ -72,7 +80,12 @@ def generous(side, pattern):
 
 
 def strict(side, pattern):
-    return [Found(side.path, comment.line, comment.text.split("\n")[0].strip()) for comment in side.comments if pattern.match(body(comment).split("\n")[0])]
+    credit = CREDIT[pattern]
+    return [
+        Found(side.path, comment.line, comment.text.split("\n")[0].strip())
+        for comment in side.comments
+        if credit[comment.text[:2]].match(body(comment).split("\n")[0])
+    ]
 
 
 def plain(side, pattern):
@@ -90,10 +103,21 @@ def new(added, removed):
     return result
 
 
+def without(side, other):
+    twins = Counter(comment.text for comment in other.comments)
+    left = []
+    for comment in side.comments:
+        if twins[comment.text] > 0:
+            twins[comment.text] -= 1
+        else:
+            left.append(comment)
+    return side._replace(comments=tuple(left))
+
+
 def compare(base, head, pattern):
     if base.broken or head.broken:
         return new(plain(head, pattern), plain(base, pattern)), []
-    return new(generous(head, pattern), generous(base, pattern)), new(strict(base, pattern), strict(head, pattern))
+    return generous(without(head, base), pattern), strict(without(base, head), pattern)
 
 
 def changes(base, head):

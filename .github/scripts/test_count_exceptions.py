@@ -42,6 +42,16 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(texts(generous(side, WEB_EXCEPTION)), [("a.ts", 1, "/** @ts-expect-error the type of the package is wrong */"), ("a.ts", 3, "/// @ts-ignore")])
         self.assertEqual(len(strict(side, WEB_EXCEPTION)), 2)
 
+    def test_only_a_prefix_that_typescript_accepts_gives_credit(self):
+        side = Side("a.ts", comments=(
+            Comment(1, "// * @ts-ignore"),
+            Comment(2, "/// eslint-disable-next-line no-console -- the CLI prints its result"),
+            Comment(3, "/// @ts-ignore"),
+            Comment(4, "/** @ts-expect-error the type of the package is wrong */"),
+        ))
+        self.assertEqual([found.line for found in strict(side, WEB_EXCEPTION)], [3, 4])
+        self.assertEqual([found.line for found in generous(side, WEB_EXCEPTION)], [1, 3, 4])
+
     def test_generous_counts_each_line_of_a_block_comment_and_strict_only_the_first(self):
         block = "/* eslint-disable no-alert -- the user confirms the delete\n * eslint-disable no-console -- the CLI prints its result\n  @ts-ignore */"
         side = web((4, block), (9, "/*\neslint-disable-next-line no-console\n*/"))
@@ -57,6 +67,13 @@ class RulesTest(unittest.TestCase):
         base = go((3, REASON), (9, "/*\nnolint:gosec\n*/"))
         head = go((5, REASON), (12, "/*\nnolint:gosec\n*/"))
         self.assertEqual(compare(base, head, GO_EXCEPTION), ([], []))
+
+    def test_a_directive_that_leaves_a_block_comment_where_no_tool_read_it_is_new(self):
+        base = web((1, "/* documentation\n// @ts-nocheck\n*/"))
+        head = web((1, "// @ts-nocheck"))
+        added, removed = compare(base, head, WEB_EXCEPTION)
+        self.assertEqual(texts(added), [("a.ts", 1, "// @ts-nocheck")])
+        self.assertEqual(removed, [])
 
     def test_added_and_removed_as_multisets_by_text(self):
         base = go((3, REASON))
