@@ -65,7 +65,7 @@ Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go
 
 ### Lines About an Off Feature
 
-`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
+`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter.
 
 A line counts when its level is DEBUG or INFO, and one of these is true:
 
