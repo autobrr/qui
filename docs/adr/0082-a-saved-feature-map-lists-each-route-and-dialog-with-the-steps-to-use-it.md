@@ -23,6 +23,7 @@ The script reads the id, the address, and the search parameters of a route from 
 - Nothing checks that a step is still true after the page changes. The author follows the steps on a running qui.
 - A dialog that opens through a shared component, such as `ConfirmDialog`, is in the map one time, at the shared component. Its uses are not in the map.
 - A file that a route loads only with `import()` of a computed path is not in the map.
+- The script finds a dialog by the name of the tag. A file that imports one of the four components under another name has no entry. No file does this today.
 - The endpoints are not in the map. `internal/web/swagger/openapi.yaml` lists each one with a summary, and `TestAllEndpointsDocumented` fails when one is missing.
 
 ## Considered options
