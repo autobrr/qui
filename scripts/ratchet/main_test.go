@@ -89,6 +89,19 @@ func TestLowerAllowlist(t *testing.T) {
 	}, compare(got, written, nil))
 }
 
+func TestLowerAllowlistKeepsTheFileWhenCodeDoesNotCompile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.MkdirAll(filepath.Dir(allowlistPath), 0o750))
+	got := counts{"typecheck": {"internal/api/handlers/application.go": 1}}
+	allow := counts{"gocognit": {"a.go": 2}}
+
+	err := lowerAllowlist(got, allow)
+
+	require.ErrorContains(t, err, "cannot type-check internal/api/handlers/application.go")
+	assert.NoFileExists(t, allowlistPath)
+	assert.Equal(t, counts{"gocognit": {"a.go": 2}}, allow)
+}
+
 // Each case matches what golangci-lint v2.14.0 does with the comment above a
 // function that breaks gocognit.
 func TestHidesGocognit(t *testing.T) {

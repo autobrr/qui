@@ -209,6 +209,9 @@ func lowerEntries(got, allow counts) []string {
 }
 
 func lowerAllowlist(got, allow counts) error {
+	if broken := got["typecheck"]; len(broken) > 0 {
+		return fmt.Errorf("golangci-lint cannot type-check %s, so the other counts are not complete and the allowlist stays as it is. Make the code compile, then run the ratchet again", strings.Join(slices.Sorted(maps.Keys(broken)), ", "))
+	}
 	lowered := lowerEntries(got, allow)
 	if len(lowered) == 0 {
 		return nil
