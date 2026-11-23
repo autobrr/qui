@@ -65,7 +65,7 @@ Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go
 
 ### Lines About an Off Feature
 
-`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter.
+`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
 
 A line counts when its level is DEBUG or INFO, and one of these is true:
 
@@ -78,7 +78,7 @@ The counter reads only the syntax tree. It cannot read the text of a message tha
 
 ### Maps of Any
 
-Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The `mapany` key of `allowlist.json` holds the maps from before the rule, also the ones that decode JSON of an unknown shape on purpose. Like `comments`, it is not a golangci-lint linter: `scripts/ratchet/mapany.go` counts each such map type in each tracked Go file. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter.
+Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The `mapany` key of `allowlist.json` holds the maps from before the rule, also the ones that decode JSON of an unknown shape on purpose. Like `comments`, it is not a golangci-lint linter: `scripts/ratchet/mapany.go` counts each such map type in each tracked Go file. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
 
 ### Suppressed ESLint Rules
 
