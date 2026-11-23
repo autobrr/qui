@@ -21,6 +21,7 @@ RAW = re.compile(r"[^`]*")
 KEYWORDS = {"return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"}
 OPERAND_ENDS = ")]}<"
 START = ((), True)
+LOST = "lost"
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
 SHOWN = 200
 WHOLE_FILE = "-U2147483647"
@@ -67,11 +68,15 @@ def comments(line, state, js):
             stop = len(line) if end < 0 else end
             found.append((line[mark:stop + 2], line[at:stop], at > mark))
             at, stack = (stop, stack) if end < 0 else (end + 2, stack[:-1])
+        elif top == LOST:
+            break
         elif top and top in QUOTES:
             end = closing(line, at, top)
             at = len(line) if end is None else end + 1
-            if end is not None or not continued(line):
+            if end is not None:
                 stack, regex = stack[:-1], False
+            elif not continued(line):
+                stack = (LOST,)
         elif top == "`":
             at = (TEMPLATE if js else RAW).match(line, at).end()
             if line.startswith("`", at):

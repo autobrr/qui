@@ -180,6 +180,18 @@ index 1111111..2222222 100644
  console.log(first)
 """
 
+WEB_UNCLOSED = """diff --git a/web/src/j.tsx b/web/src/j.tsx
+index 1111111..2222222 100644
+--- a/web/src/j.tsx
++++ b/web/src/j.tsx
+@@ -1,2 +1,5 @@
+ const first = 1
++const view = <div>Don't use C:\\
++{/* eslint-disable-next-line no-console -- the example logs once */}
++const label = 'x' // @ts-ignore
+ }
+"""
+
 WEB_MULTILINE = """diff --git a/web/src/d.ts b/web/src/d.ts
 index 1111111..2222222 100644
 --- a/web/src/d.ts
@@ -391,6 +403,13 @@ class ExceptionsTest(unittest.TestCase):
             ("web/src/i.ts", 4, "// eslint-disable-line quotes -- the name has an apostrophe"),
         ])
         self.assertEqual(removed, [])
+
+    def test_a_continued_string_that_never_closes_is_a_misread_file(self):
+        added, removed = exceptions(WEB_UNCLOSED)
+        self.assertEqual(texts(added), [
+            ("web/src/j.tsx", 3, "{/* eslint-disable-next-line no-console -- the example logs once */}"),
+            ("web/src/j.tsx", 4, "const label = 'x' // @ts-ignore"),
+        ])
 
     def test_a_comment_in_a_template_substitution(self):
         added, _ = exceptions(WEB_SUBSTITUTION)
