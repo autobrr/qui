@@ -89,6 +89,7 @@ func TestLowerAllowlist(t *testing.T) {
 	}, compare(got, written, nil))
 }
 
+// regression: #4404
 func TestLowerAllowlistKeepsTheFileWhenCodeDoesNotCompile(t *testing.T) {
 	t.Chdir(t.TempDir())
 	require.NoError(t, os.MkdirAll(filepath.Dir(allowlistPath), 0o750))
