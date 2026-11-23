@@ -1,13 +1,15 @@
 ---
 sidebar_position: 4
-title: Reannounce stalled qBittorrent torrents
+title: "What Does Force Reannounce Do in qBittorrent?"
 sidebar_label: Reannounce
-description: Automatically fix stalled torrents by reannouncing to trackers.
+description: Force reannounce tells the tracker you are still there. qui retries stalled qBittorrent announces automatically so new uploads start seeding without a manual Force Reannounce.
 ---
 
 # Tracker Reannounce
 
-qui reannounces stalled torrents to trackers. If a tracker fails to register a new upload immediately, qui helps your torrents start seeding without manual work.
+Force reannounce tells qBittorrent to contact the tracker again immediately instead of waiting for the next scheduled announce, which helps stalled torrents and newly uploaded releases start seeding.
+
+qui reannounces stalled torrents to trackers automatically. If a tracker fails to register a new upload immediately, qui helps your torrents start seeding without manual work.
 
 qBittorrent does not retry failed announces quickly. If a tracker registers a new upload slowly or returns an error, the torrent stays stalled. qui retries the announce for you.
 

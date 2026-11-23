@@ -1,8 +1,9 @@
 ---
 sidebar_position: 2
-title: qBittorrent automation rules
+title: "qui Automations: qBittorrent Rules for Tags, Limits, and Cleanup"
+title_no_suffix: true
 sidebar_label: Automations
-description: Rule-based automation for torrent management.
+description: qui Automations apply rules to qBittorrent torrents that match your conditions — tag, move, limit, or delete. Dry-run a rule first, then run it on a schedule.
 ---
 
 import AutomationsJsonReference from "../_partials/_automations-json-reference.mdx";
@@ -10,6 +11,8 @@ import AutomationsJsonReference from "../_partials/_automations-json-reference.m
 # Automations
 
 Automations are rules that apply actions to torrents that match conditions. Use them to manage speed limits, delete old torrents, and organize torrents with tags and categories.
+
+If you only need to retry stalled tracker announces automatically, see [what force reannounce does in qBittorrent](./reannounce.md).
 
 ## How automations work
 
