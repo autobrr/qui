@@ -4,6 +4,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -68,21 +70,23 @@ func TestCompareZeroEntry(t *testing.T) {
 		compare(counts{}, allow, nil))
 }
 
-func TestLowerEntries(t *testing.T) {
+func TestLowerAllowlist(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.MkdirAll(filepath.Dir(allowlistPath), 0o750))
 	got := counts{"nilerr": {"a.go": 1, "c.go": 3, "d.go": 2}, "forbidigo": {"e.go": 1}}
 	allow := counts{"nilerr": {"a.go": 2, "b.go": 1, "c.go": 3, "d.go": 1}}
 
-	lowered := lowerEntries(got, allow)
+	require.NoError(t, lowerAllowlist(got, allow))
 
-	assert.Equal(t, []string{
-		"a.go: nilerr from 2 to 1",
-		"b.go: nilerr from 1 to 0, entry deleted",
-	}, lowered)
-	assert.Equal(t, counts{"nilerr": {"a.go": 1, "c.go": 3, "d.go": 1}}, allow)
+	raw, err := os.ReadFile(allowlistPath)
+	require.NoError(t, err)
+	written, err := parse(raw)
+	require.NoError(t, err)
+	assert.Equal(t, counts{"nilerr": {"a.go": 1, "c.go": 3, "d.go": 1}}, written)
 	assert.Equal(t, []string{
 		"e.go: forbidigo reports 1 problems, the allowlist allows 0. Fix the new ones.",
 		"d.go: nilerr reports 2 problems, the allowlist allows 1. Fix the new ones.",
-	}, compare(got, allow, nil))
+	}, compare(got, written, nil))
 }
 
 // Each case matches what golangci-lint v2.14.0 does with the comment above a
