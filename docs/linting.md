@@ -104,7 +104,7 @@ A run of a coding agent on the machine of a maintainer removes the effects that 
 2. List the files, the fewest effects first: `jq -r 'to_entries | map({f: "web/\(.key)", n: (.value["qui/no-direct-effect"].count // 0)} | select(.n > 0)) | sort_by(.n, .f)[] | "\(.n) \(.f)"' web/eslint-suppressions.json`.
 3. Take the first file. If `gh pr list --head "effects/<file>" --state closed --json number,mergedAt` lists a pull request that did not merge, take the next file.
 4. Replace up to 3 of its effects as the message of the rule says, and keep the behaviour the same. An effect that the job needs moves into a hook of its own, with a line in `effectHooks`.
-5. Lower the entry of the file with `pnpm exec eslint --prune-suppressions <file>` in `web/`.
+5. Lower the entry of the file with `pnpm --dir web exec eslint --prune-suppressions <path of the file below web/>`, for example `src/App.tsx`.
 6. Open each page that shows the file in a browser, on the base branch and on the change, and compare what the replaced effects did. A removed effect can change when a component renders, and no test shows that.
 7. Open the pull request from the branch `effects/<file>`, with the title `refactor(web): drop effects in <name of the file>` and the labels `ratchet-web` and `web`.
 
