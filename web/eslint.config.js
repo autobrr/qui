@@ -9,6 +9,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 import { disableReason } from './scripts/disable-reason-rule.mjs'
+import { entryFiles } from './scripts/entry-files-rule.mjs'
 import { layerOrder } from './scripts/layer-order-rule.mjs'
 import { noComments } from './scripts/no-comments-rule.mjs'
 import { noDirectEffect } from './scripts/no-direct-effect-rule.mjs'
@@ -410,7 +411,7 @@ export default tseslint.config([
     },
   },
   {
-    plugins: { qui: { rules: { 'disable-reason': disableReason, 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
+    plugins: { qui: { rules: { 'disable-reason': disableReason, 'entry-files': entryFiles, 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
     rules: {
       'qui/disable-reason': 'error',
       'qui/no-comments': 'error',
@@ -428,6 +429,7 @@ export default tseslint.config([
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**'],
     rules: {
+      'qui/entry-files': ['error', { root: path.join(import.meta.dirname, 'src'), features: 'components' }],
       'qui/layer-order': ['error', { root: path.join(import.meta.dirname, 'src'), layers }],
     },
   },

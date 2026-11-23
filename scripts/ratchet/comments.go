@@ -26,7 +26,7 @@ const (
 	suppressionsPath = "web/eslint-suppressions.json"
 )
 
-var suppressedRules = []string{"qui/disable-reason", "qui/layer-order", "qui/no-comments", "qui/no-direct-effect", "react-hooks/exhaustive-deps", "react-refresh/only-export-components"}
+var suppressedRules = []string{"qui/disable-reason", "qui/entry-files", "qui/layer-order", "qui/no-comments", "qui/no-direct-effect", "react-hooks/exhaustive-deps", "react-refresh/only-export-components"}
 
 func goComments() (map[string]int, error) {
 	got := map[string]int{}
