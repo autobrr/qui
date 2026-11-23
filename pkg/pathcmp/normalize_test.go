@@ -16,6 +16,11 @@ func TestNormalizePath(t *testing.T) {
 		{`C:\library\folder\..\movie.mkv`, "C:/library/movie.mkv"},
 		{`C:\`, "C:/"},
 		{"C:", "C:"},
+		{"A:/", "A:/"},
+		{"Z:/", "Z:/"},
+		{"a:/", "a:/"},
+		{"z:/", "z:/"},
+		{"./C:", "./C:"},
 		{"folder/../movie.mkv", "movie.mkv"},
 		// regression: #4431
 		{"folder/../C:/movie.mkv", "./C:/movie.mkv"},
