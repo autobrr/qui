@@ -110,6 +110,15 @@ When the check fails, move code out of the file. The message of the check gives 
 
 Only a maintainer makes `.file-size.json` looser: a higher `max_bytes`, a new `skip` entry, or one extension less. The command fails on such a change, also when a maintainer makes it, and the maintainer merges it past the failed check. If a file is generated, or a move needs a new folder or a new exported name, stop and ask the maintainer.
 
+## Feature Map
+
+`web/feature-map.json` lists each route of the frontend and each dialog that a route loads, with the steps to use it. ADR 0082 has the reason. `make check-feature-map` fails when the list does not match the code, when a route has no steps, and when more dialogs have no steps than on the base branch. It compares with the merge base of `origin/develop`, and the Lint workflow with the base branch of the pull request. `pnpm check:feature-map` in `web/` compares the number of dialogs only when you give it a base, as `--base <commit>`.
+
+- `pnpm feature-map` in `web/` writes the list again and keeps the steps. Run it after you add, remove, rename, or move a route or a dialog, then write the steps of each new entry.
+- A step is one action of a user, with the address or the name of the control. Follow the steps on a running qui before you commit them.
+- A rename or a move of a dialog gives it a new id. Copy its steps from the old id before you run `pnpm feature-map`.
+- `node web/scripts/feature-map.mjs --where <file>` prints the routes that load a file, with their steps.
+
 ## Exceptions
 
 An exception is a comment that hides the report of a check on its line: `//nolint`, `#nosec`, `//gosec:disable`, and `//exhaustive:ignore` in Go, and `eslint-disable`, `@ts-expect-error`, `@ts-ignore`, and `@ts-nocheck` in the frontend. Two rules apply, and ADR 0079 has the reason.
