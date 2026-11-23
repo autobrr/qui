@@ -4,7 +4,7 @@ import json
 import pathlib
 import re
 import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
 from typing import NamedTuple
 
 ADR = "docs/adr/0085-ci-posts-each-go-line-with-an-uncaught-mutant-as-a-review-thread.md"
@@ -54,14 +54,14 @@ def uncaught(report):
 
 
 def mutants(report, read):
-    found, seen = [], Counter()
+    found = []
     for path, line, column, kind in uncaught(report):
         source = read(path)
         text = source[line - 1] if 0 < line <= len(source) else ""
         indent = len(text) - len(text.lstrip())
         digest = hashlib.sha256("\n".join((path, text.strip(), kind, str(column - indent))).encode()).hexdigest()[:16]
-        seen[digest] += 1
-        found.append(Mutant(path, line, f"{digest}#{seen[digest]}", change(text, column, kind)))
+        nth = sum(other.strip() == text.strip() for other in source[:line])
+        found.append(Mutant(path, line, f"{digest}#{nth}", change(text, column, kind)))
     return found
 
 

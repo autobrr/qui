@@ -127,6 +127,13 @@ class ReviewTest(unittest.TestCase):
         payload = review(two, posted(one), "head")
         self.assertEqual([c["line"] for c in payload["comments"]], [3])
 
+    def test_a_posted_line_does_not_hide_a_later_line_with_the_same_text(self):
+        twice = {"pkg/a/a.go": ["\tif n >= 2 {", "\t}", "\tif n >= 2 {", "\t}"]}
+        first = mutants(report(("CONDITIONALS_BOUNDARY", "LIVED", 1, 7), ("CONDITIONALS_BOUNDARY", "KILLED", 3, 7)), read(twice))
+        second = mutants(report(("CONDITIONALS_BOUNDARY", "KILLED", 1, 7), ("CONDITIONALS_BOUNDARY", "LIVED", 3, 7)), read(twice))
+        payload = review(second, posted(first), "head")
+        self.assertEqual([c["line"] for c in payload["comments"]], [3])
+
     def test_only_a_marker_counts_as_posted(self):
         found = mutants(report(("CONDITIONALS_BOUNDARY", "LIVED", 4, 11)), read())
         self.assertEqual(posted_keys(["a reply that names qui-mutation", "<!-- qui-test-growth -->", ""]), set())

@@ -21,14 +21,23 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      pull-requests: read
     outputs:
-      report: ${{ steps.report.outputs.found }}
+      review: ${{ steps.review.outputs.found }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: List the posted mutants
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir "$RUNNER_TEMP/mutation"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | .body | @json' > "$RUNNER_TEMP/posted.jsonl"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -38,59 +47,44 @@ jobs:
       - name: Mutate
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: make mutation-go MUTATION_BASE="origin/$BASE_REF" MUTATION_REPORT="$RUNNER_TEMP/mutation.json"
-      - name: Find the report
-        id: report
+        run: make mutation-go MUTATION_BASE="origin/$BASE_REF" MUTATION_REPORT="$RUNNER_TEMP/mutation/report.json"
+      - name: List the uncaught mutants
+        id: review
+        env:
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ -s "$RUNNER_TEMP/mutation.json" ]; then
+          if [ ! -s "$RUNNER_TEMP/mutation/report.json" ]; then
+            exit 0
+          fi
+          python3 -B .github/scripts/mutation_threads.py \
+            --report "$RUNNER_TEMP/mutation/report.json" --root . \
+            --posted "$RUNNER_TEMP/posted.jsonl" --commit "$HEAD" \
+            --review "$RUNNER_TEMP/mutation/review.json" >> "$GITHUB_STEP_SUMMARY"
+          if [ -s "$RUNNER_TEMP/mutation/review.json" ]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: steps.report.outputs.found == 'true'
         with:
           name: mutation-report
-          path: ${{ runner.temp }}/mutation.json
+          path: ${{ runner.temp }}/mutation
+          if-no-files-found: ignore
           retention-days: 7
 
   threads:
     name: Post the uncaught mutants
     needs: mutate
-    if: needs.mutate.outputs.report == 'true'
+    if: needs.mutate.outputs.review == 'true' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: mutation-report
-          path: ${{ runner.temp }}
-      - name: List the posted mutants
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/comments" \
-            --jq '.[] | select(.user.login == "github-actions[bot]") | .body | @json' > "$RUNNER_TEMP/posted.jsonl"
-      - name: List the uncaught mutants
-        env:
-          HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          python3 -B .github/scripts/mutation_threads.py \
-            --report "$RUNNER_TEMP/mutation.json" --root . \
-            --posted "$RUNNER_TEMP/posted.jsonl" --commit "$HEAD" \
-            --review "$RUNNER_TEMP/review.json" >> "$GITHUB_STEP_SUMMARY"
+          path: ${{ runner.temp }}/mutation
       - name: Post the review
-        if: github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-        run: |
-          if [ -s "$RUNNER_TEMP/review.json" ]; then
-            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --input "$RUNNER_TEMP/review.json" --silent
-          fi
+        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --input "$RUNNER_TEMP/mutation/review.json" --silent
