@@ -52,13 +52,14 @@ def comments(line, raw):
             end = closing(line, at, line[at] not in raw)
             at = at + 1 if end is None else end + 1
         elif line.startswith("//", at):
-            yield at, line[at + 2:]
+            yield line[at:], line[at + 2:]
             return
         elif line.startswith("/*", at):
             end = line.find("*/", at + 2)
-            yield at, line[at + 2:] if end < 0 else line[at + 2:end]
             if end < 0:
+                yield line[at:], line[at + 2:]
                 return
+            yield line[at:end + 2], line[at + 2:end]
             at = end + 2
         else:
             at += 1
@@ -70,11 +71,8 @@ def exception(path, line):
     elif path.endswith(WEB_SUFFIXES):
         pattern, raw = WEB_EXCEPTION, ""
     else:
-        return None
-    for start, text in comments(line, raw):
-        if pattern.match(text):
-            return line[start:].strip()
-    return None
+        return []
+    return [text.strip() for text, body in comments(line, raw) if pattern.match(body)]
 
 
 def exceptions(diff):
@@ -95,9 +93,7 @@ def exceptions(diff):
             start = HUNK.match(line)
             number = int(start.group(1)) if start else 0
         elif in_hunk and path and line[:1] in ("+", "-"):
-            text = exception(path, line[1:])
-            if text:
-                (added if line[0] == "+" else removed).append(Found(path, number, text))
+            (added if line[0] == "+" else removed).extend(Found(path, number, text) for text in exception(path, line[1:]))
             if line[0] == "+":
                 number += 1
     return added, removed

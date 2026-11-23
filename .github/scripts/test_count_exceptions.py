@@ -100,6 +100,15 @@ index 1111111..2222222 100644
 +// eslint-disable-next-line no-console -- the CLI prints its result
 """
 
+TWO_ON_ONE_LINE = """diff --git a/web/src/c.ts b/web/src/c.ts
+index 1111111..2222222 100644
+--- a/web/src/c.ts
++++ b/web/src/c.ts
+@@ -3 +3 @@
+-/* eslint-disable no-console -- the CLI prints its result */
++/* eslint-disable no-console -- the CLI prints its result */ /* eslint-disable no-alert -- the user confirms the delete */
+"""
+
 DELETED_FILE = """diff --git a/web/src/old.ts b/web/src/old.ts
 deleted file mode 100644
 index 3333333..0000000
@@ -158,6 +167,14 @@ class ExceptionsTest(unittest.TestCase):
             (74, "// @ts-nocheck"),
         ])
         self.assertEqual(removed, [])
+
+    def test_each_exception_on_a_line_counts(self):
+        added, removed = exceptions(TWO_ON_ONE_LINE)
+        self.assertEqual(texts(added), [
+            ("web/src/c.ts", 3, "/* eslint-disable no-console -- the CLI prints its result */"),
+            ("web/src/c.ts", 3, "/* eslint-disable no-alert -- the user confirms the delete */"),
+        ])
+        self.assertEqual(texts(new(added, removed)), [("web/src/c.ts", 3, "/* eslint-disable no-alert -- the user confirms the delete */")])
 
     def test_removed_exceptions(self):
         added, removed = exceptions(DELETED_FILE)
