@@ -104,7 +104,7 @@ func FuzzDiscRelativeDir(f *testing.F) {
 		{"/data", "/films/Movie/a", "2", "a"},
 		{"/data", "/data2/Movie/a", "2", "a"},
 		{"/", "/Movie/a", "Movie", "a"},
-		{"/data", "/data/..hidden/a", "hidden", "a"},
+		{"/data", "/data/..hidden/a", "..hidden", "a"},
 		{"/data", "data/Movie/a", "Movie", "a"},
 		{`C:\Films`, `c:\films\Movie\VIDEO_TS\a.vob`, "Movie", "a.vob"},
 		{`C:\Films`, `D:\Films\Movie\a`, "Movie", "a"},
@@ -144,9 +144,6 @@ func FuzzDiscRelativeDir(f *testing.F) {
 			outside := root + dirName + sep + fileName
 			if relDir, ok := discRelativeDir(d, root, outside); ok && !strings.HasSuffix(root, sep) {
 				t.Fatalf("%s: %q, outside %q, gets the folder %q", dialect.name, outside, root, relDir)
-			}
-			if strings.HasPrefix(dirName, "..") {
-				continue
 			}
 			inside := below + dirName + sep + fileName
 			if relDir, ok := discRelativeDir(d, root, inside); !ok || relDir != dirName {

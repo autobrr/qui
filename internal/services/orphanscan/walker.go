@@ -745,7 +745,7 @@ func chooseDiscUnit(ctx context.Context, candidateAbs, markerAbs, markerUpper st
 
 func discRelativeDir(d fsops.PathDialect, root, path string) (string, bool) {
 	rel, err := d.Rel(root, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+d.Separator()) {
 		return "", false
 	}
 

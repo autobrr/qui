@@ -261,6 +261,18 @@ func TestPathDialect_FileMapKeys(t *testing.T) {
 	require.False(t, protected.torrentFileIn("/srv/data/a"))
 }
 
+// regression: #4438
+func TestPathDialect_DiscBelowAFolderWhoseNameStartsWithTwoDots(t *testing.T) {
+	t.Parallel()
+
+	b := newSlashBackend(map[string]int64{"/data/..extras/BDMV/STREAM/00000.m2ts": 10})
+	protected := newTestProtected(t, fsops.SlashPaths, nil, NewTorrentFileMap(fsops.SlashPaths))
+
+	unit, isDisc := discOrphanUnitWithContext(t.Context(), "/data", "/data/..extras/BDMV/STREAM/00000.m2ts", protected, map[string]discUnitDecision{}, nil, b)
+	require.True(t, isDisc)
+	require.Equal(t, "/data/..extras", unit)
+}
+
 func TestPathDialect_DiscAndPlainUnits(t *testing.T) {
 	t.Parallel()
 
