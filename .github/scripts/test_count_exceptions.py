@@ -168,6 +168,43 @@ index 1111111..2222222 100644
 +/* eslint-disable no-console -- the CLI prints its result */ /* eslint-disable no-alert -- the user confirms the delete */
 """
 
+WEB_REGEX = """diff --git a/web/src/e.ts b/web/src/e.ts
+--- a/web/src/e.ts
++++ b/web/src/e.ts
+@@ -1 +1,8 @@
+ export {}
++const tick = /`/
++const marks = (text) => text.replace(/[/*'"]/g, "") // @ts-ignore
++const half = total / 2 // @ts-ignore
++const third = (total) / 3 // @ts-ignore
++function backtick() { return /`/ }
++// eslint-disable-next-line no-console -- the CLI prints its result
++console.log(tick, marks, half, third)
+"""
+
+WEB_SUBSTITUTION = """diff --git a/web/src/f.ts b/web/src/f.ts
+--- a/web/src/f.ts
++++ b/web/src/f.ts
+@@ -1 +1,7 @@
+ export {}
++const line = `a ${
++  [{ brace: `}` }].join() +
++  // eslint-disable-next-line no-console -- the CLI prints its result
++  console.log()
++} // @ts-ignore`
++// @ts-ignore
+"""
+
+WEB_LOST = """diff --git a/web/src/g.tsx b/web/src/g.tsx
+--- a/web/src/g.tsx
++++ b/web/src/g.tsx
+@@ -1,3 +1,3 @@
+ export const Help = () => <p>press ` to search</p>
+-// @ts-ignore
++console.log("@ts-ignore") // eslint-disable-line no-console -- the CLI prints its result
+ const name = "@ts-nocheck"
+"""
+
 DELETED_FILE = """diff --git a/web/src/old.ts b/web/src/old.ts
 deleted file mode 100644
 index 3333333..0000000
@@ -258,6 +295,26 @@ class ExceptionsTest(unittest.TestCase):
             ("web/src/d.ts", 5, "eslint-disable no-console -- the CLI prints its result"),
         ])
         self.assertEqual(removed, [])
+
+    def test_a_regex_literal_is_not_a_string_or_a_comment(self):
+        added, _ = exceptions(WEB_REGEX)
+        self.assertEqual([(item.line, item.text) for item in added], [
+            *((line, "// @ts-ignore") for line in (3, 4, 5)),
+            (7, "// eslint-disable-next-line no-console -- the CLI prints its result"),
+        ])
+
+    def test_a_comment_in_a_template_substitution(self):
+        added, _ = exceptions(WEB_SUBSTITUTION)
+        self.assertEqual(texts(added), [
+            ("web/src/f.ts", 4, "// eslint-disable-next-line no-console -- the CLI prints its result"),
+            ("web/src/f.ts", 7, "// @ts-ignore"),
+        ])
+
+    def test_a_file_that_the_scan_misreads_counts_each_exception_text(self):
+        added, removed = exceptions(WEB_LOST)
+        line = 'console.log("@ts-ignore") // eslint-disable-line no-console -- the CLI prints its result'
+        self.assertEqual(texts(added), [("web/src/g.tsx", 2, line), ("web/src/g.tsx", 2, line)])
+        self.assertEqual(texts(removed), [("web/src/g.tsx", 2, "// @ts-ignore")])
 
     def test_removed_exceptions(self):
         added, removed = exceptions(DELETED_FILE)
