@@ -518,20 +518,7 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 	})
 
 	t.Run("successful tracker health check DB reset finishes before Close returns", func(t *testing.T) {
-		probeDone := make(chan struct{})
-		var once sync.Once
-
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/api/v2/app/webapiVersion":
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("2.15.2"))
-				once.Do(func() { close(probeDone) })
-			default:
-				http.NotFound(w, r)
-			}
-		}))
-		defer srv.Close()
+		srv := newTrackerHealthStubServer(t, "2.11.3")
 
 		db := testdb.NewMigratedSQLite(t, "pool-reset-before-close")
 		instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
@@ -540,20 +527,33 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		require.NoError(t, err)
 
 		errorStore := models.NewInstanceErrorStore(db)
+		require.NoError(t, errorStore.RecordError(t.Context(), instance.ID, errors.New("connection refused")))
+
 		pool, err := NewClientPool(instanceStore, errorStore, time.Second)
 		require.NoError(t, err)
 		sm := NewSyncManager(pool, nil)
 
+		refreshed := make(chan struct{})
+		var refreshOnce sync.Once
+		pool.AddSyncEventSink(&notifyHealthUpdatedSink{onUpdated: func(id int) {
+			if id == instance.ID {
+				refreshOnce.Do(func() { close(refreshed) })
+			}
+		}})
+
+		client := newTrackerHealthTestClient(t, instance.ID, srv.URL)
+		// Mark client unhealthy so the initial tracker refresh pass runs HealthCheck -> ResetFailureTracking.
+		client.updateHealthStatus(false)
 		pool.mu.Lock()
-		pool.clients[instance.ID] = &Client{
-			Client:     qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
-			instanceID: instance.ID,
-		}
+		pool.clients[instance.ID] = client
 		pool.mu.Unlock()
-		pool.trackFailure(instance.ID, errors.New("connection refused"))
 
 		sm.StartTrackerHealthRefresh(instance.ID)
-		<-probeDone
+		select {
+		case <-refreshed:
+		case <-time.After(2 * time.Second):
+			t.Fatal("initial tracker health refresh pass did not complete in time")
+		}
 
 		sm.trackerHealthMu.RLock()
 		done := sm.trackerHealthDone[instance.ID]
@@ -567,6 +567,131 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		default:
 			t.Fatal("tracker health refresh loop was still running after Close returned")
 		}
+
+		errs, err := errorStore.GetRecentErrors(t.Context(), instance.ID, 10)
+		require.NoError(t, err)
+		assert.Empty(t, errs)
+	})
+
+	t.Run("StartTrackerHealthRefresh replaces active loop without spinning", func(t *testing.T) {
+		firstStarted := make(chan struct{})
+		secondStarted := make(chan struct{})
+		var calls sync.Mutex
+		count := 0
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v2/app/webapiVersion" {
+				http.NotFound(w, r)
+				return
+			}
+			calls.Lock()
+			count++
+			callNum := count
+			calls.Unlock()
+			switch callNum {
+			case 1:
+				close(firstStarted)
+			case 2:
+				close(secondStarted)
+			}
+			<-r.Context().Done()
+		}))
+		defer srv.Close()
+
+		pool := setupTestPool(t)
+		sm := NewSyncManager(pool, nil)
+		const instanceID = 1
+		pool.mu.Lock()
+		pool.clients[instanceID] = &Client{
+			Client:     qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
+			instanceID: instanceID,
+		}
+		pool.mu.Unlock()
+
+		sm.StartTrackerHealthRefresh(instanceID)
+		<-firstStarted
+
+		sm.trackerHealthMu.RLock()
+		firstDone := sm.trackerHealthDone[instanceID]
+		sm.trackerHealthMu.RUnlock()
+		require.NotNil(t, firstDone)
+
+		restarted := make(chan struct{})
+		go func() {
+			sm.StartTrackerHealthRefresh(instanceID)
+			close(restarted)
+		}()
+
+		select {
+		case <-restarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("StartTrackerHealthRefresh hung replacing active loop")
+		}
+		select {
+		case <-firstDone:
+		default:
+			t.Fatal("first refresh loop did not exit before replacement started")
+		}
+		select {
+		case <-secondStarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("replacement refresh loop never ran")
+		}
+
+		require.NoError(t, pool.Close())
+	})
+
+	t.Run("RemoveClient during refresh pass does not deadlock on instanceLock and Close drains", func(t *testing.T) {
+		srv := newTrackerHealthStubServer(t, "2.11.3")
+
+		pool := setupTestPool(t)
+		sm := NewSyncManager(pool, nil)
+		const instanceID = 1
+
+		callbackEntered := make(chan struct{})
+		releaseCallback := make(chan struct{})
+		var once sync.Once
+		pool.AddSyncEventSink(&notifyHealthUpdatedSink{onUpdated: func(id int) {
+			if id != instanceID {
+				return
+			}
+			once.Do(func() {
+				close(callbackEntered)
+				<-releaseCallback
+				// Exercise instanceLock acquisition after RemoveClient deleted cp.clients and unlocked.
+				lock := pool.getInstanceLock(id)
+				lock.Lock()
+				lock.Unlock()
+			})
+		}})
+
+		pool.mu.Lock()
+		pool.clients[instanceID] = newTrackerHealthTestClient(t, instanceID, srv.URL)
+		pool.mu.Unlock()
+
+		sm.StartTrackerHealthRefresh(instanceID)
+		<-callbackEntered
+
+		removed := make(chan struct{})
+		go func() {
+			pool.RemoveClient(instanceID)
+			close(removed)
+		}()
+
+		select {
+		case <-removed:
+			t.Fatal("RemoveClient returned before tracker refresh loop exited")
+		case <-time.After(20 * time.Millisecond):
+		}
+
+		close(releaseCallback)
+		select {
+		case <-removed:
+		case <-time.After(2 * time.Second):
+			t.Fatal("RemoveClient deadlocked while tracker refresh loop waited on instanceLock")
+		}
+
+		require.NoError(t, pool.Close())
 	})
 
 	t.Run("errorStore writes are skipped once pool is closed", func(t *testing.T) {
@@ -586,4 +711,121 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, errs)
 	})
+
+	t.Run("createClientWithTimeout exits immediately on canceled ctx once instanceLock frees", func(t *testing.T) {
+		pool := setupTestPool(t)
+		const instanceID = 1
+		lock := pool.getInstanceLock(instanceID)
+		lock.Lock()
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() {
+			_, err := pool.createClientWithTimeout(ctx, instanceID, time.Second)
+			done <- err
+		}()
+
+		cancel()
+		lock.Unlock()
+
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, context.Canceled)
+		case <-time.After(2 * time.Second):
+			t.Fatal("createClientWithTimeout did not abort after ctx cancellation")
+		}
+		require.NoError(t, pool.Close())
+	})
+
+	t.Run("Close drains detached loop canceled by concurrent RemoveClient", func(t *testing.T) {
+		srv := newTrackerHealthStubServer(t, "2.11.3")
+
+		pool := setupTestPool(t)
+		sm := NewSyncManager(pool, nil)
+		const instanceID = 1
+
+		callbackEntered := make(chan struct{})
+		releaseCallback := make(chan struct{})
+		var once sync.Once
+		pool.AddSyncEventSink(&notifyHealthUpdatedSink{onUpdated: func(id int) {
+			if id != instanceID {
+				return
+			}
+			once.Do(func() {
+				close(callbackEntered)
+				<-releaseCallback
+			})
+		}})
+
+		pool.mu.Lock()
+		pool.clients[instanceID] = newTrackerHealthTestClient(t, instanceID, srv.URL)
+		pool.mu.Unlock()
+
+		sm.StartTrackerHealthRefresh(instanceID)
+		<-callbackEntered
+
+		// Simulate RemoveClient deleting cp.clients and canceling without waiting yet.
+		pool.mu.Lock()
+		delete(pool.clients, instanceID)
+		pool.mu.Unlock()
+		done := sm.cancelTrackerHealthRefresh(instanceID)
+		require.NotNil(t, done)
+
+		closed := make(chan error, 1)
+		go func() {
+			closed <- pool.Close()
+		}()
+
+		select {
+		case err := <-closed:
+			t.Fatalf("pool.Close returned before detached tracker loop exited (err=%v)", err)
+		case <-time.After(30 * time.Millisecond):
+		}
+
+		close(releaseCallback)
+		require.NoError(t, <-closed)
+		select {
+		case <-done:
+		default:
+			t.Fatal("detached tracker loop done channel was not closed before Close returned")
+		}
+	})
+}
+
+func newTrackerHealthStubServer(t *testing.T, webAPIVersion string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte(webAPIVersion))
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{},"trackers":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func newTrackerHealthTestClient(t *testing.T, instanceID int, host string) *Client {
+	t.Helper()
+	client, err := NewClientWithTimeout(instanceID, host, "", "", "", nil, nil, false, time.Second, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(client.optimisticUpdates.Close)
+	return client
+}
+
+type notifyHealthUpdatedSink struct {
+	onUpdated func(int)
+}
+
+func (n *notifyHealthUpdatedSink) HandleSyncUpdate(int, qbt.SyncUpdate) {}
+func (n *notifyHealthUpdatedSink) HandleSyncError(int, error)           {}
+func (n *notifyHealthUpdatedSink) HandleTrackerHealthUpdated(id int) {
+	if n.onUpdated != nil {
+		n.onUpdated(id)
+	}
 }

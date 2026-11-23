@@ -385,10 +385,18 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 
 // createClientWithTimeout creates a new client connection with custom timeout
 func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID int, timeout time.Duration) (*Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Use per-instance lock to prevent blocking other instances
 	instanceLock := cp.getInstanceLock(instanceID)
 	instanceLock.Lock()
 	defer instanceLock.Unlock()
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	// Check if instance is in backoff period (need to acquire read lock for this)
 	cp.mu.RLock()
@@ -541,9 +549,10 @@ func (cp *ClientPool) decryptField(instanceID int, instanceName, fieldName strin
 
 // RemoveClient removes a client from the pool
 func (cp *ClientPool) RemoveClient(instanceID int) {
-	// Acquire per-instance lock to serialize with createClientWithTimeout.
-	// This prevents a race where StartTrackerHealthRefresh could be called
-	// after StopTrackerHealthRefresh for the same instance.
+	// Acquire per-instance lock to serialize deleting the pooled client and
+	// cancelling its refresh loop with createClientWithTimeout, then release the
+	// lock before waiting for loop exit so a canceled pass entering
+	// createClientWithTimeout cannot deadlock on instanceLock.
 	instanceLock := cp.getInstanceLock(instanceID)
 	instanceLock.Lock()
 
@@ -552,9 +561,9 @@ func (cp *ClientPool) RemoveClient(instanceID int) {
 	sm := cp.syncManager
 	cp.mu.Unlock()
 
-	// Stop background tracker health refresh
+	var stopDone chan struct{}
 	if sm != nil {
-		sm.StopTrackerHealthRefresh(instanceID)
+		stopDone = sm.cancelTrackerHealthRefresh(instanceID)
 	}
 
 	instanceLock.Unlock()
@@ -563,6 +572,10 @@ func (cp *ClientPool) RemoveClient(instanceID int) {
 	cp.creationMu.Lock()
 	delete(cp.creationLocks, instanceID)
 	cp.creationMu.Unlock()
+
+	if stopDone != nil {
+		<-stopDone
+	}
 
 	log.Info().Int("instanceID", instanceID).Msg("Removed client from pool")
 }

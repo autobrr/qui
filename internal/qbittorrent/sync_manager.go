@@ -818,6 +818,7 @@ func (sm *SyncManager) StartTrackerHealthRefresh(instanceID int) {
 			if done != nil {
 				<-done
 			}
+			sm.retireTrackerHealthRefresh(instanceID, done)
 			continue
 		}
 
@@ -840,10 +841,25 @@ func (sm *SyncManager) StartTrackerHealthRefresh(instanceID int) {
 
 		go func() {
 			defer close(done)
+			defer sm.retireTrackerHealthRefresh(instanceID, done)
 			sm.trackerHealthRefreshLoop(refreshCtx, instanceID, kick, seen)
 		}()
 		return
 	}
+}
+
+func (sm *SyncManager) retireTrackerHealthRefresh(instanceID int, done chan struct{}) {
+	if done == nil {
+		return
+	}
+	sm.trackerHealthMu.Lock()
+	if sm.trackerHealthDone[instanceID] == done {
+		delete(sm.trackerHealthCancel, instanceID)
+		delete(sm.trackerHealthDone, instanceID)
+		delete(sm.trackerHealthKick, instanceID)
+		delete(sm.trackerHealthSeen, instanceID)
+	}
+	sm.trackerHealthMu.Unlock()
 }
 
 // KickTrackerHealthRefresh asks the instance's health loop for an early pass, so a
@@ -859,25 +875,26 @@ func (sm *SyncManager) KickTrackerHealthRefresh(instanceID int) {
 	}
 }
 
-// StopTrackerHealthRefresh stops the background tracker health refresh for an instance
-// and waits for its loop goroutine to exit.
-func (sm *SyncManager) StopTrackerHealthRefresh(instanceID int) {
+// cancelTrackerHealthRefresh cancels an instance's refresh loop and clears cached
+// tracker state while keeping the done registration active until the loop exits.
+func (sm *SyncManager) cancelTrackerHealthRefresh(instanceID int) chan struct{} {
 	sm.trackerHealthMu.Lock()
 	if cancel, exists := sm.trackerHealthCancel[instanceID]; exists {
 		cancel()
-		delete(sm.trackerHealthCancel, instanceID)
 	}
 	done := sm.trackerHealthDone[instanceID]
-	delete(sm.trackerHealthDone, instanceID)
-	delete(sm.trackerHealthKick, instanceID)
-	delete(sm.trackerHealthSeen, instanceID)
 	delete(sm.trackerHealthPassAt, instanceID)
 	delete(sm.trackerHealthCache, instanceID)
 	delete(sm.trackerHealthFlagged, instanceID)
 	delete(sm.automationTrackerDetails, instanceID)
 	sm.trackerHealthMu.Unlock()
+	return done
+}
 
-	if done != nil {
+// StopTrackerHealthRefresh stops the background tracker health refresh for an instance
+// and waits for its loop goroutine to exit.
+func (sm *SyncManager) StopTrackerHealthRefresh(instanceID int) {
+	if done := sm.cancelTrackerHealthRefresh(instanceID); done != nil {
 		<-done
 	}
 }
@@ -885,26 +902,32 @@ func (sm *SyncManager) StopTrackerHealthRefresh(instanceID int) {
 // StopAllTrackerHealthRefresh cancels every active tracker health refresh loop
 // and waits for all of them to exit.
 func (sm *SyncManager) StopAllTrackerHealthRefresh() {
-	sm.trackerHealthMu.Lock()
-	var dones []chan struct{}
-	for id, cancel := range sm.trackerHealthCancel {
-		cancel()
-		delete(sm.trackerHealthCancel, id)
-		if done := sm.trackerHealthDone[id]; done != nil {
+	for {
+		sm.trackerHealthMu.Lock()
+		if len(sm.trackerHealthDone) == 0 {
+			clear(sm.trackerHealthPassAt)
+			clear(sm.trackerHealthCache)
+			clear(sm.trackerHealthFlagged)
+			clear(sm.automationTrackerDetails)
+			sm.trackerHealthMu.Unlock()
+			return
+		}
+		dones := make([]chan struct{}, 0, len(sm.trackerHealthDone))
+		for id, done := range sm.trackerHealthDone {
+			if cancel := sm.trackerHealthCancel[id]; cancel != nil {
+				cancel()
+			}
 			dones = append(dones, done)
 		}
-	}
-	clear(sm.trackerHealthDone)
-	clear(sm.trackerHealthKick)
-	clear(sm.trackerHealthSeen)
-	clear(sm.trackerHealthPassAt)
-	clear(sm.trackerHealthCache)
-	clear(sm.trackerHealthFlagged)
-	clear(sm.automationTrackerDetails)
-	sm.trackerHealthMu.Unlock()
+		clear(sm.trackerHealthPassAt)
+		clear(sm.trackerHealthCache)
+		clear(sm.trackerHealthFlagged)
+		clear(sm.automationTrackerDetails)
+		sm.trackerHealthMu.Unlock()
 
-	for _, done := range dones {
-		<-done
+		for _, done := range dones {
+			<-done
+		}
 	}
 }
 
@@ -924,6 +947,10 @@ func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID 
 	kickTimer.Stop()
 	var lastKicked time.Time
 	for {
+		if ctx.Err() != nil {
+			log.Debug().Int("instanceID", instanceID).Msg("Stopping tracker health refresh loop")
+			return
+		}
 		select {
 		case <-ctx.Done():
 			log.Debug().Int("instanceID", instanceID).Msg("Stopping tracker health refresh loop")
@@ -936,6 +963,10 @@ func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID 
 			lastKicked = time.Now()
 			sm.refreshTrackerHealthCounts(ctx, instanceID)
 		case s := <-seen:
+			if ctx.Err() != nil {
+				log.Debug().Int("instanceID", instanceID).Msg("Stopping tracker health refresh loop")
+				return
+			}
 			sm.applySeenTrackers(ctx, instanceID, s)
 		}
 	}
@@ -947,6 +978,9 @@ func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID 
 // changed; on 5.1 it fetches the whole library. Tracker domains come from the
 // sync/maindata trackers map on every version.
 func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceID int) {
+	if ctx.Err() != nil {
+		return
+	}
 	started := time.Now()
 	refreshCtx, cancel := context.WithTimeout(ctx, trackerHealthRefreshTimeout)
 	defer cancel()
