@@ -38,19 +38,18 @@ To prove that a new forbidigo or depguard rule fires, add a temporary violation 
 
 ## Ratchet
 
-The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The count for a file can only go down. `go run ./scripts/ratchet` applies seven rules:
+The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The total of a linter can only go down. `go run ./scripts/ratchet` applies six rules:
 
 1. A file reports no more problems than its entry allows. A file without an entry must have no problems.
 2. An entry is not higher than the number that the file reports. When you fix a problem, lower the count of its file in the same change, and delete the entry at 0.
-3. No entry is higher than the entry on the base branch. A linter that the allowlist of the base does not list is a new rule, which starts with the count of each file.
+3. The total of a linter is not higher than its total on the base branch. A linter that the allowlist of the base does not list is a new rule, which starts with the count of each file.
 4. No `nolint` comment hides `gocognit`. Split the function.
-5. The comment totals do not grow. See "Comments" below.
-6. A `nolint` comment names only linters that `.golangci.yml` or `scripts/ratchet/golangci.yml` runs. A name of a linter that is off hides nothing: delete it.
-7. `web/eslint-suppressions.json` has entries only for the rules in `suppressedRules` of `scripts/ratchet/comments.go`, each of those rules has an entry, and the total of each rule does not grow. See "Suppressed ESLint Rules" below.
+5. A `nolint` comment names only linters that `.golangci.yml` or `scripts/ratchet/golangci.yml` runs. A name of a linter that is off hides nothing: delete it.
+6. `web/eslint-suppressions.json` has entries only for the rules in `suppressedRules` of `scripts/ratchet/comments.go`, each of those rules has an entry, and the total of each rule does not grow. See "Suppressed ESLint Rules" below.
 
 - The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
-- If you move code that has ratchet problems into a new file, or rename such a file, the new path needs an allowlist entry. Rule 3 then fails with "the entry grew from 0 to N", also when the totals do not change. No flag skips rule 3, so a maintainer merges that pull request past the failed check.
+- If you move code that has ratchet problems into another file, or rename such a file, move its count to the entry of the new path in the same change. Rule 3 fails only when the total of a linter grows, and its message names each entry that grew. ADR 0077 has the reason.
 
 Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go` lane fixes up to 5 problems in one file of `allowlist.json` and uses the `ratchet` label. ADR 0020 describes it. It does not take the `comments` entries or the `offlog` entries. The `web` lane removes up to 3 effects that `qui/no-direct-effect` holds in one file of `web/eslint-suppressions.json` and uses the `ratchet-web` label. ADR 0075 describes it. A lane opens no pull request while one with its label is open.
 
@@ -58,14 +57,14 @@ Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go
 
 `docs/standards/simplicity.md` bans comments. The ratchet holds the comments from before the ban, in two places:
 
-- **Go:** the `comments` key of `allowlist.json` is not a golangci-lint linter. The ratchet command counts the comments in each tracked Go file itself, with `scripts/comments/gocomments`. Rules 1 and 2 apply to each file. For rule 3, the command compares the total of all files with the total on the base branch, so a comment that moves to another file with its code does not fail the check. Move its count to the entry of the new file.
+- **Go:** the `comments` key of `allowlist.json` is not a golangci-lint linter. The ratchet command counts the comments in each tracked Go file itself, with `scripts/comments/gocomments`. Rules 1 to 3 apply to it as to each linter, so a comment that moves to another file with its code does not fail the check.
 - **TypeScript:** ESLint reports each comment as `qui/no-comments`, one of the suppressed ESLint rules below.
 
 `web/scripts/no-comments-rule.mjs` and `scripts/comments/gocomments` list the markers that are not comments for this rule. The ESLint rule has no fix, because `make fmt` runs `eslint --fix` and must not delete a comment that nobody read. The `/delete-comment` skill sorts the comments of a file and deletes them.
 
 ### Lines About an Off Feature
 
-`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to each file.
+`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter.
 
 A line counts when its level is DEBUG or INFO, and one of these is true:
 
@@ -86,7 +85,7 @@ The counter reads only the syntax tree. It cannot read the text of a message tha
 - `react-hooks/exhaustive-deps` reports a hook whose dependency list does not match the values that the hook reads.
 - `react-refresh/only-export-components` reports a file that exports a component and another value, because fast refresh then reloads the whole file.
 
-After you fix a report of one of these rules, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 7 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 7 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
+After you fix a report of one of these rules, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 6 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 6 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
 
 A new rule that old code breaks starts the same way: add its name to `suppressedRules`, and write its reports to the file one time with `pnpm exec eslint --suppress-rule <rule>` and the paths of the `lint` script in `web/package.json`.
 

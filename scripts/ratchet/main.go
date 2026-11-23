@@ -186,17 +186,17 @@ func growth(allow, base counts) []string {
 		if _, ok := base[linter]; !ok {
 			continue
 		}
-		if linter == commentsLinter {
-			if now, was := sum(allow[linter]), sum(base[linter]); now > was {
-				problems = append(problems, fmt.Sprintf("%s: the total grew from %d to %d. The total only shrinks: a moved comment keeps it level, a new comment does not.", linter, was, now))
-			}
+		now, was := sum(allow[linter]), sum(base[linter])
+		if now <= was {
 			continue
 		}
+		var grown []string
 		for _, file := range slices.Sorted(maps.Keys(allow[linter])) {
-			if want, was := allow[linter][file], base[linter][file]; want > was {
-				problems = append(problems, fmt.Sprintf("%s: the %s entry grew from %d to %d. The allowlist only shrinks.", file, linter, was, want))
+			if want, before := allow[linter][file], base[linter][file]; want > before {
+				grown = append(grown, fmt.Sprintf("%s from %d to %d", file, before, want))
 			}
 		}
+		problems = append(problems, fmt.Sprintf("%s: the total grew from %d to %d. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report. These entries grew: %s.", linter, was, now, strings.Join(grown, ", ")))
 	}
 	return problems
 }
