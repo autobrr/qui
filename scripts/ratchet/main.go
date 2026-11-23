@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"flag"
@@ -28,6 +29,7 @@ type counts map[string]map[string]int
 func main() {
 	base := flag.String("base", "origin/develop", "git ref whose allowlist this one may not exceed")
 	updateComments := flag.Bool("update-comments", false, "write the comment count of each Go file to the allowlist, then stop")
+	lower := flag.Bool("lower", false, "lower each allowlist entry above the count of its file before the check, and delete an entry at 0")
 	flag.Parse()
 
 	if *updateComments {
@@ -62,6 +64,11 @@ func main() {
 	allow, err := parse(raw)
 	if err != nil {
 		fail(fmt.Errorf("%s: %w", allowlistPath, err))
+	}
+	if *lower {
+		if err := lowerAllowlist(got, allow); err != nil {
+			fail(err)
+		}
 	}
 	// A wrong ref must fail, not skip the growth check.
 	//nolint:gosec // the developer or CI picks -base
@@ -184,6 +191,50 @@ func compare(got, allow, base counts) []string {
 		return problems
 	}
 	return append(problems, growth(allow, base)...)
+}
+
+func lowerEntries(got, allow counts) []string {
+	var lowered []string
+	for _, linter := range slices.Sorted(maps.Keys(allow)) {
+		for _, file := range slices.Sorted(maps.Keys(allow[linter])) {
+			n, want := got[linter][file], allow[linter][file]
+			switch {
+			case n == 0:
+				delete(allow[linter], file)
+				lowered = append(lowered, fmt.Sprintf("%s: %s from %d to 0, entry deleted", file, linter, want))
+			case n < want:
+				allow[linter][file] = n
+				lowered = append(lowered, fmt.Sprintf("%s: %s from %d to %d", file, linter, want, n))
+			}
+		}
+	}
+	return lowered
+}
+
+func lowerAllowlist(got, allow counts) error {
+	if broken := got["typecheck"]; len(broken) > 0 {
+		return fmt.Errorf("golangci-lint cannot type-check %s, so the other counts are not complete and the allowlist stays as it is. Make the code compile, then run the ratchet again", strings.Join(slices.Sorted(maps.Keys(broken)), ", "))
+	}
+	lowered := lowerEntries(got, allow)
+	if len(lowered) == 0 {
+		return nil
+	}
+	if err := writeAllowlist(allow); err != nil {
+		return err
+	}
+	for _, l := range lowered {
+		fmt.Println("ratchet: lowered", l)
+	}
+	return nil
+}
+
+func writeAllowlist(allow counts) error {
+	out, err := json.Marshal(allow, json.Deterministic(true), jsontext.WithIndent("  "))
+	if err != nil {
+		return err
+	}
+	//nolint:gosec // the allowlist is a tracked file that others read
+	return os.WriteFile(allowlistPath, append(out, '\n'), 0o644)
 }
 
 func growth(allow, base counts) []string {

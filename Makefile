@@ -294,7 +294,7 @@ check-feature-map:
 
 # Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
 lint-ratchet: lint-version
-	go run ./scripts/ratchet -base "$$(git merge-base origin/develop HEAD || echo origin/develop)"
+	go run ./scripts/ratchet -lower -base "$$(git merge-base origin/develop HEAD || echo origin/develop)"
 
 # Lint with JSON output (for AI agent consumption)
 lint-json:
@@ -357,7 +357,7 @@ help:
 	@echo "Linting:"
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"
 	@echo "  make lint-full      - Lint entire codebase"
-	@echo "  make lint-ratchet   - Check that the lint ratchet allowlist only shrinks"
+	@echo "  make lint-ratchet   - Lower the lint ratchet allowlist, and check that it only shrinks"
 	@echo "  make lint-json      - Generate JSON lint report for AI agents"
 	@echo "  make lint-fix       - Auto-fix linting issues where possible"
 	@echo ""

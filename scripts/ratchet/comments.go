@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -97,12 +96,7 @@ func writeCommentCounts() error {
 	if allow[commentsLinter], err = goComments(); err != nil {
 		return err
 	}
-	out, err := json.Marshal(allow, json.Deterministic(true), jsontext.WithIndent("  "))
-	if err != nil {
-		return err
-	}
-	//nolint:gosec // the allowlist is a tracked file that others read
-	return os.WriteFile(allowlistPath, append(out, '\n'), 0o644)
+	return writeAllowlist(allow)
 }
 
 func suppressionGrowth(base string) ([]string, error) {

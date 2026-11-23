@@ -4,6 +4,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,6 +68,39 @@ func TestCompareZeroEntry(t *testing.T) {
 	allow := counts{"nilerr": {"a.go": 0}}
 	assert.Equal(t, []string{"a.go: nilerr reports no problems. Delete its entry from scripts/ratchet/allowlist.json."},
 		compare(counts{}, allow, nil))
+}
+
+func TestLowerAllowlist(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.MkdirAll(filepath.Dir(allowlistPath), 0o750))
+	got := counts{"nilerr": {"a.go": 1, "c.go": 3, "d.go": 2}, "forbidigo": {"e.go": 1}}
+	allow := counts{"nilerr": {"a.go": 2, "b.go": 1, "c.go": 3, "d.go": 1}}
+
+	require.NoError(t, lowerAllowlist(got, allow))
+
+	raw, err := os.ReadFile(allowlistPath)
+	require.NoError(t, err)
+	written, err := parse(raw)
+	require.NoError(t, err)
+	assert.Equal(t, counts{"nilerr": {"a.go": 1, "c.go": 3, "d.go": 1}}, written)
+	assert.Equal(t, []string{
+		"e.go: forbidigo reports 1 problems, the allowlist allows 0. Fix the new ones.",
+		"d.go: nilerr reports 2 problems, the allowlist allows 1. Fix the new ones.",
+	}, compare(got, written, nil))
+}
+
+// regression: #4404
+func TestLowerAllowlistKeepsTheFileWhenCodeDoesNotCompile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.MkdirAll(filepath.Dir(allowlistPath), 0o750))
+	got := counts{"typecheck": {"internal/api/handlers/application.go": 1}}
+	allow := counts{"gocognit": {"a.go": 2}}
+
+	err := lowerAllowlist(got, allow)
+
+	require.ErrorContains(t, err, "cannot type-check internal/api/handlers/application.go")
+	assert.NoFileExists(t, allowlistPath)
+	assert.Equal(t, counts{"gocognit": {"a.go": 2}}, allow)
 }
 
 // Each case matches what golangci-lint v2.14.0 does with the comment above a
