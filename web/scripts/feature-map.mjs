@@ -157,15 +157,14 @@ export function where(map, loadedBy, file) {
   ].join("\n")
 }
 
-function atBase(root, base) {
+export function atBase(root, base) {
   const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })
   git("rev-parse", "--verify", `${base}^{commit}`)
-  try {
-    return JSON.parse(git("show", `${base}:${saved}`))
-  } catch {
+  if (!git("ls-tree", "--name-only", base, "--", saved)) {
     console.log(`feature-map: no ${saved} at ${base}, so the number of dialogs without steps has no limit yet`)
     return undefined
   }
+  return JSON.parse(git("show", `${base}:${saved}`))
 }
 
 if (import.meta.main) {

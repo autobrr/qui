@@ -1,10 +1,11 @@
 import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { after, test } from "node:test"
 
-import { merge, problems, read, render, where } from "./feature-map.mjs"
+import { atBase, merge, problems, read, render, where } from "./feature-map.mjs"
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "feature-map-"))
 after(() => fs.rmSync(root, { recursive: true }))
@@ -130,4 +131,26 @@ test("where prints the steps of each route that loads a file, and of the dialogs
   assert.equal(where(mapWith(steps, steps), loadedBy, "d.ts"), ["route /a  /a", "  - Open /a.", "  - Click Save."].join("\n"))
   assert.match(where(mapWith(steps, steps), loadedBy, "d.tsx"), /dialog d\.tsx#One\n {2}- Open \/a\.\n/)
   assert.equal(where(map, loadedBy, "gone.tsx"), "No route loads gone.tsx.")
+})
+
+test("atBase reads the map at a commit, and fails on a map that it cannot read", () => {
+  const repo = path.join(root, "git")
+  const file = path.join(repo, "web", "feature-map.json")
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "test", GIT_AUTHOR_EMAIL: "test@example.invalid", GIT_COMMITTER_NAME: "test", GIT_COMMITTER_EMAIL: "test@example.invalid" }
+  const git = (...args) => execFileSync("git", args, { cwd: repo, env, encoding: "utf8" }).trim()
+  const commit = (text) => {
+    if (text === undefined) fs.rmSync(file, { force: true })
+    else fs.writeFileSync(file, text)
+    git("add", "--all")
+    git("commit", "--allow-empty", "--quiet", "--message", "map")
+    return git("rev-parse", "HEAD")
+  }
+  git("init", "--quiet", "--initial-branch=main")
+  const none = commit(undefined)
+  const good = commit(render({ dialogs: {} }))
+  const bad = commit("{")
+  assert.equal(atBase(repo, none), undefined)
+  assert.deepEqual(atBase(repo, good), { dialogs: {} })
+  assert.throws(() => atBase(repo, bad), SyntaxError)
 })
