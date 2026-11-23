@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -84,15 +85,36 @@ func fileSizeProblems(base string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	tree, err := exec.CommandContext(context.Background(), "git", "ls-tree", "-r", "-l", "-z", base).Output()
-	if err != nil {
-		return nil, fmt.Errorf("git ls-tree %s: %w", base, err)
-	}
-	renames, err := exec.CommandContext(context.Background(), "git", "diff", "--name-status", "-M", "-z", "--diff-filter=R", base, "--").Output()
+	out, err := exec.CommandContext(context.Background(), "git", "diff", "--name-status", "-M", "-z", "--diff-filter=R", base, "--").Output()
 	if err != nil {
 		return nil, fmt.Errorf("git diff %s: %w", base, err)
 	}
-	return append(problems, sizeProblems(limit, now, parseTreeSizes(tree), parseRenames(renames))...), nil
+	renamed := parseRenames(out)
+	var oversized []string
+	for file, size := range now {
+		if size > limit.MaxBytes {
+			oversized = append(oversized, cmp.Or(renamed[file], file))
+		}
+	}
+	was, err := baseSizes(base, oversized)
+	if err != nil {
+		return nil, err
+	}
+	return append(problems, sizeProblems(limit, now, was, renamed)...), nil
+}
+
+func baseSizes(base string, files []string) (map[string]int, error) {
+	var objects strings.Builder
+	for _, file := range files {
+		objects.WriteString(base + ":" + file + "\x00")
+	}
+	cmd := exec.CommandContext(context.Background(), "git", "cat-file", "--batch", "-z")
+	cmd.Stdin = strings.NewReader(objects.String())
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git cat-file %s: %w", base, err)
+	}
+	return parseBlobSizes(files, out)
 }
 
 func coveredSizes(limit sizeLimit) (map[string]int, error) {
@@ -121,19 +143,31 @@ func sizeOf(src []byte) int {
 	return len(src) - bytes.Count(src, []byte("\r\n"))
 }
 
-func parseTreeSizes(out []byte) map[string]int {
+func parseBlobSizes(files []string, out []byte) (map[string]int, error) {
 	sizes := map[string]int{}
-	for entry := range strings.SplitSeq(strings.TrimSuffix(string(out), "\x00"), "\x00") {
-		meta, file, _ := strings.Cut(entry, "\t")
-		fields := strings.Fields(meta)
-		if len(fields) != 4 {
+	for _, file := range files {
+		header, rest, ok := bytes.Cut(out, []byte("\n"))
+		if !ok {
+			return nil, fmt.Errorf("git cat-file: no header for %s", file)
+		}
+		if bytes.HasSuffix(header, []byte(" missing")) {
+			out = rest
 			continue
 		}
-		if size, err := strconv.Atoi(fields[3]); err == nil {
-			sizes[file] = size
+		fields := strings.Fields(string(header))
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("git cat-file: bad header %q for %s", header, file)
 		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil || len(rest) <= size {
+			return nil, fmt.Errorf("git cat-file: bad header %q for %s", header, file)
+		}
+		if fields[1] == "blob" {
+			sizes[file] = sizeOf(rest[:size])
+		}
+		out = rest[size+1:]
 	}
-	return sizes
+	return sizes, nil
 }
 
 func parseRenames(out []byte) map[string]string {
