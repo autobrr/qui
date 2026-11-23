@@ -7,7 +7,7 @@ if [ -z "$base" ]; then
 	exit 1
 fi
 
-changed=$({ git -c core.quotePath=false diff --name-only "$base"; git -c core.quotePath=false ls-files --others --exclude-standard; } | sort -u)
+changed=$({ git -c core.quotePath=false diff --no-renames --name-only "$base"; git -c core.quotePath=false ls-files --others --exclude-standard; } | sort -u)
 if [ -z "$changed" ]; then
 	echo "prepush: no changed file since the origin/develop merge base."
 	exit 0
