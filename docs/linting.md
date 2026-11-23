@@ -112,7 +112,7 @@ Only a maintainer makes `.file-size.json` looser: a higher `max_bytes`, a new `s
 
 ## Feature Map
 
-`web/feature-map.json` lists each route of the frontend and each dialog that a route loads, with the steps to use it. ADR 0082 has the reason. `pnpm check:feature-map` in `web/` fails when the list does not match the code, when a route has no steps, and when more dialogs have no steps than on the base branch.
+`web/feature-map.json` lists each route of the frontend and each dialog that a route loads, with the steps to use it. ADR 0082 has the reason. `make check-feature-map` fails when the list does not match the code, when a route has no steps, and when more dialogs have no steps than on the base branch. It compares with the merge base of `origin/develop`, and the Lint workflow with the base branch of the pull request. `pnpm check:feature-map` in `web/` compares the number of dialogs only when you give it a base, as `--base <commit>`.
 
 - `pnpm feature-map` in `web/` writes the list again and keeps the steps. Run it after you add, remove, rename, or move a route or a dialog, then write the steps of each new entry.
 - A step is one action of a user, with the address or the name of the control. Follow the steps on a running qui before you commit them.
