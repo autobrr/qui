@@ -122,6 +122,7 @@ test-openapi:
 # A report, not a gate: some surviving mutants change no behaviour.
 MUTATION_BASE ?= origin/develop
 MUTATION_DIR ?= $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/qui-mutation
+MUTATION_REPORT ?=
 
 mutation: mutation-go mutation-web
 
@@ -146,7 +147,8 @@ mutation-go:
 		cd "$$run/wt" && GOFLAGS=-count=1 TMPDIR="$$run/tmp" \
 			GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.context GIT_CONFIG_VALUE_0=0 \
 			go run github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0 unleash \
-			--diff $(MUTATION_BASE) --timeout-coefficient 3 --output-statuses lctk .
+			--diff $(MUTATION_BASE) --timeout-coefficient 3 --output-statuses lctk \
+			$(if $(MUTATION_REPORT),--output "$(abspath $(MUTATION_REPORT))") .
 
 # Stryker changes the files in place, because a test imports a Go file from
 # outside web/. The worktree keeps those changes out of the main checkout.
