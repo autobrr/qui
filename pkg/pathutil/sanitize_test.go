@@ -183,6 +183,8 @@ func TestIsolationFolder(t *testing.T) {
 		{name: "name over 255 bytes of 2-byte characters", torrent: strings.Repeat("é", 200), want: strings.Repeat("é", 122)},
 		{name: "cut never splits a 4-byte character", torrent: strings.Repeat("a", 243) + "😀" + "bbb", want: strings.Repeat("a", 243)},
 		{name: "trailing dots and spaces after the cut", torrent: strings.Repeat("a", 241) + ". .." + "tail", want: strings.Repeat("a", 241)},
+		// regression: #4423
+		{name: "device name after the cut", torrent: "AUX" + strings.Repeat(" ", 300) + "x", want: "_AUX"},
 	}
 
 	for _, tt := range tests {
@@ -310,6 +312,8 @@ func FuzzIsolationFolder(f *testing.F) {
 		strings.Repeat(".", 300),
 		strings.Repeat(".", 250) + "x",
 		strings.Repeat("\xff", 300),
+		"AUX" + strings.Repeat(" ", 300) + "x",
+		"COM1" + strings.Repeat(" ", 241) + "x",
 	} {
 		f.Add(seed)
 	}
@@ -323,7 +327,13 @@ func FuzzIsolationFolder(f *testing.F) {
 		if utf8.ValidString(name) && !utf8.ValidString(got) {
 			t.Fatalf("%s = %q cuts a character in two", call, got)
 		}
-		if full := SanitizePathSegment(name); got != "_" && !strings.HasPrefix(full, got) {
+		if IsWindowsDeviceName(got) {
+			t.Fatalf("%s = %q is a Windows device name", call, got)
+		}
+		full := SanitizePathSegment(name)
+		device, guarded := strings.CutPrefix(got, "_")
+		guarded = guarded && IsWindowsDeviceName(device) && strings.HasPrefix(full, device)
+		if got != "_" && !strings.HasPrefix(full, got) && !guarded {
 			t.Fatalf("%s = %q is not the start of %q", call, got, full)
 		}
 	})
