@@ -4,11 +4,14 @@
 package qbittorrent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime/pprof"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -443,4 +446,57 @@ func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T
 
 	require.NoError(t, err, "double-check must return the pooled client, not attempt a re-create")
 	require.Same(t, existing, client)
+}
+
+// regression: #4380
+func TestClientPool_CloseWaitsForBackgroundWork(t *testing.T) {
+	const instanceID = 1
+
+	tests := []struct {
+		name  string
+		start func(pool *ClientPool)
+	}{
+		{name: "tracker health pass", start: func(pool *ClientPool) { NewSyncManager(pool, nil).StartTrackerHealthRefresh(instanceID) }},
+		{name: "health probe", start: func(pool *ClientPool) { pool.performHealthChecks() }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool := setupTestPool(t)
+
+			arrived := make(chan struct{})
+			closeArrived := sync.OnceFunc(func() { close(arrived) })
+			srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				closeArrived()
+				<-r.Context().Done()
+			}))
+			t.Cleanup(srv.Close)
+
+			pool.mu.Lock()
+			pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
+			pool.mu.Unlock()
+
+			pprof.Do(t.Context(), pprof.Labels("close-test", tt.name), func(context.Context) { tt.start(pool) })
+			<-arrived
+			assert.NotEmpty(t, poolGoroutinesLabeled(t, tt.name), "detector must find the background work before Close")
+
+			require.NoError(t, pool.Close())
+			assert.Empty(t, poolGoroutinesLabeled(t, tt.name), "background work of the pool outlived Close")
+		})
+	}
+}
+
+func poolGoroutinesLabeled(t *testing.T, value string) []string {
+	t.Helper()
+
+	var profile bytes.Buffer
+	require.NoError(t, pprof.Lookup("goroutine").WriteTo(&profile, 1))
+
+	var stacks []string
+	for stack := range strings.SplitSeq(profile.String(), "\n\n") {
+		if strings.Contains(stack, fmt.Sprintf("%q:%q", "close-test", value)) && strings.Contains(stack, "qui/internal/qbittorrent.") {
+			stacks = append(stacks, stack)
+		}
+	}
+	return stacks
 }
