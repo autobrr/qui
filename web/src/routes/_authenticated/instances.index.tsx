@@ -22,8 +22,7 @@ export const Route = createFileRoute("/_authenticated/instances/")({
   validateSearch: unifiedSearchSchema,
   component: UnifiedInstanceTorrents,
   staticData: {
-    titleKey: "unifiedScope.unified",
-    titleNs: "common",
+    title: { titleKey: "unifiedScope.unified", titleNs: "common" },
   },
 })
 

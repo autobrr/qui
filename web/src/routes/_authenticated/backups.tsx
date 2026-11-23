@@ -7,6 +7,9 @@ import { InstanceBackups } from "@/pages/InstanceBackups"
 import { createFileRoute } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/backups")({
+  staticData: {
+    title: { titleKey: "nav.backups", titleNs: "common" },
+  },
   component: BackupsRoute,
 })
 

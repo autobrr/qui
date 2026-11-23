@@ -6,22 +6,16 @@
 import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
-import { useRouteTitle } from "@/hooks/useRouteTitle"
 import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { isSpreadsheetDisguiseActive, spreadsheetDocumentTitle, useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import type { TorrentStreamPayload } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-const DEFAULT_DOCUMENT_TITLE = "qui"
-
 interface UseTitleBarSpeedsOptions {
-  mode: "dashboard" | "instance"
   enabled?: boolean
   instanceId?: number
-  instanceName?: string
   foregroundSpeeds?: { dl: number; up: number }
   backgroundSpeeds?: { dl: number; up: number }
 }
@@ -44,23 +38,15 @@ function useServerStateSpeeds(instanceId: number | undefined, enabled: boolean, 
   }
 }
 
-/**
- * Updates the document title with live transfer speeds based on visibility.
- * Falls back to the current route title when disabled or data is unavailable.
- */
 export function useTitleBarSpeeds({
-  mode,
   enabled = true,
   instanceId,
-  instanceName,
   foregroundSpeeds,
   backgroundSpeeds: backgroundSpeedsOverride,
 }: UseTitleBarSpeedsOptions) {
   const { t } = useTranslation("common")
   const [speedUnit] = useSpeedUnits()
-  const disguised = useSpreadsheetDisguise()
-  const baseTitle = useRouteTitle()
-  const lastSpeedTitleRef = useRef<string | null>(null)
+  const lastSpeedsTextRef = useRef<string | undefined>(undefined)
   const lastBackgroundSpeedsRef = useRef<{ dl: number; up: number } | null>(null)
   const [streamSpeeds, setStreamSpeeds] = useState<{ dl: number; up: number } | undefined>(undefined)
   const lastHiddenAtRef = useRef(0)
@@ -175,53 +161,18 @@ export function useTitleBarSpeeds({
     }
   }, [backgroundSpeeds])
 
-  useEffect(() => {
-    return () => {
-      // Avoid leaving a stale route-specific title after this hook unmounts.
-      // Read the disguise live so a theme switch before unmount is respected.
-      document.title = isSpreadsheetDisguiseActive() ? spreadsheetDocumentTitle() : DEFAULT_DOCUMENT_TITLE
-    }
-  }, [])
-
-  useEffect(() => {
-    if (disguised) {
-      document.title = spreadsheetDocumentTitle()
-      lastSpeedTitleRef.current = null
-      return
-    }
-
-    if (!enabled) {
-      document.title = baseTitle
-      return
-    }
-
-    if (!shouldSetTitle) {
-      if (lastSpeedTitleRef.current) {
-        document.title = lastSpeedTitleRef.current
-      }
-      return
-    }
-
-    if (!effectiveSpeeds) {
-      if (needsFreshBackground) {
-        document.title = baseTitle
-        lastSpeedTitleRef.current = null
-      } else {
-        document.title = lastSpeedTitleRef.current ?? baseTitle
-      }
-      return
-    }
-
-    const downloadSpeed = effectiveSpeeds.dl ?? 0
-    const uploadSpeed = effectiveSpeeds.up ?? 0
-    const speedTitle = t("titleBar.speeds", {
-      download: formatSpeedWithUnit(downloadSpeed, speedUnit),
-      upload: formatSpeedWithUnit(uploadSpeed, speedUnit),
+  const currentSpeedsText = effectiveSpeeds
+    ? t("titleBar.speeds", {
+      download: formatSpeedWithUnit(effectiveSpeeds.dl ?? 0, speedUnit),
+      upload: formatSpeedWithUnit(effectiveSpeeds.up ?? 0, speedUnit),
     })
+    : undefined
+  const keepsLastSpeeds = !shouldSetTitle || (!effectiveSpeeds && !needsFreshBackground)
+  const speedsText = keepsLastSpeeds ? lastSpeedsTextRef.current : currentSpeedsText
 
-    // On the dashboard route, baseTitle is the translated "Dashboard" route title.
-    const nextTitle = `${speedTitle} | ${mode === "dashboard" ? baseTitle : instanceName || baseTitle}`
-    document.title = nextTitle
-    lastSpeedTitleRef.current = nextTitle
-  }, [baseTitle, disguised, effectiveSpeeds, enabled, instanceName, mode, needsFreshBackground, shouldSetTitle, speedUnit, t])
+  useEffect(() => {
+    lastSpeedsTextRef.current = speedsText
+  }, [speedsText])
+
+  return enabled ? speedsText : undefined
 }

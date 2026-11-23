@@ -15,7 +15,6 @@ export const Route = createFileRoute("/_authenticated/statistics")({
   validateSearch: statisticsSearchSchema,
   component: lazyRouteComponent(() => import("@/pages/Statistics"), "StatisticsRoute"),
   staticData: {
-    titleKey: "nav.statistics",
-    titleNs: "common",
+    title: { titleKey: "nav.statistics", titleNs: "common" },
   },
 })

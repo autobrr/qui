@@ -23,8 +23,7 @@ export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
   validateSearch: instanceSearchSchema,
   component: InstanceTorrents,
   staticData: {
-    titleKey: "page.routeTitle",
-    titleNs: "torrents",
+    title: { titleKey: "page.routeTitle", titleNs: "torrents" },
   },
 })
 
