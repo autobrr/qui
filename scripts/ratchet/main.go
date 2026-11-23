@@ -49,6 +49,9 @@ func main() {
 	if got[mapAnyLinter], err = mapAnyCounts(); err != nil {
 		fail(err)
 	}
+	if got[testSleepLinter], err = testSleepCounts(); err != nil {
+		fail(err)
+	}
 	offLines, err := offLogLines()
 	if err != nil {
 		fail(err)

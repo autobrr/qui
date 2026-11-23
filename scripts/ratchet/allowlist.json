@@ -1140,5 +1140,17 @@
     "internal/config/config.go": 1,
     "internal/metrics/collector/torrent.go": 1,
     "internal/services/externalprograms/service.go": 1
+  },
+  "testsleep": {
+    "internal/api/handlers/jackett_rate_limit_test.go": 1,
+    "internal/api/sse/manager_idle_test.go": 1,
+    "internal/backups/service_test.go": 1,
+    "internal/models/api_key_test.go": 1,
+    "internal/models/backups_item_ranges_test.go": 1,
+    "internal/proxy/folder_cleanup_test.go": 2,
+    "internal/qbittorrent/app_info_test.go": 1,
+    "internal/qbittorrent/folder_cleanup_triggers_test.go": 1,
+    "internal/services/dirscan/search_interval_test.go": 1,
+    "internal/sshpool/pool_test.go": 2
   }
 }

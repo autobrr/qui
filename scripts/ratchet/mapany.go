@@ -13,7 +13,8 @@ import (
 const mapAnyLinter = "mapany"
 
 var linterFixes = map[string]string{
-	mapAnyLinter: " Use a struct instead of a map[string]any or map[string]interface{}.",
+	mapAnyLinter:    " Use a struct instead of a map[string]any or map[string]interface{}.",
+	testSleepLinter: " A time.Sleep in a test outside synctest.Test waits in real time. Wait on a channel, or run the test in synctest.Test. A function that calls synctest.Wait runs in a bubble, so its sleeps do not count.",
 }
 
 func mapAnyCounts() (map[string]int, error) {

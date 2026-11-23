@@ -19,6 +19,7 @@ func TestGetDeviceIDRestrictsExistingFingerprintMode(t *testing.T) {
 	const userID = "user@example.com"
 
 	fingerprintPath := getFingerprintPath(userID, configDir)
+	//nolint:gosec // G306: an older version wrote the fingerprint as 0644, and the test checks that qui tightens it
 	require.NoError(t, os.WriteFile(fingerprintPath, []byte("existing-fingerprint"), 0o644))
 
 	got, err := GetDeviceID("qui", userID, configDir)
@@ -37,6 +38,7 @@ func TestPersistFingerprintRestrictsExistingFingerprintMode(t *testing.T) {
 	const userID = "user@example.com"
 
 	fingerprintPath := getFingerprintPath(userID, configDir)
+	//nolint:gosec // G306: an older version wrote the fingerprint as 0644, and the test checks that qui tightens it
 	require.NoError(t, os.WriteFile(fingerprintPath, nil, 0o644))
 
 	got, err := GetDeviceID("qui", userID, configDir)

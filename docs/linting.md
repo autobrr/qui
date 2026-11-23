@@ -52,7 +52,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
 - If you move code that has ratchet problems into another file, or rename such a file, move its count to the entry of the new path in the same change. Rule 3 fails only when the total of a linter grows, and its message names each entry that grew. ADR 0077 has the reason.
 
-Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `comments`, `offlog`, or `mapany` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
+Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `comments`, `offlog`, `mapany`, or `testsleep` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
 
 ### Comments
 
@@ -79,6 +79,12 @@ The counter reads only the syntax tree. It cannot read the text of a message tha
 ### Maps of Any
 
 Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The `mapany` key of `allowlist.json` holds the maps from before the rule, also the ones that decode JSON of an unknown shape on purpose. Like `comments`, it is not a golangci-lint linter: `scripts/ratchet/mapany.go` counts each such map type in each tracked Go file. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
+
+### Sleeps in Tests
+
+`docs/standards/tests.md` bans a real `time.Sleep` in a test, because it makes the test slow, and the test fails at random on a slow CI runner. The `testsleep` key of `allowlist.json` holds the sleeps from before the rule. Like `comments`, it is not a golangci-lint linter: `scripts/ratchet/testsleep.go` counts each `time.Sleep` in each tracked `_test.go` file. A sleep does not count in the function that a test passes to `synctest.Test`, or in a function that calls `synctest.Wait`, because `synctest.Wait` works only in a bubble. Rules 1 to 3 apply to it as to each linter, and it has no `nolint` marker.
+
+The counter reads one file at a time. It counts a sleep in a function that runs in a bubble but does not call `synctest.Wait`, for example a body that a helper passes to `synctest.Test`. Call `synctest.Wait` after the sleep, so that the other goroutines of the bubble finish their work before the test checks it. The counter does not see a sleep in a file that is not a `_test.go` file.
 
 ### Suppressed ESLint Rules
 
