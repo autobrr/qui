@@ -596,9 +596,10 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 			}
 			<-r.Context().Done()
 		}))
-		defer srv.Close()
+		t.Cleanup(srv.Close)
 
 		pool := setupTestPool(t)
+		t.Cleanup(func() { _ = pool.Close() })
 		sm := NewSyncManager(pool, nil)
 		const instanceID = 1
 		pool.mu.Lock()
@@ -609,7 +610,11 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		pool.mu.Unlock()
 
 		sm.StartTrackerHealthRefresh(instanceID)
-		<-firstStarted
+		select {
+		case <-firstStarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("initial refresh probe did not start in time")
+		}
 
 		sm.trackerHealthMu.RLock()
 		firstDone := sm.trackerHealthDone[instanceID]
@@ -712,8 +717,9 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		assert.Empty(t, errs)
 	})
 
-	t.Run("createClientWithTimeout exits immediately on canceled ctx once instanceLock frees", func(t *testing.T) {
+	t.Run("createClientWithTimeout exits immediately on canceled ctx while waiting on held instanceLock", func(t *testing.T) {
 		pool := setupTestPool(t)
+		t.Cleanup(func() { _ = pool.Close() })
 		const instanceID = 1
 		lock := pool.getInstanceLock(instanceID)
 		lock.Lock()
@@ -725,15 +731,17 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 			done <- err
 		}()
 
+		// Cancel while instanceLock remains held; only context-aware locking can return before Unlock.
 		cancel()
-		lock.Unlock()
 
 		select {
 		case err := <-done:
 			require.ErrorIs(t, err, context.Canceled)
 		case <-time.After(2 * time.Second):
-			t.Fatal("createClientWithTimeout did not abort after ctx cancellation")
+			lock.Unlock()
+			t.Fatal("createClientWithTimeout deadlocked on held instanceLock after ctx cancellation")
 		}
+		lock.Unlock()
 		require.NoError(t, pool.Close())
 	})
 
@@ -789,6 +797,155 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		default:
 			t.Fatal("detached tracker loop done channel was not closed before Close returned")
 		}
+	})
+
+	t.Run("concurrent Close calls wait for background shutdown to finish", func(t *testing.T) {
+		srv := newTrackerHealthStubServer(t, "2.11.3")
+
+		pool := setupTestPool(t)
+		t.Cleanup(func() { _ = pool.Close() })
+		sm := NewSyncManager(pool, nil)
+		const instanceID = 1
+
+		callbackEntered := make(chan struct{})
+		releaseCallback := make(chan struct{})
+		var once sync.Once
+		pool.AddSyncEventSink(&notifyHealthUpdatedSink{onUpdated: func(id int) {
+			if id != instanceID {
+				return
+			}
+			once.Do(func() {
+				close(callbackEntered)
+				<-releaseCallback
+			})
+		}})
+
+		pool.mu.Lock()
+		pool.clients[instanceID] = newTrackerHealthTestClient(t, instanceID, srv.URL)
+		pool.mu.Unlock()
+
+		sm.StartTrackerHealthRefresh(instanceID)
+		select {
+		case <-callbackEntered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("refresh callback did not enter in time")
+		}
+
+		sm.trackerHealthMu.RLock()
+		done := sm.trackerHealthDone[instanceID]
+		sm.trackerHealthMu.RUnlock()
+		require.NotNil(t, done)
+
+		close1Done := make(chan error, 1)
+		close2Done := make(chan error, 1)
+		go func() { close1Done <- pool.Close() }()
+		go func() { close2Done <- pool.Close() }()
+
+		select {
+		case err := <-close1Done:
+			t.Fatalf("first Close returned before loop exited (err=%v)", err)
+		case err := <-close2Done:
+			t.Fatalf("concurrent second Close returned before shutdown finished (err=%v)", err)
+		case <-time.After(30 * time.Millisecond):
+		}
+
+		close(releaseCallback)
+		require.NoError(t, <-close1Done)
+		require.NoError(t, <-close2Done)
+		select {
+		case <-done:
+		default:
+			t.Fatal("tracker loop done channel was not closed before concurrent Close returned")
+		}
+	})
+
+	t.Run("applyTrackerHealthRefreshResult ignores writes after context cancellation", func(t *testing.T) {
+		pool := setupTestPool(t)
+		t.Cleanup(func() { _ = pool.Close() })
+		sm := NewSyncManager(pool, nil)
+		const instanceID = 1
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		torrents := []*qbt.Torrent{{Hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
+		details := TrackerLookup{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {{Url: "https://tracker.example.invalid/announce", Status: qbt.TrackerStatusNotWorking}}}
+		mainData := &qbt.MainData{Trackers: map[string][]string{"https://tracker.example.invalid/announce": {"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}
+
+		changed := sm.applyTrackerHealthRefreshResult(ctx, instanceID, torrents, details, mainData, time.Now(), false)
+		assert.False(t, changed)
+
+		sm.trackerHealthMu.RLock()
+		_, hasCache := sm.trackerHealthCache[instanceID]
+		_, hasPassAt := sm.trackerHealthPassAt[instanceID]
+		sm.trackerHealthMu.RUnlock()
+		assert.False(t, hasCache)
+		assert.False(t, hasPassAt)
+
+		sm.validatedTrackerMu.RLock()
+		_, hasMapping := sm.validatedTrackerMapping[instanceID]
+		sm.validatedTrackerMu.RUnlock()
+		assert.False(t, hasMapping)
+	})
+
+	t.Run("StartTrackerHealthRefresh does not deadlock when old pass waits on held instanceLock", func(t *testing.T) {
+		srv := newTrackerHealthStubServer(t, "2.11.3")
+
+		pool := setupTestPool(t)
+		t.Cleanup(func() { _ = pool.Close() })
+		sm := NewSyncManager(pool, nil)
+		sm.trackerHealthKickSettle = 0
+		sm.trackerHealthKickInterval = 0
+		const instanceID = 1
+
+		firstPassEntered := make(chan struct{})
+		releaseFirstPass := make(chan struct{})
+		var once sync.Once
+		pool.AddSyncEventSink(&notifyHealthUpdatedSink{onUpdated: func(id int) {
+			if id != instanceID {
+				return
+			}
+			once.Do(func() {
+				close(firstPassEntered)
+				<-releaseFirstPass
+			})
+		}})
+
+		pool.mu.Lock()
+		pool.clients[instanceID] = newTrackerHealthTestClient(t, instanceID, srv.URL)
+		pool.mu.Unlock()
+
+		sm.StartTrackerHealthRefresh(instanceID)
+		select {
+		case <-firstPassEntered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("initial pass did not enter callback in time")
+		}
+
+		// Simulate concurrent replacement holding instanceLock after RemoveClient deleted cp.clients,
+		// while kicking a subsequent refresh pass that enters createClientWithTimeout on that held lock.
+		lock := pool.getInstanceLock(instanceID)
+		lock.Lock()
+		pool.mu.Lock()
+		delete(pool.clients, instanceID)
+		pool.mu.Unlock()
+		sm.KickTrackerHealthRefresh(instanceID)
+		close(releaseFirstPass)
+
+		restarted := make(chan struct{})
+		go func() {
+			sm.StartTrackerHealthRefresh(instanceID)
+			close(restarted)
+		}()
+
+		select {
+		case <-restarted:
+		case <-time.After(2 * time.Second):
+			lock.Unlock()
+			t.Fatal("StartTrackerHealthRefresh deadlocked with held instanceLock")
+		}
+		lock.Unlock()
+		require.NoError(t, pool.Close())
 	})
 }
 

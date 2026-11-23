@@ -133,6 +133,43 @@ func InstanceHealthBlockerMessage(err error) (string, bool) {
 	}
 }
 
+type instanceLock struct {
+	ch chan struct{}
+}
+
+func newInstanceLock() *instanceLock {
+	return &instanceLock{ch: make(chan struct{}, 1)}
+}
+
+func (l *instanceLock) Lock() {
+	l.ch <- struct{}{}
+}
+
+func (l *instanceLock) LockContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case l.ch <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (l *instanceLock) TryLock() bool {
+	select {
+	case l.ch <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (l *instanceLock) Unlock() {
+	<-l.ch
+}
+
 // ClientPool manages multiple qBittorrent client connections
 type ClientPool struct {
 	clients           map[int]*Client
@@ -140,9 +177,10 @@ type ClientPool struct {
 	errorStore        *models.InstanceErrorStore
 	cache             *ttlcache.Cache[string, *TorrentResponse]
 	mu                sync.RWMutex
-	creationMu        sync.Mutex          // Serialize client creation operations
-	creationLocks     map[int]*sync.Mutex // Per-instance creation locks
+	creationMu        sync.Mutex            // Serialize client creation operations
+	creationLocks     map[int]*instanceLock // Per-instance creation locks
 	closed            bool
+	closeDone         chan struct{}
 	healthTicker      *time.Ticker
 	stopHealth        chan struct{}
 	poolCtx           context.Context
@@ -175,7 +213,8 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 		errorStore:        errorStore,
 		cache:             cache,
 		clientTimeout:     clientTimeout,
-		creationLocks:     make(map[int]*sync.Mutex),
+		creationLocks:     make(map[int]*instanceLock),
+		closeDone:         make(chan struct{}),
 		healthTicker:      time.NewTicker(healthCheckInterval),
 		stopHealth:        make(chan struct{}),
 		poolCtx:           poolCtx,
@@ -282,7 +321,7 @@ func (cp *ClientPool) applySyncManagerSinkIfCurrent(sm *SyncManager, sinks syncE
 }
 
 // getInstanceLock gets or creates a per-instance creation lock
-func (cp *ClientPool) getInstanceLock(instanceID int) *sync.Mutex {
+func (cp *ClientPool) getInstanceLock(instanceID int) *instanceLock {
 	cp.creationMu.Lock()
 	defer cp.creationMu.Unlock()
 
@@ -290,7 +329,7 @@ func (cp *ClientPool) getInstanceLock(instanceID int) *sync.Mutex {
 		return lock
 	}
 
-	lock := &sync.Mutex{}
+	lock := newInstanceLock()
 	cp.creationLocks[instanceID] = lock
 	return lock
 }
@@ -385,18 +424,14 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 
 // createClientWithTimeout creates a new client connection with custom timeout
 func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID int, timeout time.Duration) (*Client, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	// Use per-instance lock to prevent blocking other instances
+	// Use context-aware per-instance lock so canceled callers (such as a retiring
+	// tracker health refresh pass) abort cleanly instead of deadlocking behind
+	// replacement creation or instance removal.
 	instanceLock := cp.getInstanceLock(instanceID)
-	instanceLock.Lock()
-	defer instanceLock.Unlock()
-
-	if err := ctx.Err(); err != nil {
+	if err := instanceLock.LockContext(ctx); err != nil {
 		return nil, err
 	}
+	defer instanceLock.Unlock()
 
 	// Check if instance is in backoff period (need to acquire read lock for this)
 	cp.mu.RLock()
@@ -700,11 +735,19 @@ func (cp *ClientPool) Close() error {
 	cp.mu.Lock()
 
 	if cp.closed {
+		closeDone := cp.closeDone
 		cp.mu.Unlock()
+		if closeDone != nil {
+			<-closeDone
+		}
 		return nil
 	}
 
 	cp.closed = true
+	if cp.closeDone == nil {
+		cp.closeDone = make(chan struct{})
+	}
+	closeDone := cp.closeDone
 	if cp.stopHealth != nil {
 		close(cp.stopHealth)
 	}
@@ -725,6 +768,7 @@ func (cp *ClientPool) Close() error {
 	cp.failureTracker = make(map[int]*failureInfo)
 
 	cp.mu.Unlock()
+	defer close(closeDone)
 
 	// Stop all background tracker health refresh goroutines and wait for them to exit.
 	if sm != nil {

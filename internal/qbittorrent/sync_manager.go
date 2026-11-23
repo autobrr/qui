@@ -818,7 +818,6 @@ func (sm *SyncManager) StartTrackerHealthRefresh(instanceID int) {
 			if done != nil {
 				<-done
 			}
-			sm.retireTrackerHealthRefresh(instanceID, done)
 			continue
 		}
 
@@ -840,15 +839,14 @@ func (sm *SyncManager) StartTrackerHealthRefresh(instanceID int) {
 		sm.trackerHealthMu.Unlock()
 
 		go func() {
-			defer close(done)
-			defer sm.retireTrackerHealthRefresh(instanceID, done)
+			defer sm.finishTrackerHealthRefresh(instanceID, done)
 			sm.trackerHealthRefreshLoop(refreshCtx, instanceID, kick, seen)
 		}()
 		return
 	}
 }
 
-func (sm *SyncManager) retireTrackerHealthRefresh(instanceID int, done chan struct{}) {
+func (sm *SyncManager) finishTrackerHealthRefresh(instanceID int, done chan struct{}) {
 	if done == nil {
 		return
 	}
@@ -859,6 +857,7 @@ func (sm *SyncManager) retireTrackerHealthRefresh(instanceID int, done chan stru
 		delete(sm.trackerHealthKick, instanceID)
 		delete(sm.trackerHealthSeen, instanceID)
 	}
+	close(done)
 	sm.trackerHealthMu.Unlock()
 }
 
@@ -996,6 +995,9 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 
 	// Only refresh for clients that support IncludeTrackers (qBittorrent 5.1+)
 	if !client.Supports(CapTrackerHealth) {
+		if refreshCtx.Err() != nil {
+			return
+		}
 		if sm.storeTrackerMapping(instanceID, sm.trackerMappingFromMainData(torrents, mainData)) {
 			sm.notifyTrackerHealthUpdated(instanceID)
 		}
@@ -1039,7 +1041,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		return
 	}
 
-	if sm.applyTrackerHealthRefreshResult(instanceID, torrents, details, mainData, started, client.Supports(CapAnnounceFlags)) {
+	if sm.applyTrackerHealthRefreshResult(refreshCtx, instanceID, torrents, details, mainData, started, client.Supports(CapAnnounceFlags)) {
 		sm.notifyTrackerHealthUpdated(instanceID)
 	}
 }
@@ -1047,7 +1049,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 // applyTrackerHealthRefreshResult stores the health that the tracker details
 // of a pass give, and the tracker mapping from MainData. It reports whether
 // either one changed.
-func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents []*qbt.Torrent, details TrackerLookup, mainData *qbt.MainData, started time.Time, fetchedByHash bool) bool {
+func (sm *SyncManager) applyTrackerHealthRefreshResult(ctx context.Context, instanceID int, torrents []*qbt.Torrent, details TrackerLookup, mainData *qbt.MainData, started time.Time, fetchedByHash bool) bool {
 	now := time.Now()
 	byHash := make(map[string]TrackerHealth)
 	for _, torrent := range torrents {
@@ -1059,11 +1061,19 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents 
 	mapping := sm.trackerMappingFromMainData(torrents, mainData)
 
 	sm.trackerHealthMu.Lock()
+	if ctx.Err() != nil {
+		sm.trackerHealthMu.Unlock()
+		return false
+	}
 	previous := sm.trackerHealthCache[instanceID]
 	healthChanged := previous == nil || !maps.Equal(previous.byHash, byHash)
 	sm.trackerHealthCache[instanceID] = snapshot
 	sm.trackerHealthPassAt[instanceID] = started
 	sm.trackerHealthMu.Unlock()
+
+	if ctx.Err() != nil {
+		return false
+	}
 
 	// Queue icon fetches for discovered tracker domains. We do this here (in the
 	// background refresh) so icons get fetched even when API requests use the
