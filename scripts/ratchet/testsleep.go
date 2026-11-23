@@ -39,29 +39,19 @@ func countTestSleeps(path string, src []byte) (int, error) {
 		return 0, nil
 	}
 	n := 0
-	var visit func(ast.Node) bool
-	visit = func(node ast.Node) bool {
+	ast.Inspect(f, func(node ast.Node) bool {
 		switch node := node.(type) {
 		case *ast.FuncDecl, *ast.FuncLit:
 			return !callsDirectly(node, synctestPkg, "Wait")
 		case *ast.CallExpr:
-			if !isSelector(node.Fun, synctestPkg, "Test") {
-				return true
-			}
-			for _, arg := range node.Args {
-				if _, bubble := ast.Unparen(arg).(*ast.FuncLit); !bubble {
-					ast.Inspect(arg, visit)
-				}
-			}
-			return false
+			return !isSelector(node.Fun, synctestPkg, "Test")
 		case *ast.SelectorExpr:
 			if isSelector(node, timePkg, "Sleep") {
 				n++
 			}
 		}
 		return true
-	}
-	ast.Inspect(f, visit)
+	})
 	return n, nil
 }
 
