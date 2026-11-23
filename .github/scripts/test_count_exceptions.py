@@ -1,10 +1,14 @@
 import contextlib
 import io
+import os
+import pathlib
+import subprocess
+import tempfile
 import unittest
 from unittest import mock
 
 import count_exceptions
-from count_exceptions import ASK, FIX, Found, exceptions, new, report
+from count_exceptions import ASK, FIX, Found, exceptions, git_diff, new, report
 
 GO_ADDED = """diff --git a/internal/a/a.go b/internal/a/a.go
 index 1111111..2222222 100644
@@ -100,6 +104,51 @@ index 1111111..2222222 100644
 +// eslint-disable-next-line no-console -- the CLI prints its result
 """
 
+GO_RAW_STRING = """diff --git a/pkg/a/a_test.go b/pkg/a/a_test.go
+index 1111111..2222222 100644
+--- a/pkg/a/a_test.go
++++ b/pkg/a/a_test.go
+@@ -1,2 +1,7 @@
+ package a
+ 
++const fixture = `
++//nolint:gosec // a fixture
++/* #nosec G304 */`
++
++var data, _ = os.ReadFile(path) //nolint:gosec // the path comes from the config
+"""
+
+GO_FIXTURE_LINE_REMOVED = """diff --git a/pkg/a/a_test.go b/pkg/a/a_test.go
+index 1111111..2222222 100644
+--- a/pkg/a/a_test.go
++++ b/pkg/a/a_test.go
+@@ -1,6 +1,6 @@
+ package a
+ 
+ const fixture = `
+-//nolint:gosec // a fixture
+ `
++var data, _ = os.ReadFile(path) //nolint:gosec // the path comes from the config
+"""
+
+WEB_MULTILINE = """diff --git a/web/src/d.ts b/web/src/d.ts
+index 1111111..2222222 100644
+--- a/web/src/d.ts
++++ b/web/src/d.ts
+@@ -1,4 +1,10 @@
+ /*
+-the old text
++eslint-disable no-alert -- the user confirms the delete
+ */
++/*
++eslint-disable no-console -- the CLI prints its result
++*/
++const help = `
++// eslint-disable-next-line no-console -- a line of the help text
++`
+ console.log(1)
+"""
+
 TWO_ON_ONE_LINE = """diff --git a/web/src/c.ts b/web/src/c.ts
 index 1111111..2222222 100644
 --- a/web/src/c.ts
@@ -127,6 +176,9 @@ index 1111111..2222222 100644
 +Use an inline //nolint:gosec // reason
 +// eslint-disable-next-line no-console
 """
+
+
+IDENTITY = {name: "qui" for name in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME")} | {name: "qui@example.invalid" for name in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL")}
 
 
 def texts(found):
@@ -175,6 +227,24 @@ class ExceptionsTest(unittest.TestCase):
             ("web/src/c.ts", 3, "/* eslint-disable no-alert -- the user confirms the delete */"),
         ])
         self.assertEqual(texts(new(added, removed)), [("web/src/c.ts", 3, "/* eslint-disable no-alert -- the user confirms the delete */")])
+
+    def test_a_string_over_several_lines_holds_no_exception(self):
+        added, removed = exceptions(GO_RAW_STRING)
+        self.assertEqual(texts(added), [("pkg/a/a_test.go", 7, "//nolint:gosec // the path comes from the config")])
+        self.assertEqual(removed, [])
+
+    def test_a_string_that_opens_on_an_unchanged_line(self):
+        added, removed = exceptions(GO_FIXTURE_LINE_REMOVED)
+        self.assertEqual(texts(added), [("pkg/a/a_test.go", 5, "//nolint:gosec // the path comes from the config")])
+        self.assertEqual(removed, [])
+
+    def test_a_directive_on_its_own_line_of_a_block_comment(self):
+        added, removed = exceptions(WEB_MULTILINE)
+        self.assertEqual(texts(added), [
+            ("web/src/d.ts", 2, "eslint-disable no-alert -- the user confirms the delete"),
+            ("web/src/d.ts", 5, "eslint-disable no-console -- the CLI prints its result"),
+        ])
+        self.assertEqual(removed, [])
 
     def test_removed_exceptions(self):
         added, removed = exceptions(DELETED_FILE)
@@ -245,6 +315,26 @@ class ReportTest(unittest.TestCase):
     def test_a_long_line_is_cut(self):
         lines, _ = report([Found("a.go", 1, "//nolint:gosec // " + "x" * 500)], [], approved=False)
         self.assertEqual(len(lines[1]), len("  a.go:1: ") + 200)
+
+
+class GitDiffTest(unittest.TestCase):
+    def test_the_diff_holds_the_unchanged_lines(self):
+        def git(*args):
+            return subprocess.run(["git", "-c", "commit.gpgSign=false", *args], check=True, capture_output=True, text=True).stdout.strip()
+
+        def commit(text, *parent):
+            pathlib.Path("a.go").write_text(text)
+            git("add", "a.go")
+            return git("commit-tree", git("write-tree"), "-m", "x", *parent)
+
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")} | IDENTITY
+        with tempfile.TemporaryDirectory() as root, contextlib.chdir(root), mock.patch.dict(os.environ, env, clear=True):
+            git("init", "-q")
+            base = commit("package a\n\nconst fixture = `\n//nolint:gosec // a fixture\n`\n")
+            head = commit("package a\n\nconst fixture = `\n`\nvar data, _ = os.ReadFile(path) //nolint:gosec // the path comes from the config\n", "-p", base)
+            added, removed = exceptions(git_diff(base, head))
+        self.assertEqual(texts(added), [("a.go", 5, "//nolint:gosec // the path comes from the config")])
+        self.assertEqual(removed, [])
 
 
 if __name__ == "__main__":

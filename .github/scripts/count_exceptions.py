@@ -16,6 +16,7 @@ WEB_EXCEPTION = re.compile(r"\s*(?:eslint-disable|@ts-(?:expect-error|ignore|noc
 QUOTES = "\"'`"
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
 SHOWN = 200
+WHOLE_FILE = "-U2147483647"
 FIX = (
     "An exception hides a report of a check. Fix each report instead: "
     "change the code until the check passes, and delete the exception."
@@ -33,46 +34,52 @@ class Found(NamedTuple):
     text: str
 
 
-def closing(line, start, escapes):
-    at = start + 1
+def closing(line, at, quote, escapes):
     while at < len(line):
         if escapes and line[at] == "\\":
             at += 2
-        elif line[at] == line[start]:
+        elif line[at] == quote:
             return at
         else:
             at += 1
     return None
 
 
-def comments(line, raw):
+def comments(line, raw, inside):
+    found = []
     at = 0
-    while at < len(line):
-        if line[at] in QUOTES:
-            end = closing(line, at, line[at] not in raw)
-            at = at + 1 if end is None else end + 1
-        elif line.startswith("//", at):
-            yield line[at:], line[at + 2:]
-            return
-        elif line.startswith("/*", at):
-            end = line.find("*/", at + 2)
+    while inside or at < len(line):
+        if inside == "/*" or not inside and line.startswith("/*", at):
+            body = at if inside else at + 2
+            end = line.find("*/", body)
             if end < 0:
-                yield line[at:], line[at + 2:]
-                return
-            yield line[at:end + 2], line[at + 2:end]
-            at = end + 2
+                found.append((line[at:], line[body:]))
+                return found, "/*"
+            found.append((line[at:end + 2], line[body:end]))
+            at, inside = end + 2, None
+        elif inside or line[at] in QUOTES:
+            quote = inside or line[at]
+            end = closing(line, at if inside else at + 1, quote, quote not in raw)
+            if end is None and quote == "`":
+                return found, quote
+            at, inside = at + 1 if end is None else end + 1, None
+        elif line.startswith("//", at):
+            found.append((line[at:], line[at + 2:]))
+            break
         else:
             at += 1
+    return found, None
 
 
-def exception(path, line):
+def exception(path, line, inside):
     if path.endswith(".go"):
         pattern, raw = GO_EXCEPTION, "`"
     elif path.endswith(WEB_SUFFIXES):
         pattern, raw = WEB_EXCEPTION, ""
     else:
-        return []
-    return [text.strip() for text, body in comments(line, raw) if pattern.match(body)]
+        return [], None
+    found, inside = comments(line, raw, inside)
+    return [text.strip() for text, body in found if pattern.match(body)], inside
 
 
 def exceptions(diff):
@@ -80,6 +87,7 @@ def exceptions(diff):
     path = None
     in_hunk = False
     number = 0
+    inside = {}
     for line in diff.splitlines():
         if line.startswith("diff --git "):
             path = None
@@ -92,9 +100,13 @@ def exceptions(diff):
             in_hunk = True
             start = HUNK.match(line)
             number = int(start.group(1)) if start else 0
-        elif in_hunk and path and line[:1] in ("+", "-"):
-            (added if line[0] == "+" else removed).extend(Found(path, number, text) for text in exception(path, line[1:]))
-            if line[0] == "+":
+            inside = {}
+        elif in_hunk and path and line[:1] in (" ", "+", "-"):
+            for side in "+-" if line[0] == " " else line[0]:
+                texts, inside[side] = exception(path, line[1:], inside.get(side))
+                if side == line[0]:
+                    (added if side == "+" else removed).extend(Found(path, number, text) for text in texts)
+            if line[0] != "-":
                 number += 1
     return added, removed
 
@@ -127,7 +139,7 @@ def report(added, removed, approved):
 
 def git_diff(base, head):
     return subprocess.run(
-        ["git", "-c", "core.quotePath=true", "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "-U0", "-M", f"{base}...{head}", "--", *PATHSPECS],
+        ["git", "-c", "core.quotePath=true", "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", WHOLE_FILE, "-M", f"{base}...{head}", "--", *PATHSPECS],
         check=True,
         capture_output=True,
         text=True,
