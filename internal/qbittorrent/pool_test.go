@@ -478,6 +478,7 @@ func TestClientPool_CloseWaitsForBackgroundWork(t *testing.T) {
 
 			pprof.Do(t.Context(), pprof.Labels("close-test", tt.name), func(context.Context) { tt.start(pool) })
 			<-arrived
+			assert.NotEmpty(t, poolGoroutinesLabeled(t, tt.name), "detector must find the background work before Close")
 
 			require.NoError(t, pool.Close())
 			assert.Empty(t, poolGoroutinesLabeled(t, tt.name), "background work of the pool outlived Close")
