@@ -23,6 +23,16 @@ index 1111111..2222222 100644
 +	_ = run() //nolint:errcheck // best effort
 """
 
+GO_DIRECTIVE = """diff --git a/internal/a/b.go b/internal/a/b.go
+index 1111111..2222222 100644
+--- a/internal/a/b.go
++++ b/internal/a/b.go
+@@ -3,0 +4,3 @@
++	//gosec:disable G304 -- the path comes from the config
++	data, _ := os.ReadFile(path)
++	name := "//gosec:disable G304"
+"""
+
 GO_NOT_EXCEPTIONS = """diff --git a/scripts/ratchet/main.go b/scripts/ratchet/main.go
 index 1111111..2222222 100644
 --- a/scripts/ratchet/main.go
@@ -195,6 +205,9 @@ class ExceptionsTest(unittest.TestCase):
             ("internal/a/a.go", 16, "//nolint:errcheck // best effort"),
         ])
         self.assertEqual(removed, [])
+
+    def test_a_gosec_directive(self):
+        self.assertEqual(texts(exceptions(GO_DIRECTIVE)[0]), [("internal/a/b.go", 4, "//gosec:disable G304 -- the path comes from the config")])
 
     def test_go_text_that_only_names_an_exception(self):
         self.assertEqual(exceptions(GO_NOT_EXCEPTIONS), ([], []))

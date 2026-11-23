@@ -11,7 +11,7 @@ from count_test_growth import header_path
 LABEL = "exceptions-approved"
 WEB_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 PATHSPECS = ["*.go", *(f"*{suffix}" for suffix in WEB_SUFFIXES)]
-GO_EXCEPTION = re.compile(r"\s*(?:nolint|#nosec|exhaustive:ignore)\b")
+GO_EXCEPTION = re.compile(r"\s*(?:nolint|#nosec|gosec:disable|exhaustive:ignore)\b")
 WEB_EXCEPTION = re.compile(r"\s*(?:eslint-disable|@ts-(?:expect-error|ignore|nocheck))\b")
 QUOTES = "\"'`"
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")

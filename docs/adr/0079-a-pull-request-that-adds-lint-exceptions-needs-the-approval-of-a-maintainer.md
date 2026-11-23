@@ -5,7 +5,7 @@ date: 2026-11-23
 
 # A pull request that adds lint exceptions needs the approval of a maintainer
 
-An exception is a comment that hides the report of a check on its line: `//nolint`, `#nosec`, and `//exhaustive:ignore` in Go, and `eslint-disable`, `@ts-expect-error`, `@ts-ignore`, and `@ts-nocheck` in the frontend. Two rules now apply to each exception:
+An exception is a comment that hides the report of a check on its line: `//nolint`, `#nosec`, `//gosec:disable`, and `//exhaustive:ignore` in Go, and `eslint-disable`, `@ts-expect-error`, `@ts-ignore`, and `@ts-nocheck` in the frontend. Two rules now apply to each exception:
 
 1. It gives its reason on the line. golangci-lint already demanded that. In the frontend, the new ESLint rule `qui/disable-reason` demands `eslint-disable-next-line <rule> -- <reason>`.
 2. A pull request that adds more exceptions than it removes fails the check `New lint exceptions`, which lists the new ones. The check passes when a maintainer sets the label `exceptions-approved` on the pull request.
