@@ -2809,8 +2809,7 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		}
 	}
 
-	// Debug logging with truncated expression to prevent log bloat
-	logEvent := log.Debug().
+	logEvent := log.Trace().
 		Str("sort", sort).
 		Str("order", order).
 		Int("page", page).

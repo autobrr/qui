@@ -88,7 +88,7 @@
     "internal/api/handlers/themes_custom.go": 20,
     "internal/api/handlers/themes_custom_test.go": 3,
     "internal/api/handlers/themes_test.go": 13,
-    "internal/api/handlers/torrents.go": 226,
+    "internal/api/handlers/torrents.go": 225,
     "internal/api/handlers/torrents_add_test.go": 67,
     "internal/api/handlers/torrents_bulk_action_test.go": 16,
     "internal/api/handlers/torrents_delete_cross_seeds_test.go": 2,
