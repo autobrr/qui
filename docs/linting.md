@@ -38,7 +38,7 @@ To prove that a new forbidigo or depguard rule fires, add a temporary violation 
 
 ## Ratchet
 
-The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The total of a linter can only go down. `go run ./scripts/ratchet` applies six rules:
+The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The total of a linter can only go down. `go run ./scripts/ratchet` applies seven rules:
 
 1. A file reports no more problems than its entry allows. A file without an entry must have no problems.
 2. An entry is not higher than the number that the file reports. When you fix a problem, lower the count of its file in the same change, and delete the entry at 0.
@@ -46,6 +46,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 4. No `nolint` comment hides `gocognit`. Split the function.
 5. A `nolint` comment names only linters that `.golangci.yml` or `scripts/ratchet/golangci.yml` runs. A name of a linter that is off hides nothing: delete it.
 6. `web/eslint-suppressions.json` has entries only for the rules in `suppressedRules` of `scripts/ratchet/comments.go`, each of those rules has an entry, and the total of each rule does not grow. See "Suppressed ESLint Rules" below.
+7. No code file crosses the size limit in `.file-size.json`, and that file does not get looser. See "File Size" below.
 
 - The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
@@ -88,6 +89,20 @@ The counter reads only the syntax tree. It cannot read the text of a message tha
 After you fix a report of one of these rules, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 6 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 6 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
 
 A new rule that old code breaks starts the same way: add its name to `suppressedRules`, and write its reports to the file one time with `pnpm exec eslint --suppress-rule <rule>` and the paths of the `lint` script in `web/package.json`.
+
+### File Size
+
+An agent reads a whole file into its context, so a large file leaves less room for the task. `.file-size.json` at the root of the repo sets the limit. ADR 0078 has the reason.
+
+- `max_bytes` is the limit: 20,000 bytes, which is about 5,000 tokens. A CRLF line end counts as one byte.
+- `extensions` lists the files that count as code: Go, TypeScript, and scripts. Test files count.
+- `skip` lists the generated files. An entry is a path, or a folder that ends in `/`.
+
+The ratchet command fails a file that crosses the limit, and a new file that starts over it. A file that is over the limit on the base branch can still grow, and a rename of such a file passes.
+
+When the check fails, move code out of the file. The message of the check gives the five rules for the move. If the moved code has ratchet problems, move their counts in `allowlist.json` in the same change (rule 3).
+
+Only a maintainer makes `.file-size.json` looser: a higher `max_bytes`, a new `skip` entry, or one extension less. The command fails on such a change, also when a maintainer makes it, and the maintainer merges it past the failed check. If a file is generated, or a move needs a new folder or a new exported name, stop and ask the maintainer.
 
 ## Policy
 
