@@ -28,7 +28,9 @@ declare module "@tanstack/react-router" {
 export function useTabTitle() {
   const { t } = useTranslation()
   const routeTitle = useRouterState({
-    select: state => state.matches.reduce<RouteTitle | null>((title, match) => match.staticData?.title ?? title, null),
+    select: state => state.matches.some(match => match._notFound)
+      ? null
+      : state.matches.reduce<RouteTitle | null>((title, match) => match.staticData?.title ?? title, null),
   })
   const page = useSyncExternalStore(subscribePageTitle, readPageTitle)
   const disguiseTitle = useSpreadsheetDocumentTitle()

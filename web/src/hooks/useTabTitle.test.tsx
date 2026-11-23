@@ -30,7 +30,7 @@ function InstancePage() {
 
 function mount(path: string) {
   const history = createMemoryHistory({ initialEntries: [path] })
-  const rootRoute = createRootRoute({ component: Root, staticData: { title: null } })
+  const rootRoute = createRootRoute({ component: Root, notFoundComponent: () => null, staticData: { title: null } })
   const statisticsRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/statistics",
@@ -116,6 +116,12 @@ it.each(["notifications", "logs"])("keeps the page name on the %s tab of Setting
 
 it("shows only qui on a route without a title", async () => {
   mount("/")
+  await settle()
+  expect(document.title).toBe("qui")
+})
+
+it("shows only qui on the not-found page of a mistyped link", async () => {
+  mount("/statistics/typo")
   await settle()
   expect(document.title).toBe("qui")
 })
