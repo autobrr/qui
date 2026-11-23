@@ -982,7 +982,7 @@
     "pkg/hardlinktree/repro_2282_test.go": 9,
     "pkg/httphelpers/allowed_hosts.go": 4,
     "pkg/httphelpers/disconnect.go": 7,
-    "pkg/pathcmp/normalize.go": 11,
+    "pkg/pathcmp/normalize.go": 10,
     "pkg/pathutil/sanitize.go": 25,
     "pkg/pathutil/win32_windows.go": 3,
     "pkg/prowlarr/client.go": 4,
