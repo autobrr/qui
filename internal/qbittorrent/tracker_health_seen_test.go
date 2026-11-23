@@ -218,8 +218,12 @@ func TestTrackersReadIsDroppedWhenAPassFetchedNewerTrackersOn51(t *testing.T) {
 
 	rig := newFlagsRigAt(t, "2.11.6")
 	rig.pass(t)
+	rig.sm.trackerHealthMu.Lock()
+	rig.sm.trackerHealthPassAt[1] = rig.sm.trackerHealthPassAt[1].Add(-2 * time.Second)
+	rig.sm.trackerHealthMu.Unlock()
 	require.Equal(t, TrackerHealthError, rig.health(t)[flagsHashError])
 	read := rig.queueTrackersRead(t, flagsHashError)
+	read.at = read.at.Add(-time.Second)
 
 	rig.set(func() {
 		rig.torrents[flagsHashError].trackers = []qbt.TorrentTracker{
