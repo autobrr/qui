@@ -42,7 +42,7 @@ func countTestSleeps(path string, src []byte) (int, error) {
 	ast.Inspect(f, func(node ast.Node) bool {
 		switch node := node.(type) {
 		case *ast.FuncDecl, *ast.FuncLit:
-			return !calls(node, synctestPkg, "Wait")
+			return !callsDirectly(node, synctestPkg, "Wait")
 		case *ast.CallExpr:
 			return !isSelector(node.Fun, synctestPkg, "Test")
 		case *ast.SelectorExpr:
@@ -55,9 +55,12 @@ func countTestSleeps(path string, src []byte) (int, error) {
 	return n, nil
 }
 
-func calls(root ast.Node, pkg, name string) bool {
+func callsDirectly(root ast.Node, pkg, name string) bool {
 	found := false
 	ast.Inspect(root, func(node ast.Node) bool {
+		if _, nested := node.(*ast.FuncLit); nested && node != root {
+			return false
+		}
 		if call, ok := node.(*ast.CallExpr); ok && isSelector(call.Fun, pkg, name) {
 			found = true
 		}
