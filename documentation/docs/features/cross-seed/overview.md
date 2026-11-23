@@ -1,8 +1,8 @@
 ---
 sidebar_position: 1
-title: Cross-seed for qBittorrent
+title: How to Cross-Seed qBittorrent Automatically
 sidebar_label: Cross-Seed
-description: Automatically cross-seed torrents across trackers.
+description: Learn how to cross-seed qBittorrent with qui. It finds matching torrents on other trackers and adds them against your existing files — no separate cross-seed tool required.
 ---
 
 # Cross-Seed Overview

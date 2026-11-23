@@ -30,7 +30,7 @@ If you have one server, run qui on that server. Some seedbox providers install q
 - **Automations**: [Rule-based torrent management](./features/automations.md) with conditions, actions (delete, pause, tag, limit speeds), and cross-seed awareness
 - **Orphan Scan**: [Find and remove files](./features/orphan-scan.md) that no torrent uses
 - **Backups & Restore**: [Scheduled snapshots](./features/backups.md) with incremental, overwrite, and complete restore modes
-- **Cross-Seed**: [Find and add matching torrents](./features/cross-seed/overview.md) across trackers, with autobrr webhook integration
+- **Cross-Seed**: Find and add matching torrents across trackers, with autobrr webhook integration — see [how to cross-seed qBittorrent](./features/cross-seed/overview.md)
 - **Torrent Management**: [Tags, categories, saved filter views, torrent creation, and export](./features/torrent-management.md)
 - **Dashboard**: [The transfer of the last 24 hours](./features/dashboard.md), the live speed, and each instance, with live updates over SSE
 - **Search**: [Search your Torznab indexers](./features/search.md) and send results to an instance

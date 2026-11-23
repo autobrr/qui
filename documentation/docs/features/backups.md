@@ -1,8 +1,8 @@
 ---
 sidebar_position: 1
-title: qBittorrent backup and restore
+title: "qBittorrent Backup, Restore, and Export a Snapshot"
 sidebar_label: Backups
-description: Schedule and restore qBittorrent instance backups.
+description: Schedule qBittorrent backups of torrents, categories, and tags. Export a snapshot and restore incrementally or in full when you migrate or recover an instance.
 ---
 
 # Backups and restore
