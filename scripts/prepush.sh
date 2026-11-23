@@ -13,6 +13,11 @@ if [ -z "$changed" ]; then
 	exit 0
 fi
 
+if printf '%s\n' "$changed" | grep -qE '^\.github/workflows/.*\.ya?ml$' && ! command -v actionlint >/dev/null 2>&1; then
+	echo "prepush: a workflow changed, and actionlint is not installed. Install it: go install github.com/rhysd/actionlint/cmd/actionlint@latest" >&2
+	exit 1
+fi
+
 printf '%s\n' "$changed" | while read -r file; do
 	[ -f "$file" ] || continue
 	case "$file" in
