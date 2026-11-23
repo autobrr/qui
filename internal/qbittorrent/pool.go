@@ -145,6 +145,9 @@ type ClientPool struct {
 	closed            bool
 	healthTicker      *time.Ticker
 	stopHealth        chan struct{}
+	poolCtx           context.Context
+	poolCancel        context.CancelFunc
+	bgWg              sync.WaitGroup
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
 	syncEventSinks    syncEventSinks
@@ -164,6 +167,8 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 	cache := ttlcache.New[string, *TorrentResponse](
 		ttlcache.SetDefaultTTL(30 * time.Second))
 
+	poolCtx, poolCancel := context.WithCancel(context.Background())
+
 	cp := &ClientPool{
 		clients:           make(map[int]*Client),
 		instanceStore:     instanceStore,
@@ -173,14 +178,27 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 		creationLocks:     make(map[int]*sync.Mutex),
 		healthTicker:      time.NewTicker(healthCheckInterval),
 		stopHealth:        make(chan struct{}),
+		poolCtx:           poolCtx,
+		poolCancel:        poolCancel,
 		failureTracker:    make(map[int]*failureInfo),
 		decryptionTracker: make(map[int]*decryptionErrorInfo),
 	}
 
 	// Start health check routine
-	go cp.healthCheckLoop()
+	cp.bgWg.Add(1)
+	go func() {
+		defer cp.bgWg.Done()
+		cp.healthCheckLoop()
+	}()
 
 	return cp, nil
+}
+
+func (cp *ClientPool) poolBackgroundContext() context.Context {
+	if cp.poolCtx != nil {
+		return cp.poolCtx
+	}
+	return context.Background()
 }
 
 // AddSyncEventSink registers one more consumer of the sync notifications of
@@ -446,6 +464,10 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 
 	// Store in pool (need write lock for this)
 	cp.mu.Lock()
+	if cp.closed {
+		cp.mu.Unlock()
+		return nil, ErrPoolClosed
+	}
 	if len(cp.syncEventSinks) > 0 {
 		client.SetSyncEventSink(cp.syncEventSinks)
 	}
@@ -455,7 +477,16 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	completionNotify := cp.completionNotify
 	completionHandler := cp.completionHandler
 	addedHandler := cp.addedHandler
+	sm := cp.syncManager
+	if sm != nil {
+		// Track the SyncManager startup until StartTrackerHealthRefresh (and any
+		// post-start shutdown cleanup) finishes so Close cannot return first.
+		cp.bgWg.Add(1)
+	}
 	cp.mu.Unlock()
+	if sm != nil {
+		defer cp.bgWg.Done()
+	}
 
 	client.SetTorrentCompletionHandler(completionNotify, completionHandler)
 	if addedHandler != nil {
@@ -469,12 +500,19 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	}
 
 	// Start background tracker health refresh if SyncManager is set and pool isn't closed
-	cp.mu.RLock()
-	sm := cp.syncManager
-	closed := cp.closed
-	cp.mu.RUnlock()
-	if sm != nil && !closed {
-		sm.StartTrackerHealthRefresh(instanceID)
+	if sm != nil {
+		cp.mu.RLock()
+		closed := cp.closed
+		cp.mu.RUnlock()
+		if !closed {
+			sm.StartTrackerHealthRefresh(instanceID)
+			cp.mu.RLock()
+			closedAfterStart := cp.closed
+			cp.mu.RUnlock()
+			if closedAfterStart {
+				sm.StopTrackerHealthRefresh(instanceID)
+			}
+		}
 	}
 
 	return client, nil
@@ -558,20 +596,29 @@ func (cp *ClientPool) performHealthChecks() {
 			continue
 		}
 
-		// Skip if instance is in backoff period
-		if cp.isInBackoff(instanceID) {
+		// Register under RLock while checking closed so Add cannot race with Close's Wait.
+		cp.mu.RLock()
+		if cp.closed || cp.isInBackoffLocked(instanceID) {
+			cp.mu.RUnlock()
 			continue
 		}
+		cp.bgWg.Add(1)
+		cp.mu.RUnlock()
 
 		// Submit health check in goroutine
 		go func(client *Client, instanceID int) {
+			defer cp.bgWg.Done()
+
 			// Use appropriate timeout for health checks
 			// Since we're now using GetWebAPIVersion instead of Login,
 			// this should be much faster even for large instances
-			ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
+			ctx, cancel := context.WithTimeout(cp.poolBackgroundContext(), healthCheckTimeout)
 			defer cancel()
 
 			if err := client.HealthCheck(ctx); err != nil {
+				if isContextStopped(err) {
+					return
+				}
 				if IsDeadlineExpired(err) {
 					// Slow, not down: no backoff, and debug level to keep a
 					// saturated instance from producing a warn every cycle.
@@ -645,8 +692,15 @@ func (cp *ClientPool) Close() error {
 	}
 
 	cp.closed = true
-	close(cp.stopHealth)
-	cp.healthTicker.Stop()
+	if cp.stopHealth != nil {
+		close(cp.stopHealth)
+	}
+	if cp.poolCancel != nil {
+		cp.poolCancel()
+	}
+	if cp.healthTicker != nil {
+		cp.healthTicker.Stop()
+	}
 
 	// Collect instance IDs and syncManager reference before releasing lock
 	instanceIDs := make([]int, 0, len(cp.clients))
@@ -659,15 +713,25 @@ func (cp *ClientPool) Close() error {
 
 	cp.mu.Unlock()
 
-	// Stop all background tracker health refresh goroutines
+	// Stop all background tracker health refresh goroutines and wait for them to exit.
 	if sm != nil {
 		for _, id := range instanceIDs {
 			sm.StopTrackerHealthRefresh(id)
 		}
 	}
 
+	// Wait for healthCheckLoop, in-flight health probes, and any concurrent
+	// tracker-refresh registration so no DB error writes outlive Close.
+	cp.bgWg.Wait()
+
+	if sm != nil {
+		sm.StopAllTrackerHealthRefresh()
+	}
+
 	// Release resources
-	cp.cache.Close()
+	if cp.cache != nil {
+		cp.cache.Close()
+	}
 
 	log.Info().Msg("Client pool closed")
 	return nil
@@ -708,6 +772,9 @@ func (cp *ClientPool) backoffRemainingLocked(instanceID int) time.Duration {
 func (cp *ClientPool) trackFailure(instanceID int, err error) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
+	if cp.closed {
+		return
+	}
 
 	info, exists := cp.failureTracker[instanceID]
 	if !exists {
@@ -718,7 +785,7 @@ func (cp *ClientPool) trackFailure(instanceID int, err error) {
 	info.attempts++
 
 	// Record error to database
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(cp.poolBackgroundContext(), 5*time.Second)
 	defer cancel()
 	if recordErr := cp.errorStore.RecordError(ctx, instanceID, ActionableInstanceError(err)); recordErr != nil {
 		log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record error to database")
@@ -751,6 +818,9 @@ func (cp *ClientPool) ResetFailureTracking(instanceID int) {
 }
 
 func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
+	if cp.closed {
+		return
+	}
 	hadFailures := false
 
 	if _, exists := cp.failureTracker[instanceID]; exists {
@@ -768,7 +838,7 @@ func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
 
 	// Always clear errors from database
 	// This ensures database cleanup even if in-memory tracking was reset (e.g., after restart)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(cp.poolBackgroundContext(), 15*time.Second)
 	defer cancel()
 	if clearErr := cp.errorStore.ClearErrors(ctx, instanceID); clearErr != nil {
 		log.Error().Err(clearErr).Int("instanceID", instanceID).Msg("Failed to clear errors from database")

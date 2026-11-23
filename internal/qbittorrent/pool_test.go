@@ -444,3 +444,146 @@ func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T
 	require.NoError(t, err, "double-check must return the pooled client, not attempt a re-create")
 	require.Same(t, existing, client)
 }
+
+// regression: #4380
+func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
+	t.Run("performHealthChecks probe is canceled and drained before Close returns", func(t *testing.T) {
+		probeStarted := make(chan struct{})
+		probeCanceled := make(chan struct{})
+		var startOnce, cancelOnce sync.Once
+
+		srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			startOnce.Do(func() { close(probeStarted) })
+			<-r.Context().Done()
+			cancelOnce.Do(func() { close(probeCanceled) })
+		}))
+		defer srv.Close()
+
+		pool := setupTestPool(t)
+		const instanceID = 1
+		pool.mu.Lock()
+		pool.clients[instanceID] = &Client{
+			Client:     qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
+			instanceID: instanceID,
+		}
+		pool.mu.Unlock()
+
+		pool.performHealthChecks()
+		<-probeStarted
+
+		require.NoError(t, pool.Close())
+
+		select {
+		case <-probeCanceled:
+		case <-time.After(2 * time.Second):
+			t.Fatal("in-flight health check probe was not canceled before Close returned")
+		}
+	})
+
+	t.Run("tracker health refresh loop exits before Close returns", func(t *testing.T) {
+		probeStarted := make(chan struct{})
+		var startOnce sync.Once
+
+		srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			startOnce.Do(func() { close(probeStarted) })
+			<-r.Context().Done()
+		}))
+		defer srv.Close()
+
+		pool := setupTestPool(t)
+		sm := NewSyncManager(pool, nil)
+		const instanceID = 1
+		pool.mu.Lock()
+		pool.clients[instanceID] = &Client{
+			Client:     qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
+			instanceID: instanceID,
+		}
+		pool.mu.Unlock()
+
+		sm.StartTrackerHealthRefresh(instanceID)
+		<-probeStarted
+
+		sm.trackerHealthMu.RLock()
+		done := sm.trackerHealthDone[instanceID]
+		sm.trackerHealthMu.RUnlock()
+		require.NotNil(t, done)
+
+		require.NoError(t, pool.Close())
+
+		select {
+		case <-done:
+		default:
+			t.Fatal("tracker health refresh loop was still running after Close returned")
+		}
+	})
+
+	t.Run("successful tracker health check DB reset finishes before Close returns", func(t *testing.T) {
+		probeDone := make(chan struct{})
+		var once sync.Once
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/app/webapiVersion":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("2.15.2"))
+				once.Do(func() { close(probeDone) })
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer srv.Close()
+
+		db := testdb.NewMigratedSQLite(t, "pool-reset-before-close")
+		instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+		require.NoError(t, err)
+		instance, err := instanceStore.Create(t.Context(), "test", srv.URL, "", "", nil, nil, false, nil)
+		require.NoError(t, err)
+
+		errorStore := models.NewInstanceErrorStore(db)
+		pool, err := NewClientPool(instanceStore, errorStore, time.Second)
+		require.NoError(t, err)
+		sm := NewSyncManager(pool, nil)
+
+		pool.mu.Lock()
+		pool.clients[instance.ID] = &Client{
+			Client:     qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
+			instanceID: instance.ID,
+		}
+		pool.mu.Unlock()
+		pool.trackFailure(instance.ID, errors.New("connection refused"))
+
+		sm.StartTrackerHealthRefresh(instance.ID)
+		<-probeDone
+
+		sm.trackerHealthMu.RLock()
+		done := sm.trackerHealthDone[instance.ID]
+		sm.trackerHealthMu.RUnlock()
+		require.NotNil(t, done)
+
+		require.NoError(t, pool.Close())
+
+		select {
+		case <-done:
+		default:
+			t.Fatal("tracker health refresh loop was still running after Close returned")
+		}
+	})
+
+	t.Run("errorStore writes are skipped once pool is closed", func(t *testing.T) {
+		db := testdb.NewMigratedSQLite(t, "pool-closed-no-writes")
+		instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+		require.NoError(t, err)
+		instance, err := instanceStore.Create(t.Context(), "test", "http://127.0.0.1:1", "", "", nil, nil, false, nil)
+		require.NoError(t, err)
+
+		errorStore := models.NewInstanceErrorStore(db)
+		pool, err := NewClientPool(instanceStore, errorStore, time.Second)
+		require.NoError(t, err)
+		require.NoError(t, pool.Close())
+
+		pool.trackFailure(instance.ID, errors.New("connection refused"))
+		errs, err := errorStore.GetRecentErrors(t.Context(), instance.ID, 10)
+		require.NoError(t, err)
+		assert.Empty(t, errs)
+	})
+}
