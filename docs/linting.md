@@ -52,7 +52,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
 - If you move code that has ratchet problems into another file, or rename such a file, move its count to the entry of the new path in the same change. Rule 3 fails only when the total of a linter grows, and its message names each entry that grew. ADR 0077 has the reason.
 
-Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go` lane fixes up to 5 problems in one file of `allowlist.json` and uses the `ratchet` label. ADR 0020 describes it. It does not take the `comments` entries or the `offlog` entries. The `web` lane removes up to 3 effects that `qui/no-direct-effect` holds in one file of `web/eslint-suppressions.json` and uses the `ratchet-web` label. ADR 0075 describes it. A lane opens no pull request while one with its label is open.
+Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go` lane fixes up to 5 problems in one file of `allowlist.json` and uses the `ratchet` label. ADR 0020 describes it. It does not take the `comments`, `offlog`, or `mapany` entries. The `web` lane removes up to 3 effects that `qui/no-direct-effect` holds in one file of `web/eslint-suppressions.json` and uses the `ratchet-web` label. ADR 0075 describes it. A lane opens no pull request while one with its label is open.
 
 ### Comments
 
@@ -75,6 +75,10 @@ A line counts when its level is DEBUG or INFO, and one of these is true:
 When a file has more lines than its entry allows, the command prints the position of each counted line in that file. Delete the line, or write it at TRACE. A warning or an error never counts, so this rule has no `nolint` marker.
 
 The counter reads only the syntax tree. It cannot read the text of a message that a variable holds, and it does not take a `switch` case for a test of an off switch, so a line there counts only by the other rule. It does not see a line that a helper function writes, or a notification. The silence test that `docs/standards/logging.md` asks for is the first guard, and the counter is the second.
+
+### Maps of Any
+
+Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The `mapany` key of `allowlist.json` holds the maps from before the rule, also the ones that decode JSON of an unknown shape on purpose. Like `comments`, it is not a golangci-lint linter: `scripts/ratchet/mapany.go` counts each such map type in each tracked Go file. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
 
 ### Suppressed ESLint Rules
 

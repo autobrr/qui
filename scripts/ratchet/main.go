@@ -44,6 +44,9 @@ func main() {
 	if got[commentsLinter], err = goComments(); err != nil {
 		fail(err)
 	}
+	if got[mapAnyLinter], err = mapAnyCounts(); err != nil {
+		fail(err)
+	}
 	offLines, err := offLogLines()
 	if err != nil {
 		fail(err)
@@ -169,7 +172,7 @@ func compare(got, allow, base counts) []string {
 			_, listed := allow[linter][file]
 			switch {
 			case n > want:
-				problems = append(problems, fmt.Sprintf("%s: %s reports %d problems, the allowlist allows %d. Fix the new ones.", file, linter, n, want))
+				problems = append(problems, fmt.Sprintf("%s: %s reports %d problems, the allowlist allows %d. Fix the new ones.%s", file, linter, n, want, linterFixes[linter]))
 			case n == 0 && listed:
 				problems = append(problems, fmt.Sprintf("%s: %s reports no problems. Delete its entry from %s.", file, linter, allowlistPath))
 			case n < want:
