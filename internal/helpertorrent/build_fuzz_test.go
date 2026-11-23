@@ -88,9 +88,6 @@ func FuzzBuildPlacesEachFileAtItsName(f *testing.F) {
 				}
 				continue
 			}
-			if slices.Contains(tc.fileNames, ".") {
-				continue
-			}
 			for _, name := range tc.fileNames {
 				if strings.HasPrefix(name, "/") || startsWithDriveLetter(name) {
 					t.Fatalf("%q is accepted, and it is absolute or on a drive", name)
