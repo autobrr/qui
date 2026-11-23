@@ -1002,7 +1002,7 @@
     "scripts/notices/main.go": 16,
     "scripts/notices/main_test.go": 2,
     "scripts/ratchet/main.go": 9,
-    "scripts/ratchet/main_test.go": 4,
+    "scripts/ratchet/main_test.go": 2,
     "web/build.go": 10
   },
   "contextcheck": {
