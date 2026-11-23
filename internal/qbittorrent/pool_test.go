@@ -650,11 +650,14 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		srv := newTrackerHealthStubServer(t, "2.11.3")
 
 		pool := setupTestPool(t)
+		t.Cleanup(func() { _ = pool.Close() })
 		sm := NewSyncManager(pool, nil)
 		const instanceID = 1
 
 		callbackEntered := make(chan struct{})
 		releaseCallback := make(chan struct{})
+		release := sync.OnceFunc(func() { close(releaseCallback) })
+		t.Cleanup(release)
 		var once sync.Once
 		pool.AddSyncEventSink(&notifyHealthUpdatedSink{onUpdated: func(id int) {
 			if id != instanceID {
@@ -675,7 +678,11 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		pool.mu.Unlock()
 
 		sm.StartTrackerHealthRefresh(instanceID)
-		<-callbackEntered
+		select {
+		case <-callbackEntered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("refresh callback did not enter in time")
+		}
 
 		removed := make(chan struct{})
 		go func() {
@@ -689,7 +696,7 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		case <-time.After(20 * time.Millisecond):
 		}
 
-		close(releaseCallback)
+		release()
 		select {
 		case <-removed:
 		case <-time.After(2 * time.Second):
@@ -715,6 +722,12 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		errs, err := errorStore.GetRecentErrors(t.Context(), instance.ID, 10)
 		require.NoError(t, err)
 		assert.Empty(t, errs)
+
+		require.NoError(t, errorStore.RecordError(t.Context(), instance.ID, errors.New("preexisting")))
+		pool.ResetFailureTracking(instance.ID)
+		errs, err = errorStore.GetRecentErrors(t.Context(), instance.ID, 10)
+		require.NoError(t, err)
+		require.Len(t, errs, 1)
 	})
 
 	t.Run("createClientWithTimeout exits immediately on canceled ctx while waiting on held instanceLock", func(t *testing.T) {
@@ -749,11 +762,14 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		srv := newTrackerHealthStubServer(t, "2.11.3")
 
 		pool := setupTestPool(t)
+		t.Cleanup(func() { _ = pool.Close() })
 		sm := NewSyncManager(pool, nil)
 		const instanceID = 1
 
 		callbackEntered := make(chan struct{})
 		releaseCallback := make(chan struct{})
+		release := sync.OnceFunc(func() { close(releaseCallback) })
+		t.Cleanup(release)
 		var once sync.Once
 		pool.AddSyncEventSink(&notifyHealthUpdatedSink{onUpdated: func(id int) {
 			if id != instanceID {
@@ -770,7 +786,11 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		pool.mu.Unlock()
 
 		sm.StartTrackerHealthRefresh(instanceID)
-		<-callbackEntered
+		select {
+		case <-callbackEntered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("refresh callback did not enter in time")
+		}
 
 		// Simulate RemoveClient deleting cp.clients and canceling without waiting yet.
 		pool.mu.Lock()
@@ -790,7 +810,7 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		case <-time.After(30 * time.Millisecond):
 		}
 
-		close(releaseCallback)
+		release()
 		require.NoError(t, <-closed)
 		select {
 		case <-done:
@@ -809,6 +829,8 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 
 		callbackEntered := make(chan struct{})
 		releaseCallback := make(chan struct{})
+		release := sync.OnceFunc(func() { close(releaseCallback) })
+		t.Cleanup(release)
 		var once sync.Once
 		pool.AddSyncEventSink(&notifyHealthUpdatedSink{onUpdated: func(id int) {
 			if id != instanceID {
@@ -849,7 +871,7 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		case <-time.After(30 * time.Millisecond):
 		}
 
-		close(releaseCallback)
+		release()
 		require.NoError(t, <-close1Done)
 		require.NoError(t, <-close2Done)
 		select {
@@ -900,6 +922,8 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 
 		firstPassEntered := make(chan struct{})
 		releaseFirstPass := make(chan struct{})
+		release := sync.OnceFunc(func() { close(releaseFirstPass) })
+		t.Cleanup(release)
 		var once sync.Once
 		pool.AddSyncEventSink(&notifyHealthUpdatedSink{onUpdated: func(id int) {
 			if id != instanceID {
@@ -930,7 +954,7 @@ func TestClientPool_CloseWaitsForBackgroundHealthWork(t *testing.T) {
 		delete(pool.clients, instanceID)
 		pool.mu.Unlock()
 		sm.KickTrackerHealthRefresh(instanceID)
-		close(releaseFirstPass)
+		release()
 
 		restarted := make(chan struct{})
 		go func() {
