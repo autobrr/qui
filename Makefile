@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n check-feature-map lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -251,7 +251,7 @@ generate:
 	go run ./internal/automationsgen
 
 # Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, lint, the frontend type and i18n checks, then the frontend tests when the branch changes web/ or internal/
-precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend check-i18n test-frontend-changed
+precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend check-i18n check-feature-map test-frontend-changed
 	@echo "Pre-commit checks passed."
 
 # Warn when the local golangci-lint is not the version that CI pins, because lint and lint-ratchet can then find problems that CI does not
@@ -287,6 +287,10 @@ typecheck-frontend:
 check-i18n:
 	@echo "Checking i18n..."
 	cd $(WEB_DIR) && pnpm check:i18n
+
+check-feature-map:
+	@echo "Checking the feature map..."
+	cd $(WEB_DIR) && pnpm check:feature-map --base "$$(git merge-base origin/develop HEAD || echo origin/develop)"
 
 # Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
 lint-ratchet: lint-version

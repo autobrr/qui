@@ -111,6 +111,10 @@ jobs:
         working-directory: web
         run: pnpm check:i18n
 
+      - name: Check the feature map
+        working-directory: web
+        run: pnpm check:feature-map --base "origin/${{ github.base_ref }}"
+
       - name: Check for mojibake
         run: make check-mojibake
 
