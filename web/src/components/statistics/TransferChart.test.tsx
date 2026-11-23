@@ -33,7 +33,11 @@ vi.mock("recharts", async (importOriginal) => ({
   ResponsiveContainer: ({ children }: { children: ReactNode }) => isValidElement(children) ? cloneElement(children, { width: 800, height: 300 } as object) : null,
 }))
 
+const measuredTextWidth = { value: 40 }
+Object.defineProperty(SVGElement.prototype, "getComputedTextLength", { configurable: true, value: () => measuredTextWidth.value })
+
 afterEach(() => {
+  measuredTextWidth.value = 40
   cleanup()
   localStorage.clear()
   _resetClientSettingsForTests()
@@ -94,6 +98,19 @@ describe("TransferChart", () => {
     expect(row("a.test").querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,YQ==")
     expect(row("b.test").querySelector("span[aria-hidden=true]")?.textContent).toBe("B")
     expect(row("chart.other").querySelector("img, span[aria-hidden=true]")).toBeNull()
+  })
+
+  it("names each day of an hour chart, and hides a name that is wider than its day", () => {
+    const bars = Array.from({ length: 24 }, (_, index) => ({ ...bar("2026-01-10T00:00:00Z", 0), start: new Date(2026, 0, 10, 12 + index).getTime() }))
+    const names = (container: HTMLElement) => [...container.querySelectorAll<SVGTextElement>(".recharts-reference-area text")]
+      .map(text => [text.textContent, text.style.visibility])
+    const chart = <TransferChart bars={bars} groups={["a.test"]} metric="uploaded" unit="hour" displayName={group => group} />
+
+    expect(names(render(chart).container)).toEqual([["Sat, Jan 10", ""], ["Sun, Jan 11", ""]])
+    cleanup()
+
+    measuredTextWidth.value = 10_000
+    expect(names(render(chart).container)).toEqual([["Sat, Jan 10", "hidden"], ["Sun, Jan 11", "hidden"]])
   })
 
   it("colors the series from the selected set", () => {

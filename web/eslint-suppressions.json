@@ -1275,7 +1275,7 @@
   },
   "src/components/statistics/useBucketFormat.ts": {
     "qui/no-comments": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/statistics/useTapTooltip.test.tsx": {

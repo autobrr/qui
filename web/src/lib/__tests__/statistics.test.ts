@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-import { bestBar, buildBars, buildCategoryBars, byteTicks, customPeriod, formatGapLength, labelledGaps, presetPeriod, previousPeriod, recordedUnits, sumBytes, topGroups } from "@/lib/statistics"
+import { bestBar, buildBars, buildCategoryBars, byteTicks, customPeriod, formatGapLength, hourAxis, labelledGaps, presetPeriod, previousPeriod, recordedUnits, sumBytes, topGroups, type StatisticsBar } from "@/lib/statistics"
 import type { TransferHistoryRow } from "@/types"
 
 const originalTZ = process.env.TZ
@@ -280,5 +280,45 @@ describe("formatGapLength", () => {
     expect(formatGapLength(5400, "en")).toBe("1h 30m")
     expect(formatGapLength(5400, "zh-CN")).toBe("1小时 30分钟")
     expect(formatGapLength(30, "en")).toBe("30s")
+  })
+})
+
+describe("hourAxis", () => {
+  const hourBars = (from: Date, count: number): Pick<StatisticsBar, "start" | "width">[] =>
+    Array.from({ length: count }, (_, index) => ({ start: from.getTime() + index * 3_600_000, width: "hour" }))
+  const hours = (ticks: number[]) => ticks.map(tick => new Date(tick).getHours())
+
+  it("on 24 hours, shades the hours before midnight, draws a line at midnight, and ticks every 3 hours, or 6 on a phone", () => {
+    const bars = hourBars(new Date(2026, 10, 22, 15), 24)
+
+    const axis = hourAxis(bars, false)
+    expect(axis.manyDays).toBe(false)
+    expect(axis.bands.map(band => [new Date(band.day).getDate(), band.shaded, band.midnightLine])).toEqual([[22, true, false], [23, false, true]])
+    expect(hours(axis.ticks)).toEqual([15, 18, 21, 0, 3, 6, 9, 12])
+    expect(hours(hourAxis(bars, true).ticks)).toEqual([18, 0, 6, 12])
+  })
+
+  it("on 7 days, shades every second date, keeps the shade of a date as the period moves, and ticks every 12 hours, or never on a phone", () => {
+    const axis = hourAxis(hourBars(new Date(2026, 10, 16, 15), 168), false)
+    const later = hourAxis(hourBars(new Date(2026, 10, 17, 15), 168), false)
+
+    expect(axis.manyDays).toBe(true)
+    expect(axis.bands.every((band, index) => index === 0 || band.shaded !== axis.bands[index - 1].shaded)).toBe(true)
+    expect(axis.bands.some(band => band.midnightLine)).toBe(false)
+    const shadeOf = new Map(axis.bands.map(band => [band.day, band.shaded]))
+    for (const band of later.bands.filter(band => shadeOf.has(band.day))) {
+      expect(band.shaded).toBe(shadeOf.get(band.day))
+    }
+    expect(new Set(hours(axis.ticks))).toEqual(new Set([0, 12]))
+    expect(hourAxis(hourBars(new Date(2026, 10, 16, 15), 168), true).ticks).toEqual([])
+  })
+
+  it("gives a folded day bar its own day and no tick", () => {
+    const folded = { start: new Date(2026, 10, 22).getTime(), width: "day" as const }
+    const axis = hourAxis([folded, ...hourBars(new Date(2026, 10, 23), 12)], false)
+
+    expect(axis.bands.map(band => new Date(band.day).getDate())).toEqual([22, 23])
+    expect(axis.ticks).not.toContain(folded.start)
+    expect(hours(axis.ticks)).toEqual([0, 3, 6, 9])
   })
 })

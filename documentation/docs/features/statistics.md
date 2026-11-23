@@ -34,6 +34,8 @@ Select the period at the top of the page:
 
 A day starts at midnight in the timezone of your browser.
 
+On a chart with one bar for each hour, the labels below the bars show the hour, and each day has a band with its name. A line marks midnight when the chart shows two days, and on a phone a chart of more than two days shows only the names of the days.
+
 On a phone, the periods are in a list at the top of the page. To set a custom range, tap the calendar button next to the list.
 
 The page shows each full date in the date format that you select in **Settings → Time & language**. Examples are the days of a custom range, "Recording since", and the best day. If you select the relative format, the page shows these dates in the ISO format. The time of each delete in **Deleted torrents** stays relative to now. The short labels below the bars of a chart do not change. On a phone, the label of a custom range also keeps its short form.
