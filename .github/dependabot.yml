@@ -69,3 +69,10 @@ updates:
       # Change the model in run.mjs in the same pull request.
       exclude:
         - "@anthropic-ai/*"
+
+  - package-ecosystem: npm
+    directory: /.github/scripts/exceptions
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
