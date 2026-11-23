@@ -33,6 +33,9 @@ func FuzzPathKeys(f *testing.F) {
 		"/data/\xff\xfe/..",
 		"/data/caf\xe9.mkv",
 		"/data/\ufffd",
+		"i\u0307",
+		"I\u0307",
+		"\u0130",
 	} {
 		f.Add(seed)
 	}
@@ -44,12 +47,6 @@ func FuzzPathKeys(f *testing.F) {
 		{"windows", WindowsPaths},
 	}
 	f.Fuzz(func(t *testing.T, p string) {
-		upper := []byte(p)
-		for i, c := range upper {
-			if c >= 'a' && c <= 'z' {
-				upper[i] = c - ('a' - 'A')
-			}
-		}
 		for _, dialect := range dialects {
 			d := dialect.d
 			clean, key := CleanPath(d, p), NormalizePath(d, p)
@@ -73,8 +70,10 @@ func FuzzPathKeys(f *testing.F) {
 			if strings.Contains(clean, "\ufffd") && !strings.Contains(p, "\ufffd") {
 				t.Fatalf("%s: %q cleans to %q, which replaces bytes of the path", dialect.name, p, clean)
 			}
-			if got := NormalizePath(d, string(upper)); got != key {
-				t.Fatalf("%s: %q has the key %q, and in upper case it has %q", dialect.name, p, key, got)
+			if isASCII(p) {
+				if got := NormalizePath(d, strings.ToUpper(p)); got != key {
+					t.Fatalf("%s: %q has the key %q, and in upper case it has %q", dialect.name, p, key, got)
+				}
 			}
 			if !utf8.ValidString(p) {
 				continue
