@@ -243,12 +243,14 @@ func (c *Client) request(ctx context.Context, method, endpoint string, params ur
 		}
 		return nil, 0, fmt.Errorf("rate limit wait failed: %w", err)
 	}
-	reqURL := fmt.Sprintf("%s/%s", strings.TrimSuffix(c.baseURL, "/"), endpoint)
-	if len(params) > 0 {
-		reqURL = fmt.Sprintf("%s?%s", reqURL, params.Encode())
+	reqURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, 0, fmt.Errorf("parse base URL for %s: %w", endpoint, err)
 	}
+	reqURL = reqURL.JoinPath(endpoint)
+	reqURL.RawQuery = params.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, method, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("create request for %s: %w", endpoint, err)
 	}
