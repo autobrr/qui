@@ -42,6 +42,17 @@ const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
   Failed: <XCircle className="h-4 w-4" />,
 }
 
+const STATUS_LABEL_KEYS: Record<TorrentCreationStatus, string> = {
+  Queued: "creationTasks.statusLabels.Queued",
+  Running: "creationTasks.statusLabels.Running",
+  Finished: "creationTasks.statusLabels.Finished",
+  Failed: "creationTasks.statusLabels.Failed",
+}
+
+function statusLabelKey(status: TorrentCreationStatus): string {
+  return Object.hasOwn(STATUS_LABEL_KEYS, status) ? STATUS_LABEL_KEYS[status] : "common:status.unknown"
+}
+
 export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) {
   const { t } = useTranslation("torrents")
   const queryClient = useQueryClient()
@@ -118,7 +129,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
-                      {t(`creationTasks.statusLabels.${task.status}`, task.status)}
+                      {t(statusLabelKey(task.status))}
                     </span>
                   </Badge>
                   {task.private && (
@@ -211,7 +222,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
-                      {t(`creationTasks.statusLabels.${task.status}`, task.status)}
+                      {t(statusLabelKey(task.status))}
                     </span>
                   </Badge>
                 </TableCell>
