@@ -90,6 +90,14 @@ func TestWindowsPathsIsHostIndependent(t *testing.T) {
 		{p: `a\b\..\c`, clean: `a\c`, dir: "a", base: "c"},
 		{p: "/data", clean: `\data`, dir: `\`, base: "data"},
 		{p: "", clean: ".", dir: ".", base: "."},
+		// regression: #4426
+		{p: "./0:", clean: `.\0:`, dir: ".", base: "0:"},
+		{p: "a/../c:/b", clean: `.\c:\b`, dir: `.\c:`, base: "b"},
+		{p: `x\..\C:\Windows`, clean: `.\C:\Windows`, dir: `.\C:`, base: "Windows"},
+		{p: "ab:c/d", clean: `.\ab:c\d`, dir: "ab:c", base: "d"},
+		{p: `ab:c\d`, clean: `ab:c\d`, dir: "ab:c", base: "d"},
+		{p: `\a\..\??\c:\x`, clean: `\.\??\c:\x`, dir: `\.\??\c:`, base: "x"},
+		{p: `\..\:`, clean: `\:`, dir: `\`, base: ":"},
 	} {
 		require.Equal(t, tc.clean, d.Clean(tc.p), "Clean(%q)", tc.p)
 		require.Equal(t, tc.dir, d.Dir(tc.p), "Dir(%q)", tc.p)
@@ -114,6 +122,9 @@ func TestWindowsPathsIsHostIndependent(t *testing.T) {
 		{base: `C:\`, name: `\Show`, want: `C:\Show`},
 		{base: "", name: "Show/E01.mkv", want: `Show\E01.mkv`},
 		{base: "", name: "", want: ""},
+		// regression: #4426
+		{base: "", name: `x/../D:\evil`, want: `.\D:\evil`},
+		{base: ".", name: `D:\evil`, want: `.\D:\evil`},
 	} {
 		require.Equal(t, tc.want, d.Join(tc.base, tc.name), "Join(%q, %q)", tc.base, tc.name)
 		if onWindows {
@@ -149,6 +160,17 @@ func TestWindowsPathsIsHostIndependent(t *testing.T) {
 			require.Equal(t, wantErr != nil, err != nil, "oracle Rel(%q, %q): %v", tc.base, tc.target, wantErr)
 			require.Equal(t, want, got, "oracle Rel(%q, %q)", tc.base, tc.target)
 		}
+	}
+}
+
+// regression: #4426
+func TestWindowsPathsCleanGainsNoVolume(t *testing.T) {
+	d := WindowsPaths
+	for _, p := range []string{"./0:", "a/../c:/b", `x\..\C:\Windows`, `\..\:`, "/./:", "/:", `\a\..\??\c:\x`, "ab:c/d"} {
+		clean := d.Clean(p)
+		require.Empty(t, windowsVolume(clean), "volume of Clean(%q) = %q", p, clean)
+		require.False(t, d.IsAbs(clean), "IsAbs of Clean(%q) = %q", p, clean)
+		require.Equal(t, clean, d.Clean(clean), "Clean of Clean(%q)", p)
 	}
 }
 

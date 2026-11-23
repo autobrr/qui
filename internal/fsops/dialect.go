@@ -189,7 +189,17 @@ func (windowsPaths) Clean(p string) string {
 	if rest == "" && isUNC(vol) {
 		return vol
 	}
-	return vol + windowsPaths{}.FromSlash(path.Clean(rest))
+	cleaned := windowsPaths{}.FromSlash(path.Clean(rest))
+	if vol != "" || strings.HasPrefix(p, cleaned) {
+		return vol + cleaned
+	}
+	if first, _, _ := strings.Cut(cleaned, `\`); strings.Contains(first, ":") {
+		return `.\` + cleaned
+	}
+	if strings.HasPrefix(cleaned, `\??`) {
+		return `\.` + cleaned
+	}
+	return cleaned
 }
 
 func (windowsPaths) IsAbs(p string) bool {
@@ -230,7 +240,7 @@ func (windowsPaths) Separator() string         { return `\` }
 // of p, as it is written there, or "". A share with a .. part is no volume.
 func windowsVolume(p string) string {
 	switch {
-	case len(p) >= 2 && p[1] == ':':
+	case len(p) >= 2 && p[1] == ':' && !isWindowsSeparator(p[0]):
 		return p[:2]
 	case len(p) >= 2 && isWindowsSeparator(p[0]) && isWindowsSeparator(p[1]):
 		vol, separators := p, 0
