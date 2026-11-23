@@ -220,6 +220,7 @@ func TestTrackersReadIsDroppedWhenAPassFetchedNewerTrackersOn51(t *testing.T) {
 	rig.pass(t)
 	require.Equal(t, TrackerHealthError, rig.health(t)[flagsHashError])
 	read := rig.queueTrackersRead(t, flagsHashError)
+	read.at = read.at.Add(-time.Second)
 
 	rig.set(func() {
 		rig.torrents[flagsHashError].trackers = []qbt.TorrentTracker{
