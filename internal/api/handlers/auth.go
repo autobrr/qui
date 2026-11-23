@@ -129,6 +129,42 @@ type ChangePasswordRequest struct {
 	NewPassword     string `json:"newPassword"`
 }
 
+type sessionUser struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+}
+
+type sessionStartedReply struct {
+	Message string      `json:"message"`
+	User    sessionUser `json:"user"`
+}
+
+type currentUserReply struct {
+	ID         int    `json:"id,omitzero"`
+	Username   string `json:"username"`
+	AuthMethod string `json:"auth_method,omitempty"`
+}
+
+type validateReply struct {
+	Username       string `json:"username"`
+	AuthMethod     string `json:"auth_method"`
+	ProfilePicture string `json:"profile_picture"`
+}
+
+type setupRequiredReply struct {
+	SetupRequired bool `json:"setupRequired"`
+}
+
+type createdAPIKeyReply struct {
+	ID          int                 `json:"id"`
+	Name        string              `json:"name"`
+	Key         string              `json:"key"`
+	CreatedAt   time.Time           `json:"createdAt"`
+	Permissions []models.Permission `json:"permissions"`
+	InstanceIDs []int               `json:"instanceIds"`
+	Message     string              `json:"message"`
+}
+
 // Setup handles initial user setup
 func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
@@ -189,12 +225,9 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	h.sessionManager.Put(r.Context(), "user_id", user.ID)
 	h.sessionManager.Put(r.Context(), "username", user.Username)
 
-	RespondJSON(w, http.StatusCreated, map[string]any{
-		"message": "Setup completed successfully",
-		"user": map[string]any{
-			"id":       user.ID,
-			"username": user.Username,
-		},
+	RespondJSON(w, http.StatusCreated, sessionStartedReply{
+		Message: "Setup completed successfully",
+		User:    sessionUser{ID: user.ID, Username: user.Username},
 	})
 }
 
@@ -349,12 +382,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Use a detached context since this should continue even after the HTTP request completes
 	go h.warmSession(context.Background()) //nolint:gosec // G118: session warm-up must outlive the login request
 
-	RespondJSON(w, http.StatusOK, map[string]any{
-		"message": "Login successful",
-		"user": map[string]any{
-			"id":       user.ID,
-			"username": user.Username,
-		},
+	RespondJSON(w, http.StatusOK, sessionStartedReply{
+		Message: "Login successful",
+		User:    sessionUser{ID: user.ID, Username: user.Username},
 	})
 }
 
@@ -376,11 +406,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func syntheticAdminResponse() map[string]any {
-	return map[string]any{
-		"username":    "admin",
-		"auth_method": "none",
-	}
+func syntheticAdminResponse() currentUserReply {
+	return currentUserReply{Username: "admin", AuthMethod: "none"}
 }
 
 // GetCurrentUser returns the current user information
@@ -408,21 +435,11 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	userID := h.sessionManager.GetInt(r.Context(), "user_id")
 	authMethod := h.sessionManager.GetString(r.Context(), "auth_method")
 
-	response := map[string]any{
-		"username": username,
-	}
-
-	// Only include ID if it exists (for built-in auth users)
-	if userID != 0 {
-		response["id"] = userID
-	}
-
-	// Include auth method if available
-	if authMethod != "" {
-		response["auth_method"] = authMethod
-	}
-
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, http.StatusOK, currentUserReply{
+		ID:         userID,
+		Username:   username,
+		AuthMethod: authMethod,
+	})
 }
 
 // Validate checks if the user has a valid session (used for OIDC callback)
@@ -442,19 +459,17 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	authMethod := h.sessionManager.GetString(r.Context(), "auth_method")
 	profilePicture := h.sessionManager.GetString(r.Context(), "profile_picture")
 
-	RespondJSON(w, http.StatusOK, map[string]any{
-		"username":        username,
-		"auth_method":     authMethod,
-		"profile_picture": profilePicture,
+	RespondJSON(w, http.StatusOK, validateReply{
+		Username:       username,
+		AuthMethod:     authMethod,
+		ProfilePicture: profilePicture,
 	})
 }
 
 // CheckSetupRequired checks if initial setup is required
 func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request) {
 	if h.config != nil && (h.config.Live().IsAuthDisabled() || h.config.Live().OIDCEnabled) {
-		RespondJSON(w, http.StatusOK, map[string]any{
-			"setupRequired": false,
-		})
+		RespondJSON(w, http.StatusOK, setupRequiredReply{SetupRequired: false})
 		return
 	}
 
@@ -465,9 +480,7 @@ func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]any{
-		"setupRequired": !complete,
-	})
+	RespondJSON(w, http.StatusOK, setupRequiredReply{SetupRequired: !complete})
 }
 
 // ChangePassword handles password change requests
@@ -594,14 +607,14 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]any{
-		"id":          apiKey.ID,
-		"name":        apiKey.Name,
-		"key":         rawKey, // Only shown once
-		"createdAt":   apiKey.CreatedAt,
-		"permissions": apiKey.Permissions,
-		"instanceIds": apiKey.InstanceIDs,
-		"message":     "Save this key securely - it will not be shown again",
+	RespondJSON(w, http.StatusCreated, createdAPIKeyReply{
+		ID:          apiKey.ID,
+		Name:        apiKey.Name,
+		Key:         rawKey,
+		CreatedAt:   apiKey.CreatedAt,
+		Permissions: apiKey.Permissions,
+		InstanceIDs: apiKey.InstanceIDs,
+		Message:     "Save this key securely - it will not be shown again",
 	})
 }
 

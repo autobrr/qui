@@ -12,7 +12,7 @@
     "internal/api/ctxkeys/ctxkeys.go": 2,
     "internal/api/handlers/activity_wait_test.go": 4,
     "internal/api/handlers/arr.go": 31,
-    "internal/api/handlers/auth.go": 57,
+    "internal/api/handlers/auth.go": 54,
     "internal/api/handlers/auth_hardening_test.go": 6,
     "internal/api/handlers/auth_setup_test.go": 1,
     "internal/api/handlers/automations.go": 26,
