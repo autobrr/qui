@@ -38,7 +38,7 @@ func NormalizePath(p string) string {
 	if strings.HasPrefix(p, "//") && !strings.HasPrefix(p, "///") {
 		server, rest, found := strings.Cut(p[2:], "/")
 		share, _, _ := strings.Cut(rest, "/")
-		if found && server != "" && share != "" {
+		if found && server != "" && share != "" && server != ".." && share != ".." {
 			root := p[:2+len(server)+1+len(share)]
 			cleaned := path.Clean(p[len(root):])
 			if cleaned == "." || cleaned == "/" {
@@ -48,8 +48,7 @@ func NormalizePath(p string) string {
 		}
 	}
 
-	// Handle Windows drive paths specially to preserve C:/ (path.Clean turns it into C:).
-	if len(p) >= 2 && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':' {
+	if hasDriveLetter(p) {
 		drive := p[:2]
 		rest := p[2:]
 
@@ -59,15 +58,22 @@ func NormalizePath(p string) string {
 		}
 
 		rest = path.Clean(rest)
-		if rest == "/" || rest == "." {
-			return drive + "/"
+		if rest == "." {
+			return drive
 		}
 		return drive + rest
 	}
 
 	p = path.Clean(p)
+	if hasDriveLetter(p) {
+		return "./" + p
+	}
 	if len(p) > 1 {
 		p = strings.TrimSuffix(p, "/")
 	}
 	return p
+}
+
+func hasDriveLetter(p string) bool {
+	return len(p) >= 2 && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':'
 }
