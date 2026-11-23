@@ -39,6 +39,10 @@ function DayBandShape({ x = 0, y = 0, width = 0, height = 0, band, label, center
           y={y + 12}
           textAnchor={centered ? "middle" : "start"}
           fill="var(--foreground)"
+          stroke="var(--card)"
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+          paintOrder="stroke"
           fontSize={11}
           fontWeight={600}
         >
