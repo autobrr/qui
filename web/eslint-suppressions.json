@@ -49,11 +49,6 @@
       "count": 1
     }
   },
-  "src/App.tsx": {
-    "qui/no-direct-effect": {
-      "count": 1
-    }
-  },
   "src/components/MagnetHandlerBanner.tsx": {
     "qui/no-comments": {
       "count": 2

@@ -8,7 +8,10 @@ import { createRoot } from "react-dom/client"
 import App from "./App.tsx"
 import { keepDocumentAtTop } from "@/lib/document-scroll"
 import { setupLaunchQueueConsumer } from "@/lib/launch-queue"
+import { initializePWANativeTheme } from "@/utils/pwaNativeTheme"
+import { initializeTheme } from "@/utils/theme"
 import { initI18n } from "./i18n"
+import { setupPWAAutoUpdate } from "./pwa"
 import "./index.css"
 import "./spreadsheet-chrome.css"
 
@@ -23,4 +26,9 @@ void initI18n().finally(() => {
       <App />
     </StrictMode>
   )
+  initializeTheme().catch(console.error)
+  initializePWANativeTheme()
+  if (import.meta.env.PROD) {
+    setupPWAAutoUpdate()
+  }
 })
