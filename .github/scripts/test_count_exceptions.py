@@ -48,11 +48,24 @@ class RulesTest(unittest.TestCase):
             Comment(2, "/// eslint-disable-next-line no-console -- the CLI prints its result"),
             Comment(3, "/// @ts-ignore"),
             Comment(4, "/** @ts-expect-error the type of the package is wrong */"),
+            Comment(5, "// @ts-nocheck"),
         ))
-        self.assertEqual([found.line for found in strict(side, WEB_EXCEPTION)], [3, 4])
-        self.assertEqual([found.line for found in generous(side, WEB_EXCEPTION)], [1, 3, 4])
+        self.assertEqual([found.line for found in strict(side, WEB_EXCEPTION)], [3, 4, 5])
+        self.assertEqual([found.line for found in generous(side, WEB_EXCEPTION)], [1, 3, 4, 5])
 
-    def test_generous_counts_each_line_of_a_block_comment_and_strict_only_the_first(self):
+    def test_only_a_comment_of_one_line_that_the_tool_reads_gives_credit(self):
+        side = web(
+            (1, "/* @ts-ignore\n documentation */"),
+            (3, "/* @ts-nocheck */"),
+            (4, "/* eslint-disable no-alert -- the user confirms the delete\n and each later delete */"),
+            (6, "/* @ts-ignore */"),
+            (7, "/* eslint-disable no-alert -- the user confirms the delete */"),
+        )
+        self.assertEqual([found.line for found in strict(side, WEB_EXCEPTION)], [6, 7])
+        self.assertEqual([found.line for found in generous(side, WEB_EXCEPTION)], [1, 3, 4, 6, 7])
+        self.assertEqual([found.line for found in strict(go((1, "/* nolint:gosec\n the reason */"), (3, "/* #nosec G204 */")), GO_EXCEPTION)], [3])
+
+    def test_generous_counts_each_line_of_a_block_comment_and_strict_none(self):
         block = "/* eslint-disable no-alert -- the user confirms the delete\n * eslint-disable no-console -- the CLI prints its result\n  @ts-ignore */"
         side = web((4, block), (9, "/*\neslint-disable-next-line no-console\n*/"))
         self.assertEqual(texts(generous(side, WEB_EXCEPTION)), [
@@ -61,7 +74,7 @@ class RulesTest(unittest.TestCase):
             ("a.ts", 6, "@ts-ignore */"),
             ("a.ts", 10, "eslint-disable-next-line no-console"),
         ])
-        self.assertEqual(texts(strict(side, WEB_EXCEPTION)), [("a.ts", 4, "/* eslint-disable no-alert -- the user confirms the delete")])
+        self.assertEqual(strict(side, WEB_EXCEPTION), [])
 
     def test_an_unchanged_comment_cancels_on_both_sides(self):
         base = go((3, REASON), (9, "/*\nnolint:gosec\n*/"))

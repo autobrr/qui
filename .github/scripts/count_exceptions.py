@@ -13,12 +13,11 @@ WEB_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 PATHSPECS = ["*.go", *(f"*{suffix}" for suffix in WEB_SUFFIXES)]
 GO_EXCEPTION = re.compile(r"\s*(?:nolint|#nosec|gosec:disable|exhaustive:ignore)\b")
 WEB_EXCEPTION = re.compile(r"\s*(?:eslint-disable|[*/\s]*@ts-(?:expect-error|ignore|nocheck))\b")
-TS_DIRECTIVE = r"@ts-(?:expect-error|ignore|nocheck)"
 CREDIT = {
     GO_EXCEPTION: {"//": GO_EXCEPTION, "/*": GO_EXCEPTION},
     WEB_EXCEPTION: {
-        "//": re.compile(rf"\s*eslint-disable\b|/?\s*{TS_DIRECTIVE}\b"),
-        "/*": re.compile(rf"\s*eslint-disable\b|[*/]*\s*{TS_DIRECTIVE}\b"),
+        "//": re.compile(r"\s*eslint-disable\b|/?\s*@ts-(?:expect-error|ignore|nocheck)\b"),
+        "/*": re.compile(r"\s*eslint-disable\b|[*/]*\s*@ts-(?:expect-error|ignore)\b"),
     },
 }
 LANGUAGES = {
@@ -82,9 +81,9 @@ def generous(side, pattern):
 def strict(side, pattern):
     credit = CREDIT[pattern]
     return [
-        Found(side.path, comment.line, comment.text.split("\n")[0].strip())
+        Found(side.path, comment.line, comment.text.strip())
         for comment in side.comments
-        if credit[comment.text[:2]].match(body(comment).split("\n")[0])
+        if "\n" not in comment.text and credit[comment.text[:2]].match(body(comment))
     ]
 
 
