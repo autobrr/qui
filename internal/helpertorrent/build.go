@@ -158,7 +158,7 @@ func IsPadding(file metainfo.FileInfo) bool {
 
 func splitRelativePath(name string) ([]string, error) {
 	parts := strings.Split(name, "/")
-	if path.Clean(name) != name || path.IsAbs(name) || strings.ContainsRune(name, '\\') ||
+	if name == "." || path.Clean(name) != name || path.IsAbs(name) || strings.ContainsRune(name, '\\') ||
 		hasDriveLetter(name) || slices.Contains(parts, "..") {
 		return nil, fmt.Errorf("file name %q is not a relative path", name)
 	}
