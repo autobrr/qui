@@ -226,6 +226,7 @@ func TestCountTestSleeps(t *testing.T) {
 	}{
 		{"real sleep", `import "time"; func TestX(t *testing.T) { time.Sleep(time.Second) }`, 1},
 		{"sleep in a bubble", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { synctest.Test(t, func(t *testing.T) { time.Sleep(time.Second) }) }`, 0},
+		{"sleep in a bubble in parentheses", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { synctest.Test(t, (func(t *testing.T) { time.Sleep(time.Second) })) }`, 0},
 		{"sleep after a bubble", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { synctest.Test(t, func(*testing.T) {}); time.Sleep(time.Second) }`, 1},
 		{"sleep in a factory that runs before the bubble", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { synctest.Test(t, func() func(*testing.T) { time.Sleep(time.Second); return func(*testing.T) {} }()) }`, 1},
 		{"sleep beside a bubble that waits", `import ("testing/synctest"; "time"); func TestX(t *testing.T) { time.Sleep(time.Second); synctest.Test(t, func(t *testing.T) { synctest.Wait() }) }`, 1},

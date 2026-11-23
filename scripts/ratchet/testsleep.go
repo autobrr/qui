@@ -49,7 +49,7 @@ func countTestSleeps(path string, src []byte) (int, error) {
 				return true
 			}
 			for _, arg := range node.Args {
-				if _, bubble := arg.(*ast.FuncLit); !bubble {
+				if _, bubble := ast.Unparen(arg).(*ast.FuncLit); !bubble {
 					ast.Inspect(arg, visit)
 				}
 			}
