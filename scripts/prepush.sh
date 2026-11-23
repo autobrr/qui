@@ -13,15 +13,18 @@ if [ -z "$changed" ]; then
 	exit 0
 fi
 
-if printf '%s\n' "$changed" | grep -qE '^\.github/workflows/.*\.ya?ml$' && ! command -v actionlint >/dev/null 2>&1; then
-	echo "prepush: a workflow changed, and actionlint is not installed. Install it: go install github.com/rhysd/actionlint/cmd/actionlint@latest" >&2
-	exit 1
-fi
+lint_workflow() {
+	if ! command -v actionlint >/dev/null 2>&1; then
+		echo "prepush: a workflow changed, and actionlint is not installed. Install it: go install github.com/rhysd/actionlint/cmd/actionlint@latest" >&2
+		return 1
+	fi
+	actionlint "$1"
+}
 
 printf '%s\n' "$changed" | while read -r file; do
 	[ -f "$file" ] || continue
 	case "$file" in
-	.github/workflows/*.yml | .github/workflows/*.yaml) actionlint "$file" ;;
+	.github/workflows/*.yml | .github/workflows/*.yaml) lint_workflow "$file" ;;
 	*.sh) bash -n "$file" ;;
 	documentation/*.js) ;;
 	*.js | *.mjs | *.cjs) node --check "$file" ;;
