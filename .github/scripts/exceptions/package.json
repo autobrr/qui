@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ts-api-utils": "2.5.0",
+    "typescript": "6.0.3"
+  }
+}

@@ -950,8 +950,6 @@ func discordEventColor(eventType EventType) int {
 		EventAutomationsActionsApplied,
 		EventTransferFinished:
 		return discordColorSuccess
-	case EventTorrentAdded:
-		return discordColorInfo
 	default:
 		return discordColorInfo
 	}

@@ -17,7 +17,6 @@ These rules apply to Go and TypeScript code.
 
 - Group package interfaces by domain under `internal/<area>`.
 - Keep interfaces small (<=5 methods).
-- Avoid `map[string]interface{}`; use structs.
 
 ## Comments
 

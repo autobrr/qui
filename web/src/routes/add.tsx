@@ -27,6 +27,9 @@ const addSearchSchema = z.object({
 })
 
 export const Route = createFileRoute("/add")({
+  staticData: {
+    title: { titleKey: "header.addTorrent", titleNs: "common" },
+  },
   validateSearch: addSearchSchema,
   component: AddTorrentHandler,
 })

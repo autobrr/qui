@@ -23,6 +23,7 @@ import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import type { DashboardInstanceStats } from "@/lib/dashboard-overview"
@@ -693,8 +694,7 @@ export function Dashboard() {
     { dl: 0, up: 0, hasData: false }
   )
   const backgroundSpeeds = backgroundSpeedsState.hasData ? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up } : undefined
-  useTitleBarSpeeds({
-    mode: "dashboard",
+  const titleBarSpeeds = useTitleBarSpeeds({
     enabled: titleBarSpeedsEnabled && hasActiveInstances,
     foregroundSpeeds: hasActiveInstances ? {
       dl: statsData.reduce((sum, { stats }) => sum + (stats?.totalDownloadSpeed ?? 0), 0),
@@ -702,6 +702,7 @@ export function Dashboard() {
     } : undefined,
     backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
   })
+  usePageTitle({ speeds: titleBarSpeeds })
 
   const incognitoToggle = (
     <Button

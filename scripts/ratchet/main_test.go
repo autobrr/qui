@@ -44,10 +44,9 @@ func TestCompare(t *testing.T) {
 			[]string{"b.go: nilerr reports no problems. Delete its entry from scripts/ratchet/allowlist.json."}},
 		{"same as base", counts{"nilerr": {"a.go": 2, "b.go": 1}}, counts{"nilerr": {"a.go": 2, "b.go": 1}}, nil},
 		{"grew against base", counts{"nilerr": {"a.go": 2, "b.go": 1}}, counts{"nilerr": {"a.go": 1}},
-			[]string{
-				"a.go: the nilerr entry grew from 1 to 2. The allowlist only shrinks.",
-				"b.go: the nilerr entry grew from 0 to 1. The allowlist only shrinks.",
-			}},
+			[]string{"nilerr: the total grew from 1 to 3. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report. These entries grew: a.go from 1 to 2, b.go from 0 to 1."}},
+		{"moved to another file", counts{"nilerr": {"a.go": 2, "b.go": 1}}, counts{"nilerr": {"a.go": 1, "c.go": 2}}, nil},
+		{"moved and fixed one", counts{"nilerr": {"a.go": 2, "b.go": 1}}, counts{"nilerr": {"c.go": 4}}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,12 +55,10 @@ func TestCompare(t *testing.T) {
 	}
 }
 
-// A new rule starts with the count of each file. Its entries can only shrink
-// once the base has them.
 func TestCompareNewLinter(t *testing.T) {
 	got := counts{"nilerr": {"a.go": 1}, "forbidigo": {"c.go": 3}}
 	assert.Empty(t, compare(got, got, counts{"nilerr": {"a.go": 1}}))
-	assert.Equal(t, []string{"c.go: the forbidigo entry grew from 3 to 4. The allowlist only shrinks."},
+	assert.Equal(t, []string{"forbidigo: the total grew from 3 to 4. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report. These entries grew: c.go from 3 to 4."},
 		compare(counts{"forbidigo": {"c.go": 4}}, counts{"forbidigo": {"c.go": 4}}, counts{"forbidigo": {"c.go": 3}}))
 }
 
@@ -147,13 +144,12 @@ func TestSuppressionProblems(t *testing.T) {
 	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}}}`), was, rules), "a rule whose last entry goes leaves suppressedRules")
 }
 
-func TestGrowthOfGoComments(t *testing.T) {
+func TestGrowthNamesOnlyTheLinterThatGrew(t *testing.T) {
 	base := counts{commentsLinter: {"a.go": 3, "b.go": 1}, "gocognit": {"a.go": 1}}
-	assert.Empty(t, growth(counts{commentsLinter: {"c.go": 4}, "gocognit": {"a.go": 1}}, base))
+	assert.Empty(t, growth(counts{commentsLinter: {"c.go": 4}, "gocognit": {"b.go": 1}}, base))
 	assert.Equal(t, []string{
-		"comments: the total grew from 4 to 5. The total only shrinks: a moved comment keeps it level, a new comment does not.",
-		"b.go: the gocognit entry grew from 0 to 1. The allowlist only shrinks.",
-	}, growth(counts{commentsLinter: {"a.go": 5}, "gocognit": {"b.go": 1}}, base))
+		"comments: the total grew from 4 to 6. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report. These entries grew: a.go from 3 to 5.",
+	}, growth(counts{commentsLinter: {"a.go": 5, "b.go": 1}, "gocognit": {"b.go": 1}}, base))
 }
 
 func TestOffLogProblems(t *testing.T) {
@@ -163,4 +159,26 @@ func TestOffLogProblems(t *testing.T) {
 		"grown.go:12: a DEBUG or INFO line about a feature that is off. Delete the line, or write it at TRACE. See docs/standards/logging.md.",
 		"grown.go:40: a DEBUG or INFO line about a feature that is off. Delete the line, or write it at TRACE. See docs/standards/logging.md.",
 	}, offLogProblems(lines, allow))
+}
+
+func TestCountMapAny(t *testing.T) {
+	tests := []struct {
+		name string
+		decl string
+		want int
+	}{
+		{"any value", `var x = map[string]any{"a": 1}`, 1},
+		{"empty interface value", `func f(m map[string]interface{}) {}`, 1},
+		{"nested", `type T struct{ M map[string][]map[string]any; N map[string]any }`, 2},
+		{"typed value", `var x map[string]string`, 0},
+		{"other key", `var x map[int]any`, 0},
+		{"interface with a method", `var x map[string]interface{ M() }`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := countMapAny("x.go", []byte("package x\n"+tt.decl+"\n"))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, n)
+		})
+	}
 }

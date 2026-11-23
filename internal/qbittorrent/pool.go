@@ -144,7 +144,9 @@ type ClientPool struct {
 	creationLocks     map[int]*sync.Mutex // Per-instance creation locks
 	closed            bool
 	healthTicker      *time.Ticker
-	stopHealth        chan struct{}
+	healthCtx         context.Context
+	stopHealth        context.CancelFunc
+	background        sync.WaitGroup
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
 	syncEventSinks    syncEventSinks
@@ -172,13 +174,11 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 		clientTimeout:     clientTimeout,
 		creationLocks:     make(map[int]*sync.Mutex),
 		healthTicker:      time.NewTicker(healthCheckInterval),
-		stopHealth:        make(chan struct{}),
 		failureTracker:    make(map[int]*failureInfo),
 		decryptionTracker: make(map[int]*decryptionErrorInfo),
 	}
-
-	// Start health check routine
-	go cp.healthCheckLoop()
+	cp.healthCtx, cp.stopHealth = context.WithCancel(context.Background())
+	cp.background.Go(cp.healthCheckLoop)
 
 	return cp, nil
 }
@@ -468,14 +468,11 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		// Don't fail client creation for sync manager issues
 	}
 
-	// Start background tracker health refresh if SyncManager is set and pool isn't closed
 	cp.mu.RLock()
-	sm := cp.syncManager
-	closed := cp.closed
-	cp.mu.RUnlock()
-	if sm != nil && !closed {
-		sm.StartTrackerHealthRefresh(instanceID)
+	if cp.syncManager != nil && !cp.closed {
+		cp.syncManager.StartTrackerHealthRefresh(instanceID)
 	}
+	cp.mu.RUnlock()
 
 	return client, nil
 }
@@ -535,7 +532,7 @@ func (cp *ClientPool) healthCheckLoop() {
 		select {
 		case <-cp.healthTicker.C:
 			cp.performHealthChecks()
-		case <-cp.stopHealth:
+		case <-cp.healthCtx.Done():
 			return
 		}
 	}
@@ -564,14 +561,17 @@ func (cp *ClientPool) performHealthChecks() {
 		}
 
 		// Submit health check in goroutine
-		go func(client *Client, instanceID int) {
+		cp.background.Go(func() {
 			// Use appropriate timeout for health checks
 			// Since we're now using GetWebAPIVersion instead of Login,
 			// this should be much faster even for large instances
-			ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
+			ctx, cancel := context.WithTimeout(cp.healthCtx, healthCheckTimeout)
 			defer cancel()
 
 			if err := client.HealthCheck(ctx); err != nil {
+				if isContextStopped(err) {
+					return
+				}
 				if IsDeadlineExpired(err) {
 					// Slow, not down: no backoff, and debug level to keep a
 					// saturated instance from producing a warn every cycle.
@@ -589,7 +589,7 @@ func (cp *ClientPool) performHealthChecks() {
 				// Health check succeeded, reset failure tracking
 				cp.ResetFailureTracking(instanceID)
 			}
-		}(client, instanceID)
+		})
 	}
 }
 
@@ -645,7 +645,7 @@ func (cp *ClientPool) Close() error {
 	}
 
 	cp.closed = true
-	close(cp.stopHealth)
+	cp.stopHealth()
 	cp.healthTicker.Stop()
 
 	// Collect instance IDs and syncManager reference before releasing lock
@@ -664,7 +664,9 @@ func (cp *ClientPool) Close() error {
 		for _, id := range instanceIDs {
 			sm.StopTrackerHealthRefresh(id)
 		}
+		sm.trackerHealthLoops.Wait()
 	}
+	cp.background.Wait()
 
 	// Release resources
 	cp.cache.Close()

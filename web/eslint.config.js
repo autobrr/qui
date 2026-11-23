@@ -8,6 +8,8 @@ import { globalIgnores } from 'eslint/config'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+import { disableReason } from './scripts/disable-reason-rule.mjs'
+import { entryFiles } from './scripts/entry-files-rule.mjs'
 import { layerOrder } from './scripts/layer-order-rule.mjs'
 import { noComments } from './scripts/no-comments-rule.mjs'
 import { noDirectEffect } from './scripts/no-direct-effect-rule.mjs'
@@ -57,6 +59,20 @@ const bulkActionDialogImportPattern = {
 }
 
 const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
+
+const bulkActionRestriction = {
+  object: 'api',
+  property: 'bulkAction',
+  message: bulkActionModuleMessage,
+}
+
+const tabTitleRestriction = {
+  object: 'document',
+  property: 'title',
+  message: 'The tab title module in @/hooks/useTabTitle owns the browser tab title. Give the route its title in staticData, and pass the page detail or the speeds with usePageTitle from "@/hooks/usePageTitle" instead.',
+}
+
+const tabTitleModuleFiles = ['src/hooks/useTabTitle.ts', 'src/hooks/useTabTitle.test.tsx']
 
 // "<redacted>" and "gazelle.orpheusApiKey" are valid strings, so the string rule matches the full domains only.
 const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
@@ -174,6 +190,8 @@ const effectHooks = {
   'src/hooks/useDebounce.ts': 'Gives a value after it has stayed the same for a delay.',
   'src/hooks/useDelayedVisibility.ts': 'Says when the tab has been hidden for a delay.',
   'src/hooks/useNow.ts': 'Gives the time, and renders again each minute.',
+  'src/hooks/usePageTitle.ts': 'Passes the title detail and the speeds of the open page to the tab title.',
+  'src/hooks/useTabTitle.ts': 'Writes the browser tab title.',
 }
 
 export default tseslint.config([
@@ -251,6 +269,12 @@ export default tseslint.config([
   },
   {
     files: ['**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-properties': ['error', tabTitleRestriction],
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
     ignores: [
       ...bulkActionModuleFiles,
       // The details panel and the filter sidebar act on one torrent or one tracker, not on the selection.
@@ -263,11 +287,13 @@ export default tseslint.config([
       'src/components/torrents/table/__tests__/TorrentTableOptimized.smoke.test.tsx',
     ],
     rules: {
-      'no-restricted-properties': ['error', {
-        object: 'api',
-        property: 'bulkAction',
-        message: bulkActionModuleMessage,
-      }],
+      'no-restricted-properties': ['error', bulkActionRestriction, tabTitleRestriction],
+    },
+  },
+  {
+    files: tabTitleModuleFiles,
+    rules: {
+      'no-restricted-properties': ['error', bulkActionRestriction],
     },
   },
   {
@@ -385,8 +411,9 @@ export default tseslint.config([
     },
   },
   {
-    plugins: { qui: { rules: { 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
+    plugins: { qui: { rules: { 'disable-reason': disableReason, 'entry-files': entryFiles, 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
     rules: {
+      'qui/disable-reason': 'error',
       'qui/no-comments': 'error',
       'qui/no-native-title': 'error',
     },
@@ -402,6 +429,7 @@ export default tseslint.config([
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**'],
     rules: {
+      'qui/entry-files': ['error', { root: path.join(import.meta.dirname, 'src'), features: 'components' }],
       'qui/layer-order': ['error', { root: path.join(import.meta.dirname, 'src'), layers }],
     },
   },

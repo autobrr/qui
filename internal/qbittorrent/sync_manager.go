@@ -592,6 +592,7 @@ type SyncManager struct {
 
 	// Background tracker health cache - refreshed periodically per instance
 	trackerHealthMu      sync.RWMutex
+	trackerHealthLoops   sync.WaitGroup
 	trackerHealthCache   map[int]*TrackerHealthSnapshot
 	trackerHealthCancel  map[int]context.CancelFunc // cancel funcs for background loops
 	trackerHealthKick    map[int]chan struct{}      // early-pass requests, see KickTrackerHealthRefresh
@@ -820,7 +821,7 @@ func (sm *SyncManager) StartTrackerHealthRefresh(instanceID int) {
 	sm.trackerHealthSeen[instanceID] = seen
 	sm.trackerHealthMu.Unlock()
 
-	go sm.trackerHealthRefreshLoop(refreshCtx, instanceID, kick, seen)
+	sm.trackerHealthLoops.Go(func() { sm.trackerHealthRefreshLoop(refreshCtx, instanceID, kick, seen) })
 }
 
 // KickTrackerHealthRefresh asks the instance's health loop for an early pass, so a

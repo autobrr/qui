@@ -44,6 +44,9 @@ func main() {
 	if got[commentsLinter], err = goComments(); err != nil {
 		fail(err)
 	}
+	if got[mapAnyLinter], err = mapAnyCounts(); err != nil {
+		fail(err)
+	}
 	offLines, err := offLogLines()
 	if err != nil {
 		fail(err)
@@ -91,6 +94,11 @@ func main() {
 		fail(err)
 	}
 	problems = append(problems, grown...)
+	oversized, err := fileSizeProblems(*base)
+	if err != nil {
+		fail(err)
+	}
+	problems = append(problems, oversized...)
 
 	for _, linter := range slices.Sorted(maps.Keys(got)) {
 		fmt.Printf("ratchet: %s has %d problems in %d files\n", linter, sum(got[linter]), len(got[linter]))
@@ -164,7 +172,7 @@ func compare(got, allow, base counts) []string {
 			_, listed := allow[linter][file]
 			switch {
 			case n > want:
-				problems = append(problems, fmt.Sprintf("%s: %s reports %d problems, the allowlist allows %d. Fix the new ones.", file, linter, n, want))
+				problems = append(problems, fmt.Sprintf("%s: %s reports %d problems, the allowlist allows %d. Fix the new ones.%s", file, linter, n, want, linterFixes[linter]))
 			case n == 0 && listed:
 				problems = append(problems, fmt.Sprintf("%s: %s reports no problems. Delete its entry from %s.", file, linter, allowlistPath))
 			case n < want:
@@ -186,17 +194,17 @@ func growth(allow, base counts) []string {
 		if _, ok := base[linter]; !ok {
 			continue
 		}
-		if linter == commentsLinter {
-			if now, was := sum(allow[linter]), sum(base[linter]); now > was {
-				problems = append(problems, fmt.Sprintf("%s: the total grew from %d to %d. The total only shrinks: a moved comment keeps it level, a new comment does not.", linter, was, now))
-			}
+		now, was := sum(allow[linter]), sum(base[linter])
+		if now <= was {
 			continue
 		}
+		var grown []string
 		for _, file := range slices.Sorted(maps.Keys(allow[linter])) {
-			if want, was := allow[linter][file], base[linter][file]; want > was {
-				problems = append(problems, fmt.Sprintf("%s: the %s entry grew from %d to %d. The allowlist only shrinks.", file, linter, was, want))
+			if want, before := allow[linter][file], base[linter][file]; want > before {
+				grown = append(grown, fmt.Sprintf("%s from %d to %d", file, before, want))
 			}
 		}
+		problems = append(problems, fmt.Sprintf("%s: the total grew from %d to %d. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report. These entries grew: %s.", linter, was, now, strings.Join(grown, ", ")))
 	}
 	return problems
 }

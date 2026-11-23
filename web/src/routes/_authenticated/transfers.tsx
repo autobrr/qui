@@ -8,6 +8,9 @@ import { TransfersPage } from "@/pages/Transfers"
 import { createFileRoute } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/transfers")({
+  staticData: {
+    title: { titleKey: "nav.transfers", titleNs: "common" },
+  },
   validateSearch: transfersSearchSchema,
   component: TransfersRoute,
 })

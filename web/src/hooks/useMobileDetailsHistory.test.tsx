@@ -47,6 +47,7 @@ function mount(entries: string[]) {
     getParentRoute: () => rootRoute,
     path: "/list",
     component: Page,
+    staticData: { title: null },
     validateSearch: (search: Record<string, unknown>) => ({ torrent: search.torrent as string | undefined }),
   })
   // A second list, as the list of another instance
@@ -54,9 +55,10 @@ function mount(entries: string[]) {
     getParentRoute: () => rootRoute,
     path: "/list2",
     component: Page,
+    staticData: { title: null },
     validateSearch: (search: Record<string, unknown>) => ({ torrent: search.torrent as string | undefined }),
   })
-  const otherRoute = createRoute({ getParentRoute: () => rootRoute, path: "/other" })
+  const otherRoute = createRoute({ getParentRoute: () => rootRoute, path: "/other", staticData: { title: null } })
   const router = createRouter({ routeTree: rootRoute.addChildren([listRoute, list2Route, otherRoute]), history })
   render(<RouterProvider router={router} />)
   return { history }

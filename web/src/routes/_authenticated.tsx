@@ -10,6 +10,7 @@ import { createFileRoute, Navigate, redirect } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 export const Route = createFileRoute("/_authenticated")({
+  staticData: { title: null },
   beforeLoad: ({ location }) => {
     // The demo has no backend behind any page but the torrent list.
     if (isDemo && !location.pathname.includes("/instances")) {

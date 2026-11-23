@@ -8,6 +8,9 @@ import { CrossSeedPage } from "@/pages/CrossSeedPage"
 import { createFileRoute } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/cross-seed")({
+  staticData: {
+    title: { titleKey: "nav.crossSeed", titleNs: "common" },
+  },
   validateSearch: crossSeedSearchSchema,
   component: CrossSeedRoute,
 })

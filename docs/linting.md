@@ -38,34 +38,34 @@ To prove that a new forbidigo or depguard rule fires, add a temporary violation 
 
 ## Ratchet
 
-The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The count for a file can only go down. `go run ./scripts/ratchet` applies seven rules:
+The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The total of a linter can only go down. `go run ./scripts/ratchet` applies seven rules:
 
 1. A file reports no more problems than its entry allows. A file without an entry must have no problems.
 2. An entry is not higher than the number that the file reports. When you fix a problem, lower the count of its file in the same change, and delete the entry at 0.
-3. No entry is higher than the entry on the base branch. A linter that the allowlist of the base does not list is a new rule, which starts with the count of each file.
+3. The total of a linter is not higher than its total on the base branch. A linter that the allowlist of the base does not list is a new rule, which starts with the count of each file.
 4. No `nolint` comment hides `gocognit`. Split the function.
-5. The comment totals do not grow. See "Comments" below.
-6. A `nolint` comment names only linters that `.golangci.yml` or `scripts/ratchet/golangci.yml` runs. A name of a linter that is off hides nothing: delete it.
-7. `web/eslint-suppressions.json` has entries only for the rules in `suppressedRules` of `scripts/ratchet/comments.go`, each of those rules has an entry, and the total of each rule does not grow. See "Suppressed ESLint Rules" below.
+5. A `nolint` comment names only linters that `.golangci.yml` or `scripts/ratchet/golangci.yml` runs. A name of a linter that is off hides nothing: delete it.
+6. `web/eslint-suppressions.json` has entries only for the rules in `suppressedRules` of `scripts/ratchet/comments.go`, each of those rules has an entry, and the total of each rule does not grow. See "Suppressed ESLint Rules" below.
+7. No code file crosses the size limit in `.file-size.json`, and that file does not get looser. See "File Size" below.
 
 - The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
-- If you move code that has ratchet problems into a new file, or rename such a file, the new path needs an allowlist entry. Rule 3 then fails with "the entry grew from 0 to N", also when the totals do not change. No flag skips rule 3, so a maintainer merges that pull request past the failed check.
+- If you move code that has ratchet problems into another file, or rename such a file, move its count to the entry of the new path in the same change. Rule 3 fails only when the total of a linter grows, and its message names each entry that grew. ADR 0077 has the reason.
 
-Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go` lane fixes up to 5 problems in one file of `allowlist.json` and uses the `ratchet` label. ADR 0020 describes it. It does not take the `comments` entries or the `offlog` entries. The `web` lane removes up to 3 effects that `qui/no-direct-effect` holds in one file of `web/eslint-suppressions.json` and uses the `ratchet-web` label. ADR 0075 describes it. A lane opens no pull request while one with its label is open.
+Each day, `.github/workflows/ratchet.yml` opens up to two pull requests. The `go` lane fixes up to 5 problems in one file of `allowlist.json` and uses the `ratchet` label. ADR 0020 describes it. It does not take the `comments`, `offlog`, or `mapany` entries. The `web` lane removes up to 3 effects that `qui/no-direct-effect` holds in one file of `web/eslint-suppressions.json` and uses the `ratchet-web` label. ADR 0075 describes it. A lane opens no pull request while one with its label is open.
 
 ### Comments
 
 `docs/standards/simplicity.md` bans comments. The ratchet holds the comments from before the ban, in two places:
 
-- **Go:** the `comments` key of `allowlist.json` is not a golangci-lint linter. The ratchet command counts the comments in each tracked Go file itself, with `scripts/comments/gocomments`. Rules 1 and 2 apply to each file. For rule 3, the command compares the total of all files with the total on the base branch, so a comment that moves to another file with its code does not fail the check. Move its count to the entry of the new file.
+- **Go:** the `comments` key of `allowlist.json` is not a golangci-lint linter. The ratchet command counts the comments in each tracked Go file itself, with `scripts/comments/gocomments`. Rules 1 to 3 apply to it as to each linter, so a comment that moves to another file with its code does not fail the check.
 - **TypeScript:** ESLint reports each comment as `qui/no-comments`, one of the suppressed ESLint rules below.
 
 `web/scripts/no-comments-rule.mjs` and `scripts/comments/gocomments` list the markers that are not comments for this rule. The ESLint rule has no fix, because `make fmt` runs `eslint --fix` and must not delete a comment that nobody read. The `/delete-comment` skill sorts the comments of a file and deletes them.
 
 ### Lines About an Off Feature
 
-`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to each file.
+`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter.
 
 A line counts when its level is DEBUG or INFO, and one of these is true:
 
@@ -76,19 +76,50 @@ When a file has more lines than its entry allows, the command prints the positio
 
 The counter reads only the syntax tree. It cannot read the text of a message that a variable holds, and it does not take a `switch` case for a test of an off switch, so a line there counts only by the other rule. It does not see a line that a helper function writes, or a notification. The silence test that `docs/standards/logging.md` asks for is the first guard, and the counter is the second.
 
+### Maps of Any
+
+Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The `mapany` key of `allowlist.json` holds the maps from before the rule, also the ones that decode JSON of an unknown shape on purpose. Like `comments`, it is not a golangci-lint linter: `scripts/ratchet/mapany.go` counts each such map type in each tracked Go file. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
+
 ### Suppressed ESLint Rules
 
-`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Five rules have entries:
+`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Seven rules have entries:
 
+- `qui/disable-reason` reports an `eslint-disable` comment that gives no reason. See "Exceptions" below.
+- `qui/entry-files` reports an import into a subfolder of a feature folder, such as `components/instances/marks`, from a file outside that feature. The files at the root of a feature folder are its entry files, and the tests are outside the rule. ADR 0081 has the reason.
 - `qui/layer-order` reports an import from a folder of `web/src` that comes later in the folder order than the folder of the file. `layers` in `web/eslint.config.js` holds the order, and the tests are outside the rule. ADR 0076 has the reason.
 - `qui/no-comments` reports each comment.
 - `qui/no-direct-effect` reports each call of `useEffect`, `useLayoutEffect`, or `useInsertionEffect` outside the tests and outside the hooks in `effectHooks` of `web/eslint.config.js`. ADR 0073 has the reason.
 - `react-hooks/exhaustive-deps` reports a hook whose dependency list does not match the values that the hook reads.
 - `react-refresh/only-export-components` reports a file that exports a component and another value, because fast refresh then reloads the whole file.
 
-After you fix a report of one of these rules, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 7 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 7 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
+After you fix a report of one of these rules, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 6 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 6 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
 
 A new rule that old code breaks starts the same way: add its name to `suppressedRules`, and write its reports to the file one time with `pnpm exec eslint --suppress-rule <rule>` and the paths of the `lint` script in `web/package.json`.
+
+### File Size
+
+An agent reads a whole file into its context, so a large file leaves less room for the task. `.file-size.json` at the root of the repo sets the limit. ADR 0078 has the reason.
+
+- `max_bytes` is the limit: 20,000 bytes, which is about 5,000 tokens. A CRLF line end counts as one byte.
+- `extensions` lists the files that count as code: Go, TypeScript, and scripts. Test files count.
+- `skip` lists the generated files. An entry is a path, or a folder that ends in `/`.
+
+The ratchet command fails a file that crosses the limit, and a new file that starts over it. A file that is over the limit on the base branch can still grow, and a rename of such a file passes.
+
+When the check fails, move code out of the file. The message of the check gives the five rules for the move. If the moved code has ratchet problems, move their counts in `allowlist.json` in the same change (rule 3).
+
+Only a maintainer makes `.file-size.json` looser: a higher `max_bytes`, a new `skip` entry, or one extension less. The command fails on such a change, also when a maintainer makes it, and the maintainer merges it past the failed check. If a file is generated, or a move needs a new folder or a new exported name, stop and ask the maintainer.
+
+## Exceptions
+
+An exception is a comment that hides the report of a check on its line: `//nolint`, `#nosec`, `//gosec:disable`, and `//exhaustive:ignore` in Go, and `eslint-disable`, `@ts-expect-error`, `@ts-ignore`, and `@ts-nocheck` in the frontend. Two rules apply, and ADR 0079 has the reason.
+
+- **An exception gives its reason on the line.** golangci-lint demands `//nolint:<linter> // reason`. ESLint demands `eslint-disable-next-line <rule> -- <reason>` with the rule `qui/disable-reason`, and a description after `@ts-expect-error`. The 13 `eslint-disable` comments from before the rule are held as a suppressed ESLint rule. `qui/disable-reason` cannot report `/* eslint-disable */` without a rule name, because that comment turns the rule off too. The check below counts that comment.
+- **A pull request that adds a new exception needs the approval of a maintainer.** `.github/workflows/exceptions.yml` runs `.github/scripts/count_exceptions.py` on each pull request. The script reads each changed Go, TypeScript, and JavaScript file whole, as it is before and after the pull request, finds its comments with the Go and TypeScript parsers, and compares the exceptions of the two sides. An exception is new when the pull request removes no comment with the same text. So an exception that moves with its code, in its file or to another file, is not new. An exception with a changed text is new, and so is one that takes the place of another exception. When the pull request adds a new exception, the check fails and lists the new ones. The check passes when a maintainer sets the label `exceptions-approved`.
+
+When the check fails, fix the report that each new exception hides, and delete the exception. If the code is right on purpose, keep the exception with its reason, and ask a maintainer for the label. Only a maintainer sets the label, also on a pull request of their own. A coding agent never sets it.
+
+The workflow runs the script of the base branch and reads the files of the pull request only as text, so a pull request cannot change its own check. A change to the script or the workflow takes effect after it merges.
 
 ## Policy
 
