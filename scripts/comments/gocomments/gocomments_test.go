@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,12 @@ import (
 
 // regression: #4391
 func TestFiles(t *testing.T) {
+	vars, err := exec.CommandContext(t.Context(), "git", "rev-parse", "--local-env-vars").Output()
+	require.NoError(t, err)
+	for _, name := range strings.Fields(string(vars)) {
+		t.Setenv(name, "")
+		require.NoError(t, os.Unsetenv(name))
+	}
 	t.Chdir(t.TempDir())
 	git := func(args ...string) {
 		t.Helper()
