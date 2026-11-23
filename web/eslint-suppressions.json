@@ -621,6 +621,9 @@
     }
   },
   "src/components/instances/preferences/PreferenceWidgets.tsx": {
+    "qui/disable-reason": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 22
     }
@@ -800,6 +803,9 @@
     }
   },
   "src/components/layout/Header.tsx": {
+    "qui/disable-reason": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 37
     },
@@ -1525,6 +1531,9 @@
     }
   },
   "src/components/torrents/TorrentCardsMobile.tsx": {
+    "qui/disable-reason": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 91
     },
@@ -1574,6 +1583,9 @@
     }
   },
   "src/components/torrents/TorrentDialogs.tsx": {
+    "qui/disable-reason": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 49
     },
@@ -1620,6 +1632,9 @@
     }
   },
   "src/components/torrents/TorrentTableColumns.tsx": {
+    "qui/disable-reason": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 18
     },
@@ -1628,6 +1643,9 @@
     }
   },
   "src/components/torrents/TorrentTableOptimized.tsx": {
+    "qui/disable-reason": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 93
     },
@@ -1770,6 +1788,9 @@
     }
   },
   "src/components/torrents/table/TorrentTableRow.tsx": {
+    "qui/disable-reason": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 31
     }
@@ -1992,6 +2013,9 @@
     }
   },
   "src/components/ui/json-editor.tsx": {
+    "qui/disable-reason": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -2233,6 +2257,9 @@
     }
   },
   "src/hooks/torrent-table/useCompactViewSort.ts": {
+    "qui/disable-reason": {
+      "count": 2
+    },
     "qui/layer-order": {
       "count": 2
     },
@@ -2299,6 +2326,9 @@
     }
   },
   "src/hooks/torrent-table/useTorrentTableNotifications.ts": {
+    "qui/disable-reason": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 11
     },
@@ -3742,6 +3772,9 @@
     }
   },
   "src/pages/Dashboard.tsx": {
+    "qui/disable-reason": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 10
     },
