@@ -9,6 +9,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 import { disableReason } from './scripts/disable-reason-rule.mjs'
+import { effectHookShape } from './scripts/effect-hook-shape-rule.mjs'
 import { entryFiles } from './scripts/entry-files-rule.mjs'
 import { layerOrder } from './scripts/layer-order-rule.mjs'
 import { noComments } from './scripts/no-comments-rule.mjs'
@@ -411,7 +412,7 @@ export default tseslint.config([
     },
   },
   {
-    plugins: { qui: { rules: { 'disable-reason': disableReason, 'entry-files': entryFiles, 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
+    plugins: { qui: { rules: { 'disable-reason': disableReason, 'effect-hook-shape': effectHookShape, 'entry-files': entryFiles, 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
     rules: {
       'qui/disable-reason': 'error',
       'qui/no-comments': 'error',
@@ -423,6 +424,12 @@ export default tseslint.config([
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**', ...Object.keys(effectHooks)],
     rules: {
       'qui/no-direct-effect': 'error',
+    },
+  },
+  {
+    files: Object.keys(effectHooks),
+    rules: {
+      'qui/effect-hook-shape': 'error',
     },
   },
   {
