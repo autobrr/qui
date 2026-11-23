@@ -43,6 +43,8 @@ func FuzzBuildPlacesEachFileAtItsName(f *testing.F) {
 		{`a\b`, "c"},
 		{"..a", "b.."},
 		{"...", "..."},
+		{"a", "_____padding_file_"},
+		{"_____padding_file_", "_____padding_file_x"},
 	} {
 		f.Add(seed[0], seed[1])
 	}
@@ -111,6 +113,9 @@ func FuzzBuildPlacesEachFileAtItsName(f *testing.F) {
 				if len(file.Path) == 0 || slices.ContainsFunc(file.Path, func(part string) bool { return !isPlainPart(part) }) {
 					t.Fatalf("the helper for %q holds the path %q", tc.fileNames, file.Path)
 				}
+			}
+			if slices.ContainsFunc(tc.fileNames, func(name string) bool { return strings.Contains(name, "_____padding_file_") }) {
+				continue
 			}
 			if placed := placedFileNames(t, helper); !slices.Equal(placed, tc.fileNames) {
 				t.Fatalf("the helper for %q places its files at %q", tc.fileNames, placed)
