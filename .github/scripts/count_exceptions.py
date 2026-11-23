@@ -52,6 +52,10 @@ def closing(line, at, quote):
     return None
 
 
+def continued(line):
+    return (len(line) - len(line.rstrip("\\"))) % 2 == 1
+
+
 def comments(line, state, js):
     stack, regex = state
     found, at, mark = [], 0, 0
@@ -63,6 +67,11 @@ def comments(line, state, js):
             stop = len(line) if end < 0 else end
             found.append((line[mark:stop + 2], line[at:stop], at > mark))
             at, stack = (stop, stack) if end < 0 else (end + 2, stack[:-1])
+        elif top and top in QUOTES:
+            end = closing(line, at, top)
+            at = len(line) if end is None else end + 1
+            if end is not None or not continued(line):
+                stack, regex = stack[:-1], False
         elif top == "`":
             at = (TEMPLATE if js else RAW).match(line, at).end()
             if line.startswith("`", at):
@@ -78,7 +87,12 @@ def comments(line, state, js):
             stack, at = (*stack, "`"), at + 1
         elif char in QUOTES:
             end = closing(line, at + 1, char)
-            at, regex = (at + 1, regex) if end is None else (end + 1, False)
+            if end is None and js and continued(line):
+                stack, at = (*stack, char), len(line)
+            else:
+                at, regex = (at + 1, regex) if end is None else (end + 1, False)
+        elif line.startswith(("++", "--"), at):
+            at += 2
         elif js and regex and (match := REGEX.match(line, at)):
             at, regex = match.end(), False
         elif match := WORD.match(line, at):

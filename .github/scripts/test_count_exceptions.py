@@ -155,6 +155,31 @@ index 1111111..2222222 100644
  const last = 2
 """
 
+WEB_POSTFIX = """diff --git a/web/src/h.ts b/web/src/h.ts
+index 1111111..2222222 100644
+--- a/web/src/h.ts
++++ b/web/src/h.ts
+@@ -1,2 +1,3 @@
+ let n = 0
++const half = n++ / 2 // eslint-disable-line no-plusplus -- a counter
+ const last = 2
+"""
+
+WEB_CONTINUED = """diff --git a/web/src/i.ts b/web/src/i.ts
+index 1111111..2222222 100644
+--- a/web/src/i.ts
++++ b/web/src/i.ts
+@@ -1,5 +1,5 @@
+ const first = 1
+-const text = "the help says \\
+-and then \\
+-// eslint-disable-line no-console"
++// eslint-disable-next-line no-console -- the CLI prints its result
++const more = "one \\
++two" // eslint-disable-line quotes -- the name has an apostrophe
+ console.log(first)
+"""
+
 WEB_MULTILINE = """diff --git a/web/src/d.ts b/web/src/d.ts
 index 1111111..2222222 100644
 --- a/web/src/d.ts
@@ -354,6 +379,18 @@ class ExceptionsTest(unittest.TestCase):
             *((line, "// @ts-ignore") for line in (3, 4, 5)),
             (7, "// eslint-disable-next-line no-console -- the CLI prints its result"),
         ])
+
+    def test_a_division_after_a_postfix_operator_is_no_regex(self):
+        added, removed = exceptions(WEB_POSTFIX)
+        self.assertEqual(texts(added), [("web/src/h.ts", 2, "// eslint-disable-line no-plusplus -- a counter")])
+
+    def test_a_quoted_string_that_a_backslash_continues_holds_no_exception(self):
+        added, removed = exceptions(WEB_CONTINUED)
+        self.assertEqual(texts(added), [
+            ("web/src/i.ts", 2, "// eslint-disable-next-line no-console -- the CLI prints its result"),
+            ("web/src/i.ts", 4, "// eslint-disable-line quotes -- the name has an apostrophe"),
+        ])
+        self.assertEqual(removed, [])
 
     def test_a_comment_in_a_template_substitution(self):
         added, _ = exceptions(WEB_SUBSTITUTION)
