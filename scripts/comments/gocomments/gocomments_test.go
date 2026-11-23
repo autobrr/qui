@@ -4,11 +4,48 @@
 package gocomments
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// regression: #4391
+func TestFiles(t *testing.T) {
+	vars, err := exec.CommandContext(t.Context(), "git", "rev-parse", "--local-env-vars").Output()
+	require.NoError(t, err)
+	for name := range strings.FieldsSeq(string(vars)) {
+		t.Setenv(name, "")
+		require.NoError(t, os.Unsetenv(name))
+	}
+	t.Chdir(t.TempDir())
+	git := func(args ...string) {
+		t.Helper()
+		out, err := exec.CommandContext(t.Context(), "git", args...).CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	require.NoError(t, os.Mkdir("sub", 0o750))
+	for name, body := range map[string]string{
+		"committed.go":                 "package p\n",
+		"new.go":                       "package p\n",
+		filepath.Join("sub", "new.go"): "package p\n",
+		"ignored.go":                   "package p\n",
+		"notes.txt":                    "",
+		".gitignore":                   "ignored.go\n",
+	} {
+		require.NoError(t, os.WriteFile(name, []byte(body), 0o600))
+	}
+	git("init", "-q")
+	git("add", "committed.go", ".gitignore")
+
+	got, err := Files()
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"committed.go", "new.go", "sub/new.go"}, got)
+}
 
 func TestCount(t *testing.T) {
 	tests := []struct {

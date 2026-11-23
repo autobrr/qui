@@ -44,8 +44,8 @@ type span struct {
 	wholeLines bool
 }
 
-func Tracked() ([]string, error) {
-	out, err := exec.CommandContext(context.Background(), "git", "ls-files", "-z", "--", "*.go").Output()
+func Files() ([]string, error) {
+	out, err := exec.CommandContext(context.Background(), "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.go").Output()
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files: %w", err)
 	}

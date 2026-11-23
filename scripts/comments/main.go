@@ -37,7 +37,7 @@ func main() {
 }
 
 func list() error {
-	paths, err := gocomments.Tracked()
+	paths, err := gocomments.Files()
 	if err != nil {
 		return err
 	}
