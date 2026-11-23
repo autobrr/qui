@@ -68,6 +68,23 @@ func TestCompareZeroEntry(t *testing.T) {
 		compare(counts{}, allow, nil))
 }
 
+func TestLowerEntries(t *testing.T) {
+	got := counts{"nilerr": {"a.go": 1, "c.go": 3, "d.go": 2}, "forbidigo": {"e.go": 1}}
+	allow := counts{"nilerr": {"a.go": 2, "b.go": 1, "c.go": 3, "d.go": 1}}
+
+	lowered := lowerEntries(got, allow)
+
+	assert.Equal(t, []string{
+		"a.go: nilerr from 2 to 1",
+		"b.go: nilerr from 1 to 0, entry deleted",
+	}, lowered)
+	assert.Equal(t, counts{"nilerr": {"a.go": 1, "c.go": 3, "d.go": 1}}, allow)
+	assert.Equal(t, []string{
+		"e.go: forbidigo reports 1 problems, the allowlist allows 0. Fix the new ones.",
+		"d.go: nilerr reports 2 problems, the allowlist allows 1. Fix the new ones.",
+	}, compare(got, allow, nil))
+}
+
 // Each case matches what golangci-lint v2.14.0 does with the comment above a
 // function that breaks gocognit.
 func TestHidesGocognit(t *testing.T) {
