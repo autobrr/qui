@@ -30,10 +30,6 @@ export function spreadsheetDocumentTitle(): string {
   return isSpreadsheetClassicActive() ? SPREADSHEET_CLASSIC_DOCUMENT_TITLE : SPREADSHEET_DOCUMENT_TITLE
 }
 
-export function isSpreadsheetDocumentTitle(title: string): boolean {
-  return title === SPREADSHEET_DOCUMENT_TITLE || title === SPREADSHEET_CLASSIC_DOCUMENT_TITLE
-}
-
 function subscribe(callback: () => void): () => void {
   window.addEventListener("themechange", callback)
   return () => window.removeEventListener("themechange", callback)
@@ -45,6 +41,14 @@ export function useSpreadsheetDisguise(): boolean {
 
 export function useSpreadsheetClassic(): boolean {
   return useSyncExternalStore(subscribe, isSpreadsheetClassicActive)
+}
+
+function readSpreadsheetDocumentTitle(): string | null {
+  return isSpreadsheetDisguiseActive() ? spreadsheetDocumentTitle() : null
+}
+
+export function useSpreadsheetDocumentTitle(): string | null {
+  return useSyncExternalStore(subscribe, readSpreadsheetDocumentTitle)
 }
 
 // Passerby-visible strings only (nav, table headers, filter pane, status bar,

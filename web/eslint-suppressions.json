@@ -2768,11 +2768,6 @@
       "count": 1
     }
   },
-  "src/hooks/useRouteTitle.ts": {
-    "qui/no-comments": {
-      "count": 1
-    }
-  },
   "src/hooks/useSSHSetup.ts": {
     "qui/no-comments": {
       "count": 16
@@ -2867,10 +2862,10 @@
   },
   "src/hooks/useTitleBarSpeeds.ts": {
     "qui/no-comments": {
-      "count": 5
+      "count": 1
     },
     "qui/no-direct-effect": {
-      "count": 6
+      "count": 5
     }
   },
   "src/hooks/useTopTorrents.ts": {
@@ -3841,7 +3836,7 @@
   },
   "src/pages/Torrents.tsx": {
     "qui/no-comments": {
-      "count": 21
+      "count": 19
     },
     "qui/no-direct-effect": {
       "count": 7
@@ -4075,10 +4070,10 @@
   },
   "src/utils/theme.ts": {
     "qui/layer-order": {
-      "count": 5
+      "count": 4
     },
     "qui/no-comments": {
-      "count": 32
+      "count": 28
     }
   },
   "src/utils/theme.visit.test.ts": {

@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useTranslation } from "react-i18next"
 
 export const Route = createFileRoute("/")({
+  staticData: { title: null },
   component: IndexComponent,
 })
 

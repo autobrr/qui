@@ -24,6 +24,7 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useSwipeToClose } from "@/hooks/useSwipeToClose"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { useTorrentListEscape } from "@/hooks/useTorrentListEscape"
 import { api } from "@/lib/api"
@@ -89,22 +90,13 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     dispatchSelection({ type: "scope", scope: selectionScopeKey })
   }, [dispatchSelection, selectionScopeKey])
   useEffect(() => () => dispatchSelection({ type: "clear" }), [dispatchSelection])
-  const instance = useMemo(() => {
-    if (isAllInstances) {
-      return undefined
-    }
-    return instances?.find(i => i.id === instanceId)
-  }, [instances, instanceId, isAllInstances])
   const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
-  useTitleBarSpeeds({
-    mode: "instance",
+  const titleBarSpeeds = useTitleBarSpeeds({
     enabled: titleBarSpeedsEnabled && !isAllInstances,
     instanceId,
-    instanceName: instance?.name ?? instanceName,
-    // Foreground speeds come from the SSE stream inside useTitleBarSpeeds itself,
-    // so no page-level serverState plumbing is needed here.
   })
+  usePageTitle({ detail: isAllInstances ? undefined : instanceName, speeds: titleBarSpeeds })
 
   // Sidebar width: 320px normal, 260px dense (fixed px to avoid issues with non-16px root font size)
   const sidebarWidth = viewMode === "dense" ? "260px" : "320px"
