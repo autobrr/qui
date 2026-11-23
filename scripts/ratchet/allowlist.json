@@ -362,7 +362,7 @@
     "internal/qbittorrent/maindata_test.go": 1,
     "internal/qbittorrent/memory_budget_test.go": 2,
     "internal/qbittorrent/pending_state_test.go": 8,
-    "internal/qbittorrent/pool.go": 135,
+    "internal/qbittorrent/pool.go": 133,
     "internal/qbittorrent/pool_test.go": 38,
     "internal/qbittorrent/prefcatalog/advanced.go": 5,
     "internal/qbittorrent/prefcatalog/behavior.go": 2,
