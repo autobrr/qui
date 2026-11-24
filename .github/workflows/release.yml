@@ -454,11 +454,34 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
 
-  docker-merge-develop:
-    name: Publish Docker multi-arch manifest (develop)
+  develop-head:
+    name: Check that the commit is the head of develop
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     needs: docker
+    permissions: {}
+    outputs:
+      newest: ${{ steps.head.outputs.newest }}
+    steps:
+      - name: Compare the commit with the head of develop
+        id: head
+        run: |
+          head=$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" refs/heads/develop | cut -f1)
+          if [[ ! $head =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not read the head of develop"
+            exit 1
+          fi
+          newest=false
+          if [[ $head == "$GITHUB_SHA" ]]; then
+            newest=true
+          fi
+          echo "newest=$newest" >>"$GITHUB_OUTPUT"
+
+  docker-merge-develop:
+    name: Publish Docker multi-arch manifest (develop)
+    if: needs.develop-head.outputs.newest == 'true'
+    runs-on: ubuntu-latest
+    needs: [docker, develop-head]
     steps: *docker-merge-steps
 
   test:
