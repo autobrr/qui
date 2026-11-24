@@ -120,11 +120,6 @@
       "count": 1
     }
   },
-  "src/components/cross-seed/BlocklistTab.tsx": {
-    "qui/no-direct-effect": {
-      "count": 1
-    }
-  },
   "src/components/cross-seed/CategoriesTab.tsx": {
     "qui/no-comments": {
       "count": 3
