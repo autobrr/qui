@@ -84,7 +84,7 @@ func heldAnnounces(library []qbt.Torrent) []heldAnnounce {
 }
 
 func TestHeldTitlesAnswerAsTheFullScan(t *testing.T) {
-	first, second := heldLibraries(t, biglib.Size)
+	first, second := heldLibraries(t, heldEquivalenceLibrarySize)
 	announces := append(heldAnnounces(first.torrents), heldAlternateAnnounces()...)
 	torrents, files := heldAlternateTorrents()
 	first.torrents = append(first.torrents, torrents...)

@@ -5,6 +5,8 @@ package crossseed
 
 import (
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/json/v2"
 	"fmt"
 	"maps"
@@ -20,6 +22,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
@@ -418,6 +421,22 @@ func TestCheckSendsNoMoreSyncsThanTheFullScan(t *testing.T) {
 	}
 }
 
+type dropsWrites struct{ dbinterface.Querier }
+
+func (dropsWrites) BeginTx(context.Context, *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	return droppedTx{}, nil
+}
+
+type droppedTx struct{ dbinterface.TxQuerier }
+
+func (droppedTx) ExecContext(context.Context, string, ...any) (sql.Result, error) {
+	return driver.RowsAffected(1), nil
+}
+
+func (droppedTx) Commit() error { return nil }
+
+func (droppedTx) Rollback() error { return nil }
+
 func TestCheckFindsAnAddThroughTheClientProxy(t *testing.T) {
 	library := serveHeldLibrary(t, nil, nil)
 	library.adding = qbt.Torrent{Hash: heldHash('c', 1), Name: freshName, Size: heldSingleSize, TotalSize: heldSingleSize, AddedOn: 1}
@@ -426,11 +445,11 @@ func TestCheckFindsAnAddThroughTheClientProxy(t *testing.T) {
 	rig.waitReady(held)
 	testutil.SetUnexportedField(t, rig.clients[1].SyncOwner(), "interval", time.Duration(0))
 	testutil.SetUnexportedField(t, rig.clients[1].SyncOwner(), "readsSync", false)
-	keys := models.NewClientAPIKeyStore(rig.db)
-	rawKey, _, err := keys.Create(t.Context(), "autobrr", 1)
+	rawKey, _, err := models.NewClientAPIKeyStore(rig.db).Create(t.Context(), "autobrr", 1)
 	require.NoError(t, err)
 	router := chi.NewRouter()
-	proxy.NewHandler(rig.pool, keys, rig.store, rig.syncs, nil, nil, "/").Routes(router)
+	keysWithoutLastUsed := models.NewClientAPIKeyStore(dropsWrites{rig.db})
+	proxy.NewHandler(rig.pool, keysWithoutLastUsed, rig.store, rig.syncs, nil, nil, "/").Routes(router)
 	syncs := library.syncs()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/proxy/"+rawKey+"/api/v2/torrents/add", strings.NewReader("urls=magnet%3A%3Fxt%3Durn%3Abtih%3A"+library.adding.Hash))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
