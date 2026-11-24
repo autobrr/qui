@@ -102,8 +102,8 @@ func matchCategoryMappingRule(rules []models.CategoryMappingRule, category strin
 // #1734). A matching rule wins over both the name parse and the file-extension
 // signal. Returns false when settings fail to load or no rule matches.
 func (s *Service) contentTypeFromCategoryRule(ctx context.Context, category string) (ContentTypeInfo, bool) {
-	settings, err := s.GetAutomationSettings(ctx)
-	if err != nil || settings == nil {
+	settings, err := s.savedAutomationSettings(ctx)
+	if err != nil {
 		return ContentTypeInfo{}, false
 	}
 	return categoryRuleContentType(settings.CategoryMappingRules, category)
