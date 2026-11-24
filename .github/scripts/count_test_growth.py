@@ -21,6 +21,7 @@ WEB_CASE = re.compile(
     r"(?:\.(?:each|only|skip|todo|concurrent|sequential|fails|for|skipIf|runIf))*"
     r"(?:<.*?>)?\s*[(`]"
 )
+REGRESSION_MARKER = re.compile(r"//\s*regression: #\d+")
 
 
 @dataclass
@@ -28,6 +29,7 @@ class Growth:
     added_cases: int = 0
     removed_cases: int = 0
     added_lines: int = 0
+    added_markers: int = 0
 
     @property
     def net_cases(self):
@@ -70,6 +72,7 @@ def count(diff):
             if line[0] == "+":
                 growth.added_cases += cases
                 growth.added_lines += 1
+                growth.added_markers += bool(REGRESSION_MARKER.search(line[1:]))
             else:
                 growth.removed_cases += cases
     return files

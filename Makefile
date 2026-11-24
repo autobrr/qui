@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n check-feature-map lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n check-feature-map check-regression-marker lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -294,6 +294,12 @@ check-feature-map:
 	@echo "Checking the feature map..."
 	cd $(WEB_DIR) && pnpm check:feature-map --base "$$(git merge-base origin/develop HEAD || echo origin/develop)"
 
+# The Regression marker check that CI runs on a pull request: a fix adds no test case to a file without // regression: #N. TITLE defaults to the subject of the first commit of the branch
+check-regression-marker:
+	@base=$$(git merge-base origin/develop HEAD || echo origin/develop); \
+	title=$${TITLE:-$$(git log --reverse --format=%s "$$base..HEAD" | head -1)}; \
+	python3 -B .github/scripts/check_regression_marker.py --title "$$title" --number "$${NUMBER:-N}" "$$base" HEAD
+
 # Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
 lint-ratchet: lint-version
 	go run ./scripts/ratchet -lower -base "$$(git merge-base origin/develop HEAD || echo origin/develop)"
@@ -360,6 +366,7 @@ help:
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"
 	@echo "  make lint-full      - Lint entire codebase"
 	@echo "  make lint-ratchet   - Lower the lint ratchet allowlist, and check that it only shrinks"
+	@echo "  make check-regression-marker - Fail a fix whose new tests lack // regression: #N (TITLE, NUMBER)"
 	@echo "  make lint-json      - Generate JSON lint report for AI agents"
 	@echo "  make lint-fix       - Auto-fix linting issues where possible"
 	@echo ""
