@@ -165,7 +165,7 @@ func (h *RSSHandler) AddFolder(w http.ResponseWriter, r *http.Request) {
 		if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFolder") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("path", req.Path).Msg("failed to add RSS folder")
+		logRSSPaths(log.Error(), err, "path", req.Path).Int("instanceID", instanceID).Msg("failed to add RSS folder")
 		RespondError(w, http.StatusInternalServerError, "Failed to add RSS folder")
 		return
 	}
@@ -274,10 +274,8 @@ func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, ins
 	// destPath must be the full new path: "FolderName\FeedName"
 	destPath := targetFolder + "\\" + newFeedName
 	if err := h.syncManager.MoveRSSItem(ctx, instanceID, newFeedName, destPath); err != nil {
-		log.Warn().Err(err).
+		logRSSPaths(log.Warn(), err, "feedName", newFeedName, "destPath", destPath).
 			Int("instanceID", instanceID).
-			Str("feedName", newFeedName).
-			Str("destPath", destPath).
 			Msg("failed to move RSS feed to folder (feed was added to root)")
 		RespondJSON(w, http.StatusCreated, WarningResponse{
 			Warning: "Feed added to root - could not move to folder",
@@ -359,7 +357,7 @@ func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 		if respondIfInstanceDisabled(w, err, instanceID, "SetRSSFeedURL") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("path", req.Path).Msg("failed to set RSS feed URL")
+		logRSSPaths(log.Error(), err, "path", req.Path).Int("instanceID", instanceID).Msg("failed to set RSS feed URL")
 		RespondError(w, http.StatusInternalServerError, "Failed to set RSS feed URL")
 		return
 	}
@@ -392,7 +390,7 @@ func (h *RSSHandler) MoveItem(w http.ResponseWriter, r *http.Request) {
 		if respondIfInstanceDisabled(w, err, instanceID, "MoveRSSItem") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("itemPath", req.ItemPath).Msg("failed to move RSS item")
+		logRSSPaths(log.Error(), err, "itemPath", req.ItemPath, "destPath", req.DestPath).Int("instanceID", instanceID).Msg("failed to move RSS item")
 		RespondError(w, http.StatusInternalServerError, "Failed to move RSS item")
 		return
 	}
@@ -425,7 +423,7 @@ func (h *RSSHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 		if respondIfInstanceDisabled(w, err, instanceID, "RemoveRSSItem") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("path", req.Path).Msg("failed to remove RSS item")
+		logRSSPaths(log.Error(), err, "path", req.Path).Int("instanceID", instanceID).Msg("failed to remove RSS item")
 		RespondError(w, http.StatusInternalServerError, "Failed to remove RSS item")
 		return
 	}
@@ -457,7 +455,7 @@ func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
 		if respondIfInstanceDisabled(w, err, instanceID, "RefreshRSSItem") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("itemPath", itemPath).Msg("failed to refresh RSS item")
+		logRSSPaths(log.Error(), err, "itemPath", itemPath).Int("instanceID", instanceID).Msg("failed to refresh RSS item")
 		RespondError(w, http.StatusInternalServerError, "Failed to refresh RSS item")
 		return
 	}
@@ -490,7 +488,7 @@ func (h *RSSHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 		if respondIfInstanceDisabled(w, err, instanceID, "MarkRSSItemAsRead") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("itemPath", req.ItemPath).Msg("failed to mark RSS item as read")
+		logRSSPaths(log.Error(), err, "itemPath", req.ItemPath).Int("instanceID", instanceID).Msg("failed to mark RSS item as read")
 		RespondError(w, http.StatusInternalServerError, "Failed to mark RSS item as read")
 		return
 	}

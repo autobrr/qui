@@ -4,9 +4,11 @@
 package handlers
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"testing"
 
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -82,5 +84,44 @@ func TestRestoreRSSArticleID(t *testing.T) {
 		}
 		require.NoError(t, err, tt.id)
 		assert.Equal(t, tt.want, id, tt.id)
+	}
+}
+
+func TestLogRSSPathsHidesNamesThatHoldALink(t *testing.T) {
+	const folder = "https://rss.example.invalid/folder?key=made-up-folder-key"
+	const feed = folder + "/feed.xml?key=made-up-feed-key"
+	shortFolder, shortFeed := rssStandIn([]byte(folder)), rssStandIn([]byte(feed))
+
+	for _, tt := range []struct {
+		name   string
+		err    string
+		fields []string
+		want   map[string]string
+	}{
+		// regression: #4474
+		{"a feed named by its URL", "could not remove RSS item; path: " + feed, []string{"path", feed},
+			map[string]string{"error": "could not remove RSS item; path: " + shortFeed, "path": shortFeed}},
+		// regression: #4474
+		{"a move into a folder named by its URL", "itemPath: " + feed + ", destPath: " + folder + `\` + feed, []string{"itemPath", feed, "destPath", folder + `\` + feed},
+			map[string]string{"error": "itemPath: " + shortFeed + ", destPath: " + shortFolder + `\` + shortFeed, "itemPath": shortFeed, "destPath": shortFolder + `\` + shortFeed}},
+		// regression: #4474
+		{"a name that starts with another name", "itemPath: " + feed + ", destPath: " + folder, []string{"destPath", folder, "itemPath", feed},
+			map[string]string{"error": "itemPath: " + shortFeed + ", destPath: " + shortFolder, "itemPath": shortFeed, "destPath": shortFolder}},
+		// regression: #4474
+		{"plain names", `path: Shows\Feed`, []string{"path", `Shows\Feed`},
+			map[string]string{"error": `path: Shows\Feed`, "path": `Shows\Feed`}},
+		// regression: #4474
+		{"an empty path", "status code: 500", []string{"path", ""},
+			map[string]string{"error": "status code: 500", "path": ""}},
+	} {
+		logs := captureLogs(t)
+		logRSSPaths(log.Error(), errors.New(tt.err), tt.fields...).Msg("failed")
+
+		assert.NotContains(t, logs.String(), "made-up", tt.name)
+		var line map[string]string
+		require.NoError(t, json.Unmarshal(logs.Bytes(), &line), tt.name)
+		delete(line, "level")
+		delete(line, "message")
+		assert.Equal(t, tt.want, line, tt.name)
 	}
 }

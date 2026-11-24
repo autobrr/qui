@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"cmp"
 	"encoding/json/v2"
 	"errors"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -170,4 +172,27 @@ func restoreRSSArticleID(feed []byte, id *string) error {
 		}
 	}
 	return rssNoMatchError("The RSS article ID " + *id + " matches no article of the feed")
+}
+
+func logRSSPaths(event *zerolog.Event, err error, fields ...string) *zerolog.Event {
+	var names []string
+	for i := 1; i < len(fields); i += 2 {
+		for name := range strings.SplitSeq(fields[i], `\`) {
+			if holdsRSSLink([]byte(name)) {
+				names = append(names, name)
+			}
+		}
+	}
+	slices.SortFunc(names, func(a, b string) int { return cmp.Compare(len(b), len(a)) })
+	hide := func(text string) string {
+		for _, name := range names {
+			text = strings.ReplaceAll(text, name, rssStandIn([]byte(name)))
+		}
+		return text
+	}
+	event = event.Str(zerolog.ErrorFieldName, hide(err.Error()))
+	for i := 1; i < len(fields); i += 2 {
+		event = event.Str(fields[i-1], hide(fields[i]))
+	}
+	return event
 }
