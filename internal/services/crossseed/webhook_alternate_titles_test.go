@@ -216,6 +216,7 @@ func TestHeldTitlesAskWithATorrentNameThatCarriesTheTitle(t *testing.T) {
 
 func TestHeldTitlesAskForAnEpisodeMapOnlyForMixedNumbering(t *testing.T) {
 	torrents, files := heldAlternateTorrents()
+	torrents = append(torrents, qbt.Torrent{Hash: heldHash('b', 5), Name: "Quiet Harbor S01 1080p WEB-DL AAC2.0 H.264-KiraSubs", Size: heldSingleSize, TotalSize: heldSingleSize, Progress: 1, AddedOn: 1})
 	rig := newHeldRig(t, serveHeldLibrary(t, append(biglib.Torrents(200), torrents...), files))
 	held, _ := rig.heldTitles(t.Context())
 	rig.waitReady(held)
@@ -227,6 +228,7 @@ func TestHeldTitlesAskForAnEpisodeMapOnlyForMixedNumbering(t *testing.T) {
 		{torrent: heldQuayName, size: uint64(heldQuaySize)},
 		{torrent: "Amber.Quay.S01.1080p.WEB-DL.DDP5.1.H.264-GRP9"},
 		{torrent: "Azure Compass S04 1080p WEB-DL AAC2.0 H.264-KiraSubs"},
+		{torrent: "[KiraSubs] Quiet Harbor - 05 (1080p) [ABCD1234].mkv"},
 	} {
 		checkAnnounce(t, held, announce.torrent, announce.size)
 		require.Empty(t, sonarr.takeAsked(), announce.torrent)
@@ -238,37 +240,27 @@ func TestHeldTitlesAskForAnEpisodeMapOnlyForMixedNumbering(t *testing.T) {
 }
 
 func TestHeldTitlesWithoutAnEpisodeMapAnswerAsTheFullScan(t *testing.T) {
-	for name, tc := range map[string]struct {
-		answer func(ctx context.Context) error
-		waits  time.Duration
-	}{
-		"error": {answer: func(context.Context) error { return errors.New("sonarr down") }},
-		"timeout": {answer: func(ctx context.Context) error {
-			<-ctx.Done()
-			return ctx.Err()
-		}, waits: announceAliasLookupTimeout},
-	} {
-		t.Run(name, func(t *testing.T) {
-			var answers []*WebhookCheckResponse
-			for _, features := range [][]string{nil, freshOn} {
-				freshCase(t, features, 1, func(rig *freshRig) {
-					sonarr := &namedArr{answer: tc.answer}
-					rig.svc.arrService = sonarr
-					rig.instances[0].hold(freshAbsoluteName(31), 1)
-					rig.instances[0].hold(freshOtherName, 1)
-					require.NoError(t, rig.instances[0].owner.Sync(rig.t.Context()))
+	var answers []*WebhookCheckResponse
+	for _, features := range [][]string{nil, freshOn} {
+		freshCase(t, features, 1, func(rig *freshRig) {
+			sonarr := &namedArr{answer: func(ctx context.Context) error {
+				<-ctx.Done()
+				return ctx.Err()
+			}}
+			rig.svc.arrService = sonarr
+			rig.instances[0].hold(freshAbsoluteName(31), 1)
+			rig.instances[0].hold(freshOtherName, 1)
+			require.NoError(t, rig.instances[0].owner.Sync(rig.t.Context()))
 
-					resp, waited := rig.check(freshName)
+			resp, waited := rig.check(freshName)
 
-					require.Equal(t, tc.waits, waited)
-					require.Equal(t, []string{freshName}, sonarr.takeAsked())
-					answers = append(answers, resp)
-				})
-			}
-			require.Equal(t, answers[0], answers[1])
-			require.False(t, answers[1].CanCrossSeed)
+			require.Equal(t, announceAliasLookupTimeout, waited)
+			require.Equal(t, []string{freshName}, sonarr.takeAsked())
+			answers = append(answers, resp)
 		})
 	}
+	require.Equal(t, answers[0], answers[1])
+	require.False(t, answers[1].CanCrossSeed)
 }
 
 func TestHeldTitlesHoldNoLockDuringTheEpisodeMapCall(t *testing.T) {

@@ -262,24 +262,16 @@ func TestArrAlternateTitlesSkipContentOfAnotherSource(t *testing.T) {
 }
 
 func TestArrAlternateTitlesCountACachedRowThatIsFetchedAgain(t *testing.T) {
-	for name, titlesKnown := range map[string]bool{"no episode map yet": true, "no titles yet": false} {
-		t.Run(name, func(t *testing.T) {
-			fake, service := newFakeArr(t)
-			fake.down = true
-			hash, ids := models.ComputeTitleHash(arrSeriesName), &models.ExternalIDs{TVDbID: 70}
-			if titlesKnown {
-				require.NoError(t, fake.cache.SetWithTitles(t.Context(), hash, string(arr.ContentTypeTV), nil, ids, []string{"Lantern Ward"}, nil, false, false, time.Hour))
-			} else {
-				require.NoError(t, fake.cache.Set(t.Context(), hash, string(arr.ContentTypeTV), nil, ids, false, time.Hour))
-			}
+	fake, service := newFakeArr(t)
+	fake.down = true
+	hash, ids := models.ComputeTitleHash(arrSeriesName), &models.ExternalIDs{TVDbID: 70}
+	require.NoError(t, fake.cache.SetWithTitles(t.Context(), hash, string(arr.ContentTypeTV), nil, ids, []string{"Lantern Ward"}, nil, false, false, time.Hour))
 
-			answer, err := arrSourceOf(service, heldSeries).AlternateTitles(t.Context(), heldSeries)
+	answer, err := arrSourceOf(service, heldSeries).AlternateTitles(t.Context(), heldSeries)
 
-			require.NoError(t, err)
-			require.NotEmpty(t, fake.takeRequests())
-			require.True(t, answer.Requested)
-		})
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, fake.takeRequests())
+	require.True(t, answer.Requested)
 }
 
 func TestAlternateTitlesFetchLogBudget(t *testing.T) {

@@ -109,7 +109,7 @@ func (q *alternateTitleQueue) next() (title *heldTitle, release HeldRelease, wai
 	}
 	for len(q.failed) > 0 {
 		first := q.failed[0]
-		if first.holders > 0 && time.Now().Before(first.retryAt) {
+		if time.Now().Before(first.retryAt) {
 			return nil, HeldRelease{}, time.After(time.Until(first.retryAt))
 		}
 		q.failed = q.failed[1:]
