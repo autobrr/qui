@@ -158,10 +158,8 @@ func (x *heldIndex) candidates(keys []string, size int64) (held, waiting []strin
 			add(&held, hash)
 		}
 	}
-	if size > 0 {
-		for _, hash := range x.bySize[size] {
-			add(&held, hash)
-		}
+	for _, hash := range x.bySize[size] {
+		add(&held, hash)
 	}
 	for hash := range x.waiting {
 		add(&waiting, hash)
@@ -301,9 +299,7 @@ func (x *heldIndex) remove(hash string) {
 	for _, key := range held.keys {
 		dropHash(x.byKey, key, hash)
 	}
-	if held.size > 0 {
-		dropHash(x.bySize, held.size, hash)
-	}
+	dropHash(x.bySize, held.size, hash)
 }
 
 func dropHash[K comparable](lookup map[K][]string, key K, hash string) {

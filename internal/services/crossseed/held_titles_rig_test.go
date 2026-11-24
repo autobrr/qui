@@ -36,6 +36,7 @@ type heldLibrary struct {
 	rid       int64
 	url       string
 	onFiles   func()
+	down      bool
 }
 
 type heldMainData struct {
@@ -59,6 +60,10 @@ func (l *heldLibrary) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.down {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+		return
+	}
 	switch r.URL.Path {
 	case "/api/v2/auth/login":
 		_, _ = io.WriteString(w, "Ok.")
@@ -170,6 +175,23 @@ func (r *heldRig) reconnect(instanceID int) {
 	r.clients[instanceID] = client
 	testutil.SetUnexportedField(r.t, r.pool, "clients", maps.Clone(r.clients))
 	require.NoError(r.t, client.SyncOwner().Sync(r.t.Context()))
+}
+
+func (r *heldRig) add(library *heldLibrary) int {
+	r.t.Helper()
+	instance, err := r.store.Create(r.t.Context(), "instance"+string(rune('a'+len(r.instances))), "http://qbt.example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(r.t, err)
+	r.instances[instance.ID] = instance
+	r.libraries[instance.ID] = library
+	if library.down {
+		client, err := qbittorrent.NewClientWithTimeout(instance.ID, library.url, "", "", "", nil, nil, false, time.Minute, time.Minute)
+		require.NoError(r.t, err)
+		r.clients[instance.ID] = client
+		testutil.SetUnexportedField(r.t, r.pool, "clients", maps.Clone(r.clients))
+		return instance.ID
+	}
+	r.reconnect(instance.ID)
+	return instance.ID
 }
 
 func (r *heldRig) sync(instanceID int) {
