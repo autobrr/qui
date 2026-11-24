@@ -4,12 +4,18 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 func validateWebhookCheckRequest(req *WebhookCheckRequest) error {
@@ -76,8 +82,6 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 	contentInfo := DetermineContentType(incomingRelease)
 
-	aliasTitles, episodeMap := s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
-
 	log.Trace().
 		Str("source", "cross-seed.webhook").
 		Ints("requestedInstanceIds", requestedInstanceIDs).
@@ -97,7 +101,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Str("sourceRelease", incomingRelease.Source).
 		Msg("Webhook check: parsed incoming release")
 
-	answer, err := s.webhookMatchAllTorrents(ctx, webhookCheckInput{
+	input := webhookCheckInput{
 		instances: instances,
 		announced: namedRelease{release: incomingRelease, rawName: req.TorrentName},
 		size:      req.Size,
@@ -107,10 +111,18 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
 			allowUnknownSize:       req.Size == 0,
 			skipRecheck:            settings.SkipRecheck,
-			candidateTitles:        aliasTitles,
-			episodeMap:             episodeMap,
 		},
-	})
+	}
+	var answer webhookCheckAnswer
+	if targets, snapshotErrs := s.heldTitlesTargets(ctx, instances); s.heldTitles.ready(ctx, targetInstanceIDs) {
+		for instanceID, err := range snapshotErrs {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents from instance")
+		}
+		answer, err = s.webhookMatchHeldTitles(ctx, input, contentInfo.ContentType, targets)
+	} else {
+		input.policy.candidateTitles, input.policy.episodeMap = s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
+		answer, err = s.webhookMatchAllTorrents(ctx, input)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +137,13 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	if len(answer.matches) > 0 || answer.nearMisses > 0 {
 		level = zerolog.DebugLevel
 	}
-	log.WithLevel(level).
+	summary := log.WithLevel(level)
+	if answer.nothingHeld && summary.Enabled() {
+		summary = summary.Bool("nothingHeld", true).
+			Strs("titleKeys", heldTitlesQuery{announced: input.announced}.titleKeys(s.matcher())).
+			Uint64("size", req.Size)
+	}
+	summary.
 		Str("source", "cross-seed.webhook").
 		Ints("requestedInstanceIds", requestedInstanceIDs).
 		Ints("targetInstanceIds", targetInstanceIDs).
@@ -141,4 +159,91 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Matches:        answer.matches,
 		Recommendation: recommendation,
 	}, nil
+}
+
+func (s *Service) heldTitlesTargets(ctx context.Context, instances []*models.Instance) ([]int, map[int]error) {
+	if s.heldTitles == nil {
+		return nil, nil
+	}
+	targets := make([]int, 0, len(instances))
+	errs := map[int]error{}
+	for _, instance := range instances {
+		owner, err := s.syncManager.GetSyncOwner(ctx, instance.ID)
+		if err != nil {
+			errs[instance.ID] = err
+			continue
+		}
+		if owner.Snapshot() != nil {
+			targets = append(targets, instance.ID)
+		}
+	}
+	return targets, errs
+}
+
+func (s *Service) webhookMatchHeldTitles(ctx context.Context, input webhookCheckInput, contentType string, targets []int) (webhookCheckAnswer, error) {
+	gate := s.sourceGate()
+	webhookFilter := defaultsFor(triggerWebhook, input.settings).sourceFilter
+	query := heldTitlesQuery{announced: input.announced, size: int64(input.size)}
+	if !anyHeld(s.heldTitles.candidates(query, targets), func(torrent *qbt.Torrent) bool {
+		return !gate.check(torrent, webhookFilter).lasting()
+	}) {
+		return webhookCheckAnswer{nothingHeld: true}, nil
+	}
+	input.policy.candidateTitles, input.policy.episodeMap = s.announceAliasTitles(ctx, input.announced.rawName, contentType)
+	query.alternateTitles = input.policy.candidateTitles
+	candidates := s.heldTitles.candidates(query, targets)
+
+	pendingReads := make(map[int]*pendingLocalReads, len(candidates))
+	waits := false
+	for instanceID, found := range candidates {
+		pendingReads[instanceID] = s.requestLocalReads(ctx, instanceID, func(yield func(*qbt.Torrent) bool) {
+			for _, torrent := range slices.Concat(found.held, found.waiting) {
+				if !gate.check(torrent, webhookFilter).lasting() && !yield(torrent) {
+					return
+				}
+			}
+		})
+		waits = waits || pendingReads[instanceID].hasFills()
+	}
+	readsCtx, cancelReads := context.WithTimeout(ctx, localReadWait)
+	defer cancelReads()
+	sourceReads := make(map[int]localReads, len(pendingReads))
+	for instanceID, pending := range pendingReads {
+		sourceReads[instanceID] = pending.wait(readsCtx)
+		if err := ctx.Err(); err != nil {
+			return webhookCheckAnswer{}, err
+		}
+	}
+	if waits {
+		candidates = s.heldTitles.candidates(query, targets)
+	}
+
+	var answer webhookCheckAnswer
+	for _, instance := range input.instances {
+		held := candidates[instance.ID].sorted()
+		if len(held) == 0 {
+			continue
+		}
+		if err := s.webhookMatchTorrents(ctx, instance, slices.Values(held), len(held), sourceReads[instance.ID], input, &answer); err != nil {
+			return webhookCheckAnswer{}, err
+		}
+	}
+	return answer, nil
+}
+
+func anyHeld(candidates map[int]heldCandidates, readable func(*qbt.Torrent) bool) bool {
+	for _, found := range candidates {
+		if len(found.held) > 0 || slices.ContainsFunc(found.waiting, readable) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c heldCandidates) sorted() []*qbt.Torrent {
+	torrents := slices.Concat(c.held, c.waiting)
+	slices.SortFunc(torrents, func(a, b *qbt.Torrent) int {
+		return cmp.Or(strings.Compare(a.Name, b.Name), strings.Compare(a.Hash, b.Hash))
+	})
+	return torrents
 }

@@ -80,3 +80,11 @@ func rideOnSyncs(f rideFacts, now time.Time) bool {
 		return true
 	}
 }
+
+func (sm *SyncManager) InstanceSnapshot(ctx context.Context, instanceID int) *qbt.SyncSnapshot {
+	client, err := sm.clientPool.GetClientOffline(ctx, instanceID)
+	if err != nil || client.SyncOwner() == nil {
+		return nil
+	}
+	return client.SyncOwner().SnapshotUnchecked()
+}
