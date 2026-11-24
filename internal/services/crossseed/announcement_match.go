@@ -106,37 +106,30 @@ func (s *Service) classifyWebhookAnnouncementSource(
 // webhookSkipRecheckReason rejects a match that Skip recheck cannot verify.
 const webhookSkipRecheckReason = "skip recheck needs a verified match"
 
-// webhookCandidate decides whether one local torrent can cross-seed the
-// announced release. The decision says why a torrent was rejected.
-func (s *Service) webhookCandidate(
-	ctx context.Context,
-	instance *models.Instance,
-	torrent *qbt.Torrent,
-	announced namedRelease,
-	announceSize uint64,
-	policy announcementMatchPolicy,
-) (WebhookCheckMatch, searchCandidateDecision) {
-	decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, announced, int64(announceSize), policy).decision
+func (s *Service) webhookDecision(ctx context.Context, input webhookCheckInput, instanceID int, torrent *qbt.Torrent, sourceReads localReads) searchCandidateDecision {
+	policy := input.policy
+	policy.sourceReads = sourceReads
+	decision := s.classifyWebhookAnnouncementSource(ctx, instanceID, torrent, input.announced, int64(input.size), policy).decision
 	if !decision.Accepted {
-		return WebhookCheckMatch{}, decision
+		return decision
 	}
 	if policy.skipRecheck && searchDecisionRequiresVerification(decision.provenance()) {
 		decision.Accepted = false
 		decision.Class = searchCandidateClassRejected
 		decision.RejectReason = webhookSkipRecheckReason
-		return WebhookCheckMatch{}, decision
+		return decision
 	}
 
-	sourceSize := searchSourceSize(torrent)
-	// A season pack can take an episode without a size check, so a local
-	// torrent with no reported size gets here. Its size difference has no value.
-	if announceSize > 0 && sourceSize <= 0 {
+	if input.size > 0 && searchSourceSize(torrent) <= 0 {
 		decision.Accepted = false
 		decision.Class = searchCandidateClassRejected
 		decision.RejectReason = "unknown local size"
-		return WebhookCheckMatch{}, decision
 	}
+	return decision
+}
 
+func (s *Service) webhookMatch(instance *models.Instance, torrent *qbt.Torrent, announced namedRelease, announceSize uint64) WebhookCheckMatch {
+	sourceSize := searchSourceSize(torrent)
 	matchType := "metadata"
 	var sizeDiff float64
 	if announceSize > 0 {
@@ -174,7 +167,7 @@ func (s *Service) webhookCandidate(
 		MatchType:    matchType,
 		SizeDiff:     sizeDiff,
 		Progress:     torrent.Progress,
-	}, decision
+	}
 }
 
 // announceAliasTitles resolves ARR alternate titles and the episode map for an

@@ -140,7 +140,10 @@ export const downloadsLabels: TabLabels = {
     },
     mail_notification_auth_enabled: { labelKey: "preferences.fields.mailNotificationAuthEnabled" },
     mail_notification_username: { labelKey: "preferences.fields.mailNotificationUsername" },
-    mail_notification_password: { labelKey: "preferences.fields.mailNotificationPassword" },
+    mail_notification_password: {
+      labelKey: "preferences.fields.mailNotificationPassword",
+      placeholderKey: "preferences.settingsPanel.placeholders.passwordKeepCurrent",
+    },
     autorun_on_torrent_added_enabled: {
       labelKey: "preferences.fileManagement.runOnTorrentAdded",
       descriptionKey: "preferences.fileManagement.runOnTorrentAddedDescription",

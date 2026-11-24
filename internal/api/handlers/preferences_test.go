@@ -500,6 +500,58 @@ func TestPreferencesViewConnectionProxyAndI2P(t *testing.T) {
 	assert.JSONEq(t, `"127.0.0.1"`, string(view["proxy_ip"].Value))
 }
 
+// regression: #4472
+func TestPreferencesViewSendsPasswordsEmpty(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	fake.prefs["proxy_password"] = "made-up-proxy-password"
+	fake.prefs["mail_notification_password"] = "made-up-mail-password"
+	rig := newPreferencesRig(t, fake)
+
+	view, body := rig.view(t)
+
+	assert.NotContains(t, body, "made-up-proxy-password")
+	assert.NotContains(t, body, "made-up-mail-password")
+	for _, key := range []string{"proxy_password", "mail_notification_password"} {
+		assert.Equal(t, "password", view[key].Control, key)
+		assert.JSONEq(t, `""`, string(view[key].Value), key)
+	}
+}
+
+func TestPreferencesUpdateKeepsAnEmptyPassword(t *testing.T) {
+	tests := []struct {
+		name  string
+		patch string
+		want  map[string]any
+	}{
+		// regression: #4472
+		{
+			name:  "empty keeps the saved passwords",
+			patch: `{"proxy_username": "user", "proxy_password": "", "mail_notification_password": ""}`,
+			want:  map[string]any{"proxy_username": "user"},
+		},
+		// regression: #4472
+		{
+			name:  "a new password replaces the saved one",
+			patch: `{"proxy_password": "made-up-new-proxy-password", "mail_notification_password": "made-up-new-mail-password"}`,
+			want:  map[string]any{"proxy_password": "made-up-new-proxy-password", "mail_notification_password": "made-up-new-mail-password"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+			fake.prefs["proxy_password"] = "made-up-proxy-password"
+			fake.prefs["mail_notification_password"] = "made-up-mail-password"
+			rig := newPreferencesRig(t, fake)
+
+			recorder := rig.do(t, http.MethodPatch, "/preferences", tt.patch)
+
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			assert.Equal(t, []map[string]any{tt.want}, fake.recordedSets())
+			assert.NotContains(t, recorder.Body.String(), "made-up")
+		})
+	}
+}
+
 func TestPreferencesViewI2PNeedsLibtorrent2(t *testing.T) {
 	tests := []struct {
 		libtorrent string

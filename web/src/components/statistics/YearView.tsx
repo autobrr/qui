@@ -39,7 +39,7 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
   const summary = useMemo(() => yearSummary(bars), [bars])
   const colors = useSeriesColors()
   const config = useMemo<ChartConfig>(() => ({ heat: { theme: { light: colors.light[0], dark: colors.dark[0] } } }), [colors])
-  const { formatStart } = useBucketFormat("day")
+  const { formatStart } = useBucketFormat()
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 })
 
   return (

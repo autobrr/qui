@@ -263,3 +263,32 @@ func readyHeldTitles(t *testing.T, torrents []qbt.Torrent, files map[string]qbt.
 	rig.waitReady(held)
 	return held
 }
+
+func (r *heldRig) sameNameGroups() [][]qbittorrent.CopyGroupMember {
+	type release struct {
+		name string
+		size int64
+	}
+	groups := map[release][]qbittorrent.CopyGroupMember{}
+	for _, id := range slices.Sorted(maps.Keys(r.libraries)) {
+		for _, torrent := range r.libraries[id].torrents {
+			key := release{torrent.Name, torrent.TotalSize}
+			groups[key] = append(groups[key], qbittorrent.CopyGroupMember{InstanceID: id, Hash: torrent.Hash})
+		}
+	}
+	maps.DeleteFunc(groups, func(_ release, group []qbittorrent.CopyGroupMember) bool { return len(group) < 2 })
+	return slices.Collect(maps.Values(groups))
+}
+
+func (r *heldRig) publishCopyGroups(groups ...[]qbittorrent.CopyGroupMember) {
+	ids := map[int]map[string]uint64{}
+	for id, group := range groups {
+		for _, member := range group {
+			if ids[member.InstanceID] == nil {
+				ids[member.InstanceID] = map[string]uint64{}
+			}
+			ids[member.InstanceID][member.Hash] = uint64(id)
+		}
+	}
+	r.syncs.SetCopyGroups(qbittorrent.NewCopyGroups(ids, nil, slices.Sorted(maps.Keys(r.instances))))
+}

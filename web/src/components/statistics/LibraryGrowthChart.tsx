@@ -28,7 +28,7 @@ function isolated(points: LibraryPoint[], key: "totalSize" | "uniqueSize", index
 export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const { formatStart, formatTick } = useBucketFormat("day")
+  const { formatStart, formatTick } = useBucketFormat()
   const colors = useSeriesColors()
   const tooltip = useTapTooltip()
   const narrow = useIsPhone()

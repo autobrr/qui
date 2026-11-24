@@ -104,6 +104,10 @@ func (f *freshSyncs) InstanceSnapshot(_ context.Context, instanceID int) *qbt.Sy
 	return f.instances[instanceID].owner.SnapshotUnchecked()
 }
 
+func (f *freshSyncs) CopyGroups() *qbittorrent.CopyGroups {
+	return nil
+}
+
 func (f *freshSyncs) GetSyncOwner(_ context.Context, instanceID int) (*syncowner.Owner, error) {
 	return f.instances[instanceID].owner, nil
 }

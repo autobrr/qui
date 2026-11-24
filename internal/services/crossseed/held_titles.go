@@ -19,6 +19,7 @@ import (
 
 type heldTitlesSync interface {
 	InstanceSnapshot(ctx context.Context, instanceID int) *qbt.SyncSnapshot
+	CopyGroups() *qbittorrent.CopyGroups
 }
 
 type syncSinks interface {

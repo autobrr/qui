@@ -81,7 +81,10 @@ func (s *Service) webhookMatchAllTorrents(ctx context.Context, input webhookChec
 			}
 		}
 
-		if err := s.webhookMatchTorrents(ctx, instance, viewTorrents(torrentsView), len(torrentsView), sourceReads, input, &answer); err != nil {
+		decide := func(torrent *qbt.Torrent) searchCandidateDecision {
+			return s.webhookDecision(ctx, input, instance.ID, torrent, sourceReads)
+		}
+		if err := s.webhookMatchTorrents(ctx, instance, viewTorrents(torrentsView), len(torrentsView), decide, input, &answer); err != nil {
 			return webhookCheckAnswer{}, err
 		}
 	}
