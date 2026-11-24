@@ -77,6 +77,14 @@ func TestHoldsRSSLink(t *testing.T) {
 		{"(//tracker.example/dl?passkey=made-up-key)", true},
 		// regression: #4474
 		{"Mirror: \"//tracker.example/dl\"", true},
+		// regression: #4474
+		{"https://_tracker.example/dl?passkey=made-up-key", true},
+		// regression: #4474
+		{"//ümlaut.example/dl?passkey=made-up-key", true},
+		// regression: #4474
+		{"//\x80tracker.example/dl", true},
+		// regression: #4474
+		{"//\x7ftracker.example/dl", false},
 	} {
 		assert.Equal(t, tt.link, holdsRSSLink([]byte(tt.text)), tt.text)
 	}

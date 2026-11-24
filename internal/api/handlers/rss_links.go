@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
@@ -44,10 +45,14 @@ func holdsRSSLink(text []byte) bool {
 		if at > 0 && text[at-1] == ':' {
 			return true
 		}
-		if (at == 0 || !isASCIIAlnum(text[at-1])) && at+2 < len(text) && (isASCIIAlnum(text[at+2]) || text[at+2] == '[') {
+		if (at == 0 || !isASCIIAlnum(text[at-1])) && at+2 < len(text) && startsRSSHost(text[at+2]) {
 			return true
 		}
 	}
+}
+
+func startsRSSHost(c byte) bool {
+	return isASCIIAlnum(c) || c == '[' || c >= utf8.RuneSelf
 }
 
 func isASCIIAlnum(c byte) bool {
