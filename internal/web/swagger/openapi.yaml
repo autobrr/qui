@@ -725,7 +725,7 @@ paths:
       tags:
         - Notifications
       summary: List notification targets
-      description: Get configured notification targets
+      description: Get configured notification targets. A key without write access to notifications gets each URL as its scheme only.
       responses:
         '200':
           description: List of notification targets

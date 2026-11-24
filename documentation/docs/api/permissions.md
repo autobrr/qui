@@ -49,6 +49,8 @@ Each area offers only the levels in this table.
 
 A `.torrent` file and a backup hold tracker passkeys, so their downloads need `write`. A key without `Torrents: write` also gets tracker URLs and web seed links with the passkey hidden: each one shows only its scheme and host.
 
+A notification target URL holds the token of the service, so a key without `Notifications: write` gets each target URL as its scheme only, such as `discord://`.
+
 Each key can reach these routes with any Permission: the current user, tracker icons, peer-client icons, the theme list, the custom theme list, the version, the latest version, and the event-only stream. A torrent stream needs `Torrents: read`.
 
 ## Instance limit
