@@ -5,7 +5,11 @@ package crossseed
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -102,4 +106,52 @@ func TestCheckWebhookReloadsSettingsAfterFailedSave(t *testing.T) {
 	resp := checkSettingsName(t, svc)
 	require.False(t, resp.CanCrossSeed)
 	require.Empty(t, resp.Matches)
+}
+
+func TestCheckWebhookSharesOneSettingsLoadDuringOutage(t *testing.T) {
+	svc := settingsCheckService(t)
+	synctest.Test(t, func(t *testing.T) {
+		var loads atomic.Int32
+		svc.automationSettingsLoader = func(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
+			loads.Add(1)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+
+		start := time.Now()
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Go(func() {
+				_, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: settingsCheckName})
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+				require.LessOrEqual(t, time.Since(start), automationSettingsQueryTimeout)
+			})
+		}
+		wg.Wait()
+		require.Equal(t, int32(1), loads.Load())
+	})
+}
+
+func TestCheckWebhookStopsWaitingForSettingsWhenCancelled(t *testing.T) {
+	svc := settingsCheckService(t)
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			<-release
+			return &models.CrossSeedAutomationSettings{}, nil
+		}
+		first := make(chan *models.CrossSeedAutomationSettings)
+		go func() {
+			settings, _ := svc.savedAutomationSettings(t.Context())
+			first <- settings
+		}()
+		synctest.Wait()
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		_, err := svc.CheckWebhook(ctx, &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: settingsCheckName})
+		require.ErrorIs(t, err, context.Canceled)
+		close(release)
+		require.NotNil(t, <-first)
+	})
 }

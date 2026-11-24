@@ -199,6 +199,7 @@ type Service struct {
 	blocklistStore           *models.CrossSeedBlocklistStore
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	automationSettings       atomic.Pointer[models.CrossSeedAutomationSettings]
+	automationSettingsLoad   singleflight.Group
 	jackettService           *jackett.Service
 	arrService               arrLookupService // ARR service for ID lookup
 	notifier                 notifications.Notifier

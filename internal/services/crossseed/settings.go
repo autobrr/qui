@@ -67,17 +67,29 @@ func (s *Service) savedAutomationSettings(ctx context.Context) (*models.CrossSee
 	if settings := s.automationSettings.Load(); settings != nil {
 		return settings, nil
 	}
-	s.settingsMu.Lock()
-	defer s.settingsMu.Unlock()
-	if settings := s.automationSettings.Load(); settings != nil {
+	load := s.automationSettingsLoad.DoChan("", func() (any, error) {
+		s.settingsMu.Lock()
+		defer s.settingsMu.Unlock()
+		if settings := s.automationSettings.Load(); settings != nil {
+			return settings, nil
+		}
+		settings, err := s.GetAutomationSettings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		s.automationSettings.Store(settings)
+		return settings, nil
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-load:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		settings, _ := result.Val.(*models.CrossSeedAutomationSettings)
 		return settings, nil
 	}
-	settings, err := s.GetAutomationSettings(ctx)
-	if err != nil {
-		return nil, err
-	}
-	s.automationSettings.Store(settings)
-	return settings, nil
 }
 
 func (s *Service) ListBlocklist(ctx context.Context, instanceID int) ([]*models.CrossSeedBlocklistEntry, error) {
