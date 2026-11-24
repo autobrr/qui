@@ -23,7 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -226,9 +225,9 @@ func (r *heldRig) fullScan() (*Service, *spyARRLookupService) {
 	}, spy
 }
 
-func (r *heldRig) heldTitles(ctx context.Context) (*Service, *spyARRLookupService) {
+func (r *heldRig) heldTitles(ctx context.Context, sources ...AlternateTitleSource) (*Service, *spyARRLookupService) {
 	svc, spy := r.fullScan()
-	svc.StartHeldTitles(ctx, experimental.New([]string{string(experimental.HeldTitles)}), r.syncs, r.sinks)
+	svc.StartHeldTitles(ctx, experimental.New([]string{string(experimental.HeldTitles)}), r.syncs, r.sinks, sources)
 	return svc, spy
 }
 
@@ -238,21 +237,16 @@ func (r *heldRig) waitReady(svc *Service) {
 	require.Eventually(r.t, func() bool { return svc.heldTitles.ready(r.t.Context(), ids) }, 30*time.Second, 5*time.Millisecond)
 }
 
-type arrLookupDuring struct {
-	spyARRLookupService
-	during func()
-}
-
-func (a *arrLookupDuring) LookupExternalIDs(ctx context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error) {
-	a.during()
-	return a.spyARRLookupService.LookupExternalIDs(ctx, title, contentType)
-}
-
 func checkAnnounce(t *testing.T, svc *Service, name string, size uint64, instanceIDs ...int) *WebhookCheckResponse {
 	t.Helper()
 	resp, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: instanceIDs, TorrentName: name, Size: size})
 	require.NoError(t, err)
 	return resp
+}
+
+func requireNotHeld(t *testing.T, svc *Service, name string, size int64) {
+	t.Helper()
+	require.Empty(t, svc.heldTitles.candidates(heldTitlesQuery{announced: svc.matcher().readName(name), size: size}, []int{1}))
 }
 
 func readyHeldTitles(t *testing.T, torrents []qbt.Torrent, files map[string]qbt.TorrentFiles, settings models.CrossSeedAutomationSettings) *Service {

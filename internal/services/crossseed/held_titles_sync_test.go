@@ -53,10 +53,10 @@ func TestHeldTitlesKeepsTheOtherCopiesOfARemovedTorrent(t *testing.T) {
 func TestHeldTitlesFindsATorrentByTheSizeThatItsMetadataBrings(t *testing.T) {
 	rescue := qbt.Torrent{Hash: heldHash('f', 4), Name: "Quiet.Meadow.S01E05.1080p.WEB-DL.H.264-VOLT", Progress: 1, AddedOn: 1}
 	torrents := append(biglib.Torrents(200), rescue)
-	rig, library, held, spy := heldSyncCase(t, torrents, nil, models.CrossSeedAutomationSettings{RescueTitleMismatches: true})
+	rig, library, held, _ := heldSyncCase(t, torrents, nil, models.CrossSeedAutomationSettings{RescueTitleMismatches: true})
 
 	require.False(t, checkAnnounce(t, held, heldMissName, 0).CanCrossSeed)
-	require.Zero(t, spy.calls, "a torrent without metadata holds no size")
+	requireNotHeld(t, held, heldMissName, 0)
 
 	torrents[len(torrents)-1].Size, torrents[len(torrents)-1].TotalSize = heldRescueSize, heldRescueSize
 	library.set(torrents)

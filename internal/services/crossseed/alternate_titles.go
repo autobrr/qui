@@ -20,6 +20,8 @@ import (
 const (
 	alternateTitlePause = time.Second
 	alternateTitleRetry = 15 * time.Minute
+
+	sourceFailuresInARow = 3
 )
 
 type AlternateTitleSource interface {
@@ -39,7 +41,7 @@ type AlternateTitles struct {
 }
 
 type alternateTitles struct {
-	sources []AlternateTitleSource
+	sources []askedSource
 	busy    func() bool
 	wake    chan struct{}
 	pause   time.Duration
@@ -50,6 +52,13 @@ type alternateTitles struct {
 	queue   []*heldTitle
 	failed  []*heldTitle
 	retryAt time.Time
+}
+
+type askedSource struct {
+	AlternateTitleSource
+
+	failures    int
+	pausedUntil time.Time
 }
 
 type heldTitleIdentity struct {
@@ -66,8 +75,12 @@ type heldTitle struct {
 }
 
 func newAlternateTitles(sources []AlternateTitleSource, busy func() bool) *alternateTitles {
+	asked := make([]askedSource, len(sources))
+	for i, source := range sources {
+		asked[i].AlternateTitleSource = source
+	}
 	return &alternateTitles{
-		sources: sources,
+		sources: asked,
 		busy:    busy,
 		wake:    make(chan struct{}, 1),
 		pause:   alternateTitlePause,
@@ -214,12 +227,24 @@ func (a *alternateTitles) next() (title *heldTitle, release HeldRelease, retry <
 
 func (a *alternateTitles) ask(ctx context.Context, release HeldRelease) (titles []string, fromCache, ok bool) {
 	fromCache, ok = true, true
-	for _, source := range a.sources {
+	for i := range a.sources {
+		source := &a.sources[i]
+		if time.Now().Before(source.pausedUntil) {
+			ok = false
+			continue
+		}
 		answer, err := source.AlternateTitles(ctx, release)
 		if err != nil {
 			ok, fromCache = false, false
+			source.failures++
+			if source.failures >= sourceFailuresInARow {
+				source.pausedUntil = a.retryAt
+			}
 			log.Trace().Err(err).Str("title", release.Title).Msg("crossseed: an Alternate-title source failed")
 			continue
+		}
+		if !answer.FromCache {
+			source.failures = 0
 		}
 		titles = append(titles, answer.Titles...)
 		fromCache = fromCache && answer.FromCache

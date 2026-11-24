@@ -35,6 +35,10 @@ const (
 	freshOtherName = "Copper.Lantern.S02E06.1080p.WEB-DL.DDP5.1.H.264-GRP1"
 )
 
+func freshAbsoluteName(episode int) string {
+	return fmt.Sprintf("[GRP1] Copper Lantern - %d 1080p WEB-DL DDP5.1 H.264", episode)
+}
+
 type freshInstance struct {
 	owner *syncowner.Owner
 
@@ -165,7 +169,7 @@ func freshCase(t *testing.T, features []string, count int, run func(*freshRig)) 
 	}
 	synctest.Test(t, func(t *testing.T) {
 		rig.t = t
-		rig.svc.StartHeldTitles(t.Context(), experimental.New(features), syncs, syncs)
+		rig.svc.StartHeldTitles(t.Context(), experimental.New(features), syncs, syncs, nil)
 		require.NoError(t, rig.instances[0].owner.Sync(t.Context()))
 		synctest.Wait()
 		run(rig)
@@ -336,14 +340,14 @@ func TestCheckWaitsForNoFirstSync(t *testing.T) {
 	})
 }
 
-func TestCheckReadsOneAlternateTitleAndOneFileDeadlineForBothLooks(t *testing.T) {
+func TestCheckReadsOneEpisodeMapAndOneFileDeadlineForBothLooks(t *testing.T) {
 	freshCase(t, freshOn, 1, func(rig *freshRig) {
-		spy := &spyARRLookupService{result: &arr.ExternalIDsResult{IDs: &models.ExternalIDs{TVDbID: 1}, Titles: []string{"Kupferne Laterne"}}}
+		spy := &spyARRLookupService{result: &arr.ExternalIDsResult{IDs: &models.ExternalIDs{TVDbID: 1}, EpisodeMap: &models.EpisodeMap{Season: 2, Episode: 7, Absolute: 31}}}
 		rig.svc.arrService = spy
-		rig.instances[0].hold(freshOtherName, 1)
+		rig.instances[0].hold(freshAbsoluteName(30), 1)
 		require.NoError(t, rig.instances[0].owner.Sync(rig.t.Context()))
 		rig.instances[0].syncTakes(300 * time.Millisecond)
-		rig.instances[0].hold("Kupferne.Laterne.S02E07.1080p.WEB-DL.DDP5.1.H.264-GRP1", 0)
+		rig.instances[0].hold(freshAbsoluteName(31), 0)
 		rig.instances[0].startSync()
 
 		resp, waited := rig.check(freshName)

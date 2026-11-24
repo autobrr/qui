@@ -116,7 +116,7 @@ func (noSinks) AddSyncEventSink(qbittorrent.SyncEventSink) {}
 func (l *bigHeldLibrary) heldTitles(ctx context.Context, tb testing.TB, releases *ReleaseCache) *Service {
 	tb.Helper()
 	svc := l.fullScan(releases)
-	svc.StartHeldTitles(ctx, experimental.New([]string{string(experimental.HeldTitles)}), l.syncs, noSinks{})
+	svc.StartHeldTitles(ctx, experimental.New([]string{string(experimental.HeldTitles)}), l.syncs, noSinks{}, nil)
 	require.Eventually(tb, func() bool { return svc.heldTitles.ready(ctx, []int{l.instance.ID}) }, time.Minute, time.Millisecond)
 	return svc
 }

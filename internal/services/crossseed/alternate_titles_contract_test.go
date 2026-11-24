@@ -4,17 +4,21 @@
 package crossseed
 
 import (
+	"context"
 	"encoding/json/v2"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/arr"
+	"github.com/autobrr/qui/internal/testutil/logbudget"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -24,6 +28,7 @@ type alternateTitleContract struct {
 	titles  []string
 	unknown HeldRelease
 	fail    func()
+	hang    func()
 }
 
 func testAlternateTitleSource(t *testing.T, newContract func(t *testing.T) alternateTitleContract) {
@@ -49,16 +54,53 @@ func testAlternateTitleSource(t *testing.T, newContract func(t *testing.T) alter
 		require.Error(t, err)
 		require.Empty(t, answer.Titles)
 	})
+	for name, breakSource := range map[string]func(alternateTitleContract){
+		"check while the source fails": func(c alternateTitleContract) { c.fail() },
+		"check while the source hangs": func(c alternateTitleContract) { c.hang() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			torrent := qbt.Torrent{Hash: heldHash('b', 1), Name: arrSeriesName, Size: heldSingleSize, TotalSize: heldSingleSize, Progress: 1, AddedOn: 1}
+			rig := newHeldRig(t, serveHeldLibrary(t, []qbt.Torrent{torrent}, nil))
+			c := newContract(t)
+			breakSource(c)
+			asked := make(chan struct{})
+			held, _ := rig.heldTitles(t.Context(), announcedAlternateTitles{c.source, sync.OnceFunc(func() { close(asked) })})
+			rig.waitReady(held)
+			<-asked
+
+			require.True(t, checkAnnounce(t, held, arrSeriesName, 0).CanCrossSeed, "the title on its own")
+			require.False(t, checkAnnounce(t, held, strings.Replace(arrSeriesName, "Lantern.Ward", "Laternenwache", 1), 0).CanCrossSeed)
+		})
+	}
+}
+
+type announcedAlternateTitles struct {
+	AlternateTitleSource
+
+	asking func()
+}
+
+func (a announcedAlternateTitles) AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error) {
+	a.asking()
+	return a.AlternateTitleSource.AlternateTitles(ctx, held)
 }
 
 type fakeArrServer struct {
 	mu       sync.Mutex
 	down     bool
+	hangs    bool
 	parsed   map[string]string
 	requests []string
 }
 
 func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	hangs := f.hangs
+	f.mu.Unlock()
+	if hangs {
+		<-r.Context().Done()
+		return
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.requests = append(f.requests, r.URL.Path)
@@ -105,6 +147,12 @@ func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (f *fakeArrServer) set(change func(f *fakeArrServer)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	change(f)
+}
+
 func (f *fakeArrServer) takeRequests() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -147,11 +195,8 @@ func TestArrAlternateTitlesContract(t *testing.T) {
 				return alternateTitleContract{
 					source: NewArrAlternateTitles(service),
 					known:  known, titles: []string{name}, unknown: heldUnknown,
-					fail: func() {
-						fake.mu.Lock()
-						defer fake.mu.Unlock()
-						fake.down = true
-					},
+					fail: func() { fake.set(func(f *fakeArrServer) { f.down = true }) },
+					hang: func() { fake.set(func(f *fakeArrServer) { f.hangs = true }) },
 				}
 			})
 		})
@@ -165,6 +210,7 @@ func TestFakeAlternateTitlesContract(t *testing.T) {
 			source: fake,
 			known:  heldSeries, titles: []string{"Laternenwache"}, unknown: heldUnknown,
 			fail: func() { fake.set(func(f *fakeAlternateTitles) { f.down = true }) },
+			hang: func() { fake.set(func(f *fakeAlternateTitles) { f.hangs = true }) },
 		}
 	})
 }
@@ -194,4 +240,62 @@ func TestArrAlternateTitlesSkipContentThatSonarrAndRadarrDoNotHold(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, AlternateTitles{FromCache: true}, answer)
 	require.Empty(t, fake.takeRequests())
+}
+
+func TestAlternateTitlesFetchLogBudget(t *testing.T) {
+	fetch := func(t *testing.T, titles int, prepare func(fake *fakeArrServer, service *arr.Service) *arr.Service) func() {
+		t.Helper()
+		fake, service := newFakeArr(t)
+		service = prepare(fake, service)
+		drained := make(chan struct{})
+		stop := sync.OnceFunc(func() { close(drained) })
+		var a *alternateTitles
+		a = newAlternateTitles([]AlternateTitleSource{NewArrAlternateTitles(service)}, func() bool {
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			if len(a.queue) == 0 {
+				stop()
+			}
+			return false
+		})
+		a.pause = 0
+		for i := range titles {
+			name := fmt.Sprintf("Lantern Ward %s S01E01 1080p WEB-DL H.264-GRP", strings.Repeat("x", i+1))
+			if i%2 == 0 {
+				fake.parsed[name] = "series"
+			}
+			holdName(a, name, 1)
+		}
+		return func() {
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				a.run(ctx)
+			}()
+			<-drained
+			cancel()
+			<-done
+		}
+	}
+	answering := func(_ *fakeArrServer, service *arr.Service) *arr.Service { return service }
+	down := func(fake *fakeArrServer, service *arr.Service) *arr.Service {
+		fake.down = true
+		return service
+	}
+	for name, prepare := range map[string]func(*fakeArrServer, *arr.Service) *arr.Service{"answering": answering, "down": down} {
+		t.Run(name, func(t *testing.T) {
+			small, large := logbudget.Count(t, fetch(t, 10, prepare)), logbudget.Count(t, fetch(t, 200, prepare))
+			require.Equal(t, 1, large[logbudget.Line{Level: "debug", Message: "crossseed: alternate titles fetched for Held titles"}])
+			logbudget.AssertFlat(t, small, large)
+		})
+	}
+	t.Run("no Sonarr or Radarr", func(t *testing.T) {
+		logbudget.AssertSilent(t, fetch(t, 20, func(*fakeArrServer, *arr.Service) *arr.Service {
+			db := testdb.NewMigratedSQLite(t, "no-arr")
+			instances, err := models.NewArrInstanceStore(db, []byte(strings.Repeat("k", 32)))
+			require.NoError(t, err)
+			return arr.NewService(instances, models.NewArrIDCacheStore(db))
+		}))
+	})
 }

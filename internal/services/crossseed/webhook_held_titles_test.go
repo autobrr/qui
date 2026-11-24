@@ -6,7 +6,7 @@ package crossseed
 import (
 	"context"
 	"fmt"
-	"slices"
+	"maps"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/testutil/biglib"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -84,27 +85,43 @@ func heldAnnounces(library []qbt.Torrent) []heldAnnounce {
 
 func TestHeldTitlesAnswerAsTheFullScan(t *testing.T) {
 	first, second := heldLibraries(t, biglib.Size)
+	announces := append(heldAnnounces(first.torrents), heldAlternateAnnounces()...)
+	torrents, files := heldAlternateTorrents()
+	first.torrents = append(first.torrents, torrents...)
+	maps.Copy(first.files, files)
 	rig := newHeldRig(t, first, second)
 	rig.publishCopyGroups(rig.sameNameGroups()...)
+	withTitles := heldCompassArr()
+	withTitles[heldQuayAlternate] = &arr.ExternalIDsResult{IDs: &models.ExternalIDs{TVDbID: 60}, Titles: []string{"Amber Quay", "Bernsteinkai"}}
 
 	matched := map[string]bool{}
-	for _, rescue := range []bool{false, true} {
-		rig.settings.RescueTitleMismatches = rescue
-		full, _ := rig.fullScan()
-		held, _ := rig.heldTitles(t.Context())
-		rig.waitReady(held)
-		for _, targets := range [][]int{{1}, {2}, nil} {
-			for _, announce := range heldAnnounces(first.torrents) {
-				t.Run(fmt.Sprintf("%s rescue %v targets %v", announce.name, rescue, targets), func(t *testing.T) {
-					want := checkAnnounce(t, full, announce.torrent, announce.size, targets...)
-					got := checkAnnounce(t, held, announce.torrent, announce.size, targets...)
-					require.Equal(t, want, got)
-					matched[announce.name] = matched[announce.name] || want.CanCrossSeed
-				})
+	for source, results := range map[string]map[string]*arr.ExternalIDsResult{"": heldCompassArr(), "bernsteinkai": withTitles} {
+		for _, settings := range []models.CrossSeedAutomationSettings{{}, {RescueTitleMismatches: true}, {SkipRecheck: true}} {
+			rig.settings = settings
+			full, _ := rig.fullScan()
+			var sources []AlternateTitleSource
+			if source != "" {
+				sources = []AlternateTitleSource{newHeldQuaySource()}
+			}
+			held, _ := rig.heldTitles(t.Context(), sources...)
+			rig.waitReady(held)
+			if source != "" {
+				requireAlternateTitles(t, held, source)
+			}
+			full.arrService, held.arrService = &namedArr{results: results}, &namedArr{results: results}
+			for _, targets := range [][]int{{1}, {2}, nil} {
+				for _, announce := range announces {
+					t.Run(fmt.Sprintf("%s rescue %v skip recheck %v targets %v source %q", announce.name, settings.RescueTitleMismatches, settings.SkipRecheck, targets, source), func(t *testing.T) {
+						want := checkAnnounce(t, full, announce.torrent, announce.size, targets...)
+						got := checkAnnounce(t, held, announce.torrent, announce.size, targets...)
+						require.Equal(t, want, got)
+						matched[announce.name] = matched[announce.name] || want.CanCrossSeed
+					})
+				}
 			}
 		}
 	}
-	for _, announce := range heldAnnounces(first.torrents) {
+	for _, announce := range announces {
 		if announce.matches {
 			require.True(t, matched[announce.name], announce.name)
 		}
@@ -139,15 +156,14 @@ func TestHeldTitlesMissSkipsWaitingTorrentsOutsideTheSourceFilter(t *testing.T) 
 	library := serveHeldLibrary(t, append(biglib.Torrents(200), folder), map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
 	rig := newHeldRig(t, library)
 	rig.settings.WebhookSourceExcludeCategories = []string{"skipped"}
-	held, spy := rig.heldTitles(t.Context())
+	held, _ := rig.heldTitles(t.Context())
 	rig.waitReady(held)
 
 	for range 2 {
 		require.False(t, checkAnnounce(t, held, heldMissName, 1_000_000).CanCrossSeed)
 	}
 
-	require.Zero(t, spy.calls, "a torrent that the source filter skips is never read, so it holds no announce")
-	require.Empty(t, library.takeFileReads())
+	require.Empty(t, library.takeFileReads(), "a torrent that the source filter skips is never read, so it holds no announce")
 }
 
 func TestHeldTitlesReadsFilesOnlyOfCandidates(t *testing.T) {
@@ -201,7 +217,7 @@ func TestHeldTitlesFollowsSyncs(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			first, _ := heldLibraries(t, 2000)
 			rig := newHeldRig(t, first)
-			held, spy := rig.heldTitles(t.Context())
+			held, _ := rig.heldTitles(t.Context())
 			rig.waitReady(held)
 			checkAnnounce(t, held, localReadsPack, 0)
 			gone, renamed := first.torrents[500], first.torrents[700]
@@ -221,11 +237,11 @@ func TestHeldTitlesFollowsSyncs(t *testing.T) {
 			change(rig)
 			rig.waitReady(held)
 			full, _ := rig.fullScan()
-			spy.calls = 0
 
 			require.False(t, checkAnnounce(t, held, gone.Name, uint64(gone.Size)).CanCrossSeed)
 			require.False(t, checkAnnounce(t, held, renamed.Name, 0).CanCrossSeed)
-			require.Zero(t, spy.calls, "a torrent that left the library is no candidate")
+			requireNotHeld(t, held, gone.Name, gone.Size)
+			requireNotHeld(t, held, renamed.Name, 0)
 			got := checkAnnounce(t, held, newName, uint64(renamed.Size))
 			require.True(t, got.CanCrossSeed)
 			require.Equal(t, checkAnnounce(t, full, newName, uint64(renamed.Size)), got)
@@ -281,9 +297,13 @@ func TestHeldTitlesOffBuildsNothing(t *testing.T) {
 	svc := settingsCheckService(t)
 	off := failingHeldSync{t: t}
 
-	svc.StartHeldTitles(t.Context(), experimental.New(nil), off, off)
+	sonarr, service := newFakeArr(t)
+
+	svc.StartHeldTitles(t.Context(), experimental.New(nil), off, off, []AlternateTitleSource{NewArrAlternateTitles(service)})
 
 	require.True(t, checkSettingsName(t, svc).CanCrossSeed)
+	require.Nil(t, svc.heldTitles)
+	require.Empty(t, sonarr.takeRequests())
 }
 
 func TestHeldTitlesMatchesOnlyTheTorrentsLeftAfterTheFileReads(t *testing.T) {
@@ -318,29 +338,4 @@ func TestHeldTitlesMatchesOnlyTheTorrentsLeftAfterTheFileReads(t *testing.T) {
 	full, _ := rig.fullScan()
 	require.Equal(t, checkAnnounce(t, full, localReadsPack, 0), got.resp)
 	require.False(t, got.resp.CanCrossSeed, "the season folder left qBittorrent while its files were read")
-}
-
-func TestHeldTitlesMatchesTheTorrentsOfASyncDuringTheArrLookup(t *testing.T) {
-	library := serveHeldLibrary(t, biglib.Torrents(200), nil)
-	rig := newHeldRig(t, library)
-	held, _ := rig.heldTitles(t.Context())
-	rig.waitReady(held)
-	announced := library.torrents[100]
-	readded := slices.Clone(library.torrents)
-	for i := range readded {
-		if readded[i].Name == announced.Name {
-			readded[i].Hash = heldHash('d', i)
-			readded[i].InfohashV1 = readded[i].Hash
-		}
-	}
-	held.arrService = &arrLookupDuring{during: sync.OnceFunc(func() {
-		library.set(readded)
-		rig.sync(1)
-	})}
-
-	got := checkAnnounce(t, held, announced.Name, uint64(announced.Size))
-
-	full, _ := rig.fullScan()
-	require.Equal(t, checkAnnounce(t, full, announced.Name, uint64(announced.Size)), got)
-	require.True(t, got.CanCrossSeed, "the torrents that the sync brought back are matches")
 }

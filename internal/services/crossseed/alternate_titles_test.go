@@ -24,16 +24,25 @@ type fakeAlternateTitles struct {
 	titles    map[string][]string
 	fromCache bool
 	down      bool
+	hangs     bool
+	failsOn   func(title string) bool
 	asked     []HeldRelease
 	askedAt   []time.Time
 }
 
-func (f *fakeAlternateTitles) AlternateTitles(_ context.Context, held HeldRelease) (AlternateTitles, error) {
+func (f *fakeAlternateTitles) AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error) {
+	f.mu.Lock()
+	hangs := f.hangs
+	f.mu.Unlock()
+	if hangs {
+		<-ctx.Done()
+		return AlternateTitles{}, ctx.Err()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.asked = append(f.asked, held)
 	f.askedAt = append(f.askedAt, time.Now())
-	if f.down {
+	if f.down || f.failsOn != nil && f.failsOn(held.Title) {
 		return AlternateTitles{}, errors.New("source down")
 	}
 	return AlternateTitles{Titles: f.titles[held.Title], FromCache: f.fromCache}, nil
@@ -232,6 +241,43 @@ func TestAlternateTitlesAskAgainAfterASourceFails(t *testing.T) {
 
 		time.Sleep(24 * time.Hour)
 		require.Len(t, failing.askedAt, 2)
+	})
+}
+
+func TestAlternateTitlesPauseASourceThatIsDown(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const titles = 100
+		good, down := &fakeAlternateTitles{fromCache: true}, &fakeAlternateTitles{down: true}
+		a := runAlternateTitles(t, good, down)
+		for i := range titles {
+			holdName(a, fmt.Sprintf("Lantern Ward %s S01E01 1080p WEB-DL H.264-GRP", strings.Repeat("x", i+1)), 1)
+		}
+
+		time.Sleep(alternateTitleRetry - time.Second)
+		require.Len(t, good.askedAt, titles, "the other source still answers")
+		require.Len(t, down.askedAt, sourceFailuresInARow)
+
+		time.Sleep(time.Minute)
+		require.Len(t, down.askedAt, sourceFailuresInARow+2, "a source that is still down pauses again")
+
+		down.set(func(f *fakeAlternateTitles) { f.down = false })
+		time.Sleep(2 * alternateTitleRetry)
+		require.Len(t, down.askedAt, sourceFailuresInARow+2+titles)
+	})
+}
+
+func TestAlternateTitlesDoNotPauseASourceThatFailsOnSomeTitles(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const titles = 20
+		source := &fakeAlternateTitles{failsOn: func(title string) bool { return len(title)%2 == 0 }}
+		a := runAlternateTitles(t, source)
+		for i := range titles {
+			holdName(a, fmt.Sprintf("Lantern Ward %s S01E01 1080p WEB-DL H.264-GRP", strings.Repeat("x", i+1)), 1)
+		}
+
+		time.Sleep(time.Minute)
+
+		require.Len(t, source.askedAt, titles)
 	})
 }
 
