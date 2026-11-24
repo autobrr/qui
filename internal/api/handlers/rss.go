@@ -349,7 +349,7 @@ func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "Invalid URL: must be a valid http or https URL")
 		return
 	}
-	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.Path}) {
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.Path, feedURL: &req.URL}) {
 		return
 	}
 

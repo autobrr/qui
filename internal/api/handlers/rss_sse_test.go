@@ -214,7 +214,7 @@ func TestRSSStreamHidesLinksPerSubscriber(t *testing.T) {
 		`"isRead":false},` +
 		`{"id":"made-up-guid-2","title":"Show.S02","author":"uploader","description":"Size: 4 GiB","category":"TV",` +
 		`"torrentURL":"magnet:?xt=urn:btih:made-up&tr=udp%3A%2F%2Ftracker.example%2Fmade-up-magnet-key","link":"/t/2?key=made-up-relative-key","isRead":true}]}`
-	const hiddenFeed = `{"uid":"{1}","url":"https://tracker.example","title":"","articles":[` +
+	const hiddenFeed = `{"uid":"{1}","url":"https://tracker.example#de2596eb","title":"","articles":[` +
 		`{"id":"https://tracker.example#87f1c29f","title":"Show.S01","date":"Tue, 24 Nov 2026 08:00:00 +0000",` +
 		`"torrentURL":"https://tracker.example","link":"https://tracker.example","description":"","comments":"https://tracker.example",` +
 		`"isRead":false},` +
@@ -222,8 +222,8 @@ func TestRSSStreamHidesLinksPerSubscriber(t *testing.T) {
 		`"torrentURL":"","link":"","isRead":true}]}`
 	const namedByURL = `{"https://tracker.example/rss/made-up-key-a/feed.xml":{"uid":"{2}","url":"https://tracker.example/rss/made-up-key-a/feed.xml"},` +
 		`"https://tracker.example/rss/made-up-key-b/feed.xml":{"uid":"{3}","url":"https://tracker.example/rss/made-up-key-b/feed.xml"}}`
-	const hiddenNamedByURL = `{"https://tracker.example#e15e2247":{"uid":"{2}","url":"https://tracker.example"},` +
-		`"https://tracker.example#69ed2928":{"uid":"{3}","url":"https://tracker.example"}}`
+	const hiddenNamedByURL = `{"https://tracker.example#e15e2247":{"uid":"{2}","url":"https://tracker.example#e15e2247"},` +
+		`"https://tracker.example#69ed2928":{"uid":"{3}","url":"https://tracker.example#69ed2928"}}`
 	items := qbt.RSSItems{"Folder": json.RawMessage(`{"Feed":` + fullFeed + `}`), "Tracker": json.RawMessage(namedByURL)}
 	handler := &RSSSSEHandler{
 		getRSSItems: func(context.Context, int, bool) (qbt.RSSItems, error) { return items, nil },

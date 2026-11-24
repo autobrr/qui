@@ -114,7 +114,9 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		}
 		return `{"Feed":{"uid":"{1}","url":"` + feedURL + `","title":"` + feedTitle + `"` + articles(feedArticles) + `},` +
 			`"` + feedNamedByURL + `":{"uid":"{2}","url":"` + feedNamedByURL + `","title":""` + articles(`[]`) + `},` +
-			`"` + folderNamedByURL + `":{"` + feedInFolder + `":{"uid":"{3}","url":"` + feedInFolder + `","title":""` + articles(folderArticles) + `}}}`
+			`"` + folderNamedByURL + `":{"` + feedInFolder + `":{"uid":"{3}","url":"` + feedInFolder + `","title":""` + articles(folderArticles) + `}},` +
+			`"Same code A":{"uid":"{4}","url":"https://rss.example.invalid/feed/61522.xml","title":""` + articles(`[]`) + `},` +
+			`"Same code B":{"uid":"{5}","url":"https://rss.example.invalid/feed/135103.xml","title":""` + articles(`[]`) + `}}`
 	}
 	trackerRow := func(tracker string) string {
 		return `[{"url":"** [DHT] **","status":0},{"url":"` + tracker + `","status":2}]`

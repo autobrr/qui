@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -79,12 +80,55 @@ func TestHoldsRSSLink(t *testing.T) {
 func TestHideRSSLinksHidesEveryFeedURL(t *testing.T) {
 	hidden, err := hideRSSLinks([]byte(`{"Feed":{"url":"tracker.example/rss/made-up-key","title":"Feed"}}`))
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"Feed":{"url":"","title":"Feed"}}`, string(hidden))
+	assert.JSONEq(t, `{"Feed":{"url":"#4538a94a","title":"Feed"}}`, string(hidden))
 }
 
 // regression: #4474
 func TestHideRSSLinksKeepsNamesAfterOtherValues(t *testing.T) {
 	hidden, err := hideRSSLinks([]byte(`{"url":{"Feed":{"url":"https://tracker.example/rss/made-up-key","title":"Feed"}},"link":null,"id":7,"Other":{}}`))
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"url":{"Feed":{"url":"https://tracker.example","title":"Feed"}},"link":null,"id":7,"Other":{}}`, string(hidden))
+	assert.JSONEq(t, `{"url":{"Feed":{"url":"https://tracker.example#971a0b65","title":"Feed"}},"link":null,"id":7,"Other":{}}`, string(hidden))
+}
+
+// regression: #4474
+func TestHideRSSLinksShowsTheShortFormOfAFeedURLOnly(t *testing.T) {
+	hidden, err := hideRSSLinks([]byte(`{"Feed":{"url":"https://tracker.example/rss/made-up-key","articles":[{"url":"https://tracker.example/t/1?key=made-up-key"}]}}`))
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"Feed":{"url":"https://tracker.example#971a0b65","articles":[{"url":"https://tracker.example"}]}}`, string(hidden))
+}
+
+// regression: #4474
+func TestRestoreRSSFeedURLs(t *testing.T) {
+	const feed = "https://tracker.example/rss/made-up-key/feed.xml"
+	const sameCodeA, sameCodeB = "https://rss.example.invalid/feed/61522.xml", "https://rss.example.invalid/feed/135103.xml"
+	const shapedLikeAShortForm = "https://other.example#0123abcd"
+	urls := []string{feed, sameCodeA, sameCodeB, feed, shapedLikeAShortForm}
+	for _, tt := range []struct {
+		name  string
+		feed  string
+		want  string
+		fails string
+	}{
+		// regression: #4474
+		{"a short form of a URL listed twice", rssStandIn([]byte(feed)), feed, ""},
+		// regression: #4474
+		{"a full URL shaped like a short form", shapedLikeAShortForm, shapedLikeAShortForm, ""},
+		// regression: #4474
+		{"a full URL of no feed", "https://new.example/feed.xml", "https://new.example/feed.xml", ""},
+		// regression: #4474
+		{"a short form of no feed", "https://tracker.example#00000000", "", "The feed https://tracker.example#00000000 matches no RSS feed"},
+		// regression: #4474
+		{"a short form of two feeds", rssStandIn([]byte(sameCodeA)), "", "The feed https://rss.example.invalid#757efa96 matches more than one RSS feed"},
+	} {
+		feeds := []string{"Plain", tt.feed}
+		err := restoreRSSFeedURLs(feeds, urls, "The feed ")
+		if tt.fails != "" {
+			noMatch, ok := errors.AsType[rssNoMatchError](err)
+			require.True(t, ok, tt.name)
+			assert.Equal(t, tt.fails, noMatch.Error(), tt.name)
+			continue
+		}
+		require.NoError(t, err, tt.name)
+		assert.Equal(t, []string{"Plain", tt.want}, feeds, tt.name)
+	}
 }

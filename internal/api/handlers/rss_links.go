@@ -15,8 +15,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/rs/zerolog/log"
-
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/api/middleware"
@@ -82,31 +80,15 @@ func (h *RSSHandler) restoreRSSRuleFeeds(w http.ResponseWriter, r *http.Request,
 	if middleware.CanReadTrackerPasskeys(r) || !slices.ContainsFunc(feeds, isRSSStandIn) {
 		return true
 	}
-	known, err := h.rssFeedsByStandIn(r.Context(), instanceID, req.Name)
-	if err != nil {
-		if !respondIfInstanceDisabled(w, err, instanceID, "SetRSSRule") {
-			log.Error().Err(err).Int("instanceID", instanceID).Str("ruleName", req.Name).Msg("failed to get RSS feeds for rule")
-			RespondError(w, http.StatusInternalServerError, "Failed to set RSS rule")
-		}
-		return false
+	urls, err := h.rssRuleFeedURLs(r.Context(), instanceID, req.Name)
+	if err == nil {
+		err = restoreRSSFeedURLs(feeds, urls, "The rule feed ")
 	}
-	for i, feed := range feeds {
-		if full, ok := known[feed]; ok {
-			feeds[i] = full
-		} else if isRSSStandIn(feed) {
-			RespondError(w, http.StatusBadRequest, "The rule feed "+feed+" matches no RSS feed")
-			return false
-		}
-	}
-	return true
+	return respondRSSRestore(w, err, instanceID)
 }
 
-func (h *RSSHandler) rssFeedsByStandIn(ctx context.Context, instanceID int, ruleName string) (map[string]string, error) {
+func (h *RSSHandler) rssRuleFeedURLs(ctx context.Context, instanceID int, ruleName string) ([]string, error) {
 	items, err := h.syncManager.GetRSSItems(ctx, instanceID, false)
-	if err != nil {
-		return nil, err
-	}
-	feeds, err := items.ParseFeeds()
 	if err != nil {
 		return nil, err
 	}
@@ -114,16 +96,47 @@ func (h *RSSHandler) rssFeedsByStandIn(ctx context.Context, instanceID int, rule
 	if err != nil {
 		return nil, err
 	}
-	urls := slices.Clone(rules[ruleName].AffectedFeeds)
+	return rssFeedURLs(items, rules[ruleName].AffectedFeeds)
+}
+
+func rssFeedURLs(items qbt.RSSItems, extra []string) ([]string, error) {
+	feeds, err := items.ParseFeeds()
+	if err != nil {
+		return nil, err
+	}
+	urls := slices.Clone(extra)
 	for _, feed := range feeds {
 		urls = append(urls, feed.URL)
 	}
-	known := make(map[string]string, 2*len(urls))
+	return urls, nil
+}
+
+func restoreRSSFeedURLs(feeds, urls []string, label string) error {
+	byShortForm := make(map[string][]string, len(urls))
+	seen := make(map[string]bool, len(urls))
 	for _, url := range urls {
-		known[url] = url
-		known[rssStandIn([]byte(url))] = url
+		if seen[url] {
+			continue
+		}
+		seen[url] = true
+		short := rssStandIn([]byte(url))
+		byShortForm[url] = append(byShortForm[url], url)
+		byShortForm[short] = append(byShortForm[short], url)
 	}
-	return known, nil
+	for i, feed := range feeds {
+		if !isRSSStandIn(feed) {
+			continue
+		}
+		switch full := byShortForm[feed]; len(full) {
+		case 0:
+			return rssNoMatchError(label + feed + " matches no RSS feed")
+		case 1:
+			feeds[i] = full[0]
+		default:
+			return rssNoMatchError(label + feed + " matches more than one RSS feed")
+		}
+	}
+	return nil
 }
 
 func hideRSSMatchingArticles(matches qbt.RSSMatchingArticles) qbt.RSSMatchingArticles {
@@ -156,11 +169,17 @@ const (
 	rssText rssValueKind = iota
 	rssLink
 	rssID
+	rssFeedURL
 )
 
-func rssKindOf(name []byte) rssValueKind {
+func rssKindOf(name []byte, inList bool) rssValueKind {
 	switch string(name) {
-	case "url", "torrentURL", "link":
+	case "url":
+		if inList {
+			return rssLink
+		}
+		return rssFeedURL
+	case "torrentURL", "link":
 		return rssLink
 	case "id":
 		return rssID
@@ -174,6 +193,8 @@ func writeRSSText(enc *jsontext.Encoder, value jsontext.Value, name bool, field 
 		return nil, err
 	}
 	switch {
+	case field == rssFeedURL:
+		err = enc.WriteToken(jsontext.String(rssStandIn(text)))
 	case field == rssLink:
 		err = enc.WriteToken(jsontext.String(qbittorrent.TrackerOrigin(string(text))))
 	case !holdsRSSLink(text):
@@ -207,7 +228,8 @@ func hideRSSLinks(items []byte) ([]byte, error) {
 			}
 			field = rssText
 			if name {
-				field = rssKindOf(text)
+				parent, _ := dec.StackIndex(dec.StackDepth() - 1)
+				field = rssKindOf(text, parent == '[')
 			}
 			continue
 		}

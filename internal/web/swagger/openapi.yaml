@@ -8635,7 +8635,7 @@ paths:
       tags:
         - RSS
       summary: RSS events stream (SSE)
-      description: Server-Sent Events stream for real-time RSS feed updates. A key without write access to torrents gets each feed URL and the download link and page link of each article as their scheme and host, each feed or folder name and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
+      description: Server-Sent Events stream for real-time RSS feed updates. A key without write access to torrents gets the download link and page link of each article as their scheme and host, each feed URL, each feed or folder name that holds a link, and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -8658,7 +8658,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS items
-      description: Retrieve all RSS feeds and folders for an instance. A key without write access to torrents gets each feed URL and the download link and page link of each article as their scheme and host, each feed or folder name and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
+      description: Retrieve all RSS feeds and folders for an instance. A key without write access to torrents gets the download link and page link of each article as their scheme and host, each feed URL, each feed or folder name that holds a link, and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: withData
@@ -8865,12 +8865,12 @@ paths:
                 url:
                   type: string
                   format: uri
-                  description: New URL for the feed
+                  description: New URL for the feed. For a key without write access to torrents, a URL given as a scheme and host and a short code, as the feed list shows it, becomes the full URL of that feed again.
       responses:
         '200':
           description: Feed URL updated successfully
         '400':
-          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one, or a URL in the short form matches no RSS feed or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8959,7 +8959,7 @@ paths:
         '201':
           description: Rule created/updated successfully
         '400':
-          description: Invalid request, or a feed in the short form matches no RSS feed
+          description: Invalid request, or a feed in the short form matches no RSS feed or more than one
         '409':
           description: Instance is disabled
         '500':

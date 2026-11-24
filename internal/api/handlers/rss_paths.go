@@ -27,7 +27,7 @@ func (e rssNoMatchError) Error() string {
 }
 
 type rssNames struct {
-	path, parent, dest, articleID *string
+	path, parent, dest, articleID, feedURL *string
 }
 
 func (h *RSSHandler) restoreRSSNames(w http.ResponseWriter, r *http.Request, instanceID int, names rssNames) bool {
@@ -39,6 +39,10 @@ func (h *RSSHandler) restoreRSSNames(w http.ResponseWriter, r *http.Request, ins
 	err := names.restore(sync.OnceValues(func() (qbt.RSSItems, error) {
 		return h.syncManager.GetRSSItems(ctx, instanceID, withArticles)
 	}), withArticles)
+	return respondRSSRestore(w, err, instanceID)
+}
+
+func respondRSSRestore(w http.ResponseWriter, err error, instanceID int) bool {
 	if err == nil {
 		return true
 	}
@@ -68,10 +72,31 @@ func (n rssNames) restore(load func() (qbt.RSSItems, error), withArticles bool) 
 	if err := restoreRSSDest(load, source, n.dest); err != nil {
 		return err
 	}
+	if err := restoreRSSFeedURL(load, n.feedURL); err != nil {
+		return err
+	}
 	if withArticles {
 		return restoreRSSArticleID(feed, n.articleID)
 	}
 	return nil
+}
+
+func restoreRSSFeedURL(load func() (qbt.RSSItems, error), feedURL *string) error {
+	if feedURL == nil || !isRSSStandIn(*feedURL) {
+		return nil
+	}
+	items, err := load()
+	if err != nil {
+		return err
+	}
+	urls, err := rssFeedURLs(items, nil)
+	if err != nil {
+		return err
+	}
+	feeds := []string{*feedURL}
+	err = restoreRSSFeedURLs(feeds, urls, "The RSS feed URL ")
+	*feedURL = feeds[0]
+	return err
 }
 
 func restoreRSSPath(load func() (qbt.RSSItems, error), path *string, keepLast, force bool) ([]byte, error) {
