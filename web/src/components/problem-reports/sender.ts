@@ -4,7 +4,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -37,6 +37,7 @@ export function useSender(): SenderControls {
   const { t } = useTranslation("common")
   const queryClient = useQueryClient()
   const [watched, setWatched] = useState<ProblemReportProvider | null>(null)
+  const latestStart = useRef<AbortController | null>(null)
 
   const senderQuery = useQuery({
     queryKey: SENDER_KEY,
@@ -46,10 +47,11 @@ export function useSender(): SenderControls {
     refetchOnWindowFocus: true,
   })
   const startMutation = useMutation({
-    mutationFn: async ({ provider, popup }: { provider: ProblemReportProvider; popup: Window | null }) => {
+    mutationFn: async ({ provider, popup, start }: { provider: ProblemReportProvider; popup: Window | null; start: AbortController }) => {
       if (!popup) throw new PopupBlockedError()
       try {
         const { url } = await api.startProblemReportSignIn(provider)
+        start.signal.throwIfAborted()
         popup.opener = null
         popup.location.href = url
       } catch (error) {
@@ -57,8 +59,10 @@ export function useSender(): SenderControls {
         throw error
       }
     },
-    onMutate: ({ popup }) => {
+    onMutate: ({ popup, start }) => {
       if (!popup) return
+      latestStart.current?.abort()
+      latestStart.current = start
       setWatched(null)
       queryClient.removeQueries({ queryKey: SIGN_IN_KEY })
     },
@@ -78,6 +82,7 @@ export function useSender(): SenderControls {
   const signOutMutation = useMutation({
     mutationFn: () => api.signOutOfProblemReports(),
     onMutate: () => {
+      latestStart.current?.abort()
       setWatched(null)
       startMutation.reset()
     },
@@ -91,7 +96,7 @@ export function useSender(): SenderControls {
   return {
     sender: senderQuery.data,
     signIn: signInView(),
-    startSignIn: (provider) => startMutation.mutate({ provider, popup: window.open("", "_blank", POPUP_FEATURES) }),
+    startSignIn: (provider) => startMutation.mutate({ provider, popup: window.open("", "_blank", POPUP_FEATURES), start: new AbortController() }),
     signOut: () => signOutMutation.mutate(),
   }
 
