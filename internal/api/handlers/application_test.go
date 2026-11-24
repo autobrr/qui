@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,6 +99,13 @@ func TestApplicationHandler_GetInfoListsNoExperimentalFeatureAsEmptyList(t *test
 
 // regression: #4450
 func TestPostgresTarget_DSNRemovesCredentials(t *testing.T) {
+	for _, kv := range os.Environ() {
+		if name, _, _ := strings.Cut(kv, "="); strings.HasPrefix(name, "PG") {
+			t.Setenv(name, "")
+		}
+	}
+	t.Setenv("HOME", t.TempDir())
+
 	for _, tc := range []struct {
 		name, dsn, want string
 	}{
