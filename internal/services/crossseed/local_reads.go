@@ -271,7 +271,11 @@ func (s *Service) fillLocalReads(ctx context.Context, instanceID int, torrents [
 			Msg("crossseed: local torrents keep their name read, because the settings could not be loaded")
 	}
 
-	memo := &s.localReadMemo
+	s.heldTitles.filesReadChanged(instanceID, s.localReadMemo.store(instanceID, torrents, reads, done, err == nil, fetchErr))
+}
+
+func (memo *localReadMemo) store(instanceID int, torrents []localTorrent, reads map[string]namedRelease, done chan struct{}, settingsLoaded bool, fetchErr error) []string {
+	var stored []string
 	now := time.Now()
 	memo.mu.Lock()
 	defer memo.mu.Unlock()
@@ -282,11 +286,12 @@ func (s *Service) fillLocalReads(ctx context.Context, instanceID int, torrents [
 			continue
 		}
 		delete(memo.filling, key)
-		if err != nil {
+		if !settingsLoaded {
 			continue
 		}
 		if read, ok := reads[torrent.hash]; ok {
 			memo.entries[key] = localReadEntry{name: torrent.name, category: torrent.category, read: read, fromFiles: true, expires: now.Add(localReadTTL)}
+			stored = append(stored, torrent.hash)
 			continue
 		}
 		// A fill that stopped early did not try every torrent, and a new torrent
@@ -302,6 +307,17 @@ func (s *Service) fillLocalReads(ctx context.Context, instanceID int, torrents [
 		entry.expires = now.Add(localReadFailureTTL)
 		memo.entries[key] = entry
 	}
+	return stored
+}
+
+func (memo *localReadMemo) filesRead(instanceID int, torrent *qbt.Torrent) (namedRelease, bool) {
+	memo.mu.Lock()
+	defer memo.mu.Unlock()
+	entry, ok := memo.entries[localReadKey{instanceID: instanceID, hash: normalizeHash(torrent.Hash)}]
+	if !ok || !entry.fromFiles || entry.name != torrent.Name || entry.category != torrent.Category {
+		return namedRelease{}, false
+	}
+	return entry.read, true
 }
 
 func (s *Service) readLocalFiles(rules []models.CategoryMappingRule, name, category string, files qbt.TorrentFiles) namedRelease {
@@ -324,9 +340,10 @@ func (s *Service) forgetLocalRead(instanceID int, hash string) {
 	memo := &s.localReadMemo
 	key := localReadKey{instanceID: instanceID, hash: normalizeHash(hash)}
 	memo.mu.Lock()
-	defer memo.mu.Unlock()
 	delete(memo.entries, key)
 	delete(memo.filling, key)
+	memo.mu.Unlock()
+	s.heldTitles.filesReadChanged(instanceID, []string{hash})
 }
 
 // forgetLocalReads drops every remembered read and marks the Copy groups for a
@@ -336,7 +353,8 @@ func (s *Service) forgetLocalReads() {
 	s.copyGroups.forgetAll()
 	memo := &s.localReadMemo
 	memo.mu.Lock()
-	defer memo.mu.Unlock()
 	clear(memo.entries)
 	clear(memo.filling)
+	memo.mu.Unlock()
+	s.heldTitles.rebuildAll()
 }

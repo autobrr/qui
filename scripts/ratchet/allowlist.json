@@ -1095,7 +1095,7 @@
     "internal/services/crossseed/search_gather.go": 1,
     "internal/services/crossseed/seasonpack.go": 2,
     "internal/services/crossseed/source_release_inference.go": 1,
-    "internal/services/crossseed/webhook_all_torrents.go": 1,
+    "internal/services/crossseed/webhook_match.go": 1,
     "internal/services/dirscan/service.go": 1,
     "internal/services/dirscan/work_selection.go": 1,
     "internal/services/jackett/client.go": 1,

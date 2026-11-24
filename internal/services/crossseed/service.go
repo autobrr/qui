@@ -245,6 +245,7 @@ type Service struct {
 	localReadMemo localReadMemo
 	// copyGroups is nil without a sync manager.
 	copyGroups *copyGroupsJob
+	heldTitles *heldTitles
 
 	// Cached deduplication results to avoid recomputing on every search run.
 	// Key: "dedup:{instanceID}:{torrentCount}:{hashSignature}" where hashSignature
