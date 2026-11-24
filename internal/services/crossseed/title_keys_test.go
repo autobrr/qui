@@ -134,9 +134,17 @@ func requireSharedTitleKeyOrExactSize(t *testing.T, row corpusRow) {
 	held := row.sourceTorrent()
 	reads := svc.readLocalTorrents(t.Context(), corpusInstanceID, slices.Values([]*qbt.Torrent{&held}))
 	heldKeys := m.titleKeys(reads.read(m, corpusInstanceID, &held))
-	for _, title := range row.titles {
-		heldKeys = addNormalizedTitle(heldKeys, title)
-	}
 	announceKeys := m.titleKeys(m.readName(row.candidate))
-	require.True(t, normalizedTitleSetsOverlap(heldKeys, announceKeys), "held %q keys %q, announce %q keys %q", row.source, heldKeys, row.candidate, announceKeys)
+	heldWithTitles, announceWithTitles := withAlternateTitles(heldKeys, row.titles), withAlternateTitles(announceKeys, row.titles)
+	const lostMatch = "Held titles would answer no match for a pair that the matcher accepts, and the cross-seed is lost: held %q keys %q, announce %q keys %q"
+	require.True(t, normalizedTitleSetsOverlap(heldWithTitles, announceKeys), "alternate titles on the held release: "+lostMatch, row.source, heldWithTitles, row.candidate, announceKeys)
+	require.True(t, normalizedTitleSetsOverlap(heldKeys, announceWithTitles), "alternate titles on the announce: "+lostMatch, row.source, heldKeys, row.candidate, announceWithTitles)
+}
+
+func withAlternateTitles(keys, titles []string) []string {
+	keys = slices.Clone(keys)
+	for _, title := range titles {
+		keys = addNormalizedTitle(keys, title)
+	}
+	return keys
 }
