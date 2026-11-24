@@ -281,31 +281,21 @@ func TestCheckWaitsForNoOtherSync(t *testing.T) {
 }
 
 func TestCheckFindsAProxiedAddWhileAnotherInstanceHangs(t *testing.T) {
-	freshCase(t, freshOn, 2, func(rig *freshRig) {
-		slow, quick := rig.instances[0], rig.instances[1]
+	freshCase(t, freshOn, 3, func(rig *freshRig) {
+		slow, hung, quick := rig.instances[0], rig.instances[1], rig.instances[2]
+		require.NoError(rig.t, hung.owner.Sync(rig.t.Context()))
 		require.NoError(rig.t, quick.owner.Sync(rig.t.Context()))
-		slow.syncTakes(time.Minute)
+		slow.syncTakes(10 * time.Second)
 		slow.startSync()
-		pass(time.Minute - 100*time.Millisecond)
+		hung.syncTakes(5 * time.Minute)
+		hung.startSync()
+		pass(9 * time.Second)
 		quick.proxiedAdd()
 
 		resp, waited := rig.check(freshName)
 
 		require.Equal(t, "download", resp.Recommendation)
-		require.Equal(t, 200*time.Millisecond, waited)
-	})
-	freshCase(t, freshOn, 2, func(rig *freshRig) {
-		slow, quick := rig.instances[0], rig.instances[1]
-		require.NoError(rig.t, quick.owner.Sync(rig.t.Context()))
-		slow.syncTakes(5 * time.Minute)
-		slow.startSync()
-		pass(10 * time.Second)
-		quick.proxiedAdd()
-
-		resp, waited := rig.check(freshName)
-
-		require.Equal(t, "download", resp.Recommendation)
-		require.Equal(t, heldSyncWait, waited)
+		require.Equal(t, heldSyncWait, waited, "the limit holds for all instances together")
 	})
 }
 
