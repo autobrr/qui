@@ -19,6 +19,11 @@ interface RSSRunItemProps {
 export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
   const { t } = useTranslation("crossseed")
   const instanceLabel = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? crossSeedRouteText(t, result.instanceName, result.crossSeedInstanceName, result.success) : result.instanceName
+  const showInstanceBadge = (result: CrossSeedRunResult) => {
+    const label = instanceLabel(result)
+    if (!label) return false
+    return result.instanceId !== 0 || label !== result.indexerName
+  }
   const instanceBadgeSize = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? "shrink min-w-0 max-w-64" : "shrink-0 w-20"
   const hasResults = run.results && run.results.length > 0
   const successResults = run.results?.filter(r => r.success) ?? []
@@ -56,7 +61,9 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
           <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
             {successResults.map((result, i) => (
               <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                <Badge variant="default" size="sm" className={`${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                {showInstanceBadge(result) && (
+                  <Badge variant="default" size="sm" className={`${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                )}
                 {result.indexerName && (
                   <Badge variant="secondary" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
                 )}
@@ -74,7 +81,9 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
                   return (
                     <div key={`failed-${result.instanceId}-${i}`} className="flex flex-col gap-0.5 text-xs">
                       <div className="flex items-center gap-2">
-                        <Badge variant="destructive" size="sm" className={`${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                        {showInstanceBadge(result) && (
+                          <Badge variant="destructive" size="sm" className={`${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                        )}
                         {result.indexerName && (
                           <Badge variant="secondary" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
                         )}
