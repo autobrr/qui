@@ -34,6 +34,7 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | A new test in a `fix` PR carries `// regression: #N` | `make check-regression-marker`, the Regression marker workflow: one marker in each file whose test cases or Go anonymous-struct table rows grow. Each further test and web table rows: judgment |
 | A frontend test leaks no spy, stub, render, or time zone into the next | `web/vitest.config.ts` and `web/src/test/setup.ts` do the teardown |
 | Effects only in listed hooks, the folder order, feature entry files, no `title=` tooltips, each page in `Page` | `pnpm lint` |
+| Frontend source gets a narrower type from a type guard, a zod schema, or a type on the source of the value, with no new `as` cast and no new `!` (ADR 0089) | `pnpm lint` |
 | UI text goes through i18n keys, with no dead keys | `pnpm check:i18n` |
 | Each endpoint is in the OpenAPI spec | `TestAllEndpointsDocumented`, `make test-openapi` |
 | No response gives a stored credential, and only a backup download, which needs `Backups: write`, gives a tracker passkey to an API key without `Torrents: write` (ADR 0040) | `TestReadKeyGetsNoPlantedSecret` reads each route that a key with only read Permissions reaches (ADR 0087). A secret that its rig does not plant: judgment |
