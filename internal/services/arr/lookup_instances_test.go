@@ -58,6 +58,14 @@ var (
 	unhydratedSonarr = arrAnswers{
 		"/api/v3/parse": librarySonarr["/api/v3/parse"],
 	}
+	unhydratedSonarrWithoutIDs = arrAnswers{
+		"/api/v3/parse":         `{"series": {"id": 42, "title": "Solitude"}}`,
+		"/api/v3/series/lookup": `[]`,
+	}
+	unhydratedSearchWithoutIDs = arrAnswers{
+		"/api/v3/parse":         `{"series": null}`,
+		"/api/v3/series/lookup": `[{"id": 42, "title": "Solitude"}]`,
+	}
 	downSonarr = arrAnswers{}
 )
 
@@ -94,6 +102,8 @@ func TestService_LookupExternalIDsKeepsAnIncompleteAnswerShortly(t *testing.T) {
 		{name: "no instance knows the title", first: emptySonarr, second: emptySonarr, wantSource: "none", wantKept: DefaultNegativeCacheTTL},
 		{name: "only a catalogue knows the title", first: emptySonarr, second: catalogueSonarr, wantSource: "lookup", wantKept: DefaultPositiveCacheTTL},
 		{name: "the series details fail", first: unhydratedSonarr, second: emptySonarr, wantSource: "parse", wantKept: incompleteCacheTTL},
+		{name: "the series details fail and the parse has no IDs", first: unhydratedSonarrWithoutIDs, second: emptySonarr, wantSource: "none", wantKept: incompleteCacheTTL},
+		{name: "the series details fail and the search has no IDs", first: unhydratedSearchWithoutIDs, second: emptySonarr, wantSource: "none", wantKept: incompleteCacheTTL},
 		{name: "one instance is down and the other answers from its library", first: downSonarr, second: librarySonarr, wantSource: "parse", wantKept: incompleteCacheTTL},
 		{name: "one instance is down and the other has no answer", first: emptySonarr, second: downSonarr, wantSource: "none", wantKept: incompleteCacheTTL},
 		{name: "one instance is down and the other answers from its catalogue", first: catalogueSonarr, second: downSonarr, wantSource: "lookup", wantKept: incompleteCacheTTL},

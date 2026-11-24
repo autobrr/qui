@@ -243,8 +243,9 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			result = nil
 		}
 
+		incomplete = incomplete || (result != nil && result.Incomplete)
 		if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
-			result.Incomplete = result.Incomplete || incomplete
+			result.Incomplete = incomplete
 			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse", true), nil
 		}
 		asked = append(asked, askedInstance{instance: instance, client: client, parseAnswered: err == nil})
@@ -268,8 +269,9 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 				continue
 			}
 			anyQueried = true
+			incomplete = incomplete || (lookupResult != nil && lookupResult.Incomplete)
 			if lookupResult != nil && lookupResult.IDs != nil && !lookupResult.IDs.IsEmpty() {
-				lookupResult.Incomplete = lookupResult.Incomplete || incomplete
+				lookupResult.Incomplete = incomplete
 				return s.cacheAndBuildResult(ctx, titleHash, title, contentType, a.instance, lookupResult, "lookup", a.parseAnswered), nil
 			}
 		} else if a.parseAnswered {
