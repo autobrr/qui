@@ -30,11 +30,6 @@ beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
   markClientSettingsUnavailable()
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 afterEach(() => {

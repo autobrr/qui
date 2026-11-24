@@ -4,7 +4,7 @@
  */
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
@@ -20,14 +20,6 @@ vi.mock("@/hooks/useMediaQuery", () => ({
   useIsMobile: () => screenSize.phone,
   useMediaQuery: (query: string) => query === "(min-width: 1440px)" && screenSize.wide,
 }))
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

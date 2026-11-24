@@ -12,11 +12,6 @@ import { api } from "@/lib/api"
 import type { TorrentCreationStatus, TorrentCreationTask } from "@/types"
 import { TorrentCreationTasks } from "./TorrentCreationTasks"
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 vi.mock("@/lib/api", () => ({ api: { getTorrentCreationTasks: vi.fn() } }))
 vi.mock("@/hooks/useDateTimeFormatters", () => {

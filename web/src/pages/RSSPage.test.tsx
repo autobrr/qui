@@ -75,7 +75,6 @@ describe("FeedTree", () => {
   // regression: #4358
   it("shows the full name of a feed when it is cut off and the feed has no other title", () => {
     delete (window as Window & { ontouchstart?: unknown }).ontouchstart
-    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
     const feed = { uid: "1", url: "https://feeds.example.invalid/rss", hasError: false, isLoading: false }

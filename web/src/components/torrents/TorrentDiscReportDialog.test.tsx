@@ -22,12 +22,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
 vi.mock("sonner", () => ({ toast }))
 vi.mock("@/lib/utils", async (importOriginal) => ({ ...(await importOriginal<object>()), copyTextToClipboard }))
 
-// The tabs indicator measures itself through ResizeObserver, which jsdom lacks.
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 afterEach(() => {
   cleanup()

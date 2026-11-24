@@ -41,11 +41,6 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 
 vi.mock("@/components/torrents/AddTorrentDialog", () => ({ AddTorrentDialog: () => null }))
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 afterEach(() => {
   cleanup()

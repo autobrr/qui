@@ -125,11 +125,6 @@ describe("useAllInstanceStats disk", () => {
 
 describe("Dashboard header", () => {
   it("turns incognito mode on and off", async () => {
-    vi.stubGlobal("ResizeObserver", class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    })
     mocks.state = healthy
     mocks.instances = instances
     mocks.getTorrents.mockResolvedValue({ torrents: [], total: 0 })

@@ -16,11 +16,6 @@ const touchWindow = window as Window & { ontouchstart?: unknown }
 
 beforeEach(() => {
   delete touchWindow.ontouchstart
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 function layout({ scrollWidth = 50, clientWidth = 50, scrollHeight = 40, clientHeight = 40 }) {

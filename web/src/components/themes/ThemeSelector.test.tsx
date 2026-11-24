@@ -134,11 +134,6 @@ beforeEach(() => {
   _resetClientSettingsForTests()
   license.hasPremiumAccess = true
   themeHook.theme = "free"
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 afterEach(() => {

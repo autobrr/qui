@@ -14,12 +14,6 @@ const touchWindow = window as Window & { ontouchstart?: unknown }
 
 beforeEach(() => {
   touchWindow.ontouchstart = null
-  // The open tooltip measures its arrow through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 afterEach(() => {

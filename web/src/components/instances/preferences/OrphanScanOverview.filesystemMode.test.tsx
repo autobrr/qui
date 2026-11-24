@@ -55,12 +55,6 @@ import { OrphanScanOverview } from "@/components/instances/preferences/OrphanSca
 beforeEach(() => {
   settingsQuery.data = undefined
   useOrphanScanSettings.mockClear()
-  // Radix accordion and tooltip measure through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 afterEach(() => {

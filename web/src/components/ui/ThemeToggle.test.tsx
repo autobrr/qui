@@ -123,11 +123,6 @@ vi.mock("sonner", () => ({
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 
 beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   localStorage.clear()
   _resetClientSettingsForTests()
   appearance.dark = true

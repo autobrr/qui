@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import type { ChangeEvent, ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { toast } from "sonner"
 
 import i18n from "@/i18n"
@@ -44,14 +44,6 @@ vi.mock("@/components/ui/select", () => ({
 }))
 
 import { CrossSeedRouteForm } from "../CrossSeedRouteForm"
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

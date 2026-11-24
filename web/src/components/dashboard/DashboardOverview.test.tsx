@@ -151,11 +151,6 @@ beforeEach(() => {
   mocks.incognitoMode = [false, () => {}]
   mocks.trackerIcons = { data: undefined }
   customizations = []
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: desktop && query.includes("min-width: 1024px"),
     media: query,

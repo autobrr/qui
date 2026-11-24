@@ -19,11 +19,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
 }))
 
 function renderPicker(screenKind: "upright" | "desktop") {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   stubPhone(screenKind)
   render(<PeriodPicker value="30d" onPreset={() => {}} onCustom={() => {}} />)
 }

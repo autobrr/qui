@@ -73,12 +73,6 @@ import { OrphanScanOverview } from "@/components/instances/preferences/OrphanSca
 
 beforeEach(() => {
   setFilesFound(3)
-  // Radix dialog/tooltip measure through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 afterEach(() => {

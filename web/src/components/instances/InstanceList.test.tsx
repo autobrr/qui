@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
@@ -29,15 +29,6 @@ const instances = vi.hoisted(() => ({
 }))
 vi.mock("@/hooks/useInstances", async (importOriginal) => ({ ...(await importOriginal<object>()), useInstances: () => instances }))
 
-
-// The switch of a row measures itself, and jsdom has no ResizeObserver.
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

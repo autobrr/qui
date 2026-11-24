@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import type { ReactNode } from "react"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -56,15 +56,6 @@ function renderList(notices: SystemNotice[]) {
   )
   return queryClient
 }
-
-beforeAll(() => {
-  // jsdom has no ResizeObserver, and the Radix popper measures its anchor with one.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

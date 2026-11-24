@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, render } from "@testing-library/react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Instance, OrphanScanRun, OrphanScanSettings } from "@/types"
@@ -86,15 +86,6 @@ vi.mock("@/hooks/useOrphanScan", () => ({
 }))
 
 import { OrphanScanOverview } from "@/components/instances/preferences/OrphanScanOverview"
-
-beforeEach(() => {
-  // Radix switch and tooltip measure through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

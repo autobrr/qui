@@ -70,11 +70,6 @@ beforeEach(() => {
   _resetClientSettingsForTests()
   _resetFeatureNoticesForTests()
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }))
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 afterEach(() => {

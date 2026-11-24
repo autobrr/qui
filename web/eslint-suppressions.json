@@ -69,7 +69,7 @@
   },
   "src/components/command-palette/CommandPaletteContent.test.tsx": {
     "qui/no-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/command-palette/CommandPaletteContent.tsx": {
@@ -219,7 +219,7 @@
   },
   "src/components/cross-seed/__tests__/LibraryTab.test.tsx": {
     "qui/no-comments": {
-      "count": 3
+      "count": 2
     }
   },
   "src/components/cross-seed/__tests__/RouteProtectionConfirm.test.tsx": {
@@ -234,7 +234,7 @@
   },
   "src/components/cross-seed/__tests__/RunFooter.test.tsx": {
     "qui/no-comments": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/cross-seed/__tests__/SeasonPackCategoryRulesEditor.test.tsx": {
@@ -435,11 +435,6 @@
       "count": 3
     }
   },
-  "src/components/indexers/AutodiscoveryDialog.test.tsx": {
-    "qui/no-comments": {
-      "count": 1
-    }
-  },
   "src/components/indexers/AutodiscoveryDialog.tsx": {
     "qui/no-comments": {
       "count": 7
@@ -462,7 +457,7 @@
   },
   "src/components/indexers/IndexersPage.test.tsx": {
     "qui/no-comments": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/indexers/IndexersPage.tsx": {
@@ -497,17 +492,12 @@
   },
   "src/components/instances/InstanceList.deleteHistory.test.tsx": {
     "qui/no-comments": {
-      "count": 2
-    }
-  },
-  "src/components/instances/InstanceList.status.test.tsx": {
-    "qui/no-comments": {
       "count": 1
     }
   },
   "src/components/instances/InstanceList.test.tsx": {
     "qui/no-comments": {
-      "count": 3
+      "count": 2
     }
   },
   "src/components/instances/InstanceList.tsx": {
@@ -542,7 +532,7 @@
   },
   "src/components/instances/preferences/InstancePreferencesDialog.test.tsx": {
     "qui/no-comments": {
-      "count": 21
+      "count": 20
     }
   },
   "src/components/instances/preferences/InstancePreferencesDialog.tsx": {
@@ -570,12 +560,12 @@
   },
   "src/components/instances/preferences/OrphanScanOverview.filesystemMode.test.tsx": {
     "qui/no-comments": {
-      "count": 6
+      "count": 5
     }
   },
   "src/components/instances/preferences/OrphanScanOverview.preview.test.tsx": {
     "qui/no-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/instances/preferences/OrphanScanOverview.runItem.test.tsx": {
@@ -585,7 +575,7 @@
   },
   "src/components/instances/preferences/OrphanScanOverview.test.tsx": {
     "qui/no-comments": {
-      "count": 3
+      "count": 2
     }
   },
   "src/components/instances/preferences/OrphanScanOverview.tsx": {
@@ -595,7 +585,7 @@
   },
   "src/components/instances/preferences/OrphanScanPreviewDialog.test.tsx": {
     "qui/no-comments": {
-      "count": 5
+      "count": 4
     }
   },
   "src/components/instances/preferences/OrphanScanPreviewDialog.tsx": {
@@ -613,7 +603,7 @@
   },
   "src/components/instances/preferences/OrphanScanSettingsForm.test.tsx": {
     "qui/no-comments": {
-      "count": 3
+      "count": 2
     }
   },
   "src/components/instances/preferences/OrphanScanSettingsForm.tsx": {
@@ -644,7 +634,7 @@
   },
   "src/components/instances/preferences/ReannounceOverview.test.tsx": {
     "qui/no-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/instances/preferences/ReannounceOverview.tsx": {
@@ -773,7 +763,7 @@
   },
   "src/components/kit/ResourceList.test.tsx": {
     "qui/no-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/kit/ResourceList.tsx": {
@@ -866,7 +856,7 @@
   },
   "src/components/layout/SystemNoticeMenuItems.test.tsx": {
     "qui/no-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/layout/SystemNoticeMenuItems.tsx": {
@@ -899,7 +889,7 @@
   },
   "src/components/problem-reports/ProblemReportDialog.test.tsx": {
     "qui/no-comments": {
-      "count": 5
+      "count": 4
     }
   },
   "src/components/problem-reports/ProblemReportDialog.tsx": {
@@ -982,11 +972,6 @@
       "count": 1
     }
   },
-  "src/components/settings/ApiKeysManager.test.tsx": {
-    "qui/no-comments": {
-      "count": 1
-    }
-  },
   "src/components/settings/ApiKeysManager.tsx": {
     "qui/no-comments": {
       "count": 1
@@ -1017,17 +1002,12 @@
   },
   "src/components/settings/ExternalProgramsManager.test.tsx": {
     "qui/no-comments": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/settings/ExternalProgramsManager.tsx": {
     "qui/no-comments": {
       "count": 12
-    }
-  },
-  "src/components/settings/GazelleSettingsCard.test.tsx": {
-    "qui/no-comments": {
-      "count": 1
     }
   },
   "src/components/settings/GazelleSettingsCard.tsx": {
@@ -1066,7 +1046,7 @@
   },
   "src/components/settings/NotificationsManager.switch.test.tsx": {
     "qui/no-comments": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/settings/NotificationsManager.tsx": {
@@ -1116,7 +1096,7 @@
   },
   "src/components/settings/TrackerCustomizationsManager.test.tsx": {
     "qui/no-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/settings/TrackerCustomizationsManager.tsx": {
@@ -1146,17 +1126,12 @@
   },
   "src/components/shares/ShareSettingsForm.test.tsx": {
     "qui/no-comments": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/shares/ShareSettingsForm.tsx": {
     "qui/no-comments": {
       "count": 5
-    }
-  },
-  "src/components/shares/SharesTab.test.tsx": {
-    "qui/no-comments": {
-      "count": 1
     }
   },
   "src/components/shares/SharesTab.tsx": {
@@ -1406,7 +1381,7 @@
   },
   "src/components/torrents/AddTorrentDialog.test.tsx": {
     "qui/no-comments": {
-      "count": 17
+      "count": 16
     }
   },
   "src/components/torrents/AddTorrentDialog.tsx": {
@@ -1620,11 +1595,6 @@
     },
     "qui/no-direct-effect": {
       "count": 11
-    }
-  },
-  "src/components/torrents/TorrentDiscReportDialog.test.tsx": {
-    "qui/no-comments": {
-      "count": 1
     }
   },
   "src/components/torrents/TorrentDiscReportDialog.tsx": {
@@ -1844,7 +1814,7 @@
   },
   "src/components/torrents/table/__tests__/TorrentTableOptimized.smoke.test.tsx": {
     "qui/no-comments": {
-      "count": 57
+      "count": 56
     }
   },
   "src/components/torrents/table/__tests__/TorrentTableRow.test.tsx": {
@@ -1917,7 +1887,7 @@
   },
   "src/components/transfers/TransfersTab.test.tsx": {
     "qui/no-comments": {
-      "count": 23
+      "count": 22
     }
   },
   "src/components/transfers/TransfersTab.tsx": {
@@ -1962,7 +1932,7 @@
   },
   "src/components/ui/SystemNoticeList.test.tsx": {
     "qui/no-comments": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/ui/SystemNoticeList.tsx": {
@@ -2026,7 +1996,7 @@
   },
   "src/components/ui/field-help.test.tsx": {
     "qui/no-comments": {
-      "count": 5
+      "count": 4
     }
   },
   "src/components/ui/field-help.tsx": {
@@ -2126,7 +2096,7 @@
   },
   "src/components/ui/tooltip.test.tsx": {
     "qui/no-comments": {
-      "count": 5
+      "count": 4
     }
   },
   "src/components/ui/tooltip.tsx": {

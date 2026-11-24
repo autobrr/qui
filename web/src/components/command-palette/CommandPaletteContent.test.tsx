@@ -51,12 +51,6 @@ function highlightedRow() {
 }
 
 beforeEach(() => {
-  // cmdk measures its list and scrolls to the highlighted row, and jsdom has neither.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   Element.prototype.scrollIntoView = () => {}
   Element.prototype.scrollTo = () => {}
 })

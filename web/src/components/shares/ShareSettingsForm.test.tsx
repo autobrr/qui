@@ -50,12 +50,6 @@ function type(label: string, value: string) {
 }
 
 beforeEach(() => {
-  // The section and its tooltips measure their elements, and jsdom has no ResizeObserver.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   stored = structuredClone(defaults)
   saved = []
   refuseWith = null

@@ -5,7 +5,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { SortedPeer, Torrent, TorrentFile, TorrentProperties, TorrentTracker, WebSeed } from "@/types"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -77,14 +77,6 @@ vi.mock("./details", () => ({
   TrackersTable: ({ trackers }: { trackers?: TorrentTracker[] }) => <div data-testid="trackers">{trackers?.map(tracker => tracker.url).join(",")}</div>,
   WebSeedsTable: ({ webseeds }: { webseeds?: WebSeed[] }) => <div data-testid="webseeds">{webseeds?.map(seed => seed.url).join(",")}</div>,
 }))
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

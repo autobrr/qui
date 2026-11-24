@@ -39,16 +39,6 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
-// Radix Checkbox sizes its hidden form input through ResizeObserver, which jsdom lacks.
-function stubResizeObserver() {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-}
-stubResizeObserver()
-
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ApiKeysManager } from "./ApiKeysManager"
 
@@ -89,7 +79,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
-  stubResizeObserver()
 })
 
 describe("ApiKeysManager create dialog", () => {

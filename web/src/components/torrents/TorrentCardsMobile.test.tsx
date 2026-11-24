@@ -38,11 +38,6 @@ import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-libra
 import { useMemo, useRef, type ComponentProps, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 // Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
 const scenario = vi.hoisted(() => ({

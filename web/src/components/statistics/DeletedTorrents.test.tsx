@@ -107,11 +107,6 @@ function previousPage(): HTMLButtonElement {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   mocks.incognitoMode = [false, () => {}]
   mocks.trackerIcons = { data: undefined }
   requests = []

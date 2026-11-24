@@ -57,12 +57,6 @@ describe("RunFooter", () => {
   it("shows why the run is blocked on a tap of the disabled run button", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null
-    // The open tooltip measures its arrow through ResizeObserver, which jsdom lacks.
-    vi.stubGlobal("ResizeObserver", class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    })
     try {
       render(<TooltipProvider>{footer({ kind: "blocked", reason: "Add an indexer first" }, () => {})}</TooltipProvider>)
 

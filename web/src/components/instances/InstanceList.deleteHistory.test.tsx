@@ -25,12 +25,6 @@ let historyStatus: number
 let historyAnswer: Promise<void>
 
 beforeEach(() => {
-  // The switch of a row measures itself, and jsdom has no ResizeObserver.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   requests = []
   historyStatus = 204
   historyAnswer = Promise.resolve()

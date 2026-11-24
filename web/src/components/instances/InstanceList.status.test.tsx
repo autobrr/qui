@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
-import { afterEach, beforeEach, expect, it, vi } from "vitest"
+import { afterEach, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
@@ -19,15 +19,6 @@ const instances = [
   { id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true },
   { id: 2, name: "library", host: "http://127.0.0.1:8081", isActive: true, connected: true },
 ] as InstanceResponse[]
-
-beforeEach(() => {
-  // The switch of a row measures itself, and jsdom has no ResizeObserver.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

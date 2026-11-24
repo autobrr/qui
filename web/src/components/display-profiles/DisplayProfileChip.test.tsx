@@ -74,11 +74,6 @@ function renderWithThreeProfiles(): void {
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 afterEach(() => {
@@ -240,11 +235,6 @@ describe("DisplayProfileChip Feature notice", () => {
   beforeEach(() => {
     _resetFeatureNoticesForTests()
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }))
-    vi.stubGlobal("ResizeObserver", class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    })
     // The notice of Group copies comes first in the list.
     writeClientSetting("qui-feature-notice-seen:group-copies", true)
   })

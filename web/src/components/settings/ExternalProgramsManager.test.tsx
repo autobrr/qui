@@ -43,12 +43,6 @@ const PROGRAM: ExternalProgram = {
 }
 
 function renderManager() {
-  // Radix measures the switch through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { cleanup } from "@testing-library/react"
 import { afterAll, afterEach, beforeAll } from "vitest"
 
 import { server } from "@/test/msw/server"
@@ -30,6 +31,12 @@ if (globalThis.localStorage == null) {
   globalThis.localStorage = Object.create(Storage.prototype) as Storage
 }
 
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 // Global MSW lifecycle for the vitest suite. `onUnhandledFrame: "error"`
 // makes any un-stubbed request fail loudly so missing handlers surface as test
 // failures instead of silent network calls. Hooks are imported explicitly
@@ -39,6 +46,7 @@ beforeAll(() => {
 })
 
 afterEach(() => {
+  cleanup()
   server.resetHandlers()
 })
 

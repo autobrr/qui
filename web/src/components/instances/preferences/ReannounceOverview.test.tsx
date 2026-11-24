@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render } from "@testing-library/react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Instance, InstanceReannounceSettings } from "@/types"
@@ -84,15 +84,6 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
 
 const baseSettings = instancesQuery.instances[0].reannounceSettings
-
-beforeEach(() => {
-  // Radix switch and tooltip measure through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

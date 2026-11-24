@@ -4,7 +4,7 @@
  */
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -34,15 +34,6 @@ function Menu({ notices }: { notices: SystemNotice[] }) {
     </TooltipProvider>
   )
 }
-
-beforeAll(() => {
-  // jsdom has no ResizeObserver, and the Radix popper measures its anchor with one.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(cleanup)
 
