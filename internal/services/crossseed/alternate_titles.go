@@ -78,8 +78,10 @@ func (a *alternateTitleIndex) hold(read namedRelease, keys []string, askName str
 		title = &heldTitle{identity: identity, release: release, addedOn: math.MaxInt64}
 		a.held[identity] = title
 		for _, queue := range a.queues {
+			if len(queue.waiting) == 0 {
+				queue.wakeRun()
+			}
 			queue.waiting = append(queue.waiting, title)
-			queue.wakeRun()
 		}
 	}
 	title.holders++
