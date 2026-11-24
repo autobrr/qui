@@ -35,6 +35,7 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | Effects only in listed hooks, the folder order, feature entry files, no `title=` tooltips, each page in `Page` | `pnpm lint` |
 | UI text goes through i18n keys, with no dead keys | `pnpm check:i18n` |
 | Each endpoint is in the OpenAPI spec | `TestAllEndpointsDocumented`, `make test-openapi` |
+| No response gives a stored credential, and only a backup download, which needs `Backups: write`, gives a tracker passkey to an API key without `Torrents: write` (ADR 0040) | `TestReadKeyGetsNoPlantedSecret` reads each route that a key with only read Permissions reaches (ADR 0087). A secret that its rig does not plant: judgment |
 | The feature map lists each route and dialog with steps | `make check-feature-map` |
 | The match corpus only grows | the Match corpus workflow |
 | Stay in scope, no private tracker links or release names in public text, a live run before you report done, new UI copies an existing page | judgment: the rules above and `web/AGENTS.md` |
