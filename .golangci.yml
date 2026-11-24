@@ -153,6 +153,10 @@ linters:
           msg: use crossseed.Adder
         - pattern: ^\w+\.\w+\.RenameTorrent(File|Folder)$
           msg: use crossseed.Aligner
+        - pattern: ^\w+\.\w+\.(GetCachedInstanceTorrents|ReadInstanceTorrents)$
+          msg: the webhook check reads its candidates from Held titles in internal/services/crossseed/held_titles.go, never the full torrent list
+        - pattern: ^\(?\*?qbittorrent\.SyncSnapshot\)?\.(Torrents|Matching)$
+          msg: the webhook check reads its candidates from Held titles in internal/services/crossseed/held_titles.go, never the full torrent list
         - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: only the Transfer history module in internal/services/transferhistory calls the history store
@@ -329,6 +333,12 @@ linters:
         linters:
           - forbidigo
         text: use crossseed\.Adder
+
+      # Only the webhook check file reads its candidates from Held titles.
+      - path-except: internal/services/crossseed/webhook_check\.go$
+        linters:
+          - forbidigo
+        text: Held titles
 
       # Only the Aligner renames torrent files in the cross-seed and Dir Scan packages.
       - path-except: ^internal/services/(crossseed|dirscan)/

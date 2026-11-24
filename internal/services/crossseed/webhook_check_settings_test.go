@@ -21,12 +21,17 @@ import (
 
 const settingsCheckName = "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA"
 
+func settingsCheckLibrary() ([]qbt.Torrent, map[string]qbt.TorrentFiles) {
+	torrent := qbt.Torrent{Hash: "harbor", Name: settingsCheckName, Category: "films", Size: 4 << 30, TotalSize: 4 << 30, Progress: 1, State: qbt.TorrentStateUploading}
+	return []qbt.Torrent{torrent}, map[string]qbt.TorrentFiles{torrent.Hash: {{Name: settingsCheckName + ".mkv", Size: torrent.Size}}}
+}
+
 func settingsCheckService(t *testing.T) *Service {
 	t.Helper()
-	torrent := qbt.Torrent{Hash: "harbor", Name: settingsCheckName, Category: "films", Size: 4 << 30, TotalSize: 4 << 30, Progress: 1, State: qbt.TorrentStateUploading}
+	torrents, files := settingsCheckLibrary()
 	return &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{localReadsInstance.ID: localReadsInstance}},
-		syncManager:      newFakeSyncManager(localReadsInstance, []qbt.Torrent{torrent}, map[string]qbt.TorrentFiles{torrent.Hash: {{Name: settingsCheckName + ".mkv", Size: torrent.Size}}}),
+		syncManager:      newFakeSyncManager(localReadsInstance, torrents, files),
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
