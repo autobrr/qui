@@ -757,6 +757,53 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		return err
 	}
 
+	seq, err := assignItemsSeq(ctx, tx, runID, instanceID)
+	if err != nil {
+		return err
+	}
+
+	stringToID, err := internItemStrings(ctx, tx, items)
+	if err != nil {
+		return err
+	}
+
+	current, err := loadCurrentItemStates(ctx, tx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	var inserts []backupItemState
+	for _, item := range items {
+		state := backupItemState{
+			TorrentHashID:     stringToID[item.TorrentHash],
+			NameID:            stringToID[item.Name],
+			CategoryID:        internedID(stringToID, item.Category),
+			SizeBytes:         item.SizeBytes,
+			ArchiveRelPathID:  internedID(stringToID, item.ArchiveRelPath),
+			InfoHashV1ID:      internedID(stringToID, item.InfoHashV1),
+			InfoHashV2ID:      internedID(stringToID, item.InfoHashV2),
+			TagsID:            internedID(stringToID, item.Tags),
+			TorrentBlobPathID: internedID(stringToID, item.TorrentBlobPath),
+			// save_path is a plain TEXT column (not interned): cross-seed paths are
+			// unique per torrent and would only bloat string_pool.
+			SavePath: nullString(item.SavePath),
+		}
+		if !current.take(state) {
+			inserts = append(inserts, state)
+		}
+	}
+
+	if err := closeItemStates(ctx, tx, seq, current.untaken()); err != nil {
+		return err
+	}
+	if err := insertItemStates(ctx, tx, instanceID, seq, inserts); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func assignItemsSeq(ctx context.Context, tx dbinterface.TxQuerier, runID int64, instanceID int) (int64, error) {
 	// Deleting the newest runs can leave closed rows whose to_seq is above every
 	// remaining run. A lower number would put those rows back into the next
 	// snapshot, so the next number is at least every stored to_seq. Reusing a
@@ -767,21 +814,24 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 			(SELECT COALESCE(MAX(items_seq), 0) FROM instance_backup_runs WHERE instance_id = ?),
 			(SELECT COALESCE(MAX(to_seq), 0) FROM instance_backup_items WHERE instance_id = ?)
 	`, instanceID, instanceID).Scan(&lastRunSeq, &lastClosedSeq); err != nil {
-		return fmt.Errorf("failed to read snapshot sequence for instance %d: %w", instanceID, err)
+		return 0, fmt.Errorf("failed to read snapshot sequence for instance %d: %w", instanceID, err)
 	}
 	seq := max(lastRunSeq+1, lastClosedSeq)
 	res, err := tx.ExecContext(ctx, "UPDATE instance_backup_runs SET items_seq = ? WHERE id = ? AND items_seq IS NULL", seq, runID)
 	if err != nil {
-		return fmt.Errorf("failed to assign snapshot sequence to backup run %d: %w", runID, err)
+		return 0, fmt.Errorf("failed to assign snapshot sequence to backup run %d: %w", runID, err)
 	}
 	if n, err := res.RowsAffected(); err != nil {
-		return err
+		return 0, err
 	} else if n != 1 {
 		// Either the run committed items already, or it was deleted while this
 		// snapshot was being built.
-		return fmt.Errorf("backup run %d is gone or already has items", runID)
+		return 0, fmt.Errorf("backup run %d is gone or already has items", runID)
 	}
+	return seq, nil
+}
 
+func internItemStrings(ctx context.Context, tx dbinterface.TxQuerier, items []BackupItem) (map[string]int64, error) {
 	// Pre-deduplicate all strings before interning to minimize database operations
 	// This is crucial for performance when dealing with thousands of items
 	// Estimate capacity: torrents often share categories/tags, so less unique values than items
@@ -827,7 +877,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	// Batch intern all required strings at once
 	requiredIDs, err := dbinterface.InternStrings(ctx, tx, requiredStrings...)
 	if err != nil {
-		return fmt.Errorf("failed to batch intern required strings: %w", err)
+		return nil, fmt.Errorf("failed to batch intern required strings: %w", err)
 	}
 
 	// Build map from string -> ID with proper capacity
@@ -846,7 +896,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 		optionalIDs, err := dbinterface.InternStrings(ctx, tx, optionalStrings...)
 		if err != nil {
-			return fmt.Errorf("failed to batch intern optional strings: %w", err)
+			return nil, fmt.Errorf("failed to batch intern optional strings: %w", err)
 		}
 
 		// Add to the same map
@@ -855,46 +905,23 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		}
 	}
 
-	// Helper to get ID from map
-	getID := func(s *string) sql.NullInt64 {
-		if s == nil || *s == "" {
-			return sql.NullInt64{Valid: false}
-		}
-		if id, ok := stringToID[*s]; ok {
-			return sql.NullInt64{Int64: id, Valid: true}
-		}
+	return stringToID, nil
+}
+
+// Helper to get ID from map
+func internedID(stringToID map[string]int64, s *string) sql.NullInt64 {
+	if s == nil || *s == "" {
 		return sql.NullInt64{Valid: false}
 	}
-
-	current, err := loadCurrentItemStates(ctx, tx, instanceID)
-	if err != nil {
-		return err
+	if id, ok := stringToID[*s]; ok {
+		return sql.NullInt64{Int64: id, Valid: true}
 	}
+	return sql.NullInt64{Valid: false}
+}
 
-	var inserts []backupItemState
-	for _, item := range items {
-		state := backupItemState{
-			TorrentHashID:     stringToID[item.TorrentHash],
-			NameID:            stringToID[item.Name],
-			CategoryID:        getID(item.Category),
-			SizeBytes:         item.SizeBytes,
-			ArchiveRelPathID:  getID(item.ArchiveRelPath),
-			InfoHashV1ID:      getID(item.InfoHashV1),
-			InfoHashV2ID:      getID(item.InfoHashV2),
-			TagsID:            getID(item.Tags),
-			TorrentBlobPathID: getID(item.TorrentBlobPath),
-			// save_path is a plain TEXT column (not interned): cross-seed paths are
-			// unique per torrent and would only bloat string_pool.
-			SavePath: nullString(item.SavePath),
-		}
-		if !current.take(state) {
-			inserts = append(inserts, state)
-		}
-	}
-
+func closeItemStates(ctx context.Context, tx dbinterface.TxQuerier, seq int64, closed []int64) error {
 	// SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999; stay under it.
 	const closeChunkSize = 900
-	closed := current.untaken()
 	for i := 0; i < len(closed); i += closeChunkSize {
 		chunk := closed[i:min(i+closeChunkSize, len(closed))]
 		args := make([]any, 0, len(chunk)+1)
@@ -906,7 +933,10 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 			return fmt.Errorf("failed to close backup item states: %w", err)
 		}
 	}
+	return nil
+}
 
+func insertItemStates(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, seq int64, inserts []backupItemState) error {
 	// 83 rows * 12 params = 996, under SQLite's 999 variable limit.
 	const insertChunkSize = 83
 	const insertParams = 12
@@ -948,7 +978,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 // backupItemState is one torrent's stored backup state. A run reuses a row only
