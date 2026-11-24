@@ -29,7 +29,7 @@ type syncSinks interface {
 type heldTitles struct {
 	svc        *Service
 	sync       heldTitlesSync
-	alternates *alternateTitles
+	alternates *alternateTitleIndex
 	wake       chan struct{}
 
 	mu        sync.Mutex
@@ -46,7 +46,7 @@ type heldInstance struct {
 }
 
 type heldIndex struct {
-	alternates *alternateTitles
+	alternates *alternateTitleIndex
 	torrents   map[string]heldTorrent
 	byKey      map[string][]string
 	bySize     map[int64][]string
@@ -76,7 +76,7 @@ func (s *Service) StartHeldTitles(ctx context.Context, features *experimental.Fe
 		return
 	}
 	h := &heldTitles{svc: s, sync: reader, wake: make(chan struct{}, 1), instances: map[int]*heldInstance{}}
-	h.alternates = newAlternateTitles(sources, h.buildsPending)
+	h.alternates = newAlternateTitleIndex(sources, h.buildsPending)
 	s.heldTitles = h
 	sinks.AddSyncEventSink(h)
 	listCtx, cancelList := context.WithTimeout(ctx, 30*time.Second)
@@ -130,7 +130,7 @@ func (h *heldTitles) ready(ctx context.Context, instanceIDs []int) bool {
 func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[int]heldCandidates {
 	keys := h.svc.matcher().titleKeys(query.announced)
 	for _, title := range h.alternates.namedByAny(keys) {
-		keys = append(keys, title.key)
+		keys = append(keys, title.identity.key)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -297,7 +297,7 @@ func (t heldTorrent) sameAs(torrent *qbt.Torrent) bool {
 	return t.name == torrent.Name && t.category == torrent.Category && t.size == searchSourceSize(torrent)
 }
 
-func newHeldIndex(alternates *alternateTitles, size int) *heldIndex {
+func newHeldIndex(alternates *alternateTitleIndex, size int) *heldIndex {
 	return &heldIndex{
 		alternates: alternates,
 		torrents:   make(map[string]heldTorrent, size),
@@ -328,7 +328,7 @@ func (x *heldIndex) remove(hash string) {
 	}
 	delete(x.torrents, hash)
 	delete(x.waiting, hash)
-	x.alternates.release(held.title)
+	x.alternates.drop(held.title)
 	for _, key := range held.keys {
 		dropFrom(x.byKey, key, hash)
 	}
@@ -340,7 +340,7 @@ func (x *heldIndex) releaseTitles() {
 		return
 	}
 	for _, held := range x.torrents {
-		x.alternates.release(held.title)
+		x.alternates.drop(held.title)
 	}
 }
 

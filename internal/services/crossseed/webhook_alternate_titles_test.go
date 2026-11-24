@@ -97,7 +97,7 @@ func heldAlternateAnnounces() []heldAnnounce {
 }
 
 func newHeldQuaySource() *fakeAlternateTitles {
-	return &fakeAlternateTitles{titles: map[string][]string{"Amber Quay": {"Bernsteinkai"}}, fromCache: true}
+	return &fakeAlternateTitles{titles: map[string][]string{"Amber Quay": {"Bernsteinkai"}}, cached: true}
 }
 
 func requireAlternateTitles(t *testing.T, svc *Service, keys ...string) {
@@ -180,7 +180,7 @@ func TestHeldTitlesFetchAfterABuild(t *testing.T) {
 	h.instances[1].needsBuild = true
 	h.mu.Unlock()
 	holdName(h.alternates, heldQuayName, 1)
-	require.Eventually(t, func() bool { return len(h.alternates.wake) == 0 }, 30*time.Second, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return len(h.alternates.queues[0].wake) == 0 }, 30*time.Second, 5*time.Millisecond)
 	require.Empty(t, source.askedTitles())
 
 	h.wakeLoop()
@@ -191,7 +191,7 @@ func TestHeldTitlesFetchAfterABuild(t *testing.T) {
 func TestHeldTitlesAskWithATorrentNameThatCarriesTheTitle(t *testing.T) {
 	thin, files := heldThinTorrents('f')
 	rig := newHeldRig(t, serveHeldLibrary(t, thin, files))
-	source := &fakeAlternateTitles{fromCache: true}
+	source := &fakeAlternateTitles{cached: true}
 	held, _ := rig.heldTitles(t.Context(), source)
 	rig.waitReady(held)
 	checkAnnounce(t, held, localReadsPack, 0)

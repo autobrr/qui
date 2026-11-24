@@ -173,9 +173,6 @@ func (s *Service) webhookMatch(instance *models.Instance, torrent *qbt.Torrent, 
 	}
 }
 
-// announceAliasTitles resolves ARR alternate titles and the episode map for an
-// announced release. Callers run it once per announce, outside the per-torrent
-// scan loops.
 func (s *Service) announceAliasTitles(ctx context.Context, announcedName, contentType string) ([]string, *models.EpisodeMap) {
 	ctx, cancel := context.WithTimeout(ctx, announceAliasLookupTimeout)
 	defer cancel()

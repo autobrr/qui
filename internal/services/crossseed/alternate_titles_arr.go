@@ -6,29 +6,38 @@ package crossseed
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/autobrr/qui/internal/services/arr"
 )
 
 type arrAlternateTitles struct {
-	arr *arr.Service
+	arr          *arr.Service
+	contentTypes []arr.ContentType
 }
 
-func NewArrAlternateTitles(service *arr.Service) AlternateTitleSource {
-	return arrAlternateTitles{arr: service}
+func NewArrAlternateTitles(service *arr.Service) []AlternateTitleSource {
+	return []AlternateTitleSource{
+		arrAlternateTitles{arr: service, contentTypes: []arr.ContentType{arr.ContentTypeTV, arr.ContentTypeAnime}},
+		arrAlternateTitles{arr: service, contentTypes: []arr.ContentType{arr.ContentTypeMovie}},
+	}
 }
 
 func (a arrAlternateTitles) AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error) {
 	contentType := mapContentTypeToARR(held.ContentType)
-	if contentType == "" {
-		return AlternateTitles{FromCache: true}, nil
+	if !slices.Contains(a.contentTypes, contentType) {
+		return AlternateTitles{}, nil
 	}
 	result, err := a.arr.LookupExternalIDs(ctx, held.TorrentName, contentType)
 	if err != nil {
-		return AlternateTitles{}, fmt.Errorf("look up alternate titles in Sonarr or Radarr: %w", err)
+		return AlternateTitles{Requested: true}, fmt.Errorf("look up the alternate titles of %s: %w", contentType, err)
 	}
 	if result == nil {
-		return AlternateTitles{FromCache: true}, nil
+		return AlternateTitles{}, nil
 	}
-	return AlternateTitles{Titles: result.Titles, FromCache: result.FromCache}, nil
+	return AlternateTitles{Titles: result.Titles, Requested: !result.FromCache || refetched(result)}, nil
+}
+
+func refetched(cached *arr.ExternalIDsResult) bool {
+	return cached.IDs != nil && !cached.EpisodeMapKnown
 }

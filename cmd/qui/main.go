@@ -1094,9 +1094,7 @@ func (app *Application) runServer() {
 	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer reconcileCancel()
 	crossSeedService.ReconcileInterruptedRuns(reconcileCtx)
-	crossSeedService.StartHeldTitles(automationCtx, experimentalFeatures, syncManager, clientPool, []crossseed.AlternateTitleSource{
-		crossseed.NewArrAlternateTitles(arrService),
-	})
+	crossSeedService.StartHeldTitles(automationCtx, experimentalFeatures, syncManager, clientPool, crossseed.NewArrAlternateTitles(arrService))
 
 	errorChannel := make(chan error)
 	serverReady := make(chan struct{}, 1)

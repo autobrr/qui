@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -40,6 +41,7 @@ func testAlternateTitleSource(t *testing.T, newContract func(t *testing.T) alter
 		for _, title := range c.titles {
 			require.Contains(t, answer.Titles, title)
 		}
+		require.True(t, answer.Requested, "an answer that cost a request counts for the rate")
 	})
 	t.Run("unknown release", func(t *testing.T) {
 		c := newContract(t)
@@ -53,6 +55,7 @@ func testAlternateTitleSource(t *testing.T, newContract func(t *testing.T) alter
 		answer, err := c.source.AlternateTitles(t.Context(), c.known)
 		require.Error(t, err)
 		require.Empty(t, answer.Titles)
+		require.True(t, answer.Requested)
 	})
 	for name, breakSource := range map[string]func(alternateTitleContract){
 		"check while the source fails": func(c alternateTitleContract) { c.fail() },
@@ -91,6 +94,7 @@ type fakeArrServer struct {
 	hangs    bool
 	parsed   map[string]string
 	requests []string
+	cache    *models.ArrIDCacheStore
 }
 
 func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -173,7 +177,8 @@ func newFakeArr(t *testing.T) (*fakeArrServer, *arr.Service) {
 		_, err = instances.Create(t.Context(), instanceType, string(instanceType), srv.URL, "api-key", nil, nil, true, 1, 15)
 		require.NoError(t, err)
 	}
-	return fake, arr.NewService(instances, models.NewArrIDCacheStore(db))
+	fake.cache = models.NewArrIDCacheStore(db)
+	return fake, arr.NewService(instances, fake.cache)
 }
 
 const (
@@ -187,13 +192,21 @@ var (
 	heldUnknown = HeldRelease{TorrentName: heldMissName, Title: "Nobody Home", ContentType: "tv"}
 )
 
+func arrSourceOf(service *arr.Service, held HeldRelease) AlternateTitleSource {
+	sources := NewArrAlternateTitles(service)
+	if held.ContentType == "movie" {
+		return sources[1]
+	}
+	return sources[0]
+}
+
 func TestArrAlternateTitlesContract(t *testing.T) {
 	for name, known := range map[string]HeldRelease{"Laternenwache": heldSeries, "Kupferfjord": heldMovie} {
 		t.Run(known.ContentType, func(t *testing.T) {
 			testAlternateTitleSource(t, func(t *testing.T) alternateTitleContract {
 				fake, service := newFakeArr(t)
 				return alternateTitleContract{
-					source: NewArrAlternateTitles(service),
+					source: arrSourceOf(service, known),
 					known:  known, titles: []string{name}, unknown: heldUnknown,
 					fail: func() { fake.set(func(f *fakeArrServer) { f.down = true }) },
 					hang: func() { fake.set(func(f *fakeArrServer) { f.hangs = true }) },
@@ -217,29 +230,56 @@ func TestFakeAlternateTitlesContract(t *testing.T) {
 
 func TestArrAlternateTitlesReadTheArrIDCache(t *testing.T) {
 	fake, service := newFakeArr(t)
-	source := NewArrAlternateTitles(service)
 	for _, held := range []HeldRelease{heldSeries, heldMovie, heldUnknown} {
+		source := arrSourceOf(service, held)
 		first, err := source.AlternateTitles(t.Context(), held)
 		require.NoError(t, err)
-		require.False(t, first.FromCache)
+		require.True(t, first.Requested)
 		require.NotEmpty(t, fake.takeRequests())
 
 		again, err := source.AlternateTitles(t.Context(), held)
 		require.NoError(t, err)
-		require.True(t, again.FromCache)
+		require.False(t, again.Requested)
 		require.Equal(t, first.Titles, again.Titles)
 		require.Empty(t, fake.takeRequests())
 	}
 }
 
-func TestArrAlternateTitlesSkipContentThatSonarrAndRadarrDoNotHold(t *testing.T) {
+func TestArrAlternateTitlesSkipContentOfAnotherSource(t *testing.T) {
 	fake, service := newFakeArr(t)
+	sources := NewArrAlternateTitles(service)
+	album := HeldRelease{TorrentName: "Some Band - Some Album (2019) [FLAC]", Title: "Some Album", Year: 2019, ContentType: "music"}
+	for _, skipped := range []struct {
+		source AlternateTitleSource
+		held   HeldRelease
+	}{{sources[0], heldMovie}, {sources[0], album}, {sources[1], heldSeries}, {sources[1], album}} {
+		answer, err := skipped.source.AlternateTitles(t.Context(), skipped.held)
 
-	answer, err := NewArrAlternateTitles(service).AlternateTitles(t.Context(), HeldRelease{TorrentName: "Some Band - Some Album (2019) [FLAC]", Title: "Some Album", Year: 2019, ContentType: "music"})
-
-	require.NoError(t, err)
-	require.Equal(t, AlternateTitles{FromCache: true}, answer)
+		require.NoError(t, err)
+		require.Equal(t, AlternateTitles{}, answer)
+	}
 	require.Empty(t, fake.takeRequests())
+}
+
+func TestArrAlternateTitlesCountACachedRowThatIsFetchedAgain(t *testing.T) {
+	for name, titlesKnown := range map[string]bool{"no episode map yet": true, "no titles yet": false} {
+		t.Run(name, func(t *testing.T) {
+			fake, service := newFakeArr(t)
+			fake.down = true
+			hash, ids := models.ComputeTitleHash(arrSeriesName), &models.ExternalIDs{TVDbID: 70}
+			if titlesKnown {
+				require.NoError(t, fake.cache.SetWithTitles(t.Context(), hash, string(arr.ContentTypeTV), nil, ids, []string{"Lantern Ward"}, nil, false, false, time.Hour))
+			} else {
+				require.NoError(t, fake.cache.Set(t.Context(), hash, string(arr.ContentTypeTV), nil, ids, false, time.Hour))
+			}
+
+			answer, err := arrSourceOf(service, heldSeries).AlternateTitles(t.Context(), heldSeries)
+
+			require.NoError(t, err)
+			require.NotEmpty(t, fake.takeRequests())
+			require.True(t, answer.Requested)
+		})
+	}
 }
 
 func TestAlternateTitlesFetchLogBudget(t *testing.T) {
@@ -249,16 +289,16 @@ func TestAlternateTitlesFetchLogBudget(t *testing.T) {
 		service = prepare(fake, service)
 		drained := make(chan struct{})
 		stop := sync.OnceFunc(func() { close(drained) })
-		var a *alternateTitles
-		a = newAlternateTitles([]AlternateTitleSource{NewArrAlternateTitles(service)}, func() bool {
+		var a *alternateTitleIndex
+		a = newAlternateTitleIndex(NewArrAlternateTitles(service)[:1], func() bool {
 			a.mu.Lock()
 			defer a.mu.Unlock()
-			if len(a.queue) == 0 {
+			if len(a.queues[0].waiting) == 0 || !a.queues[0].pausedUntil.IsZero() {
 				stop()
 			}
 			return false
 		})
-		a.pause = 0
+		a.queues[0].every = 0
 		for i := range titles {
 			name := fmt.Sprintf("Lantern Ward %s S01E01 1080p WEB-DL H.264-GRP", strings.Repeat("x", i+1))
 			if i%2 == 0 {

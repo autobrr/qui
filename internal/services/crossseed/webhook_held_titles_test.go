@@ -299,7 +299,7 @@ func TestHeldTitlesOffBuildsNothing(t *testing.T) {
 
 	sonarr, service := newFakeArr(t)
 
-	svc.StartHeldTitles(t.Context(), experimental.New(nil), off, off, []AlternateTitleSource{NewArrAlternateTitles(service)})
+	svc.StartHeldTitles(t.Context(), experimental.New(nil), off, off, NewArrAlternateTitles(service))
 
 	require.True(t, checkSettingsName(t, svc).CanCrossSeed)
 	require.Nil(t, svc.heldTitles)
