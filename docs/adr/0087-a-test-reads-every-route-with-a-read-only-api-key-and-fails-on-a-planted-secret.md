@@ -7,11 +7,11 @@ date: 2026-11-24
 
 ADR 0040 keeps credentials and tracker passkeys from an API key that holds only read Permissions. Each handler that returns an announce URL hides the passkey itself, and `TestReadKeyGetsNoTrackerPasskey` lists by hand the 9 routes that do so. A new route that returns a URL or a setting gets no check until someone adds it to that list. Pull request 3851 added the hiding, and pull request 3856 then closed a filter that still let such a key test a passkey.
 
-`TestReadKeyGetsNoPlantedSecret` in `internal/api` covers each route without a list. The rig in `server_secrets_rig_test.go` plants a known value in each place where a secret enters qui: each stored credential (instance, SSH, Arr app, indexer, RED/OPS, TVDB, and the config file), a Client Proxy API key, a second API key, and the announce URLs that the qBittorrent stub returns. The test then walks the router. It sends each route with a key that holds every read Permission and no other, and it fails when a response holds a planted value. It sends the same routes as a signed-in browser, which may get the passkeys and nothing else.
+`TestReadKeyGetsNoPlantedSecret` in `internal/api` covers each route without a list. The rig in `server_secrets_rig_test.go` plants a known value in each place where a secret enters qui: each stored credential (instance, SSH, Arr app, indexer, RED/OPS, TVDB, and the config file), a Client Proxy API key, a second API key, the announce URLs that the qBittorrent stub returns, and the links of the search result that the indexer stub returns. The test then walks the router. It sends each route with a key that holds every read Permission and no other, and it fails when a response holds a planted value. It sends the same routes as a signed-in browser, which may get the passkeys and nothing else.
 
 A route that the key reaches must answer with a 2xx status. A route that cannot do so in the rig has a row in `walkCannotAnswer` with the reason. So a new route either runs in the walk or shows in review as a new row.
 
-With `CanReadTrackerPasskeys` changed to allow every key, the test fails on 10 routes, the torrent stream included. With the mask of the cross-seed keys removed, it fails on `GET /api/cross-seed/settings` and `GET /api/cross-seed/status`.
+With `CanReadTrackerPasskeys` changed to allow every key, the test fails on 14 routes, the torrent stream and the three search routes included. With the mask of the cross-seed keys removed, it fails on `GET /api/cross-seed/settings` and `GET /api/cross-seed/status`.
 
 ## Consequences
 

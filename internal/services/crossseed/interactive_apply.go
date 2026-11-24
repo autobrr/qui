@@ -17,7 +17,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -77,19 +76,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 
 			downloadURL := strings.TrimSpace(sel.DownloadURL)
 			guid := strings.TrimSpace(sel.GUID)
-			isGazelle := gazellemusic.IsDownloadURL(downloadURL)
-
-			if isGazelle {
-				if sel.IndexerID == 0 || downloadURL == "" {
-					resultChan <- selectionResult{idx, TorrentSearchAddResult{
-						Title:   sel.Title,
-						Indexer: sel.Indexer,
-						Success: false,
-						Error:   "invalid selection",
-					}, nil}
-					return
-				}
-			} else if sel.IndexerID <= 0 || (downloadURL == "" && guid == "") {
+			if sel.IndexerID == 0 || (downloadURL == "" && guid == "") {
 				resultChan <- selectionResult{idx, TorrentSearchAddResult{
 					Title:   sel.Title,
 					Indexer: sel.Indexer,
@@ -461,6 +448,10 @@ func (s *Service) resolveSelectionFromCache(cached []TorrentSearchResult, select
 		}
 
 		if downloadURL != "" && downloadURL == result.DownloadURL {
+			return result, nil
+		}
+
+		if guid != "" && guid == jackett.HiddenGUID(result.IndexerID, result.GUID, result.DownloadURL) {
 			return result, nil
 		}
 	}

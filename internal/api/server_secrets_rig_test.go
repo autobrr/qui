@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/pem"
 	"io"
 	"net/http"
@@ -43,8 +44,10 @@ type plantedSecret struct {
 
 type secretsRig struct {
 	*permissionRig
-	routes  []routeKey
-	planted []plantedSecret
+	routes                          []routeKey
+	planted                         []plantedSecret
+	feedLink, feedGUID, feedDetails string
+	downloads                       chan string
 }
 
 func (rig *secretsRig) plant(name string, audience secretAudience) string {
@@ -54,20 +57,20 @@ func (rig *secretsRig) plant(name string, audience secretAudience) string {
 }
 
 const (
-	stubTorrentJSON = `{"name":"NAME","hash":"NAME","state":"uploading","added_on":1,"size":100,"total_size":100,"progress":1,` +
-		`"save_path":"/data","content_path":"/data/Show.S01","tracker":"TRACKER","magnet_uri":"magnet:?xt=urn:btih:NAME&tr=ESCAPED",` +
+	stubTorrentJSON = `{"name":"NAME","hash":"HASH","state":"uploading","added_on":1,"size":100,"total_size":100,"progress":1,` +
+		`"save_path":"/data","content_path":"/data/Show.S01","tracker":"TRACKER","magnet_uri":"magnet:?xt=urn:btih:HASH&tr=ESCAPED",` +
 		`"trackers":[{"url":"TRACKER"}]}`
 	stubFeedURL = "https://rss.example.invalid/feed"
 )
 
-func stubTorrent(name, tracker string) string {
-	return strings.NewReplacer("NAME", name, "TRACKER", tracker, "ESCAPED", url.QueryEscape(tracker)).Replace(stubTorrentJSON)
+func stubTorrent(hash, name, tracker string) string {
+	return strings.NewReplacer("HASH", hash, "NAME", name, "TRACKER", tracker, "ESCAPED", url.QueryEscape(tracker)).Replace(stubTorrentJSON)
 }
 
 func (rig *secretsRig) qBittorrentResponses() map[string]string {
 	pathTracker := "https://tracker.example.invalid/" + rig.plant("announce path passkey", shownWithTorrentsWrite) + "/announce"
 	queryTracker := "https://query.example.invalid/announce?passkey=" + rig.plant("announce query passkey", shownWithTorrentsWrite)
-	first, second := stubTorrent("aaa", pathTracker), stubTorrent("bbb", queryTracker)
+	first, second := stubTorrent("aaa", stubReleaseName, pathTracker), stubTorrent("bbb", "bbb", queryTracker)
 	trackerRow := func(tracker string) string {
 		return `[{"url":"** [DHT] **","status":0},{"url":"` + tracker + `","status":2}]`
 	}
@@ -128,13 +131,39 @@ const (
 		`<searching><search available="yes" supportedParams="q"/><tv-search available="yes" supportedParams="q,season,ep"/>` +
 		`<movie-search available="yes" supportedParams="q"/></searching>` +
 		`<categories><category id="5000" name="TV"/><category id="2000" name="Movies"/></categories></caps>`
-	stubFeed = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel>` +
-		`<title>stub</title><item><title>Show.S01.1080p.WEB-DL-GRP</title><guid>https://indexer.example.invalid/t/1</guid>` +
-		`<link>https://indexer.example.invalid/dl/1</link><comments>https://indexer.example.invalid/t/1</comments>` +
-		`<pubDate>Tue, 24 Nov 2026 08:00:00 +0000</pubDate><size>100</size><category>5000</category>` +
-		`<enclosure url="https://indexer.example.invalid/dl/1" length="100" type="application/x-bittorrent"/>` +
-		`<torznab:attr name="seeders" value="5"/></item></channel></rss>`
+	stubReleaseName = "Show.S01.1080p.WEB-DL-GRP"
 )
+
+func (rig *secretsRig) torznabFeed(link string) string {
+	return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel>` +
+		`<title>stub</title><item><title>` + stubReleaseName + `</title><guid>` + rig.feedGUID + `</guid>` +
+		`<link>` + link + `</link><comments>` + rig.feedDetails + `</comments>` +
+		`<pubDate>Tue, 24 Nov 2026 08:00:00 +0000</pubDate><size>100</size><category>5000</category>` +
+		`<enclosure url="` + link + `" length="100" type="application/x-bittorrent"/>` +
+		`<torznab:attr name="seeders" value="5"/></item></channel></rss>`
+}
+
+func (rig *secretsRig) startTorznab(t *testing.T) *httptest.Server {
+	t.Helper()
+	torrent, err := base64.StdEncoding.DecodeString(walkTorrent)
+	require.NoError(t, err)
+	linkPath := "/dl/1?passkey=" + rig.plant("search result link passkey", shownWithTorrentsWrite)
+	rig.feedGUID = "https://indexer.example.invalid/t/1?key=" + rig.plant("search result GUID passkey", shownWithTorrentsWrite)
+	rig.feedDetails = "https://indexer.example.invalid/t/1?key=" + rig.plant("search result details passkey", shownWithTorrentsWrite)
+	srv := startStub(t, func(r *http.Request) string {
+		switch {
+		case r.URL.Query().Get("t") == "caps":
+			return stubCaps
+		case strings.HasPrefix(r.URL.Path, "/dl/"):
+			rig.downloads <- r.URL.Query().Get("passkey")
+			return string(torrent)
+		default:
+			return rig.torznabFeed("http://" + r.Host + linkPath)
+		}
+	})
+	rig.feedLink = srv.URL + linkPath
+	return srv
+}
 
 func startStub(t *testing.T, answer func(*http.Request) string) *httptest.Server {
 	t.Helper()
@@ -149,7 +178,7 @@ func newSecretsRig(t *testing.T) *secretsRig {
 	t.Helper()
 	ctx := t.Context()
 	deps, db := newTestDependenciesWithDB(t)
-	rig := &secretsRig{permissionRig: &permissionRig{deps: deps}}
+	rig := &secretsRig{permissionRig: &permissionRig{deps: deps}, downloads: make(chan string, 8)}
 
 	var err error
 	deps.Config, err = config.New(t.TempDir(), "test")
@@ -189,12 +218,7 @@ func newSecretsRig(t *testing.T) *secretsRig {
 		rig.plant("arr API key", shownToNobody), &basicUser, &arrPassword, true, 1, 5)
 	require.NoError(t, err)
 
-	torznab := startStub(t, func(r *http.Request) string {
-		if r.URL.Query().Get("t") == "caps" {
-			return stubCaps
-		}
-		return stubFeed
-	})
+	torznab := rig.startTorznab(t)
 	indexerPassword := rig.plant("indexer basic password", shownToNobody)
 	_, err = deps.TorznabIndexerStore.CreateWithIndexerID(ctx, "indexer", torznab.URL, "stub",
 		rig.plant("indexer API key", shownToNobody), &basicUser, &indexerPassword, true, 1, 5, models.TorznabBackendJackett)
