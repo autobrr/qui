@@ -95,7 +95,7 @@ func TestApplicationHandler_GetInfoListsNoExperimentalFeatureAsEmptyList(t *test
 	require.Contains(t, rec.Body.String(), `"experimentalFeatures":[]`)
 }
 
-// regression: #4449
+// regression: #4450
 func TestPostgresTarget_DSNRemovesCredentials(t *testing.T) {
 	for _, tc := range []struct {
 		name, dsn, want string
