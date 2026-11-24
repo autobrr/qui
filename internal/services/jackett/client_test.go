@@ -215,3 +215,14 @@ func TestMagnetDownloadError_RedactsTrackerPasskeys(t *testing.T) {
 	// The field itself must stay raw: the manual-add handler consumes it.
 	assert.Equal(t, rawMagnet, err.MagnetURL)
 }
+
+// regression: #4473
+func TestDownloadHidesTheKeysOfALinkThatDoesNotParse(t *testing.T) {
+	client := NewClient("https://indexer.example.invalid", "test-api-secret", nil, nil, "jackett", 5)
+
+	_, err := client.Download(t.Context(), "https://indexer.example.invalid/download?apikey=test-api-secret&passkey=test-pass-secret\x7f")
+
+	require.ErrorContains(t, err, "build download request")
+	assert.NotContains(t, err.Error(), "test-api-secret")
+	assert.NotContains(t, err.Error(), "test-pass-secret")
+}
