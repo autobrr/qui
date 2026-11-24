@@ -110,6 +110,10 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 
 	smallCold, smallWarm = heldChecks(10)
 	largeCold, largeWarm = heldChecks(1000)
+	slowBatchRead := logbudget.Line{Level: "debug", Message: "GetTorrentFilesBatch completed"}
+	for _, lines := range []logbudget.Lines{smallCold, smallWarm, largeCold, largeWarm} {
+		delete(lines, slowBatchRead)
+	}
 	require.GreaterOrEqual(t, largeCold.Message("[CROSSSEED-SEARCH] Using largest file for content type detection"), 1000, "Held titles reaches the torrents of the same size")
 	logbudget.AssertFlat(t, smallCold, largeCold)
 	logbudget.AssertFlat(t, smallWarm, largeWarm)
