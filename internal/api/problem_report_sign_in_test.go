@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/services/problemreport"
+	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/fakebrrbin"
 )
 
@@ -252,14 +253,13 @@ func TestProblemReportSignOutDropsAPendingSignIn(t *testing.T) {
 	assert.Equal(t, problemreport.Sender{Anonymous: true}, rig.sender())
 }
 
-// regression: #4360
-func TestProblemReportSignOutDropsASignInThatIsStillStarting(t *testing.T) {
-	rig := signInRig(t)
+func (rig *reportRig) startDuringSignOut() int {
+	rig.t.Helper()
 	received, release := rig.fake.HoldSignInStarts()
 	defer release()
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, rig.srv.URL+"/api/problem-reports/sign-in", strings.NewReader(`{"provider":"github"}`))
-	require.NoError(t, err)
+	req, err := http.NewRequestWithContext(rig.t.Context(), http.MethodPost, rig.srv.URL+"/api/problem-reports/sign-in", strings.NewReader(`{"provider":"github"}`))
+	require.NoError(rig.t, err)
 	req.AddCookie(rig.cookie)
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	started := make(chan int, 1)
@@ -275,9 +275,25 @@ func TestProblemReportSignOutDropsASignInThatIsStillStarting(t *testing.T) {
 	<-received
 
 	status, body := rig.call(http.MethodDelete, "/api/problem-reports/sign-in", "")
-	require.Equal(t, http.StatusNoContent, status, body)
+	require.Equal(rig.t, http.StatusNoContent, status, body)
 	release()
+	return <-started
+}
 
-	assert.Equal(t, http.StatusBadGateway, <-started, "the sign-out ended the start, so the browser closes the popup")
+// regression: #4360
+func TestProblemReportSignOutDropsASignInThatIsStillStarting(t *testing.T) {
+	rig := signInRig(t)
+	assert.Equal(t, http.StatusBadGateway, rig.startDuringSignOut(), "the sign-out ended the start, so the browser closes the popup")
+	assert.Equal(t, problemreport.SignInState{State: problemreport.SignInExpired}, rig.signInState(), "qui polls no sign-in after the sign-out")
+}
+
+// regression: #4464
+func TestProblemReportSignOutDropsAStartThatBrrbinAnswersAfterTheSignOut(t *testing.T) {
+	answerAfterCancel := testutil.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return http.DefaultTransport.RoundTrip(r.WithContext(context.WithoutCancel(r.Context())))
+	})
+	rig := newReportRig(t, reportRigOptions{client: &http.Client{Transport: answerAfterCancel}})
+	rig.fake.SignInInterval = 0.001
+	assert.Equal(t, http.StatusBadGateway, rig.startDuringSignOut(), "the sign-out dropped the start, so the browser closes the popup")
 	assert.Equal(t, problemreport.SignInState{State: problemreport.SignInExpired}, rig.signInState(), "qui polls no sign-in after the sign-out")
 }
