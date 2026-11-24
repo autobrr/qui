@@ -575,7 +575,7 @@ func TestClassifyWebhookAnnouncementSourceColonTitleAbsoluteEpisode(t *testing.T
 	require.Contains(t, got.decision.RelaxedDifferences, "episode")
 }
 
-func TestWebhookCandidate(t *testing.T) {
+func TestWebhookDecision(t *testing.T) {
 	const (
 		movie   = "The.Squad.of.Madame.K.1953.1080p.BluRay.x264-GRP"
 		episode = "Kaiju.Squad.S01E01.1080p.WEB.H264-GRP"
@@ -607,15 +607,16 @@ func TestWebhookCandidate(t *testing.T) {
 			torrent := row.sourceTorrent()
 			announced := namedRelease{release: svc.releaseCache.Parse(tt.announce), rawName: tt.announce}
 
-			match, decision := svc.webhookCandidate(t.Context(), corpusInstance, &torrent, announced, uint64(size), announcementMatchPolicy{
+			decision := svc.webhookDecision(t.Context(), webhookCheckInput{announced: announced, size: uint64(size), policy: announcementMatchPolicy{
 				findIndividualEpisodes: true,
 				skipRecheck:            tt.skipRecheck,
-			})
+			}}, corpusInstance.ID, &torrent, nil)
 
 			require.Equal(t, tt.wantReason == "", decision.Accepted)
 			require.Equal(t, tt.wantReason, decision.RejectReason)
 			require.Equal(t, tt.wantClass, decision.Class)
 			if decision.Accepted {
+				match := svc.webhookMatch(corpusInstance, &torrent, announced, uint64(size))
 				require.Equal(t, corpusSourceHash, match.TorrentHash)
 				require.Equal(t, "exact", match.MatchType)
 			}
