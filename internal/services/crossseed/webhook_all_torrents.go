@@ -107,6 +107,12 @@ func (s *Service) webhookMatchAllTorrents(ctx context.Context, input webhookChec
 			Msg("Webhook check: scanning instance torrents for metadata matches")
 
 		logNearMisses := announcedGroup != "" && log.Debug().Enabled()
+		isNearMiss := func(torrent *qbt.Torrent) bool {
+			source := namedRelease{release: s.releaseCache.Parse(torrent.Name), rawName: torrent.Name}
+			return m.normalizedGroupSiteIdentity(source.release) == announcedGroup ||
+				(source.release.Site != "") != (announcedCandidate.release.Site != "") &&
+					m.crossFieldGroupSiteFallback(source, announcedCandidate)
+		}
 		policy := input.policy
 		policy.sourceReads = sourceReads
 
@@ -125,27 +131,35 @@ func (s *Service) webhookMatchAllTorrents(ctx context.Context, input webhookChec
 				counts.add(torrent.Category, gateAnswer != sourceOutsideFilter)
 			}
 			if gateAnswer.lasting() {
+				if logNearMisses && gateAnswer == sourceOutsideFilter && isNearMiss(torrent) {
+					if answer.nearMisses < nearMissDebugLimit {
+						log.Debug().
+							Str("source", "cross-seed.webhook").
+							Int("instanceId", instance.ID).
+							Str("incomingName", announcedCandidate.rawName).
+							Str("existingName", torrent.Name).
+							Str("category", torrent.Category).
+							Str("tags", torrent.Tags).
+							Msg("Webhook check: source filter skipped near miss")
+					}
+					answer.nearMisses++
+				}
 				continue
 			}
 			match, decision := s.webhookCandidate(ctx, instance, torrent, announcedCandidate, input.size, policy)
 			if !decision.Accepted {
-				if logNearMisses {
-					source := namedRelease{release: s.releaseCache.Parse(torrent.Name), rawName: torrent.Name}
-					if m.normalizedGroupSiteIdentity(source.release) == announcedGroup ||
-						(source.release.Site != "") != (announcedCandidate.release.Site != "") &&
-							m.crossFieldGroupSiteFallback(source, announcedCandidate) {
-						if answer.nearMisses < nearMissDebugLimit {
-							log.Debug().
-								Str("source", "cross-seed.webhook").
-								Int("instanceId", instance.ID).
-								Str("incomingName", announcedCandidate.rawName).
-								Str("existingName", torrent.Name).
-								Str("rejectReason", decision.RejectReason).
-								Str("class", string(decision.Class)).
-								Msg("Webhook check: rejected near miss")
-						}
-						answer.nearMisses++
+				if logNearMisses && isNearMiss(torrent) {
+					if answer.nearMisses < nearMissDebugLimit {
+						log.Debug().
+							Str("source", "cross-seed.webhook").
+							Int("instanceId", instance.ID).
+							Str("incomingName", announcedCandidate.rawName).
+							Str("existingName", torrent.Name).
+							Str("rejectReason", decision.RejectReason).
+							Str("class", string(decision.Class)).
+							Msg("Webhook check: rejected near miss")
 					}
+					answer.nearMisses++
 				}
 				continue
 			}
@@ -167,7 +181,7 @@ func (s *Service) webhookMatchAllTorrents(ctx context.Context, input webhookChec
 		}
 
 		if !counts.empty() {
-			log.Debug().
+			log.Trace().
 				Str("source", "cross-seed.webhook").
 				Int("instanceID", instance.ID).
 				Str("instanceName", instance.Name).

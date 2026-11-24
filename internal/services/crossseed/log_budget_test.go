@@ -99,18 +99,25 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 
 func TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss(t *testing.T) {
 	tests := []struct {
-		name        string
-		announce    string
-		debugAnswer int
-		nearMisses  int
+		name          string
+		announce      string
+		excluded      []string
+		debugAnswer   int
+		nearMisses    int
+		filterSkipped int
 	}{
 		{name: "no match", announce: "Quiet.Field.2025.1080p.WEB-DL.H.264-OTHER"},
 		{name: "near miss", announce: "Lantern.Bay.2026.1080p.WEB-DL.H.264-LUMA", debugAnswer: 1, nearMisses: 1},
 		{name: "match", announce: settingsCheckName, debugAnswer: 1},
+		{name: "filter skips another group", announce: "Quiet.Field.2025.1080p.WEB-DL.H.264-OTHER", excluded: []string{"films"}},
+		{name: "filter skips the same group", announce: settingsCheckName, excluded: []string{"films"}, debugAnswer: 1, filterSkipped: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := settingsCheckService(t)
+			svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				return &models.CrossSeedAutomationSettings{WebhookSourceExcludeCategories: tt.excluded}, nil
+			}
 			check := func() {
 				_, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: tt.announce, Size: 4 << 30})
 				require.NoError(t, err)
@@ -123,6 +130,8 @@ func TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss(t *testing.T) {
 			lines := logbudget.Count(t, check)
 			require.Equal(t, tt.debugAnswer, lines[logbudget.Line{Level: "debug", Message: "Webhook check completed"}])
 			require.Equal(t, tt.nearMisses, lines[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}])
+			require.Equal(t, tt.filterSkipped, lines[logbudget.Line{Level: "debug", Message: "Webhook check: source filter skipped near miss"}])
+			require.Zero(t, lines[logbudget.Line{Level: "debug", Message: "[Webhook] Source filter results"}])
 		})
 	}
 }
