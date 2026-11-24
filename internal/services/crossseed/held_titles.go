@@ -58,7 +58,7 @@ type heldTorrent struct {
 }
 
 type heldCandidates struct {
-	held, waiting []string
+	held, waiting []*qbt.Torrent
 }
 
 type heldTitlesQuery struct {
@@ -118,8 +118,8 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 		if inst == nil || inst.index == nil {
 			continue
 		}
-		if candidates := inst.index.candidates(keys, query.size); len(candidates.held)+len(candidates.waiting) > 0 {
-			found[id] = candidates
+		if held, waiting := inst.index.candidates(keys, query.size); len(held)+len(waiting) > 0 {
+			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting)}
 		}
 	}
 	return found
@@ -133,9 +133,18 @@ func (q heldTitlesQuery) titleKeys(m matcher) []string {
 	return keys
 }
 
-func (x *heldIndex) candidates(keys []string, size int64) heldCandidates {
+func (inst *heldInstance) torrents(hashes []string) []*qbt.Torrent {
+	torrents := make([]*qbt.Torrent, 0, len(hashes))
+	for _, hash := range hashes {
+		if torrent, ok := inst.snapshot.Torrent(hash); ok {
+			torrents = append(torrents, torrent)
+		}
+	}
+	return torrents
+}
+
+func (x *heldIndex) candidates(keys []string, size int64) (held, waiting []string) {
 	seen := map[string]struct{}{}
-	var found heldCandidates
 	add := func(hashes *[]string, hash string) {
 		if _, ok := seen[hash]; !ok {
 			seen[hash] = struct{}{}
@@ -144,18 +153,18 @@ func (x *heldIndex) candidates(keys []string, size int64) heldCandidates {
 	}
 	for _, key := range keys {
 		for _, hash := range x.byKey[key] {
-			add(&found.held, hash)
+			add(&held, hash)
 		}
 	}
 	if size > 0 {
 		for _, hash := range x.bySize[size] {
-			add(&found.held, hash)
+			add(&held, hash)
 		}
 	}
 	for hash := range x.waiting {
-		add(&found.waiting, hash)
+		add(&waiting, hash)
 	}
-	return found
+	return held, waiting
 }
 
 func (h *heldTitles) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {

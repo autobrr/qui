@@ -114,11 +114,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		},
 	}
 	var answer webhookCheckAnswer
-	if snapshots, snapshotErrs := s.heldTitlesSnapshots(ctx, instances); s.heldTitles.ready(ctx, targetInstanceIDs) {
+	if targets, snapshotErrs := s.heldTitlesTargets(ctx, instances); s.heldTitles.ready(ctx, targetInstanceIDs) {
 		for instanceID, err := range snapshotErrs {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents from instance")
 		}
-		answer, err = s.webhookMatchHeldTitles(ctx, input, contentInfo.ContentType, snapshots)
+		answer, err = s.webhookMatchHeldTitles(ctx, input, contentInfo.ContentType, targets)
 	} else {
 		input.policy.candidateTitles, input.policy.episodeMap = s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
 		answer, err = s.webhookMatchAllTorrents(ctx, input)
@@ -161,11 +161,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
-func (s *Service) heldTitlesSnapshots(ctx context.Context, instances []*models.Instance) (map[int]*qbt.SyncSnapshot, map[int]error) {
+func (s *Service) heldTitlesTargets(ctx context.Context, instances []*models.Instance) ([]int, map[int]error) {
 	if s.heldTitles == nil {
 		return nil, nil
 	}
-	snapshots := make(map[int]*qbt.SyncSnapshot, len(instances))
+	targets := make([]int, 0, len(instances))
 	errs := map[int]error{}
 	for _, instance := range instances {
 		owner, err := s.syncManager.GetSyncOwner(ctx, instance.ID)
@@ -173,90 +173,75 @@ func (s *Service) heldTitlesSnapshots(ctx context.Context, instances []*models.I
 			errs[instance.ID] = err
 			continue
 		}
-		if snapshot := owner.Snapshot(); snapshot != nil {
-			snapshots[instance.ID] = snapshot
+		if owner.Snapshot() != nil {
+			targets = append(targets, instance.ID)
 		}
 	}
-	return snapshots, errs
+	return targets, errs
 }
 
-func (s *Service) webhookMatchHeldTitles(ctx context.Context, input webhookCheckInput, contentType string, snapshots map[int]*qbt.SyncSnapshot) (webhookCheckAnswer, error) {
-	instanceIDs := make([]int, len(input.instances))
-	for i, instance := range input.instances {
-		instanceIDs[i] = instance.ID
-	}
+func (s *Service) webhookMatchHeldTitles(ctx context.Context, input webhookCheckInput, contentType string, targets []int) (webhookCheckAnswer, error) {
 	gate := s.sourceGate()
 	webhookFilter := defaultsFor(triggerWebhook, input.settings).sourceFilter
 	query := heldTitlesQuery{announced: input.announced, size: int64(input.size)}
-	if !anyHeld(s.heldTitles.candidates(query, instanceIDs), snapshots, func(torrent *qbt.Torrent) bool {
+	if !anyHeld(s.heldTitles.candidates(query, targets), func(torrent *qbt.Torrent) bool {
 		return !gate.check(torrent, webhookFilter).lasting()
 	}) {
 		return webhookCheckAnswer{nothingHeld: true}, nil
 	}
 	input.policy.candidateTitles, input.policy.episodeMap = s.announceAliasTitles(ctx, input.announced.rawName, contentType)
 	query.alternateTitles = input.policy.candidateTitles
-	candidates := s.heldTitles.candidates(query, instanceIDs)
+	candidates := s.heldTitles.candidates(query, targets)
 
-	torrents := make(map[int][]*qbt.Torrent, len(candidates))
 	pendingReads := make(map[int]*pendingLocalReads, len(candidates))
-	for _, instance := range input.instances {
-		found := candidates[instance.ID]
-		held := heldSnapshotTorrents(snapshots[instance.ID], slices.Concat(found.held, found.waiting))
-		if len(held) == 0 {
-			continue
-		}
-		torrents[instance.ID] = held
-		pendingReads[instance.ID] = s.requestLocalReads(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
-			for _, torrent := range held {
+	waits := false
+	for instanceID, found := range candidates {
+		pendingReads[instanceID] = s.requestLocalReads(ctx, instanceID, func(yield func(*qbt.Torrent) bool) {
+			for _, torrent := range slices.Concat(found.held, found.waiting) {
 				if !gate.check(torrent, webhookFilter).lasting() && !yield(torrent) {
 					return
 				}
 			}
 		})
+		waits = waits || pendingReads[instanceID].hasFills()
 	}
 	readsCtx, cancelReads := context.WithTimeout(ctx, localReadWait)
 	defer cancelReads()
-
-	var answer webhookCheckAnswer
-	for _, instance := range input.instances {
-		pending, ok := pendingReads[instance.ID]
-		if !ok {
-			continue
-		}
-		sourceReads := pending.wait(readsCtx)
+	sourceReads := make(map[int]localReads, len(pendingReads))
+	for instanceID, pending := range pendingReads {
+		sourceReads[instanceID] = pending.wait(readsCtx)
 		if err := ctx.Err(); err != nil {
 			return webhookCheckAnswer{}, err
 		}
-		held := torrents[instance.ID]
-		if err := s.webhookMatchTorrents(ctx, instance, slices.Values(held), len(held), sourceReads, input, &answer); err != nil {
+	}
+	if waits {
+		candidates = s.heldTitles.candidates(query, targets)
+	}
+
+	var answer webhookCheckAnswer
+	for _, instance := range input.instances {
+		held := candidates[instance.ID].sorted()
+		if len(held) == 0 {
+			continue
+		}
+		if err := s.webhookMatchTorrents(ctx, instance, slices.Values(held), len(held), sourceReads[instance.ID], input, &answer); err != nil {
 			return webhookCheckAnswer{}, err
 		}
 	}
 	return answer, nil
 }
 
-func anyHeld(candidates map[int]heldCandidates, snapshots map[int]*qbt.SyncSnapshot, readable func(*qbt.Torrent) bool) bool {
-	for instanceID, found := range candidates {
-		if len(found.held) > 0 {
-			return true
-		}
-		if slices.ContainsFunc(heldSnapshotTorrents(snapshots[instanceID], found.waiting), readable) {
+func anyHeld(candidates map[int]heldCandidates, readable func(*qbt.Torrent) bool) bool {
+	for _, found := range candidates {
+		if len(found.held) > 0 || slices.ContainsFunc(found.waiting, readable) {
 			return true
 		}
 	}
 	return false
 }
 
-func heldSnapshotTorrents(snapshot *qbt.SyncSnapshot, hashes []string) []*qbt.Torrent {
-	if snapshot == nil {
-		return nil
-	}
-	torrents := make([]*qbt.Torrent, 0, len(hashes))
-	for _, hash := range hashes {
-		if torrent, ok := snapshot.Torrent(hash); ok {
-			torrents = append(torrents, torrent)
-		}
-	}
+func (c heldCandidates) sorted() []*qbt.Torrent {
+	torrents := slices.Concat(c.held, c.waiting)
 	slices.SortFunc(torrents, func(a, b *qbt.Torrent) int {
 		return cmp.Or(strings.Compare(a.Name, b.Name), strings.Compare(a.Hash, b.Hash))
 	})

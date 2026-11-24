@@ -22,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -34,6 +35,7 @@ type heldLibrary struct {
 	fileReads []string
 	rid       int64
 	url       string
+	onFiles   func()
 }
 
 type heldMainData struct {
@@ -52,6 +54,9 @@ func serveHeldLibrary(t *testing.T, torrents []qbt.Torrent, files map[string]qbt
 }
 
 func (l *heldLibrary) serve(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api/v2/torrents/files" && l.onFiles != nil {
+		l.onFiles()
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	switch r.URL.Path {
@@ -197,6 +202,16 @@ func (r *heldRig) waitReady(svc *Service) {
 	r.t.Helper()
 	ids := slices.Sorted(maps.Keys(r.instances))
 	require.Eventually(r.t, func() bool { return svc.heldTitles.ready(r.t.Context(), ids) }, 30*time.Second, 5*time.Millisecond)
+}
+
+type arrLookupDuring struct {
+	spyARRLookupService
+	during func()
+}
+
+func (a *arrLookupDuring) LookupExternalIDs(ctx context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error) {
+	a.during()
+	return a.spyARRLookupService.LookupExternalIDs(ctx, title, contentType)
 }
 
 func checkAnnounce(t *testing.T, svc *Service, name string, size uint64, instanceIDs ...int) *WebhookCheckResponse {

@@ -6,7 +6,9 @@ package crossseed
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -276,4 +278,63 @@ func TestHeldTitlesOffBuildsNothing(t *testing.T) {
 	svc.StartHeldTitles(t.Context(), experimental.New(nil), off, off)
 
 	require.True(t, checkSettingsName(t, svc).CanCrossSeed)
+}
+
+func TestHeldTitlesMatchesOnlyTheTorrentsLeftAfterTheFileReads(t *testing.T) {
+	folder := seasonFolderTorrent(heldHash('f', 1))
+	folder.AddedOn = 1
+	library := serveHeldLibrary(t, append(biglib.Torrents(200), folder), map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
+	rig := newHeldRig(t, library)
+	held, _ := rig.heldTitles(t.Context())
+	rig.waitReady(held)
+	requested, release := make(chan struct{}), make(chan struct{})
+	library.onFiles = sync.OnceFunc(func() {
+		close(requested)
+		<-release
+	})
+	type answer struct {
+		resp *WebhookCheckResponse
+		err  error
+	}
+	answered := make(chan answer, 1)
+	go func() {
+		resp, err := held.CheckWebhook(t.Context(), &WebhookCheckRequest{TorrentName: localReadsPack})
+		answered <- answer{resp, err}
+	}()
+
+	<-requested
+	library.set(biglib.Torrents(200))
+	rig.sync(1)
+	close(release)
+
+	got := <-answered
+	require.NoError(t, got.err)
+	full, _ := rig.fullScan()
+	require.Equal(t, checkAnnounce(t, full, localReadsPack, 0), got.resp)
+	require.False(t, got.resp.CanCrossSeed, "the season folder left qBittorrent while its files were read")
+}
+
+func TestHeldTitlesMatchesTheTorrentsOfASyncDuringTheArrLookup(t *testing.T) {
+	library := serveHeldLibrary(t, biglib.Torrents(200), nil)
+	rig := newHeldRig(t, library)
+	held, _ := rig.heldTitles(t.Context())
+	rig.waitReady(held)
+	announced := library.torrents[100]
+	readded := slices.Clone(library.torrents)
+	for i := range readded {
+		if readded[i].Name == announced.Name {
+			readded[i].Hash = heldHash('d', i)
+			readded[i].InfohashV1 = readded[i].Hash
+		}
+	}
+	held.arrService = &arrLookupDuring{during: sync.OnceFunc(func() {
+		library.set(readded)
+		rig.sync(1)
+	})}
+
+	got := checkAnnounce(t, held, announced.Name, uint64(announced.Size))
+
+	full, _ := rig.fullScan()
+	require.Equal(t, checkAnnounce(t, full, announced.Name, uint64(announced.Size)), got)
+	require.True(t, got.CanCrossSeed, "the torrents that the sync brought back are matches")
 }
