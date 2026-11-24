@@ -181,6 +181,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 	if err != nil || cacheEntry == nil {
 		return nil, nil //nolint:nilerr // cache read errors are logged above and treated as a cache miss
 	}
+	mayBePartial := time.Until(cacheEntry.ExpiresAt) <= incompleteCacheTTL
 	if cacheEntry.IsNegative {
 		log.Trace().
 			Str("title", title).
@@ -188,6 +189,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 			Msg("[ARR-LOOKUP] Cache hit (negative)")
 		return &ExternalIDsResult{
 			IDs:           nil,
+			Incomplete:    mayBePartial,
 			FromCache:     true,
 			ArrInstanceID: cacheEntry.ArrInstanceID,
 			ContentType:   contentType,
@@ -212,6 +214,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 		TitlesKnown:     cacheEntry.HasTitles,
 		EpisodeMap:      cacheEntry.EpisodeMap,
 		EpisodeMapKnown: cacheEntry.HasEpisodeMap,
+		Incomplete:      mayBePartial,
 		FromCache:       true,
 		ArrInstanceID:   cacheEntry.ArrInstanceID,
 		ContentType:     contentType,

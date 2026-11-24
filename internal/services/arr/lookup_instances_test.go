@@ -120,6 +120,12 @@ func TestService_LookupExternalIDsKeepsAnIncompleteAnswerShortly(t *testing.T) {
 			entry, err := cacheStore.Get(t.Context(), models.ComputeTitleHash(solitudeRelease), string(ContentTypeTV))
 			require.NoError(t, err)
 			require.WithinDuration(t, time.Now().Add(tt.wantKept), entry.ExpiresAt, time.Minute)
+
+			cached, err := service.LookupExternalIDs(t.Context(), solitudeRelease, ContentTypeTV)
+
+			require.NoError(t, err)
+			require.True(t, cached.FromCache)
+			require.Equal(t, result.Incomplete, cached.Incomplete)
 		})
 	}
 }
