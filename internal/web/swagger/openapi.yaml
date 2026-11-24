@@ -4055,7 +4055,8 @@ paths:
         Get the preference catalog view of the qBittorrent preferences. The list holds
         each preference that this qBittorrent sent and that qui shows, in display order.
         A preference is left out when its libtorrent or platform gate does not match the
-        qBittorrent build. The view never holds the qBittorrent API key.
+        qBittorrent build. The view never holds the qBittorrent API key. A password field
+        always has an empty value.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -4077,7 +4078,7 @@ paths:
         value has the wrong type. It does not check ranges. The server accepts a key that the
         GET view leaves out because qBittorrent did not send it, or because its libtorrent
         or platform gate does not match. qBittorrent ignores or stores that value, and the
-        value has no effect.
+        value has no effect. An empty password field keeps the saved password.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -10308,7 +10309,7 @@ components:
           type: string
           description: The qBittorrent preference key.
         value:
-          description: The value that qBittorrent sent, in the wire unit.
+          description: The value that qBittorrent sent, in the wire unit. A password field has an empty value.
         tab:
           type: string
           enum: [behavior, downloads, connection, speed, bittorrent, rss, webui, advanced]

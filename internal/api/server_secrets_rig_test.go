@@ -71,6 +71,8 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 	trackerRow := func(tracker string) string {
 		return `[{"url":"** [DHT] **","status":0},{"url":"` + tracker + `","status":2}]`
 	}
+	preferences := `{"add_trackers_enabled":true,"add_trackers":"` + pathTracker + `\n\n` + queryTracker + `","save_path":"/data",` +
+		`"proxy_password":"` + rig.plant("proxy password", shownToNobody) + `","mail_notification_password":"` + rig.plant("email password", shownToNobody) + `"}`
 	return map[string]string{
 		"/api/v2/app/webapiVersion": "2.16.0",
 		"/api/v2/app/version":       "v5.2.0",
@@ -80,7 +82,7 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		"/api/v2/torrents/info":                   `[` + first + `,` + second + `]`,
 		"/api/v2/torrents/trackers?aaa":           trackerRow(pathTracker),
 		"/api/v2/torrents/trackers?bbb":           trackerRow(queryTracker),
-		"/api/v2/app/preferences":                 `{"add_trackers_enabled":true,"add_trackers":"` + pathTracker + `\n\n` + queryTracker + `","save_path":"/data"}`,
+		"/api/v2/app/preferences":                 preferences,
 		"/api/v2/app/buildInfo":                   `{}`,
 		"/api/v2/app/defaultSavePath":             `/data`,
 		"/api/v2/app/getDirectoryContent":         `[]`,
