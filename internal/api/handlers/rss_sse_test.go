@@ -213,13 +213,13 @@ func TestRSSStreamHidesLinksPerSubscriber(t *testing.T) {
 		`"description":"<a href=\"/dl/1?passkey=made-up-description-key\">Download</a>","comments":"https://tracker.example/t/1?key=made-up-element-key",` +
 		`"isRead":false},` +
 		`{"id":"made-up-guid-2","title":"Show.S02","author":"uploader","description":"Size: 4 GiB","category":"TV",` +
-		`"torrentURL":"magnet:?xt=urn:btih:made-up&tr=udp%3A%2F%2Ftracker.example%2Fmade-up-magnet-key","isRead":true}]}`
+		`"torrentURL":"magnet:?xt=urn:btih:made-up&tr=udp%3A%2F%2Ftracker.example%2Fmade-up-magnet-key","link":"/t/2?key=made-up-relative-key","isRead":true}]}`
 	const hiddenFeed = `{"uid":"{1}","url":"https://tracker.example","title":"","articles":[` +
-		`{"id":"https://tracker.example","title":"Show.S01","date":"Tue, 24 Nov 2026 08:00:00 +0000",` +
+		`{"id":"https://tracker.example#87f1c29f","title":"Show.S01","date":"Tue, 24 Nov 2026 08:00:00 +0000",` +
 		`"torrentURL":"https://tracker.example","link":"https://tracker.example","description":"","comments":"https://tracker.example",` +
 		`"isRead":false},` +
 		`{"id":"made-up-guid-2","title":"Show.S02","author":"uploader","description":"Size: 4 GiB","category":"TV",` +
-		`"torrentURL":"","isRead":true}]}`
+		`"torrentURL":"","link":"","isRead":true}]}`
 	const namedByURL = `{"https://tracker.example/rss/made-up-key-a/feed.xml":{"uid":"{2}","url":"https://tracker.example/rss/made-up-key-a/feed.xml"},` +
 		`"https://tracker.example/rss/made-up-key-b/feed.xml":{"uid":"{3}","url":"https://tracker.example/rss/made-up-key-b/feed.xml"}}`
 	const hiddenNamedByURL = `{"https://tracker.example#e15e2247":{"uid":"{2}","url":"https://tracker.example"},` +

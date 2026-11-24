@@ -56,15 +56,14 @@ func isASCIIAlnum(c byte) bool {
 	return c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
-func rssNameStandIn(name []byte) string {
+func rssStandIn(name []byte) string {
 	sum := sha256.Sum256(name)
 	return qbittorrent.TrackerOrigin(string(name)) + "#" + hex.EncodeToString(sum[:4])
 }
 
-func isRSSStandIn(feed string) bool {
-	hash := strings.LastIndexByte(feed, '#')
-	return hash >= 0 && len(feed)-hash == 9 && strings.Trim(feed[hash+1:], "0123456789abcdef") == "" &&
-		qbittorrent.TrackerOrigin(feed[:hash]) == feed[:hash]
+func isRSSStandIn(name string) bool {
+	origin, hash, found := strings.CutLast(name, "#")
+	return found && len(hash) == 8 && strings.Trim(hash, "0123456789abcdef") == "" && qbittorrent.TrackerOrigin(origin) == origin
 }
 
 func hideRSSRuleFeeds(r *http.Request, rules qbt.RSSRules) {
@@ -73,7 +72,7 @@ func hideRSSRuleFeeds(r *http.Request, rules qbt.RSSRules) {
 	}
 	for _, rule := range rules {
 		for i, feed := range rule.AffectedFeeds {
-			rule.AffectedFeeds[i] = rssNameStandIn([]byte(feed))
+			rule.AffectedFeeds[i] = rssStandIn([]byte(feed))
 		}
 	}
 }
@@ -122,7 +121,7 @@ func (h *RSSHandler) rssFeedsByStandIn(ctx context.Context, instanceID int, rule
 	known := make(map[string]string, 2*len(urls))
 	for _, url := range urls {
 		known[url] = url
-		known[rssNameStandIn([]byte(url))] = url
+		known[rssStandIn([]byte(url))] = url
 	}
 	return known, nil
 }
@@ -136,7 +135,7 @@ func hideRSSMatchingArticles(matches qbt.RSSMatchingArticles) qbt.RSSMatchingArt
 			}
 		}
 		if holdsRSSLink([]byte(feed)) {
-			feed = rssNameStandIn([]byte(feed))
+			feed = rssStandIn([]byte(feed))
 		}
 		hidden[feed] = titles
 	}
@@ -151,19 +150,38 @@ func unquoteRSSText(value jsontext.Value) ([]byte, error) {
 	return jsontext.AppendUnquote(nil, value)
 }
 
-func writeRSSText(enc *jsontext.Encoder, value jsontext.Value, name, feedURL bool) ([]byte, error) {
+type rssValueKind int
+
+const (
+	rssText rssValueKind = iota
+	rssLink
+	rssID
+)
+
+func rssKindOf(name []byte) rssValueKind {
+	switch string(name) {
+	case "url", "torrentURL", "link":
+		return rssLink
+	case "id":
+		return rssID
+	}
+	return rssText
+}
+
+func writeRSSText(enc *jsontext.Encoder, value jsontext.Value, name bool, field rssValueKind) ([]byte, error) {
 	text, err := unquoteRSSText(value)
 	if err != nil {
 		return nil, err
 	}
-	link := holdsRSSLink(text)
 	switch {
-	case name && link:
-		err = enc.WriteToken(jsontext.String(rssNameStandIn(text)))
-	case link || feedURL:
+	case field == rssLink:
 		err = enc.WriteToken(jsontext.String(qbittorrent.TrackerOrigin(string(text))))
-	default:
+	case !holdsRSSLink(text):
 		err = enc.WriteValue(value)
+	case name || field == rssID:
+		err = enc.WriteToken(jsontext.String(rssStandIn(text)))
+	default:
+		err = enc.WriteToken(jsontext.String(qbittorrent.TrackerOrigin(string(text))))
 	}
 	return text, err
 }
@@ -174,7 +192,7 @@ func hideRSSLinks(items []byte) ([]byte, error) {
 	var out bytes.Buffer
 	out.Grow(len(items))
 	enc := jsontext.NewEncoder(&out, lenient...)
-	feedURL := false
+	field := rssText
 	for {
 		if dec.PeekKind() == '"' {
 			kind, length := dec.StackIndex(dec.StackDepth())
@@ -183,11 +201,14 @@ func hideRSSLinks(items []byte) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			text, err := writeRSSText(enc, value, name, feedURL)
+			text, err := writeRSSText(enc, value, name, field)
 			if err != nil {
 				return nil, err
 			}
-			feedURL = name && string(text) == "url"
+			field = rssText
+			if name {
+				field = rssKindOf(text)
+			}
 			continue
 		}
 		tok, err := dec.ReadToken()
@@ -197,7 +218,7 @@ func hideRSSLinks(items []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		feedURL = false
+		field = rssText
 		if err := enc.WriteToken(tok); err != nil {
 			return nil, err
 		}

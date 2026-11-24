@@ -4,6 +4,8 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -152,6 +154,12 @@ func TestRSSLinksNeedTorrentsWrite(t *testing.T) {
 		// regression: #4474
 		{"/api/instances/1/rss/items?withData=true", []string{"RSS protocol-relative passkey"}, `"source":""`},
 		// regression: #4474
+		{"/api/instances/1/rss/items?withData=true", []string{"RSS relative download passkey", "RSS relative link key"}, `"torrentURL":"","link":""`},
+		// regression: #4474
+		{"/api/instances/1/rss/items?withData=true", []string{"RSS article GUID key"}, `"id":"` + rssShortForm("https://rss.example.invalid", "https://rss.example.invalid/dl/1?guid="+planted["RSS article GUID key"]) + `"`},
+		// regression: #4474
+		{"/api/instances/1/rss/items?withData=true", []string{"RSS folder name key", "RSS folder feed key", "RSS folder article GUID key"}, `"` + rssShortForm("https://rss.example.invalid", "https://rss.example.invalid/folder?key="+planted["RSS folder name key"]) + `"`},
+		// regression: #4474
 		{"/api/instances/1/rss/rules/rule/preview", []string{"RSS feed name key"}, `"https://rss.example.invalid#9266f3f2"`},
 		// regression: #4474
 		{"/api/instances/1/rss/rules/rule/preview", []string{"RSS article title key"}, `"Feed":[""]`},
@@ -232,5 +240,106 @@ func TestRSSRuleKeepsItsFeedsWhenAKeySavesItBack(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(saved[before]), &savedRule))
 		assert.Equal(t, tt.saved, savedRule.AffectedFeeds, tt.name)
 		assert.Equal(t, "Show.S02", savedRule.MustContain, tt.name)
+	}
+}
+
+func rssShortForm(origin, full string) string {
+	sum := sha256.Sum256([]byte(full))
+	return origin + "#" + hex.EncodeToString(sum[:4])
+}
+
+// regression: #4474
+func TestRSSFeedWritesFindTheNamesAKeyGot(t *testing.T) {
+	rig := newSecretsRig(t)
+	rssWrite := models.Permission{Area: models.AreaRSS, Level: models.LevelWrite}
+	editKey := rig.key(t, rssWrite)
+	writeKey := rig.key(t, rssWrite, models.Permission{Area: models.AreaTorrents, Level: models.LevelWrite})
+	planted := map[string]string{}
+	for _, secret := range rig.planted {
+		planted[secret.name] = secret.value
+	}
+	const origin = "https://rss.example.invalid"
+	short := func(full string) string { return rssShortForm(origin, full) }
+	feed := origin + "/rss/" + planted["RSS feed name key"] + "/feed.xml"
+	folder := origin + "/folder?key=" + planted["RSS folder name key"]
+	inFolder := origin + "/rss/" + planted["RSS folder feed key"] + "/feed.xml"
+	guid := origin + "/dl/1?guid=" + planted["RSS article GUID key"]
+	folderGUID := origin + "/dl/2?guid=" + planted["RSS folder article GUID key"]
+	nested := short(folder) + `\` + short(inFolder)
+	unknown := origin + "#00000000"
+	const (
+		refresh = "/api/instances/1/rss/items/refresh"
+		items   = "/api/instances/1/rss/items"
+		move    = "/api/instances/1/rss/items/move"
+		read    = "/api/instances/1/rss/articles/read"
+	)
+
+	for _, tt := range []struct {
+		name     string
+		method   string
+		path     string
+		key      string
+		cookie   *http.Cookie
+		body     map[string]string
+		status   int
+		endpoint string
+		form     map[string]string
+		reads    int
+	}{
+		// regression: #4474
+		{"refresh a feed named by its URL", http.MethodPost, refresh, editKey, nil, map[string]string{"itemPath": short(feed)}, http.StatusOK, "refreshItem", map[string]string{"itemPath": feed}, 1},
+		// regression: #4474
+		{"refresh a feed in a folder", http.MethodPost, refresh, editKey, nil, map[string]string{"itemPath": nested}, http.StatusOK, "refreshItem", map[string]string{"itemPath": folder + `\` + inFolder}, 1},
+		// regression: #4474
+		{"refresh a short form of no feed", http.MethodPost, refresh, editKey, nil, map[string]string{"itemPath": unknown}, http.StatusBadRequest, "", nil, 1},
+		// regression: #4474
+		{"remove a feed", http.MethodDelete, items, editKey, nil, map[string]string{"path": short(feed)}, http.StatusOK, "removeItem", map[string]string{"path": feed}, 1},
+		// regression: #4474
+		{"set the URL of a feed", http.MethodPut, "/api/instances/1/rss/feeds/url", editKey, nil, map[string]string{"path": short(feed), "url": origin + "/rss/new.xml"}, http.StatusOK, "setFeedURL", map[string]string{"path": feed, "url": origin + "/rss/new.xml"}, 1},
+		// regression: #4474
+		{"move a feed into a folder", http.MethodPost, move, editKey, nil, map[string]string{"itemPath": short(feed), "destPath": short(folder) + `\` + short(feed)}, http.StatusOK, "moveItem", map[string]string{"itemPath": feed, "destPath": folder + `\` + feed}, 1},
+		// regression: #4474
+		{"move a feed to the short form of another name", http.MethodPost, move, editKey, nil, map[string]string{"itemPath": short(feed), "destPath": `Archive\` + short(inFolder)}, http.StatusBadRequest, "", nil, 1},
+		// regression: #4474
+		{"move with plain names", http.MethodPost, move, editKey, nil, map[string]string{"itemPath": "Feed", "destPath": `Archive\Feed`}, http.StatusOK, "moveItem", map[string]string{"itemPath": "Feed", "destPath": `Archive\Feed`}, 0},
+		// regression: #4474
+		{"mark an article as read", http.MethodPost, read, editKey, nil, map[string]string{"itemPath": "Feed", "articleId": short(guid)}, http.StatusOK, "markAsRead", map[string]string{"itemPath": "Feed", "articleId": guid}, 1},
+		// regression: #4474
+		{"mark an article in a folder as read", http.MethodPost, read, editKey, nil, map[string]string{"itemPath": nested, "articleId": short(folderGUID)}, http.StatusOK, "markAsRead", map[string]string{"itemPath": folder + `\` + inFolder, "articleId": folderGUID}, 1},
+		// regression: #4474
+		{"mark a short form of no article as read", http.MethodPost, read, editKey, nil, map[string]string{"itemPath": "Feed", "articleId": "#00000000"}, http.StatusBadRequest, "", nil, 1},
+		// regression: #4474
+		{"mark a whole feed as read", http.MethodPost, read, editKey, nil, map[string]string{"itemPath": short(feed)}, http.StatusOK, "markAsRead", map[string]string{"itemPath": feed}, 1},
+		// regression: #4474
+		{"add a folder in a folder", http.MethodPost, "/api/instances/1/rss/folders", editKey, nil, map[string]string{"path": short(folder) + `\New`}, http.StatusCreated, "addFolder", map[string]string{"path": folder + `\New`}, 1},
+		// regression: #4474
+		{"add a folder in a short form of no folder", http.MethodPost, "/api/instances/1/rss/folders", editKey, nil, map[string]string{"path": unknown + `\New`}, http.StatusBadRequest, "", nil, 1},
+		// regression: #4474
+		{"add a feed to a short form of no folder", http.MethodPost, "/api/instances/1/rss/feeds", editKey, nil, map[string]string{"url": origin + "/rss/added.xml", "path": unknown}, http.StatusBadRequest, "", nil, 1},
+		// regression: #4474
+		{"a key with Torrents write", http.MethodPost, refresh, writeKey, nil, map[string]string{"itemPath": short(feed)}, http.StatusOK, "refreshItem", map[string]string{"itemPath": short(feed)}, 0},
+		// regression: #4474
+		{"a session", http.MethodPost, refresh, "", rig.sessionCookie(t), map[string]string{"itemPath": short(feed)}, http.StatusOK, "refreshItem", map[string]string{"itemPath": short(feed)}, 0},
+	} {
+		request, err := json.Marshal(tt.body)
+		require.NoError(t, err)
+		writesBefore := len(rig.stubRSSWrites())
+		_, readsBefore := rig.stubRecord()
+		status, body := rig.sendBody(t, tt.method, tt.path, tt.key, tt.cookie, string(request))
+		require.Equal(t, tt.status, status, "%s: %s", tt.name, body)
+		_, reads := rig.stubRecord()
+		assert.Equal(t, tt.reads, reads-readsBefore, "%s reads the feed list %d times", tt.name, reads-readsBefore)
+		writes := rig.stubRSSWrites()[writesBefore:]
+		if tt.form == nil {
+			assert.Empty(t, writes, tt.name)
+			continue
+		}
+		require.NotEmpty(t, writes, tt.name)
+		sent := map[string]string{}
+		for name := range writes[0].form {
+			sent[name] = writes[0].form.Get(name)
+		}
+		assert.Equal(t, tt.endpoint, writes[0].endpoint, tt.name)
+		assert.Equal(t, tt.form, sent, tt.name)
 	}
 }

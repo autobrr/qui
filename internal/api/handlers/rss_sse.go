@@ -220,6 +220,7 @@ func (h *RSSSSEHandler) broadcast(instanceID int, items []byte) {
 		hidden, err := hideRSSLinks(items)
 		if err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to hide RSS links")
+			return nil
 		}
 		return hidden
 	})

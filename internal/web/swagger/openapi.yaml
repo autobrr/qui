@@ -8635,7 +8635,7 @@ paths:
       tags:
         - RSS
       summary: RSS events stream (SSE)
-      description: Server-Sent Events stream for real-time RSS feed updates. A key without write access to torrents gets each feed URL as its scheme and host, each other field that holds a link or HTML, such as an article field or a feed title, as at most the scheme and host of a link, and each feed or folder name that holds a link as its scheme and host and a short code.
+      description: Server-Sent Events stream for real-time RSS feed updates. A key without write access to torrents gets each feed URL and the download link and page link of each article as their scheme and host, each feed or folder name and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -8658,7 +8658,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS items
-      description: Retrieve all RSS feeds and folders for an instance. A key without write access to torrents gets each feed URL as its scheme and host, each other field that holds a link or HTML, such as an article field or a feed title, as at most the scheme and host of a link, and each feed or folder name that holds a link as its scheme and host and a short code.
+      description: Retrieve all RSS feeds and folders for an instance. A key without write access to torrents gets each feed URL and the download link and page link of each article as their scheme and host, each feed or folder name and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: withData
@@ -8704,7 +8704,7 @@ paths:
         '200':
           description: Item removed successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder
         '409':
           description: Instance is disabled
         '500':
@@ -8737,7 +8737,7 @@ paths:
         '200':
           description: Item moved successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder, or the last part of the destination in the short form is not the name of the moved item
         '409':
           description: Instance is disabled
         '500':
@@ -8767,7 +8767,7 @@ paths:
         '200':
           description: Refresh triggered successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder
         '409':
           description: Instance is disabled
         '500':
@@ -8797,7 +8797,7 @@ paths:
         '201':
           description: Folder created successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder
         '409':
           description: Instance is disabled
         '500':
@@ -8835,7 +8835,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/WarningResponse'
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder
         '409':
           description: Instance is disabled
         '500':
@@ -8870,7 +8870,7 @@ paths:
         '200':
           description: Feed URL updated successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder
         '409':
           description: Instance is disabled
         '500':
@@ -8903,7 +8903,7 @@ paths:
         '200':
           description: Articles marked as read successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder, or an article ID in the short form matches no article of the feed
         '409':
           description: Instance is disabled
         '500':

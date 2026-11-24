@@ -157,6 +157,9 @@ func (h *RSSHandler) AddFolder(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "Path is required")
 		return
 	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{parent: &req.Path}) {
+		return
+	}
 
 	if err := h.syncManager.AddRSSFolder(r.Context(), instanceID, req.Path); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFolder") {
@@ -191,6 +194,9 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 		RespondError(w, http.StatusBadRequest, "Invalid URL: must be a valid http or https URL")
+		return
+	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.Path}) {
 		return
 	}
 
@@ -322,35 +328,6 @@ func findNewRSSFeedName(newFeeds qbt.RSSItems, existingNames map[string]bool, in
 	return ""
 }
 
-func matchesRSSFeedURL(feedURL, reqURL string) bool {
-	feedURL = strings.TrimSpace(feedURL)
-	reqURL = strings.TrimSpace(reqURL)
-	if feedURL == reqURL {
-		return true
-	}
-
-	feedParsed, feedErr := url.Parse(feedURL)
-	reqParsed, reqErr := url.Parse(reqURL)
-	if feedErr != nil || reqErr != nil {
-		return false
-	}
-
-	feedParsed.Fragment = ""
-	reqParsed.Fragment = ""
-
-	normalizePath := func(p string) string {
-		if p == "/" {
-			return ""
-		}
-		return strings.TrimRight(p, "/")
-	}
-
-	return strings.EqualFold(feedParsed.Scheme, reqParsed.Scheme) &&
-		strings.EqualFold(feedParsed.Host, reqParsed.Host) &&
-		normalizePath(feedParsed.Path) == normalizePath(reqParsed.Path) &&
-		feedParsed.RawQuery == reqParsed.RawQuery
-}
-
 // SetFeedURL changes the URL of an existing feed
 func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
@@ -372,6 +349,9 @@ func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 		RespondError(w, http.StatusBadRequest, "Invalid URL: must be a valid http or https URL")
+		return
+	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.Path}) {
 		return
 	}
 
@@ -404,6 +384,9 @@ func (h *RSSHandler) MoveItem(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "ItemPath is required")
 		return
 	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.ItemPath, dest: &req.DestPath}) {
+		return
+	}
 
 	if err := h.syncManager.MoveRSSItem(r.Context(), instanceID, req.ItemPath, req.DestPath); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "MoveRSSItem") {
@@ -432,6 +415,9 @@ func (h *RSSHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 
 	if req.Path == "" {
 		RespondError(w, http.StatusBadRequest, "Path is required")
+		return
+	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.Path}) {
 		return
 	}
 
@@ -463,6 +449,9 @@ func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
 
 	// Trim whitespace - empty string is valid (refreshes all feeds)
 	itemPath := strings.TrimSpace(req.ItemPath)
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &itemPath}) {
+		return
+	}
 
 	if err := h.syncManager.RefreshRSSItem(r.Context(), instanceID, itemPath); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "RefreshRSSItem") {
@@ -491,6 +480,9 @@ func (h *RSSHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 
 	if req.ItemPath == "" {
 		RespondError(w, http.StatusBadRequest, "ItemPath is required")
+		return
+	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.ItemPath, articleID: &req.ArticleID}) {
 		return
 	}
 
