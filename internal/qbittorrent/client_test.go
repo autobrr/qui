@@ -404,6 +404,8 @@ func TestNewClientWithTimeoutRejectsLoginCookiesWithoutVerifiedSessionMarker(t *
 func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 	t.Parallel()
 
+	ctx, expire := context.WithCancelCause(t.Context())
+	defer expire(nil)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/auth/login":
@@ -416,8 +418,7 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 			})
 			_, _ = w.Write([]byte("Ok."))
 		case "/api/v2/app/webapiVersion":
-			// A saturated-but-alive WebUI: the request parks until the caller's
-			// deadline expires without ever answering.
+			expire(context.DeadlineExceeded)
 			<-r.Context().Done()
 			// Close the connection with no response. If the handler returns, the
 			// server sends an empty 200, and the client can read it after its
@@ -429,8 +430,7 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// The budget also covers the TLS login, which a busy runner can hold past 50 ms.
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+	client, err := newClient(ctx, 1, srv.URL, "user", "pass", "", nil, nil, true, 60*time.Second)
 
 	require.NoError(t, err, "transient capability fetch failures must not block client creation")
 	require.NotNil(t, client)
