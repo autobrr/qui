@@ -19,6 +19,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -37,6 +38,7 @@ type heldLibrary struct {
 	url       string
 	onFiles   func()
 	down      bool
+	adding    qbt.Torrent
 }
 
 type heldMainData struct {
@@ -94,9 +96,18 @@ func (l *heldLibrary) serve(w http.ResponseWriter, r *http.Request) {
 			files = qbt.TorrentFiles{}
 		}
 		_ = json.MarshalWrite(w, files)
+	case "/api/v2/torrents/add":
+		l.torrents = append(slices.Clone(l.torrents), l.adding)
+		_, _ = io.WriteString(w, "Ok.")
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (l *heldLibrary) syncs() int64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.rid
 }
 
 func (l *heldLibrary) set(torrents []qbt.Torrent) {
@@ -116,6 +127,7 @@ func (l *heldLibrary) takeFileReads() []string {
 
 type heldRig struct {
 	t         *testing.T
+	db        *database.DB
 	store     *models.InstanceStore
 	pool      *qbittorrent.ClientPool
 	syncs     *qbittorrent.SyncManager
@@ -145,11 +157,11 @@ func newHeldRig(t *testing.T, libraries ...*heldLibrary) *heldRig {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pool.Close() })
 	rig := &heldRig{
-		t: t, store: instanceStore, pool: pool, syncs: qbittorrent.NewSyncManager(pool, nil), sinks: &heldSinks{pool: pool},
+		t: t, db: db, store: instanceStore, pool: pool, syncs: qbittorrent.NewSyncManager(pool, nil), sinks: &heldSinks{pool: pool},
 		instances: map[int]*models.Instance{}, libraries: map[int]*heldLibrary{}, clients: map[int]*qbittorrent.Client{},
 	}
 	for i, library := range libraries {
-		instance, err := instanceStore.Create(t.Context(), "instance"+string(rune('a'+i)), "http://qbt.example.invalid", "user", "pass", nil, nil, false, nil)
+		instance, err := instanceStore.Create(t.Context(), "instance"+string(rune('a'+i)), library.url, "user", "pass", nil, nil, false, nil)
 		require.NoError(t, err)
 		rig.instances[instance.ID] = instance
 		rig.libraries[instance.ID] = library

@@ -678,7 +678,7 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 		return errors.New("sync manager not initialized")
 	}
 
-	return syncManager.Start(ctx)
+	return syncManager.Sync(ctx)
 }
 
 const torrentAddedGraceWindow = 60 * time.Second

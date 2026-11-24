@@ -384,7 +384,7 @@
     "internal/qbittorrent/sync_events.go": 10,
     "internal/qbittorrent/sync_manager.go": 898,
     "internal/qbittorrent/sync_manager_test.go": 224,
-    "internal/qbittorrent/syncowner/owner.go": 20,
+    "internal/qbittorrent/syncowner/owner.go": 18,
     "internal/qbittorrent/syncowner/owner_test.go": 5,
     "internal/qbittorrent/torrent_change_guard.go": 5,
     "internal/qbittorrent/torrent_facts.go": 9,
