@@ -18,6 +18,27 @@ Repo rules for AI agents working on qui.
 - Go tests: always use `-count=1`. Leave `-race` to CI. Run the full suite (`make test`) locally only when asked, or when one change crosses many packages. A test with `PostgresIntegration` in its name skips without a server: run it with `go run ./internal/testutil/postgres -count=1 -run <test> <package>`, which starts a temporary Postgres and passes the arguments to `go test`. In the test, open the database with `testdb.NewMigratedPostgres` from `internal/testutil/testdb`. API contract changes must update `internal/web/swagger` and pass `make test-openapi` and `go test -count=1 -run TestAllEndpointsDocumented ./internal/api`.
 - Before you report a code change complete, run it live: build and start the app (`make build` then the binary, or `make dev`) and exercise the behavior the change touches. For a frontend file, `node web/scripts/feature-map.mjs --where <file>` prints the pages that show it and the steps to reach them. For an endpoint, `internal/web/swagger/openapi.yaml` has its parameters. For a throwaway qui against a fake qBittorrent with synthetic torrents, copy the start steps of `scripts/memrig/run.sh`: it starts `stub.py`, turns auth off for loopback, and adds the stub with `POST /api/instances`. Report the command and the output you observed. If the change needs human judgment (UI look and feel, real tracker behavior), ask the user to test it and say what remains for them. If a live run is not possible, say so and name the closest check you did run. In the final report, state required checks run, skipped/deferred checks with reason, and unresolved failures. Do not claim complete while a required repo check is known failing unless user accepts the risk.
 
+## Rules and Their Checks
+
+Each repeated mistake gets a rule and, where it can, a check that fails on it. When a maintainer corrects you, fix the mistake and add its row. When the row already says "judgment", the mistake is a repeat: add a check in the same change. Delete a row once its mistake cannot happen.
+
+| Rule | Check |
+|---|---|
+| No code comments | `make lint-ratchet` (`comments`), ESLint `qui/no-comments` |
+| No real `time.Sleep` in a Go test | `make lint-ratchet` (`testsleep`) |
+| A struct, not `map[string]any` | `make lint-ratchet` (`mapany`) |
+| No DEBUG or INFO line about an off feature | `make lint-ratchet` (`offlog`) |
+| A code file stays under 20,000 bytes | `make lint-ratchet` (`.file-size.json`) |
+| A lint exception gives its reason on the line, and a maintainer approves a new one | `nolintlint`, ESLint `qui/disable-reason`, the Exceptions workflow |
+| A new test in a `fix` PR carries `// regression: #N` | `make check-regression-marker`, the Regression marker workflow |
+| A frontend test leaks no spy, stub, render, or time zone into the next | `web/vitest.config.ts` and `web/src/test/setup.ts` do the teardown |
+| Effects only in listed hooks, the folder order, feature entry files, no `title=` tooltips, each page in `Page` | `pnpm lint` |
+| UI text goes through i18n keys, with no dead keys | `pnpm check:i18n` |
+| Each endpoint is in the OpenAPI spec | `TestAllEndpointsDocumented`, `make test-openapi` |
+| The feature map lists each route and dialog with steps | `make check-feature-map` |
+| The match corpus only grows | the Match corpus workflow |
+| Stay in scope, no private tracker links or release names in public text, a live run before you report done, new UI copies an existing page | judgment: the rules above and `web/AGENTS.md` |
+
 ## Read When
 
 - Before you plan an issue or a pull request for your user, do the collaborator check in `docs/agents/collaborator-check.md` one time per session.
