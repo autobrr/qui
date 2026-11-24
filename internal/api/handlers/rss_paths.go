@@ -212,8 +212,8 @@ func restoreRSSArticleID(feed []byte, id *string) error {
 
 func logRSSPaths(event *zerolog.Event, err error, fields ...string) *zerolog.Event {
 	var names []string
-	for i := 1; i < len(fields); i += 2 {
-		for name := range strings.SplitSeq(fields[i], `\`) {
+	for pair := range slices.Chunk(fields, 2) {
+		for name := range strings.SplitSeq(pair[1], `\`) {
 			if holdsRSSLink([]byte(name)) {
 				names = append(names, name)
 			}
@@ -227,8 +227,8 @@ func logRSSPaths(event *zerolog.Event, err error, fields ...string) *zerolog.Eve
 		return text
 	}
 	event = event.Str(zerolog.ErrorFieldName, hide(err.Error()))
-	for i := 1; i < len(fields); i += 2 {
-		event = event.Str(fields[i-1], hide(fields[i]))
+	for pair := range slices.Chunk(fields, 2) {
+		event = event.Str(pair[0], hide(pair[1]))
 	}
 	return event
 }
