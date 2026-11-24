@@ -30,7 +30,7 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | No DEBUG or INFO line about an off feature | `make lint-ratchet` (`offlog`) |
 | A code file stays under 20,000 bytes | `make lint-ratchet` (`.file-size.json`) |
 | A lint exception gives its reason on the line, and a maintainer approves a new one | `nolintlint`, ESLint `qui/disable-reason`, the Exceptions workflow |
-| A new test in a `fix` PR carries `// regression: #N` | `make check-regression-marker`, the Regression marker workflow: test cases and rows of Go anonymous-struct tables. Web table rows: judgment |
+| A new test in a `fix` PR carries `// regression: #N` | `make check-regression-marker`, the Regression marker workflow: one marker in each file whose test cases or Go anonymous-struct table rows grow. Each further test and web table rows: judgment |
 | A frontend test leaks no spy, stub, render, or time zone into the next | `web/vitest.config.ts` and `web/src/test/setup.ts` do the teardown |
 | Effects only in listed hooks, the folder order, feature entry files, no `title=` tooltips, each page in `Page` | `pnpm lint` |
 | UI text goes through i18n keys, with no dead keys | `pnpm check:i18n` |
