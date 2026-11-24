@@ -62,24 +62,35 @@ func TestRestoreRSSDest(t *testing.T) {
 // regression: #4474
 func TestRestoreRSSArticleID(t *testing.T) {
 	const guid = "https://tracker.example/dl/1?guid=made-up-key"
-	feed := []byte(`{"articles":[{"id":"#0123abcd"},{"id":"` + guid + `"}]}`)
+	const twice = "https://tracker.example/dl/2?guid=made-up-key"
+	const sameCodeA, sameCodeB = "https://rss.example.invalid/feed/61522.xml", "https://rss.example.invalid/feed/135103.xml"
+	const shownAsItself = "https://tracker.example/dl/3?guid=made-up-key"
+	feed := []byte(`{"articles":[{"id":"#0123abcd"},{"id":"` + guid + `"},{"id":"` + twice + `"},{"id":"` + twice + `"},` +
+		`{"id":"` + sameCodeA + `"},{"id":"` + sameCodeB + `"},{"id":"` + shownAsItself + `"},{"id":"` + rssStandIn([]byte(shownAsItself)) + `"}]}`)
 	for _, tt := range []struct {
 		id    string
 		want  string
-		fails bool
+		fails string
 	}{
 		// regression: #4474
-		{"#0123abcd", "#0123abcd", false},
+		{"#0123abcd", "#0123abcd", ""},
 		// regression: #4474
-		{rssStandIn([]byte(guid)), guid, false},
+		{rssStandIn([]byte(guid)), guid, ""},
 		// regression: #4474
-		{"#89abcdef", "", true},
+		{"#89abcdef", "", "matches no article"},
+		// regression: #4474
+		{rssStandIn([]byte(twice)), twice, ""},
+		// regression: #4474
+		{rssStandIn([]byte(sameCodeA)), "", "more than one"},
+		// regression: #4474
+		{rssStandIn([]byte(shownAsItself)), "", "more than one"},
 	} {
 		id := tt.id
 		err := restoreRSSArticleID(feed, &id)
-		if tt.fails {
-			_, noMatch := errors.AsType[rssNoMatchError](err)
-			assert.True(t, noMatch, tt.id)
+		if tt.fails != "" {
+			noMatch, ok := errors.AsType[rssNoMatchError](err)
+			require.True(t, ok, tt.id)
+			assert.Contains(t, noMatch.Error(), tt.fails, tt.id)
 			continue
 		}
 		require.NoError(t, err, tt.id)
@@ -87,6 +98,48 @@ func TestRestoreRSSArticleID(t *testing.T) {
 	}
 }
 
+// regression: #4474
+func TestRestoreRSSPathRefusesAShortFormOfTwoNames(t *testing.T) {
+	const sameCodeA, sameCodeB = "https://rss.example.invalid/feed/61522.xml", "https://rss.example.invalid/feed/135103.xml"
+	const feed = "https://tracker.example/rss/made-up-key/feed.xml"
+	const other = "https://tracker.example/rss/made-up-other-key/feed.xml"
+	require.Equal(t, rssStandIn([]byte(sameCodeA)), rssStandIn([]byte(sameCodeB)))
+	load := func() (qbt.RSSItems, error) {
+		return qbt.RSSItems{
+			sameCodeA: []byte(`{}`), sameCodeB: []byte(`{}`),
+			feed: []byte(`{}`), rssStandIn([]byte(feed)): []byte(`{}`),
+			other: []byte(`{}`),
+		}, nil
+	}
+	for _, tt := range []struct {
+		name  string
+		path  string
+		want  string
+		fails bool
+	}{
+		// regression: #4474
+		{"two names with one short form", rssStandIn([]byte(sameCodeA)), "", true},
+		// regression: #4474
+		{"a name that is the short form of another name", rssStandIn([]byte(feed)), "", true},
+		// regression: #4474
+		{"a short form of one name", rssStandIn([]byte(other)), other, false},
+		// regression: #4474
+		{"a full name beside its short form", feed, feed, false},
+	} {
+		path := tt.path
+		_, err := restoreRSSPath(load, &path, false, true)
+		if tt.fails {
+			noMatch, ok := errors.AsType[rssNoMatchError](err)
+			require.True(t, ok, tt.name)
+			assert.Contains(t, noMatch.Error(), "more than one", tt.name)
+			continue
+		}
+		require.NoError(t, err, tt.name)
+		assert.Equal(t, tt.want, path, tt.name)
+	}
+}
+
+// regression: #4474
 func TestLogRSSPathsHidesNamesThatHoldALink(t *testing.T) {
 	const folder = "https://rss.example.invalid/folder?key=made-up-folder-key"
 	const feed = folder + "/feed.xml?key=made-up-feed-key"

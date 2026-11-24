@@ -95,11 +95,11 @@ func restoreRSSPath(load func() (qbt.RSSItems, error), path *string, keepLast, f
 		if i > 0 {
 			level = rssChildren(item)
 		}
-		name, raw, found := findRSSItem(level, part)
-		if !found && isRSSStandIn(part) {
-			return nil, rssNoMatchError("The RSS path part " + part + " matches no RSS feed or folder")
+		name, err := findRSSItem(level, part)
+		if err != nil {
+			return nil, err
 		}
-		parts[i], item = name, raw
+		parts[i], item = name, level[name]
 	}
 	*path = strings.Join(parts, `\`)
 	return item, nil
@@ -113,19 +113,23 @@ func rssChildren(item []byte) qbt.RSSItems {
 	return children
 }
 
-func findRSSItem(level qbt.RSSItems, part string) (string, []byte, bool) {
-	if raw, ok := level[part]; ok {
-		return part, raw, true
-	}
+func findRSSItem(level qbt.RSSItems, part string) (string, error) {
 	if !isRSSStandIn(part) {
-		return part, nil, false
+		return part, nil
 	}
-	for name, raw := range level {
-		if rssStandIn([]byte(name)) == part {
-			return name, raw, true
+	var names []string
+	for name := range level {
+		if name == part || rssStandIn([]byte(name)) == part {
+			names = append(names, name)
 		}
 	}
-	return part, nil, false
+	switch len(names) {
+	case 0:
+		return "", rssNoMatchError("The RSS path part " + part + " matches no RSS feed or folder")
+	case 1:
+		return names[0], nil
+	}
+	return "", rssNoMatchError("The RSS path part " + part + " matches more than one RSS feed or folder")
 }
 
 func restoreRSSDest(load func() (qbt.RSSItems, error), source string, dest *string) error {
@@ -165,13 +169,20 @@ func restoreRSSArticleID(feed []byte, id *string) error {
 	if feed != nil && json.Unmarshal(feed, &parsed) != nil {
 		parsed.Articles = nil
 	}
+	var ids []string
 	for _, article := range parsed.Articles {
-		if article.ID == *id || rssStandIn([]byte(article.ID)) == *id {
-			*id = article.ID
-			return nil
+		if (article.ID == *id || rssStandIn([]byte(article.ID)) == *id) && !slices.Contains(ids, article.ID) {
+			ids = append(ids, article.ID)
 		}
 	}
-	return rssNoMatchError("The RSS article ID " + *id + " matches no article of the feed")
+	switch len(ids) {
+	case 0:
+		return rssNoMatchError("The RSS article ID " + *id + " matches no article of the feed")
+	case 1:
+		*id = ids[0]
+		return nil
+	}
+	return rssNoMatchError("The RSS article ID " + *id + " matches more than one article of the feed")
 }
 
 func logRSSPaths(event *zerolog.Event, err error, fields ...string) *zerolog.Event {
