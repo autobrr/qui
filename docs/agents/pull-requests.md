@@ -27,7 +27,7 @@ Before you post or apply a review suggestion that changes or removes a code bran
 
 CI runs `go test ./...` in `release.yml` on pull requests, and with `-race` on pushes to `main`, `develop`, and tags. A change that touches only paths in the `paths-ignore` list of `release.yml` skips it. `lint.yml` runs `go vet ./...` on Windows for every PR. It also runs the native Windows `go test -count=1 ./...` when the PR changes `cmd/`, `internal/`, `pkg/`, `go.mod`, `go.sum`, `.gitattributes`, or `.github/workflows/lint.yml`. `test.yml` runs the Postgres tests, the migration parity check, the automations docs JSON examples test, and the generated JSON reference test, also on a PR that changes only `documentation/`.
 
-On a push to `develop`, the image publishes when its build succeeds and does not wait for the tests, so a red `Run tests` there leaves a new `develop` image. A run whose commit is no longer the newest on `develop` publishes no image. A tag, `main`, and a pull request publish an image only after the tests pass.
+On a push to `develop`, the image publishes when its build succeeds and does not wait for the tests, so a red `Run tests` there leaves a new `develop` image. A run publishes no image when a newer run of the workflow on `develop` exists. A tag, `main`, and a pull request publish an image only after the tests pass.
 
 ## Screenshots
 

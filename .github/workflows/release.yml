@@ -454,34 +454,37 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
 
-  develop-head:
-    name: Check that the commit is the head of develop
+  develop-newest-run:
+    name: Check that this is the newest run on develop
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     needs: docker
-    permissions: {}
+    permissions:
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
     outputs:
-      newest: ${{ steps.head.outputs.newest }}
+      newest: ${{ steps.run.outputs.newest }}
     steps:
-      - name: Compare the commit with the head of develop
-        id: head
+      - name: Compare this run with the newest run on develop
+        id: run
         run: |
-          head=$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" refs/heads/develop | cut -f1)
-          if [[ ! $head =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Could not read the head of develop"
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?branch=develop&event=push&per_page=1" --jq '.workflow_runs[0].id')
+          if [[ ! $latest =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not read the newest run on develop"
             exit 1
           fi
           newest=false
-          if [[ $head == "$GITHUB_SHA" ]]; then
+          if [[ $latest == "$GITHUB_RUN_ID" ]]; then
             newest=true
           fi
           echo "newest=$newest" >>"$GITHUB_OUTPUT"
 
   docker-merge-develop:
     name: Publish Docker multi-arch manifest (develop)
-    if: needs.develop-head.outputs.newest == 'true'
+    if: needs.develop-newest-run.outputs.newest == 'true'
     runs-on: ubuntu-latest
-    needs: [docker, develop-head]
+    needs: [docker, develop-newest-run]
     steps: *docker-merge-steps
 
   test:
