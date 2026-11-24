@@ -28,19 +28,13 @@ type webhookCheckAnswer struct {
 	hasCompleteMatch bool
 	hasPendingMatch  bool
 	nearMisses       int
+	nothingHeld      bool
 }
 
 func (s *Service) webhookMatchAllTorrents(ctx context.Context, input webhookCheckInput) (webhookCheckAnswer, error) {
 	var answer webhookCheckAnswer
-	settings := input.settings
-	announcedCandidate := input.announced
-
-	m := s.matcher()
-	announcedGroup := m.normalizedGroupSiteIdentity(announcedCandidate.release)
-
 	gate := s.sourceGate()
-	webhookFilter := defaultsFor(triggerWebhook, settings).sourceFilter
-	hasWebhookSourceFilters := webhookFilter.hasRules()
+	webhookFilter := defaultsFor(triggerWebhook, input.settings).sourceFilter
 
 	pendingReads := make(map[int]*pendingLocalReads, len(input.instances))
 	views := make(map[int][]qbittorrent.CrossInstanceTorrentView, len(input.instances))
@@ -87,109 +81,8 @@ func (s *Service) webhookMatchAllTorrents(ctx context.Context, input webhookChec
 			}
 		}
 
-		log.Trace().
-			Str("source", "cross-seed.webhook").
-			Int("instanceID", instance.ID).
-			Strs("includeCategories", settings.WebhookSourceCategories).
-			Strs("excludeCategories", settings.WebhookSourceExcludeCategories).
-			Strs("includeTags", settings.WebhookSourceTags).
-			Strs("excludeTags", settings.WebhookSourceExcludeTags).
-			Bool("hasFilters", hasWebhookSourceFilters).
-			Msg("[Webhook] Source filter settings for instance")
-
-		var counts sourceFilterCounts
-
-		log.Trace().
-			Str("source", "cross-seed.webhook").
-			Int("instanceId", instance.ID).
-			Str("instanceName", instance.Name).
-			Int("torrentCount", len(torrentsView)).
-			Msg("Webhook check: scanning instance torrents for metadata matches")
-
-		logNearMisses := announcedGroup != "" && log.Debug().Enabled()
-		isNearMiss := func(torrent *qbt.Torrent) bool {
-			source := namedRelease{release: s.releaseCache.Parse(torrent.Name), rawName: torrent.Name}
-			return m.normalizedGroupSiteIdentity(source.release) == announcedGroup ||
-				(source.release.Site != "") != (announcedCandidate.release.Site != "") &&
-					m.crossFieldGroupSiteFallback(source, announcedCandidate)
-		}
-		policy := input.policy
-		policy.sourceReads = sourceReads
-
-		for _, torrentView := range torrentsView {
-			if err := ctx.Err(); err != nil {
-				return webhookCheckAnswer{}, err
-			}
-			if torrentView.Torrent == nil {
-				continue
-			}
-
-			torrent := torrentView.Torrent
-
-			gateAnswer := gate.check(torrent, webhookFilter)
-			if hasWebhookSourceFilters {
-				counts.add(torrent.Category, gateAnswer != sourceOutsideFilter)
-			}
-			if gateAnswer.lasting() {
-				if logNearMisses && gateAnswer == sourceOutsideFilter && isNearMiss(torrent) {
-					if answer.nearMisses < nearMissDebugLimit {
-						log.Debug().
-							Str("source", "cross-seed.webhook").
-							Int("instanceId", instance.ID).
-							Str("incomingName", announcedCandidate.rawName).
-							Str("existingName", torrent.Name).
-							Str("category", torrent.Category).
-							Str("tags", torrent.Tags).
-							Msg("Webhook check: source filter skipped near miss")
-					}
-					answer.nearMisses++
-				}
-				continue
-			}
-			match, decision := s.webhookCandidate(ctx, instance, torrent, announcedCandidate, input.size, policy)
-			if !decision.Accepted {
-				if logNearMisses && isNearMiss(torrent) {
-					if answer.nearMisses < nearMissDebugLimit {
-						log.Debug().
-							Str("source", "cross-seed.webhook").
-							Int("instanceId", instance.ID).
-							Str("incomingName", announcedCandidate.rawName).
-							Str("existingName", torrent.Name).
-							Str("rejectReason", decision.RejectReason).
-							Str("class", string(decision.Class)).
-							Msg("Webhook check: rejected near miss")
-					}
-					answer.nearMisses++
-				}
-				continue
-			}
-			answer.matches = append(answer.matches, match)
-
-			if gateAnswer == sourcePass {
-				answer.hasCompleteMatch = true
-				continue
-			}
-			answer.hasPendingMatch = true
-			if torrent.Progress >= 1 {
-				log.Debug().
-					Str("source", "cross-seed.webhook").
-					Int("instanceId", instance.ID).
-					Str("existingName", torrent.Name).
-					Str("state", string(torrent.State)).
-					Msg("Webhook check: source is not settled, answering pending")
-			}
-		}
-
-		if !counts.empty() {
-			log.Trace().
-				Str("source", "cross-seed.webhook").
-				Int("instanceID", instance.ID).
-				Str("instanceName", instance.Name).
-				Int("original", len(torrentsView)).
-				Int("filtered", counts.kept).
-				Strs("excludedCategories", categoryCountSummary(counts.excluded)).
-				Strs("includedCategories", categoryCountSummary(counts.included)).
-				Msg("[Webhook] Source filter results")
+		if err := s.webhookMatchTorrents(ctx, instance, viewTorrents(torrentsView), len(torrentsView), sourceReads, input, &answer); err != nil {
+			return webhookCheckAnswer{}, err
 		}
 	}
 

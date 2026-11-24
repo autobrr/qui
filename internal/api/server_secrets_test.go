@@ -97,7 +97,7 @@ func TestReadKeyGetsNoPlantedSecret(t *testing.T) {
 
 		_, response = rig.answer(t, route, "", cookie)
 		for _, secret := range rig.planted {
-			if secret.audience == shownWithTorrentsWrite {
+			if secret.audience != shownToNobody {
 				shownToSession[secret.name] = shownToSession[secret.name] || strings.Contains(response, secret.value)
 				continue
 			}
@@ -110,7 +110,7 @@ func TestReadKeyGetsNoPlantedSecret(t *testing.T) {
 		require.True(t, reached[route], "%s %s in walkCannotAnswer is not a route that a read-only key reaches", route.Method, route.Path)
 	}
 	for _, secret := range rig.planted {
-		if secret.audience == shownWithTorrentsWrite {
+		if secret.audience != shownToNobody {
 			require.True(t, shownToSession[secret.name], "no route gives the %s to a session, so the walk proves nothing about it", secret.name)
 		}
 	}

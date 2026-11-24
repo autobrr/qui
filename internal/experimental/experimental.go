@@ -20,10 +20,13 @@ type Feature string
 // says when it goes away.
 var known = []Feature{
 	ProblemReports, // goes away when the maintainer decides, with no ticket
+	HeldTitles,     // goes away in #4458
 }
 
 // ProblemReports is Report a problem: Problem reports that qui's server sends to brrbin.
 const ProblemReports Feature = "problemReports"
+
+const HeldTitles Feature = "heldTitles"
 
 // Features holds the Experimental features that are on. qui builds it once at start.
 type Features struct {
@@ -65,7 +68,6 @@ func (f *Features) Enabled(feature Feature) bool {
 	return slices.Contains(f.on, feature)
 }
 
-// Names returns the Experimental features that are on, or an empty list.
 func (f *Features) Names() []string {
 	names := make([]string, 0, len(f.on))
 	for _, feature := range f.on {

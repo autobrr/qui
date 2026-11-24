@@ -799,7 +799,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, http.StatusOK, torrentSearchResponseFor(r, response))
 }
 
 // AutobrrApply godoc

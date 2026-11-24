@@ -725,7 +725,7 @@ paths:
       tags:
         - Notifications
       summary: List notification targets
-      description: Get configured notification targets
+      description: Get configured notification targets. A key without write access to notifications gets each URL as its scheme only.
       responses:
         '200':
           description: List of notification targets
@@ -4055,7 +4055,8 @@ paths:
         Get the preference catalog view of the qBittorrent preferences. The list holds
         each preference that this qBittorrent sent and that qui shows, in display order.
         A preference is left out when its libtorrent or platform gate does not match the
-        qBittorrent build. The view never holds the qBittorrent API key.
+        qBittorrent build. The view never holds the qBittorrent API key. A password field
+        always has an empty value.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -4077,7 +4078,7 @@ paths:
         value has the wrong type. It does not check ranges. The server accepts a key that the
         GET view leaves out because qBittorrent did not send it, or because its libtorrent
         or platform gate does not match. qBittorrent ignores or stores that value, and the
-        value has no effect.
+        value has no effect. An empty password field keeps the saved password.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -4860,6 +4861,7 @@ paths:
       tags:
         - Torznab
       summary: Search configured Torznab indexers
+      description: A key without write access to torrents gets each result with an empty download_url, info_url as its scheme and host, and guid as a hash.
       requestBody:
         required: true
         content:
@@ -4885,6 +4887,7 @@ paths:
       tags:
         - Torznab
       summary: Search configured Torznab indexers for cross-seeds
+      description: A key without write access to torrents gets each result with an empty download_url, info_url as its scheme and host, and guid as a hash.
       requestBody:
         required: true
         content:
@@ -6556,7 +6559,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Search cross-seed candidates for a torrent
-      description: Query configured Torznab indexers for releases matching an existing torrent
+      description: Query configured Torznab indexers for releases matching an existing torrent. A key without write access to torrents gets each result with an empty download_url, info_url as its scheme and host, and guid as a hash.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -6585,7 +6588,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Add torrents found via cross-seed search
-      description: Downloads selected results and queues them for cross-seeding on the specified instance
+      description: Downloads selected results and queues them for cross-seeding on the specified instance. Each selection names a result of the last search for this torrent by its guid or download_url, as the search returned them.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -10308,7 +10311,7 @@ components:
           type: string
           description: The qBittorrent preference key.
         value:
-          description: The value that qBittorrent sent, in the wire unit.
+          description: The value that qBittorrent sent, in the wire unit. A password field has an empty value.
         tab:
           type: string
           enum: [behavior, downloads, connection, speed, bittorrent, rss, webui, advanced]
@@ -13114,7 +13117,6 @@ components:
       required:
         - indexer_id
         - indexer
-        - download_url
         - title
       properties:
         indexer_id:
