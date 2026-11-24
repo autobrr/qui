@@ -57,11 +57,16 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
-  const [pickedInstanceId, setInstanceId] = useState<number | null>(null)
+  const [instanceId, setInstanceId] = useState<number | null>(null)
   const [infoHash, setInfoHash] = useState("")
   const [note, setNote] = useState("")
 
-  const instanceId = instances.some((instance) => instance.id === pickedInstanceId) ? pickedInstanceId : instances[0]?.id ?? null
+  if (!instances.some((instance) => instance.id === instanceId)) {
+    const fallbackId = instances[0]?.id ?? null
+    if (fallbackId !== instanceId) {
+      setInstanceId(fallbackId)
+    }
+  }
 
   const { data: blocklistData, isLoading } = useQuery({
     queryKey: ["cross-seed", "blocklist", instanceId],
