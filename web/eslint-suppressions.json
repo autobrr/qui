@@ -55,6 +55,9 @@
     }
   },
   "src/components/automations/tabs.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     }
@@ -73,6 +76,9 @@
     }
   },
   "src/components/command-palette/CommandPaletteContent.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/entry-files": {
       "count": 1
     },
@@ -81,6 +87,9 @@
     }
   },
   "src/components/command-palette/open.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -96,6 +105,9 @@
     }
   },
   "src/components/command-palette/useDestinations.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 6
     }
@@ -106,6 +118,9 @@
     }
   },
   "src/components/command-palette/useTorrentResults.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 19
     }
@@ -121,6 +136,9 @@
     }
   },
   "src/components/cross-seed/CategoriesTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     }
@@ -136,11 +154,17 @@
     }
   },
   "src/components/cross-seed/CrossSeedRouteForm.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 33
     }
   },
   "src/components/cross-seed/DirScanTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 26
     },
@@ -149,6 +173,9 @@
     }
   },
   "src/components/cross-seed/HardlinkModeSettings.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 16
     },
@@ -157,6 +184,9 @@
     }
   },
   "src/components/cross-seed/LibraryTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 12
     },
@@ -178,6 +208,9 @@
     }
   },
   "src/components/cross-seed/RssTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 1
     }
@@ -193,6 +226,9 @@
     }
   },
   "src/components/cross-seed/SeasonPackRunsPanel.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     }
@@ -253,6 +289,9 @@
     }
   },
   "src/components/cross-seed/tabs.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     }
@@ -263,6 +302,9 @@
     }
   },
   "src/components/dashboard/DashboardOverview.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 10
     },
@@ -284,11 +326,17 @@
     }
   },
   "src/components/dashboard/StreamChart.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 10
     }
   },
   "src/components/dashboard/TopTrackerGroups.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -340,6 +388,9 @@
     }
   },
   "src/components/display-profiles/DisplayProfileIconPicker.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -375,6 +426,9 @@
     }
   },
   "src/components/display-profiles/NewDisplayProfileDialog.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 6
     }
@@ -415,6 +469,9 @@
     }
   },
   "src/components/feature-notice/FeatureNotice.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 7
     },
@@ -436,6 +493,9 @@
     }
   },
   "src/components/indexers/AutodiscoveryDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 7
     }
@@ -446,6 +506,9 @@
     }
   },
   "src/components/indexers/IndexerDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 7
     }
@@ -486,6 +549,9 @@
     }
   },
   "src/components/instances/InstanceForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 9
     }
@@ -506,6 +572,9 @@
     }
   },
   "src/components/instances/InstanceSettingsButton.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 1
     }
@@ -518,6 +587,11 @@
   "src/components/instances/RemoteAccessIndicator.tsx": {
     "qui/no-comments": {
       "count": 5
+    }
+  },
+  "src/components/instances/marks/InstanceMarkEditor.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
     }
   },
   "src/components/instances/preferences/AutomationActivityRunDialog.tsx": {
@@ -551,6 +625,9 @@
     }
   },
   "src/components/instances/preferences/InstanceSettingsPanel.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 7
     },
@@ -607,6 +684,9 @@
     }
   },
   "src/components/instances/preferences/OrphanScanSettingsForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 14
     },
@@ -615,6 +695,9 @@
     }
   },
   "src/components/instances/preferences/PreferenceWidgets.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/disable-reason": {
       "count": 1
     },
@@ -623,6 +706,12 @@
     }
   },
   "src/components/instances/preferences/PreferencesForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 17
     }
@@ -671,6 +760,12 @@
     }
   },
   "src/components/instances/preferences/WorkflowDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 16
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 7
+    },
     "qui/no-comments": {
       "count": 181
     },
@@ -684,6 +779,9 @@
     }
   },
   "src/components/instances/preferences/WorkflowPreviewDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 20
     }
@@ -694,6 +792,9 @@
     }
   },
   "src/components/instances/preferences/WorkflowsOverview.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 6
+    },
     "qui/no-comments": {
       "count": 36
     },
@@ -727,6 +828,9 @@
     }
   },
   "src/components/instances/preferences/preferenceView.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -742,6 +846,9 @@
     }
   },
   "src/components/kit/Editor.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 15
     }
@@ -767,11 +874,17 @@
     }
   },
   "src/components/kit/ResourceList.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 22
     }
   },
   "src/components/kit/Section.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 13
     }
@@ -787,6 +900,9 @@
     }
   },
   "src/components/kit/use-pending-ids.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }
@@ -797,6 +913,12 @@
     }
   },
   "src/components/layout/Header.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/disable-reason": {
       "count": 1
     },
@@ -816,11 +938,17 @@
     }
   },
   "src/components/layout/MobileClientsTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/entry-files": {
       "count": 1
     }
   },
   "src/components/layout/MobileFooterNav.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 17
     },
@@ -847,6 +975,9 @@
     }
   },
   "src/components/layout/Sidebar.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/entry-files": {
       "count": 2
     },
@@ -883,6 +1014,9 @@
     }
   },
   "src/components/magicui/shine-border.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 4
     }
@@ -893,6 +1027,9 @@
     }
   },
   "src/components/problem-reports/ProblemReportDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 10
     },
@@ -901,11 +1038,19 @@
     }
   },
   "src/components/problem-reports/SentReports.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 8
     },
     "qui/no-direct-effect": {
       "count": 2
+    }
+  },
+  "src/components/problem-reports/draft.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
     }
   },
   "src/components/problem-reports/open.ts": {
@@ -919,6 +1064,9 @@
     }
   },
   "src/components/query-builder/ConditionGroup.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 12
     },
@@ -940,11 +1088,23 @@
     }
   },
   "src/components/query-builder/LeafCondition.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 52
     }
   },
   "src/components/query-builder/QueryBuilder.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 17
     }
@@ -955,6 +1115,9 @@
     }
   },
   "src/components/query-builder/constants.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    },
     "qui/no-comments": {
       "count": 32
     }
@@ -964,7 +1127,15 @@
       "count": 3
     }
   },
+  "src/components/search/SearchForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
   "src/components/search/SearchResults.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/entry-files": {
       "count": 1
     },
@@ -986,6 +1157,9 @@
     }
   },
   "src/components/settings/ArrInstancesManager.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 12
     }
@@ -1006,6 +1180,9 @@
     }
   },
   "src/components/settings/ExternalProgramsManager.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 12
     }
@@ -1037,6 +1214,9 @@
     }
   },
   "src/components/settings/LogSettingsPanel.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 7
+    },
     "qui/no-comments": {
       "count": 37
     },
@@ -1070,11 +1250,17 @@
     }
   },
   "src/components/settings/SecuritySettings.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 4
     }
   },
   "src/components/settings/StatisticsDeleteHistory.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -1085,11 +1271,17 @@
     }
   },
   "src/components/settings/StatisticsSettingsCard.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }
   },
   "src/components/settings/TimeLanguageSettings.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 110
     }
@@ -1110,11 +1302,17 @@
     }
   },
   "src/components/settings/tabs.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
   },
   "src/components/shares/ShareDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 7
     }
@@ -1130,6 +1328,9 @@
     }
   },
   "src/components/shares/ShareSettingsForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -1140,6 +1341,9 @@
     }
   },
   "src/components/spreadsheet/SpreadsheetFormulaBar.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 4
     },
@@ -1163,6 +1367,12 @@
     }
   },
   "src/components/statistics/DeletedTorrents.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    },
     "qui/no-comments": {
       "count": 24
     },
@@ -1171,6 +1381,9 @@
     }
   },
   "src/components/statistics/EventsChart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -1186,11 +1399,17 @@
     }
   },
   "src/components/statistics/GroupChart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     }
   },
   "src/components/statistics/GroupTable.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 24
     }
@@ -1201,6 +1420,9 @@
     }
   },
   "src/components/statistics/LibraryGrowthChart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -1216,6 +1438,9 @@
     }
   },
   "src/components/statistics/StatisticsControls.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 9
     }
@@ -1231,11 +1456,17 @@
     }
   },
   "src/components/statistics/TransferChart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 1
     }
   },
   "src/components/statistics/YearView.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 12
     },
@@ -1254,6 +1485,9 @@
     }
   },
   "src/components/statistics/useTapTooltip.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 9
     },
@@ -1300,6 +1534,9 @@
     }
   },
   "src/components/support/reminder.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 10
     },
@@ -1354,6 +1591,9 @@
     }
   },
   "src/components/themes/ThemeMenuDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 8
     },
@@ -1385,6 +1625,9 @@
     }
   },
   "src/components/torrents/AddTorrentDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 9
+    },
     "qui/no-comments": {
       "count": 36
     },
@@ -1411,6 +1654,9 @@
     }
   },
   "src/components/torrents/ColumnFilterPopover.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 14
+    },
     "qui/no-comments": {
       "count": 2
     },
@@ -1429,6 +1675,9 @@
     }
   },
   "src/components/torrents/CrossSeedDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 8
     },
@@ -1473,16 +1722,30 @@
     }
   },
   "src/components/torrents/DraggableTableHeader.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    },
     "qui/no-comments": {
       "count": 6
     }
   },
   "src/components/torrents/FilePrioritySelect.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     }
   },
+  "src/components/torrents/FilterClearButton.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
   "src/components/torrents/FilterSidebar.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 135
     },
@@ -1535,6 +1798,9 @@
     }
   },
   "src/components/torrents/TorrentCardsMobile.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 5
+    },
     "qui/disable-reason": {
       "count": 1
     },
@@ -1556,6 +1822,9 @@
     }
   },
   "src/components/torrents/TorrentCreatorDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 16
     },
@@ -1574,6 +1843,12 @@
     }
   },
   "src/components/torrents/TorrentDetailsPanel.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 10
+    },
     "qui/no-comments": {
       "count": 77
     },
@@ -1587,6 +1862,9 @@
     }
   },
   "src/components/torrents/TorrentDialogs.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/disable-reason": {
       "count": 2
     },
@@ -1598,12 +1876,23 @@
     }
   },
   "src/components/torrents/TorrentDiscReportDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 10
     }
   },
   "src/components/torrents/TorrentDropZone.tsx": {
     "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentFileMediaInfoDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     }
   },
@@ -1631,6 +1920,9 @@
     }
   },
   "src/components/torrents/TorrentTableColumns.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/disable-reason": {
       "count": 1
     },
@@ -1642,6 +1934,9 @@
     }
   },
   "src/components/torrents/TorrentTableOptimized.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 6
+    },
     "qui/disable-reason": {
       "count": 1
     },
@@ -1661,6 +1956,9 @@
     }
   },
   "src/components/torrents/bulk-actions/BulkActionProvider.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 13
     },
@@ -1684,6 +1982,9 @@
     }
   },
   "src/components/torrents/bulk-actions/bulk-action-state.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 27
     }
@@ -1694,6 +1995,9 @@
     }
   },
   "src/components/torrents/details/CrossSeedTable.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 4
     }
@@ -1719,11 +2023,17 @@
     }
   },
   "src/components/torrents/details/PeersTable.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 2
     }
   },
   "src/components/torrents/details/PieceBar.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 9
     },
@@ -1732,6 +2042,9 @@
     }
   },
   "src/components/torrents/details/TorrentFileTable.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 12
     },
@@ -1745,6 +2058,9 @@
     }
   },
   "src/components/torrents/details/TrackersTable.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 4
     }
@@ -1790,6 +2106,9 @@
     }
   },
   "src/components/torrents/table/TorrentTableRow.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/disable-reason": {
       "count": 1
     },
@@ -1823,6 +2142,9 @@
     }
   },
   "src/components/torrents/torrentLimitDialogHelpers.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 9
     }
@@ -1848,6 +2170,12 @@
     }
   },
   "src/components/transfers/TransferDetailsDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 7
     }
@@ -1858,6 +2186,9 @@
     }
   },
   "src/components/transfers/TransferDialog.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 26
     },
@@ -1866,6 +2197,9 @@
     }
   },
   "src/components/transfers/TransferForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 6
     }
@@ -1891,11 +2225,20 @@
     }
   },
   "src/components/transfers/TransfersTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 30
     }
   },
   "src/components/transfers/tabs.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     }
@@ -1951,6 +2294,9 @@
     }
   },
   "src/components/ui/ThemeToggle.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 11
     },
@@ -1977,6 +2323,9 @@
     }
   },
   "src/components/ui/chart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -1991,6 +2340,11 @@
       "count": 4
     },
     "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/ui/drawer.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
       "count": 1
     }
   },
@@ -2069,6 +2423,11 @@
       "count": 1
     }
   },
+  "src/components/ui/sonner.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
   "src/components/ui/table.tsx": {
     "qui/no-comments": {
       "count": 3
@@ -2108,6 +2467,9 @@
     }
   },
   "src/components/ui/torrent-name.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -2123,6 +2485,9 @@
     }
   },
   "src/components/ui/truncated-text.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     },
@@ -2136,6 +2501,9 @@
     }
   },
   "src/config/themes.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/layer-order": {
       "count": 1
     },
@@ -2170,6 +2538,9 @@
     }
   },
   "src/contexts/SyncStreamContext.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 15
+    },
     "qui/no-comments": {
       "count": 141
     },
@@ -2189,21 +2560,36 @@
     }
   },
   "src/demo/api.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    },
     "qui/no-comments": {
       "count": 7
     }
   },
   "src/demo/main.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 6
     }
   },
   "src/demo/store.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 11
+    },
     "qui/no-comments": {
       "count": 12
     }
   },
   "src/demo/stream.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 8
     }
@@ -2254,6 +2640,9 @@
     }
   },
   "src/hooks/torrent-table/useColumnDnd.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -2310,6 +2699,9 @@
     }
   },
   "src/hooks/torrent-table/useTorrentTableColumns.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/layer-order": {
       "count": 2
     },
@@ -2318,6 +2710,9 @@
     }
   },
   "src/hooks/torrent-table/useTorrentTableFilterExpr.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -2328,6 +2723,9 @@
     }
   },
   "src/hooks/torrent-table/useTorrentTableNotifications.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/disable-reason": {
       "count": 1
     },
@@ -2355,11 +2753,17 @@
     }
   },
   "src/hooks/useActiveTaskCount.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-direct-effect": {
       "count": 1
     }
   },
   "src/hooks/useAuth.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     }
@@ -2375,6 +2779,9 @@
     }
   },
   "src/hooks/useClientSettingsSync.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 4
     },
@@ -2413,6 +2820,9 @@
     }
   },
   "src/hooks/useCrossSeedSearch.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/layer-order": {
       "count": 1
     },
@@ -2445,6 +2855,9 @@
     }
   },
   "src/hooks/useCustomThemes.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 9
     },
@@ -2453,11 +2866,17 @@
     }
   },
   "src/hooks/useDashboardChartView.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }
   },
   "src/hooks/useDashboardOpenInstances.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }
@@ -2479,6 +2898,11 @@
   },
   "src/hooks/useDelayedVisibility.ts": {
     "qui/no-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDirScan.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
       "count": 1
     }
   },
@@ -2526,11 +2950,20 @@
     }
   },
   "src/hooks/useInstanceBackups.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 2
     }
   },
   "src/hooks/useInstanceCapabilities.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 10
     }
@@ -2552,6 +2985,12 @@
     }
   },
   "src/hooks/useInstancePreferences.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -2562,6 +3001,9 @@
     }
   },
   "src/hooks/useInstances.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 16
     }
@@ -2577,6 +3019,9 @@
     }
   },
   "src/hooks/useKeyboardNavigation.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 15
     },
@@ -2603,6 +3048,9 @@
     }
   },
   "src/hooks/useMediaQuery.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -2626,6 +3074,9 @@
     }
   },
   "src/hooks/useOrphanScan.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -2636,6 +3087,9 @@
     }
   },
   "src/hooks/usePathAutocomplete.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 22
     },
@@ -2659,11 +3113,29 @@
     }
   },
   "src/hooks/usePersistedColumnSizing.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 2
     },
     "qui/no-direct-effect": {
       "count": 1
+    }
+  },
+  "src/hooks/usePersistedColumnSorting.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedColumnVisibility.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedCompactViewState.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
     }
   },
   "src/hooks/usePersistedCrossSeedBlocklist.ts": {
@@ -2729,6 +3201,11 @@
       "count": 1
     }
   },
+  "src/hooks/usePersistedTabState.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
   "src/hooks/usePersistedThemeVariation.ts": {
     "qui/no-comments": {
       "count": 1
@@ -2755,6 +3232,12 @@
     }
   },
   "src/hooks/useQBittorrentAppInfo.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     },
@@ -2780,7 +3263,15 @@
       "count": 1
     }
   },
+  "src/hooks/useSearchPreferences.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
   "src/hooks/useSelfUpdate.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 24
     },
@@ -2789,16 +3280,25 @@
     }
   },
   "src/hooks/useSeriesColors.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
   },
   "src/hooks/useStatisticsPeriod.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }
   },
   "src/hooks/useSwipeActions.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 12
     },
@@ -2812,6 +3312,9 @@
     }
   },
   "src/hooks/useSwipeToClose.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 12
     }
@@ -2827,6 +3330,9 @@
     }
   },
   "src/hooks/useTheme.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 4
     },
@@ -2840,6 +3346,9 @@
     }
   },
   "src/hooks/useThemeSettingsSync.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 32
     },
@@ -2863,6 +3372,9 @@
     }
   },
   "src/hooks/useTitleBarSpeeds.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     },
@@ -2881,6 +3393,12 @@
     }
   },
   "src/hooks/useTorrentDetailTab.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 45
     },
@@ -2894,6 +3412,9 @@
     }
   },
   "src/hooks/useTorrentExporter.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 6
     }
@@ -2927,6 +3448,9 @@
     }
   },
   "src/hooks/useTorrentsList.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 159
     },
@@ -2950,11 +3474,17 @@
     }
   },
   "src/hooks/useTransferHistoryLibrary.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 1
     }
   },
   "src/hooks/useTransferHistoryRows.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 4
     }
@@ -2970,6 +3500,9 @@
     }
   },
   "src/i18n/index.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/layer-order": {
       "count": 2
     },
@@ -2993,6 +3526,9 @@
     }
   },
   "src/layouts/AppLayout.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/entry-files": {
       "count": 1
     },
@@ -3185,17 +3721,28 @@
       "count": 1
     }
   },
+  "src/lib/add-torrent-urls.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
   "src/lib/api-key-permissions.generated.ts": {
     "qui/no-comments": {
       "count": 2
     }
   },
   "src/lib/api-key-permissions.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
   },
   "src/lib/api.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 8
+    },
     "qui/no-comments": {
       "count": 129
     }
@@ -3214,6 +3761,9 @@
     }
   },
   "src/lib/client-settings.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 5
+    },
     "qui/no-comments": {
       "count": 118
     },
@@ -3227,11 +3777,17 @@
     }
   },
   "src/lib/column-filter-utils.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 10
+    },
     "qui/no-comments": {
       "count": 31
     }
   },
   "src/lib/copy-groups.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 11
     }
@@ -3242,11 +3798,20 @@
     }
   },
   "src/lib/cross-instance-torrents.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 6
+    },
     "qui/no-comments": {
       "count": 45
     }
   },
   "src/lib/cross-seed-utils.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 16
     }
@@ -3272,6 +3837,9 @@
     }
   },
   "src/lib/custom-theme-preview.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -3320,6 +3888,9 @@
     }
   },
   "src/lib/display-profiles.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/no-comments": {
       "count": 12
     }
@@ -3370,6 +3941,9 @@
     }
   },
   "src/lib/filter-views.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -3397,6 +3971,11 @@
   "src/lib/incognito.ts": {
     "qui/no-comments": {
       "count": 43
+    }
+  },
+  "src/lib/instance-marks.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
     }
   },
   "src/lib/instance-validation.ts": {
@@ -3440,6 +4019,9 @@
     }
   },
   "src/lib/manual-cross-seed.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 6
     }
@@ -3475,6 +4057,9 @@
     }
   },
   "src/lib/protocol-handler.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -3490,11 +4075,17 @@
     }
   },
   "src/lib/router-search.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
   },
   "src/lib/rss-events.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -3520,8 +4111,16 @@
     }
   },
   "src/lib/search-derived-params.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
+    }
+  },
+  "src/lib/search-results.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
     }
   },
   "src/lib/shares-api.ts": {
@@ -3545,6 +4144,9 @@
     }
   },
   "src/lib/statistics-library.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
     }
@@ -3578,6 +4180,9 @@
     }
   },
   "src/lib/theme-areas.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -3598,6 +4203,9 @@
     }
   },
   "src/lib/theme-storage.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 11
     }
@@ -3608,8 +4216,16 @@
     }
   },
   "src/lib/theme-thumbnail.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 5
+    }
+  },
+  "src/lib/torrent-action-targets.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
     }
   },
   "src/lib/torrent-field-request.ts": {
@@ -3633,6 +4249,9 @@
     }
   },
   "src/lib/torrent-selection.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 44
     }
@@ -3663,6 +4282,9 @@
     }
   },
   "src/lib/torrent-table/column-label.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/layer-order": {
       "count": 1
     },
@@ -3709,6 +4331,9 @@
     }
   },
   "src/lib/tracker-customizations-manage.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
     "qui/no-comments": {
       "count": 8
     }
@@ -3719,6 +4344,9 @@
     }
   },
   "src/lib/tracker-icons.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -3737,6 +4365,9 @@
     }
   },
   "src/lib/unit-format.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 6
+    },
     "qui/no-comments": {
       "count": 31
     }
@@ -3752,16 +4383,25 @@
     }
   },
   "src/lib/workflow-utils.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    },
     "qui/no-comments": {
       "count": 36
     }
   },
   "src/main.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
   },
   "src/pages/Automations.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
     "qui/entry-files": {
       "count": 5
     }
@@ -3777,6 +4417,9 @@
     }
   },
   "src/pages/Dashboard.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/disable-reason": {
       "count": 1
     },
@@ -3788,6 +4431,12 @@
     }
   },
   "src/pages/InstanceBackups.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 5
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 7
+    },
     "qui/no-comments": {
       "count": 5
     },
@@ -3804,6 +4453,12 @@
     }
   },
   "src/pages/RSSPage.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 9
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    },
     "qui/no-direct-effect": {
       "count": 4
     }
@@ -3837,6 +4492,9 @@
     }
   },
   "src/pages/Statistics.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 17
     },
@@ -3845,6 +4503,9 @@
     }
   },
   "src/pages/Torrents.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 7
+    },
     "qui/no-comments": {
       "count": 19
     },
@@ -3858,6 +4519,9 @@
     }
   },
   "src/router.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 2
     }
@@ -3916,12 +4580,20 @@
       "count": 1
     }
   },
+  "src/routes/_authenticated/statistics.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
   "src/routes/_authenticated/transfers.tsx": {
     "react-refresh/only-export-components": {
       "count": 1
     }
   },
   "src/routes/add.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 3
     },
@@ -4061,11 +4733,17 @@
     }
   },
   "src/utils/fontLoader.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/no-comments": {
       "count": 1
     }
   },
   "src/utils/pwaNativeTheme.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
     "qui/layer-order": {
       "count": 1
     },
@@ -4079,6 +4757,9 @@
     }
   },
   "src/utils/theme.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
     "qui/layer-order": {
       "count": 4
     },
