@@ -44,7 +44,7 @@ func holdsRSSLink(text []byte) bool {
 		if at > 0 && text[at-1] == ':' {
 			return true
 		}
-		if (at == 0 || strings.IndexByte(" \t\n\r", text[at-1]) >= 0) && at+2 < len(text) && isASCIIAlnum(text[at+2]) {
+		if (at == 0 || !isASCIIAlnum(text[at-1])) && at+2 < len(text) && (isASCIIAlnum(text[at+2]) || text[at+2] == '[') {
 			return true
 		}
 	}
