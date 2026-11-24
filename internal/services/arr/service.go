@@ -232,7 +232,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 		if client == nil {
 			continue
 		}
-		result, err := client.ParseTitleLookupResult(ctx, title)
+		result, err := parseWithinShare(ctx, client, title, len(asked) > 0)
 		if err != nil {
 			incomplete = true
 			log.Debug().Err(err).
@@ -244,6 +244,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 		}
 
 		if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
+			result.Incomplete = result.Incomplete || incomplete
 			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse", true), nil
 		}
 		asked = append(asked, askedInstance{instance: instance, client: client, parseAnswered: err == nil})
@@ -307,6 +308,15 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 		ContentType: contentType,
 		Source:      "none",
 	}, nil
+}
+
+func parseWithinShare(ctx context.Context, client *Client, title string, catalogueWaits bool) (*ExternalIDsLookupResult, error) {
+	if deadline, ok := ctx.Deadline(); ok && catalogueWaits {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Until(deadline)/2)
+		defer cancel()
+	}
+	return client.ParseTitleLookupResult(ctx, title)
 }
 
 func cacheTTL(ttl time.Duration, incomplete bool) time.Duration {
