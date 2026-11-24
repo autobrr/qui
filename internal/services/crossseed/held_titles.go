@@ -297,18 +297,18 @@ func (x *heldIndex) remove(hash string) {
 	delete(x.torrents, hash)
 	delete(x.waiting, hash)
 	for _, key := range held.keys {
-		dropHash(x.byKey, key, hash)
+		dropFrom(x.byKey, key, hash)
 	}
-	dropHash(x.bySize, held.size, hash)
+	dropFrom(x.bySize, held.size, hash)
 }
 
-func dropHash[K comparable](lookup map[K][]string, key K, hash string) {
-	hashes := slices.DeleteFunc(lookup[key], func(h string) bool { return h == hash })
-	if len(hashes) == 0 {
+func dropFrom[K, V comparable](lookup map[K][]V, key K, value V) {
+	values := slices.DeleteFunc(lookup[key], func(v V) bool { return v == value })
+	if len(values) == 0 {
 		delete(lookup, key)
 		return
 	}
-	lookup[key] = hashes
+	lookup[key] = values
 }
 
 func (h *heldTitles) wakeLoop() {

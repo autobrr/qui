@@ -171,7 +171,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 		return nil, nil //nolint:nilerr // cache read errors are logged above and treated as a cache miss
 	}
 	if cacheEntry.IsNegative {
-		log.Debug().
+		log.Trace().
 			Str("title", title).
 			Str("contentType", string(contentType)).
 			Msg("[ARR-LOOKUP] Cache hit (negative)")
@@ -183,7 +183,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 			Source:        "cache",
 		}, nil
 	}
-	log.Debug().
+	log.Trace().
 		Str("title", title).
 		Str("contentType", string(contentType)).
 		Str("imdbId", cacheEntry.ExternalIDs.IMDbID).
@@ -262,7 +262,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			anyQueried = true
 		}
 
-		log.Debug().
+		log.Trace().
 			Int("instanceId", instance.ID).
 			Str("instanceName", instance.Name).
 			Str("title", title).
@@ -282,7 +282,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache negative result")
 		}
 	}
-	log.Debug().
+	log.Trace().
 		Str("title", title).
 		Str("contentType", string(contentType)).
 		Int("instancesQueried", len(instances)).
@@ -305,7 +305,7 @@ func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title stri
 		log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("title", title).
 		Int("instanceId", instance.ID).
 		Str("instanceName", instance.Name).
