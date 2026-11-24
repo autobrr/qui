@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,12 +97,28 @@ func TestApplicationHandler_GetInfoListsNoExperimentalFeatureAsEmptyList(t *test
 	require.Contains(t, rec.Body.String(), `"experimentalFeatures":[]`)
 }
 
+// regression: #4450
 func TestPostgresTarget_DSNRemovesCredentials(t *testing.T) {
-	target := postgresTarget(&domain.Config{
-		DatabaseDSN: "postgres://db.example.com:5432/qui_prod?sslmode=require",
-	})
+	for _, kv := range os.Environ() {
+		if name, _, _ := strings.Cut(kv, "="); strings.HasPrefix(name, "PG") {
+			t.Setenv(name, "")
+		}
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
 
-	require.Equal(t, "db.example.com:5432/qui_prod", target)
+	for _, tc := range []struct {
+		name, dsn, want string
+	}{
+		{name: "URL", dsn: "postgres://db.example.com:5432/qui_prod?sslmode=require", want: "db.example.com:5432/qui_prod"},
+		{name: "URL with a login and no port", dsn: "postgres://qui:hunter2@db.example.com/qui_prod", want: "db.example.com:5432/qui_prod"},
+		{name: "key/value", dsn: "host=db.example.com port=6432 user=qui password=hunter2 dbname=qui_prod", want: "db.example.com:6432/qui_prod"},
+		{name: "IPv6 host", dsn: "host=::1 user=qui password=hunter2 dbname=qui_prod", want: "[::1]:5432/qui_prod"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, postgresTarget(&domain.Config{DatabaseDSN: tc.dsn}))
+		})
+	}
 }
 
 func TestAuthMode(t *testing.T) {
