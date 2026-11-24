@@ -101,10 +101,18 @@ type localReads map[string]localReadEntry
 // local read had them for the same name and category, else from its name. A
 // caller can take a new torrent list after the local read.
 func (r localReads) read(m matcher, instanceID int, torrent *qbt.Torrent) namedRelease {
-	if entry, ok := r[cacheKeyForTorrentFiles(instanceID, torrent.Hash)]; ok && entry.name == torrent.Name && entry.category == torrent.Category {
+	if entry, ok := r.entry(instanceID, torrent); ok {
 		return entry.read
 	}
 	return m.readName(torrent.Name)
+}
+
+func (r localReads) entry(instanceID int, torrent *qbt.Torrent) (localReadEntry, bool) {
+	if len(r) == 0 {
+		return localReadEntry{}, false
+	}
+	entry, ok := r[cacheKeyForTorrentFiles(instanceID, torrent.Hash)]
+	return entry, ok && entry.name == torrent.Name && entry.category == torrent.Category
 }
 
 // readLocalTorrents reads the torrents of one instance whose names need their

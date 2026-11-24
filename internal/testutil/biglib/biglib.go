@@ -123,3 +123,23 @@ func AllocatedBytes(runs int, f func()) uint64 {
 	}
 	return lowest
 }
+
+func KeptBytes(runs int, f func() any) uint64 {
+	var lowest uint64
+	var before, after runtime.MemStats
+	for i := range runs {
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		kept := f()
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+		runtime.KeepAlive(kept)
+		n := max(after.HeapAlloc, before.HeapAlloc) - before.HeapAlloc
+		if i == 0 || n < lowest {
+			lowest = n
+		}
+	}
+	return lowest
+}

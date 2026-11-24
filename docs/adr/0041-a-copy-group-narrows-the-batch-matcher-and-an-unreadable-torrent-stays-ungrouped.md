@@ -24,3 +24,4 @@ Equal size lists also stop a chain. Without them, a season pack links to its epi
 - A new rule that finds more cross-seeds goes into the Batch matcher, and Copy groups get it if the file sizes are equal.
 - A group id does not show the instance or hash of the Group representative, and a row with no visible copy has no id, so ADR 0040 holds for a key with an Instance limit.
 - Narrows ADR 0032 for this one reader. ADR 0032 still holds for the tab, Filter Cross-Seeds, the delete check, and the automations.
+- The webhook check with Held titles compares one member of a Copy group for the members that share a name, a size, and a category rule (#4456). A rejection that read a file list counts only for the torrent that it read, so a wrong group never changes the answer. The match list can hold a copy whose own file names would reject it.

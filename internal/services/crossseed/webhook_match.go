@@ -13,7 +13,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-func (s *Service) webhookMatchTorrents(ctx context.Context, instance *models.Instance, torrents iter.Seq[*qbt.Torrent], count int, sourceReads localReads, input webhookCheckInput, answer *webhookCheckAnswer) error {
+func (s *Service) webhookMatchTorrents(ctx context.Context, instance *models.Instance, torrents iter.Seq[*qbt.Torrent], count int, decide func(*qbt.Torrent) searchCandidateDecision, input webhookCheckInput, answer *webhookCheckAnswer) error {
 	settings := input.settings
 	announcedCandidate := input.announced
 	m := s.matcher()
@@ -48,8 +48,6 @@ func (s *Service) webhookMatchTorrents(ctx context.Context, instance *models.Ins
 			(source.release.Site != "") != (announcedCandidate.release.Site != "") &&
 				m.crossFieldGroupSiteFallback(source, announcedCandidate)
 	}
-	policy := input.policy
-	policy.sourceReads = sourceReads
 
 	for torrent := range torrents {
 		if err := ctx.Err(); err != nil {
@@ -76,7 +74,7 @@ func (s *Service) webhookMatchTorrents(ctx context.Context, instance *models.Ins
 			}
 			continue
 		}
-		match, decision := s.webhookCandidate(ctx, instance, torrent, announcedCandidate, input.size, policy)
+		decision := decide(torrent)
 		if !decision.Accepted {
 			if logNearMisses && isNearMiss(torrent) {
 				if answer.nearMisses < nearMissDebugLimit {
@@ -93,7 +91,7 @@ func (s *Service) webhookMatchTorrents(ctx context.Context, instance *models.Ins
 			}
 			continue
 		}
-		answer.matches = append(answer.matches, match)
+		answer.matches = append(answer.matches, s.webhookMatch(instance, torrent, announcedCandidate, input.size))
 
 		if gateAnswer == sourcePass {
 			answer.hasCompleteMatch = true

@@ -218,13 +218,19 @@ func (s *Service) webhookMatchHeldTitles(ctx context.Context, input webhookCheck
 		candidates = s.heldTitles.candidates(query, targets)
 	}
 
+	held := make(map[int][]*qbt.Torrent, len(candidates))
+	for instanceID, found := range candidates {
+		held[instanceID] = found.sorted()
+	}
+	copies := s.webhookCopies(input, held, sourceReads)
 	var answer webhookCheckAnswer
 	for _, instance := range input.instances {
-		held := candidates[instance.ID].sorted()
-		if len(held) == 0 {
+		torrents := held[instance.ID]
+		if len(torrents) == 0 {
 			continue
 		}
-		if err := s.webhookMatchTorrents(ctx, instance, slices.Values(held), len(held), sourceReads[instance.ID], input, &answer); err != nil {
+		decide := func(torrent *qbt.Torrent) searchCandidateDecision { return copies.decide(ctx, instance.ID, torrent) }
+		if err := s.webhookMatchTorrents(ctx, instance, slices.Values(torrents), len(torrents), decide, input, &answer); err != nil {
 			return webhookCheckAnswer{}, err
 		}
 	}
