@@ -129,6 +129,11 @@ func CanReadTrackerPasskeys(r *http.Request) bool {
 	return !ok || key.Allows(models.AreaTorrents, models.LevelWrite)
 }
 
+func CanReadNotificationURLs(r *http.Request) bool {
+	key, ok := r.Context().Value(ctxkeys.APIKey).(*models.APIKey)
+	return !ok || key.Allows(models.AreaNotifications, models.LevelWrite)
+}
+
 // HasPermission reports whether the request may use the Permission, and writes
 // the 403 when it may not. The body must not say "unauthorized": the frontend
 // signs the user out on a 403 with that word.

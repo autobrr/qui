@@ -33,6 +33,7 @@ type secretAudience int
 const (
 	shownToNobody secretAudience = iota
 	shownWithTorrentsWrite
+	shownWithNotificationsWrite
 )
 
 type plantedSecret struct {
@@ -207,6 +208,11 @@ func newSecretsRig(t *testing.T) *secretsRig {
 	settings.SeasonPackTVDBAPIKey = rig.plant("TVDB API key", shownToNobody)
 	settings.SeasonPackTVDBPIN = rig.plant("TVDB PIN", shownToNobody)
 	_, err = deps.CrossSeedService.UpdateAutomationSettings(ctx, settings)
+	require.NoError(t, err)
+
+	_, err = deps.NotificationTargetStore.Create(ctx, &models.NotificationTargetCreate{
+		Name: "ntfy", URL: "ntfy://ntfy.example.invalid/" + rig.plant("notification URL token", shownWithNotificationsWrite), Enabled: true,
+	})
 	require.NoError(t, err)
 
 	proxyKey, _, err := deps.ClientAPIKeyStore.Create(ctx, "sonarr", instance.ID)

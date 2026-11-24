@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/redact"
@@ -66,7 +68,20 @@ func (h *NotificationsHandler) ListTargets(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if !middleware.CanReadNotificationURLs(r) {
+		for _, target := range targets {
+			target.URL = notificationURLScheme(target.URL)
+		}
+	}
 	RespondJSON(w, http.StatusOK, targets)
+}
+
+func notificationURLScheme(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme == "" {
+		return ""
+	}
+	return parsed.Scheme + "://"
 }
 
 // CreateTarget handles POST /api/notifications/targets

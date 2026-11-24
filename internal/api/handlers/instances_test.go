@@ -120,6 +120,7 @@ func TestUpdateInstanceClearsConnectionBackoff(t *testing.T) {
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPut, fmt.Sprintf("/api/instances/%d", instance.ID), strings.NewReader(body)))
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		handler.connectionTests.Wait()
 	}
 	backoff := func(err error) time.Duration {
 		t.Helper()
