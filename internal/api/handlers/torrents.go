@@ -1982,6 +1982,11 @@ func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		for i := range webseeds {
+			webseeds[i].URL = qbittorrent.TrackerOrigin(webseeds[i].URL)
+		}
+	}
 	RespondJSON(w, http.StatusOK, webseeds)
 }
 
