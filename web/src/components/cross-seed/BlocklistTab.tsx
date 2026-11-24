@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2, Plus, Trash2 } from "lucide-react"
@@ -57,23 +57,11 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
-  const [instanceId, setInstanceId] = useState<number | null>(null)
+  const [pickedInstanceId, setInstanceId] = useState<number | null>(null)
   const [infoHash, setInfoHash] = useState("")
   const [note, setNote] = useState("")
 
-  useEffect(() => {
-    if (instances.length === 0) {
-      if (instanceId !== null) {
-        setInstanceId(null)
-      }
-      return
-    }
-
-    const hasInstance = instanceId !== null && instances.some((instance) => instance.id === instanceId)
-    if (!hasInstance) {
-      setInstanceId(instances[0].id)
-    }
-  }, [instanceId, instances])
+  const instanceId = instances.some((instance) => instance.id === pickedInstanceId) ? pickedInstanceId : instances[0]?.id ?? null
 
   const { data: blocklistData, isLoading } = useQuery({
     queryKey: ["cross-seed", "blocklist", instanceId],
