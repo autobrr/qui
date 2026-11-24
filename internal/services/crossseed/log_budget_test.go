@@ -129,17 +129,22 @@ func TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss(t *testing.T) {
 
 func TestSeasonPackCheckWritesNoDebugLineWithoutMatch(t *testing.T) {
 	fix := newSeasonPackFixture(t)
-	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true, HasLocalFilesystemAccess: true, UseHardlinks: true, HardlinkBaseDir: t.TempDir()}
+	other := []qbt.Torrent{
+		{Hash: "o01", Name: "Quiet.Field.S03E01.1080p.WEB.x264-OTHER", Progress: 1},
+		{Hash: "o02", Name: "Quiet.Field.S03E02.1080p.WEB.x264-OTHER", Progress: 1},
+	}
 	svc := &Service{
 		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
-		syncManager:              newMultiFakeSyncManager(map[int][]qbt.Torrent{inst.ID: {}}, map[int]*models.Instance{inst.ID: inst}),
+		syncManager:              newMultiFakeSyncManager(map[int][]qbt.Torrent{inst.ID: other}, map[int]*models.Instance{inst.ID: inst}),
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       &stubSeasonPackRunStore{},
 	}
 	check := func() {
-		_, err := svc.CheckSeasonPackWebhook(t.Context(), &SeasonPackCheckRequest{TorrentName: fix.packName, InstanceIDs: []int{inst.ID}})
+		resp, err := svc.CheckSeasonPackWebhook(t.Context(), &SeasonPackCheckRequest{TorrentName: fix.packName, InstanceIDs: []int{inst.ID}})
 		require.NoError(t, err)
+		require.Equal(t, "no_matches", resp.Reason)
 	}
 	check()
 	logbudget.AssertSilent(t, check)
