@@ -552,7 +552,7 @@
     "internal/services/crossseed/layout.go": 9,
     "internal/services/crossseed/library_scan.go": 244,
     "internal/services/crossseed/library_schedule.go": 41,
-    "internal/services/crossseed/library_schedule_test.go": 72,
+    "internal/services/crossseed/library_schedule_test.go": 71,
     "internal/services/crossseed/link_mode.go": 72,
     "internal/services/crossseed/link_mode_failure_test.go": 15,
     "internal/services/crossseed/local_file_iteration_test.go": 3,
