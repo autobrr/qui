@@ -91,13 +91,17 @@ func (s *Service) StartSignIn(ctx context.Context, provider string) (string, err
 	var start signInStart
 	status, err := s.signInCall(attemptCtx, installKey, "/api/report-sign-in", map[string]string{"provider": provider}, &start)
 	interval := time.Duration(start.Interval * float64(time.Second))
-	if err != nil || status != http.StatusOK || !isWebURL(start.URL) || start.PollToken == "" || interval <= 0 {
+	started := err == nil && status == http.StatusOK && isWebURL(start.URL) && start.PollToken != "" && interval > 0
+	if !started {
 		log.Warn().Err(err).Int("status", status).Str("provider", provider).Msg("brrbin did not start a Problem report sign-in")
-		s.signInMu.Lock()
-		if s.signIn == attempt {
-			s.signIn = nil
-		}
-		s.signInMu.Unlock()
+	}
+	s.signInMu.Lock()
+	current := s.signIn == attempt
+	if current && !started {
+		s.signIn = nil
+	}
+	s.signInMu.Unlock()
+	if !started || !current {
 		cancel()
 		return "", &RefusalError{Status: http.StatusBadGateway, Reason: ReasonUnavailable}
 	}
