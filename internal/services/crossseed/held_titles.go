@@ -74,7 +74,9 @@ func (s *Service) StartHeldTitles(ctx context.Context, features *experimental.Fe
 	h := &heldTitles{svc: s, sync: reader, wake: make(chan struct{}, 1), instances: map[int]*heldInstance{}}
 	s.heldTitles = h
 	sinks.AddSyncEventSink(h)
-	instances, err := s.instanceStore.List(ctx)
+	listCtx, cancelList := context.WithTimeout(ctx, 30*time.Second)
+	instances, err := s.instanceStore.List(listCtx)
+	cancelList()
 	if err != nil {
 		log.Warn().Err(err).Msg("crossseed: Held titles waits for the first sync of each instance, because the instances could not be listed")
 	}
