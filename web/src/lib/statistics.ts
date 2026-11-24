@@ -53,6 +53,51 @@ export function startOfLocalDay(time: Date): Date {
   return new Date(time.getFullYear(), time.getMonth(), time.getDate())
 }
 
+export interface DayBand {
+  day: number
+  first: number
+  last: number
+  shaded: boolean
+  midnightLine: boolean
+}
+
+export interface HourAxis {
+  ticks: number[]
+  bands: DayBand[]
+  manyDays: boolean
+  narrow: boolean
+}
+
+export function hourAxis(bars: Pick<StatisticsBar, "start" | "width">[], narrow: boolean): HourAxis {
+  const days: Pick<DayBand, "day" | "first" | "last">[] = []
+  for (const { start } of bars) {
+    const day = startOfLocalDay(new Date(start)).getTime()
+    const last = days.at(-1)
+    if (last?.day === day) {
+      last.last = start
+    } else {
+      days.push({ day, first: start, last: start })
+    }
+  }
+  const manyDays = days.length > 2
+  const tickHours = manyDays ? (narrow ? undefined : 12) : (narrow ? 6 : 3)
+  return {
+    ticks: tickHours === undefined ? [] : bars.filter(bar => bar.width === "hour" && new Date(bar.start).getHours() % tickHours === 0).map(bar => bar.start),
+    bands: days.map((band, index) => ({
+      ...band,
+      shaded: manyDays ? daysSinceEpoch(band.day) % 2 === 0 : index < days.length - 1,
+      midnightLine: !manyDays && index > 0,
+    })),
+    manyDays,
+    narrow,
+  }
+}
+
+function daysSinceEpoch(day: number): number {
+  const date = new Date(day)
+  return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / (24 * HOUR))
+}
+
 function addLocalDays(day: Date, days: number): Date {
   return new Date(day.getFullYear(), day.getMonth(), day.getDate() + days)
 }

@@ -26,7 +26,7 @@ interface EventsChartProps {
 export function EventsChart({ days }: EventsChartProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const { formatStart, formatTick } = useBucketFormat("day")
+  const { formatStart, formatTick } = useBucketFormat()
   const formatCount = useMemo(() => new Intl.NumberFormat(locale), [locale])
   const tooltip = useTapTooltip()
 
