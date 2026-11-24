@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 const defaultSearchSettings = vi.hoisted(() => ({
   instanceId: 1,
@@ -98,15 +98,6 @@ import { APIError } from "@/lib/api"
 import type { CrossSeedAutomationSettings } from "@/types"
 import { toast } from "sonner"
 import { LibraryTab } from "../LibraryTab"
-
-beforeEach(() => {
-  // Clicking Start opens its tooltip, and Radix measures the tooltip through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

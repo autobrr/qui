@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { cleanup } from "@testing-library/react"
 import { afterAll, afterEach, beforeAll } from "vitest"
 
 import { server } from "@/test/msw/server"
@@ -34,11 +35,18 @@ if (globalThis.localStorage == null) {
 // makes any un-stubbed request fail loudly so missing handlers surface as test
 // failures instead of silent network calls. Hooks are imported explicitly
 // because vitest runs with `globals: false`.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 beforeAll(() => {
   server.listen({ onUnhandledFrame: "error" })
 })
 
 afterEach(() => {
+  cleanup()
   server.resetHandlers()
 })
 

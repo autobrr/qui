@@ -37,12 +37,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => instances }))
 vi.mock("./InstanceSettingsPanel", () => ({ InstanceSettingsPanel: () => null }))
 
-// Radix Switch sizes its hidden form input through ResizeObserver, which jsdom lacks.
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 afterEach(() => {
   cleanup()

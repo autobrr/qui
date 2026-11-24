@@ -47,14 +47,6 @@ vi.mock("@/lib/api", () => ({
 
 const scrollIntoView = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView")
 
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
-
 afterEach(() => {
   if (scrollIntoView) Object.defineProperty(Element.prototype, "scrollIntoView", scrollIntoView)
   else Reflect.deleteProperty(Element.prototype, "scrollIntoView")

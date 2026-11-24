@@ -52,7 +52,6 @@ beforeEach(() => {
   _resetClientSettingsForTests()
   FakeEventSource.instances = []
   vi.stubGlobal("EventSource", FakeEventSource)
-  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
   mocks.settings = { level: "INFO", path: "/config/logs/qui.log", maxSize: 50, maxBackups: 3 }
   mocks.updateLogSettings.mockReset().mockImplementation((update: Partial<LogSettings>) => Promise.resolve({ ...mocks.settings, ...update }))

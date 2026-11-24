@@ -43,12 +43,6 @@ const TARGET: NotificationTarget = {
 }
 
 function renderManager() {
-  // Radix measures the switch and the checkbox through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>

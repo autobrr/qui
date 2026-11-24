@@ -46,11 +46,6 @@ const touchWindow = window as Window & { ontouchstart?: unknown }
 
 beforeEach(() => {
   delete touchWindow.ontouchstart
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 afterEach(() => {

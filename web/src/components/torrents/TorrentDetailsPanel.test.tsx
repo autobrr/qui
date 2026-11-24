@@ -80,10 +80,6 @@ const cases = [
 
 describe("TorrentDetailsPanel content actions", () => {
   it.each(cases)("offer download, MediaInfo, and Disc reports from the content capability for $name", async ({ hasLocalFilesystemAccess, capabilities, canReadContent }) => {
-    vi.stubGlobal("ResizeObserver", class {
-      observe() {}
-      disconnect() {}
-    })
     mocks.queries.instances = { ...mocks.empty, data: [{ id: 1, hasLocalFilesystemAccess, capabilities }] }
     render(
       <QueryClientProvider client={new QueryClient()}>

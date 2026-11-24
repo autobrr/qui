@@ -17,11 +17,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
 
 import { PeersTable } from "./PeersTable"
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 const peer = (key: string, client: string, peerIdClient: string) =>
   ({ key, ip: key, port: 1, client, peer_id_client: peerIdClient, progress: 0 }) as unknown as SortedPeer

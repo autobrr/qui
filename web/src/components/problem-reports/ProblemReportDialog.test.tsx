@@ -159,12 +159,6 @@ function pickLogScope(name: string) {
 }
 
 beforeAll(() => {
-  // jsdom has no ResizeObserver, and the Radix popper of the tooltip measures its anchor with one.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   // The Radix select scrolls its picked option into view and captures the pointer, which jsdom lacks.
   Element.prototype.scrollIntoView = () => {}
   Element.prototype.hasPointerCapture = () => false

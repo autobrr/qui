@@ -82,12 +82,6 @@ const detail: TransferDetail = {
 }
 
 beforeEach(() => {
-  // The filter tabs and a tooltip measure their elements, and jsdom has no ResizeObserver.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   requests = []
   server.use(
     http.get("*/api/instances", () => HttpResponse.json([{ id: 1, name: "seedbox" }, { id: 2, name: "homelab" }])),

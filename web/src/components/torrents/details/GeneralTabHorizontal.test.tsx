@@ -32,11 +32,6 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
   }),
 }))
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 afterEach(() => {
   cleanup()

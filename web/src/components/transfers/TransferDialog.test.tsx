@@ -42,11 +42,6 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   summary = {
     way: "sftp", bytes: 4 * GiB, free: 100 * GiB, freeKnown: true, noFileAccess: false, stayOnSource: 0, hints: [],
     members: [

@@ -68,11 +68,6 @@ beforeEach(() => {
   _resetClientSettingsForTests()
   // The first read of the server ended, so the section takes changes.
   markClientSettingsUnavailable()
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 /** The controls that change a profile, in the editor and in the header. */

@@ -25,11 +25,6 @@ function query(state: Partial<Query> = {}): Query {
   return { isLoading: false, isLoadingError: false, error: null, refetch: vi.fn(), ...state }
 }
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 describe("Section", () => {
   it("holds the content and Save back while a query loads for the first time", () => {

@@ -26,12 +26,6 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }))
 
 beforeEach(() => {
-  // The tabs indicator measures itself through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   // jsdom has no layout, so it lacks scrollIntoView, which opening "More options" calls.
   Element.prototype.scrollIntoView = vi.fn()
 })

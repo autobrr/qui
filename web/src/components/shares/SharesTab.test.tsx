@@ -74,12 +74,6 @@ async function findRow(name: string): Promise<HTMLElement> {
 }
 
 beforeEach(() => {
-  // A tooltip measures its trigger, and jsdom has no ResizeObserver.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   shares = []
   writes = []
   server.use(

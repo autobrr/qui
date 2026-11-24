@@ -4,7 +4,7 @@
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
@@ -26,14 +26,6 @@ function renderPicker(icon = "laptop", color: DisplayProfileColor | null = null)
   fireEvent.click(screen.getByRole("button", { name: "open" }))
   return { onIconChange, onColorChange }
 }
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

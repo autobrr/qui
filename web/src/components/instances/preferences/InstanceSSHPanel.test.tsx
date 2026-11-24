@@ -5,7 +5,7 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Instance, SSHTestResponse } from "@/types"
 
 const mocks = vi.hoisted(() => ({
@@ -38,14 +38,6 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 import { APIError } from "@/lib/api"
 import { InstanceSSHPanel } from "./InstanceSSHPanel"
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

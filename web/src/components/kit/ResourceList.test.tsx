@@ -5,21 +5,12 @@
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { Download, Send, Trash2 } from "lucide-react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 
 import { ResourceList, type ResourceRow } from "./ResourceList"
-
-// A tooltip measures its trigger, and jsdom has no ResizeObserver.
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

@@ -51,12 +51,6 @@ function newClient() {
 }
 
 function renderManager() {
-  // Radix measures the checkbox and the tooltip through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   const client = newClient()
   render(
     <QueryClientProvider client={client}>

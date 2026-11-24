@@ -151,12 +151,6 @@ vi.mock("@/lib/demo", async (importOriginal) => ({
   get isDemo() { return scenario.isDemo },
 }))
 
-// The grid measures its width through ResizeObserver, which jsdom lacks.
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 // Network boundary: any api.* call resolves to undefined (real hooks degrade
 // gracefully via their ?? fallbacks). One spy per method so a test can read

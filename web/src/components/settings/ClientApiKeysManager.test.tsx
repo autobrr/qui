@@ -27,11 +27,6 @@ vi.mock("@/components/ui/select", () => ({
   SelectValue: () => null,
 }))
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 afterEach(cleanup)
 

@@ -166,7 +166,6 @@ describe("SetCategoryDialog", () => {
   it("shows the full path of a subcategory on a tap, and the tap still selects it", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null
-    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
     try {
       render(
         <SetCategoryDialog

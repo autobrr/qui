@@ -46,12 +46,6 @@ beforeEach(() => {
   runQuery.data.filesystemMode = "local"
   runQuery.data.identityComplete = true
   confirmMutation.mutate.mockClear()
-  // Radix dialog/tooltip measure through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
 })
 
 afterEach(() => {

@@ -180,11 +180,6 @@ async function expectFact(label: string, expected: string) {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   mocks.incognitoMode = [false, () => {}]
   requests = []
   hold = undefined
@@ -1049,11 +1044,6 @@ describe("Statistics", () => {
   it("opens the tooltip of a mark on a tap, without opening the row", async () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null
-    vi.stubGlobal("ResizeObserver", class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    })
     try {
       torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 1024, { deleted: true })] : []
       renderPage()
@@ -1076,11 +1066,6 @@ describe("Statistics", () => {
   it("shows a cut-off tracker on a tap, and the tap still opens the row", async () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null
-    vi.stubGlobal("ResizeObserver", class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    })
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
     try {
@@ -1107,11 +1092,6 @@ describe("Statistics", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null
     stubPhone("upright")
-    vi.stubGlobal("ResizeObserver", class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    })
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(50)
     try {
