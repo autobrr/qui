@@ -220,9 +220,24 @@ func TestMagnetDownloadError_RedactsTrackerPasskeys(t *testing.T) {
 func TestDownloadHidesTheKeysOfALinkThatDoesNotParse(t *testing.T) {
 	client := NewClient("https://indexer.example.invalid", "test-api-secret", nil, nil, "jackett", 5)
 
-	_, err := client.Download(t.Context(), "https://indexer.example.invalid/download?apikey=test-api-secret&passkey=test-pass-secret\x7f")
+	tests := []struct {
+		name string
+		link string
+	}{
+		// regression: #4473
+		{name: "keys in the query", link: "https://indexer.example.invalid/download?apikey=test-api-secret&passkey=test-pass-secret\x7f"},
+		// regression: #4473
+		{name: "key in the path", link: "https://indexer.example.invalid/test-pass-secret/download\x7f"},
+		// regression: #4473
+		{name: "key in the place of the port", link: "https://indexer.example.invalid:test-pass-secret/download"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.Download(t.Context(), tt.link)
 
-	require.ErrorContains(t, err, "build download request")
-	assert.NotContains(t, err.Error(), "test-api-secret")
-	assert.NotContains(t, err.Error(), "test-pass-secret")
+			require.ErrorContains(t, err, "build download request")
+			assert.NotContains(t, err.Error(), "test-api-secret")
+			assert.NotContains(t, err.Error(), "test-pass-secret")
+		})
+	}
 }

@@ -418,7 +418,7 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build download request: %w", redact.URLError(err))
+		return nil, errors.New("build download request: the download link is not a valid URL")
 	}
 	req.Header.Set("Accept", "application/x-bittorrent, application/octet-stream")
 	req.Header.Set("User-Agent", buildinfo.UserAgent)
