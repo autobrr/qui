@@ -91,7 +91,7 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		"/api/v2/torrents/categories":             `{}`,
 		"/api/v2/torrents/tags":                   `[]`,
 		"/api/v2/torrents/properties":             `{"save_path":"/data","comment":"Show"}`,
-		"/api/v2/torrents/webseeds":               `[{"url":"https://seed.example.invalid/file"}]`,
+		"/api/v2/torrents/webseeds":               `[{"url":"https://seed.example.invalid/` + rig.plant("web seed passkey", shownWithTorrentsWrite) + `/file"}]`,
 		"/api/v2/torrents/pieceStates":            `[2]`,
 		"/api/v2/sync/torrentPeers":               `{"rid":1,"full_update":true,"peers":{}}`,
 		"/api/v2/transfer/info":                   `{"connection_status":"connected"}`,

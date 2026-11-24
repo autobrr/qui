@@ -2521,7 +2521,7 @@ paths:
       tags:
         - Torrent Details
       summary: Get torrent web seeds
-      description: Get list of web seeds (HTTP sources) for a torrent
+      description: Get list of web seeds (HTTP sources) for a torrent. A key without write access to torrents gets each URL as its scheme and host.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'

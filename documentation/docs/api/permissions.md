@@ -47,7 +47,7 @@ Each area offers only the levels in this table.
 | Logs | Read log settings, exclusions, files, and the log stream | Not offered | Change log settings and exclusions, except the log file path. See [Browser-only routes](#browser-only-routes) |
 | System | Application information | Not offered | Not offered |
 
-A `.torrent` file and a backup hold tracker passkeys, so their downloads need `write`. A key without `Torrents: write` also gets tracker URLs with the passkey hidden.
+A `.torrent` file and a backup hold tracker passkeys, so their downloads need `write`. A key without `Torrents: write` also gets tracker URLs and web seed links with the passkey hidden: each one shows only its scheme and host.
 
 Each key can reach these routes with any Permission: the current user, tracker icons, peer-client icons, the theme list, the custom theme list, the version, the latest version, and the event-only stream. A torrent stream needs `Torrents: read`.
 
