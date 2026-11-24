@@ -97,6 +97,43 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 	logbudget.AssertFlat(t, smallWarm, largeWarm)
 }
 
+func TestWebhookCheckLogBudgetWithSourceFilter(t *testing.T) {
+	instance := &models.Instance{ID: 12, Name: "primary", IsActive: true}
+	announce := &WebhookCheckRequest{InstanceIDs: []int{instance.ID}, TorrentName: "Silver.Harbor.S01E06.1080p.WEB-DL.H.264-LUMA", Size: 3_000_000_000}
+	check := func(n int) logbudget.Lines {
+		torrents := make([]qbt.Torrent, 0, 2*n)
+		for i := range n {
+			for _, category := range []string{"skipped", "kept"} {
+				torrents = append(torrents, qbt.Torrent{
+					Hash: fmt.Sprintf("%s%034x", category[:1], i), Name: fmt.Sprintf("Show%04d.S01E05.1080p.WEB-DL.H.264-LUMA", i), Category: category,
+					Size: 2_000_000, TotalSize: 2_000_000, Progress: 1, AddedOn: 1,
+				})
+			}
+		}
+		service := &Service{
+			instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+			syncManager:      newFakeSyncManager(instance, torrents, nil),
+			releaseCache:     NewReleaseCache(),
+			stringNormalizer: stringutils.NewDefaultNormalizer(),
+			automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				return &models.CrossSeedAutomationSettings{WebhookSourceExcludeCategories: []string{"skipped"}}, nil
+			},
+		}
+		return logbudget.Count(t, func() {
+			_, err := service.CheckWebhook(t.Context(), announce)
+			require.NoError(t, err)
+		})
+	}
+
+	small, large := check(10), check(1000)
+	skipped := large[logbudget.Line{Level: "debug", Message: "Webhook check: source filter skipped near miss"}]
+	rejected := large[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}]
+	require.Positive(t, skipped)
+	require.Positive(t, rejected)
+	require.Equal(t, nearMissDebugLimit, skipped+rejected)
+	logbudget.AssertFlat(t, small, large)
+}
+
 func TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss(t *testing.T) {
 	tests := []struct {
 		name          string
