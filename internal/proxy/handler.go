@@ -44,6 +44,7 @@ type Handler struct {
 	syncManager       *qbittorrent.SyncManager
 	writeNoter        writeNoter
 	deleteNoter       deleteNoter
+	addNoter          addNoter
 	reannounceCache   *reannounce.SettingsCache
 	reannounceService *reannounce.Service
 	bufferPool        *BufferPool
@@ -129,6 +130,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		syncManager:       syncManager,
 		writeNoter:        syncManager,
 		deleteNoter:       syncManager,
+		addNoter:          syncManager,
 		reannounceCache:   cache,
 		reannounceService: svc,
 		bufferPool:        bufferPool,
@@ -423,6 +425,7 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Post("/api/v2/torrents/renameFile", h.handleRenameFile)
 		pr.Post("/api/v2/torrents/renameFolder", h.handleRenameFolder)
 		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
+		pr.Post("/api/v2/torrents/add", h.handleAddTorrents)
 
 		// Intercepted only to clean up the folders a move leaves behind
 		pr.Post("/api/v2/torrents/setCategory", h.handleSetCategory)
