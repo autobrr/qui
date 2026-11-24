@@ -80,10 +80,26 @@ function serveSignIn(states: ProblemReportSignInState[], start: () => Response =
   return calls
 }
 
+function fakePopup() {
+  return { opener: window as Window | null, location: { href: "" }, close: vi.fn() }
+}
+
 function stubPopup() {
-  const popup = { opener: window as Window | null, location: { href: "" }, close: vi.fn() }
+  const popup = fakePopup()
   const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window)
   return { popup, open }
+}
+
+function holdSignInStart(urls: string[]) {
+  let releaseFirst = () => {}
+  const heldFirst = new Promise<void>((resolve) => { releaseFirst = resolve })
+  let starts = 0
+  server.use(http.post("*/api/problem-reports/sign-in", async () => {
+    const start = starts++
+    if (start === 0) await heldFirst
+    return HttpResponse.json({ url: urls[start] })
+  }))
+  return { releaseFirst, starts: () => starts }
 }
 
 function openSenderMenu(sender: string) {
@@ -809,6 +825,62 @@ describe("Sender", () => {
 
     await screen.findByRole("button", { name: "Anonymous" })
     expect(signIn.signOuts).toBe(1)
+  })
+
+  // regression: #4465
+  it("closes the popup and stays Anonymous when the sign-in starts after the user picked Anonymous", async () => {
+    serve()
+    const signIn = serveSignIn([{ state: "pending" }])
+    const start = holdSignInStart([signInURL])
+    const { popup } = stubPopup()
+    const queryClient = mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(start.starts()).toBe(1))
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Anonymous" }))
+    await screen.findByRole("button", { name: "Anonymous" })
+    await waitFor(() => expect(signIn.signOuts).toBe(1))
+
+    start.releaseFirst()
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+
+    expect(popup.location.href).toBe("")
+    expect(popup.close).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(signIn.reads).toBe(0)
+  })
+
+  // regression: #4465
+  it("closes the popup of a sign-in that a newer sign-in replaced, and waits for the newer one", async () => {
+    serve()
+    serveSignIn([{ state: "pending" }])
+    const discordURL = "https://bin.getqui.com/report-sign-in/p2"
+    const start = holdSignInStart([signInURL, discordURL])
+    const first = fakePopup()
+    const second = fakePopup()
+    vi.spyOn(window, "open").mockReturnValueOnce(first as unknown as Window).mockReturnValueOnce(second as unknown as Window)
+    const queryClient = mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(start.starts()).toBe(1))
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+    await waitFor(() => expect(second.location.href).toBe(discordURL))
+
+    start.releaseFirst()
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+
+    expect(first.location.href).toBe("")
+    expect(first.close).toHaveBeenCalledTimes(1)
+    expect(second.close).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Waiting for Discord" })).not.toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
   })
 
   // regression: #4360
