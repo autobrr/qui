@@ -8638,7 +8638,7 @@ paths:
       tags:
         - RSS
       summary: RSS events stream (SSE)
-      description: Server-Sent Events stream for real-time RSS feed updates
+      description: Server-Sent Events stream for real-time RSS feed updates. A key without write access to torrents gets the download link and page link of each article as their scheme and host, each feed URL, each feed or folder name that holds a link, and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -8661,7 +8661,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS items
-      description: Retrieve all RSS feeds and folders for an instance
+      description: Retrieve all RSS feeds and folders for an instance. A key without write access to torrents gets the download link and page link of each article as their scheme and host, each feed URL, each feed or folder name that holds a link, and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: withData
@@ -8707,7 +8707,7 @@ paths:
         '200':
           description: Item removed successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8740,7 +8740,7 @@ paths:
         '200':
           description: Item moved successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one, or the last part of the destination in the short form is not the name of the moved item
         '409':
           description: Instance is disabled
         '500':
@@ -8770,7 +8770,7 @@ paths:
         '200':
           description: Refresh triggered successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8800,7 +8800,7 @@ paths:
         '201':
           description: Folder created successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8838,7 +8838,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/WarningResponse'
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8868,12 +8868,12 @@ paths:
                 url:
                   type: string
                   format: uri
-                  description: New URL for the feed
+                  description: New URL for the feed. For a key without write access to torrents, a URL given as a scheme and host and a short code, as the feed list shows it, becomes the full URL of that feed again.
       responses:
         '200':
           description: Feed URL updated successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one, or a URL in the short form matches no RSS feed or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8906,7 +8906,7 @@ paths:
         '200':
           description: Articles marked as read successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one, or an article ID in the short form matches no article of the feed or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8918,7 +8918,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS rules
-      description: Retrieve all RSS auto-download rules
+      description: Retrieve all RSS auto-download rules. A key without write access to torrents gets each feed of a rule as its scheme and host and a short code, and it can send the rule back to the create or update route in this form.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -8940,7 +8940,7 @@ paths:
       tags:
         - RSS
       summary: Create or update RSS rule
-      description: Create a new rule or update an existing one
+      description: Create a new rule or update an existing one. For a key without write access to torrents, each feed given as a scheme and host and a short code, as the rules list shows it, becomes the full URL of that feed again.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -8962,7 +8962,7 @@ paths:
         '201':
           description: Rule created/updated successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a feed in the short form matches no RSS feed or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -9051,7 +9051,7 @@ paths:
       tags:
         - RSS
       summary: Preview RSS rule matches
-      description: Get articles that would match an RSS rule
+      description: Get articles that would match an RSS rule. A key without write access to torrents gets each feed name that holds a link as its scheme and host and a short code, and each title that holds a link as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: ruleName

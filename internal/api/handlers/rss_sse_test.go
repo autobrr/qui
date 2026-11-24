@@ -4,17 +4,23 @@
 package handlers
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/api/ctxkeys"
+	"github.com/autobrr/qui/internal/models"
 )
 
 func syntheticRSSItems(t *testing.T, feedCount, articleCount int) qbt.RSSItems {
@@ -181,5 +187,99 @@ func TestRSSSSEEndsOnShutdown(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("RSS stream did not end on shutdown")
+	}
+}
+
+func readRSSEvent(t *testing.T, stream *bufio.Reader, eventType string) string {
+	t.Helper()
+	inEvent := false
+	for {
+		line, err := stream.ReadString('\n')
+		require.NoError(t, err, "stream ended before a %q event", eventType)
+		if strings.TrimSpace(line) == "event: "+eventType {
+			inEvent = true
+		}
+		if data, ok := strings.CutPrefix(line, "data: "); ok && inEvent {
+			return data
+		}
+	}
+}
+
+// regression: #4474
+func TestRSSStreamHidesLinksPerSubscriber(t *testing.T) {
+	const fullFeed = `{"uid":"{1}","url":"https://tracker.example/rss/made-up-feed-key/feed.xml","title":"Feed https://tracker.example/rss?key=made-up-title-key","articles":[` +
+		`{"id":"https://tracker.example/dl/1?guid=made-up-guid-key","title":"Show.S01","date":"Tue, 24 Nov 2026 08:00:00 +0000",` +
+		`"torrentURL":"https://tracker.example/dl/1?passkey=made-up-download-key","link":"https://tracker.example/t/1/made-up-link-key",` +
+		`"description":"<a href=\"/dl/1?passkey=made-up-description-key\">Download</a>","comments":"https://tracker.example/t/1?key=made-up-element-key",` +
+		`"isRead":false},` +
+		`{"id":"made-up-guid-2","title":"Show.S02","author":"uploader","description":"Size: 4 GiB","category":"TV",` +
+		`"torrentURL":"magnet:?xt=urn:btih:made-up&tr=udp%3A%2F%2Ftracker.example%2Fmade-up-magnet-key","link":"/t/2?key=made-up-relative-key","isRead":true}]}`
+	const hiddenFeed = `{"uid":"{1}","url":"https://tracker.example#de2596eb","title":"","articles":[` +
+		`{"id":"https://tracker.example#87f1c29f","title":"Show.S01","date":"Tue, 24 Nov 2026 08:00:00 +0000",` +
+		`"torrentURL":"https://tracker.example","link":"https://tracker.example","description":"","comments":"https://tracker.example",` +
+		`"isRead":false},` +
+		`{"id":"made-up-guid-2","title":"Show.S02","author":"uploader","description":"Size: 4 GiB","category":"TV",` +
+		`"torrentURL":"","link":"","isRead":true}]}`
+	const namedByURL = `{"https://tracker.example/rss/made-up-key-a/feed.xml":{"uid":"{2}","url":"https://tracker.example/rss/made-up-key-a/feed.xml"},` +
+		`"https://tracker.example/rss/made-up-key-b/feed.xml":{"uid":"{3}","url":"https://tracker.example/rss/made-up-key-b/feed.xml"}}`
+	const hiddenNamedByURL = `{"https://tracker.example#e15e2247":{"uid":"{2}","url":"https://tracker.example#e15e2247"},` +
+		`"https://tracker.example#69ed2928":{"uid":"{3}","url":"https://tracker.example#69ed2928"}}`
+	items := qbt.RSSItems{"Folder": json.RawMessage(`{"Feed":` + fullFeed + `}`), "Tracker": json.RawMessage(namedByURL)}
+	handler := &RSSSSEHandler{
+		getRSSItems: func(context.Context, int, bool) (qbt.RSSItems, error) { return items, nil },
+		clients:     make(map[int]map[*rssSSEClient]struct{}),
+		pollers:     make(map[int]context.CancelFunc),
+	}
+	rssRead := models.Permission{Area: models.AreaRSS, Level: models.LevelRead}
+	subscribers := []struct {
+		name       string
+		key        *models.APIKey
+		feed       string
+		namedByURL string
+	}{
+		// regression: #4474
+		{"key without Torrents write", &models.APIKey{Permissions: []models.Permission{rssRead}}, hiddenFeed, hiddenNamedByURL},
+		// regression: #4474
+		{"key with Torrents write", &models.APIKey{Permissions: []models.Permission{rssRead, {Area: models.AreaTorrents, Level: models.LevelWrite}}}, fullFeed, namedByURL},
+		// regression: #4474
+		{"session", nil, fullFeed, namedByURL},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		routeCtx := chi.NewRouteContext()
+		routeCtx.URLParams.Add("instanceID", "1")
+		ctx := context.WithValue(r.Context(), chi.RouteCtxKey, routeCtx)
+		subscriber, err := strconv.Atoi(r.URL.Query().Get("subscriber"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if key := subscribers[subscriber].key; key != nil {
+			ctx = context.WithValue(ctx, ctxkeys.APIKey, key)
+		}
+		handler.HandleSSE(w, r.WithContext(ctx))
+	}))
+	t.Cleanup(srv.Close)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	streams := make([]*bufio.Reader, len(subscribers))
+	for i := range subscribers {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"?subscriber="+strconv.Itoa(i), nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		t.Cleanup(func() { resp.Body.Close() })
+		streams[i] = bufio.NewReader(resp.Body)
+		readRSSEvent(t, streams[i], rssEventConnected)
+	}
+
+	handler.pollAndBroadcast(ctx, 1, nil)
+
+	for i, subscriber := range subscribers {
+		var event struct {
+			Data FeedsUpdatePayload `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(readRSSEvent(t, streams[i], rssEventFeedsUpdate)), &event), subscriber.name)
+		require.JSONEq(t, `{"Folder":{"Feed":`+subscriber.feed+`},"Tracker":`+subscriber.namedByURL+`}`, string(event.Data.Items), subscriber.name)
 	}
 }
