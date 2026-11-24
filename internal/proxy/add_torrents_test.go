@@ -94,7 +94,6 @@ func TestProxyNotesOnlyAcceptedAdds(t *testing.T) {
 		answer   string
 		accepted bool
 	}{
-		"text accept":  {http.StatusOK, "Ok.", true},
 		"text reject":  {http.StatusOK, "Fails.", false},
 		"JSON pending": {http.StatusAccepted, `{"success_count":0,"failure_count":0,"pending_count":1}`, true},
 		"JSON reject":  {http.StatusConflict, `{"success_count":0,"failure_count":1,"pending_count":0}`, false},

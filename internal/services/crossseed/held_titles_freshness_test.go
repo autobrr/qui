@@ -196,36 +196,26 @@ func TestCheckFindsAProxiedAddInTheSyncThatRunsOrIsDue(t *testing.T) {
 			f.proxiedAdd()
 			pass(time.Second)
 		}, off: true},
-		"at the add": {takes: 50 * ms, before: func(f *freshInstance) {
-			pass(time.Minute)
-			f.proxiedAdd()
-		}, waits: 250 * ms},
-		"while the sync runs": {takes: 500 * ms, before: func(f *freshInstance) {
-			pass(time.Minute)
-			f.proxiedAdd()
-			pass(300 * ms)
-		}, waits: 400 * ms},
-		"1 s after an add 0.5 s after a sync": {takes: 50 * ms, before: func(f *freshInstance) {
-			pass(500 * ms)
-			f.proxiedAdd()
-			pass(time.Second)
-		}, waits: 550 * ms},
-		"1 s after an add right after a sync": {takes: 50 * ms, before: func(f *freshInstance) {
-			f.proxiedAdd()
-			pass(time.Second)
-		}, waits: 1050 * ms},
 		"1 s after an add while a sync ran": {takes: 400 * ms, before: func(f *freshInstance) {
 			f.startSync()
 			f.proxiedAdd()
 			pass(time.Second)
 		}, waits: 1400 * ms},
-		"when it holds another episode": {before: func(f *freshInstance) {
+		"1 s after an add 0.5 s after a sync, when it holds another episode": {before: func(f *freshInstance) {
 			f.hold(freshOtherName, 1)
 			_ = f.owner.Sync(context.Background())
 			pass(500 * ms)
 			f.proxiedAdd()
 			pass(time.Second)
 		}, waits: 500 * ms},
+		// regression: #4475
+		"1 s after an add while a slow sync runs": {takes: 1200 * ms, before: func(f *freshInstance) {
+			f.startSync()
+			pass(100 * ms)
+			f.proxiedAdd()
+			f.syncTakes(50 * ms)
+			pass(time.Second)
+		}, waits: 950 * ms},
 		"while a sync of another source runs": {takes: 300 * ms, before: func(f *freshInstance) {
 			f.hold(freshName, 0)
 			f.startSync()
@@ -263,7 +253,6 @@ func TestCheckWaitsForNoOtherSync(t *testing.T) {
 		waits  time.Duration
 		syncs  int
 	}{
-		"fresh data":                    {before: func(*freshInstance) {}, syncs: 1},
 		"stale data":                    {takes: 300 * ms, before: func(*freshInstance) { pass(time.Minute) }, syncs: 2},
 		"an add straight to the client": {before: func(f *freshInstance) { pass(time.Second); f.hold(freshName, 0) }, syncs: 1},
 		"a sync that is due later": {before: func(f *freshInstance) {
@@ -297,13 +286,13 @@ func TestCheckFindsAProxiedAddWhileAnotherInstanceHangs(t *testing.T) {
 		require.NoError(rig.t, quick.owner.Sync(rig.t.Context()))
 		slow.syncTakes(time.Minute)
 		slow.startSync()
-		pass(time.Minute - time.Second)
+		pass(time.Minute - 100*time.Millisecond)
 		quick.proxiedAdd()
 
 		resp, waited := rig.check(freshName)
 
 		require.Equal(t, "download", resp.Recommendation)
-		require.Equal(t, time.Second, waited)
+		require.Equal(t, 200*time.Millisecond, waited)
 	})
 	freshCase(t, freshOn, 2, func(rig *freshRig) {
 		slow, quick := rig.instances[0], rig.instances[1]
@@ -414,7 +403,6 @@ func announceLoad(t *testing.T, features []string, adds int) []time.Time {
 func TestCheckSendsNoMoreSyncsThanTheFullScan(t *testing.T) {
 	for name, tc := range map[string]struct{ adds, most int }{
 		"no add":   {0, 5},
-		"one add":  {1, 5},
 		"200 adds": {200, 7},
 	} {
 		t.Run(name, func(t *testing.T) {

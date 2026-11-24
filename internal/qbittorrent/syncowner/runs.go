@@ -80,12 +80,24 @@ func (o *Owner) refreshForRead() {
 	if !neverSynced || !o.readsSync {
 		return
 	}
-	if pending := o.PendingSync(o.interval); pending != nil {
+	if next := o.nextSync(); next != nil {
 		select {
-		case <-pending:
+		case <-next:
 		case <-time.After(o.firstSyncWait):
 		}
 	}
+}
+
+func (o *Owner) nextSync() <-chan struct{} {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	switch {
+	case o.running != nil:
+		return o.running.done
+	case o.due != nil:
+		return o.due.done
+	}
+	return nil
 }
 
 func (o *Owner) stale() bool {
@@ -106,6 +118,7 @@ func (o *Owner) startLocked(ctx context.Context, background bool) *syncRun {
 		o.addShownAt = time.Time{}
 	}
 	o.running = run
+	o.scheduleLocked()
 	go o.execute(ctx, run, background)
 	return run
 }
@@ -115,7 +128,9 @@ func (o *Owner) execute(ctx context.Context, run *syncRun, background bool) {
 		run.panicked = recover()
 		o.mu.Lock()
 		o.running = nil
-		o.scheduleLocked()
+		if o.due != nil {
+			o.due.timer.Reset(time.Until(o.due.at))
+		}
 		o.mu.Unlock()
 		close(run.done)
 		if background && run.panicked != nil {
@@ -126,7 +141,7 @@ func (o *Owner) execute(ctx context.Context, run *syncRun, background bool) {
 }
 
 func (o *Owner) scheduleLocked() {
-	if o.addShownAt.IsZero() || o.running != nil || o.due != nil {
+	if o.addShownAt.IsZero() || o.due != nil {
 		return
 	}
 	at := o.addShownAt

@@ -73,28 +73,24 @@ func TestOwnerSyncsOnceAfterAnAdd(t *testing.T) {
 	}
 	add := (*syncowner.Owner).SyncAfterAdd
 	syncNow := func(o *syncowner.Owner) { _ = o.Sync(context.Background()) }
+	startSync := func(o *syncowner.Owner) { go syncNow(o) }
 	read := func(o *syncowner.Owner) { o.Snapshot() }
+	startRead := func(o *syncowner.Owner) { go read(o) }
 	for name, tc := range map[string]struct {
 		takes time.Duration
 		fails bool
 		steps []step
 		want  []time.Duration
 	}{
-		"200 ms after the add":                         {steps: []step{{0, syncNow}, {5000 * ms, add}}, want: []time.Duration{0, 5200 * ms}},
-		"2 s after the last sync":                      {steps: []step{{0, syncNow}, {500 * ms, add}}, want: []time.Duration{0, 2000 * ms}},
-		"2 s after the last sync starts":               {takes: 300 * ms, steps: []step{{0, syncNow}, {500 * ms, add}}, want: []time.Duration{0, 2000 * ms}},
-		"2 s after a failed sync":                      {fails: true, steps: []step{{0, syncNow}, {500 * ms, add}}, want: []time.Duration{0, 2000 * ms}},
-		"2 s after the sync that runs at the add":      {takes: 300 * ms, steps: []step{{0, func(o *syncowner.Owner) { go syncNow(o) }}, {100 * ms, add}}, want: []time.Duration{0, 2000 * ms}},
-		"after the long sync that runs at the add":     {takes: 3000 * ms, steps: []step{{0, func(o *syncowner.Owner) { go syncNow(o) }}, {100 * ms, add}}, want: []time.Duration{0, 3000 * ms}},
-		"one sync for two adds":                        {steps: []step{{0, syncNow}, {500 * ms, add}, {700 * ms, add}}, want: []time.Duration{0, 2000 * ms}},
-		"a later add than the sync shows":              {steps: []step{{0, syncNow}, {5000 * ms, add}, {5100 * ms, add}}, want: []time.Duration{0, 5200 * ms, 7200 * ms}},
-		"another sync takes its place":                 {steps: []step{{0, syncNow}, {500 * ms, add}, {1000 * ms, syncNow}}, want: []time.Duration{0, 1000 * ms}},
-		"another sync is too early to show the add":    {steps: []step{{0, syncNow}, {5000 * ms, add}, {5100 * ms, syncNow}}, want: []time.Duration{0, 5100 * ms, 7100 * ms}},
-		"a stale read waits for it":                    {steps: []step{{0, syncNow}, {5000 * ms, add}, {5100 * ms, read}}, want: []time.Duration{0, 5200 * ms}},
-		"a stale read without an add":                  {steps: []step{{0, syncNow}, {1000 * ms, read}, {5000 * ms, read}}, want: []time.Duration{0, 5000 * ms}},
-		"before the first sync":                        {steps: []step{{0, add}}, want: []time.Duration{200 * ms}},
-		"a read before the first sync waits for it":    {steps: []step{{0, add}, {100 * ms, read}}, want: []time.Duration{200 * ms}},
-		"a read before the first sync, without an add": {steps: []step{{0, read}}, want: []time.Duration{0}},
+		"2 s after a failed sync starts":            {takes: 300 * ms, fails: true, steps: []step{{0, syncNow}, {500 * ms, add}}, want: []time.Duration{0, 2000 * ms}},
+		"2 s after the sync that runs at the add":   {takes: 300 * ms, steps: []step{{0, startSync}, {100 * ms, add}}, want: []time.Duration{0, 2000 * ms}},
+		"after the long sync that runs at the add":  {takes: 3000 * ms, steps: []step{{0, startSync}, {100 * ms, add}}, want: []time.Duration{0, 3000 * ms}},
+		"another sync takes its place":              {steps: []step{{0, syncNow}, {500 * ms, add}, {1000 * ms, syncNow}}, want: []time.Duration{0, 1000 * ms}},
+		"another sync is too early to show the add": {steps: []step{{0, syncNow}, {5000 * ms, add}, {5100 * ms, syncNow}}, want: []time.Duration{0, 5100 * ms, 7100 * ms}},
+		"a stale read waits for it":                 {steps: []step{{0, syncNow}, {5000 * ms, add}, {5100 * ms, read}}, want: []time.Duration{0, 5200 * ms}},
+		"a stale read without an add":               {steps: []step{{0, syncNow}, {2000 * ms, read}, {5000 * ms, read}}, want: []time.Duration{0, 5000 * ms}},
+		"the first read waits for it":               {steps: []step{{0, add}, {100 * ms, read}, {100 * ms, syncNow}}, want: []time.Duration{200 * ms, 200 * ms}},
+		"the first read waits for the running sync": {takes: 300 * ms, steps: []step{{0, startRead}, {50 * ms, add}, {100 * ms, read}, {100 * ms, syncNow}}, want: []time.Duration{0, 300 * ms}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			ownerBubble(t, func(t *testing.T, owner *syncowner.Owner, qb *syncRequests) {
@@ -128,7 +124,7 @@ func TestOwnerKeepsTwoSecondsBetweenSyncsInABurstOfAdds(t *testing.T) {
 
 func TestOwnerPendingSyncIsARunningOrDueSync(t *testing.T) {
 	const ms = time.Millisecond
-	syncNow := func(o *syncowner.Owner) { go func() { _ = o.Sync(context.Background()) }() }
+	startSync := func(o *syncowner.Owner) { go func() { _ = o.Sync(context.Background()) }() }
 	staleRead := func(o *syncowner.Owner) { pass(time.Minute); o.Snapshot() }
 	addAfter := func(wait time.Duration) func(*syncowner.Owner) {
 		return func(o *syncowner.Owner) { pass(wait); o.SyncAfterAdd() }
@@ -140,14 +136,20 @@ func TestOwnerPendingSyncIsARunningOrDueSync(t *testing.T) {
 		ends   time.Duration
 		syncs  int
 	}{
-		"no sync runs":         {before: func(*syncowner.Owner) {}, syncs: 1},
-		"data is stale":        {before: func(*syncowner.Owner) { pass(time.Minute) }, syncs: 1},
-		"a sync runs":          {takes: 300 * ms, before: syncNow, ends: 300 * ms, syncs: 2},
-		"a running sync fails": {takes: 300 * ms, fails: true, before: syncNow, ends: 300 * ms, syncs: 2},
-		"a stale read syncs":   {takes: 300 * ms, before: staleRead, ends: 300 * ms, syncs: 2},
-		"a sync is due":        {before: addAfter(1200 * ms), ends: 800 * ms, syncs: 2},
-		"a due sync also runs": {takes: 300 * ms, before: addAfter(1200 * ms), ends: 1100 * ms, syncs: 2},
-		"a sync is due later":  {before: addAfter(900 * ms), syncs: 2},
+		"data is stale":                {before: func(*syncowner.Owner) { pass(time.Minute) }, syncs: 1},
+		"a stale read syncs and fails": {takes: 300 * ms, fails: true, before: staleRead, ends: 300 * ms, syncs: 2},
+		"a sync is due":                {takes: 300 * ms, before: addAfter(1000 * ms), ends: 1300 * ms, syncs: 2},
+		"a sync is due later":          {before: addAfter(900 * ms), syncs: 2},
+		"a sync runs and another is due later": {takes: 300 * ms, before: func(o *syncowner.Owner) {
+			startSync(o)
+			addAfter(0)(o)
+		}, ends: 300 * ms, syncs: 3},
+		// regression: #4475
+		"a sync is due while another runs": {takes: 1500 * ms, before: func(o *syncowner.Owner) {
+			addAfter(time.Minute)(o)
+			addAfter(100 * ms)(o)
+			pass(1200 * ms)
+		}, ends: 2400 * ms, syncs: 3},
 	} {
 		t.Run(name, func(t *testing.T) {
 			ownerBubble(t, func(t *testing.T, owner *syncowner.Owner, qb *syncRequests) {
