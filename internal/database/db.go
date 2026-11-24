@@ -440,6 +440,8 @@ const (
 	defaultBusyTimeout       = 5 * time.Second
 	defaultBusyTimeoutMillis = int(defaultBusyTimeout / time.Millisecond)
 	connectionSetupTimeout   = 5 * time.Second
+
+	startupCheckpointWarnAfter = 3 * time.Second
 )
 
 // sqliteTimeParams makes the driver convert each time to UTC when it binds it
@@ -597,7 +599,12 @@ func New(databasePath string) (*DB, error) {
 		return nil, err
 	}
 
-	if _, err := writerConn.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+	slowCheckpoint := time.AfterFunc(startupCheckpointWarnAfter, func() {
+		log.Warn().Msgf("The WAL checkpoint of %s is still running after %s. The disk may be slow or busy, or another program may have the database open", databasePath, startupCheckpointWarnAfter)
+	})
+	_, err = writerConn.ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)")
+	slowCheckpoint.Stop()
+	if err != nil {
 		writerConn.Close()
 		return nil, fmt.Errorf("apply wal checkpoint: %w", err)
 	}
