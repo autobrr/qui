@@ -96,3 +96,102 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 	logbudget.AssertFlat(t, smallCold, largeCold)
 	logbudget.AssertFlat(t, smallWarm, largeWarm)
 }
+
+func TestWebhookCheckLogBudgetWithSourceFilter(t *testing.T) {
+	instance := &models.Instance{ID: 12, Name: "primary", IsActive: true}
+	announce := &WebhookCheckRequest{InstanceIDs: []int{instance.ID}, TorrentName: "Silver.Harbor.S01E06.1080p.WEB-DL.H.264-LUMA", Size: 3_000_000_000}
+	check := func(n int) logbudget.Lines {
+		torrents := make([]qbt.Torrent, 0, 2*n)
+		for i := range n {
+			for _, category := range []string{"kept", "skipped"} {
+				torrents = append(torrents, qbt.Torrent{
+					Hash: fmt.Sprintf("%s%034x", category[:1], i), Name: fmt.Sprintf("Show%04d.S01E05.1080p.WEB-DL.H.264-LUMA", i), Category: category,
+					Size: 2_000_000, TotalSize: 2_000_000, Progress: 1, AddedOn: 1,
+				})
+			}
+		}
+		service := &Service{
+			instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+			syncManager:      newFakeSyncManager(instance, torrents, nil),
+			releaseCache:     NewReleaseCache(),
+			stringNormalizer: stringutils.NewDefaultNormalizer(),
+			automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				return &models.CrossSeedAutomationSettings{WebhookSourceExcludeCategories: []string{"skipped"}}, nil
+			},
+		}
+		return logbudget.Count(t, func() {
+			_, err := service.CheckWebhook(t.Context(), announce)
+			require.NoError(t, err)
+		})
+	}
+
+	small, large := check(10), check(1000)
+	skipped := large[logbudget.Line{Level: "debug", Message: "Webhook check: source filter skipped near miss"}]
+	rejected := large[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}]
+	require.Positive(t, skipped)
+	require.Positive(t, rejected)
+	require.Equal(t, nearMissDebugLimit, skipped+rejected)
+	logbudget.AssertFlat(t, small, large)
+}
+
+func TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss(t *testing.T) {
+	tests := []struct {
+		name          string
+		announce      string
+		excluded      []string
+		debugAnswer   int
+		nearMisses    int
+		filterSkipped int
+	}{
+		{name: "no match", announce: "Quiet.Field.2025.1080p.WEB-DL.H.264-OTHER"},
+		{name: "near miss", announce: "Lantern.Bay.2026.1080p.WEB-DL.H.264-LUMA", debugAnswer: 1, nearMisses: 1},
+		{name: "match", announce: settingsCheckName, debugAnswer: 1},
+		{name: "filter skips another group", announce: "Quiet.Field.2025.1080p.WEB-DL.H.264-OTHER", excluded: []string{"films"}},
+		{name: "filter skips the same group", announce: settingsCheckName, excluded: []string{"films"}, debugAnswer: 1, filterSkipped: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := settingsCheckService(t)
+			svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				return &models.CrossSeedAutomationSettings{WebhookSourceExcludeCategories: tt.excluded}, nil
+			}
+			check := func() {
+				_, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: tt.announce, Size: 4 << 30})
+				require.NoError(t, err)
+			}
+			check()
+			if tt.debugAnswer == 0 {
+				logbudget.AssertSilent(t, check)
+				return
+			}
+			lines := logbudget.Count(t, check)
+			require.Equal(t, tt.debugAnswer, lines[logbudget.Line{Level: "debug", Message: "Webhook check completed"}])
+			require.Equal(t, tt.nearMisses, lines[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}])
+			require.Equal(t, tt.filterSkipped, lines[logbudget.Line{Level: "debug", Message: "Webhook check: source filter skipped near miss"}])
+			require.Zero(t, lines[logbudget.Line{Level: "debug", Message: "[Webhook] Source filter results"}])
+		})
+	}
+}
+
+func TestSeasonPackCheckWritesNoDebugLineWithoutMatch(t *testing.T) {
+	fix := newSeasonPackFixture(t)
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true, HasLocalFilesystemAccess: true, UseHardlinks: true, HardlinkBaseDir: t.TempDir()}
+	other := []qbt.Torrent{
+		{Hash: "o01", Name: "Quiet.Field.S03E01.1080p.WEB.x264-OTHER", Progress: 1},
+		{Hash: "o02", Name: "Quiet.Field.S03E02.1080p.WEB.x264-OTHER", Progress: 1},
+	}
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              newMultiFakeSyncManager(map[int][]qbt.Torrent{inst.ID: other}, map[int]*models.Instance{inst.ID: inst}),
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       &stubSeasonPackRunStore{},
+	}
+	check := func() {
+		resp, err := svc.CheckSeasonPackWebhook(t.Context(), &SeasonPackCheckRequest{TorrentName: fix.packName, InstanceIDs: []int{inst.ID}})
+		require.NoError(t, err)
+		require.Equal(t, "no_matches", resp.Reason)
+	}
+	check()
+	logbudget.AssertSilent(t, check)
+}

@@ -63,6 +63,35 @@ func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedA
 	return settings, nil
 }
 
+func (s *Service) savedAutomationSettings(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
+	if settings := s.automationSettings.Load(); settings != nil {
+		return settings, nil
+	}
+	load := s.automationSettingsLoad.DoChan("", func() (any, error) {
+		s.settingsMu.Lock()
+		defer s.settingsMu.Unlock()
+		if settings := s.automationSettings.Load(); settings != nil {
+			return settings, nil
+		}
+		settings, err := s.GetAutomationSettings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		s.automationSettings.Store(settings)
+		return settings, nil
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-load:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		settings, _ := result.Val.(*models.CrossSeedAutomationSettings)
+		return settings, nil
+	}
+}
+
 func (s *Service) ListBlocklist(ctx context.Context, instanceID int) ([]*models.CrossSeedBlocklistEntry, error) {
 	if s.blocklistStore == nil {
 		return nil, errors.New("blocklist store unavailable")
@@ -108,8 +137,10 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	previous, previousErr := s.GetAutomationSettings(ctx)
 	updated, err := s.automationStore.UpsertSettings(ctx, settings)
 	if err != nil {
+		s.automationSettings.Store(nil)
 		return nil, fmt.Errorf("persist automation settings: %w", err)
 	}
+	s.automationSettings.Store(updated)
 	// Of all settings, only the category mapping rules change a read.
 	if previousErr != nil || !slices.EqualFunc(previous.CategoryMappingRules, updated.CategoryMappingRules, func(a, b models.CategoryMappingRule) bool {
 		return a.ContentType == b.ContentType && slices.Equal(a.Categories, b.Categories)
