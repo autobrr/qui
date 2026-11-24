@@ -31,6 +31,8 @@ const (
 	// Short TTL because content may be added to *arr instances later
 	DefaultNegativeCacheTTL = 1 * time.Hour
 
+	incompleteCacheTTL = 10 * time.Minute
+
 	cacheCleanupInterval = 30 * time.Minute
 )
 
@@ -71,6 +73,12 @@ type Service struct {
 
 	cleanupMu        sync.Mutex
 	nextCacheCleanup time.Time
+}
+
+type askedInstance struct {
+	instance      *models.ArrInstance
+	client        *Client
+	parseAnswered bool
 }
 
 func NewService(instanceStore *models.ArrInstanceStore, cacheStore *models.ArrIDCacheStore) *Service {
@@ -217,14 +225,16 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	parsedRelease := rls.ParseString(title)
 	lookupTerm := strings.TrimSpace(parsedRelease.Title)
 	lookupYear := parsedRelease.Year
+	var asked []askedInstance
+	incomplete := false
 	for _, instance := range instances {
 		client := s.clientForInstance(instance)
 		if client == nil {
 			continue
 		}
-		result, err := client.ParseTitleLookupResult(ctx, title)
-		parseAnswered := err == nil
+		result, err := parseWithinShare(ctx, client, title, len(asked) > 0)
 		if err != nil {
+			incomplete = true
 			log.Debug().Err(err).
 				Int("instanceId", instance.ID).
 				Str("instanceName", instance.Name).
@@ -233,38 +243,44 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			result = nil
 		}
 
+		incomplete = incomplete || (result != nil && result.Incomplete)
 		if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
+			result.Incomplete = incomplete
 			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse", true), nil
 		}
+		asked = append(asked, askedInstance{instance: instance, client: client, parseAnswered: err == nil})
+	}
 
+	for _, a := range asked {
 		// anyQueried gates negative caching and the total-failure error: an
 		// instance counts as queried only when its lookup cycle reached an
 		// authoritative empty answer. A parse-empty followed by a lookup error
 		// is inconclusive — parse-empty is exactly the state the title-lookup
 		// fallback exists to distrust.
 		if lookupTerm != "" {
-			lookupResult, lookupErr := client.LookupByTerm(ctx, lookupTerm, lookupYear)
+			lookupResult, lookupErr := a.client.LookupByTerm(ctx, lookupTerm, lookupYear)
 			if lookupErr != nil {
+				incomplete = true
 				log.Debug().Err(lookupErr).
-					Int("instanceId", instance.ID).
-					Str("instanceName", instance.Name).
+					Int("instanceId", a.instance.ID).
+					Str("instanceName", a.instance.Name).
 					Str("term", lookupTerm).
 					Msg("[ARR-LOOKUP] Title lookup failed")
 				continue
 			}
 			anyQueried = true
+			incomplete = incomplete || (lookupResult != nil && lookupResult.Incomplete)
 			if lookupResult != nil && lookupResult.IDs != nil && !lookupResult.IDs.IsEmpty() {
-				// The map is known only when parse answered: an unanswered parse
-				// must not stamp the row as "looked, found none" for the TTL.
-				return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, lookupResult, "lookup", parseAnswered), nil
+				lookupResult.Incomplete = incomplete
+				return s.cacheAndBuildResult(ctx, titleHash, title, contentType, a.instance, lookupResult, "lookup", a.parseAnswered), nil
 			}
-		} else if parseAnswered {
+		} else if a.parseAnswered {
 			anyQueried = true
 		}
 
 		log.Debug().
-			Int("instanceId", instance.ID).
-			Str("instanceName", instance.Name).
+			Int("instanceId", a.instance.ID).
+			Str("instanceName", a.instance.Name).
 			Str("title", title).
 			Msg("[ARR-LOOKUP] No IDs returned from instance")
 	}
@@ -278,7 +294,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	if cacheNegative {
 		writeCtx, cancel := detachedCacheWriteContext(ctx)
 		defer cancel()
-		if err := s.cacheStore.Set(writeCtx, titleHash, string(contentType), nil, nil, true, s.negativeTTL); err != nil {
+		if err := s.cacheStore.Set(writeCtx, titleHash, string(contentType), nil, nil, true, cacheTTL(s.negativeTTL, incomplete)); err != nil {
 			log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache negative result")
 		}
 	}
@@ -296,12 +312,28 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	}, nil
 }
 
+func parseWithinShare(ctx context.Context, client *Client, title string, catalogueWaits bool) (*ExternalIDsLookupResult, error) {
+	if deadline, ok := ctx.Deadline(); ok && catalogueWaits {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Until(deadline)/2)
+		defer cancel()
+	}
+	return client.ParseTitleLookupResult(ctx, title)
+}
+
+func cacheTTL(ttl time.Duration, incomplete bool) time.Duration {
+	if incomplete {
+		return min(ttl, incompleteCacheTTL)
+	}
+	return ttl
+}
+
 func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title string, contentType ContentType, instance *models.ArrInstance, result *ExternalIDsLookupResult, source string, episodeMapKnown bool) *ExternalIDsResult {
 	instanceID := instance.ID
 	titles := append([]string{}, result.Titles...)
 	writeCtx, cancel := detachedCacheWriteContext(ctx)
 	defer cancel()
-	if err := s.cacheStore.SetWithTitles(writeCtx, titleHash, string(contentType), &instanceID, result.IDs, titles, result.EpisodeMap, episodeMapKnown, false, s.positiveTTL); err != nil {
+	if err := s.cacheStore.SetWithTitles(writeCtx, titleHash, string(contentType), &instanceID, result.IDs, titles, result.EpisodeMap, episodeMapKnown, false, cacheTTL(s.positiveTTL, result.Incomplete)); err != nil {
 		log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
 	}
 
