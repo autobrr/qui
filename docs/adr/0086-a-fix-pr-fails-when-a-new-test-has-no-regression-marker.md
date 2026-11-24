@@ -10,7 +10,7 @@ date: 2026-11-24
 `.github/workflows/regression-marker.yml` now runs `.github/scripts/check_regression_marker.py` on each pull request whose title starts with `fix`. The script fails when a test file gains a test case and no marker:
 
 - **A test case** is a Go `func Test…` or `func Benchmark…`, a `t.Run` or `b.Run`, or a web `it` or `test` call. `.github/scripts/count_test_growth.py` finds these in the diff, as it does for the test growth comment.
-- **A table row** is an element of a Go slice, array, or map literal whose element type is an anonymous struct, such as `[]struct{ name, want string }{…}`. That is the shape of 663 test tables in qui. `scripts/testrows` counts these rows in the file before and after the change with `go/parser`, and the check counts the difference. A literal of a named type, such as `[]qbt.Torrent{…}`, is a fixture and does not count.
+- **A table row** is an element of a Go slice, array, or map literal whose element type is an anonymous struct, such as `[]struct{ name, want string }{…}`. That is the shape of 663 test tables in qui. `scripts/testrows` counts these rows in the file before and after the change with `go/parser`, and the check counts the difference. A literal of a named type, such as `[]qbt.Torrent{…}`, is a fixture and does not count. Neither does a set such as `map[string]struct{}{…}`, whose struct has no fields.
 
 The marker must be in the same file, on a line that the pull request adds. `make check-regression-marker TITLE="<title>" NUMBER=<n>` runs the same script before a push.
 

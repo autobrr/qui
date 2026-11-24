@@ -40,13 +40,16 @@ func rows(src source) count {
 func isCaseTable(expr ast.Expr) bool {
 	switch t := expr.(type) {
 	case *ast.ArrayType:
-		_, ok := t.Elt.(*ast.StructType)
-		return ok
+		return hasFields(t.Elt)
 	case *ast.MapType:
-		_, ok := t.Value.(*ast.StructType)
-		return ok
+		return hasFields(t.Value)
 	}
 	return false
+}
+
+func hasFields(expr ast.Expr) bool {
+	s, ok := expr.(*ast.StructType)
+	return ok && s.Fields.NumFields() > 0
 }
 
 func main() {

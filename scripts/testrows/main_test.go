@@ -36,6 +36,12 @@ var names = []string{"a"}`,
 			want: count{},
 		},
 		{
+			name: "a set of an empty struct is not a table",
+			text: `package a
+var seen = map[string]struct{}{"x": {}, "y": {}}`,
+			want: count{},
+		},
+		{
 			name: "a file that does not parse",
 			text: "package a\nfunc {",
 			want: count{Broken: true},
