@@ -124,7 +124,20 @@ func (h *RSSHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, items)
+	if middleware.CanReadTrackerPasskeys(r) {
+		RespondJSON(w, http.StatusOK, items)
+		return
+	}
+	full, err := json.Marshal(items)
+	if err == nil {
+		full, err = hideRSSLinks(full)
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to hide RSS links")
+		RespondError(w, http.StatusInternalServerError, "Failed to get RSS items")
+		return
+	}
+	RespondJSON(w, http.StatusOK, json.RawMessage(full))
 }
 
 // AddFolder creates a new RSS folder
@@ -510,6 +523,11 @@ func (h *RSSHandler) GetRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		for _, rule := range rules {
+			qbittorrent.HideTrackerURLs(rule.AffectedFeeds)
+		}
+	}
 	RespondJSON(w, http.StatusOK, rules)
 }
 
@@ -627,6 +645,9 @@ func (h *RSSHandler) GetMatchingArticles(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if !middleware.CanReadTrackerPasskeys(r) {
+		articles = hideRSSMatchingArticles(articles)
+	}
 	RespondJSON(w, http.StatusOK, articles)
 }
 

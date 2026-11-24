@@ -57,7 +57,6 @@ const (
 	stubTorrentJSON = `{"name":"NAME","hash":"NAME","state":"uploading","added_on":1,"size":100,"total_size":100,"progress":1,` +
 		`"save_path":"/data","content_path":"/data/Show.S01","tracker":"TRACKER","magnet_uri":"magnet:?xt=urn:btih:NAME&tr=ESCAPED",` +
 		`"trackers":[{"url":"TRACKER"}]}`
-	stubFeedURL = "https://rss.example.invalid/feed"
 )
 
 func stubTorrent(name, tracker string) string {
@@ -68,6 +67,8 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 	pathTracker := "https://tracker.example.invalid/" + rig.plant("announce path passkey", shownWithTorrentsWrite) + "/announce"
 	queryTracker := "https://query.example.invalid/announce?passkey=" + rig.plant("announce query passkey", shownWithTorrentsWrite)
 	first, second := stubTorrent("aaa", pathTracker), stubTorrent("bbb", queryTracker)
+	feedURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed key", shownWithTorrentsWrite) + "/feed.xml"
+	feedNamedByURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed name key", shownWithTorrentsWrite) + "/feed.xml"
 	trackerRow := func(tracker string) string {
 		return `[{"url":"** [DHT] **","status":0},{"url":"` + tracker + `","status":2}]`
 	}
@@ -97,10 +98,16 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		"/api/v2/transfer/info":                   `{"connection_status":"connected"}`,
 		"/api/v2/transfer/speedLimitsMode":        `0`,
 		"/api/v2/torrentcreator/status":           `[{"taskID":"task","status":"Finished","trackers":["` + pathTracker + `","` + queryTracker + `"]}]`,
-		"/api/v2/rss/items": `{"Feed":{"uid":"{1}","url":"` + stubFeedURL + `","title":"Feed","articles":[{"id":"1","title":"Show.S01",` +
-			`"date":"24 Nov 2026 08:00:00 +0000","torrentURL":"https://rss.example.invalid/dl/1","link":"https://rss.example.invalid/t/1"}]}}`,
-		"/api/v2/rss/rules":            `{"rule":{"enabled":true,"mustContain":"Show","affectedFeeds":["` + stubFeedURL + `"]}}`,
-		"/api/v2/rss/matchingArticles": `{"Feed":["Show.S01"]}`,
+		"/api/v2/rss/items": `{"Feed":{"uid":"{1}","url":"` + feedURL + `","title":"Feed","articles":[{"title":"Show.S01",` +
+			`"id":"https://rss.example.invalid/dl/1?guid=` + rig.plant("RSS article GUID key", shownWithTorrentsWrite) + `",` +
+			`"date":"24 Nov 2026 08:00:00 +0000","torrentURL":"https://rss.example.invalid/dl/1?passkey=` + rig.plant("RSS download passkey", shownWithTorrentsWrite) + `",` +
+			`"link":"https://rss.example.invalid/t/1/` + rig.plant("RSS article link key", shownWithTorrentsWrite) + `",` +
+			`"description":"<a href=\"https://rss.example.invalid/dl/1?passkey=` + rig.plant("RSS description passkey", shownWithTorrentsWrite) + `\">Download</a>",` +
+			`"comments":"https://rss.example.invalid/t/1?key=` + rig.plant("RSS feed element key", shownWithTorrentsWrite) + `"}]},` +
+			`"` + feedNamedByURL + `":{"uid":"{2}","url":"` + feedNamedByURL + `","title":"","articles":[]}}`,
+		"/api/v2/rss/rules": `{"rule":{"enabled":true,"mustContain":"Show","affectedFeeds":["` + feedURL + `"]}}`,
+		"/api/v2/rss/matchingArticles": `{"Feed":["Show.S01 https://rss.example.invalid/t/1?key=` + rig.plant("RSS article title key", shownWithTorrentsWrite) + `"],` +
+			`"` + feedNamedByURL + `":["Show.S01"]}`,
 	}
 }
 

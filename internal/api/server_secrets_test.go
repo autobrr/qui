@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 var walkPathValues = map[string]string{
@@ -112,6 +114,47 @@ func TestReadKeyGetsNoPlantedSecret(t *testing.T) {
 	for _, secret := range rig.planted {
 		if secret.audience == shownWithTorrentsWrite {
 			require.True(t, shownToSession[secret.name], "no route gives the %s to a session, so the walk proves nothing about it", secret.name)
+		}
+	}
+}
+
+// regression: #4474
+func TestRSSLinksNeedTorrentsWrite(t *testing.T) {
+	rig := newSecretsRig(t)
+	rssRead := models.Permission{Area: models.AreaRSS, Level: models.LevelRead}
+	readKey := rig.key(t, rssRead)
+	writeKey := rig.key(t, rssRead, models.Permission{Area: models.AreaTorrents, Level: models.LevelWrite})
+	planted := map[string]string{}
+	for _, secret := range rig.planted {
+		planted[secret.name] = secret.value
+	}
+
+	for _, tt := range []struct {
+		path  string
+		links []string
+		shown string
+	}{
+		// regression: #4474
+		{"/api/instances/1/rss/items?withData=true", []string{"RSS feed key", "RSS download passkey", "RSS article link key"}, `"https://rss.example.invalid"`},
+		// regression: #4474
+		{"/api/instances/1/rss/items?withData=true", []string{"RSS article GUID key", "RSS description passkey", "RSS feed element key"}, `"https://rss.example.invalid"`},
+		// regression: #4474
+		{"/api/instances/1/rss/items?withData=true", []string{"RSS feed name key"}, `"https://rss.example.invalid#9266f3f2"`},
+		// regression: #4474
+		{"/api/instances/1/rss/rules", []string{"RSS feed key"}, `"https://rss.example.invalid"`},
+		// regression: #4474
+		{"/api/instances/1/rss/rules/rule/preview", []string{"RSS feed name key"}, `"https://rss.example.invalid#9266f3f2"`},
+		// regression: #4474
+		{"/api/instances/1/rss/rules/rule/preview", []string{"RSS article title key"}, `"Feed":[""]`},
+	} {
+		status, hidden := rig.send(t, http.MethodGet, tt.path, readKey, nil)
+		require.Equal(t, http.StatusOK, status, tt.path)
+		status, full := rig.send(t, http.MethodGet, tt.path, writeKey, nil)
+		require.Equal(t, http.StatusOK, status, tt.path)
+		assert.Contains(t, hidden, tt.shown, tt.path)
+		for _, link := range tt.links {
+			assert.NotContains(t, hidden, planted[link], "%s gives the %s to a key without Torrents write", tt.path, link)
+			assert.Contains(t, full, planted[link], "%s hides the %s from a key with Torrents write", tt.path, link)
 		}
 	}
 }

@@ -8635,7 +8635,7 @@ paths:
       tags:
         - RSS
       summary: RSS events stream (SSE)
-      description: Server-Sent Events stream for real-time RSS feed updates
+      description: Server-Sent Events stream for real-time RSS feed updates. A key without write access to torrents gets each feed URL as its scheme and host, each article field that holds a link or HTML as at most the scheme and host of a link, and each feed or folder name that holds a link as its scheme and host and a short code.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -8658,7 +8658,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS items
-      description: Retrieve all RSS feeds and folders for an instance
+      description: Retrieve all RSS feeds and folders for an instance. A key without write access to torrents gets each feed URL as its scheme and host, each article field that holds a link or HTML as at most the scheme and host of a link, and each feed or folder name that holds a link as its scheme and host and a short code.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: withData
@@ -8915,7 +8915,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS rules
-      description: Retrieve all RSS auto-download rules
+      description: Retrieve all RSS auto-download rules. A key without write access to torrents gets each feed URL as its scheme and host.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -9048,7 +9048,7 @@ paths:
       tags:
         - RSS
       summary: Preview RSS rule matches
-      description: Get articles that would match an RSS rule
+      description: Get articles that would match an RSS rule. A key without write access to torrents gets each feed name that holds a link as its scheme and host and a short code, and each title that holds a link as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: ruleName

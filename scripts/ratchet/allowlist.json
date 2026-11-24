@@ -78,7 +78,7 @@
     "internal/api/handlers/problem_reports.go": 12,
     "internal/api/handlers/qbittorrent_info.go": 3,
     "internal/api/handlers/rss.go": 32,
-    "internal/api/handlers/rss_sse.go": 31,
+    "internal/api/handlers/rss_sse.go": 30,
     "internal/api/handlers/rss_sse_test.go": 4,
     "internal/api/handlers/shares.go": 24,
     "internal/api/handlers/system.go": 11,
