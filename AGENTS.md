@@ -62,8 +62,8 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 
 Codex and other AI PR reviewers read this section. The other rules in this file and in the docs it points to (precommit, field test, commit gate, PR body format) are for coding agents. Do not apply them to PR authors.
 
-- Report a defect only when the change causes a concrete wrong behavior. Name the trigger and the result for the user. If you cannot name both, omit the finding.
-- Check the merge base. If `develop` already has the problem, still report it, but label it "already on develop" and do not call it a regression.
+- Report a defect only when the change makes qui crash or hang, lose or corrupt data, leak a secret, or show the user a wrong result, or when a rule below names the defect. Name the trigger and the result for the user. If you cannot name both, omit the finding.
+- Check the merge base, and leave out a problem that `develop` already has.
 - When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
 - Report a change that departs from an accepted ADR in `docs/adr/`, and name the ADR. Suggest only fixes that keep to the accepted ADRs.
 - A claim about Windows runtime behavior (cmd.exe parsing, PATHEXT, junctions, short paths, GUI detachment) needs a native run. Cross-compilation, command-construction assertions, and skipped capability tests do not show runtime behavior. If you can run Windows, run a minimal repro and record the environment, the exact command, and the result. If you cannot, ask the PR author a question with repro steps. The maintainer does not run Windows, and Windows contributors know its behavior better.

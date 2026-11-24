@@ -271,6 +271,8 @@ func TestAlternateTitlesForgetATitleThatNoTorrentHolds(t *testing.T) {
 		require.Equal(t, []*heldTitle{second}, a.namedByAny([]string{"laternenwache"}))
 		a.drop(second)
 		require.Empty(t, a.namedByAny([]string{"laternenwache"}))
+		a.store(second, []string{"Wachlaterne"})
+		require.Empty(t, a.namedByAny([]string{"wachlaterne"}), "an answer for a title that left during its fetch")
 
 		holdName(a, "Lantern.Ward.S01E03.1080p.WEB-DL.H.264-GRP", 1)
 		time.Sleep(time.Minute)
