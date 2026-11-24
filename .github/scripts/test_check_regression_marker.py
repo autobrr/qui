@@ -59,6 +59,20 @@ WORD_ONLY = """diff --git a/internal/a/a_test.go b/internal/a/a_test.go
 +func TestFixed(t *testing.T) {}
 """
 
+RENAMED = """diff --git a/internal/a/a_test.go b/internal/a/a_test.go
+--- a/internal/a/a_test.go
++++ b/internal/a/a_test.go
+@@ -11 +11 @@
+-func TestStartsWhileDown(t *testing.T) {
++func TestStartsWhileProviderIsDown(t *testing.T) {
+diff --git a/web/src/b.test.tsx b/web/src/b.test.tsx
+--- a/web/src/b.test.tsx
++++ b/web/src/b.test.tsx
+@@ -4 +4 @@
+-  it("shows the button", () => {
++  it("shows the button at every width", () => {
+"""
+
 
 class UnmarkedTest(unittest.TestCase):
     def test_fix_without_marker_names_each_file(self):
@@ -83,6 +97,9 @@ class UnmarkedTest(unittest.TestCase):
 
     def test_new_web_row_alone_passes(self):
         self.assertEqual(unmarked("fix(web): show it", count(WEB_ROW), {}), [])
+
+    def test_a_renamed_test_passes(self):
+        self.assertEqual(unmarked("fix: x", count(RENAMED), {}), [])
 
     def test_new_go_row_needs_a_marker(self):
         self.assertEqual(unmarked("fix: x", {}, {"internal/a/a_test.go": 1}), ["internal/a/a_test.go"])
@@ -138,6 +155,17 @@ class EndToEndTest(unittest.TestCase):
     def test_an_edited_row_in_a_renamed_file_passes(self):
         code, _ = self.run_main("fix: x", {"a_test.go": TABLE % ""}, {"b_test.go": (TABLE % "").replace('"a", "a"', '"a", "A"')})
         self.assertEqual(code, 0)
+
+    def test_a_table_in_a_new_file_needs_a_marker(self):
+        code, out = self.run_main("fix: x", {"a_test.go": TABLE % ""}, {"a_test.go": TABLE % "", "b_test.go": "package a\n\nvar cases = []struct{ n int }{{1}}\n"})
+        self.assertEqual(code, 1)
+        self.assertIn("::error file=b_test.go::", out)
+
+    def test_a_file_name_cannot_start_a_workflow_command(self):
+        code, out = self.run_main("fix: x", {}, {"a\n::warning::x,y_test.go": TABLE % ""})
+        self.assertEqual(code, 1)
+        self.assertIn("::error file=a%0A%3A%3Awarning%3A%3Ax%2Cy_test.go::", out)
+        self.assertEqual(len(out.splitlines()), 1)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from count_test_growth import count, git_diff
 FIX_TITLE = re.compile(r"^fix(?:\([^)]*\))?!?:")
 ROOT = Path(__file__).resolve().parents[2]
 ROWS = ["go", "run", "./scripts/testrows"]
+NO_ROWS = {"rows": 0, "broken": False}
 
 
 def git(*args):
@@ -33,8 +34,6 @@ def go_test_pairs(base, head):
 
 
 def text(commit, path):
-    if path is None:
-        return ""
     return git("show", f"{commit}:{path}")
 
 
@@ -50,12 +49,14 @@ def new_rows(base, head):
     pairs = go_test_pairs(merge_base, head)
     sources = []
     for new, old in pairs.items():
-        sources.append({"name": old or new, "text": text(merge_base, old)})
         sources.append({"name": new, "text": text(head, new)})
-    counts = row_counts(sources)
+        if old is not None:
+            sources.append({"name": old, "text": text(merge_base, old)})
+    counts = iter(row_counts(sources))
     rows = {}
-    for i, path in enumerate(pairs):
-        before, after = counts[2 * i], counts[2 * i + 1]
+    for path, old in pairs.items():
+        after = next(counts)
+        before = next(counts) if old is not None else NO_ROWS
         if not before["broken"] and not after["broken"] and after["rows"] > before["rows"]:
             rows[path] = after["rows"] - before["rows"]
     return rows
@@ -64,8 +65,12 @@ def new_rows(base, head):
 def unmarked(title, files, rows):
     if not FIX_TITLE.match(title):
         return []
-    paths = {path for path, growth in files.items() if growth.added_cases} | set(rows)
+    paths = {path for path, growth in files.items() if growth.net_cases > 0} | set(rows)
     return sorted(path for path in paths if not (path in files and files[path].added_markers))
+
+
+def annotation_property(value):
+    return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A").replace(":", "%3A").replace(",", "%2C")
 
 
 def main(argv=None):
@@ -83,7 +88,7 @@ def main(argv=None):
     paths = unmarked(args.title, count(git_diff(args.base, args.head)), new_rows(args.base, args.head))
     for path in paths:
         print(
-            f"::error file={path}::This fix adds a test case or a table row here without a regression marker. "
+            f"::error file={annotation_property(path)}::This fix adds a test case or a table row here without a regression marker. "
             f"Put `// regression: #{args.number}` on the line above the test or the table row that fails "
             "without the fix. N is the number of this pull request or of the issue. "
             "Read docs/standards/tests.md."
