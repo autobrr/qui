@@ -168,6 +168,9 @@ func (c *Client) hydrateSonarrSeries(ctx context.Context, result *ExternalIDsLoo
 
 	fullSeries, err := c.sonarrSeriesByID(ctx, series.ID)
 	if err != nil {
+		if result != nil {
+			result.Incomplete = true
+		}
 		return result
 	}
 
@@ -194,6 +197,9 @@ func (c *Client) radarrMovieLookupResult(ctx context.Context, parseResp *RadarrP
 
 	fullMovie, err := c.radarrMovieByID(ctx, parseResp.Movie.ID)
 	if err != nil {
+		if result != nil {
+			result.Incomplete = true
+		}
 		return result
 	}
 

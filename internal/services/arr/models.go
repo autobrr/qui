@@ -114,6 +114,7 @@ type ExternalIDsLookupResult struct {
 	IDs        *models.ExternalIDs
 	Titles     []string
 	EpisodeMap *models.EpisodeMap
+	Incomplete bool
 }
 
 func (r *SonarrParseResponse) ExtractLookupResult() *ExternalIDsLookupResult {
