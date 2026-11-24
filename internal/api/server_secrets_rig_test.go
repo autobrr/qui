@@ -127,6 +127,8 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 	}
 	preferences := `{"add_trackers_enabled":true,"add_trackers":"` + pathTracker + `\n\n` + queryTracker + `","save_path":"/data",` +
 		`"proxy_password":"` + rig.plant("proxy password", shownToNobody) + `","mail_notification_password":"` + rig.plant("email password", shownToNobody) + `"}`
+	creationTasks := `[{"taskID":"task","status":"Finished","trackers":["` + pathTracker + `","` + queryTracker + `"],` +
+		`"urlSeeds":["https://seed.example.invalid/` + rig.plant("creation task web seed passkey", shownWithTorrentsWrite) + `/file"]}]`
 	return map[string]string{
 		"/api/v2/app/webapiVersion": "2.16.0",
 		"/api/v2/app/version":       "v5.2.0",
@@ -152,7 +154,7 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		"/api/v2/sync/torrentPeers":               `{"rid":1,"full_update":true,"peers":{}}`,
 		"/api/v2/transfer/info":                   `{"connection_status":"connected"}`,
 		"/api/v2/transfer/speedLimitsMode":        `0`,
-		"/api/v2/torrentcreator/status":           `[{"taskID":"task","status":"Finished","trackers":["` + pathTracker + `","` + queryTracker + `"]}]`,
+		"/api/v2/torrentcreator/status":           creationTasks,
 		"/api/v2/rss/items":                       rssItems(true),
 		"/api/v2/rss/items?withData=false":        rssItems(false),
 		"/api/v2/rss/rules":                       `{"rule":{"enabled":true,"mustContain":"Show","affectedFeeds":["` + feedURL + `","` + goneFeedURL + `"]}}`,

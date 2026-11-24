@@ -28,8 +28,10 @@ import (
 const (
 	pathPasskey  = "abc123xyz"
 	queryPasskey = "querypasskey7"
+	seedPasskey  = "seedpasskey9"
 	pathOrigin   = "https://tracker.example.invalid"
 	queryOrigin  = "https://query.example.invalid"
+	seedOrigin   = "https://seed.example.invalid"
 	pathTracker  = pathOrigin + "/" + pathPasskey + "/announce"
 	queryTracker = queryOrigin + "/announce?passkey=" + queryPasskey
 )
@@ -61,7 +63,7 @@ func newQBittorrentStub(t *testing.T) *httptest.Server {
 		"/api/v2/torrents/categories": map[string]any{},
 		"/api/v2/torrents/tags":       []string{},
 		"/api/v2/torrentcreator/status": []map[string]any{
-			{"taskID": "task", "status": "Finished", "trackers": []string{pathTracker, queryTracker}},
+			{"taskID": "task", "status": "Finished", "trackers": []string{pathTracker, queryTracker}, "urlSeeds": []string{seedOrigin + "/" + seedPasskey + "/file"}},
 		},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -219,7 +221,7 @@ func TestReadKeyGetsNoTrackerPasskey(t *testing.T) {
 		{"local matches, passkey in the query", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/aaa/local-matches", id), "", []string{queryPasskey}, []string{queryOrigin}},
 		{"local matches, passkey in the path", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/bbb/local-matches", id), "", []string{pathPasskey}, []string{pathOrigin}},
 		{"delete check", http.MethodPost, fmt.Sprintf("/api/instances/%d/torrents/delete-cross-seeds", id), `{"hashes":["aaa"],"action":"delete","deleteFiles":true}`, []string{queryPasskey}, []string{queryOrigin}},
-		{"torrent creator status", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrent-creator/status", id), "", both, bothOrigins},
+		{"torrent creator status", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrent-creator/status", id), "", []string{pathPasskey, queryPasskey, seedPasskey}, []string{pathOrigin, queryOrigin, seedOrigin}},
 		{"preferences", http.MethodGet, fmt.Sprintf("/api/instances/%d/preferences", id), "", both, bothOrigins},
 		{"restore preview", http.MethodPost, fmt.Sprintf("/api/instances/%d/backups/runs/%d/restore/preview", id, rig.runID), `{"mode":"overwrite"}`, both, bothOrigins},
 	} {

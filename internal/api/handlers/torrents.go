@@ -2662,6 +2662,7 @@ func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *htt
 	if !middleware.CanReadTrackerPasskeys(r) {
 		for i := range tasks {
 			qbittorrent.HideTrackerURLs(tasks[i].Trackers)
+			qbittorrent.HideTrackerURLs(tasks[i].URLSeeds)
 		}
 	}
 	RespondJSON(w, http.StatusOK, tasks)
