@@ -15,6 +15,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -34,6 +35,7 @@ type RSSSSEHandler struct {
 
 type rssSSEClient struct {
 	instanceID int
+	showLinks  bool
 	events     chan rssSSEEvent
 	done       chan struct{}
 	closeOnce  sync.Once
@@ -104,6 +106,7 @@ func (h *RSSSSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	// Create client
 	client := &rssSSEClient{
 		instanceID: instanceID,
+		showLinks:  middleware.CanReadTrackerPasskeys(r),
 		events:     make(chan rssSSEEvent, 16),
 		done:       make(chan struct{}),
 	}
@@ -203,7 +206,7 @@ func (h *RSSSSEHandler) removeClient(instanceID int, client *rssSSEClient) {
 	log.Debug().Int("instanceID", instanceID).Msg("RSS SSE client disconnected")
 }
 
-func (h *RSSSSEHandler) broadcast(instanceID int, event rssSSEEvent) {
+func (h *RSSSSEHandler) broadcast(instanceID int, items []byte) {
 	h.mu.RLock()
 	// Copy clients while holding lock to avoid race during iteration
 	clientsCopy := make([]*rssSSEClient, 0, len(h.clients[instanceID]))
@@ -212,7 +215,26 @@ func (h *RSSSSEHandler) broadcast(instanceID int, event rssSSEEvent) {
 	}
 	h.mu.RUnlock()
 
+	timestamp := time.Now().Unix()
+	hiddenItems := sync.OnceValue(func() []byte {
+		hidden, err := hideRSSLinks(items)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to hide RSS links")
+			return nil
+		}
+		return hidden
+	})
 	for _, client := range clientsCopy {
+		payload := items
+		if !client.showLinks {
+			if payload = hiddenItems(); payload == nil {
+				continue
+			}
+		}
+		event := rssSSEEvent{
+			Type: rssEventFeedsUpdate,
+			Data: FeedsUpdatePayload{InstanceID: instanceID, Items: payload, Timestamp: timestamp},
+		}
 		select {
 		case client.events <- event:
 		default:
@@ -312,15 +334,7 @@ func (h *RSSSSEHandler) pollAndBroadcast(ctx context.Context, instanceID int, la
 
 	log.Debug().Int("instanceID", instanceID).Msg("RSS SSE broadcasting update")
 
-	// Broadcast update
-	h.broadcast(instanceID, rssSSEEvent{
-		Type: rssEventFeedsUpdate,
-		Data: FeedsUpdatePayload{
-			InstanceID: instanceID,
-			Items:      currentItems,
-			Timestamp:  time.Now().Unix(),
-		},
-	})
+	h.broadcast(instanceID, currentItems)
 
 	return currentItems, false
 }

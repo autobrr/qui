@@ -14,7 +14,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -47,8 +49,29 @@ type secretsRig struct {
 	*permissionRig
 	routes                          []routeKey
 	planted                         []plantedSecret
+	stubMu                          sync.Mutex
+	savedRules                      []string
+	rssWrites                       []stubRSSWrite
+	feedReads                       int
 	feedLink, feedGUID, feedDetails string
 	downloads                       chan string
+}
+
+type stubRSSWrite struct {
+	endpoint string
+	form     url.Values
+}
+
+func (rig *secretsRig) stubRecord() (savedRules []string, feedReads int) {
+	rig.stubMu.Lock()
+	defer rig.stubMu.Unlock()
+	return slices.Clone(rig.savedRules), rig.feedReads
+}
+
+func (rig *secretsRig) stubRSSWrites() []stubRSSWrite {
+	rig.stubMu.Lock()
+	defer rig.stubMu.Unlock()
+	return slices.Clone(rig.rssWrites)
 }
 
 func (rig *secretsRig) plant(name string, audience secretAudience) string {
@@ -61,7 +84,6 @@ const (
 	stubTorrentJSON = `{"name":"NAME","hash":"HASH","state":"uploading","added_on":1,"size":100,"total_size":100,"progress":1,` +
 		`"save_path":"/data","content_path":"/data/Show.S01","tracker":"TRACKER","magnet_uri":"magnet:?xt=urn:btih:HASH&tr=ESCAPED",` +
 		`"trackers":[{"url":"TRACKER"}]}`
-	stubFeedURL = "https://rss.example.invalid/feed"
 )
 
 func stubTorrent(hash, name, tracker string) string {
@@ -72,6 +94,34 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 	pathTracker := "https://tracker.example.invalid/" + rig.plant("announce path passkey", shownWithTorrentsWrite) + "/announce"
 	queryTracker := "https://query.example.invalid/announce?passkey=" + rig.plant("announce query passkey", shownWithTorrentsWrite)
 	first, second := stubTorrent("aaa", stubReleaseName, pathTracker), stubTorrent("bbb", "bbb", queryTracker)
+	feedURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed key", shownWithTorrentsWrite) + "/feed.xml"
+	feedNamedByURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed name key", shownWithTorrentsWrite) + "/feed.xml"
+	goneFeedURL := "https://rss.example.invalid/rss/" + rig.plant("RSS rule feed key", shownWithTorrentsWrite) + "/gone.xml"
+	folderNamedByURL := "https://rss.example.invalid/folder?key=" + rig.plant("RSS folder name key", shownWithTorrentsWrite)
+	feedInFolder := "https://rss.example.invalid/rss/" + rig.plant("RSS folder feed key", shownWithTorrentsWrite) + "/feed.xml"
+	feedTitle := "Feed https://rss.example.invalid/f?key=" + rig.plant("RSS feed title key", shownWithTorrentsWrite)
+	feedArticles := `[{"title":"Show.S01","source":"Mirror //rss.example.invalid/dl/1?passkey=` + rig.plant("RSS protocol-relative passkey", shownWithTorrentsWrite) + `",` +
+		`"id":"https://rss.example.invalid/dl/1?guid=` + rig.plant("RSS article GUID key", shownWithTorrentsWrite) + `",` +
+		`"date":"24 Nov 2026 08:00:00 +0000","torrentURL":"https://rss.example.invalid/dl/1?passkey=` + rig.plant("RSS download passkey", shownWithTorrentsWrite) + `",` +
+		`"link":"https://rss.example.invalid/t/1/` + rig.plant("RSS article link key", shownWithTorrentsWrite) + `",` +
+		`"description":"<a href=\"https://rss.example.invalid/dl/1?passkey=` + rig.plant("RSS description passkey", shownWithTorrentsWrite) + `\">Download</a>",` +
+		`"comments":"https://rss.example.invalid/t/1?key=` + rig.plant("RSS feed element key", shownWithTorrentsWrite) + `"}]`
+	folderArticles := `[{"title":"Show.S02","id":"https://rss.example.invalid/dl/2?guid=` + rig.plant("RSS folder article GUID key", shownWithTorrentsWrite) + `",` +
+		`"torrentURL":"/dl/2?passkey=` + rig.plant("RSS relative download passkey", shownWithTorrentsWrite) + `",` +
+		`"link":"/t/2?key=` + rig.plant("RSS relative link key", shownWithTorrentsWrite) + `"}]`
+	rssItems := func(withData bool) string {
+		articles := func(list string) string {
+			if !withData {
+				return ""
+			}
+			return `,"articles":` + list
+		}
+		return `{"Feed":{"uid":"{1}","url":"` + feedURL + `","title":"` + feedTitle + `"` + articles(feedArticles) + `},` +
+			`"` + feedNamedByURL + `":{"uid":"{2}","url":"` + feedNamedByURL + `","title":""` + articles(`[]`) + `},` +
+			`"` + folderNamedByURL + `":{"` + feedInFolder + `":{"uid":"{3}","url":"` + feedInFolder + `","title":""` + articles(folderArticles) + `}},` +
+			`"Same code A":{"uid":"{4}","url":"https://rss.example.invalid/feed/61522.xml","title":""` + articles(`[]`) + `},` +
+			`"Same code B":{"uid":"{5}","url":"https://rss.example.invalid/feed/135103.xml","title":""` + articles(`[]`) + `}}`
+	}
 	trackerRow := func(tracker string) string {
 		return `[{"url":"** [DHT] **","status":0},{"url":"` + tracker + `","status":2}]`
 	}
@@ -103,10 +153,11 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		"/api/v2/transfer/info":                   `{"connection_status":"connected"}`,
 		"/api/v2/transfer/speedLimitsMode":        `0`,
 		"/api/v2/torrentcreator/status":           `[{"taskID":"task","status":"Finished","trackers":["` + pathTracker + `","` + queryTracker + `"]}]`,
-		"/api/v2/rss/items": `{"Feed":{"uid":"{1}","url":"` + stubFeedURL + `","title":"Feed","articles":[{"id":"1","title":"Show.S01",` +
-			`"date":"24 Nov 2026 08:00:00 +0000","torrentURL":"https://rss.example.invalid/dl/1","link":"https://rss.example.invalid/t/1"}]}}`,
-		"/api/v2/rss/rules":            `{"rule":{"enabled":true,"mustContain":"Show","affectedFeeds":["` + stubFeedURL + `"]}}`,
-		"/api/v2/rss/matchingArticles": `{"Feed":["Show.S01"]}`,
+		"/api/v2/rss/items":                       rssItems(true),
+		"/api/v2/rss/items?withData=false":        rssItems(false),
+		"/api/v2/rss/rules":                       `{"rule":{"enabled":true,"mustContain":"Show","affectedFeeds":["` + feedURL + `","` + goneFeedURL + `"]}}`,
+		"/api/v2/rss/matchingArticles": `{"Feed":["Show.S01 https://rss.example.invalid/t/1?key=` + rig.plant("RSS article title key", shownWithTorrentsWrite) + `"],` +
+			`"` + feedNamedByURL + `":["Show.S01"]}`,
 	}
 }
 
@@ -115,6 +166,27 @@ func (rig *secretsRig) startQBittorrent(t *testing.T) *httptest.Server {
 	responses := rig.qBittorrentResponses()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
+		rssWrite := r.Method == http.MethodPost && strings.HasPrefix(path, "/api/v2/rss/")
+		if err := r.ParseForm(); rssWrite && err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		rig.stubMu.Lock()
+		switch {
+		case path == "/api/v2/rss/setRule":
+			rig.savedRules = append(rig.savedRules, r.PostForm.Get("ruleDef"))
+		case rssWrite:
+			rig.rssWrites = append(rig.rssWrites, stubRSSWrite{endpoint: strings.TrimPrefix(path, "/api/v2/rss/"), form: r.PostForm})
+		case path == "/api/v2/rss/items":
+			rig.feedReads++
+		}
+		rig.stubMu.Unlock()
+		if rssWrite {
+			return
+		}
+		if path == "/api/v2/rss/items" && r.URL.Query().Get("withData") != "true" {
+			path += "?withData=false"
+		}
 		if path == "/api/v2/torrents/trackers" {
 			path += "?" + strings.ToLower(r.URL.Query().Get("hash"))
 		}
