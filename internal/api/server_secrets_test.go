@@ -4,6 +4,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -141,7 +144,13 @@ func TestRSSLinksNeedTorrentsWrite(t *testing.T) {
 		// regression: #4474
 		{"/api/instances/1/rss/items?withData=true", []string{"RSS feed name key"}, `"https://rss.example.invalid#9266f3f2"`},
 		// regression: #4474
-		{"/api/instances/1/rss/rules", []string{"RSS feed key"}, `"https://rss.example.invalid"`},
+		{"/api/instances/1/rss/rules", []string{"RSS feed key"}, `"https://rss.example.invalid#7ca629d1"`},
+		// regression: #4474
+		{"/api/instances/1/rss/rules", []string{"RSS rule feed key"}, `"https://rss.example.invalid#1c54c51a"`},
+		// regression: #4474
+		{"/api/instances/1/rss/items?withData=true", []string{"RSS feed title key"}, `"title":""`},
+		// regression: #4474
+		{"/api/instances/1/rss/items?withData=true", []string{"RSS protocol-relative passkey"}, `"source":""`},
 		// regression: #4474
 		{"/api/instances/1/rss/rules/rule/preview", []string{"RSS feed name key"}, `"https://rss.example.invalid#9266f3f2"`},
 		// regression: #4474
@@ -156,5 +165,72 @@ func TestRSSLinksNeedTorrentsWrite(t *testing.T) {
 			assert.NotContains(t, hidden, planted[link], "%s gives the %s to a key without Torrents write", tt.path, link)
 			assert.Contains(t, full, planted[link], "%s hides the %s from a key with Torrents write", tt.path, link)
 		}
+	}
+}
+
+// regression: #4474
+func TestRSSRuleKeepsItsFeedsWhenAKeySavesItBack(t *testing.T) {
+	rig := newSecretsRig(t)
+	rssRead := models.Permission{Area: models.AreaRSS, Level: models.LevelRead}
+	rssWrite := models.Permission{Area: models.AreaRSS, Level: models.LevelWrite}
+	editKey := rig.key(t, rssRead, rssWrite)
+	writeKey := rig.key(t, rssRead, rssWrite, models.Permission{Area: models.AreaTorrents, Level: models.LevelWrite})
+	planted := map[string]string{}
+	for _, secret := range rig.planted {
+		planted[secret.name] = secret.value
+	}
+	feedURL := "https://rss.example.invalid/rss/" + planted["RSS feed key"] + "/feed.xml"
+	goneFeedURL := "https://rss.example.invalid/rss/" + planted["RSS rule feed key"] + "/gone.xml"
+	feedNamedByURL := "https://rss.example.invalid/rss/" + planted["RSS feed name key"] + "/feed.xml"
+
+	status, body := rig.send(t, http.MethodGet, "/api/instances/1/rss/rules", editKey, nil)
+	require.Equal(t, http.StatusOK, status)
+	var rules qbt.RSSRules
+	require.NoError(t, json.Unmarshal([]byte(body), &rules))
+	shown := rules["rule"].AffectedFeeds
+	require.Equal(t, []string{"https://rss.example.invalid#7ca629d1", "https://rss.example.invalid#1c54c51a"}, shown)
+
+	for _, tt := range []struct {
+		name   string
+		key    string
+		cookie *http.Cookie
+		feeds  []string
+		status int
+		saved  []string
+		reads  int
+	}{
+		// regression: #4474
+		{"stand-ins of the rule and the feed list", editKey, nil, append(shown, "https://rss.example.invalid#9266f3f2"), http.StatusCreated, []string{feedURL, goneFeedURL, feedNamedByURL}, 1},
+		// regression: #4474
+		{"a full URL", editKey, nil, []string{"https://other.example/feed.xml"}, http.StatusCreated, []string{"https://other.example/feed.xml"}, 0},
+		// regression: #4474
+		{"a full URL with a fragment", editKey, nil, []string{"https://other.example#releases"}, http.StatusCreated, []string{"https://other.example#releases"}, 0},
+		// regression: #4474
+		{"a stand-in of no feed", editKey, nil, []string{feedURL, "https://rss.example.invalid#00000000"}, http.StatusBadRequest, nil, 1},
+		// regression: #4474
+		{"a key with Torrents write", writeKey, nil, []string{"https://rss.example.invalid#00000000"}, http.StatusCreated, []string{"https://rss.example.invalid#00000000"}, 0},
+		// regression: #4474
+		{"a session", "", rig.sessionCookie(t), []string{"https://rss.example.invalid#00000000"}, http.StatusCreated, []string{"https://rss.example.invalid#00000000"}, 0},
+	} {
+		rule := rules["rule"]
+		rule.MustContain = "Show.S02"
+		rule.AffectedFeeds = tt.feeds
+		request, err := json.Marshal(map[string]any{"name": "rule", "rule": rule})
+		require.NoError(t, err)
+		savedBefore, readsBefore := rig.stubRecord()
+		before := len(savedBefore)
+		status, body := rig.sendBody(t, http.MethodPost, "/api/instances/1/rss/rules", tt.key, tt.cookie, string(request))
+		require.Equal(t, tt.status, status, "%s: %s", tt.name, body)
+		saved, reads := rig.stubRecord()
+		assert.Equal(t, tt.reads, reads-readsBefore, "%s reads the feed list %d times", tt.name, reads-readsBefore)
+		if tt.saved == nil {
+			assert.Len(t, saved, before, tt.name)
+			continue
+		}
+		require.Len(t, saved, before+1, tt.name)
+		var savedRule qbt.RSSAutoDownloadRule
+		require.NoError(t, json.Unmarshal([]byte(saved[before]), &savedRule))
+		assert.Equal(t, tt.saved, savedRule.AffectedFeeds, tt.name)
+		assert.Equal(t, "Show.S02", savedRule.MustContain, tt.name)
 	}
 }

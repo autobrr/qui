@@ -523,11 +523,7 @@ func (h *RSSHandler) GetRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !middleware.CanReadTrackerPasskeys(r) {
-		for _, rule := range rules {
-			qbittorrent.HideTrackerURLs(rule.AffectedFeeds)
-		}
-	}
+	hideRSSRuleFeeds(r, rules)
 	RespondJSON(w, http.StatusOK, rules)
 }
 
@@ -546,6 +542,9 @@ func (h *RSSHandler) SetRule(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name == "" {
 		RespondError(w, http.StatusBadRequest, "Name is required")
+		return
+	}
+	if !h.restoreRSSRuleFeeds(w, r, instanceID, &req) {
 		return
 	}
 

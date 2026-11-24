@@ -207,14 +207,14 @@ func readRSSEvent(t *testing.T, stream *bufio.Reader, eventType string) string {
 
 // regression: #4474
 func TestRSSStreamHidesLinksPerSubscriber(t *testing.T) {
-	const fullFeed = `{"uid":"{1}","url":"https://tracker.example/rss/made-up-feed-key/feed.xml","title":"Feed","articles":[` +
+	const fullFeed = `{"uid":"{1}","url":"https://tracker.example/rss/made-up-feed-key/feed.xml","title":"Feed https://tracker.example/rss?key=made-up-title-key","articles":[` +
 		`{"id":"https://tracker.example/dl/1?guid=made-up-guid-key","title":"Show.S01","date":"Tue, 24 Nov 2026 08:00:00 +0000",` +
 		`"torrentURL":"https://tracker.example/dl/1?passkey=made-up-download-key","link":"https://tracker.example/t/1/made-up-link-key",` +
 		`"description":"<a href=\"/dl/1?passkey=made-up-description-key\">Download</a>","comments":"https://tracker.example/t/1?key=made-up-element-key",` +
 		`"isRead":false},` +
 		`{"id":"made-up-guid-2","title":"Show.S02","author":"uploader","description":"Size: 4 GiB","category":"TV",` +
 		`"torrentURL":"magnet:?xt=urn:btih:made-up&tr=udp%3A%2F%2Ftracker.example%2Fmade-up-magnet-key","isRead":true}]}`
-	const hiddenFeed = `{"uid":"{1}","url":"https://tracker.example","title":"Feed","articles":[` +
+	const hiddenFeed = `{"uid":"{1}","url":"https://tracker.example","title":"","articles":[` +
 		`{"id":"https://tracker.example","title":"Show.S01","date":"Tue, 24 Nov 2026 08:00:00 +0000",` +
 		`"torrentURL":"https://tracker.example","link":"https://tracker.example","description":"","comments":"https://tracker.example",` +
 		`"isRead":false},` +

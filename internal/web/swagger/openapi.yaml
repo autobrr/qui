@@ -8635,7 +8635,7 @@ paths:
       tags:
         - RSS
       summary: RSS events stream (SSE)
-      description: Server-Sent Events stream for real-time RSS feed updates. A key without write access to torrents gets each feed URL as its scheme and host, each article field that holds a link or HTML as at most the scheme and host of a link, and each feed or folder name that holds a link as its scheme and host and a short code.
+      description: Server-Sent Events stream for real-time RSS feed updates. A key without write access to torrents gets each feed URL as its scheme and host, each other field that holds a link or HTML, such as an article field or a feed title, as at most the scheme and host of a link, and each feed or folder name that holds a link as its scheme and host and a short code.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -8658,7 +8658,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS items
-      description: Retrieve all RSS feeds and folders for an instance. A key without write access to torrents gets each feed URL as its scheme and host, each article field that holds a link or HTML as at most the scheme and host of a link, and each feed or folder name that holds a link as its scheme and host and a short code.
+      description: Retrieve all RSS feeds and folders for an instance. A key without write access to torrents gets each feed URL as its scheme and host, each other field that holds a link or HTML, such as an article field or a feed title, as at most the scheme and host of a link, and each feed or folder name that holds a link as its scheme and host and a short code.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: withData
@@ -8915,7 +8915,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS rules
-      description: Retrieve all RSS auto-download rules. A key without write access to torrents gets each feed URL as its scheme and host.
+      description: Retrieve all RSS auto-download rules. A key without write access to torrents gets each feed of a rule as its scheme and host and a short code, and it can send the rule back to the create or update route in this form.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -8937,7 +8937,7 @@ paths:
       tags:
         - RSS
       summary: Create or update RSS rule
-      description: Create a new rule or update an existing one
+      description: Create a new rule or update an existing one. For a key without write access to torrents, each feed given as a scheme and host and a short code, as the rules list shows it, becomes the full URL of that feed again.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -8959,7 +8959,7 @@ paths:
         '201':
           description: Rule created/updated successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a feed in the short form matches no RSS feed
         '409':
           description: Instance is disabled
         '500':
