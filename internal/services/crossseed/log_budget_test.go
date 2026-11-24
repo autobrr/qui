@@ -96,3 +96,51 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 	logbudget.AssertFlat(t, smallCold, largeCold)
 	logbudget.AssertFlat(t, smallWarm, largeWarm)
 }
+
+func TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss(t *testing.T) {
+	tests := []struct {
+		name        string
+		announce    string
+		debugAnswer int
+		nearMisses  int
+	}{
+		{name: "no match", announce: "Quiet.Field.2025.1080p.WEB-DL.H.264-OTHER"},
+		{name: "near miss", announce: "Lantern.Bay.2026.1080p.WEB-DL.H.264-LUMA", debugAnswer: 1, nearMisses: 1},
+		{name: "match", announce: settingsCheckName, debugAnswer: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := settingsCheckService(t)
+			check := func() {
+				_, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: tt.announce, Size: 4 << 30})
+				require.NoError(t, err)
+			}
+			check()
+			if tt.debugAnswer == 0 {
+				logbudget.AssertSilent(t, check)
+				return
+			}
+			lines := logbudget.Count(t, check)
+			require.Equal(t, tt.debugAnswer, lines[logbudget.Line{Level: "debug", Message: "Webhook check completed"}])
+			require.Equal(t, tt.nearMisses, lines[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}])
+		})
+	}
+}
+
+func TestSeasonPackCheckWritesNoDebugLineWithoutMatch(t *testing.T) {
+	fix := newSeasonPackFixture(t)
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              newMultiFakeSyncManager(map[int][]qbt.Torrent{inst.ID: {}}, map[int]*models.Instance{inst.ID: inst}),
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       &stubSeasonPackRunStore{},
+	}
+	check := func() {
+		_, err := svc.CheckSeasonPackWebhook(t.Context(), &SeasonPackCheckRequest{TorrentName: fix.packName, InstanceIDs: []int{inst.ID}})
+		require.NoError(t, err)
+	}
+	check()
+	logbudget.AssertSilent(t, check)
+}

@@ -28,6 +28,7 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | No real `time.Sleep` in a Go test | `make lint-ratchet` (`testsleep`) |
 | A struct, not `map[string]any` | `make lint-ratchet` (`mapany`) |
 | No DEBUG or INFO line about an off feature | `make lint-ratchet` (`offlog`) |
+| A line that fires on each request, tick, or torrent goes at TRACE | `TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss` and `TestSeasonPackCheckWritesNoDebugLineWithoutMatch` for the checks that autobrr calls on each announce, `logbudget.AssertFlat` for loops over torrents. Other paths: judgment |
 | A code file stays under 20,000 bytes | `make lint-ratchet` (`.file-size.json`) |
 | A lint exception gives its reason on the line, and a maintainer approves a new one | `nolintlint`, ESLint `qui/disable-reason`, the Exceptions workflow |
 | A new test in a `fix` PR carries `// regression: #N` | `make check-regression-marker`, the Regression marker workflow: one marker in each file whose test cases or Go anonymous-struct table rows grow. Each further test and web table rows: judgment |

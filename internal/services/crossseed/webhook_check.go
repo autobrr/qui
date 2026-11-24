@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -77,7 +78,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 	aliasTitles, episodeMap := s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
 
-	log.Debug().
+	log.Trace().
 		Str("source", "cross-seed.webhook").
 		Ints("requestedInstanceIds", requestedInstanceIDs).
 		Ints("targetInstanceIds", targetInstanceIDs).
@@ -120,7 +121,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		recommendation = "download"
 	}
 
-	log.Debug().
+	level := zerolog.TraceLevel
+	if len(answer.matches) > 0 || answer.nearMisses > 0 {
+		level = zerolog.DebugLevel
+	}
+	log.WithLevel(level).
 		Str("source", "cross-seed.webhook").
 		Ints("requestedInstanceIds", requestedInstanceIDs).
 		Ints("targetInstanceIds", targetInstanceIDs).
