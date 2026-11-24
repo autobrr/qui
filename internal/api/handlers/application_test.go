@@ -105,6 +105,7 @@ func TestPostgresTarget_DSNRemovesCredentials(t *testing.T) {
 		}
 	}
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
 
 	for _, tc := range []struct {
 		name, dsn, want string
