@@ -169,11 +169,13 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 		progress transfer.Progress
 		tracked  bool
 	)
+	restarted := make(chan struct{})
 	r.disk.onWrite = func(string) {
 		once.Do(func() { id = <-ids })
 		count++
 		if resumed {
 			resumed = false
+			<-restarted
 			progress, tracked = r.svc.Progress(id)
 		}
 		if count == 10 || count == 30 || count == 50 {
@@ -193,6 +195,9 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 		r.svc.Wait()
 		resumed = i == 0
 		r.restart()
+		if i == 0 {
+			close(restarted)
+		}
 	}
 	r.svc.Wait()
 
