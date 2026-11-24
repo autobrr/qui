@@ -103,7 +103,7 @@ func TestWebhookCheckLogBudgetWithSourceFilter(t *testing.T) {
 	check := func(n int) logbudget.Lines {
 		torrents := make([]qbt.Torrent, 0, 2*n)
 		for i := range n {
-			for _, category := range []string{"skipped", "kept"} {
+			for _, category := range []string{"kept", "skipped"} {
 				torrents = append(torrents, qbt.Torrent{
 					Hash: fmt.Sprintf("%s%034x", category[:1], i), Name: fmt.Sprintf("Show%04d.S01E05.1080p.WEB-DL.H.264-LUMA", i), Category: category,
 					Size: 2_000_000, TotalSize: 2_000_000, Progress: 1, AddedOn: 1,
