@@ -1130,3 +1130,35 @@ func TestWriterLockWaitHonorsContext(t *testing.T) {
 	require.NoError(t, holder.Close())
 	require.NoError(t, <-blockerDone)
 }
+
+// regression: #4470
+func TestNewStartsWhileAnotherConnectionReadsTheWAL(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	other, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, other.Close()) })
+	holder, err := other.Conn(t.Context())
+	require.NoError(t, err)
+	for _, stmt := range []string{
+		"PRAGMA wal_autocheckpoint = 0",
+		"INSERT INTO string_pool (value) VALUES ('held')",
+		"BEGIN",
+	} {
+		_, err = holder.ExecContext(t.Context(), stmt)
+		require.NoError(t, err)
+	}
+	var held int
+	require.NoError(t, holder.QueryRowContext(t.Context(), "SELECT count(*) FROM string_pool").Scan(&held))
+
+	db, err = New(dbPath)
+	require.NoError(t, err)
+
+	_, err = holder.ExecContext(t.Context(), "ROLLBACK")
+	require.NoError(t, err)
+	require.NoError(t, holder.Close())
+	require.NoError(t, db.Close())
+}

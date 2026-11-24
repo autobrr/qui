@@ -85,6 +85,7 @@ func heldAnnounces(library []qbt.Torrent) []heldAnnounce {
 func TestHeldTitlesAnswerAsTheFullScan(t *testing.T) {
 	first, second := heldLibraries(t, biglib.Size)
 	rig := newHeldRig(t, first, second)
+	rig.publishCopyGroups(rig.sameNameGroups()...)
 
 	matched := map[string]bool{}
 	for _, rescue := range []bool{false, true} {
@@ -264,6 +265,11 @@ type failingHeldSync struct{ t *testing.T }
 
 func (f failingHeldSync) InstanceSnapshot(context.Context, int) *qbt.SyncSnapshot {
 	f.t.Error("Held titles reads a snapshot while the feature is off")
+	return nil
+}
+
+func (f failingHeldSync) CopyGroups() *qbittorrent.CopyGroups {
+	f.t.Error("Held titles reads the Copy groups while the feature is off")
 	return nil
 }
 

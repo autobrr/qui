@@ -80,8 +80,7 @@ func (g *CopyGroups) hasRead(instanceID int) bool {
 	return ok
 }
 
-// An instance outside the record has no groups, so its rows stay flat.
-func (g *CopyGroups) groupID(instanceID int, hash string) (uint64, bool) {
+func (g *CopyGroups) GroupID(instanceID int, hash string) (uint64, bool) {
 	if !g.hasRead(instanceID) {
 		return 0, false
 	}
@@ -305,6 +304,10 @@ func (sm *SyncManager) SetCopyGroups(next *CopyGroups) {
 	}
 }
 
+func (sm *SyncManager) CopyGroups() *CopyGroups {
+	return sm.copyGroups.Load()
+}
+
 // LastSuccessfulSync reads the pool offline, so it never waits on a login. It
 // is zero for an instance with no client or no successful sync.
 func (sm *SyncManager) LastSuccessfulSync(ctx context.Context, instanceID int) time.Time {
@@ -472,7 +475,7 @@ func (l *copyGroupLayout) page(offset, limit int, member func(i int) CopyGroupMe
 
 func collapseInstanceTorrents(rows []*qbt.Torrent, instanceID int, groups *CopyGroups, offset, limit int) ([]copyGroupPageRow, bool) {
 	layout := collapseCopyGroups(len(rows),
-		func(i int) (uint64, bool) { return groups.groupID(instanceID, rows[i].Hash) },
+		func(i int) (uint64, bool) { return groups.GroupID(instanceID, rows[i].Hash) },
 		func(a, b int) int { return CompareRepresentative(instanceID, rows[a], instanceID, rows[b]) })
 	return layout.page(offset, limit, func(i int) CopyGroupMember {
 		return CopyGroupMember{InstanceID: instanceID, Hash: rows[i].Hash}
@@ -482,7 +485,7 @@ func collapseInstanceTorrents(rows []*qbt.Torrent, instanceID int, groups *CopyG
 // The rows are built for this request, so their views take the group data in place.
 func collapseCrossInstanceTorrents(rows []CrossInstanceTorrentView, groups *CopyGroups, offset, limit int) ([]CrossInstanceTorrentView, bool) {
 	layout := collapseCopyGroups(len(rows),
-		func(i int) (uint64, bool) { return groups.groupID(rows[i].InstanceID, rows[i].Hash) },
+		func(i int) (uint64, bool) { return groups.GroupID(rows[i].InstanceID, rows[i].Hash) },
 		func(a, b int) int {
 			return CompareRepresentative(rows[a].InstanceID, rows[a].Torrent, rows[b].InstanceID, rows[b].Torrent)
 		})

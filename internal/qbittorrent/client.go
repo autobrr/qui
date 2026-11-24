@@ -120,6 +120,12 @@ type Client struct {
 // a short creation budget (e.g. the 3s login warm) from being baked into the
 // transport for the life of the client.
 func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool, loginTimeout, transportTimeout time.Duration) (*Client, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), loginTimeout)
+	defer cancel()
+	return newClient(ctx, instanceID, instanceHost, username, password, apiKey, basicUsername, basicPassword, tlsSkipVerify, transportTimeout)
+}
+
+func newClient(ctx context.Context, instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool, transportTimeout time.Duration) (*Client, error) {
 	// Strip credentials embedded in the host URL (user:pass@host) so they never
 	// reach go-qbt request URLs, whose error strings get logged verbatim all
 	// over qui. They move to basic auth, which is what URL userinfo means.
@@ -145,9 +151,6 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	}
 
 	qbtClient := qbt.NewClient(cfg)
-
-	ctx, cancel := context.WithTimeout(context.Background(), loginTimeout)
-	defer cancel()
 
 	if err := qbtClient.LoginCtx(ctx); err != nil {
 		return nil, fmt.Errorf("failed to connect to qBittorrent instance: %w", err)
@@ -678,7 +681,7 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 		return errors.New("sync manager not initialized")
 	}
 
-	return syncManager.Start(ctx)
+	return syncManager.Sync(ctx)
 }
 
 const torrentAddedGraceWindow = 60 * time.Second

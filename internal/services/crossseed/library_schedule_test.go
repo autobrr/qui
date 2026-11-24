@@ -320,14 +320,31 @@ func (m *scheduleSyncManager) GetTorrentRefsFresh(ctx context.Context, instanceI
 
 // activityLog records the events that tell the page to read again.
 type activityLog struct {
-	mu     sync.Mutex
-	events []activity.Event
+	mu               sync.Mutex
+	events           []activity.Event
+	runStartsAndEnds int
+	published        chan struct{}
+}
+
+func newActivityLog() *activityLog {
+	return &activityLog{published: make(chan struct{})}
 }
 
 func (l *activityLog) Publish(ev activity.Event) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.events = append(l.events, ev)
+	if ev.InstanceID != 0 {
+		l.runStartsAndEnds++
+	}
+	close(l.published)
+	l.published = make(chan struct{})
+}
+
+func (l *activityLog) runActive() (bool, <-chan struct{}) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.runStartsAndEnds%2 == 1, l.published
 }
 
 // take returns the events since the last call.
@@ -368,7 +385,7 @@ func newScheduleFixture(t *testing.T, dbName, indexerURL string, torrents ...qbt
 		qbt:        &scheduleSyncManager{},
 		notifier:   &recordingNotifier{},
 		notices:    systemnotice.New(nil),
-		activity:   &activityLog{},
+		activity:   newActivityLog(),
 		instanceID: instance.ID,
 	}
 	files := make(map[string]qbt.TorrentFiles, len(torrents))
@@ -408,13 +425,24 @@ func (f *scheduleFixture) drainWake() {
 	}
 }
 
-// waitRunEnd waits for the end of a run, which wakes the schedule loop.
 func (f *scheduleFixture) waitRunEnd(t *testing.T) {
 	t.Helper()
+	timeout := time.After(10 * time.Second)
 	select {
 	case <-f.svc.scheduleWake:
-	case <-time.After(10 * time.Second):
+	case <-timeout:
 		t.Fatal("the run did not end")
+	}
+	for {
+		active, published := f.activity.runActive()
+		if !active {
+			return
+		}
+		select {
+		case <-published:
+		case <-timeout:
+			t.Fatal("the run did not publish its end")
+		}
 	}
 }
 
