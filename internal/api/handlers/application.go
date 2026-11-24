@@ -4,12 +4,15 @@
 package handlers
 
 import (
-	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/config"
@@ -172,31 +175,24 @@ func normalizeDatabaseEngine(raw string) string {
 }
 
 func postgresTarget(cfg *domain.Config) string {
-	dsn := strings.TrimSpace(cfg.DatabaseDSN)
-	if dsn != "" {
-		if parsed, err := url.Parse(dsn); err == nil {
-			host := strings.TrimSpace(parsed.Host)
-			name := strings.TrimPrefix(strings.TrimSpace(parsed.Path), "/")
-			switch {
-			case host != "" && name != "":
-				return fmt.Sprintf("%s/%s", host, name)
-			case host != "":
-				return host
-			case name != "":
-				return name
-			}
-		}
-		return "dsn-configured"
-	}
-
 	host := strings.TrimSpace(cfg.DatabaseHost)
+	port := cfg.DatabasePort
 	name := strings.TrimSpace(cfg.DatabaseName)
 
+	if dsn := strings.TrimSpace(cfg.DatabaseDSN); dsn != "" {
+		parsed, err := pgconn.ParseConfig(dsn)
+		if err != nil {
+			return "dsn-configured"
+		}
+		host, port, name = parsed.Host, int(parsed.Port), parsed.Database
+	}
+
+	address := net.JoinHostPort(host, strconv.Itoa(port))
 	switch {
 	case host != "" && name != "":
-		return fmt.Sprintf("%s:%d/%s", host, cfg.DatabasePort, name)
+		return address + "/" + name
 	case host != "":
-		return fmt.Sprintf("%s:%d", host, cfg.DatabasePort)
+		return address
 	case name != "":
 		return name
 	default:

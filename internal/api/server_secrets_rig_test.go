@@ -157,6 +157,8 @@ func newSecretsRig(t *testing.T) *secretsRig {
 	deps.Config.Config.SessionSecret = rig.plant("session secret", shownToNobody)
 	deps.Config.Config.OIDCClientSecret = rig.plant("OIDC client secret", shownToNobody)
 	deps.Config.Config.DatabasePassword = rig.plant("database password", shownToNobody)
+	deps.Config.Config.DatabaseEngine = "postgres"
+	deps.Config.Config.DatabaseDSN = "host=db.example.invalid user=qui dbname=qui password=" + rig.plant("database DSN password", shownToNobody)
 	deps.Experimental = experimental.New([]string{string(experimental.ProblemReports)})
 	deps.InstanceCrossSeedCompletionStore = models.NewInstanceCrossSeedCompletionStore(db)
 	deps.SeasonPackRunStore = models.NewSeasonPackRunStore(db)
