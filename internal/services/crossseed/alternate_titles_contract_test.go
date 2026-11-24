@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -92,6 +93,7 @@ type fakeArrServer struct {
 	mu       sync.Mutex
 	down     bool
 	hangs    bool
+	noSeries bool
 	parsed   map[string]string
 	requests []string
 	cache    *models.ArrIDCacheStore
@@ -108,7 +110,7 @@ func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.requests = append(f.requests, r.URL.Path)
-	if f.down {
+	if f.down || f.noSeries && strings.HasPrefix(r.URL.Path, "/api/v3/series/") {
 		http.Error(w, "down", http.StatusServiceUnavailable)
 		return
 	}
@@ -272,6 +274,22 @@ func TestArrAlternateTitlesCountACachedRowThatIsFetchedAgain(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, fake.takeRequests())
 	require.True(t, answer.Requested)
+}
+
+func TestArrAlternateTitlesMarkAnIncompleteAnswer(t *testing.T) {
+	for _, incomplete := range []bool{false, true} {
+		t.Run(strconv.FormatBool(incomplete), func(t *testing.T) {
+			fake, service := newFakeArr(t)
+			fake.noSeries = incomplete
+
+			answer, err := arrSourceOf(service, heldSeries).AlternateTitles(t.Context(), heldSeries)
+
+			require.NoError(t, err)
+			require.Contains(t, answer.Titles, "Lantern Ward")
+			require.True(t, answer.Requested)
+			require.Equal(t, incomplete, answer.Incomplete)
+		})
+	}
 }
 
 func TestAlternateTitlesFetchLogBudget(t *testing.T) {

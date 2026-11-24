@@ -27,8 +27,9 @@ type HeldRelease struct {
 }
 
 type AlternateTitles struct {
-	Titles    []string
-	Requested bool
+	Titles     []string
+	Requested  bool
+	Incomplete bool
 }
 
 type alternateTitleIndex struct {

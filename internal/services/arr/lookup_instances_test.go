@@ -116,6 +116,7 @@ func TestService_LookupExternalIDsKeepsAnIncompleteAnswerShortly(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, tt.wantSource, result.Source)
+			require.Equal(t, tt.wantKept == incompleteCacheTTL, result.Incomplete)
 			entry, err := cacheStore.Get(t.Context(), models.ComputeTitleHash(solitudeRelease), string(ContentTypeTV))
 			require.NoError(t, err)
 			require.WithinDuration(t, time.Now().Add(tt.wantKept), entry.ExpiresAt, time.Minute)
@@ -134,9 +135,36 @@ func TestService_LookupExternalIDsKeepsAMovieWithoutDetailsShortly(t *testing.T)
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"Solitude"}, result.Titles)
+	require.True(t, result.Incomplete)
 	entry, err := cacheStore.Get(t.Context(), models.ComputeTitleHash(release), string(ContentTypeMovie))
 	require.NoError(t, err)
 	require.WithinDuration(t, time.Now().Add(incompleteCacheTTL), entry.ExpiresAt, time.Minute)
+}
+
+func TestService_LookupExternalIDsMarksACachedRowThatTheInstanceCouldNotRefresh(t *testing.T) {
+	tests := []struct {
+		name           string
+		handler        http.Handler
+		wantIncomplete bool
+	}{
+		{name: "the instance is down", handler: downSonarr, wantIncomplete: true},
+		{name: "the instance answers in part", handler: unhydratedSonarrWithoutIDs, wantIncomplete: true},
+		{name: "the instance does not know the title", handler: emptySonarr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, tt.handler)
+			ids := &models.ExternalIDs{TVDbID: 471000}
+			require.NoError(t, cacheStore.Set(t.Context(), models.ComputeTitleHash(solitudeRelease), string(ContentTypeTV), nil, ids, false, time.Hour))
+
+			result, err := service.LookupExternalIDs(t.Context(), solitudeRelease, ContentTypeTV)
+
+			require.NoError(t, err)
+			require.Equal(t, ids, result.IDs)
+			require.True(t, result.FromCache)
+			require.Equal(t, tt.wantIncomplete, result.Incomplete)
+		})
+	}
 }
 
 type slowParse struct {

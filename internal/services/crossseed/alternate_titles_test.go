@@ -25,7 +25,9 @@ type fakeAlternateTitles struct {
 	titles  map[string][]string
 	cached  bool
 	down    bool
+	partial bool
 	hangs   bool
+	takes   time.Duration
 	failsOn func(title string) bool
 	asked   []HeldRelease
 	askedAt []time.Time
@@ -33,12 +35,13 @@ type fakeAlternateTitles struct {
 
 func (f *fakeAlternateTitles) AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error) {
 	f.mu.Lock()
-	hangs := f.hangs
+	hangs, takes := f.hangs, f.takes
 	f.mu.Unlock()
 	if hangs {
 		<-ctx.Done()
 		return AlternateTitles{Requested: true}, ctx.Err()
 	}
+	<-time.After(takes)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.asked = append(f.asked, held)
@@ -46,7 +49,7 @@ func (f *fakeAlternateTitles) AlternateTitles(ctx context.Context, held HeldRele
 	if f.down || f.failsOn != nil && f.failsOn(held.Title) {
 		return AlternateTitles{Requested: true}, errors.New("source down")
 	}
-	return AlternateTitles{Titles: f.titles[held.Title], Requested: !f.cached}, nil
+	return AlternateTitles{Titles: f.titles[held.Title], Requested: !f.cached, Incomplete: f.partial}, nil
 }
 
 func (f *fakeAlternateTitles) askedTitles() []string {
@@ -104,6 +107,7 @@ func TestAlternateTitlesAskOneTitleASecond(t *testing.T) {
 				}
 
 				time.Sleep(time.Minute)
+				synctest.Wait()
 
 				require.Len(t, source.askedAt, sourceFailuresInARow)
 				for i, at := range source.askedAt[1:] {
@@ -128,8 +132,10 @@ func TestAlternateTitlesAskOncePerTitle(t *testing.T) {
 			holdName(a, name, int64(i))
 		}
 		time.Sleep(time.Hour)
+		synctest.Wait()
 		holdName(a, "Lantern.Ward.S01E03.1080p.WEB-DL.H.264-GRP", 9)
 		time.Sleep(time.Hour)
+		synctest.Wait()
 
 		require.ElementsMatch(t, []HeldRelease{
 			{TorrentName: "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", Title: "Lantern Ward", ContentType: "tv"},
@@ -145,8 +151,6 @@ func TestAlternateTitlesKeepTheTitlesOfEachSource(t *testing.T) {
 		second := &fakeAlternateTitles{titles: map[string][]string{"Lantern Ward": {"Guardia Lanterna", "laternenwache"}}}
 		a := runAlternateTitles(t, first, second, &fakeAlternateTitles{down: true})
 		title := holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
-
-		require.Empty(t, a.of(title))
 		synctest.Wait()
 
 		require.ElementsMatch(t, []string{"laternenwache", "guardia lanterna"}, a.of(title))
@@ -162,10 +166,12 @@ func TestAlternateTitlesAskFailedTitlesAfterNewOnes(t *testing.T) {
 		a := runAlternateTitles(t, source)
 		holdNames(a, "Lantern Ward", 10)
 		time.Sleep(6 * time.Hour)
+		synctest.Wait()
 		asked := len(source.askedTitles())
 
 		holdName(a, "Copper.Fjord.2019.1080p.BluRay.x264-GRP", 1)
 		time.Sleep(longestSourcePause)
+		synctest.Wait()
 
 		require.Equal(t, "Copper Fjord", source.askedTitles()[asked])
 	})
@@ -178,20 +184,86 @@ func TestAlternateTitlesAskEachFailedTitleAfterItsOwnWait(t *testing.T) {
 		started := time.Now()
 		holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
 		time.Sleep(time.Minute)
+		synctest.Wait()
 		holdName(a, "Amber.Quay.S01E01.1080p.WEB-DL.H.264-GRP", 1)
 		time.Sleep(alternateTitleRetry - 2*time.Minute)
+		synctest.Wait()
 		holdName(a, "Copper.Fjord.2019.1080p.BluRay.x264-GRP", 1)
 		gone := holdName(a, "Quiet.Harbor.2020.1080p.BluRay.x264-GRP", 1)
 		time.Sleep(10 * time.Second)
+		synctest.Wait()
 		source.set(func(f *fakeAlternateTitles) { f.failsOn = nil })
 		a.drop(gone)
 		time.Sleep(time.Hour)
+		synctest.Wait()
 
 		require.Len(t, source.asked, 6, "the title that left is not asked again")
 		require.Equal(t, "Lantern Ward", source.asked[4].Title)
 		require.Equal(t, alternateTitleRetry, source.askedAt[4].Sub(started))
 		require.Equal(t, "Copper Fjord", source.asked[5].Title)
 		require.GreaterOrEqual(t, source.askedAt[5].Sub(started), 2*alternateTitleRetry-time.Minute)
+	})
+}
+
+func TestAlternateTitlesAskAgainAfterAnIncompleteAnswer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		source := &fakeAlternateTitles{partial: true, titles: map[string][]string{"Lantern Ward": {"Laternenwache"}}}
+		a := runAlternateTitles(t, source)
+		started := time.Now()
+		title := holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
+		holdNames(a, "Amber Quay", 9)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		require.Len(t, source.askedAt, 10, "a source that answers is not paused")
+		require.Equal(t, []string{"laternenwache"}, a.of(title))
+
+		source.set(func(f *fakeAlternateTitles) { f.failsOn = func(string) bool { return true } })
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		holdName(a, "Copper.Fjord.2019.1080p.BluRay.x264-GRP", 1)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		source.set(func(f *fakeAlternateTitles) {
+			f.failsOn, f.partial = nil, false
+			f.titles["Lantern Ward"] = []string{"Laternenwache", "Wachlaterne"}
+		})
+		time.Sleep(incompleteAnswerRetry - 4*time.Minute)
+		synctest.Wait()
+		require.Len(t, source.askedAt, 12, "a title that failed waits less than one with an incomplete answer")
+		require.Equal(t, "Copper Fjord", source.asked[11].Title)
+
+		time.Sleep(10 * time.Minute)
+		synctest.Wait()
+		require.Len(t, source.askedAt, 22)
+		require.Equal(t, incompleteAnswerRetry, source.askedAt[12].Sub(started))
+		require.Equal(t, []string{"laternenwache", "wachlaterne"}, a.of(title))
+
+		time.Sleep(3 * incompleteAnswerRetry)
+		synctest.Wait()
+		require.Len(t, source.askedAt, 22, "a complete answer is final")
+	})
+}
+
+func TestAlternateTitlesLogOneLineForTheRetriesOfAnHour(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const titles = 100
+		source := &fakeAlternateTitles{partial: true, takes: 300 * time.Millisecond, titles: map[string][]string{}}
+		for i := range titles {
+			source.titles["Lantern Ward "+strings.Repeat("x", i+1)] = []string{"Laternenwache"}
+		}
+		a := runAlternateTitles(t, source)
+		holdNames(a, "Lantern Ward", titles)
+		time.Sleep(time.Hour)
+		synctest.Wait()
+
+		source.set(func(f *fakeAlternateTitles) { f.takes, f.partial = 0, false })
+		lines := logbudget.Count(t, func() {
+			time.Sleep(2 * incompleteAnswerRetry)
+			synctest.Wait()
+		})
+
+		require.Len(t, source.askedAt, 2*titles)
+		require.Equal(t, 1, lines[logbudget.Line{Level: "debug", Message: "crossseed: alternate titles fetched for Held titles"}])
 	})
 }
 
@@ -202,12 +274,14 @@ func TestAlternateTitlesPauseASourceThatIsDown(t *testing.T) {
 		a := runAlternateTitles(t, good, down)
 		holdName(a, "Copper.Fjord.2019.1080p.BluRay.x264-GRP", 1)
 		time.Sleep(time.Minute)
+		synctest.Wait()
 		require.Len(t, down.askedAt, 1)
 
 		down.set(func(f *fakeAlternateTitles) { f.down = true })
 		pauses := logbudget.Count(t, func() {
 			holdNames(a, "Lantern Ward", titles)
 			time.Sleep(3 * time.Hour)
+			synctest.Wait()
 		})
 		require.Len(t, good.askedAt, titles+1, "the other source still answers")
 		asked := down.askedAt[1:]
@@ -226,14 +300,17 @@ func TestAlternateTitlesPauseASourceThatIsDown(t *testing.T) {
 		down.set(func(f *fakeAlternateTitles) { f.down = false })
 		recovered := len(down.askedAt)
 		time.Sleep(longestSourcePause + titles*time.Second + alternateTitleRetry)
+		synctest.Wait()
 		require.Len(t, down.askedAt, recovered+titles, "a source that recovers answers for each title")
 
 		down.set(func(f *fakeAlternateTitles) { f.down = true })
 		again := len(down.askedAt)
 		holdNames(a, "Amber Quay", titles)
 		time.Sleep(30 * time.Second)
+		synctest.Wait()
 		require.Len(t, down.askedAt, again+sourceFailuresInARow)
 		time.Sleep(time.Minute)
+		synctest.Wait()
 		require.Len(t, down.askedAt, again+sourceFailuresInARow+1, "the first pause is a minute again")
 	})
 }
@@ -245,6 +322,7 @@ func TestAlternateTitlesCountFailuresInARowPastCachedAnswers(t *testing.T) {
 		holdNames(a, "Lantern Ward", 20)
 
 		time.Sleep(30 * time.Second)
+		synctest.Wait()
 
 		failed := 0
 		for _, title := range source.askedTitles() {
@@ -262,9 +340,11 @@ func TestAlternateTitlesForgetATitleThatNoTorrentHolds(t *testing.T) {
 		a := runAlternateTitles(t, source)
 		first := holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
 		second := holdName(a, "Lantern.Ward.S01E02.1080p.WEB-DL.H.264-GRP", 1)
+		synctest.Wait()
 		queued := holdName(a, "Copper.Fjord.S01E01.1080p.WEB-DL.H.264-GRP", 1)
 		a.drop(queued)
 		time.Sleep(time.Minute)
+		synctest.Wait()
 		require.Equal(t, []string{"Lantern Ward"}, source.askedTitles(), "a title that left before its turn is not asked")
 
 		a.drop(first)
@@ -276,6 +356,7 @@ func TestAlternateTitlesForgetATitleThatNoTorrentHolds(t *testing.T) {
 
 		holdName(a, "Lantern.Ward.S01E03.1080p.WEB-DL.H.264-GRP", 1)
 		time.Sleep(time.Minute)
+		synctest.Wait()
 		require.Len(t, a.namedByAny([]string{"laternenwache"}), 1)
 	})
 }

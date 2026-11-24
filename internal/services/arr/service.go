@@ -53,6 +53,7 @@ type ExternalIDsResult struct {
 	// EpisodeMapKnown reports that the map was read; a cached row without it refetches.
 	EpisodeMap      *models.EpisodeMap `json:"episode_map,omitempty"`
 	EpisodeMapKnown bool               `json:"-"`
+	Incomplete      bool               `json:"-"`
 	FromCache       bool               `json:"from_cache"`
 	ArrInstanceID   *int               `json:"arr_instance_id,omitempty"`
 	ContentType     ContentType        `json:"content_type"`
@@ -129,12 +130,14 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 		// re-query (e.g. a legacy entry awaiting title hydration) rather than
 		// discarding known-good data over a transient outage.
 		if cacheResult != nil {
+			cacheResult.Incomplete = true
 			return cacheResult, nil
 		}
 		return nil, err
 	}
 	if result.IDs == nil || result.IDs.IsEmpty() {
 		if cacheResult != nil {
+			cacheResult.Incomplete = result.Incomplete
 			return cacheResult, nil
 		}
 		return result, nil
@@ -306,6 +309,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 
 	return &ExternalIDsResult{
 		IDs:         nil,
+		Incomplete:  incomplete,
 		FromCache:   false,
 		ContentType: contentType,
 		Source:      "none",
@@ -357,6 +361,7 @@ func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title stri
 		TitlesKnown:     true,
 		EpisodeMap:      result.EpisodeMap,
 		EpisodeMapKnown: episodeMapKnown,
+		Incomplete:      result.Incomplete,
 		FromCache:       false,
 		ArrInstanceID:   &instanceID,
 		ContentType:     contentType,

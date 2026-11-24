@@ -35,7 +35,7 @@ func (a arrAlternateTitles) AlternateTitles(ctx context.Context, held HeldReleas
 	if result == nil {
 		return AlternateTitles{}, nil
 	}
-	return AlternateTitles{Titles: result.Titles, Requested: !result.FromCache || refetched(result)}, nil
+	return AlternateTitles{Titles: result.Titles, Requested: !result.FromCache || refetched(result), Incomplete: result.Incomplete}, nil
 }
 
 func refetched(cached *arr.ExternalIDsResult) bool {
