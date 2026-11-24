@@ -928,6 +928,7 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 		Titles:      []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"},
 		TitlesKnown: true,
 	}
+	partialResult := &arr.ExternalIDsResult{Titles: aliasResult.Titles, TitlesKnown: true, Incomplete: true}
 
 	tests := []struct {
 		name       string
@@ -937,6 +938,7 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 		wantCalls  int
 	}{
 		{name: "aliases recover the match with one lookup", spy: &spyARRLookupService{result: aliasResult}, sourceSize: size, wantMatch: true, wantCalls: 1},
+		{name: "aliases of a partial answer match the same", spy: &spyARRLookupService{result: partialResult}, sourceSize: size, wantMatch: true, wantCalls: 1},
 		{name: "no size collision skips the lookup", spy: &spyARRLookupService{result: aliasResult}, sourceSize: size + 1},
 		{name: "no arr service keeps rejecting", sourceSize: size},
 		{name: "lookup error keeps rejecting", spy: &spyARRLookupService{err: errors.New("arr down")}, sourceSize: size, wantCalls: 1},

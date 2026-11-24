@@ -29,11 +29,12 @@ type webhookCopies struct {
 	svc         *Service
 	input       webhookCheckInput
 	sourceReads map[int]localReads
+	alternates  map[*qbt.Torrent][]string
 	compared    map[*qbt.Torrent]*webhookCopy
 }
 
-func (s *Service) webhookCopies(input webhookCheckInput, candidates map[int][]*qbt.Torrent, sourceReads map[int]localReads) webhookCopies {
-	copies := webhookCopies{svc: s, input: input, sourceReads: sourceReads, compared: map[*qbt.Torrent]*webhookCopy{}}
+func (s *Service) webhookCopies(input webhookCheckInput, candidates map[int][]*qbt.Torrent, sourceReads map[int]localReads, alternates map[*qbt.Torrent][]string) webhookCopies {
+	copies := webhookCopies{svc: s, input: input, sourceReads: sourceReads, alternates: alternates, compared: map[*qbt.Torrent]*webhookCopy{}}
 	groups := s.heldTitles.sync.CopyGroups()
 	gate, filter := s.sourceGate(), defaultsFor(triggerWebhook, input.settings).sourceFilter
 	byKey := map[webhookCopyKey]*webhookCopy{}
@@ -64,14 +65,20 @@ func (s *Service) webhookCopies(input webhookCheckInput, candidates map[int][]*q
 func (c webhookCopies) decide(ctx context.Context, instanceID int, torrent *qbt.Torrent) searchCandidateDecision {
 	compared := c.compared[torrent]
 	if compared == nil {
-		return c.svc.webhookDecision(ctx, c.input, instanceID, torrent, c.sourceReads[instanceID])
+		return c.compare(ctx, instanceID, torrent)
 	}
 	if compared.decision == nil {
-		decision := c.svc.webhookDecision(ctx, c.input, compared.instanceID, compared.torrent, c.sourceReads[compared.instanceID])
+		decision := c.compare(ctx, compared.instanceID, compared.torrent)
 		compared.decision = &decision
 	}
 	if compared.readsFiles && !compared.decision.Accepted && torrent != compared.torrent {
-		return c.svc.webhookDecision(ctx, c.input, instanceID, torrent, c.sourceReads[instanceID])
+		return c.compare(ctx, instanceID, torrent)
 	}
 	return *compared.decision
+}
+
+func (c webhookCopies) compare(ctx context.Context, instanceID int, torrent *qbt.Torrent) searchCandidateDecision {
+	input := c.input
+	input.policy.sourceTitles = c.alternates[torrent]
+	return c.svc.webhookDecision(ctx, input, instanceID, torrent, c.sourceReads[instanceID])
 }

@@ -17,3 +17,4 @@ Cross-seed cannot equate an absolute-numbered anime episode (`- 81`) with its se
 - A cache row without a map records that it looked, so non-anime lookups do not re-hit Sonarr until the row expires. Rows written before the map existed refetch once.
 - The map adds equalities only. When a tracker numbers an episode differently from Sonarr, the pair is an episode mismatch as before and the exact-size tier decides.
 - Season packs are out of scope; they need a map per file.
+- With the Experimental feature `heldTitles`, the Sonarr and Radarr alternate titles of held torrents come from the same lookup in the background, so a row of a held name can hold a map. A match still reads only the map of the announced or searched name. The webhook check asks for it only when exactly one name of a pair has absolute numbering.

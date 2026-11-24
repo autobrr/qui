@@ -839,6 +839,11 @@ func TestAutobrrApplyUsesARRAlternateTitles(t *testing.T) {
 			spy:         &spyARRLookupService{result: &arr.ExternalIDsResult{Titles: aliasTitles, TitlesKnown: true}},
 			wantMatched: true,
 		},
+		{
+			name:        "aliases of a partial answer match the same",
+			spy:         &spyARRLookupService{result: &arr.ExternalIDsResult{Titles: aliasTitles, TitlesKnown: true, Incomplete: true}},
+			wantMatched: true,
+		},
 		{name: "no arr service still rejects the alias announce"},
 	}
 

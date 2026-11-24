@@ -9,6 +9,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -31,7 +32,9 @@ type announcementMatchPolicy struct {
 	candidateTitles []string
 	// episodeMap is the Sonarr triple for the announced release, resolved with
 	// the alias titles.
-	episodeMap *models.EpisodeMap
+	episodeMap       *models.EpisodeMap
+	lookupEpisodeMap func() *models.EpisodeMap
+	sourceTitles     []string
 	// sourceReads holds the local torrents of the scan that a local read
 	// (requestLocalReads) read from their files. Without it, a local torrent
 	// reads by its name.
@@ -60,13 +63,13 @@ func (s *Service) classifyAnnouncementSource(
 		if !policy.allowUnknownSize {
 			return announcementCandidateDecision{decision: searchCandidateDecision{Class: searchCandidateClassRejected}}
 		}
-		decision := s.classifyUnknownSizePreflight(rawInput, policy.skipRecheck)
+		decision := s.classifyUnknownSizePreflight(policy.withEpisodeMap(rawInput), policy.skipRecheck)
 		return announcementCandidateDecision{decision: decision}
 	}
 
 	sourceView := s.deriveSearchSourceRelease(ctx, instanceID, source)
 	rawInput.Source = sourceView
-	decision := s.matcher().classifySearchCandidate(rawInput)
+	decision := s.matcher().classifySearchCandidate(policy.withEpisodeMap(rawInput))
 	return announcementCandidateDecision{decision: decision, replayable: true}
 }
 
@@ -94,7 +97,7 @@ func (s *Service) classifyWebhookAnnouncementSource(
 	}
 
 	input := s.announcementRawSearchInput(instanceID, source, candidate, candidateSize, policy)
-	decision := s.matcher().classifySearchCandidate(input)
+	decision := s.matcher().classifySearchCandidate(policy.withEpisodeMap(input))
 	if decision.Accepted && decision.Class != searchCandidateClassStrict {
 		decision.Accepted = false
 		decision.Class = searchCandidateClassRejected
@@ -170,9 +173,6 @@ func (s *Service) webhookMatch(instance *models.Instance, torrent *qbt.Torrent, 
 	}
 }
 
-// announceAliasTitles resolves ARR alternate titles and the episode map for an
-// announced release. Callers run it once per announce, outside the per-torrent
-// scan loops.
 func (s *Service) announceAliasTitles(ctx context.Context, announcedName, contentType string) ([]string, *models.EpisodeMap) {
 	ctx, cancel := context.WithTimeout(ctx, announceAliasLookupTimeout)
 	defer cancel()
@@ -188,12 +188,24 @@ func (s *Service) announcementRawSearchInput(instanceID int, source *qbt.Torrent
 		Candidate:              candidate,
 		SourceSize:             searchSourceSize(source),
 		CandidateSize:          candidateSize,
+		SourceTitles:           policy.sourceTitles,
 		CandidateTitles:        policy.candidateTitles,
 		EpisodeMap:             policy.episodeMap,
 		TolerancePercent:       defaultSizeMismatchTolerancePercent,
 		FindIndividualEpisodes: policy.findIndividualEpisodes,
 		RescueTitleMismatches:  policy.rescueTitleMismatches,
 	}
+}
+
+func (p announcementMatchPolicy) withEpisodeMap(input searchCandidateInput) searchCandidateInput {
+	if p.lookupEpisodeMap != nil && mixesNumbering(input.Source.release, input.Candidate.release) {
+		input.EpisodeMap = p.lookupEpisodeMap()
+	}
+	return input
+}
+
+func mixesNumbering(a, b *rls.Release) bool {
+	return a.Episode > 0 && b.Episode > 0 && (a.Series > 0) != (b.Series > 0)
 }
 
 // classifyUnknownSizePreflight asks the Match verdict as if the sizes were

@@ -27,9 +27,10 @@ type syncSinks interface {
 }
 
 type heldTitles struct {
-	svc  *Service
-	sync heldTitlesSync
-	wake chan struct{}
+	svc        *Service
+	sync       heldTitlesSync
+	alternates *alternateTitleIndex
+	wake       chan struct{}
 
 	mu        sync.Mutex
 	instances map[int]*heldInstance
@@ -45,34 +46,37 @@ type heldInstance struct {
 }
 
 type heldIndex struct {
-	torrents map[string]heldTorrent
-	byKey    map[string][]string
-	bySize   map[int64][]string
-	waiting  map[string]struct{}
+	alternates *alternateTitleIndex
+	torrents   map[string]heldTorrent
+	byKey      map[string][]string
+	bySize     map[int64][]string
+	waiting    map[string]struct{}
 }
 
 type heldTorrent struct {
 	name, category string
 	size           int64
 	keys           []string
+	title          *heldTitle
 	waitsOnFiles   bool
 }
 
 type heldCandidates struct {
-	held, waiting []*qbt.Torrent
+	held, waiting   []*qbt.Torrent
+	alternateTitles map[*qbt.Torrent][]string
 }
 
 type heldTitlesQuery struct {
-	announced       namedRelease
-	alternateTitles []string
-	size            int64
+	announced namedRelease
+	size      int64
 }
 
-func (s *Service) StartHeldTitles(ctx context.Context, features *experimental.Features, reader heldTitlesSync, sinks syncSinks) {
+func (s *Service) StartHeldTitles(ctx context.Context, features *experimental.Features, reader heldTitlesSync, sinks syncSinks, sources []AlternateTitleSource) {
 	if !features.Enabled(experimental.HeldTitles) {
 		return
 	}
 	h := &heldTitles{svc: s, sync: reader, wake: make(chan struct{}, 1), instances: map[int]*heldInstance{}}
+	h.alternates = newAlternateTitleIndex(sources, h.buildsPending)
 	s.heldTitles = h
 	sinks.AddSyncEventSink(h)
 	listCtx, cancelList := context.WithTimeout(ctx, 30*time.Second)
@@ -90,6 +94,18 @@ func (s *Service) StartHeldTitles(ctx context.Context, features *experimental.Fe
 	h.mu.Unlock()
 	h.wakeLoop()
 	go h.loop(ctx)
+	go h.alternates.run(ctx)
+}
+
+func (h *heldTitles) buildsPending() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, inst := range h.instances {
+		if inst.building || inst.needsBuild {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *heldTitles) ready(ctx context.Context, instanceIDs []int) bool {
@@ -112,7 +128,10 @@ func (h *heldTitles) ready(ctx context.Context, instanceIDs []int) bool {
 }
 
 func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[int]heldCandidates {
-	keys := query.titleKeys(h.svc.matcher())
+	keys := h.svc.matcher().titleKeys(query.announced)
+	for _, title := range h.alternates.namedByAny(keys) {
+		keys = append(keys, title.identity.key)
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	found := map[int]heldCandidates{}
@@ -122,18 +141,10 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 			continue
 		}
 		if held, waiting := inst.index.candidates(keys, query.size); len(held)+len(waiting) > 0 {
-			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting)}
+			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting), alternateTitles: inst.alternateTitles(held)}
 		}
 	}
 	return found
-}
-
-func (q heldTitlesQuery) titleKeys(m matcher) []string {
-	keys := m.titleKeys(q.announced)
-	for _, title := range q.alternateTitles {
-		keys = addNormalizedTitle(keys, title)
-	}
-	return keys
 }
 
 func (inst *heldInstance) torrents(hashes []string) []*qbt.Torrent {
@@ -144,6 +155,20 @@ func (inst *heldInstance) torrents(hashes []string) []*qbt.Torrent {
 		}
 	}
 	return torrents
+}
+
+func (inst *heldInstance) alternateTitles(hashes []string) map[*qbt.Torrent][]string {
+	titles := map[*qbt.Torrent][]string{}
+	for _, hash := range hashes {
+		torrent, ok := inst.snapshot.Torrent(hash)
+		if !ok {
+			continue
+		}
+		if alternates := inst.index.alternates.of(inst.index.torrents[hash].title); len(alternates) > 0 {
+			titles[torrent] = alternates
+		}
+	}
+	return titles
 }
 
 func (x *heldIndex) candidates(keys []string, size int64) (held, waiting []string) {
@@ -251,15 +276,20 @@ func (h *heldTitles) applyChanges(instanceID int, inst *heldInstance, hashes []s
 func (h *heldTitles) read(instanceID int, torrent *qbt.Torrent) heldTorrent {
 	m := h.svc.matcher()
 	held := heldTorrent{name: torrent.Name, category: torrent.Category, size: searchSourceSize(torrent)}
-	read := m.readName(torrent.Name)
+	read, askName := m.readName(torrent.Name), torrent.Name
 	if nameNeedsFiles(read.release) {
+		named := read
 		var ok bool
 		if read, ok = h.svc.localReadMemo.filesRead(instanceID, torrent); !ok {
 			held.waitsOnFiles = true
 			return held
 		}
+		if !normalizedTitleSetsOverlap(m.titleKeys(named), m.titleKeys(read)) {
+			askName = ""
+		}
 	}
 	held.keys = m.titleKeys(read)
+	held.title = h.alternates.hold(read, held.keys, askName, torrent.AddedOn)
 	return held
 }
 
@@ -267,12 +297,13 @@ func (t heldTorrent) sameAs(torrent *qbt.Torrent) bool {
 	return t.name == torrent.Name && t.category == torrent.Category && t.size == searchSourceSize(torrent)
 }
 
-func newHeldIndex(size int) *heldIndex {
+func newHeldIndex(alternates *alternateTitleIndex, size int) *heldIndex {
 	return &heldIndex{
-		torrents: make(map[string]heldTorrent, size),
-		byKey:    make(map[string][]string, size),
-		bySize:   make(map[int64][]string, size),
-		waiting:  map[string]struct{}{},
+		alternates: alternates,
+		torrents:   make(map[string]heldTorrent, size),
+		byKey:      make(map[string][]string, size),
+		bySize:     make(map[int64][]string, size),
+		waiting:    map[string]struct{}{},
 	}
 }
 
@@ -297,19 +328,29 @@ func (x *heldIndex) remove(hash string) {
 	}
 	delete(x.torrents, hash)
 	delete(x.waiting, hash)
+	x.alternates.drop(held.title)
 	for _, key := range held.keys {
-		dropHash(x.byKey, key, hash)
+		dropFrom(x.byKey, key, hash)
 	}
-	dropHash(x.bySize, held.size, hash)
+	dropFrom(x.bySize, held.size, hash)
 }
 
-func dropHash[K comparable](lookup map[K][]string, key K, hash string) {
-	hashes := slices.DeleteFunc(lookup[key], func(h string) bool { return h == hash })
-	if len(hashes) == 0 {
+func (x *heldIndex) releaseTitles() {
+	if x == nil {
+		return
+	}
+	for _, held := range x.torrents {
+		x.alternates.drop(held.title)
+	}
+}
+
+func dropFrom[K, V comparable](lookup map[K][]V, key K, value V) {
+	values := slices.DeleteFunc(lookup[key], func(v V) bool { return v == value })
+	if len(values) == 0 {
 		delete(lookup, key)
 		return
 	}
-	lookup[key] = hashes
+	lookup[key] = values
 }
 
 func (h *heldTitles) wakeLoop() {
@@ -352,24 +393,31 @@ func (h *heldTitles) buildNext(ctx context.Context) bool {
 	started := time.Now()
 	index, ok := h.build(ctx, instanceID, snapshot)
 
+	retired := h.finishBuild(instanceID, inst, index, started)
+	retired.releaseTitles()
+	h.alternates.wakeRun()
+	return ok
+}
+
+func (h *heldTitles) finishBuild(instanceID int, inst *heldInstance, index *heldIndex, started time.Time) (retired *heldIndex) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	inst.building = false
-	if !ok || inst.needsBuild {
-		return ok
+	if index == nil || inst.needsBuild {
+		return index
 	}
-	inst.index = index
+	retired, inst.index = inst.index, index
 	h.applyChanges(instanceID, inst, slices.Collect(maps.Keys(inst.syncChanged)), false)
 	h.applyChanges(instanceID, inst, slices.Collect(maps.Keys(inst.filesChanged)), true)
 	inst.syncChanged, inst.filesChanged = nil, nil
 	log.Debug().Int("instanceID", instanceID).Int("torrents", len(index.torrents)).Int("waitingOnFiles", len(index.waiting)).
 		Dur("elapsed", time.Since(started)).Msg("crossseed: Held titles built")
-	return true
+	return retired
 }
 
 func (h *heldTitles) build(ctx context.Context, instanceID int, snapshot *qbt.SyncSnapshot) (*heldIndex, bool) {
 	torrents := snapshot.Torrents()
-	index := newHeldIndex(len(torrents))
+	index := newHeldIndex(h.alternates, len(torrents))
 	for _, torrent := range torrents {
 		if ctx.Err() != nil {
 			return nil, false

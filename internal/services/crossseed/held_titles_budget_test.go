@@ -113,10 +113,10 @@ type noSinks struct{}
 
 func (noSinks) AddSyncEventSink(qbittorrent.SyncEventSink) {}
 
-func (l *bigHeldLibrary) heldTitles(ctx context.Context, tb testing.TB, releases *ReleaseCache) *Service {
+func (l *bigHeldLibrary) heldTitles(ctx context.Context, tb testing.TB, releases *ReleaseCache, sources ...AlternateTitleSource) *Service {
 	tb.Helper()
 	svc := l.fullScan(releases)
-	svc.StartHeldTitles(ctx, experimental.New([]string{string(experimental.HeldTitles)}), l.syncs, noSinks{})
+	svc.StartHeldTitles(ctx, experimental.New([]string{string(experimental.HeldTitles)}), l.syncs, noSinks{}, sources)
 	require.Eventually(tb, func() bool { return svc.heldTitles.ready(ctx, []int{l.instance.ID}) }, time.Minute, time.Millisecond)
 	return svc
 }
@@ -131,24 +131,64 @@ func (l *bigHeldLibrary) announces() map[string]*WebhookCheckRequest {
 }
 
 func TestMemoryBudget_HeldTitles(t *testing.T) {
-	const (
-		size   = 50_000
-		budget = 20 * biglib.MB
-	)
+	const size = 50_000
 	library := newBigHeldLibrary(t, size)
 	library.heldTitles(t.Context(), t, library.releases)
 
-	kept := biglib.KeptBytes(3, func() any { return library.heldTitles(t.Context(), t, library.releases) })
+	for _, tt := range []struct {
+		name    string
+		sources []AlternateTitleSource
+		budget  uint64
+	}{
+		{name: "alone", budget: 20 * biglib.MB},
+		{name: "three alternate titles for each title", sources: []AlternateTitleSource{countedAlternateTitles(3)}, budget: 40 * biglib.MB},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			kept := biglib.KeptBytes(3, func() any {
+				svc := library.heldTitles(t.Context(), t, library.releases, tt.sources...)
+				waitForAlternateTitles(t, svc)
+				return svc
+			})
 
-	t.Logf("Held titles keeps %.1f MB for %d torrents", float64(kept)/biglib.MB, size)
-	require.Greater(t, kept, uint64(biglib.MB))
-	require.LessOrEqual(t, kept, uint64(budget))
+			t.Logf("Held titles keeps %.1f MB for %d torrents", float64(kept)/biglib.MB, size)
+			require.Greater(t, kept, uint64(biglib.MB))
+			require.LessOrEqual(t, kept, tt.budget)
+		})
+	}
+}
+
+type countedAlternateTitles int
+
+func (n countedAlternateTitles) AlternateTitles(_ context.Context, held HeldRelease) (AlternateTitles, error) {
+	titles := make([]string, n)
+	for i := range titles {
+		titles[i] = fmt.Sprintf("%s Another Name %d", held.Title, i)
+	}
+	return AlternateTitles{Titles: titles}, nil
+}
+
+func waitForAlternateTitles(tb testing.TB, svc *Service) {
+	tb.Helper()
+	a := svc.heldTitles.alternates
+	require.Eventually(tb, func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		for _, title := range a.held {
+			if len(title.alternates) == 0 {
+				return false
+			}
+		}
+		return true
+	}, time.Minute, 10*time.Millisecond)
 }
 
 func TestMemoryBudget_HeldTitlesBurst(t *testing.T) {
 	const checks = 64
 	small, large := newBigHeldLibrary(t, biglib.Size/10), newBigHeldLibrary(t, biglib.Size)
-	smallSvc, largeSvc := small.heldTitles(t.Context(), t, small.releases), large.heldTitles(t.Context(), t, large.releases)
+	source := countedAlternateTitles(3)
+	smallSvc, largeSvc := small.heldTitles(t.Context(), t, small.releases, source), large.heldTitles(t.Context(), t, large.releases, source)
+	waitForAlternateTitles(t, smallSvc)
+	waitForAlternateTitles(t, largeSvc)
 	burst := func(svc *Service, req *WebhookCheckRequest) uint64 {
 		return biglib.AllocatedBytes(5, func() {
 			var wg sync.WaitGroup
@@ -188,8 +228,9 @@ func BenchmarkWebhookCheck(b *testing.B) {
 	for _, size := range []int{6_200, 20_000, 50_000} {
 		b.Run(fmt.Sprintf("%d torrents", size), func(b *testing.B) {
 			library := newBigHeldLibrary(b, size)
-			releases := library.releases
-			fullScan, heldTitles := library.fullScan(releases), library.heldTitles(b.Context(), b, releases)
+			releases, source := library.releases, countedAlternateTitles(3)
+			fullScan, heldTitles := library.fullScan(releases), library.heldTitles(b.Context(), b, releases, source)
+			waitForAlternateTitles(b, heldTitles)
 			for _, name := range []string{"no match", "held title", "held show"} {
 				req := library.announces()[name]
 				b.Run(name+"/full scan", func(b *testing.B) { benchmarkCheck(b, fullScan, req, func() {}) })
@@ -205,14 +246,18 @@ func BenchmarkWebhookCheck(b *testing.B) {
 					before := cpuTime()
 					b.StartTimer()
 					ctx, cancel := context.WithCancel(b.Context())
-					library.heldTitles(ctx, b, releases)
+					library.heldTitles(ctx, b, releases, source)
 					cancel()
 					b.StopTimer()
 					cpu += cpuTime() - before
 					b.StartTimer()
 				}
 				b.ReportMetric(float64(cpu)/float64(b.N), "cpu-ns/op")
-				b.ReportMetric(float64(biglib.KeptBytes(3, func() any { return library.heldTitles(b.Context(), b, releases) })), "kept-B")
+				b.ReportMetric(float64(biglib.KeptBytes(3, func() any {
+					svc := library.heldTitles(b.Context(), b, releases, source)
+					waitForAlternateTitles(b, svc)
+					return svc
+				})), "kept-B")
 			})
 		})
 	}

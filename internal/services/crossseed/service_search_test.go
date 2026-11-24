@@ -188,10 +188,19 @@ func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 		contentType     string
 		wantContentType arr.ContentType
 		lookupErr       error
+		incomplete      bool
 		wantResult      bool
 		wantCalled      bool
 		wantDegraded    string
 	}{
+		{
+			name:            "a partial answer is not degraded",
+			contentType:     "movie",
+			wantContentType: arr.ContentTypeMovie,
+			incomplete:      true,
+			wantResult:      true,
+			wantCalled:      true,
+		},
 		{
 			name:            "movie maps to Radarr",
 			contentType:     "movie",
@@ -240,6 +249,7 @@ func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 				result: &arr.ExternalIDsResult{
 					IDs:         ids,
 					ContentType: tt.wantContentType,
+					Incomplete:  tt.incomplete,
 					Source:      "parse",
 				},
 				err: tt.lookupErr,
