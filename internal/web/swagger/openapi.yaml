@@ -4861,6 +4861,7 @@ paths:
       tags:
         - Torznab
       summary: Search configured Torznab indexers
+      description: A key without write access to torrents gets each result with an empty download_url, info_url as its scheme and host, and guid as a hash.
       requestBody:
         required: true
         content:
@@ -4886,6 +4887,7 @@ paths:
       tags:
         - Torznab
       summary: Search configured Torznab indexers for cross-seeds
+      description: A key without write access to torrents gets each result with an empty download_url, info_url as its scheme and host, and guid as a hash.
       requestBody:
         required: true
         content:
@@ -6557,7 +6559,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Search cross-seed candidates for a torrent
-      description: Query configured Torznab indexers for releases matching an existing torrent
+      description: Query configured Torznab indexers for releases matching an existing torrent. A key without write access to torrents gets each result with an empty download_url, info_url as its scheme and host, and guid as a hash.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -6586,7 +6588,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Add torrents found via cross-seed search
-      description: Downloads selected results and queues them for cross-seeding on the specified instance
+      description: Downloads selected results and queues them for cross-seeding on the specified instance. Each selection names a result of the last search for this torrent by its guid or download_url, as the search returned them.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -13115,7 +13117,6 @@ components:
       required:
         - indexer_id
         - indexer
-        - download_url
         - title
       properties:
         indexer_id:
