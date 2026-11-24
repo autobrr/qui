@@ -224,3 +224,70 @@ func TestHeldTitlesComparesCopiesWithOtherReadReleasesOnTheirOwn(t *testing.T) {
 		})
 	}
 }
+
+func TestHeldTitlesListsTheCopiesOfAMatchThatReadItsFiles(t *testing.T) {
+	tests := map[string]struct {
+		name     string
+		match    string
+		other    string
+		announce string
+		size     uint64
+	}{
+		"exact size": {
+			name: heldNoGroupName, match: heldCopyName + ".mkv", other: heldNoGroupName + "-OTHER.mkv",
+			announce: heldCopyName, size: uint64(heldSingleSize),
+		},
+		"name that needs its files": {
+			name: heldSingleName, match: heldSingleFile, other: "[Grp] Alpha Beta - S01E02 (BD 1080p).mkv",
+			announce: heldSingleAnnoun,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			named := func(torrent *qbt.Torrent) { torrent.Name = tt.name }
+			copies := []qbt.Torrent{heldCopy(1, named), heldCopy(2, named), heldCopy(3, named)}
+			files := map[string]qbt.TorrentFiles{}
+			for i, file := range []string{tt.match, tt.other, tt.other} {
+				files[copies[i].Hash] = qbt.TorrentFiles{{Name: file, Size: heldSingleSize}}
+			}
+			rig := newHeldRig(t, serveHeldLibrary(t, append(biglib.Torrents(200), copies...), files))
+			rig.publishCopyGroups(heldCopyGroup(1, copies[:2]...), heldCopyGroup(1, copies[2]))
+			held, _ := rig.heldTitles(t.Context())
+			rig.waitReady(held)
+			full, _ := rig.fullScan()
+
+			want, got := checkAnnounce(t, full, tt.announce, tt.size), checkAnnounce(t, held, tt.announce, tt.size)
+
+			require.Equal(t, []string{copies[0].Hash}, matchedHashes(want))
+			require.Equal(t, []string{copies[0].Hash, copies[1].Hash}, matchedHashes(got), "each copy in the Copy group of the match, and no other torrent")
+			require.Equal(t, want.Matches[0], got.Matches[0])
+			want.Matches, got.Matches = nil, nil
+			require.Equal(t, want, got)
+		})
+	}
+}
+
+func matchedHashes(resp *WebhookCheckResponse) []string {
+	hashes := make([]string, 0, len(resp.Matches))
+	for _, match := range resp.Matches {
+		hashes = append(hashes, match.TorrentHash)
+	}
+	return hashes
+}
+
+func TestHeldTitlesComparesOneTorrentOfACopyGroup(t *testing.T) {
+	library := newBigHeldLibrary(t, biglib.Size/10)
+	svc := library.heldTitles(t.Context(), t, library.releases)
+	req := &WebhookCheckRequest{TorrentName: heldShowEpisode, Size: uint64(heldSingleSize) + 150_001}
+	allocations := func() float64 {
+		return testing.AllocsPerRun(5, func() {
+			resp, err := svc.CheckWebhook(t.Context(), req)
+			require.NoError(t, err)
+			require.Len(t, resp.Matches, heldShowCopies)
+		})
+	}
+
+	grouped := allocations()
+	library.syncs.SetCopyGroups(nil)
+	require.Less(t, grouped, allocations()/2, "one compare for the %d copies of each episode", heldShowCopies)
+}
