@@ -168,7 +168,7 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, http.StatusOK, searchResponseFor(r, response))
 }
 
 func respondRateLimitError(w http.ResponseWriter, err error, message string) bool {
@@ -263,7 +263,7 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, http.StatusOK, searchResponseFor(r, response))
 }
 
 // ListRecentSearches returns the latest cached search queries for autocomplete support.

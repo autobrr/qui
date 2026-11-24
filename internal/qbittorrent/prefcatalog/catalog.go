@@ -154,6 +154,9 @@ func View(prefs qbt.AppPreferences, libtorrentVersion, platform string) ([]Field
 		if entry.Key == "proxy_auth_enabled" && numericProxyType {
 			continue
 		}
+		if entry.Control == ControlPassword {
+			value = jsontext.Value(`""`)
+		}
 		field := Field{
 			Key:          entry.Key,
 			Value:        value,
@@ -189,6 +192,9 @@ func Apply(ctx context.Context, client *qbt.Client, patch map[string]any) error 
 		checked, err := check(key, value)
 		if err != nil {
 			return err
+		}
+		if checked == "" && byKey[key].Control == ControlPassword {
+			continue
 		}
 		payload[key] = checked
 	}

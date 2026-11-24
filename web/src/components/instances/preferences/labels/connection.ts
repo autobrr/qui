@@ -94,6 +94,7 @@ export const connectionLabels: TabLabels = {
     proxy_password: {
       labelKey: "preferences.fields.proxyPassword",
       descriptionKey: "preferences.fields.proxyPasswordDescription",
+      placeholderKey: "preferences.settingsPanel.placeholders.passwordKeepCurrent",
     },
     proxy_bittorrent: { labelKey: "preferences.fields.proxyBittorrent" },
     proxy_peer_connections: { labelKey: "preferences.fields.proxyPeerConnections" },
