@@ -6,7 +6,10 @@ import path from "node:path"
 import { builtInThemeFiles, checkTheme } from "./theme-check.mjs"
 
 const WHITE_SURFACES = ["background", "card", "popover", "muted", "secondary", "accent", "sidebar", "sidebar-accent"]
-const BLACK_FILLS = ["primary", "destructive", "sidebar-primary", "ring", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5"]
+const BLACK_FILLS = [
+  "primary", "destructive", "sidebar-primary", "ring", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5",
+  "success", "warning", "info",
+]
 const BLACK_TEXT = [
   "foreground", "card-foreground", "popover-foreground", "muted-foreground", "secondary-foreground", "accent-foreground",
   "sidebar-foreground", "sidebar-accent-foreground",
@@ -68,6 +71,28 @@ test("the destructive menu item uses 10% in light mode and 20% in dark mode", ()
 
   assert.ok(pair(result, "destructive text on destructive 10% on popover (focused menu item)", "light"))
   assert.ok(pair(result, "destructive text on destructive 20% on popover (focused menu item)", "dark"))
+})
+
+test("checks a status color on the page, a card, a popover, its own tint, and each torrent row", () => {
+  const result = checkTheme(theme({ warning: "#dddddd" }))
+
+  assert.deepEqual(failed(result).filter(entry => entry.mode === "light").map(entry => entry.label), [
+    "warning text on background",
+    "warning text on card",
+    "warning text on popover",
+    "warning text on warning 10% on background",
+    "warning text on row",
+    "warning text on striped row",
+    "warning text on hovered row",
+    "warning text on selected row",
+  ])
+})
+
+test("checks a theme without status colors with the standard ones", () => {
+  const fixture = theme().replace(/^ {2}--(success|warning|info):.*\n/gm, "")
+
+  assert.equal(pair(checkTheme(fixture), "warning text on background").colors, "#bb4d00 on #ffffff")
+  assert.equal(pair(checkTheme(fixture), "warning text on background", "dark").colors, "#ffb900 on #ffffff")
 })
 
 test("reports a color that sRGB cannot show", () => {

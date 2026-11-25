@@ -8,6 +8,8 @@ import { endCustomThemePreview, previewCustomTheme } from "@/lib/custom-theme-pr
 import { getAppliedCustomThemeCss, setTheme, setThemeMode } from "./theme"
 import { parseCachedTheme, registerBuiltinThemes, registerCustomThemes } from "@/config/themes"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
+import { readFileSync } from "node:fs"
+import path from "node:path"
 
 vi.mock("./fontLoader", () => ({ loadThemeFonts: vi.fn() }))
 
@@ -223,5 +225,76 @@ describe("custom theme preview mode", () => {
 
     previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
     expect(document.documentElement.classList.contains("dark")).toBe(true)
+  })
+})
+
+const STANDARD_STATUS = {
+  light: { "--success": "oklch(0.5270 0.1540 150.0690)", "--warning": "oklch(0.5550 0.1630 48.9980)", "--info": "oklch(0.5460 0.2450 262.8810)" },
+  dark: { "--success": "oklch(0.7920 0.2090 151.7110)", "--warning": "oklch(0.8280 0.1890 84.4290)", "--info": "oklch(0.7070 0.1650 254.6240)" },
+}
+
+function statusColors() {
+  const style = getComputedStyle(document.documentElement)
+  return Object.fromEntries(["--success", "--warning", "--info"].map(name => [name, style.getPropertyValue(name).trim()]))
+}
+
+describe("status colors", () => {
+  beforeEach(() => {
+    const style = document.createElement("style")
+    style.id = "app-css"
+    style.textContent = readFileSync(path.resolve(import.meta.dirname, "../index.css"), "utf8")
+    document.head.prepend(style)
+  })
+
+  afterEach(() => {
+    document.getElementById("app-css")?.remove()
+  })
+
+  it("gives a custom theme without status colors the standard ones in light and dark", async () => {
+    registerCustomThemes([customTheme])
+
+    await setTheme("custom:ocean", "light")
+    expect(statusColors()).toEqual(STANDARD_STATUS.light)
+
+    await setThemeMode("dark")
+    expect(statusColors()).toEqual(STANDARD_STATUS.dark)
+  })
+
+  it("gives a preview without status colors the standard ones", async () => {
+    registerBuiltinThemes([{
+      id: "minimal",
+      name: "Minimal",
+      cssVars: { light: { ...cssVars.light, "--success": "lime", "--warning": "orange", "--info": "cyan" }, dark: cssVars.dark },
+    }])
+    await setTheme("minimal", "light")
+
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
+
+    expect(statusColors()).toEqual(STANDARD_STATUS.light)
+  })
+
+  it("keeps the standard success and info when a custom theme sets only warning", async () => {
+    registerCustomThemes([{ ...customTheme, rawCss: ":root { --warning: olive; } .dark { --warning: gold; }" }])
+
+    await setTheme("custom:ocean", "light")
+
+    expect(statusColors()).toEqual({ ...STANDARD_STATUS.light, "--warning": "olive" })
+  })
+
+  it("leaves no status color of the last built-in theme on the page", async () => {
+    registerBuiltinThemes([
+      {
+        id: "meridian",
+        name: "Meridian",
+        cssVars: { light: { ...cssVars.light, "--success": "lime", "--warning": "orange", "--info": "cyan" }, dark: cssVars.dark },
+      },
+      { id: "minimal", name: "Minimal", cssVars },
+    ])
+    await setTheme("meridian", "light")
+    expect(statusColors()["--warning"]).toBe("orange")
+
+    await setTheme("minimal")
+
+    expect(statusColors()).toEqual(STANDARD_STATUS.light)
   })
 })

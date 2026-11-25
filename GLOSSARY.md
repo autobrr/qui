@@ -83,7 +83,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Theme preview**: A custom theme that one browser shows before the user saves it. It reaches no theme slot and no other browser, and a page reload ends it.
 - **Default theme visit**: A page visit that opens with `?theme=default` in the address. qui shows the default theme until the next page load without the parameter, and it reads and writes no theme slot and no theme cache in the browser. A theme selection in a picker ends it. _Avoid_: safe mode.
 - **Hidden theme**: A theme that the quick theme pickers do not show. A community theme starts hidden, unless qui showed it before it became a community theme. The user shows or hides a theme in Settings → Themes. _Avoid_: disabled theme.
-- **Status color**: One of the theme colors for success, warning, and info. Each built-in theme sets its own, and a custom theme without them gets the standard ones. _Avoid_: semantic color, state color.
+- **Status color**: One of the theme colors for success, warning, and info, with one value in light and one in dark. Each built-in theme sets its own. A theme whose error color is gray uses grays. A custom theme without them gets the standard ones. _Avoid_: semantic color, state color.
 
 ## Client settings
 
