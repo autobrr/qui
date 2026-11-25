@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,8 @@ const (
 
 	cacheCleanupInterval = 30 * time.Minute
 )
+
+var ErrTitleUnanswered = errors.New("arr lookup: an instance answered but could not look up this title")
 
 type ContentType string
 
@@ -292,8 +295,9 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	}
 
 	if !anyQueried {
-		// Every instance failed before giving an authoritative answer: surface
-		// the outage instead of a look-alike "no IDs" result, and cache nothing.
+		if slices.ContainsFunc(asked, func(a askedInstance) bool { return a.parseAnswered }) {
+			return nil, ErrTitleUnanswered
+		}
 		return nil, fmt.Errorf("arr lookup: all %d instance(s) failed to answer", len(instances))
 	}
 
