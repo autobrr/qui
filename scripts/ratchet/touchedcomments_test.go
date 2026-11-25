@@ -25,6 +25,7 @@ func TestTouchedComments(t *testing.T) {
 		{"a change in front of a comment", files{"a.go": was}, files{"a.go": "package p\n\nfunc f() {\n\t// why\n\tg(1)\n\th(1) // how\n}\n"}, []string{"a.go:6"}},
 		{"code deleted below a comment", files{"a.go": was}, files{"a.go": "package p\n\nfunc f() {\n\t// why\n\th() // how\n}\n"}, []string{"a.go:4"}},
 		{"a new or reworded comment", files{"a.go": was}, files{"a.go": "package p\n\nfunc f() {\n\t// because\n\tg(1)\n\th() // how\n}\n"}, []string{"a.go:4"}},
+		{"a slash added to a comment", files{"a.go": was}, files{"a.go": "package p\n\nfunc f() {\n\t// why/\n\tg(1)\n\th() // how\n}\n"}, []string{"a.go:4"}},
 		{"a comment copied with its code", files{"a.go": was}, files{"a.go": "package p\n\nfunc f() {\n\t// why\n\tg(1)\n\th() // how\n\th() // how\n}\n"}, []string{"a.go:7"}},
 		{"a comment copied to a file that sorts first", files{"b.go": was}, files{"a.go": was, "b.go": was}, []string{"a.go:4", "a.go:6"}},
 		{"a change below a directive under a comment", files{"a.go": "package p\n\n// why\n//nolint:unused // reason\nfunc f() {}\n"}, files{"a.go": "package p\n\n// why\n//nolint:unused // reason\nfunc f(int) {}\n"}, []string{"a.go:3"}},

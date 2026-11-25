@@ -92,9 +92,9 @@ func (b Block) codeFrom(code map[int]string, lines []string) string {
 	if b.Trailing {
 		return code[b.Line]
 	}
-	for n := b.End + 1; n <= len(lines) && strings.TrimSpace(lines[n-1]) != ""; n++ {
-		if code[n] != "" {
-			return code[n]
+	for i, line := range lines[b.End:] {
+		if c := code[b.End+1+i]; c != "" || strings.TrimSpace(line) == "" {
+			return c
 		}
 	}
 	return ""
@@ -238,7 +238,8 @@ func closesBlock(line string) bool {
 
 func tokens(src []byte) []codeToken {
 	var s scanner.Scanner
-	file := token.NewFileSet().AddFile("", -1, len(src))
+	fset := token.NewFileSet()
+	file := fset.AddFile("", fset.Base(), len(src))
 	s.Init(file, src, nil, 0)
 	var out []codeToken
 	for {

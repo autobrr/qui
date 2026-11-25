@@ -25,15 +25,14 @@ type attachedComment struct {
 }
 
 func attached(b gocomments.Block) attachedComment {
-	return attachedComment{text: strings.TrimRight(strings.Join(strings.Fields(b.Text), " "), " /"), code: b.Code}
+	return attachedComment{text: strings.TrimSuffix(strings.Join(strings.Fields(b.Text), " "), " //"), code: b.Code}
 }
 
 func touchedCommentProblems(base string) ([]string, error) {
-	out, err := exec.CommandContext(context.Background(), "git", "merge-base", base, "HEAD").Output()
-	if err != nil {
-		return nil, fmt.Errorf("git merge-base %s HEAD: %w", base, err)
+	fork := base
+	if out, err := exec.CommandContext(context.Background(), "git", "merge-base", base, "HEAD").Output(); err == nil {
+		fork = string(bytes.TrimSpace(out))
 	}
-	fork := string(bytes.TrimSpace(out))
 	files, err := changedGoFiles(fork)
 	if err != nil {
 		return nil, err
