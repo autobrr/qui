@@ -9,3 +9,12 @@ repos:
       - id: check-yaml
       - id: check-json
       - id: check-toml
+
+  - repo: local
+    hooks:
+      - id: touched-comments
+        name: comments on changed Go code
+        entry: go run ./scripts/ratchet -touched-comments
+        language: system
+        types: [go]
+        pass_filenames: false

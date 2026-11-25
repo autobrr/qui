@@ -5,6 +5,7 @@ package gocomments
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -19,7 +20,7 @@ import (
 	"strings"
 )
 
-var directive = regexp.MustCompile(`^//(go:|nolint\b| nolint:|exhaustive:| ?#nosec\b| Deprecated: | Copyright \(c\) | SPDX-License-Identifier: | regression: #\d+)`)
+var directive = regexp.MustCompile(`^//(go:|nolint\b| nolint:|exhaustive:| ?#nosec\b| Deprecated: | Copyright \(c\) | SPDX-License-Identifier: | regression: #\d+| goes away (in #\d+|when the maintainer decides))`)
 
 var ErrCodeChanged = errors.New("the code tokens changed")
 
@@ -29,6 +30,7 @@ type Block struct {
 	End      int    `json:"end"`
 	Trailing bool   `json:"trailing"`
 	Text     string `json:"text"`
+	Code     string `json:"-"`
 
 	comments []comment
 }
@@ -37,6 +39,12 @@ type comment struct {
 	start, end    int
 	line, endLine int
 	text          string
+}
+
+type codeToken struct {
+	line int
+	kind token.Token
+	text string
 }
 
 type span struct {
@@ -73,7 +81,31 @@ func Blocks(path string, src []byte) ([]Block, error) {
 		}
 		blocks = append(blocks, Block{File: path, Line: c.line, End: c.endLine, Trailing: !alone, Text: c.text, comments: []comment{c}})
 	}
+	code, lines := codeLines(src), strings.Split(string(src), "\n")
+	for i := range blocks {
+		blocks[i].Code = blocks[i].codeFrom(code, lines)
+	}
 	return blocks, nil
+}
+
+func (b Block) codeFrom(code map[int]string, lines []string) string {
+	if b.Trailing {
+		return code[b.Line]
+	}
+	for n := b.End + 1; n <= len(lines) && strings.TrimSpace(lines[n-1]) != ""; n++ {
+		if code[n] != "" {
+			return code[n]
+		}
+	}
+	return ""
+}
+
+func codeLines(src []byte) map[int]string {
+	code := map[int]string{}
+	for _, t := range tokens(src) {
+		code[t.line] += cmp.Or(t.text, t.kind.String()) + " "
+	}
+	return code
 }
 
 func Strip(path string, src []byte, doomed []Block) (out []byte, missed []Block, err error) {
@@ -108,7 +140,7 @@ func Strip(path string, src []byte, doomed []Block) (out []byte, missed []Block,
 }
 
 func SameCode(a, b []byte) bool {
-	return slices.Equal(tokens(a), tokens(b))
+	return slices.EqualFunc(tokens(a), tokens(b), func(x, y codeToken) bool { return x.kind == y.kind && x.text == y.text })
 }
 
 func banned(path string, src []byte) ([]comment, error) {
@@ -204,19 +236,19 @@ func closesBlock(line string) bool {
 	return line != "" && strings.ContainsRune("})]", rune(line[0]))
 }
 
-func tokens(src []byte) []string {
+func tokens(src []byte) []codeToken {
 	var s scanner.Scanner
-	fset := token.NewFileSet()
-	s.Init(fset.AddFile("", fset.Base(), len(src)), src, nil, 0)
-	var out []string
+	file := token.NewFileSet().AddFile("", -1, len(src))
+	s.Init(file, src, nil, 0)
+	var out []codeToken
 	for {
-		_, tok, lit := s.Scan()
+		pos, tok, lit := s.Scan()
 		if tok == token.EOF {
 			return out
 		}
 		if tok == token.SEMICOLON {
 			lit = ""
 		}
-		out = append(out, tok.String(), lit)
+		out = append(out, codeToken{line: file.Line(pos), kind: tok, text: lit})
 	}
 }

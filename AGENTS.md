@@ -24,7 +24,7 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 
 | Rule | Check |
 |---|---|
-| No code comments | `make lint-ratchet` (`comments`), ESLint `qui/no-comments` |
+| No code comments, and a change deletes the old comments on the code that it touches | `make lint-ratchet` (`comments`, and rule 8 for touched Go code), ESLint `qui/no-comments`. Touched code in `web/`: judgment |
 | No real `time.Sleep` in a Go test | `make lint-ratchet` (`testsleep`) |
 | A struct, not `map[string]any` | `make lint-ratchet` (`mapany`) |
 | No DEBUG or INFO line about an off feature | `make lint-ratchet` (`offlog`) |

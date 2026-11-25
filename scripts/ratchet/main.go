@@ -29,6 +29,7 @@ type counts map[string]map[string]int
 func main() {
 	base := flag.String("base", "origin/develop", "git ref whose allowlist this one may not exceed")
 	updateComments := flag.Bool("update-comments", false, "write the comment count of each Go file to the allowlist, then stop")
+	touchedOnly := flag.Bool("touched-comments", false, "check only the comments on changed Go code, then stop")
 	lower := flag.Bool("lower", false, "lower each allowlist entry above the count of its file before the check, and delete an entry at 0")
 	flag.Parse()
 
@@ -36,6 +37,15 @@ func main() {
 		if err := writeCommentCounts(); err != nil {
 			fail(err)
 		}
+		return
+	}
+
+	if *touchedOnly {
+		touched, err := touchedCommentProblems(*base)
+		if err != nil {
+			fail(err)
+		}
+		report(touched)
 		return
 	}
 
@@ -109,14 +119,23 @@ func main() {
 		fail(err)
 	}
 	problems = append(problems, oversized...)
+	touched, err := touchedCommentProblems(*base)
+	if err != nil {
+		fail(err)
+	}
+	problems = append(problems, touched...)
 
 	for _, linter := range slices.Sorted(maps.Keys(got)) {
 		fmt.Printf("ratchet: %s has %d problems in %d files\n", linter, sum(got[linter]), len(got[linter]))
 	}
+	report(problems)
+}
+
+func report(problems []string) {
+	for _, p := range problems {
+		fmt.Println("ratchet:", p)
+	}
 	if len(problems) > 0 {
-		for _, p := range problems {
-			fmt.Println("ratchet:", p)
-		}
 		os.Exit(1)
 	}
 }
