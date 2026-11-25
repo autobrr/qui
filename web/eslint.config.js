@@ -423,10 +423,19 @@ export default tseslint.config([
     settings: {
       shadcn: {
         note: 'Ask the maintainer before you add an option to a primitive.',
+        ui: '@/components/ui',
       },
     },
     rules: {
       'shadcn/no-arbitrary-values': ['error', { allow: ['layout'] }],
+      'shadcn/no-restyle': ['error', {
+        deny: [],
+        contracts: [{
+          pattern: '^(Button|Badge|Label)$',
+          allow: ['layout', 'color'],
+          message: { typography: '"{{className}}" is not allowed on <{{component}}>: <{{component}}> owns its {{category}}. Use a size: {{sizes}}.' },
+        }],
+      }],
       'shadcn/no-unknown-classes': ['error', { allow: ['ss-*', 'fi', 'animated-logo-element', 'toaster'] }],
       'shadcn/require-static-classes': 'error',
     },
@@ -435,6 +444,7 @@ export default tseslint.config([
     files: ['src/components/{ui,kit}/**/*.{ts,tsx}'],
     rules: {
       'shadcn/no-arbitrary-values': 'off',
+      'shadcn/no-restyle': 'off',
       'shadcn/require-static-classes': 'off',
     },
   },
