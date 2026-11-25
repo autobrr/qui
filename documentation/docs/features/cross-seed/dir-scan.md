@@ -77,7 +77,7 @@ qui requires direct read access to the files, either on the same host or through
 Dir Scan also works when the target is a remote instance. qui then reads the directory over SSH.
 
 - The **Directory Path** is a path on the remote machine, and it must be absolute.
-- You cannot add the same directory path two times, also for two different instances.
+- You can add a directory path one time for each instance. Two instances can use the same path. See [Same path on two instances](#same-path-on-two-instances).
 - Hardlink mode and regular adds work. Reflink mode needs local filesystem access.
 - On a remote instance where qui only has SFTP, Dir Scan cannot detect files that already seed. Dir Scan searches each such file one time. Files that an earlier scan marked as already seeding keep that status until you click **Reset Scan Progress**.
 - qBittorrent can run in a container where a save path differs from the path that the SSH user sees. Dir Scan then cannot detect the already-seeding files of the torrents in that save path.
@@ -408,7 +408,8 @@ POST /api/dir-scan/webhook/scan?apikey=YOUR_API_KEY&instanceId=2
 ```
 
 - It works for the Sonarr, Radarr, Lidarr, and Readarr payloads and for the plain `{"path": ...}` body.
-- Without `instanceId`, a path that matches directories of two instances returns `409`. The message lists the instance IDs.
+- Without `instanceId`, a webhook returns `409` when its best match is the same directory path on two instances. The message lists the instance IDs.
+- A longer directory path still wins. If one instance has `/data/media` and another has `/data/media/tv`, a webhook for `/data/media/tv/Show Name` without `instanceId` scans the second one.
 - With `instanceId`, the **Test** button in the *arr app returns `404` when that instance has no enabled Dir Scan directory.
 - The instance ID is the number in the address of the instance page, for example `2` in `/instances/2`.
 
