@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/testutil/logbudget"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 var alternateTitlesMatcher = (&Service{releaseCache: NewReleaseCache()}).matcher()
@@ -236,21 +237,21 @@ func TestAlternateTitlesCatchUpWhenASearchFailsTwice(t *testing.T) {
 					time.Sleep(alternateTitleRetry)
 					synctest.Wait()
 				}
-				require.False(t, a.caughtUp())
+				require.False(t, a.caughtUp(string(releases.ContentTypeTV)))
 
 				time.Sleep(alternateTitleRetry)
 				synctest.Wait()
-				require.True(t, a.caughtUp())
+				require.True(t, a.caughtUp(string(releases.ContentTypeTV)))
 
 				holdName(a, "Copper.Fjord.S01E01.1080p.WEB-DL.H.264-GRP", 1)
 				time.Sleep(time.Minute)
 				synctest.Wait()
-				require.False(t, a.caughtUp(), "the first failed search of another title")
+				require.False(t, a.caughtUp(string(releases.ContentTypeTV)), "the first failed search of another title")
 
 				source.set(func(f *fakeAlternateTitles) { f.down = true })
 				time.Sleep(alternateTitleRetry)
 				synctest.Wait()
-				require.False(t, a.caughtUp(), "an outage after a failed search")
+				require.False(t, a.caughtUp(string(releases.ContentTypeTV)), "an outage after a failed search")
 			})
 		})
 	}
@@ -302,10 +303,10 @@ func TestAlternateTitlesOweNothingForATitleThatLeft(t *testing.T) {
 				a := runAlternateTitles(t, source)
 				title := holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
 				synctest.Wait()
-				require.False(t, a.caughtUp())
+				require.False(t, a.caughtUp(string(releases.ContentTypeTV)))
 
 				a.drop(title)
-				require.True(t, a.caughtUp())
+				require.True(t, a.caughtUp(string(releases.ContentTypeTV)))
 			})
 		})
 	}

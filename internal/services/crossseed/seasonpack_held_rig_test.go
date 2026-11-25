@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 const (
@@ -128,5 +129,10 @@ func undecodableTorrent() string {
 
 func requireCaughtUp(t *testing.T, svc *Service) {
 	t.Helper()
-	require.Eventually(t, svc.heldTitles.alternates.caughtUp, 30*time.Second, 5*time.Millisecond)
+	requireCaughtUpOn(t, svc, string(releases.ContentTypeTV))
+}
+
+func requireCaughtUpOn(t *testing.T, svc *Service, contentType string) {
+	t.Helper()
+	require.Eventually(t, func() bool { return svc.heldTitles.alternates.caughtUp(contentType) }, 30*time.Second, 5*time.Millisecond)
 }
