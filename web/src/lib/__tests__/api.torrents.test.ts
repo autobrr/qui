@@ -14,14 +14,6 @@ import { server } from "@/test/msw/server"
 import "@/i18n"
 import type { TorrentResponse } from "@/types"
 
-// Contract tests for the lib/api.ts "torrents" method group (issue #1931).
-// These call the REAL api client (no @/lib/api mock) and intercept HTTP with
-// MSW, asserting BOTH the outgoing request serialization (verb / path / query)
-// and the response parsing / normalization into the typed return value, plus
-// the real error contract (APIError, not a plain Error).
-
-// Capture the outgoing Request so a test can assert its serialization. Each
-// override clones the request because the body/url stream can only be read once.
 let capturedRequest: Request | undefined
 
 beforeEach(() => {
@@ -120,7 +112,6 @@ describe("api.getTorrents", () => {
 
       const raw = capturedUrl().searchParams.get("filters")
       expect(raw).not.toBeNull()
-      // URLSearchParams decodes the value for us; it must equal the JSON source.
       expect(JSON.parse(raw as string)).toEqual(filters)
     })
 
@@ -274,7 +265,6 @@ describe("api.getCrossInstanceTorrents", () => {
 
       await api.getCrossInstanceTorrents({ instanceIds: [1, 2, 3] })
 
-      // URLSearchParams.get URL-decodes, so the %2C separators come back as commas.
       expect(capturedUrl().searchParams.get("instanceIds")).toBe("1,2,3")
     })
 
@@ -311,7 +301,6 @@ describe("api.getCrossInstanceTorrents", () => {
       expect(result.crossInstanceTorrents).toHaveLength(1)
       expect(result.crossInstanceTorrents?.[0].instanceId).toBe(5)
       expect(result.crossInstanceTorrents?.[0].instanceName).toBe("seedbox")
-      // The identical normalized array is written onto BOTH fields.
       expect(result.cross_instance_torrents).toBe(result.crossInstanceTorrents)
       expect(errorSpy).not.toHaveBeenCalled()
     })
@@ -335,7 +324,6 @@ describe("api.getCrossInstanceTorrents", () => {
       expect(result.crossInstanceTorrents).toHaveLength(2)
       expect(result.crossInstanceTorrents?.map(t => t.instanceId)).toEqual([1, 2])
       expect(result.total).toBe(2)
-      // Pass-through reuses the parsed array for both casings.
       expect(result.cross_instance_torrents).toBe(result.crossInstanceTorrents)
     })
   })
@@ -357,10 +345,6 @@ describe("api.getCrossInstanceTorrents", () => {
   })
 })
 
-// Every method that puts `filters` on the wire folds the sidebar's
-// expandedCategories into categories and drops the expanded fields, because
-// the backend FilterOptions has no such field (ADR 0010, #2750). A new api
-// method that takes `filters` joins this table.
 describe("filters serialization (expandedCategories fold)", () => {
   const filters = makeFilters({
     categories: ["Movies"],

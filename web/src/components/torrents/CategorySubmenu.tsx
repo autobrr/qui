@@ -37,8 +37,6 @@ interface CategorySubmenuProps {
   useSubcategories?: boolean
 }
 
-// Threshold for when to use virtualization vs simple rendering
-// Below this, simple CSS scrolling is faster
 const VIRTUALIZATION_THRESHOLD = 250
 
 export const CategorySubmenu = memo(function CategorySubmenu({
@@ -51,14 +49,11 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   useSubcategories = false,
 }: CategorySubmenuProps) {
   const { t } = useTranslation("torrents")
-  // Store callback in ref so it doesn't trigger re-renders
   const onSetCategoryRef = useRef(onSetCategory)
   onSetCategoryRef.current = onSetCategory
 
   const [searchQuery, setSearchQuery] = useState("")
-  // Use deferred value to prevent search from blocking the UI
   const deferredSearchQuery = useDeferredValue(searchQuery)
-  // Use state ref so the virtualizer re-initializes
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null)
 
   const SubTrigger = type === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger
@@ -70,7 +65,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   const hasCategories = Object.keys(availableCategories).length > 0
   const categoryCount = Object.keys(availableCategories).length
 
-  // Use deferred value for filtering to prevent blocking
   const filteredCategories = useMemo(() => {
     const query = deferredSearchQuery.trim().toLowerCase()
 
@@ -133,7 +127,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   const hasFilteredCategories = filteredCategories.length > 0
   const shouldUseVirtualization = categoryCount > VIRTUALIZATION_THRESHOLD
 
-  // Only initialize virtualizer if we need it
   const virtualizer = useVirtualizer({
     count: shouldUseVirtualization ? filteredCategories.length : 0,
     getScrollElement: () => scrollContainer,
@@ -141,7 +134,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
     overscan: 5,
   })
 
-  // Render a single category item (shared between virtualized and non-virtualized)
   const renderCategoryItem = (category: { name: string; displayName: string; level: number }) => (
     <MenuItem
       key={category.name}
@@ -176,7 +168,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         {t("categorySubmenu.setCategory")}
       </SubTrigger>
       <SubContent className="p-0 min-w-[240px]">
-        {/* Remove Category option */}
         <MenuItem
           onClick={() => onSetCategoryRef.current("")}
           disabled={isPending}
@@ -191,7 +182,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
           <>
             <Separator />
 
-            {/* Search bar - only show if there are many categories */}
             {categoryCount > 10 && (
               <>
                 <div className="p-2" onClick={(e) => e.stopPropagation()}>
@@ -213,7 +203,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
           </>
         )}
 
-        {/* Category list - use virtualization only for large lists */}
         {hasCategories && (
           <div
             ref={setScrollContainer}
@@ -221,7 +210,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
           >
             {hasFilteredCategories ? (
               shouldUseVirtualization ? (
-                // Virtualized rendering for large lists
                 <div
                   style={{
                     height: `${virtualizer.getTotalSize()}px`,
@@ -250,7 +238,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
                   })}
                 </div>
               ) : (
-                // Simple rendering for smaller lists - much faster!
                 <div className="py-1">
                   {filteredCategories.map((category) => renderCategoryItem(category))}
                 </div>
@@ -262,13 +249,10 @@ export const CategorySubmenu = memo(function CategorySubmenu({
             )}
           </div>
         )}
-
-        {/* Creating new categories from this menu is disabled. */}
       </SubContent>
     </Sub>
   )
 }, (prevProps, nextProps) => {
-  // Custom comparison that ignores onSetCategory reference changes
   return (
     prevProps.type === nextProps.type &&
     prevProps.hashCount === nextProps.hashCount &&

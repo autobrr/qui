@@ -35,8 +35,6 @@ type partialPoolV2Leaf struct {
 	root   string
 }
 
-// buildPartialPoolFileDescriptors joins v2 roots to files by exact path and
-// length. File-tree traversal order is never used as an identity signal.
 func buildPartialPoolFileDescriptors(info *metainfo.Info) ([]partialPoolFileDescriptor, error) {
 	if info == nil {
 		return nil, errors.New("torrent info is required")
@@ -186,8 +184,6 @@ func buildPartialPoolAdmissionFiles(descriptors []partialPoolFileDescriptor, fil
 	return rows, missingBytes, nil
 }
 
-// partialPoolReplaceableTargets records missing paths immediately before the
-// qBittorrent add so only placeholders created after that point may be replaced.
 func partialPoolReplaceableTargets(rootPath string, descriptors []partialPoolFileDescriptor) map[string]struct{} {
 	replaceable := make(map[string]struct{})
 	member := &models.CrossSeedPartialPoolMember{RootPath: rootPath}
@@ -281,8 +277,6 @@ func partialPoolLocalPath(member *models.CrossSeedPartialPoolMember, file *model
 	return target, nil
 }
 
-// validatePartialPoolPathInsideRoot rejects lexical and symlink/reparse-point
-// escapes for existing and not-yet-created targets.
 func validatePartialPoolPathInsideRoot(root, target string) error {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
@@ -310,8 +304,6 @@ func validatePartialPoolPathInsideRoot(root, target string) error {
 	return nil
 }
 
-// Resolve existing ancestors for both root and target, so a missing root uses
-// the same spelling as its target beneath a symlink or Windows short-path alias.
 func resolvePartialPoolPath(fullPath string) (string, error) {
 	existing := fullPath
 	var suffix []string

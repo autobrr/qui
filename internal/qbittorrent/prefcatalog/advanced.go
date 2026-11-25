@@ -14,11 +14,9 @@ var advancedEntries = slices.Concat(
 	[]Entry{
 		{Key: "resume_data_storage_type", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSelect, OptionSource: SourceFixed, Options: fixedOptions("Legacy", "SQLite")},
 		{Key: "torrent_content_remove_option", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSelect, OptionSource: SourceFixed, Options: fixedOptions("Delete", "MoveToTrash")},
-		// The memory working set limit has an effect only on libtorrent 2, and not on Linux or macOS.
 		{Key: "memory_working_set_limit", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlNumber, WireUnit: "MiB", DisplayUnit: "MiB", Gate: Gate{MinLibtorrent: "2", NotPlatforms: []string{"linux", "macos"}}},
 		{Key: "current_network_interface", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSelect, OptionSource: SourceNetworkInterfaces},
 		{Key: "current_interface_address", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSelect, OptionSource: SourceInterfaceAddresses},
-		// qBittorrent 4.6 and later send the readable name of the saved interface.
 		{Key: "current_interface_name", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlText, Mode: ReadOnly, Reason: "qBittorrent sets it from the network interface"},
 		{Key: "save_resume_data_interval", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlNumber, WireUnit: "min", DisplayUnit: "min"},
 		{Key: "save_statistics_interval", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlNumber, WireUnit: "min", DisplayUnit: "min"},
@@ -29,10 +27,8 @@ var advancedEntries = slices.Concat(
 		{Key: "enable_embedded_tracker", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSwitch},
 		{Key: "embedded_tracker_port", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlNumber},
 		{Key: "embedded_tracker_port_forwarding", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSwitch},
-		// qBittorrent sends the platform "unknown" on a platform that is not Linux, macOS, or Windows.
 		{Key: "mark_of_the_web", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSwitch, Gate: Gate{NotPlatforms: []string{"linux", "unknown"}}},
 		{Key: "ignore_ssl_errors", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSwitch},
-		// start_paused pauses the whole session at startup. It is not the setting that adds new torrents stopped.
 		{Key: "start_paused", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSwitch},
 		{Key: "shutdown_timeout", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlNumber, WireUnit: "s", DisplayUnit: "s"},
 		{Key: "bdecode_depth_limit", Tab: TabAdvanced, Section: "libtorrent", Control: ControlNumber},
@@ -51,7 +47,6 @@ var advancedEntries = slices.Concat(
 		{Key: "disk_io_write_mode", Tab: TabAdvanced, Section: "libtorrent", Control: ControlSelect, OptionSource: SourceFixed, Options: []Option{
 			{Value: 0}, {Value: 1}, {Value: 2, Gate: Gate{MinLibtorrent: "2.0.6"}},
 		}},
-		// qBittorrent 4.3 and 4.4 send enable_os_cache. Later versions replace it with the disk I/O read and write modes.
 		{Key: "enable_os_cache", Tab: TabAdvanced, Section: "libtorrent", Control: ControlSwitch},
 		{Key: "enable_coalesce_read_write", Tab: TabAdvanced, Section: "libtorrent", Control: ControlSwitch, Gate: libtorrent1Only},
 		{Key: "enable_piece_extent_affinity", Tab: TabAdvanced, Section: "libtorrent", Control: ControlSwitch},

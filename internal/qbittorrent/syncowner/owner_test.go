@@ -51,8 +51,6 @@ func TestOwner_WriteToSnapshotTorrentFailsNextSyncWithHash(t *testing.T) {
 	require.Contains(t, fmt.Sprint(recovered), hash)
 }
 
-// No code outside the owner may hold the sync object of go-qbittorrent, so no
-// exported method of the owner hands it out or takes it in (ADR 0051).
 func TestOwner_NoMethodPassesTheLibrarySyncObject(t *testing.T) {
 	owner := reflect.TypeFor[*syncowner.Owner]()
 	for method := range owner.Methods() {
@@ -80,9 +78,6 @@ func TestCarriesLibrarySync(t *testing.T) {
 	}
 }
 
-// carriesLibrarySync reports whether code outside the owner can get the sync
-// object of go-qbittorrent from a value of typ: the value, behind a pointer, in
-// a list, a map, a channel, or an exported field, or through a callback.
 func carriesLibrarySync(typ reflect.Type, seen map[reflect.Type]bool) bool {
 	if typ == reflect.TypeFor[qbt.SyncManager]() {
 		return true

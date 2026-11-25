@@ -17,8 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/services/activity"
 )
 
-// connectActivityStream opens an activity-only SSE connection (no torrent
-// streams) and returns a reader plus cleanup.
 func connectActivityStream(t *testing.T, srv string) (*sseReader, func()) {
 	t.Helper()
 
@@ -59,15 +57,12 @@ func TestActivityOnlyConnectionReceivesEvents(t *testing.T) {
 	reader, cleanup := connectActivityStream(t, srv.URL)
 	t.Cleanup(cleanup)
 
-	// Serve registers the topic before it writes the keepalive that lets connect return.
 	require.Len(t, manager.snapshotActivityTopics(), 1)
 
-	// An activity-only connection must not start a per-instance sync loop.
 	stats := manager.Stats()
 	require.Equal(t, 0, stats.ActiveSyncLoops, "activity-only connection should not start a sync loop")
 	require.Equal(t, 0, stats.ActiveSubscriptions, "activity-only connection should register no torrent subscription")
 
-	// An event published before go-sse subscribes the session is dropped by design.
 	receive(t, subscribed, "the session to subscribe")
 	hub.Publish(activity.Event{Kind: activity.KindBackupRun, InstanceID: 7, ResourceID: "42"})
 	ev := reader.waitForEvent(t, streamEventActivity, 5*time.Second)
@@ -98,11 +93,8 @@ func TestActivityTopicReleasedOnDisconnect(t *testing.T) {
 	t.Cleanup(srv.Close)
 	_, cleanup := connectActivityStream(t, srv.URL)
 
-	// Serve registers the topic before it writes the keepalive that lets connect return.
 	require.Len(t, manager.snapshotActivityTopics(), 1)
 
-	// Closing the client must unregister the activity topic so events stop fanning
-	// out to a dead connection.
 	cleanup()
 
 	receive(t, served, "Serve to return")
@@ -110,8 +102,6 @@ func TestActivityTopicReleasedOnDisconnect(t *testing.T) {
 }
 
 func TestServeRejectsEmptyRequestWithoutActivity(t *testing.T) {
-	// With no activity hub wired and no streams param, the request is rejected as
-	// before (activity mode is gated on a configured hub).
 	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	srv := startStreamServer(t, manager)
 

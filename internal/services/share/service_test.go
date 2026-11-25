@@ -205,9 +205,6 @@ func (r *rig) announce(announceURL, infoHash string, port, left int, event strin
 	return peers
 }
 
-// sendAnnounce sends one announce and returns the peers and the failure
-// reason of the answer. A from address goes in X-Forwarded-For, for a
-// tracker that trusts 127.0.0.1 as a proxy.
 func (r *rig) sendAnnounce(from, announceURL, infoHash string, port, left int, event string) ([]netip.AddrPort, string) {
 	r.t.Helper()
 	resp, err := http.DefaultClient.Do(r.announceRequest(from, announceURL, infoHash, port, left, event))
@@ -324,7 +321,6 @@ func TestAShareSeedsAShareTorrentThatQuisTrackerAnnounces(t *testing.T) {
 	require.Zero(t, listed.Downloaded)
 }
 
-// regression: #4231
 func TestQuisTrackerAnswersTheFirstAnnounceOfAShareTorrent(t *testing.T) {
 	for name, otherShare := range map[string]bool{
 		"the first Share":                false,
@@ -335,8 +331,6 @@ func TestQuisTrackerAnswersTheFirstAnnounceOfAShareTorrent(t *testing.T) {
 			if otherShare {
 				r.start(share.Request{Hash: r.seed("Other.Show.S01.1080p-GRP")})
 			}
-			// qBittorrent announces a torrent that starts at once, so the
-			// announce goes out while the add runs.
 			var status int
 			var announceErr error
 			r.stub.OnAdd = func(hash string) {
@@ -378,7 +372,6 @@ func TestAShareWithoutTheEndAtTheFirstDownloadRunsOn(t *testing.T) {
 	require.Equal(t, share.StateActive, r.get(sh.ID).State)
 }
 
-// regression: #4231
 func TestAnEndReasonWithoutACodeIsOther(t *testing.T) {
 	t.Parallel()
 
@@ -568,7 +561,6 @@ func (r *rig) stored(id int64) *share.Share {
 	return sh
 }
 
-// regression: #4231
 func TestTheCheckWritesTheActivityAgainAfterAFailedWrite(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
@@ -583,7 +575,6 @@ func TestTheCheckWritesTheActivityAgainAfterAFailedWrite(t *testing.T) {
 	require.Len(t, r.stored(sh.ID).Peers, 1, "the activity of the Share is saved")
 }
 
-// regression: #4231
 func TestAnEndingShareKeepsItsActivityUntilQuiSavesIt(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
@@ -629,7 +620,6 @@ func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	require.Equal(t, []share.Peer{{Address: "127.0.0.1:6881", Progress: 1, SeenAt: r.clock.Now()}}, ended.Peers)
 }
 
-// regression: #4231
 func TestTheShareTrackerStartsAtTheNextCheckOnceItsPortIsFree(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
@@ -672,7 +662,6 @@ func TestAShareKeepsToTheLimitsOfTheSettings(t *testing.T) {
 	r.start(share.Request{Hash: other})
 }
 
-// regression: #4231
 func TestAStartThatTheUserCancelsAfterTheAddEndsItsShare(t *testing.T) {
 	r := newRig(t)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -820,7 +809,6 @@ func TestTheShareSettingsMoveTheTracker(t *testing.T) {
 	require.ErrorIs(t, r.svc.SaveSettings(t.Context(), changed), share.ErrInvalidSettings)
 }
 
-// regression: #4231
 func TestTheShareSettingsKeepTheTrackerWhileASharesRunsOnIt(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
@@ -875,7 +863,6 @@ func TestUnlockLetsTheNextDownloaderIn(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers)
 }
 
-// regression: #4231
 func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
 	r := newRig(t)
 	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
@@ -911,7 +898,6 @@ func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "Unlock after a restart lets the next downloader in")
 }
 
-// regression: #4231
 func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing.T) {
 	r := newRig(t)
 	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
@@ -923,8 +909,6 @@ func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing
 	const first, next = "198.51.100.7", "198.51.100.8"
 	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
 
-	// The announce of the first downloader takes the lock, and waits in the
-	// lookup of the public peer address until the next downloader holds it.
 	looking, release := make(chan struct{}), make(chan struct{})
 	hold := func() {
 		close(looking)
@@ -955,7 +939,6 @@ func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "the next downloader holds the Share after a restart")
 }
 
-// regression: #4231
 func TestTheCheckStoresTheLockHolderAfterAFailedWrite(t *testing.T) {
 	r := newRig(t)
 	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
@@ -977,7 +960,6 @@ func TestTheCheckStoresTheLockHolderAfterAFailedWrite(t *testing.T) {
 	require.Equal(t, netip.MustParseAddr(first), r.stored(sh.ID).Holder, "the lock holder outlives a restart of qui")
 }
 
-// regression: #4231
 func TestALockedOutDownloaderDoesNotEndTheShare(t *testing.T) {
 	for _, event := range []string{"completed", "stopped"} {
 		t.Run(event, func(t *testing.T) {
@@ -1022,9 +1004,6 @@ func TestUnlockIsRefused(t *testing.T) {
 	require.EqualError(t, err, "Unlock needs qui's own tracker. With an outside tracker, every downloader gets the address.")
 }
 
-// qBittorrent drops a peer from its list when that peer has every piece, so
-// the list never shows a complete peer.
-// regression: #4242
 func TestAShareOnAnOutsideTrackerEndsWhenTheClientSentEveryByte(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

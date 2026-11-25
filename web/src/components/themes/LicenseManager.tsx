@@ -30,7 +30,6 @@ import { toast } from "sonner"
 import { LICENSE_PORTAL_URL, SUPPORTER_PRODUCT_NAME } from "@/lib/dodo-constants"
 import { LicenseError, LicensePortalLink } from "./LicenseError"
 
-// Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
   if (key.length <= 8) {
     return "***"
@@ -57,27 +56,22 @@ export function LicenseManager({
   const activateLicense = useActivateLicense()
   const deleteLicense = useDeleteLicense()
   const { reset: resetActivation, isError: activationFailed } = activateLicense
-  // The card and the dialog share one activate mutation. Clear a failed activation when the dialog opens or closes.
-  // Never reset a pending one: that enables the activate buttons again, and a second click sends a second activation.
   const setAddLicenseOpen = useCallback((open: boolean) => {
     if (activationFailed) {
       resetActivation()
     }
     setShowAddLicense(open)
   }, [activationFailed, resetActivation])
-  // The support dialog shows the supporter key. This card shows the theme license.
   const primaryLicense = licenses?.find((license) => license.productName !== SUPPORTER_PRODUCT_NAME)
   const supporterKey = licenses?.find((license) => license.productName === SUPPORTER_PRODUCT_NAME)
   const hasStoredLicense = Boolean(primaryLicense)
 
-  // An offline license comes back without user action when the license server answers, so it needs no re-activation.
   const isOfflineLicense = (primaryLicense ?? supporterKey)?.status === "offline"
   const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" && !isOfflineLicense : false
   const showPurchase = !hasPremiumAccess && !hasInvalidLicense && !isOfflineLicense
   let accessTitle = t("themes.license.status.unlockTitle")
   let accessDescription = t("themes.license.status.unlockDescription")
   if (isSupporter && primaryLicense?.status !== "active") {
-    // With no active theme license, the access comes from the supporter key.
     accessTitle = t("themes.license.status.supporterTitle")
     accessDescription = t("themes.license.status.supporterDescription")
   } else if (hasPremiumAccess) {
@@ -137,7 +131,6 @@ export function LicenseManager({
 
   if (isLoading) {
     return (
-      // Not a Section query: Section would show a failed license check as a load error, and this tab shows the license then.
       <Section title={t("themes.license.loadingTitle")} description={t("themes.license.loadingDescription")}>
         <div className="animate-pulse space-y-2">
           <div className="h-4 bg-muted rounded w-3/4"></div>
@@ -159,9 +152,7 @@ export function LicenseManager({
           </Button>
         ) : undefined}
       >
-        {/* Premium License Status */}
         <div className="rounded-lg bg-muted/30 p-3">
-          {/* Status header */}
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div className="flex items-start gap-3">
               <Sparkles className={hasPremiumAccess ? "h-5 w-5 text-primary flex-shrink-0 mt-0.5" : "h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5"} />
@@ -206,7 +197,6 @@ export function LicenseManager({
             </div>
           </div>
 
-          {/* Discord perk */}
           {hasPremiumAccess && (
             <div className="mt-3 border-t border-border/50 pt-3 animate-in fade-in duration-300 motion-reduce:animate-none">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -249,7 +239,6 @@ export function LicenseManager({
             </div>
           )}
 
-          {/* License key details */}
           {primaryLicense && (
             <div className="mt-3 border-t border-border/50 pt-3 space-y-2">
               <div className="font-mono text-xs break-all text-muted-foreground">
@@ -298,7 +287,6 @@ export function LicenseManager({
         </div>
       </Section>
 
-      {/* Delete License Confirmation Dialog */}
       <ConfirmDialog
         open={selectedLicenseKey !== null}
         onOpenChange={(open) => !open && setSelectedLicenseKey(null)}
@@ -407,7 +395,6 @@ export function LicenseManager({
         description={t("themes.license.paymentDialog.description")}
       >
         <div className="space-y-4">
-          {/* Step 1: Checkout */}
           <div className="rounded-lg border bg-background p-4 space-y-3">
             <div className="flex items-center gap-2">
               <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">1</div>
@@ -479,7 +466,6 @@ export function LicenseManager({
             </ul>
           </div>
 
-          {/* Step 2: Find license key */}
           <div className="rounded-lg border bg-background p-4 space-y-3">
             <div className="flex items-center gap-2">
               <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">2</div>
@@ -498,7 +484,6 @@ export function LicenseManager({
             </div>
           </div>
 
-          {/* Step 3: Enter License */}
           <div className="rounded-lg border bg-background p-4">
             <div className="flex items-center gap-2">
               <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">3</div>

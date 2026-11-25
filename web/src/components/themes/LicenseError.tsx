@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils"
 import type { ReactNode } from "react"
 import { Trans } from "react-i18next"
 
-// Trans fills children with the text inside the <portal> tag.
 export function LicensePortalLink({ children }: { children?: ReactNode }) {
   return (
     <a

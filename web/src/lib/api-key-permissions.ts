@@ -27,7 +27,6 @@ export const PERMISSION_LEVEL_LABELS = {
   write: { labelKey: "apiKeys.permissions.levels.write" },
 } as const satisfies Record<PermissionLevel, { labelKey: string }>
 
-// The type check fails when the Go table adds an area.
 export const PERMISSION_AREA_LABELS = {
   instances: { labelKey: "apiKeys.permissions.areas.instances" },
   torrents: { labelKey: "apiKeys.permissions.areas.torrents" },
@@ -46,7 +45,6 @@ export const PERMISSION_AREA_LABELS = {
   system: { labelKey: "apiKeys.permissions.areas.system" },
 } as const satisfies Record<PermissionArea, { labelKey: string }>
 
-/** The routes of these areas refuse a key with an Instance limit, so a limited key gets nothing from them. */
 export function isAreaRefusedByInstanceLimit(area: PermissionArea, instanceIds: readonly number[]) {
   return instanceIds.length > 0 && (area === "crossSeed" || area === "dirScan")
 }
@@ -76,7 +74,6 @@ export function summarizePermissions(permissions: readonly ApiKeyPermission[]) {
     : { except, rows: [] }
 }
 
-// Areas that offer no write come last, so a dimmer block in a full key does not look like a gap.
 const AREAS_BY_TOP_LEVEL = [
   ...PERMISSION_AREAS.filter(({ levels }) => levels.includes("write")),
   ...PERMISSION_AREAS.filter(({ levels }) => !levels.includes("write")),
@@ -100,7 +97,6 @@ function permissionsByLevel(permissions: readonly ApiKeyPermission[]) {
     .filter(({ areas }) => areas.length > 0)
 }
 
-/** Write includes read and run, so a pick of write replaces the other levels of its area. */
 export function togglePermission(permissions: readonly ApiKeyPermission[], area: PermissionArea, level: PermissionLevel) {
   if (holdsLevel(permissions, area, level)) {
     return permissions.filter(p => p.area !== area || p.level !== level)
@@ -108,7 +104,6 @@ export function togglePermission(permissions: readonly ApiKeyPermission[], area:
   return [...permissions.filter(p => level !== "write" || p.area !== area), { area, level }]
 }
 
-/** The list to send, in table order. A greyed-out row stays picked in the dialog but is not saved. */
 export function permissionsToSave(permissions: readonly ApiKeyPermission[], instanceIds: readonly number[]) {
   return PERMISSION_AREAS
     .filter(({ area }) => !isAreaRefusedByInstanceLimit(area, instanceIds))

@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// ActivityEventKind mirrors internal/services/activity.Kind. Each kind maps to
-// the react-query keys the frontend invalidates when the event arrives.
 export type ActivityEventKind =
   | "backup.run"
   | "dirscan.run"
@@ -28,8 +26,6 @@ export interface ActivityEvent {
   timestamp: string
 }
 
-// ActivityStreamPayload is the envelope for the "activity" SSE event. It is
-// disjoint from TorrentStreamPayload and handled by a dedicated listener.
 export interface ActivityStreamPayload {
   type: "activity"
   activity?: ActivityEvent

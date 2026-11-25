@@ -11,8 +11,6 @@ import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-// Stable singletons: fresh objects per render loop effects (see web/AGENTS.md).
-// updateMutate runs onSuccess itself so the toast, and therefore Undo, is reachable.
 const mocks = vi.hoisted(() => ({
   updateMutate: vi.fn((_payload: unknown, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.()),
   createMutate: vi.fn(),
@@ -78,9 +76,6 @@ describe("FilterViewsSection update filters", () => {
     const [payload] = mocks.updateMutate.mock.calls[0] as [{ id: number; data: { name: string; filters: TorrentFilters } }]
     expect(payload.id).toBe(7)
     expect(payload.data.name).toBe("Movies")
-    // Sorted, not raw: a view written by update must compare equal to one
-    // written by create for the same selection. Normalization itself is
-    // covered by lib/filter-views.test.ts.
     expect(payload.data.filters.status).toEqual(["downloading", "stalledUP"])
   })
 

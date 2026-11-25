@@ -36,7 +36,6 @@ interface GeneralTabHorizontalProps {
   displayComment?: string
   displayCreatedBy?: string
   queueingEnabled?: boolean
-  // The formatted time until the next announce; undefined hides the row.
   reannounceIn?: string
 }
 
@@ -62,21 +61,18 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   const { t } = useTranslation("torrents")
   const { formatTimestamp } = useDateTimeFormatters()
 
-  // Only fetch piece states when downloading or rechecking (not needed for completed torrents)
   const isDownloading = torrent.progress < 1
   const isChecking = torrent.state?.includes("checking") ?? false
   const needsPieceStates = isDownloading || isChecking
 
   const { data: pieceStates, isLoading: loadingPieces } = useTorrentDetailTab(instanceId, needsPieceStates ? torrent.hash : null, "pieces")
 
-  // Calculate pieces stats from actual piece states when available (more accurate than properties)
   const piecesStats = useMemo(() => {
     const totalFromProperties = properties?.pieces_num || 0
     const haveFromProperties = properties?.pieces_have || 0
     const isCompleteFromProperties = (properties?.completion_date != null && properties.completion_date !== -1)
       || (totalFromProperties > 0 && haveFromProperties >= totalFromProperties)
 
-    // When we don't need piece states anymore, prefer properties (react-query can keep stale pieceStates cached).
     if (!needsPieceStates) {
       const total = totalFromProperties
       const have = isCompleteFromProperties ? total : haveFromProperties
@@ -90,7 +86,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
       const progress = (have / total) * 100
       return { have, total, progress }
     }
-    // For completed torrents (no piece states fetched), use properties
     const total = totalFromProperties
     const have = haveFromProperties
     const progress = total > 0 ? (have / total) * 100 : 0
@@ -126,7 +121,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   return (
     <ScrollArea className="h-full">
       <div className="p-3">
-        {/* Row 1: Name + Size */}
         <div className="grid grid-cols-2 gap-6 h-5">
           <div className="flex items-start gap-2 min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
@@ -149,7 +143,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           </div>
         </div>
 
-        {/* Row 2: Hash v1 + Hash v2 */}
         <div className="grid grid-cols-2 gap-6 h-5">
           <div className="flex items-start gap-2 min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
@@ -175,7 +168,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           )}
         </div>
 
-        {/* Row 3: Save Path + Temp Path (if enabled) */}
         <div className="grid grid-cols-2 gap-6 h-5">
           <div className="flex items-start gap-2 min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
@@ -202,7 +194,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
         </div>
 
 
-        {/* Row 4: Comment & Created By */}
         {(displayComment || displayCreatedBy) && (
           <div className="grid grid-cols-2 gap-6">
             {displayComment && (
@@ -230,9 +221,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
         <Separator className="opacity-30 mt-2" />
 
-        {/* Row 5: Transfer Stats + Network + Time + Limits */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-6 lg:gap-y-0 m-0 mt-2">
-          {/* Transfer Stats */}
           <div className="space-y-1">
             <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.transfer")}</h4>
             <StatRow label={t("generalTab.downloaded")} value={formatBytes(properties.total_downloaded || 0)} />
@@ -246,7 +235,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             {torrent.seq_dl && <StatRow label={t("generalTab.sequentialDownload")} value={t("generalTab.enabled")} />}
           </div>
 
-          {/* Network */}
           <div className="space-y-1">
             <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.network")}</h4>
             <StatRow
@@ -280,7 +268,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             )}
           </div>
 
-          {/* Time */}
           <div className="space-y-1">
             <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.time")}</h4>
             <StatRow label={t("generalTab.timeActive")} value={formatDuration(properties.time_elapsed || 0)} />
@@ -295,7 +282,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             )}
           </div>
 
-          {/* Limits */}
           <div className="space-y-1">
             <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.limits")}</h4>
             <StatRow label={t("generalTab.ratioLimit")} value={torrent.max_ratio > 0 ? torrent.max_ratio.toFixed(2) : "∞"} />
@@ -314,7 +300,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           </div>
         </div>
 
-        {/* Pieces visualization */}
         <Separator className="opacity-30 mt-2" />
         <div className="mt-2">
           <div className="flex items-center justify-between mb-1.5">

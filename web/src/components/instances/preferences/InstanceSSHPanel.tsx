@@ -47,9 +47,6 @@ function sshDefaults(instance: Instance) {
 }
 
 export function InstanceSSHPanel({ instance }: InstanceSSHPanelProps) {
-  // The setup starts over from the row whenever the stored endpoint or user
-  // changes: a save that the server normalized, a clear, or a change from
-  // another client. A test result answers for the endpoint it ran against.
   return (
     <SSHCredentialsForm
       key={`${instance.id}:${instance.sshHost ?? ""}:${instance.sshPort ?? ""}:${instance.sshUsername ?? ""}`}
@@ -70,12 +67,8 @@ function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
   const busy = state.kind !== "idle"
   const result = state.result
 
-  // A key is needed on the first save and when the endpoint or user changes;
-  // with the three unchanged and no key pasted, there is nothing to send.
   const endpointChanged = (value: { host: string; port: number; username: string }) =>
     !stored || value.host.trim() !== instance.sshHost || value.port !== instance.sshPort || value.username.trim() !== instance.sshUsername
-  // Compared against the row, not the form's dirty flag: an edit typed back
-  // to the stored value is no unsaved change.
   const hasUnsavedEdits = (value: { host: string; port: number; username: string; privateKey: string }) =>
     value.privateKey !== "" || (stored && endpointChanged(value))
 
@@ -87,8 +80,6 @@ function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
         return
       }
       if (await save({ host: value.host.trim(), port: value.port, username: value.username.trim(), privateKey: value.privateKey })) {
-        // A changed endpoint remounts the form from the row; a rotated key
-        // alone leaves the row's endpoint as it was, so the field is cleared here.
         form.reset({ ...form.state.values, privateKey: "" })
         toast.success(t("preferences.ssh.toast.saved"))
       }
@@ -259,8 +250,6 @@ function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
           {stored && (
             <form.Subscribe selector={(s) => hasUnsavedEdits(s.values)}>
               {(isDirty) => (
-                // A test runs against the stored credentials, so unsaved edits
-                // hide its result: a fingerprint under a host the row does not hold yet would mislead.
                 <div className="space-y-4 rounded-lg border bg-muted/40 p-4">
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-sm font-medium">{t("preferences.ssh.test.title")}</span>
@@ -282,7 +271,6 @@ function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
                       <p className="text-sm text-muted-foreground">
                         {instance.sshHostKeyPinned ? t("preferences.ssh.test.pinnedAtRest") : t("preferences.ssh.test.unpinnedAtRest")}
                       </p>
-                      {/* The limits come from the stored probe, so a pinned host shows them before any new test. */}
                       {instance.sshHostKeyPinned && <RemoteAccessIndicator instance={instance} variant="inline" />}
                     </>
                   )}
@@ -351,7 +339,6 @@ function SSHTestResult({ result, instance, onConfirm, onReplace }: SSHTestResult
             {t("preferences.ssh.status.pinned.title")}
           </p>
           <ProbeTable probe={result.capabilities} tier={tier} />
-          {/* The hardlink flag comes from this test, not the row: a failed probe write would otherwise leave the limits contradicting the table above. */}
           <RemoteAccessIndicator instance={result.capabilities ? { ...instance, sshHardlink: result.capabilities.hardlink } : instance} variant="inline" />
         </div>
       )

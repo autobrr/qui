@@ -24,7 +24,6 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
   const { t } = useTranslation("torrents")
   const [isExporting, setIsExporting] = useState(false)
 
-  // A select-all export follows the sort, so the files come in the order that the user sees.
   const exportTorrents = useCallback(async (target: ActionTarget, sortField?: string, sortOrder?: "asc" | "desc") => {
     const isAllSelected = target.kind === "selectAll"
     const { filters, search, excludeHashes, excludeTargets, instanceIds } = isAllSelected ? target.selectAll : {}
@@ -152,7 +151,6 @@ async function fetchAllMatchingTorrents({
       order: sortOrder,
     }
     const response = allInstances? await api.getCrossInstanceTorrents({ ...params, instanceIds }): await api.getTorrents(instanceId, params)
-    // A partial read would export a subset that looks complete (ADR 0009).
     if (response.partialResults) {
       return null
     }
@@ -177,7 +175,6 @@ async function fetchAllMatchingTorrents({
 
     page += 1
 
-    // Safety guard to prevent infinite loops if backend misbehaves
     if (page > 10000) {
       break
     }
@@ -186,9 +183,6 @@ async function fetchAllMatchingTorrents({
   return results
 }
 
-// Identity is instanceId:hash, not hash alone: in the unified view the same
-// infohash can live on several instances (cross-seeds) and each copy is a
-// distinct export target.
 function targetKey(instanceId: number, hash: string): string {
   return `${instanceId}:${hash.toLowerCase()}`
 }

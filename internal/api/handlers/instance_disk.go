@@ -17,20 +17,15 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// InstanceDiskResponse reports the disk that holds the default save path of an
-// instance, as qui reads it through the instance's filesystem access. Both
-// fields are null when qui cannot read that disk.
 type InstanceDiskResponse struct {
 	FreeBytes  *int64 `json:"freeBytes"`
 	TotalBytes *int64 `json:"totalBytes"`
 }
 
-// SetFilesystem wires the filesystem backends in, which GetDisk reads through.
 func (h *InstancesHandler) SetFilesystem(pool *fsops.Pool) {
 	h.filesystem = pool
 }
 
-// GetDisk returns the free and total bytes of the disk of the default save path.
 func (h *InstancesHandler) GetDisk(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -63,7 +58,6 @@ func (h *InstancesHandler) readDisk(ctx context.Context, instanceID int) (*fsops
 	if err != nil {
 		return nil, err
 	}
-	// An empty path cleans to ".", which is a folder of qui, not of the instance.
 	if prefs.SavePath == "" {
 		return nil, errors.New("default save path is empty")
 	}

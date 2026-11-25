@@ -20,12 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// unresolvedStatuses names the statuses of each expression that the scan
-// cannot follow, keyed by "<function>: <expression>".
 var unresolvedStatuses = map[string][]string{}
 
-// TestEveryBuiltStatusHasAClass reads the source of the package, because a
-// status that a build site sets with no table entry still compiles.
 func TestEveryBuiltStatusHasAClass(t *testing.T) {
 	t.Parallel()
 
@@ -80,7 +76,6 @@ func TestStatusScanFailsOnUnknownOrUnresolvedStatus(t *testing.T) {
 	}
 }
 
-// resultStatusTypes are the types whose Status field holds a cross-seed result status.
 var resultStatusTypes = map[string]bool{"InstanceCrossSeedResult": true, "AddResult": true, "AddVerdict": true}
 
 type statusScan struct {
@@ -89,10 +84,7 @@ type statusScan struct {
 	consts     map[string]string
 	funcs      map[string][]*ast.FuncDecl
 	imports    map[string]bool
-	// fields holds each keyed value of a composite literal by field name, for
-	// a fixed status in a value such as linkMode.
-	fields map[string][]scopedExpr
-	// fieldTypes holds the type of each struct field by field name.
+	fields     map[string][]scopedExpr
 	fieldTypes map[string]string
 	statuses   map[string]bool
 	problems   []string
@@ -104,9 +96,6 @@ type scopedExpr struct {
 	expr ast.Expr
 }
 
-// scanResultStatuses returns each status that the files can give a result,
-// and a problem for each status with no table entry and each expression that
-// it cannot resolve.
 func scanResultStatuses(fset *token.FileSet, files []*ast.File, unresolved map[string][]string) (map[string]bool, []string) {
 	s := &statusScan{
 		fset: fset, unresolved: unresolved,
@@ -175,7 +164,6 @@ func (s *statusScan) readFieldTypes(decl *ast.GenDecl) {
 			if structType, ok := typeSpec.Type.(*ast.StructType); ok {
 				for _, field := range structType.Fields.List {
 					for _, name := range field.Names {
-						// A field name with two types has no type that the scan can trust.
 						fieldType := typeName(field.Type)
 						if prior, ok := s.fieldTypes[name.Name]; ok && prior != fieldType {
 							fieldType = ""
@@ -199,8 +187,6 @@ func (s *statusScan) eachDecl(visit func(*ast.FuncDecl, ast.Node)) {
 	}
 }
 
-// readSink collects the status of a Status field in a composite literal and
-// of an assignment to .Status.
 func (s *statusScan) readSink(decl *ast.FuncDecl, node ast.Node) {
 	switch node := node.(type) {
 	case *ast.CompositeLit:
@@ -224,8 +210,6 @@ func (s *statusScan) readSink(decl *ast.FuncDecl, node ast.Node) {
 			if len(node.Rhs) == len(node.Lhs) {
 				rhs, index = node.Rhs[i], 0
 			}
-			// A typed constant of another package, such as a run status, cannot
-			// go into the string Status field of a result.
 			if s.isImported(rhs) {
 				continue
 			}
@@ -276,8 +260,6 @@ func (s *statusScan) isImported(expr ast.Expr) bool {
 	return ok && s.imports[pkg.Name]
 }
 
-// resolve returns the statuses that expr can hold. index picks one result of
-// a call that returns more than one value.
 func (s *statusScan) resolve(decl *ast.FuncDecl, expr ast.Expr, index int) []string {
 	if statuses, ok := s.unresolved[decl.Name.Name+": "+types.ExprString(expr)]; ok {
 		return statuses
@@ -297,7 +279,6 @@ func (s *statusScan) resolve(decl *ast.FuncDecl, expr ast.Expr, index int) []str
 	case *ast.SelectorExpr:
 		switch {
 		case expr.Sel.Name == "Status":
-			// A copy from a result type reads a status that its build site set.
 			if s.isResultExpr(decl, expr.X) {
 				return nil
 			}
@@ -345,8 +326,6 @@ func (s *statusScan) resolveReturns(decl *ast.FuncDecl, body *ast.BlockStmt, ind
 	return statuses
 }
 
-// resolveIdent follows a parameter to the arguments of each call, and a local
-// variable to each value that it gets.
 func (s *statusScan) resolveIdent(decl *ast.FuncDecl, ident *ast.Ident, index int) []string {
 	key := fmt.Sprintf("%p %s %d", decl, ident.Name, index)
 	if s.visiting[key] {
@@ -377,7 +356,6 @@ func (s *statusScan) resolveIdent(decl *ast.FuncDecl, ident *ast.Ident, index in
 						statuses = append(statuses, s.resolve(decl, node.Rhs[0], i)...)
 					}
 				}
-				// A parameter of a closure gets the arguments of each call of the closure.
 				if id, ok := lhs.(*ast.Ident); ok && len(node.Rhs) == len(node.Lhs) {
 					if lit, ok := node.Rhs[i].(*ast.FuncLit); ok {
 						if p, paramType := paramIndex(lit.Type, ident.Name); p >= 0 {
@@ -414,8 +392,6 @@ func (s *statusScan) resolveIdent(decl *ast.FuncDecl, ident *ast.Ident, index in
 	return statuses
 }
 
-// resolveArgs resolves argument index of each call of name. A nil within
-// searches the whole package, and a closure is searched within its function.
 func (s *statusScan) resolveArgs(name string, within *ast.FuncDecl, index int) []string {
 	var statuses []string
 	s.eachDecl(func(decl *ast.FuncDecl, node ast.Node) {
@@ -428,8 +404,6 @@ func (s *statusScan) resolveArgs(name string, within *ast.FuncDecl, index int) [
 	return statuses
 }
 
-// isResult reports whether the local name in decl holds a result type, and
-// whether the scan could read the type at all.
 func (s *statusScan) isResult(decl *ast.FuncDecl, name string) (isResult, known bool) {
 	var names []string
 	if i, paramType := paramIndex(decl.Type, name); i >= 0 {
@@ -469,8 +443,6 @@ func (s *statusScan) isResult(decl *ast.FuncDecl, name string) (isResult, known 
 
 func (s *statusScan) isResultExpr(decl *ast.FuncDecl, expr ast.Expr) bool {
 	if id, ok := expr.(*ast.Ident); ok {
-		// The scan does not track scopes, so one binding of the name with a
-		// result type is enough.
 		isResult, _ := s.isResult(decl, id.Name)
 		return isResult
 	}
@@ -507,7 +479,6 @@ func calleeName(call *ast.CallExpr) string {
 	return ""
 }
 
-// closure returns the function literal that decl assigns to name.
 func closure(decl *ast.FuncDecl, name string) *ast.FuncLit {
 	var found *ast.FuncLit
 	ast.Inspect(decl.Body, func(node ast.Node) bool {
@@ -525,7 +496,6 @@ func closure(decl *ast.FuncDecl, name string) *ast.FuncLit {
 	return found
 }
 
-// paramIndex returns the position and type of the parameter name, or -1.
 func paramIndex(fn *ast.FuncType, name string) (int, ast.Expr) {
 	i := 0
 	for _, field := range fn.Params.List {
@@ -555,8 +525,6 @@ func fieldTypes(list *ast.FieldList) []ast.Expr {
 	return out
 }
 
-// typeName returns the name of a type expression, with a package prefix for
-// an imported type and without a pointer.
 func typeName(expr ast.Expr) string {
 	switch expr := expr.(type) {
 	case *ast.StarExpr:

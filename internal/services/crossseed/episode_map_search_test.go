@@ -21,12 +21,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TestEpisodeMapSearchSendsSeasonedPairOnIDPath drives the search for an
-// absolute-numbered source through two recording Torznab servers. With a map,
-// the ID-capable indexer receives the mapped season and episode next to the
-// TVDb ID and no title query; the text indexer receives the title alone with
-// no season or episode, and the title retry passes stay unchanged. Without a
-// map the ID-capable indexer receives the ID alone.
 func TestEpisodeMapSearchSendsSeasonedPairOnIDPath(t *testing.T) {
 	const (
 		sourceHash = "9b3f0d8e5a1c4b7e2f6d0a9c8b7e6f5d4c3b2a10"
@@ -66,7 +60,6 @@ func TestEpisodeMapSearchSendsSeasonedPairOnIDPath(t *testing.T) {
 
 			ctx := context.Background()
 			instance := &models.Instance{ID: 1, Name: "Test"}
-			// An indexer whose caps were never fetched prunes nothing and keeps every ID.
 			idCapableCaps := []string{"search", "tv-search", "tv-search-tvdbid", "tv-search-season", "tv-search-ep"}
 			if tt.capsless {
 				idCapableCaps = nil
@@ -104,7 +97,6 @@ func TestEpisodeMapSearchSendsSeasonedPairOnIDPath(t *testing.T) {
 			var idQueries int
 			for _, p := range idCapableRequests {
 				if p.Get("tvdbid") == "" {
-					// Title retry pass: text mode, no mapped pair.
 					require.NotEmpty(t, p.Get("q"))
 					require.Empty(t, p.Get("season"), "a title retry must not carry the mapped season")
 					require.Empty(t, p.Get("ep"), "a title retry must not carry the mapped episode")

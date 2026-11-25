@@ -30,8 +30,7 @@ type APIKey struct {
 	CreatedAt   time.Time    `json:"createdAt"`
 	LastUsedAt  *time.Time   `json:"lastUsedAt,omitempty"`
 	Permissions []Permission `json:"permissions"`
-	// InstanceIDs is the Instance limit. Empty means every instance.
-	InstanceIDs []int `json:"instanceIds"`
+	InstanceIDs []int        `json:"instanceIds"`
 }
 
 type APIKeyStore struct {
@@ -42,7 +41,6 @@ func NewAPIKeyStore(db dbinterface.Querier) *APIKeyStore {
 	return &APIKeyStore{db: db}
 }
 
-// GenerateAPIKey generates a new API key
 func GenerateAPIKey() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
@@ -51,30 +49,25 @@ func GenerateAPIKey() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// HashAPIKey creates a SHA256 hash of the API key
 func HashAPIKey(key string) string {
 	hash := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(hash[:])
 }
 
 func (s *APIKeyStore) Create(ctx context.Context, name string, permissions []Permission, instanceIDs []int) (string, *APIKey, error) {
-	// Generate new API key
 	rawKey, err := GenerateAPIKey()
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to generate API key: %w", err)
 	}
 
-	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
-	// Start a transaction
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Intern the name
 	ids, err := dbinterface.InternStringNullable(ctx, tx, &name)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to intern name: %w", err)
@@ -88,7 +81,6 @@ func (s *APIKeyStore) Create(ctx context.Context, name string, permissions []Per
 		return "", nil, err
 	}
 
-	// Insert the API key
 	apiKey := &APIKey{Permissions: permissions, InstanceIDs: instanceIDs}
 	var createdAt, lastUsedAt sql.NullTime
 	err = tx.QueryRowContext(ctx, `
@@ -116,7 +108,6 @@ func (s *APIKeyStore) Create(ctx context.Context, name string, permissions []Per
 		apiKey.LastUsedAt = &lastUsedAt.Time
 	}
 
-	// Return both the raw key (to show user once) and the model
 	return rawKey, apiKey, nil
 }
 
@@ -224,7 +215,6 @@ func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 	return keys, nil
 }
 
-// Update sets the name, the Permissions, and the Instance limit of the key.
 func (s *APIKeyStore) Update(ctx context.Context, id int, name string, permissions []Permission, instanceIDs []int) (*APIKey, error) {
 	if instanceIDs == nil {
 		instanceIDs = []int{}
@@ -282,9 +272,6 @@ func encodeAPIKeyAccess(permissions []Permission, instanceIDs []int) (string, st
 	return string(permissionsJSON), string(instanceIDsJSON), nil
 }
 
-// decodedPermissions maps a stored Permission list to its decoded form. Each
-// request with an API key reads the key again, and a key holds one of a few
-// lists. The slices are shared: callers must not change them.
 var decodedPermissions sync.Map
 
 func (k *APIKey) decodeAccess(permissionsJSON, instanceIDsJSON string) error {
@@ -370,7 +357,6 @@ func (s *APIKeyStore) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-// ValidateAPIKey validates a raw API key and returns the associated APIKey if valid
 func (s *APIKeyStore) ValidateAPIKey(ctx context.Context, rawKey string) (*APIKey, error) {
 	keyHash := HashAPIKey(rawKey)
 
@@ -382,10 +368,6 @@ func (s *APIKeyStore) ValidateAPIKey(ctx context.Context, rawKey string) (*APIKe
 		return nil, err
 	}
 
-	// autobrr sends API key requests often, so the write happens at most once a
-	// minute, and it outlives the request that triggered it. Concurrent requests
-	// that all see an old time each write once. A negative age is a row that older
-	// qui wrote as local time on a Postgres session east of UTC; write then.
 	age := time.Duration(-1)
 	if apiKey.LastUsedAt != nil {
 		age = time.Since(*apiKey.LastUsedAt)

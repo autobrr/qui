@@ -38,15 +38,9 @@ interface ShareDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   instanceId: number
-  /** One Share starts for each torrent. */
   torrents: ShareDialogTorrent[]
 }
 
-/**
- * The Share dialog: three fields filled in from the defaults of Settings →
- * Shares, then a result step with the .torrent of each Share and a message to
- * send with it. qui hosts no download link: the user sends both.
- */
 export function ShareDialog({ open, onOpenChange, instanceId, torrents }: ShareDialogProps) {
   const { t } = useTranslation("shares")
   const display = useIncognitoDisplay()
@@ -69,7 +63,6 @@ export function ShareDialog({ open, onOpenChange, instanceId, torrents }: ShareD
   )
 }
 
-/** The days of the field, or null for text that is not a whole number of 1 or more. */
 function daysOf(text: string): number | null {
   const days = Number(text.trim())
   return Number.isInteger(days) && days >= 1 ? days : null
@@ -97,7 +90,6 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
       hashes: torrents.map((torrent) => torrent.hash),
       days: shareDays,
       endAtFirstDownload,
-      // The lock needs the announces that only qui's own tracker sees.
       firstDownloaderOnly: firstDownloaderOnly && !outside,
     }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: sharesQueryKey }),
@@ -126,7 +118,6 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
             if (change.firstDownloaderOnly !== undefined) setFirstDownloaderOnly(change.firstDownloaderOnly)
           }}
         />
-        {/* A standing warning, not news: role "note" keeps screen readers from announcing it. */}
         <Alert role="note">
           <TriangleAlert className="h-4 w-4" />
           <AlertDescription>{t("dialog.warning")}</AlertDescription>
@@ -154,7 +145,6 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
   )
 }
 
-/** The tracker of a new Share, with a link to Settings → Shares, where the user sets it. */
 function TrackerInUse({ settings, onClose }: { settings: ShareSettings; onClose: () => void }) {
   const { t } = useTranslation("shares")
   const display = useIncognitoDisplay()
@@ -254,7 +244,6 @@ function ShareResultRow({ share }: { share: Share }) {
   )
 }
 
-/** The text that the user sends with the .torrent: what it is, which clients open it, and when it stops working. */
 function shareMessage(share: Share, t: (key: string, values?: Record<string, unknown>) => string, formatDate: (date: Date) => string): string {
   const parts = [t("message.intro", { name: share.name, size: formatBytes(share.size), date: formatDate(new Date(share.expiresAt)) })]
   if (share.endAtFirstDownload) {

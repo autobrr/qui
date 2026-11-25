@@ -98,7 +98,6 @@ export function CompletionOverview() {
     [instances]
   )
 
-  // Fetch completion settings for all active instances
   const settingsQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["cross-seed", "completion", instance.id],
@@ -123,7 +122,6 @@ export function CompletionOverview() {
   )
   const hasEnabledIndexers = enabledIndexers.length > 0
 
-  // Fetch categories/tags for all active instances
   const metadataQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["instance-metadata", instance.id],
@@ -138,7 +136,6 @@ export function CompletionOverview() {
     })),
   })
 
-  // Mutation for updating completion settings
   const updateMutation = useMutation({
     mutationFn: ({ instanceId, settings }: { instanceId: number; settings: Omit<InstanceCrossSeedCompletionSettings, "instanceId"> }) =>
       api.updateInstanceCompletionSettings(instanceId, settings),
@@ -165,7 +162,6 @@ export function CompletionOverview() {
 
   const handleToggleEnabled = (instance: Instance, enabled: boolean, queryIndex: number) => {
     const query = settingsQueries[queryIndex]
-    // Don't allow toggle if settings haven't loaded successfully
     if (query?.isError || (!query?.data && !formMap[instance.id])) {
       toast.error(t("preferences.completionOverview.cannotToggle"))
       return
@@ -199,7 +195,6 @@ export function CompletionOverview() {
 
   const handleSave = (instance: Instance, queryIndex: number) => {
     const query = settingsQueries[queryIndex]
-    // Don't allow save if settings haven't loaded successfully
     if (query?.isError || (!query?.data && !formMap[instance.id])) {
       toast.error(t("preferences.completionOverview.cannotSave"))
       return
@@ -330,7 +325,6 @@ export function CompletionOverview() {
 
                 <AccordionContent className="px-6 pb-4">
                   <div className="space-y-4">
-                    {/* Error state */}
                     {isError && (
                       <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
                         <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
@@ -340,10 +334,8 @@ export function CompletionOverview() {
                       </div>
                     )}
 
-                    {/* Settings form */}
                     {!isError && isEnabled && (
                       <>
-                        {/* Metadata warning */}
                         {isMetadataError && (
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
@@ -499,7 +491,6 @@ export function CompletionOverview() {
                       </>
                     )}
 
-                    {/* Disabled state */}
                     {!isError && !isEnabled && (
                       <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
                         <p className="text-sm text-muted-foreground">

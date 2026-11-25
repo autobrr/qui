@@ -13,10 +13,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/**
- * The classes of a wrapper that changes its height between that of its one child and zero, with a transition. The
- * child needs `min-h-0 overflow-hidden`.
- */
 export function collapseRowClassName(collapsed: boolean) {
   return cn(
     "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
@@ -36,24 +32,19 @@ export function formatBytesOrFallback(bytes: number, fallback: string): string {
   return formatBytes(bytes)
 }
 
-/**
- * Get the appropriate color for a torrent ratio based on predefined thresholds
- * @param ratio - The ratio value (uploaded/downloaded)
- * @returns CSS custom property string for the appropriate color
- */
 export function getRatioColor(ratio: number): string {
   if (ratio < 0) return ""
 
   if (ratio < 0.5) {
-    return "var(--chart-5)" // very bad - lowest/darkest
+    return "var(--chart-5)"
   } else if (ratio < 1.0) {
-    return "var(--chart-4)" // bad - below 1.0
+    return "var(--chart-4)"
   } else if (ratio < 2.0) {
-    return "var(--chart-3)" // okay - above 1.0
+    return "var(--chart-3)"
   } else if (ratio < 5.0) {
-    return "var(--chart-2)" // good - healthy ratio
+    return "var(--chart-2)"
   } else {
-    return "var(--chart-1)" // excellent - best ratio
+    return "var(--chart-1)"
   }
 }
 
@@ -92,14 +83,9 @@ export async function copyTextToClipboard(text: string): Promise<void> {
       return
     } catch (err) {
       console.error("Copy to clipboard unsuccessful, falling back to execCommand: ", err)
-      // Fall through to synchronous fallback below.
     }
   }
 
-  // Fallback for:
-  // - Browsers without Clipboard API support
-  // - Non-secure contexts (HTTP sites, not localhost)
-  // - Cases where the async Clipboard API rejects (e.g., permission denied)
   copyTextToClipboardFallback(text)
 }
 
@@ -145,12 +131,6 @@ function copyTextToClipboardFallback(text: string): void {
   }
 }
 
-/**
- * Simplify verbose error messages by extracting the root cause.
- * Useful for displaying cleaner error messages in UIs.
- * @param reason - The full error message/reason string
- * @returns Simplified error message with root cause
- */
 export function formatErrorReason(reason: string): string {
   if (!reason) return reason
 
@@ -177,15 +157,10 @@ export function formatErrorReason(reason: string): string {
   return reason
 }
 
-/** Tracker domains from an Automation's trackerPattern, with the "!" exclude prefix removed. */
 export function parseTrackerDomains(rule: Automation): string[] {
   return getTrackerTokens(rule).map((token) => token.startsWith("!") ? token.slice(1) : token)
 }
 
-/**
- * Normalize tracker domain values to a flat list of domains.
- * Accepts values that may already be individual domains or comma-separated groups (e.g. "a.com,b.net").
- */
 export function normalizeTrackerDomains(values: string[]): string[] {
   const result: string[] = []
   const seen = new Set<string>()
@@ -203,15 +178,6 @@ export function normalizeTrackerDomains(values: string[]): string[] {
   return result
 }
 
-/**
- * Join a base path with a relative path, handling both Unix and Windows separators.
- * Detects the separator from the base path and uses it for joining. Torrent-internal
- * relative paths are always slash-delimited, so they are normalized to the detected
- * separator to avoid mixed separators on Windows (e.g. "C:\dl\Movie/file.mkv").
- * @param basePath - The base directory path (e.g., "/data/torrents" or "C:\data\torrents")
- * @param relativePath - The relative path to append
- * @returns The joined full path
- */
 export function joinPath(basePath: string, relativePath: string): string {
   if (!basePath) return relativePath
   const separator = basePath.includes("\\") ? "\\" : "/"
@@ -220,12 +186,10 @@ export function joinPath(basePath: string, relativePath: string): string {
   return `${cleanBase}${separator}${normalizedRelative}`
 }
 
-/** Breaks a release name after dots, dashes, and underscores, not inside a word. */
 export function breakableName(name: string): string {
   return name.replace(/([._-])/g, "$1\u200B")
 }
 
-/** Merges lists one item from each list at a time, so that one long list cannot fill the start. */
 export function takeTurns<T>(lists: T[][]): T[] {
   const length = Math.max(0, ...lists.map(list => list.length))
   return Array.from({ length }, (_, i) => lists.flatMap(list => (i < list.length ? [list[i]] : []))).flat()

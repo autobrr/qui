@@ -78,7 +78,6 @@ function serveView(fields: PreferenceField[] = view, { supportsPathAutocomplete 
   )
 }
 
-// The email notification section of qBittorrent 5.3, with email notification and authentication on.
 function emailView(enabled = true): PreferenceField[] {
   return [
     { key: "mail_notification_enabled", value: enabled, tab: "downloads", section: "emailNotification", control: "switch" },
@@ -89,7 +88,6 @@ function emailView(enabled = true): PreferenceField[] {
   ]
 }
 
-// Counts the test email requests.
 function recordTestEmails() {
   const sent = { count: 0 }
   server.use(http.post("*/api/instances/1/preferences/test-email", () => {
@@ -99,7 +97,6 @@ function recordTestEmails() {
   return sent
 }
 
-// Answers each folder listing with the folders under /data, and records the folders that were listed.
 function serveFolders() {
   const listed: string[] = []
   server.use(http.get("*/api/instances/1/getDirectoryContent", ({ request }) => {
@@ -110,7 +107,6 @@ function serveFolders() {
   return listed
 }
 
-// Records the body of each save and answers with the view.
 function recordSaves() {
   const bodies: Record<string, unknown>[] = []
   server.use(http.patch("*/api/instances/1/preferences", async ({ request }) => {
@@ -120,7 +116,6 @@ function recordSaves() {
   return bodies
 }
 
-// The input that a field label points at.
 async function fieldFor(labelKey: string) {
   return document.getElementById((await screen.findByText(labelKey)).closest("label")!.htmlFor) as HTMLInputElement
 }
@@ -141,9 +136,7 @@ function renderDialog(defaultTab?: string, onOpenChange: (open: boolean) => void
   return { ...result, queryClient }
 }
 
-// Opens the dialog, waits for its tabs, and closes it. The returned function opens it again.
 async function openAndClose() {
-  // The stale time of the app's query client.
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 5000 } } })
   const dialog = (open: boolean) => (
     <QueryClientProvider client={queryClient}>
@@ -293,7 +286,6 @@ describe("InstancePreferencesDialog", () => {
     fireEvent.blur(inactive)
     fireEvent.click(enabled)
     expect(inactive.value).toBe("")
-    // A saved limit comes back when its switch turns on again.
     const ratio = await fieldFor("preferences.seedingLimits.maxShareRatio")
     const ratioEnabled = await fieldFor("preferences.seedingLimits.enableShareRatioLimit")
     fireEvent.click(ratioEnabled)
@@ -460,7 +452,6 @@ describe("InstancePreferencesDialog", () => {
     serveView(view, { supportsPathAutocomplete: true })
     renderDialog("downloads")
 
-    // The field becomes an autocomplete box when the capabilities arrive.
     await waitFor(async () => expect((await fieldFor("preferences.fileManagement.defaultSavePath")).getAttribute("autocomplete")).toBe("off"))
     const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
     fireEvent.change(savePath, { target: { value: "/data/m" } })
@@ -618,7 +609,6 @@ describe("InstancePreferencesDialog", () => {
 
     const button = await screen.findByRole("button", { name: "preferences.fields.sendTestEmail" }) as HTMLButtonElement
     expect(button.disabled).toBe(true)
-    // qBittorrent sends nothing until it has the switch on.
     fireEvent.click(await fieldFor("preferences.fields.mailNotificationEnabled"))
     expect(button.disabled).toBe(true)
     expect((await fieldFor("preferences.fields.mailNotificationPassword")).disabled).toBe(false)
@@ -714,7 +704,6 @@ describe("InstancePreferencesDialog", () => {
   })
 })
 
-// The network binding fields of qBittorrent 4.6 and later, with the saved values.
 function bindingView(iface: string, address: string, name = ""): PreferenceField[] {
   return [
     { key: "current_network_interface", value: iface, tab: "advanced", section: "qbittorrent", control: "select", optionSource: "networkInterfaces" },
@@ -731,7 +720,6 @@ const anyInterface: NetworkBindingInterface = {
 const ethernet: NetworkBindingInterface = { name: "Ethernet", value: "eth0", available: true, addresses: [{ address: "192.168.1.10", available: true }] }
 const wireGuard: NetworkBindingInterface = { name: "WireGuard", value: "wg0", available: true, addresses: [{ address: "10.8.0.2", available: true }] }
 
-// Serves the interfaces, or a failure for null, and counts the requests.
 function serveBinding(interfaces: NetworkBindingInterface[] | null) {
   const fetched = { count: 0 }
   server.use(http.get("*/api/instances/1/network-binding", () => {
@@ -741,7 +729,6 @@ function serveBinding(interfaces: NetworkBindingInterface[] | null) {
   return fetched
 }
 
-// Opens a select and returns the text of its options.
 async function openSelect(trigger: HTMLElement) {
   fireEvent.keyDown(trigger, { key: "ArrowDown" })
   return (await screen.findAllByRole("option")).map(option => option.textContent)
@@ -753,7 +740,6 @@ const addressLabel = "preferences.fields.interfaceAddress"
 describe("InstancePreferencesDialog network binding", () => {
   const scrollIntoView = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView")
   beforeEach(() => {
-    // Radix scrolls focused select options; jsdom has no layout.
     Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
   })
   afterEach(() => {
@@ -769,7 +755,6 @@ describe("InstancePreferencesDialog network binding", () => {
 
     await waitFor(async () => expect((await fieldFor(interfaceLabel)).textContent).toBe("Ethernet"))
     expect((await fieldFor(addressLabel)).textContent).toBe("192.168.1.10")
-    // current_interface_name shares the label of the interface, and has no row of its own.
     expect(screen.getAllByText(interfaceLabel)).toHaveLength(1)
 
     expect(await openSelect(await fieldFor(interfaceLabel))).toEqual(["preferences.networkBinding.anyInterface", "Ethernet", "WireGuard"])
@@ -787,7 +772,6 @@ describe("InstancePreferencesDialog network binding", () => {
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
     expect(bodies).toEqual([{ current_network_interface: "wg0", current_interface_address: "10.8.0.2" }])
-    // The saved binding decides which entries are "not available", so the list loads again.
     await waitFor(() => expect(fetched.count).toBe(2))
   })
 
@@ -827,7 +811,6 @@ describe("InstancePreferencesDialog network binding", () => {
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
     expect(bodies).toEqual([{ save_statistics_interval: 30 }])
-    // The fetch failed, so the read-only boxes stay.
     expect((await fieldFor(interfaceLabel)).disabled).toBe(true)
   })
 
@@ -840,14 +823,12 @@ describe("InstancePreferencesDialog network binding", () => {
     await openSelect(await fieldFor(interfaceLabel))
     fireEvent.click(screen.getByRole("option", { name: "WireGuard" }))
 
-    // Another tab unmounts the widget, so the list loads again on the way back.
     serveBinding(null)
     fireEvent.mouseDown(screen.getByRole("tab", { name: "preferences.dialog.tabs.instance" }), { button: 0 })
     await waitFor(() => expect(screen.queryByText(interfaceLabel)).toBeNull())
     fireEvent.mouseDown(screen.getByRole("tab", { name: "preferences.dialog.tabs.advanced" }), { button: 0 })
     const iface = await fieldFor(interfaceLabel)
     await waitFor(() => expect(iface.disabled).toBe(true))
-    // "Ethernet" is the name of the saved interface, so it does not apply to wg0.
     expect(iface.value).toBe("wg0")
   })
 
@@ -870,7 +851,6 @@ describe("InstancePreferencesDialog network binding", () => {
   it("names the Source instances that route to the instance in the delete dialog", async () => {
     serveView()
     server.use(
-      // The delete check reads the instance list from the server, so it gets the one set below.
       http.get("*/api/instances", () => HttpResponse.json(instances.instances)),
       http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [] }])),
       http.get("*/api/cross-seed/routes/2", () => HttpResponse.json({

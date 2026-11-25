@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// hostDialect is fsops.HostPaths, which this package cannot import: fsops imports it.
 type hostDialect struct{}
 
 func (hostDialect) Join(base, name string) string           { return filepath.Join(base, name) }
@@ -33,7 +32,6 @@ func (slashDialect) Rel(base, target string) (string, error) {
 func (slashDialect) FromSlash(p string) string { return p }
 func (slashDialect) Separator() string         { return "/" }
 
-// windowsDialect is a Windows destination on every host, so Linux CI exercises its name rules.
 type windowsDialect struct{}
 
 func (windowsDialect) Join(base, name string) string {
@@ -524,9 +522,6 @@ func TestHasCommonRootFolder(t *testing.T) {
 	}
 }
 
-// Windows path grammar reads "X:" as a volume for any byte X, and its Clean
-// reduces "./C:/.." to the destination itself. Torrent names are slash paths,
-// so both get the same answer on every host.
 func TestValidateCandidatePathSlashGrammar(t *testing.T) {
 	t.Parallel()
 
@@ -564,9 +559,6 @@ func TestValidateCandidatePathSlashGrammar(t *testing.T) {
 	}
 }
 
-// Every name the validator accepts must land strictly inside the base, in
-// slash grammar and in the host's. The alphabet holds every byte either
-// grammar treats specially.
 func TestValidateCandidatePathAcceptedStaysInsideBase(t *testing.T) {
 	t.Parallel()
 
@@ -598,9 +590,6 @@ func TestValidateCandidatePathAcceptedStaysInsideBase(t *testing.T) {
 	require.Positive(t, accepted)
 }
 
-// NTFS reads "1:payload" as a stream of the file "1", which os.SameFile then
-// matches to the source, so a plan for it reports success without linking.
-// Native evidence on Windows: autobrr/qui#3140.
 func TestValidateCandidatePathWindowsNames(t *testing.T) {
 	t.Parallel()
 

@@ -25,7 +25,6 @@ const instances = {
 
 afterEach(cleanup)
 
-// A delete dialog in small: the notice, and a Delete button that waits for it.
 function DeleteHarness({ instanceId, enabled = true }: { instanceId: number; enabled?: boolean }) {
   const check = useCrossSeedDeleteCheck(instanceId, enabled)
   return (
@@ -37,7 +36,6 @@ function DeleteHarness({ instanceId, enabled = true }: { instanceId: number; ena
 }
 
 function renderNotice(instanceId: number, seed?: (queryClient: QueryClient) => void) {
-  // The same 5-second staleTime as App.tsx, so a fresh cached read must not hide a change.
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 5000 } } })
   server.use(http.get("*/api/instances", () => HttpResponse.json(instances.instances)))
   seed?.(queryClient)
@@ -169,7 +167,6 @@ describe("CrossSeedDeleteNotice", () => {
   })
 
   it("reads the route list again for each dialog, also when the cached list is fresh", async () => {
-    // Another browser can have saved a route to the instance after the last list read.
     server.use(
       http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [] }])),
       http.get("*/api/cross-seed/routes/1", () => HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [{ baseDir: "/data/a", mappedPath: "", routedTorrents: 2 }] }))
@@ -188,9 +185,7 @@ describe("CrossSeedDeleteNotice", () => {
       http.get("*/api/cross-seed/routes", () => HttpResponse.json([{ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [] }])),
       http.get("*/api/cross-seed/routes/1", () => HttpResponse.json({ sourceInstanceId: 1, crossSeedInstanceId: 3, rows: [{ baseDir: "/data/a", mappedPath: "", routedTorrents: 2 }] }))
     )
-    // The app keeps a read fresh for 5 seconds, so the dialog must read the list again anyway.
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 5000 } } })
-    // The instance card read the instance list before another tab created library-a.
     queryClient.setQueryData(["instances"], known)
     const view = render(<QueryClientProvider client={queryClient}><DeleteHarness instanceId={3} enabled={false} /></QueryClientProvider>)
     await waitFor(() => expect(queryClient.getQueryState(["instances"])?.fetchStatus).toBe("idle"))

@@ -72,7 +72,6 @@ describe("DiscReportButton", () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
-  // regression: #4358
   it("shows its label on a tap while disabled, without a click on the row around it", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null

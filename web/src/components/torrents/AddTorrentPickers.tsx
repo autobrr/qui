@@ -26,7 +26,6 @@ const MAX_TAG_CHIPS = 8
 
 const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare
 
-// Every word must appear, so "movies x265" finds "movies/x265".
 function matches(value: string, query: string) {
   const name = value.toLowerCase()
   return query.toLowerCase().split(/\s+/).every(word => name.includes(word))
@@ -49,8 +48,6 @@ export function CategoryPicker({ id, categories, value, onChange }: CategoryPick
     [categories]
   )
 
-  // Clear the search on open, not on close: after a tap closes the sheet, the browser's late click
-  // would land on whatever row a reset list put under the finger.
   const handleOpenChange = (next: boolean) => {
     if (next) setQuery("")
     setOpen(next)
@@ -146,10 +143,8 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
   const { t } = useTranslation("torrents")
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
-  // Tags chosen before the picker opened stay at the top, so a tap does not move rows under the finger.
   const [pinned, setPinned] = useState<string[]>([])
   const [navigated, setNavigated] = useState(false)
-  // Mirrors cmdk's highlighted row, so Return in the search can add it without ever removing it.
   const [active, setActive] = useState("")
 
   const known = useMemo(() => new Set(availableTags ?? []), [availableTags])
@@ -169,7 +164,6 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
   const searchTerm = isList ? trimmed : typedTags[0] ?? ""
   const visible = searchTerm ? ordered.filter(tag => matches(tag, searchTerm)) : ordered
   const canAdd = isList ? typedTags.some(tag => !selectedSet.has(tag)) : typedTags.length === 1 && !ordered.includes(typedTags[0])
-  // The newest picks stay visible when the rest collapse into "+N more".
   const shownChips = value.length > MAX_TAG_CHIPS ? value.slice(-(MAX_TAG_CHIPS - 1)) : value
 
   const handleOpenChange = (next: boolean) => {
@@ -185,7 +179,6 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
     onChange(selectedSet.has(tag) ? value.filter(v => v !== tag) : [...value, tag])
   }
 
-  // A finished pick starts over: a later Return on the empty search must not toggle a row again.
   const clearSearch = () => {
     setQuery("")
     setNavigated(false)
@@ -227,7 +220,6 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
         <ResponsiveCommand shouldFilter={false} value={active} onValueChange={setActive}>
           <PickerDone
             onDone={() => {
-              // Like Return: typed text becomes a tag only when no existing tag matches it.
               if (visible.length === 0 && canAdd) addTyped()
               handleOpenChange(false)
             }}
@@ -241,10 +233,8 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
             }}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") setNavigated(true)
-              // Return that confirms input-method text is not a pick; cmdk skips it the same way (Safari reports keyCode 229).
               if (e.key !== "Enter" || e.nativeEvent.isComposing || e.keyCode === 229) return
               if (!trimmed) {
-                // Until the user moves with the arrow keys, Return on an empty search must not toggle the top row.
                 if (!navigated) e.preventDefault()
                 return
               }
@@ -321,12 +311,10 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
   )
 }
 
-// cmdk handles Enter on its root and would act on the highlighted row instead of the focused button.
 const keepEnterOnButton = (e: React.KeyboardEvent) => {
   if (e.key === "Enter") e.stopPropagation()
 }
 
-// Sits outside the scrolling list, so it shows even when many tags match the search.
 function AddTypedRow({ label, onClick }: { label: string; onClick: () => void }) {
   const isMobile = useResponsiveMobile()
   return (
@@ -360,7 +348,6 @@ function PickerItem({ value, selected, onSelect, label, hint, searching = false 
 }) {
   const { t } = useTranslation("torrents")
   const isMobile = useResponsiveMobile()
-  // On touch the highlight only matters once Return can act on it.
   return (
     <ResponsiveCommandItem value={value} onSelect={onSelect} disableHighlight={isMobile && !searching} className="group gap-2">
       <span className={cn("flex shrink-0 items-center justify-center", isMobile ? "h-5 w-5" : "h-4 w-4")}>
@@ -383,7 +370,6 @@ function PickerDone({ onDone, onClear }: { onDone: () => void; onClear?: () => v
   const isMobile = useResponsiveMobile()
   if (!isMobile) return null
   return (
-    // Sits above the search so the keyboard never covers it.
     <div className="flex items-center justify-end gap-2 border-b px-4 py-2">
       {onClear && (
         <Button type="button" variant="ghost" className="h-10 mr-auto px-3" onClick={onClear} onKeyDown={keepEnterOnButton}>

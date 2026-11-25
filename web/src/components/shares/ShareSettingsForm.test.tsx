@@ -14,7 +14,6 @@ import "@/i18n"
 import type { ShareSettings } from "@/lib/shares-api"
 import { server } from "@/test/msw/server"
 
-// The settings of a qui that never saved Settings → Shares.
 const defaults: ShareSettings = {
   port: 0,
   publicAddress: "",
@@ -134,7 +133,6 @@ describe("ShareSettingsForm", () => {
     })
   })
 
-  // regression: #4242
   it("refuses a port that is not a whole number, and keeps qui's tracker on", async () => {
     stored = { ...defaults, port: 6969, publicAddress: "https://share.example.com", trackerInUse: "own" }
     renderForm()

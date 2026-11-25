@@ -1,9 +1,6 @@
 // Copyright (c) 2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package prefcatalog is the preference catalog: for each qBittorrent
-// preference key, it says where qui shows the key and whether a user can
-// change it. It is the only code that sends a preference write to qBittorrent.
 package prefcatalog
 
 import (
@@ -18,7 +15,6 @@ import (
 	"github.com/hashicorp/go-version"
 )
 
-// Tab is a tab of the qBittorrent preferences dialog.
 type Tab string
 
 const (
@@ -32,34 +28,28 @@ const (
 	TabAdvanced   Tab = "advanced"
 )
 
-// Control is the widget that shows a preference.
 type Control string
 
 const (
-	ControlSwitch   Control = "switch"
-	ControlNumber   Control = "number"
-	ControlText     Control = "text"
-	ControlPassword Control = "password"
-	ControlSelect   Control = "select"
-	ControlPath     Control = "path"
-	// ControlList is a multi-line text box with one item per line.
-	ControlList Control = "list"
-	// ControlWatchFolders is the scan_dirs table: each row is a path and a destination.
+	ControlSwitch       Control = "switch"
+	ControlNumber       Control = "number"
+	ControlText         Control = "text"
+	ControlPassword     Control = "password"
+	ControlSelect       Control = "select"
+	ControlPath         Control = "path"
+	ControlList         Control = "list"
 	ControlWatchFolders Control = "watchFolders"
 )
 
-// OptionSource says where the options of a select come from.
 type OptionSource string
 
 const (
-	SourceFixed            OptionSource = "fixed"
-	SourcePathAutocomplete OptionSource = "pathAutocomplete"
-	// The network binding route lists the interfaces and the addresses of each interface.
+	SourceFixed              OptionSource = "fixed"
+	SourcePathAutocomplete   OptionSource = "pathAutocomplete"
 	SourceNetworkInterfaces  OptionSource = "networkInterfaces"
 	SourceInterfaceAddresses OptionSource = "interfaceAddresses"
 )
 
-// Mode says whether qui shows a key and whether a user can change it.
 type Mode int
 
 const (
@@ -68,37 +58,32 @@ const (
 	NotShown
 )
 
-// Gate limits a field or an option to some libtorrent versions and platforms.
-// An empty libtorrent version or platform passes the gate.
 type Gate struct {
-	MinLibtorrent   string   // the lowest libtorrent version that shows it
-	BelowLibtorrent string   // the libtorrent version from which it is hidden
-	NotPlatforms    []string // the platforms that hide it
+	MinLibtorrent   string
+	BelowLibtorrent string
+	NotPlatforms    []string
 }
 
-// Option is one value of a select with a fixed option list.
 type Option struct {
 	Value any
 	Gate  Gate
 }
 
-// Entry is the catalog entry of one preference key.
 type Entry struct {
 	Key          string
 	Tab          Tab
 	Section      string
 	Control      Control
-	WireUnit     string // the unit that qBittorrent sends
-	DisplayUnit  string // the unit that qui shows
+	WireUnit     string
+	DisplayUnit  string
 	OptionSource OptionSource
 	Options      []Option
 	Gate         Gate
-	DependsOn    string // the switch that enables the field
+	DependsOn    string
 	Mode         Mode
-	Reason       string // why a key is read-only or not shown
+	Reason       string
 }
 
-// Field is one preference in the view: its value and how to show it.
 type Field struct {
 	Key          string         `json:"key"`
 	Value        jsontext.Value `json:"value"`
@@ -114,10 +99,8 @@ type Field struct {
 	Reason       string         `json:"reason,omitempty"`
 }
 
-// ErrInvalidPatch is the error of a patch that Apply rejects.
 var ErrInvalidPatch = errors.New("invalid preferences patch")
 
-// catalog holds every entry, in the order of the tabs and then of the rows in each tab.
 var catalog = slices.Concat(behaviorEntries, downloadsEntries, connectionEntries, speedEntries, bittorrentEntries, rssEntries, webUIEntries, advancedEntries)
 
 var byKey = func() map[string]Entry {
@@ -128,11 +111,7 @@ var byKey = func() map[string]Entry {
 	return entries
 }()
 
-// View returns the fields that qui shows for prefs, in catalog order. It drops
-// the keys that qBittorrent did not send, the keys whose gate fails, the keys
-// that are not shown, and proxy_auth_enabled before qBittorrent 4.6.
 func View(prefs qbt.AppPreferences, libtorrentVersion, platform string) ([]Field, error) {
-	// MarshalJSON writes only the keys that qBittorrent sent, and never web_ui_api_key.
 	data, err := json.Marshal(prefs)
 	if err != nil {
 		return nil, err
@@ -142,7 +121,6 @@ func View(prefs qbt.AppPreferences, libtorrentVersion, platform string) ([]Field
 		return nil, err
 	}
 
-	// Before 4.6, proxy_type also sets the authentication, and qBittorrent ignores proxy_auth_enabled.
 	numericProxyType := values["proxy_type"].Kind() == '0'
 
 	fields := make([]Field, 0, len(values))
@@ -171,7 +149,6 @@ func View(prefs qbt.AppPreferences, libtorrentVersion, platform string) ([]Field
 			Reason:       entry.Reason,
 		}
 		for _, option := range entry.Options {
-			// An option shows only when it has the JSON type of the value that qBittorrent sent.
 			_, isString := option.Value.(string)
 			if option.Gate.passes(libtorrentVersion, platform) && isString == (value.Kind() == '"') {
 				field.Options = append(field.Options, option.Value)
@@ -182,10 +159,6 @@ func View(prefs qbt.AppPreferences, libtorrentVersion, platform string) ([]Field
 	return fields, nil
 }
 
-// Apply checks patch and sends it to qBittorrent. It rejects a key that is not
-// in the catalog, a key that a user cannot change, and a value of the wrong
-// type, and then nothing is sent. It does not check ranges: qBittorrent clamps
-// or ignores a bad value itself.
 func Apply(ctx context.Context, client *qbt.Client, patch map[string]any) error {
 	payload := make(map[string]any, len(patch))
 	for key, value := range patch {
@@ -214,7 +187,6 @@ func check(key string, value any) (any, error) {
 		return nil, fmt.Errorf("%w: %q has no value", ErrInvalidPatch, key)
 	}
 
-	// The AppPreferences field of the key has the type that qBittorrent sends.
 	data, err := json.Marshal(map[string]any{key: value})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %q: %w", ErrInvalidPatch, key, err)
@@ -230,7 +202,6 @@ func check(key string, value any) (any, error) {
 }
 
 func (g Gate) passes(libtorrentVersion, platform string) bool {
-	// An unknown libtorrent version passes the libtorrent gate.
 	if libtorrent, err := version.NewVersion(libtorrentVersion); err == nil {
 		if g.MinLibtorrent != "" && libtorrent.LessThan(version.Must(version.NewVersion(g.MinLibtorrent))) {
 			return false
@@ -242,7 +213,6 @@ func (g Gate) passes(libtorrentVersion, platform string) bool {
 	return platform == "" || !slices.Contains(g.NotPlatforms, platform)
 }
 
-// notShown returns entries that qui does not show, with one reason.
 func notShown(tab Tab, reason string, keys ...string) []Entry {
 	entries := make([]Entry, len(keys))
 	for i, key := range keys {
@@ -251,11 +221,8 @@ func notShown(tab Tab, reason string, keys ...string) []Entry {
 	return entries
 }
 
-// reasonWebUIOnly is the reason for a key that changes only how the qBittorrent
-// WebUI or desktop app looks or acts.
 const reasonWebUIOnly = "changes only the qBittorrent WebUI or desktop app"
 
-// fixedOptions returns the options of a select that no gate limits.
 func fixedOptions(values ...any) []Option {
 	options := make([]Option, len(values))
 	for i, value := range values {

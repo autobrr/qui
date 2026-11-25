@@ -15,8 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// volatileTorrentFields are the per-tick jitter fields fpBuf.torrent deliberately
-// skips. Keep this set in sync with the skip list documented on that method.
 var volatileTorrentFields = map[string]bool{
 	"Reannounce":    true,
 	"TimeActive":    true,
@@ -32,13 +30,9 @@ var volatileTorrentFields = map[string]bool{
 	"NumSeeds":      true,
 
 	"ConnectionsCount": true,
-	// Not jitter: Progress already resends a list row during a download.
-	"PiecesHave": true,
+	"PiecesHave":       true,
 }
 
-// payloadOmittedTorrentFields are skipped for a different reason than jitter:
-// TorrentView shadows them out of the serialized payload (issue #2328), so a
-// change to one has nothing to update client-side and must not resend a row.
 var payloadOmittedTorrentFields = map[string]bool{
 	"MagnetURI":             true,
 	"HasMetadata":           true,
@@ -47,8 +41,6 @@ var payloadOmittedTorrentFields = map[string]bool{
 	"HasOtherAnnounceError": true,
 }
 
-// setSampleValue writes a non-zero value of the field's kind so a hashed field
-// must move the fingerprint. New field kinds in go-qbittorrent fail loudly here.
 func setSampleValue(t *testing.T, f reflect.Value) {
 	t.Helper()
 	//exhaustive:ignore -- default fails loudly on any kind not yet used by qbt.Torrent
@@ -64,7 +56,6 @@ func setSampleValue(t *testing.T, f reflect.Value) {
 	case reflect.Slice:
 		f.Set(reflect.Append(f, reflect.New(f.Type().Elem()).Elem()))
 	case reflect.Map:
-		// A new map key must be detected even when its value is zero.
 		m := reflect.MakeMap(f.Type())
 		m.SetMapIndex(reflect.ValueOf("x"), reflect.New(f.Type().Elem()).Elem())
 		f.Set(m)
@@ -75,10 +66,6 @@ func setSampleValue(t *testing.T, f reflect.Value) {
 	}
 }
 
-// TestTorrentFingerprintCoversEveryField proves the fingerprint reacts to every
-// hashed qbt.Torrent field and ignores every volatile or payload-omitted one.
-// When a go-qbittorrent bump adds a field, this fails until the field is added
-// to fpBuf.torrent, volatileTorrentFields, or payloadOmittedTorrentFields.
 func TestTorrentFingerprintCoversEveryField(t *testing.T) {
 	base := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{}})
 	typ := reflect.TypeFor[qbt.Torrent]()
@@ -98,9 +85,6 @@ func TestTorrentFingerprintCoversEveryField(t *testing.T) {
 	}
 }
 
-// TestMagnetOnlyChangeDoesNotResendRow pins the payload-omitted rule end to end:
-// magnet_uri no longer serializes in list/SSE rows, so a magnet-only change must
-// not flag the row as changed.
 func TestMagnetOnlyChangeDoesNotResendRow(t *testing.T) {
 	before := []qbittorrent.TorrentView{{Torrent: &qbt.Torrent{Hash: "aaa", Name: "Alpha"}}}
 	after := []qbittorrent.TorrentView{{Torrent: &qbt.Torrent{Hash: "aaa", Name: "Alpha", MagnetURI: "magnet:?xt=urn:btih:aaa"}}}
@@ -121,9 +105,6 @@ func TestHasMetadataOnlyChangeDoesNotResendRow(t *testing.T) {
 	require.Empty(t, changed, "has_metadata-only change must not resend the row")
 }
 
-// assertEveryFieldHashed proves fp reacts to every field of T: a fingerprint
-// with no coverage guard fails silently, because the delta stream drops a field
-// whose hash holds and no periodic keyframe corrects the client.
 func assertEveryFieldHashed[T any](t *testing.T, hint string, fp func(T) uint64) {
 	var zero T
 	base := fp(zero)
@@ -135,8 +116,6 @@ func assertEveryFieldHashed[T any](t *testing.T, hint string, fp func(T) uint64)
 	}
 }
 
-// TestTrackerFingerprintCoversEveryField does the same for the per-tracker rows
-// inside Torrent.Trackers.
 func TestTrackerFingerprintCoversEveryField(t *testing.T) {
 	assertEveryFieldHashed(t, "add it to the Trackers loop in fpBuf.torrent", func(tr qbt.TorrentTracker) uint64 {
 		return singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{Trackers: []qbt.TorrentTracker{tr}}})
@@ -183,8 +162,6 @@ func BenchmarkSingleRowFingerprint(b *testing.B) {
 	}
 }
 
-// BenchmarkComputeRowDeltaPage measures a whole page the way a tick does, which
-// is where the fingerprint buffer is reused across rows.
 func BenchmarkComputeRowDeltaPage(b *testing.B) {
 	const pageRows = 300
 	rows := make([]qbittorrent.TorrentView, pageRows)
@@ -215,18 +192,12 @@ func BenchmarkComputeRowDeltaPage(b *testing.B) {
 	}
 }
 
-// TestFingerprintDistinguishesNaNRows guards the fix for the old JSON path,
-// where a NaN ratio made json.Marshal fail and every such row hashed as empty.
 func TestFingerprintDistinguishesNaNRows(t *testing.T) {
 	a := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "A", Ratio: math.NaN()}})
 	b := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "B", Ratio: math.NaN()}})
 	require.NotEqual(t, a, b)
 }
 
-// A version read, or metadata that arrives for a magnet link, can give a row
-// Reannounce In, Popularity or Private with no other change in the torrent.
-// The stream sends the row again, so the page does not keep the dash.
-// regression: #3760, #3761
 func TestStreamResendsARowThatGainsAnOptionalValue(t *testing.T) {
 	gains := map[string]func(*qbittorrent.TorrentView){
 		"Reannounce": func(tv *qbittorrent.TorrentView) { tv.Reannounce = new(int64(30)) },

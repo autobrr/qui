@@ -10,7 +10,6 @@ import { useIsMobile } from "@/hooks/useMediaQuery"
 import { useThemeLocalOnly } from "@/hooks/useThemeSettingsSync"
 import { api } from "@/lib/api"
 
-/** Names what a theme click changes when the layout settings narrow it, or null when it changes the theme of every browser. */
 export function useThemeTargetHint(): string | null {
   const { t } = useTranslation("settings")
   const isMobile = useIsMobile()

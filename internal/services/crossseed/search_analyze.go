@@ -31,8 +31,6 @@ import (
 
 var findGazelleMatch = gazellemusic.FindMatch
 
-// newGazelleClient builds the RED/OPS clients of a search. Tests point it at a
-// local fake.
 var newGazelleClient = gazellemusic.NewClient
 
 func (s *Service) selectContentDetectionRelease(torrentName string, sourceRelease *rls.Release, files qbt.TorrentFiles) (*rls.Release, bool) {
@@ -59,10 +57,6 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 		return sourceRelease, false
 	}
 
-	// qBittorrent file names are torrent-relative paths, and anime folders repeat the
-	// release name inside themselves, so parsing the full path makes rls read the title
-	// twice and invent a Group ("Azure Compass" -> "Compass"). Folder-only fields are
-	// backfilled from the torrent-name parse below.
 	largestRelease := s.matcher().parseFileRelease(path.Base(largestFile.Name))
 	largestRelease = enrichReleaseFromTorrent(largestRelease, sourceRelease)
 	if largestRelease.Type == rls.Unknown {
@@ -90,10 +84,6 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 		fileContent.ContentType != "" && fileContent.ContentType != "unknown" &&
 		sourceContent.ContentType != fileContent.ContentType
 
-	// Special case: file has explicit episode markers → trust it for TV detection
-	// Handles season packs where torrent name has year but files have episode numbers
-	// Only apply when titles match (to avoid unrelated files in wrong folders)
-	// Music too: series folders like "Show (2006)" parse as music and lose the markers.
 	if contentMismatch && !titleMismatch && fileContent.ContentType == "tv" &&
 		(sourceContent.ContentType == "movie" || sourceContent.ContentType == "music") {
 		if largestRelease.Episode > 0 || largestRelease.Series > 0 {
@@ -121,9 +111,6 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	return largestRelease, true
 }
 
-// AnalyzeTorrentForSearchAsync analyzes a torrent and performs capability filtering immediately,
-// while optionally performing content filtering asynchronously in the background.
-// This allows the UI to update immediately with capability results while waiting for content filtering.
 func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID int, hash string, enableContentFiltering bool) (*AsyncTorrentAnalysis, error) {
 	if instanceID <= 0 {
 		return nil, fmt.Errorf("%w: invalid instance id %d", ErrInvalidRequest, instanceID)
@@ -152,35 +139,29 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		return nil, err
 	}
 
-	// Pre-fetch all indexer info (names and domains) for performance
 	var indexerInfo map[int]jackett.EnabledIndexerInfo
 	if s.jackettService != nil {
 		indexerInfo, err = s.jackettService.GetEnabledIndexersInfo(ctx)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to fetch indexer info during analysis, using fallback lookups")
-			indexerInfo = make(map[int]jackett.EnabledIndexerInfo) // Empty map as fallback
+			indexerInfo = make(map[int]jackett.EnabledIndexerInfo)
 		}
 	} else {
 		indexerInfo = make(map[int]jackett.EnabledIndexerInfo)
 	}
 
-	// Get files to find the largest file for better content type detection
 	sourceFiles, err := s.getTorrentFilesCached(ctx, instanceID, hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
 
-	// Parse and detect content type
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 	contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
 
-	// Use unified content type detection
 	contentInfo := s.applyCategoryMappingRule(ctx, sourceTorrent, DetermineContentTypeWithFiles(contentDetectionRelease, sourceFiles))
 
-	// Detect disc layout
 	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
 
-	// Get all available indexers first
 	var allIndexers []int
 	var torznabErr error
 	if s.jackettService != nil {
@@ -199,7 +180,6 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		}
 	}
 
-	// Build base TorrentInfo
 	torrentInfo := &TorrentInfo{
 		InstanceID:       instanceID,
 		InstanceName:     instance.Name,
@@ -216,10 +196,6 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		DiscMarker:       discMarker,
 	}
 
-	// Reuse a filtering run, finished or still running, only when it was computed
-	// for the same content type; category mapping rules can change the type at
-	// runtime (#2313). A running run is reused so that a search after the dialog
-	// opens waits for it and does not start a second one.
 	if s.asyncFilteringCache != nil {
 		cacheKey := asyncFilteringCacheKey(instanceID, hash)
 		if existing, found := s.asyncFilteringCache.Get(cacheKey); found {
@@ -244,7 +220,6 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		}
 	}
 
-	// Initialize filtering state
 	filteringState := &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: false,
 		ContentCompleted:      false,
@@ -259,9 +234,6 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		FilteringState: filteringState,
 	}
 
-	// Publish the correctly typed state so it replaces a stale entry (#2313).
-	// Skipped when discovery failed (it would cache an empty run) or when
-	// content filtering is off (the state completes below without filtering).
 	if s.asyncFilteringCache != nil && enableContentFiltering && torznabErr == nil {
 		s.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, hash), filteringState, ttlcache.DefaultTTL)
 	}
@@ -273,7 +245,6 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		Bool("enableContentFiltering", enableContentFiltering).
 		Msg("[CROSSSEED-ASYNC] Starting async torrent analysis")
 
-	// Phase 1: Capability filtering (fast, synchronous)
 	if len(allIndexers) > 0 && s.jackettService != nil {
 		capabilityIndexers, err := s.jackettService.FilterIndexersForCapabilities(ctx, allIndexers, contentInfo.RequiredCaps, contentInfo.Categories)
 		if err != nil {
@@ -327,8 +298,6 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	return result, nil
 }
 
-// performAsyncContentFiltering performs content filtering in the background and updates the filtering state
-// This method handles concurrent access to the state safely
 func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID int, hash string, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo, state *AsyncIndexerFilteringState) {
 	log.Trace().
 		Str("torrentHash", hash).
@@ -365,7 +334,6 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		}
 	}
 
-	// Mark content filtering as completed (this should be the last operation)
 	state.ContentCompleted = true
 	snapshot = state.cloneLocked()
 	state.Unlock()
@@ -379,10 +347,6 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		Bool("contentCompleted", snapshot.ContentCompleted).
 		Msg("[CROSSSEED-ASYNC] Content filtering completed successfully")
 
-	// No cache write here: the cache already holds this state (or a newer run's
-	// state that replaced it, which a finished worker must not clobber, #2313).
-	// An entry that expired mid-run stays gone; the next request refilters.
-
 	log.Debug().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
@@ -393,12 +357,7 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		Msg("[CROSSSEED-ASYNC] Background content filtering completed")
 }
 
-// AnalyzeTorrentForSearch analyzes a torrent and returns metadata about how it would be searched,
-// without actually performing the search. This method now uses async filtering with immediate capability
-// results and optional content filtering for better performance.
 func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, hash string) (*TorrentInfo, error) {
-	// The async analysis reuses a completed same-content-type filtering run from
-	// cache or starts a fresh one; that post-detection decision lives there (#2313).
 	asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, true)
 	if err != nil {
 		return nil, err
@@ -414,7 +373,6 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 			torrentInfo.ExcludedIndexers = stateSnapshot.ExcludedIndexers
 			torrentInfo.ContentMatches = stateSnapshot.ContentMatches
 		} else {
-			// Content filtering still runs, so return the capability results.
 			torrentInfo.FilteredIndexers = stateSnapshot.CapabilityIndexers
 		}
 
@@ -450,8 +408,6 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 	return torrentInfo, nil
 }
 
-// mapContentTypeToARR maps crossseed content type to ARR content type for ID lookup.
-// Returns empty string for content types that don't have ARR lookup support.
 func mapContentTypeToARR(contentType string) arr.ContentType {
 	switch contentType {
 	case "movie":
@@ -459,18 +415,12 @@ func mapContentTypeToARR(contentType string) arr.ContentType {
 	case "tv":
 		return arr.ContentTypeTV
 	case "anime":
-		// Anime is handled by Sonarr, same as TV
 		return arr.ContentTypeAnime
 	default:
-		// No ARR lookup for music, books, games, adult, unknown, etc.
 		return ""
 	}
 }
 
-// lookupARRExternalIDs resolves external IDs for the torrent via ARR. The second
-// return value is the QueryDegraded reason when the lookup could not supply IDs
-// (so the search will run title-only), or "" when IDs resolved or no ARR lookup
-// applies.
 func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType string) (*arr.ExternalIDsResult, string) {
 	if isNilARRLookupService(s.arrService) {
 		return nil, ""
@@ -489,8 +439,6 @@ func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType s
 		return nil, QueryDegradedARRLookupFailed
 	}
 	if result == nil {
-		// A nil result with no error means no enabled ARR instance covers this
-		// content type — normal steady state, not a degradation of this search.
 		return nil, ""
 	}
 	if result.IDs == nil || result.IDs.IsEmpty() {
@@ -518,12 +466,7 @@ func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType s
 	return result, ""
 }
 
-// gazellePlausibleExtensions lists the extensions of content that RED/OPS host:
-// audio (music, audiobooks, comedy) and e-books or comics. The list excludes
-// applications and e-learning videos on purpose. Video and archive extensions
-// re-admit every movie, TV, and game torrent that the gate excludes.
 var gazellePlausibleExtensions = map[string]bool{
-	// audio
 	".flac": true,
 	".mp3":  true,
 	".m4a":  true,
@@ -537,7 +480,6 @@ var gazellePlausibleExtensions = map[string]bool{
 	".aiff": true,
 	".dsf":  true,
 	".dff":  true,
-	// e-books or comics
 	".epub": true,
 	".mobi": true,
 	".azw3": true,
@@ -547,15 +489,6 @@ var gazellePlausibleExtensions = map[string]bool{
 	".djvu": true,
 }
 
-// gazellePlausibleContent reports whether the bulk of a torrent is content that
-// RED/OPS can host. The gate reads file extensions on purpose. Release names for
-// music, audiobooks, and books often defeat the rls parser, but file extensions
-// are reliable.
-//
-// The gate weighs bytes instead of picking the single largest file, because
-// booklet scans and cover art outweigh individual tracks in many music releases.
-// It also skips the cross-seed ignore lists on purpose: those match on the whole
-// path, so a release directory named "[Bonus Tracks]" hides every file below it.
 func gazellePlausibleContent(files qbt.TorrentFiles) bool {
 	var plausibleBytes, otherBytes int64
 	for _, file := range files {
@@ -598,9 +531,6 @@ func (s *Service) detectGazelleSourceSite(torrent *qbt.Torrent) (string, bool) {
 	return "", false
 }
 
-// searchGazelleMatches asks each RED/OPS site that the Search scope marks
-// will_ask, at the same time, and returns one outcome for each lookup of the
-// scope, in the same order.
 func (s *Service) searchGazelleMatches(
 	ctx context.Context,
 	sourceTorrent *qbt.Torrent,
@@ -631,7 +561,6 @@ func (s *Service) searchGazelleMatches(
 	return out
 }
 
-// askGazelleSite sends the lookup of one site.
 func (s *Service) askGazelleSite(
 	ctx context.Context,
 	lookup GazelleLookup,
@@ -659,9 +588,6 @@ func (s *Service) askGazelleSite(
 			Str("targetHost", host).
 			Msg("[CROSSSEED-GAZELLE] Tracker rejects every request; skipping it for the rest of the search")
 		clients.deny(host, matchErr)
-		// Only the rejection itself opens the notice. A later search of the
-		// same run skips the site, and a client from before a settings save
-		// has an old key: neither may open a notice that the save closed.
 		s.setKeyRejectedNotice(gazelleLookupSite(lookup), clients.keyGens[host], true, matchErr.Error()) //nolint:contextcheck // the notice notification must outlive the search that opened it
 		return lookup.failed(GazelleReasonKeyRejected, matchErr.Error()), nil
 	}
@@ -725,14 +651,9 @@ func (s *Service) askGazelleSite(
 
 type gazelleSearchOutcome struct {
 	results []TorrentSearchResult
-	// lookups holds one outcome for each RED/OPS site that has an API key, in
-	// the order of the site table.
 	lookups []GazelleLookup
 }
 
-// startGazelleSearch starts the RED/OPS lookup of one search with its own
-// gazelleSearchTimeout, so it runs beside the Torznab search. The returned
-// function waits for the lookup; it is safe to call more than once.
 func (s *Service) startGazelleSearch(
 	ctx context.Context,
 	sourceTorrent *qbt.Torrent,
@@ -750,7 +671,6 @@ func (s *Service) startGazelleSearch(
 		defer cancel()
 		outcome := s.searchGazelleMatches(gazelleCtx, sourceTorrent, sourceFiles, scope, clients)
 		for i, l := range outcome.lookups {
-			// A canceled caller is not a RED/OPS timeout.
 			if l.Reason == GazelleReasonTimedOut && ctx.Err() != nil {
 				outcome.lookups[i].Reason = GazelleReasonError
 			}
@@ -769,20 +689,9 @@ func buildFileSizeMap(files qbt.TorrentFiles) map[string]int64 {
 	return out
 }
 
-// alternateConnectorQuery returns a variant of query with the title connector
-// swapped between "and" and "&", so trackers that index a show with the opposite
-// spelling are still reachable (e.g. "Law and Order" vs "Law & Order"). Returns
-// ("", false) when no swap applies.
-//
-// Only standalone, whitespace-delimited connector tokens are swapped, so
-// intra-token ampersands like "AT&T" or "R&B" and embedded words like "Andor"
-// are left intact. The spelled-out connector is matched case-insensitively
-// because the query is built from the rls-parsed title, which preserves the
-// source release's original casing ("and", "And", "AND" are all common).
 func alternateConnectorQuery(query string) (string, bool) {
 	tokens := strings.Split(query, " ")
 
-	// Prefer swapping a spelled-out connector to "&": match any casing.
 	swapped := false
 	for i, tok := range tokens {
 		if strings.EqualFold(tok, "and") {
@@ -794,7 +703,6 @@ func alternateConnectorQuery(query string) (string, bool) {
 		return strings.Join(tokens, " "), true
 	}
 
-	// Otherwise swap a standalone "&" connector to "and".
 	for i, tok := range tokens {
 		if tok == "&" {
 			tokens[i] = "and"
@@ -808,16 +716,6 @@ func alternateConnectorQuery(query string) (string, bool) {
 	return "", false
 }
 
-// AlternateTitleQuery returns the first alternate title under which the same
-// content can be indexed: *arr alternate titles first (scene, localized, and
-// renamed forms), then the Title keys of the release other than its main title
-// (the parsed Alt title, "AKA" segments, the sides of a slash title), then the
-// parsed subtitle joined to the title, and last the title without its season
-// numeral. A candidate counts only when its normalized form differs from the
-// primary query, so the retry never repeats the query that already returned
-// nothing.
-// Returns ("", 0, false) when no distinct alternate title exists.
-// Dir Scan has no Service, so it parses through the default parser.
 func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (query string, season int, ok bool) {
 	side := namedRelease{release: release, rawName: releaseName}
 	if isTVRelease(release) {
@@ -826,27 +724,18 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 	return matcher{}.alternateTitleQuery(primaryQuery, side, arrTitles)
 }
 
-// TitlesMatch reports whether two release names pass the title rule of the
-// Match verdict. A bare title numeral counts as a season only when it names the
-// season of the other name. Dir Scan has no Service, so it parses through the
-// default parser.
 func TitlesMatch(source *rls.Release, sourceName string, candidate *rls.Release, candidateName string) bool {
 	var comparison releaseComparison
 	matcher{}.compareTitles(&comparison, withTitleNumeralSeason(source, candidate), withTitleNumeralSeason(candidate, source), sourceName, candidateName, nil, nil)
 	return comparison.matched()
 }
 
-// alternateTitleQuery reads a Read release. season is the inferred Season
-// numeral when the query is the title without it, so that the retry searches
-// that season, and 0 otherwise.
 func (m matcher) alternateTitleQuery(primaryQuery string, side namedRelease, arrTitles []string) (query string, season int, ok bool) {
 	release := side.release
 	primary := stringutils.NormalizeForMatching(primaryQuery)
 	candidates := append([]string(nil), arrTitles...)
-	// The primary query already reads the main title, the first one.
 	candidates = append(candidates, m.appendReleaseTitles(nil, release, side.rawName)[1:]...)
 	candidates = append(candidates, subtitleTitleQuery(release))
-	// A movie keeps its numeral: "Rocky III" is not "Rocky".
 	withoutNumeral := ""
 	if release.Series > 0 || side.seasonNumeral > 0 {
 		withoutNumeral = numeralFreeTitle(release)
@@ -868,15 +757,6 @@ func (m matcher) alternateTitleQuery(primaryQuery string, side namedRelease, arr
 	return "", 0, false
 }
 
-// subtitleTitleQuery joins a release's title and parsed subtitle into a query.
-// rls parks the tokens between the year and the resolution in Subtitle, so a
-// title-only query for "Powerboat1.2026.Lisbon.Grand.Prix.1080p.WEB.h264-QUIET"
-// drops the only text that identifies the release. Releases with a numbered
-// season or episode are skipped: their subtitle is an episode title, which no
-// tracker indexes. A seasonless pack (TV type from file inspection, Series
-// still zero) keeps its subtitle: that text is the arc or batch name.
-// A dotted "AKA" never reaches rawAKATitleParts, which needs the spaced form,
-// so it lands here instead, and it replaces the title rather than extending it.
 func subtitleTitleQuery(release *rls.Release) string {
 	if release == nil || release.Series > 0 || release.Episode > 0 {
 		return ""
@@ -893,31 +773,20 @@ func subtitleTitleQuery(release *rls.Release) string {
 }
 
 type gazelleClientSet struct {
-	// off reports that RED/OPS is turned off in the settings.
-	off bool
-	// keyGens holds the key generation of each site when the set was built.
+	off     bool
 	keyGens map[string]uint64
 	byHost  map[string]*gazellemusic.Client
-	// keyErrs holds, per host, the error of a stored key that qui could not
-	// decrypt.
 	keyErrs map[string]error
 
-	mu sync.Mutex
-	// denied holds, per host, the gazellemusic.ErrAccessDenied that tracker
-	// returned. The set lives as long as one search, so a denied host gets no
-	// more requests in that search.
-	denied map[string]error
-	// queried holds each host the search sent a request to. A configured host
-	// can go unqueried: sources from OPS only ever target RED.
+	mu      sync.Mutex
+	denied  map[string]error
 	queried map[string]struct{}
 }
 
-// disabled reports that RED/OPS is turned off in the settings.
 func (c *gazelleClientSet) disabled() bool {
 	return c != nil && c.off
 }
 
-// hosts returns the RED/OPS hosts that have an API key.
 func (c *gazelleClientSet) hosts() []string {
 	if c == nil {
 		return nil
@@ -952,8 +821,6 @@ func (c *gazelleClientSet) markQueried(host string) {
 	c.queried[host] = struct{}{}
 }
 
-// deniedMessage describes each tracker that rejected the key or the IP, for the
-// run record. allDenied reports that every tracker the search queried rejected it.
 func (c *gazelleClientSet) deniedMessage() (message string, allDenied bool) {
 	if c == nil {
 		return "", false
@@ -994,9 +861,6 @@ func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.Cr
 
 	keys := models.GazelleAPIKeys{Keys: map[string]string{}}
 	if s.automationStore == nil {
-		// Allow building clients directly from settings when keys are supplied as plaintext.
-		// In normal runtime settings are loaded from the DB with redacted placeholders, so this path
-		// is mainly for tests and non-DB settings loaders.
 		for _, site := range gazellemusic.Sites() {
 			if key := strings.TrimSpace(settings.GazelleAPIKey(site.SettingsName)); key != "" && !domain.IsRedactedString(key) {
 				keys.Keys[site.SettingsName] = key

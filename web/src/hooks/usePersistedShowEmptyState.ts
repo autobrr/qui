@@ -5,10 +5,6 @@
 
 import { parseJsonBoolean, useClientSetting } from "@/lib/client-settings"
 
-/**
- * Persists the show/hide empty items state.
- * Used for toggling visibility of empty statuses, categories, and tags in the filter sidebar.
- */
 export function usePersistedShowEmptyState(key: string, defaultValue: boolean = false) {
   return useClientSetting<boolean>(`qui-show-empty-${key}`, {
     defaultValue,

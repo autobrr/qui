@@ -11,9 +11,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// indexerKeepsRequestIDParams must mirror the pruning in
-// applyCapabilitySpecificParams: an indexer counts as ID-queried exactly when
-// at least one of the request's ID params survives for the search mode.
 func TestIndexerKeepsRequestIDParams(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -65,8 +62,6 @@ func TestIndexerKeepsRequestIDParams(t *testing.T) {
 			want:       true,
 		},
 		{
-			// The executor never prunes params for a caps-less indexer, so it
-			// searches by ID and must land in the title-rescue set.
 			name:       "unknown capabilities keep the ID params",
 			req:        TorznabSearchRequest{IMDbID: "tt0111161"},
 			caps:       nil,

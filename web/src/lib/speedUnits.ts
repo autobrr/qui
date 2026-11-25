@@ -3,20 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Speed units utilities for toggling between B/s and bps display
-
 import { useClientSetting } from "@/lib/client-settings"
 import { BIT_LADDER, BYTE_SPEED_LADDER, formatValueWithUnit, scaleToUnit } from "@/lib/unit-format"
 
-// Speed unit types
 export type SpeedUnit = "bytes" | "bits"
 
-// Storage key for speed units preference
 const SPEED_UNITS_STORAGE_KEY = "qui-speed-units"
 
 const parseSpeedUnit = (raw: string): SpeedUnit => (raw === "bits" ? "bits" : "bytes")
 
-// Custom hook for managing the DB-backed speed units preference
 export function useSpeedUnits(): [SpeedUnit, (unit: SpeedUnit) => void] {
   return useClientSetting<SpeedUnit>(SPEED_UNITS_STORAGE_KEY, {
     defaultValue: "bytes",
@@ -25,13 +20,11 @@ export function useSpeedUnits(): [SpeedUnit, (unit: SpeedUnit) => void] {
   })
 }
 
-// Narrower values get more decimals so a speed column stays the same width.
 const speedDecimals = (value: number): number => (value >= 100 ? 0 : value >= 10 ? 1 : 2)
 
 const zeroSpeed = (unit: SpeedUnit, compact: boolean): string =>
   compact ? "0" : formatValueWithUnit(0, unit === "bits" ? "b" : "B", { perSecond: true })
 
-// Format speed with unit preference
 export function formatSpeedWithUnit(
   bytesPerSecond: number,
   unit: SpeedUnit,
@@ -41,15 +34,12 @@ export function formatSpeedWithUnit(
     return zeroSpeed(unit, compact)
   }
 
-  // Bits are decimal by networking convention; bytes stay binary.
   const scaled = unit === "bits"? scaleToUnit(bytesPerSecond * 8, BIT_LADDER, 1000): scaleToUnit(bytesPerSecond, BYTE_SPEED_LADDER, 1024)
   const decimals = speedDecimals(scaled.value)
   if (Number(scaled.value.toFixed(decimals)) === 0) {
     return zeroSpeed(unit, compact)
   }
 
-  // compact drops the rate suffix and the space, which only the byte columns are narrow
-  // enough to need.
   return formatValueWithUnit(scaled.value, scaled.unit, {
     fractionDigits: decimals,
     perSecond: true,

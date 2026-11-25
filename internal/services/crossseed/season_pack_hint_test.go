@@ -10,9 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The season pack hint reads the ARR aliases that an admitted decision already
-// holds for the pack. The corpus cannot show this: search rejects a pack
-// against one episode, so the corpus pair never holds a decision.
 func TestFindCandidates_SeasonPackHintReadsHeldAliasTitles(t *testing.T) {
 	const pack = "Kaiju.Kyoutai.S02.1080p.WEB.H264-GRP"
 	tests := []struct {
@@ -32,8 +29,6 @@ func TestFindCandidates_SeasonPackHintReadsHeldAliasTitles(t *testing.T) {
 			resp, err := svc.FindCandidates(t.Context(), &FindCandidatesRequest{
 				TorrentName:       pack,
 				TargetInstanceIDs: []int{corpusInstanceID},
-				// Another torrent was the bound source, so the episode itself is
-				// not the search source.
 				SearchDecision: searchDecisionProvenance{
 					Class:           searchCandidateClassStrict,
 					CandidateTitles: tt.titles,

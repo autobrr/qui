@@ -351,7 +351,6 @@ func TestAlternateTitlesFetchLogBudget(t *testing.T) {
 	})
 }
 
-// regression: #4502
 func TestArrAlternateTitlesPauseOnlyASourceThatIsDown(t *testing.T) {
 	for name, c := range map[string]struct {
 		breakArr func(f *fakeArrServer)

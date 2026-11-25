@@ -11,8 +11,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// partialPoolPlatformCrossDeviceError recognizes the native error returned by
-// Windows hardlink creation across volumes.
 func partialPoolPlatformCrossDeviceError(err error) bool {
 	return errors.Is(err, windows.ERROR_NOT_SAME_DEVICE)
 }

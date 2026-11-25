@@ -40,14 +40,8 @@ function Hint({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-/**
- * One list, with a search field above it. Typing searches every instance,
- * page, section, action and torrent. An entry with sections opens them as a
- * second level.
- */
 export function CommandPaletteContent({ close, startText = "" }: { close: () => void; startText?: string }) {
   const { t } = useTranslation(["common", "torrents"])
-  // Radix selects the text of the search field when the palette opens, so the first key replaces a start text.
   const [state, dispatch] = useReducer(paletteReducer, { ...INITIAL_PALETTE_STATE, query: startText })
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -60,10 +54,8 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
   const query = state.query.trim()
   const destinations = useDestinations(close)
   const parent = findEntry(destinations, state.parentId)
-  // A second level holds no torrents, so only the first level searches them.
   const torrents = useTorrentResults(parent ? "" : query, close)
   const scope = parent?.sections ?? destinations
-  // A touch keyboard has no key for ⌘↵. There, the row that searches the torrents is the first row, so the key that sends the text runs it. When no torrent matches, that key opens the first destination.
   const searchFirst = touch && !torrents.noMatch ? torrents.entries.slice(0, 1) : []
   const groups: PaletteGroup[] = [
     { id: "torrent-search", entries: searchFirst },
@@ -74,7 +66,6 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
   const highlighted = rows.find(entry => entry.id === state.highlightId) ?? rows.at(0)
   const moreOf = !parent && highlighted?.sections ? highlighted : undefined
 
-  // cmdk scrolls only to a row that its own keys highlight. When the palette moves the highlight, the list follows it here.
   const changeText = (text: string) => {
     dispatch({ type: "typed", query: text })
     listRef.current?.scrollTo({ top: 0 })
@@ -107,12 +98,10 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
     else if (action.type === "goBack") back()
   }
 
-  // In a list where a row has the arrow to its sections, a row without the arrow keeps its shortcut in the same column.
   const renderRow = (entry: PaletteEntry, alignsShortcut: boolean) => {
     const subtitle = [entry.current ? t("common:commandPalette.current") : null, parent ? null : entry.trail, entry.note].filter(Boolean).join(" · ")
     const copies = entry.copies ?? 0
     return (
-      // With an id of the palette, the search field can name the row to a screen reader. cmdk knows a row by its own id, so it also leaves the highlight alone when the row goes away.
       <CommandItem asChild key={entry.id} value={entry.id} disabled={entry.disabled} onSelect={() => select(entry)} className="cursor-pointer gap-3 rounded-lg px-3 py-2">
         <div id={rowId(entry)}>
           <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground/[0.06] text-muted-foreground">
@@ -164,7 +153,6 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
       aria-describedby={undefined}
       onOpenAutoFocus={returnFocus.remember}
       onCloseAutoFocus={returnFocus.restore}
-      // The sizes follow the height that an on-screen keyboard leaves free, so the keyboard does not cover the list.
       style={visibleHeight === null ? undefined : { "--visible-height": `${visibleHeight}px` } as CSSProperties}
       className="top-[calc(var(--visible-height,100vh)*0.12)] flex max-h-[calc(var(--visible-height,100vh)*0.76)] translate-y-0 flex-col gap-0 overflow-hidden rounded-2xl bg-popover p-0 text-popover-foreground shadow-2xl outline-none sm:max-w-2xl"
     >
@@ -172,7 +160,6 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
       <Command
         shouldFilter={false}
         loop
-        // Ctrl+K closes the palette on Windows and Linux, so Ctrl+J/K/N/P move the highlight only on macOS.
         vimBindings={isMac}
         value={highlighted?.id ?? ""}
         onValueChange={id => dispatch({ type: "highlighted", id })}
@@ -188,7 +175,6 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
           ) : (
             <Search className="size-5 text-muted-foreground" />
           )}
-          {/* cmdk moves the highlight to its first row when its own search text changes. The palette sets the highlight itself, so cmdk gets no text. */}
           <CommandPrimitive.Input asChild value="" onValueChange={changeText}>
             <input
               ref={inputRef}
@@ -199,7 +185,6 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
               className="h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
             />
           </CommandPrimitive.Input>
-          {/* A touch screen has no Escape key. cmdk runs the highlighted row on an Enter that reaches it, so Enter stays with the button. */}
           <button
             type="button"
             onClick={close}
@@ -210,7 +195,6 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
             <X className="size-5" />
           </button>
         </div>
-        {/* A press in the list must not take the cursor out of the search field: a heading or a disabled row runs nothing, and the keys would then go nowhere. */}
         <CommandList ref={listRef} onMouseDown={event => event.preventDefault()} className="max-h-[min(28rem,calc(var(--visible-height,100vh)*0.56))] scroll-py-2 overscroll-contain px-2 pb-2">
           {parent && <CommandEmpty className="py-8 text-center text-sm text-muted-foreground">{t("common:commandPalette.noMatchIn", { name: parent.label })}</CommandEmpty>}
           {groups.map(group => (

@@ -10,13 +10,6 @@ import { api } from "@/lib/api"
 import { makeFilters } from "@/test/mockFilters"
 import { server } from "@/test/msw/server"
 
-// Contract tests for the lib/api.ts "mutations" group (issue #1931). These call
-// the REAL api client and intercept HTTP with MSW, asserting both the outgoing
-// request serialization (verb, path, query, body, headers) and the parsed
-// return value / error contract from the shared request<T>() wrapper.
-
-// Capture the outgoing request so a test can inspect verb / URL / body without
-// relying on the default handler's response shape.
 interface Captured {
   method: string
   url: URL
@@ -61,18 +54,14 @@ describe("api mutations group (MSW contract)", () => {
 
       const result = await api.bulkAction(7, data)
 
-      // Response: default 204 -> request<T>() returns undefined (Promise<void>).
       expect(result).toBeUndefined()
 
       expect(captured).toBeDefined()
       expect(captured!.method).toBe("POST")
       expect(captured!.url.pathname).toBe("/api/instances/7/torrents/bulk-action")
-      // No query params: filters/excludeHashes/selectAll/category/search live in
-      // the JSON body, not the query string.
       expect(captured!.url.search).toBe("")
       expect(captured!.contentType).toContain("application/json")
 
-      // The whole object is sent verbatim (no transformation/serialization).
       expect(captured!.body).toEqual(data)
       const body = captured!.body as typeof data
       expect(body.filters).toEqual(data.filters)

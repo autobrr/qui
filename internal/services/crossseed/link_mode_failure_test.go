@@ -23,9 +23,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// faultyLinkBackend is the local backend with the failures a real folder
-// cannot give. Each list holds path prefixes. A reflink is a hardlink here,
-// because a temporary folder seldom supports clones.
 type faultyLinkBackend struct {
 	fsops.Backend
 	otherDisk   []string
@@ -78,8 +75,6 @@ type linkFailureEnv struct {
 	matchedFiles qbt.TorrentFiles
 }
 
-// Each failure kind of the link tree module follows its own rule in the
-// single add, with Fallback to regular mode on.
 func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 	t.Parallel()
 
@@ -174,7 +169,6 @@ func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 			wantMessage: "Failed to create reflink tree: disk full",
 		},
 		{
-			// regression: #4303
 			name: "cleanup of the failed tree also fails",
 			mode: "reflink",
 			setup: func(_ *testing.T, e *linkFailureEnv) {
@@ -183,15 +177,9 @@ func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 			wantMessage: "; a partial link tree can remain in ",
 		},
 		{
-			// The target dir already holds a file: a crashed earlier run or a
-			// second tracker that shares the link path. A regular add would land
-			// in the path of the matched torrent and leave the partial tree, so
-			// the add refuses and the user cleans up (#2942).
 			name: "target exists",
 			mode: "hardlink",
 			setup: func(t *testing.T, e *linkFailureEnv) {
-				// Another torrent holds the root folder, so the tree goes into the
-				// hashed isolation folder, where a stranger's file sits.
 				require.NoError(t, os.MkdirAll(filepath.Join(e.linksA, "Movie"), 0o755))
 				stranger := filepath.Join(e.linksA, "TorrentName--hash123", "Movie", "movie.mkv")
 				require.NoError(t, os.MkdirAll(filepath.Dir(stranger), 0o755))
@@ -200,8 +188,6 @@ func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 			wantMessage: "Failed to create hardlink tree: ",
 		},
 		{
-			// A lost connection on one base dir must not turn the refusal into
-			// a regular add.
 			name: "target exists after a lost connection on the other base dir",
 			mode: "hardlink",
 			setup: func(t *testing.T, e *linkFailureEnv) {
@@ -283,8 +269,6 @@ func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 	}
 }
 
-// The route gets a row for each Link base directory when it is read, so only
-// a base directory that the instance gained after that has no row.
 func TestProcessLinkMode_RouteWithoutRowLeavesNoTree(t *testing.T) {
 	t.Parallel()
 

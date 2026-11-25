@@ -48,7 +48,6 @@ const PRIVACY_URL = "https://bin.getqui.com/privacy"
 const WIDE_QUERY = "(min-width: 1024px)"
 const PINNED_LOGS_QUERY = "(min-height: 640px)"
 
-/** The icon button that opens the report dialog. Renders nothing while Problem reports are unavailable. */
 export function ProblemReportButton({ className }: { className?: string }) {
   const { t } = useTranslation("common")
   const available = useProblemReportsAvailable()
@@ -68,7 +67,6 @@ export function ProblemReportButton({ className }: { className?: string }) {
   )
 }
 
-/** The menu row that opens the report dialog. Renders nothing while Problem reports are unavailable. */
 export function ProblemReportMenuItem() {
   const { t } = useTranslation("common")
   const available = useProblemReportsAvailable()
@@ -82,7 +80,6 @@ export function ProblemReportMenuItem() {
   )
 }
 
-/** The one report dialog of the app. Every entry point opens it through `openProblemReport`. */
 export function ProblemReportDialogRoot() {
   const { open, startedFrom, view } = useProblemReportOpenState()
   const wide = useMediaQuery(WIDE_QUERY)
@@ -110,7 +107,6 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
   const queryClient = useQueryClient()
   const textRef = useRef<HTMLTextAreaElement>(null)
   const { text, logScope, attempt } = useProblemReportDraft()
-  // Read once, so that what the dialog shows is what Send posts.
   const [browser] = useState(browserFacts)
   const [failed] = useState(failedRequests)
 
@@ -141,7 +137,6 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
       if (error instanceof APIError && error.message === "token_rejected") void queryClient.invalidateQueries({ queryKey: SENDER_KEY })
     },
   })
-  // Here, and not in the action bar, because a change of layout mounts the action bar again.
   const sentReports = useSentReports()
 
   const facts = factsQuery.data
@@ -150,7 +145,6 @@ function ProblemReportForm({ startedFrom, wide, hidden }: { startedFrom: Problem
     if (canSend) sendMutation.mutate({ facts, sent: startProblemReportDraftSend(newSubmissionId) }, { onSuccess: closeProblemReport })
   }
 
-  // autoFocus works only on mount, so the text takes the focus back after Sent reports.
   const wasHidden = useRef(hidden)
   useEffect(() => {
     if (wasHidden.current && !hidden) textRef.current?.focus()
@@ -226,7 +220,6 @@ interface Report {
   textRef: RefObject<HTMLTextAreaElement | null>
 }
 
-/** asTitle is false while Sent reports shows, which then holds the one title of the dialog. */
 function Header({ asTitle }: { asTitle: boolean }) {
   const { t } = useTranslation("common")
   const Title = asTitle ? DialogTitle : "p"
@@ -426,10 +419,6 @@ function LogNotes({ facts, logScope }: { facts: ProblemReportFacts; logScope: Pr
   )
 }
 
-/**
- * The cause box of a System notice, with one block per log line, so that a wrapped line hangs under its own start.
- * Memoized: each keystroke in the text re-renders the form, and the box can hold 1,000 lines.
- */
 const LogBox = memo(function LogBox({ lines, compact }: { lines: string[]; compact?: boolean }) {
   const { t } = useTranslation("common")
   if (lines.length === 0) {
@@ -577,7 +566,6 @@ function logLines(facts: ProblemReportFacts, scope: ProblemReportLogScope): stri
   }
 }
 
-/** True when the Log level writes debug lines. qui reads an unknown level as INFO. */
 function logsHoldDebug(level: string): boolean {
   const normalized = level.trim().toLowerCase()
   return normalized === "debug" || normalized === "trace"
@@ -620,7 +608,6 @@ function browserFacts(): ProblemReportBrowserFacts {
 }
 
 function newSubmissionId(): string {
-  // getRandomValues, not randomUUID: randomUUID needs a secure context, and qui often runs on plain http.
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   bytes[6] = (bytes[6] & 0x0f) | 0x40
   bytes[8] = (bytes[8] & 0x3f) | 0x80

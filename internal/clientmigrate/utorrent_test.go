@@ -47,7 +47,6 @@ func TestUTorrentPieces(t *testing.T) {
 			wantComplete: true,
 		},
 		{
-			// the same pieces read MSB-first must not pass as complete
 			name:         "msb-first bitfield",
 			item:         UTorrentResumeItem{Have: "\xe0", Prio: "\x08\x08"},
 			wantComplete: false,
@@ -157,8 +156,6 @@ func TestUTorrentLayoutUnmappedTarget(t *testing.T) {
 	info := testInfo()
 	contentPath := filepath.Join(t.TempDir(), info.Name)
 
-	// a file moved to a drive no rule maps would land under the content
-	// root as Name/E:/Extras/b.mkv on Unix
 	for _, target := range []string{`E:\Extras\b.mkv`, `\\nas\share\b.mkv`} {
 		item := UTorrentResumeItem{Targets: [][]any{{int64(1), target}}}
 		_, _, err := utorrentLayout(&item, contentPath, &info, nil)

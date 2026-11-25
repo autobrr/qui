@@ -35,7 +35,6 @@ import { ArrowDown, ArrowUp, Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
-/** The period of the last 24 hours. It moves forward each 5 minutes while the page is visible. */
 function useLastDayPeriod(): StatisticsPeriod {
   const [period, setPeriod] = useState(() => presetPeriod("24h", new Date()))
   useEffect(() => {
@@ -55,7 +54,6 @@ function useLastDayPeriod(): StatisticsPeriod {
   return period
 }
 
-/** Holds the pointed layer. A change renders only the components that read the layer, not the page. */
 function PointedLayerProvider({ children }: { children: ReactNode }) {
   const [pointed, setPointed] = useState<number>()
   return (
@@ -65,7 +63,6 @@ function PointedLayerProvider({ children }: { children: ReactNode }) {
   )
 }
 
-/** The chart of all instances. It marks the pointed layer, and it points at the layer under the pointer. */
 function PointedChart(props: StreamChartProps) {
   return <StreamChart {...props} pointed={usePointedLayer()} onPoint={usePointLayer()} />
 }
@@ -85,22 +82,18 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
 
   const statusQuery = useTransferHistoryStatus()
   const statuses = useMemo(() => statusQuery.data ?? [], [statusQuery.data])
-  // The stream gives a new statsData on each update, so the ids are compared by value.
   const idsKey = statsData.map(d => d.instance.id).join(",")
   const instanceIds = useMemo(() => idsKey ? idsKey.split(",").map(Number) : [], [idsKey])
   const hasHistory = statuses.some(status => instanceIds.includes(status.instanceId))
 
-  // The query of the Statistics page for "24 hours" and all instances, so that both pages show the same numbers.
   const period = useLastDayPeriod()
   const day = useTransferHistoryRows(hasHistory ? statuses : [], hasHistory ? { from: period.from, to: period.to, bucket: "hour", groupBy: "tracker" } : undefined)
   const [shown, setShown] = useState<ShownDay>()
   if (day.rows && shown?.rows !== day.rows) {
     setShown({ period, rows: day.rows, instanceIds: statuses.map(status => status.instanceId) })
   }
-  // After a failed read, the page shows the error and not the numbers of an older period.
   const failed = statusQuery.error ?? day.error
   const current = failed ? undefined : shown
-  // An active instance with older history and no row in the last 24 hours has no history for the period. The rows of a disabled or removed instance count in the totals only.
   const noHistory = statusQuery.isSuccess && (!hasHistory || (current !== undefined && current.rows.every((rows, index) => rows.length === 0 || !instanceIds.includes(current.instanceIds[index]))))
 
   const dayData = useMemo(() => {
@@ -124,7 +117,6 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
 
   const [chosen, setChosen] = useDashboardChartView()
   const settingsLoaded = useClientSettingsSettled()
-  // With no history, the page shows Live and keeps the saved view.
   const range: DashboardChartView = noHistory ? "live" : chosen
   const live = useLiveSamples(settingsLoaded && range === "live")
   const liveLayers = useMemo(() => live.data && !live.error ? buildLiveLayers(live.data, layerOf) : [], [live.data, live.error, layerOf])
@@ -141,7 +133,6 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
     try {
       return new Intl.DateTimeFormat(locale, { ...options, timeZone: preferences.timezone })
     } catch {
-      // The picker offers zones that some browsers do not know. The date helpers of the app fall back the same way.
       return new Intl.DateTimeFormat(locale, options)
     }
   }, [locale, hour12, preferences.timezone])
@@ -156,7 +147,6 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
     : t("stream.liveDownloading", { downloading: downloading.toLocaleString(locale), size: formatBytes(remaining) })
 
   const hours = dayChart?.hours ?? []
-  // A chart that is loading, failed, or has no sample yet has no peak to give.
   const shownLayers = !settingsLoaded ? undefined : range === "day" ? dayChart?.layers : liveLayers.length > 0 ? liveLayers : undefined
   const peaks = shownLayers && layerPeaks(shownLayers)
   const peakUp = peaks && (range === "day" ? t("stream.peakHour", { size: formatBytes(peaks.up) }) : t("stream.peakSpeed", { speed: formatSpeedWithUnit(peaks.up, unit) }))

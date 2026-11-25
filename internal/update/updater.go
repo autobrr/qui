@@ -28,27 +28,22 @@ var (
 	ErrSwap            = errors.New("could not replace the binary")
 )
 
-// statBackup is a seam for the test of a backup that is missing after the swap.
 var statBackup = os.Stat
 
 type Config struct {
 	Repository string
 	Version    string
-	// BinaryPath is the binary that Install replaces, resolved at startup. Run
-	// resolves its own.
 	BinaryPath string
 }
 
 type Result struct {
-	// Version has no "v" prefix, the same format as GET /api/version.
 	Version         string `json:"version"`
 	RollbackCommand string `json:"rollbackCommand"`
 	BackupError     string `json:"backupError"`
 }
 
 type Updater struct {
-	config Config
-	// source is nil in production, which makes go-selfupdate use GitHub.
+	config      Config
 	source      selfupdate.Source
 	certificate []byte
 }
@@ -129,16 +124,11 @@ func (u *Updater) Install(ctx context.Context, tag string) (Result, error) {
 	return swap(ctx, updater, archive, release, u.config.BinaryPath, current)
 }
 
-// swap downloads, validates and installs the release, keeping the old binary at
-// its backup path. It checks that exact path afterwards and never guesses
-// another. Then it replaces the sibling Windows binary from the same archive, so
-// qui.exe and qui-tray.exe never run different versions against one database.
 func swap(ctx context.Context, updater *selfupdate.Updater, archive *archiveSource, release *selfupdate.Release, binary string, current *semver.Version) (Result, error) {
 	backup := backupPath(binary, current)
 	if err := updater.UpdateTo(ctx, release, binary); err != nil {
 		_, pathErr := errors.AsType[*os.PathError](err)
 		_, linkErr := errors.AsType[*os.LinkError](err)
-		// A failed rollback wraps its cause out of reach of errors.AsType.
 		if pathErr || linkErr || selfupdateapply.RollbackError(err) != nil {
 			return Result{}, fmt.Errorf("%w: %w", ErrSwap, err)
 		}
@@ -147,9 +137,7 @@ func swap(ctx context.Context, updater *selfupdate.Updater, archive *archiveSour
 
 	result := Result{Version: release.Version()}
 	if _, err := statBackup(backup); err != nil {
-		// A *PathError names the checked path and the real cause.
 		result.BackupError = err.Error()
-		// The older backups are now the only way back, so keep them.
 	} else {
 		result.RollbackCommand = rollbackCommand(backup, binary)
 		removeOlderBackups(binary, backup)
@@ -172,7 +160,6 @@ func swap(ctx context.Context, updater *selfupdate.Updater, archive *archiveSour
 		return Result{}, fmt.Errorf("%w: replaced %s, but not %s: %w", ErrSwap, binary, sibling, err)
 	}
 	if result.RollbackCommand != "" {
-		// One command per line: no separator works in both cmd and PowerShell 5.1.
 		result.RollbackCommand += "\n" + rollbackCommand(siblingBackup, sibling)
 	}
 	removeOlderBackups(sibling, siblingBackup)
@@ -181,16 +168,11 @@ func swap(ctx context.Context, updater *selfupdate.Updater, archive *archiveSour
 
 func rollbackCommand(backup, binary string) string {
 	if runtime.GOOS == "windows" {
-		// cmd /c: in PowerShell, the Windows 11 default, move is Move-Item and rejects /Y.
 		return fmt.Sprintf(`cmd /c move /Y "%s" "%s"`, backup, binary)
 	}
 	return "mv " + shellQuote(backup) + " " + shellQuote(binary)
 }
 
-// savePath is where a swap keeps the file it replaces. A backup of the running
-// version exists already when an earlier swap did not end in a Restart, such
-// as a failed sibling swap. That backup holds the real old binary, so the swap
-// keeps it and deletes the replaced file.
 func savePath(backup string) string {
 	if _, err := os.Stat(backup); err == nil {
 		return ""
@@ -198,8 +180,6 @@ func savePath(backup string) string {
 	return backup
 }
 
-// siblingPath is the other Windows binary: qui-tray.exe next to qui.exe, and
-// the reverse. Only the Windows release ships both.
 func siblingPath(binary string) string {
 	sibling := "qui-tray"
 	if binaryName(binary) == "qui-tray" {
@@ -208,14 +188,10 @@ func siblingPath(binary string) string {
 	return filepath.Join(filepath.Dir(binary), sibling+filepath.Ext(binary))
 }
 
-// shellQuote keeps $, backticks, and quotes in a path literal when the user
-// pastes the command into a POSIX shell.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// backupPath sits next to the binary because the swap is a rename. The name
-// starts with the binary name, so qui and qui-tray keep one backup each.
 func backupPath(binary string, current *semver.Version) string {
 	return filepath.Join(filepath.Dir(binary), binaryName(binary)+"-v"+current.String()+backupSuffix())
 }
@@ -231,7 +207,6 @@ func backupSuffix() string {
 	return ".bak"
 }
 
-// removeOlderBackups keeps only the latest backup of binary, for seedbox disk quotas.
 func removeOlderBackups(binary, keep string) {
 	dir := filepath.Dir(binary)
 	entries, err := os.ReadDir(dir)

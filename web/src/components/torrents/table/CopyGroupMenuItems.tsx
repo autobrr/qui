@@ -12,7 +12,6 @@ interface CopyGroupMenuItemsProps {
   onToggleGroupCopies: () => void
 }
 
-/** The Group copies switch, with a separator under it. The demo shows none. */
 export function CopyGroupMenuItems({ groupCopies, onToggleGroupCopies }: CopyGroupMenuItemsProps) {
   const { t } = useTranslation("torrents")
   if (isDemo) return null

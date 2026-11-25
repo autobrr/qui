@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest"
 import { normalizeNotificationUrl } from "@/components/settings/notification-targets"
 
 describe("normalizeNotificationUrl", () => {
-  // regression: #4233
   it.each([
     ["https://discord.com/api/webhooks/123/token", "discord://token@123"],
     ["https://canary.discord.com/api/webhooks/123/token?thread_id=9", "discord://token@123?thread_id=9"],

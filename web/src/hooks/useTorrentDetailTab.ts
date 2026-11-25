@@ -13,7 +13,6 @@ import { focusManager, useQuery, useQueryClient, type Query } from "@tanstack/re
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 
 export interface GeneralTabData {
-  // The live row from the stream, or from the fallback poll. Null until one arrives.
   row: Torrent | null
   properties?: TorrentProperties
 }
@@ -40,22 +39,11 @@ interface TabQuery {
   staleTime: number
   refetchInterval: number | false
   fetch: (instanceId: number, hash: string, refresh: boolean) => Promise<unknown>
-  // reloadGap makes the tab reload on a change of progress or state in the
-  // live row, not sooner than the gap after the last fetch. The tab then
-  // polls at refetchInterval only while the torrent is checking or the stream
-  // is not usable.
   reloadGap?: (data: unknown) => number
 }
 
-// Each query keeps the key it had in the panel, so the panel mutations that
-// invalidate "torrent-peers" and "torrent-files" still reach it. React Query
-// pauses each interval while the page is hidden (refetchIntervalInBackground
-// is off).
 const TAB_QUERIES: Record<TorrentDetailTab, TabQuery> = {
   general: { key: "torrent-properties", staleTime: 30000, refetchInterval: false, fetch: (instanceId, hash) => api.getTorrentProperties(instanceId, hash) },
-  // Each torrents/files call blocks qBittorrent for a time that grows with the
-  // file count, so the gap is the file count ÷ 1,000 seconds, from 5 s to 30 s.
-  // refresh bypasses the 5-minute file cache of qui.
   content: {
     key: "torrent-files",
     staleTime: 3000,
@@ -71,11 +59,6 @@ const TAB_QUERIES: Record<TorrentDetailTab, TabQuery> = {
 
 const CHECKING_STATES: ReadonlySet<string> = new Set(["checkingDL", "checkingUP", "checkingResumeData"])
 
-// useTorrentDetailTab owns when a details tab fetches. A null hash fetches
-// nothing: the panel passes null before it is ready, and for a tab that must
-// not fetch while it is closed. The live row follows liveHash, which the panel
-// passes before it is ready, so a switch between two torrents moves the stream
-// subscription in one change.
 export function useTorrentDetailTab<T extends TorrentDetailTab>(
   instanceId: number,
   hash: string | null,
@@ -85,15 +68,8 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
   const tabQuery = TAB_QUERIES[tab]
   const { row, streamState } = useLiveRow(instanceId, tab === "general" || tab === "trackers" || tabQuery.reloadGap ? liveHash : null, hash !== null)
   const streamUsable = isStreamUsable(streamState)
-  // While a torrent is checking, Content and the piece bar poll at their old
-  // interval, and Content bypasses the file cache.
   const checking = CHECKING_STATES.has(row?.state ?? "")
   const rowKey = tabQuery.reloadGap && row ? reloadKey(row) : null
-  // fetched tracks the open torrent: ok is true after a fetch succeeds, and key
-  // holds the row of the last fetch that bypassed the cache and succeeded, or
-  // the first row that arrived. The first fetch of each torrent, and a fetch for
-  // a row that changed while the stream is usable, bypass the cache. A retry or
-  // a refetch from elsewhere then bypasses it too.
   const torrent = `${instanceId}|${hash}`
   const fetched = useRef({ torrent, ok: false, key: null as string | null })
   if (fetched.current.torrent !== torrent) {
@@ -118,9 +94,6 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
     refetchInterval: !tabQuery.reloadGap ? tabQuery.refetchInterval
       : !streamUsable ? streamFallbackPollInterval(streamState, tabQuery.refetchInterval || 0)
         : checking ? tabQuery.refetchInterval : false,
-    // A Trackers reload that came while the page was hidden runs when the page
-    // shows again. Content and the piece bar reload only on a row change, also
-    // after the network comes back.
     refetchOnWindowFocus: tab === "trackers" ? (q: Query) => q.state.isInvalidated : false,
     refetchOnReconnect: !tabQuery.reloadGap,
   })
@@ -134,12 +107,10 @@ export function useTorrentDetailTab<T extends TorrentDetailTab>(
     if (hash === null || rowKey === null) {
       return
     }
-    // A fetch before the first row cannot tell a change, so it takes this row.
     const last = fetched.current
     if (last.key === null) {
       last.key = rowKey
     }
-    // Until a fetch succeeds, the tab tries again after each gap.
     if (!streamUsable || checking || !visible || isFetching || (last.ok && rowKey === last.key)) {
       return
     }
@@ -164,18 +135,11 @@ function subscribeFocus(onChange: () => void): () => void {
   return focusManager.subscribe(onChange)
 }
 
-// reloadKey changes when the row shows a change of progress or state. A
-// complete torrent goes between uploading and stalledUP while it seeds, and
-// its files do not change, so for it only a check counts.
 function reloadKey(row: Torrent): string {
   const state = row.progress < 1 || CHECKING_STATES.has(row.state) ? row.state : "complete"
   return `${row.progress}|${state}`
 }
 
-// mergeLiveRow puts the values of the live row over the properties that load
-// one time. The other fields (comment, creator) keep the loaded value. The
-// piece counts come from the row only on qBittorrent 5.2 and later, where
-// pieces_num is set.
 function mergeLiveRow(properties: TorrentProperties, row: Torrent | null): TorrentProperties {
   if (!row) {
     return properties
@@ -202,16 +166,10 @@ function mergeLiveRow(properties: TorrentProperties, row: Torrent | null): Torre
   }
 }
 
-// useTrackersReload reloads the Trackers tab when the tracker count or the
-// Tracker health verdict of the live row changes. The qBittorrent 5.2 tracker
-// flags are not in the row, so a change that is only a warning does not reload
-// the tab. While the page is hidden, it only marks the list stale.
 function useTrackersReload(instanceId: number, hash: string | null, row: Torrent | null) {
   const queryClient = useQueryClient()
   const torrentKey = `${instanceId}|${hash}`
   const trackerState = hash !== null && row?.hash === hash ? `${row.trackers_count}|${row.tracker_health ?? ""}` : null
-  // The last state of each torrent, so a change while another torrent was open
-  // still reloads the list on the return.
   const seen = useRef(new Map<string, string>())
   useEffect(() => {
     if (trackerState === null) {
@@ -229,9 +187,6 @@ function useTrackersReload(instanceId: number, hash: string | null, row: Torrent
   }, [hash, instanceId, queryClient, torrentKey, trackerState])
 }
 
-// useLiveRow follows the one-row stream view of the torrent. While the stream
-// is not usable and the panel is ready, it polls the row at the stream
-// fallback interval.
 function useLiveRow(instanceId: number, hash: string | null, ready: boolean): { row: Torrent | null; streamState: StreamState } {
   const streamParams = useMemo(() => hash === null ? null : {
     instanceId,

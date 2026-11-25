@@ -17,9 +17,6 @@ func readUmask() int {
 	return cur
 }
 
-// TestApplyUmask verifies UMASK is parsed as octal and applied, and that an
-// unset or invalid value leaves the inherited umask untouched. Not parallel:
-// umask is process-global. See discussion #1704.
 func TestApplyUmask(t *testing.T) {
 	orig := readUmask()
 	t.Cleanup(func() { syscall.Umask(orig) })
@@ -46,9 +43,6 @@ func TestApplyUmask(t *testing.T) {
 			if tt.set {
 				t.Setenv("UMASK", tt.value)
 			} else {
-				// Cover the genuinely-unset (LookupEnv !ok) path, distinct
-				// from the empty-string case. t.Setenv can't unset, so do it
-				// directly; sequential subtests re-set UMASK as needed.
 				os.Unsetenv("UMASK")
 			}
 

@@ -18,14 +18,10 @@ import { useMemo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { TrackerIcon } from "./TrackerIcon"
 
-// Compact row component for desktop
 interface CompactRowProps {
   torrent: Torrent
-  /** What the row shows; the checkbox still gets `torrent`. */
   displayTorrent?: Torrent
-  /** The Copy group pill, after the name. */
   groupPill?: ReactNode
-  /** The left bar on the rows of an open Copy group. */
   groupAccentClass?: string
   rowId: string
   rowIndex: number
@@ -44,9 +40,6 @@ interface CompactRowProps {
   style: React.CSSProperties
 }
 
-// Not memoized: this renders inside TorrentTableRow, whose memo already skips
-// unchanged rows. A local memo would need its own comparator and could only
-// re-check props the parent has already proven changed.
 export function CompactRow({
   torrent: rowTorrent,
   displayTorrent: torrent = rowTorrent,
@@ -79,7 +72,6 @@ export function CompactRow({
     [torrent, supportsTrackerHealth, t]
   )
 
-  // Resolve tracker display name and icon using customizations
   const trackerRaw = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
   const trackerHost = useMemo(() => extractTrackerHost(trackerRaw), [trackerRaw])
   const trackerDisplayInfo = useMemo(
@@ -90,7 +82,6 @@ export function CompactRow({
   const trackerIconSrc = resolveTrackerIconSrc(trackerIcons, trackerDisplayInfo.primaryDomain, trackerHost)
   const trackerTitle = trackerDisplayInfo.isCustomized ? `${trackerDisplayInfo.displayName} (${trackerHost})` : trackerHost
 
-  // Compact view
   return (
     <div
       {...themeArea("torrent-row")}
@@ -103,7 +94,6 @@ export function CompactRow({
       onClick={(e) => onClick(e)}
       onContextMenu={onContextMenu}
     >
-      {/* Progress background overlay - only show when downloading */}
       {torrent.progress < 1 && (
         <div
           className="absolute inset-0 -z-10 bg-primary/10 transition-all duration-300"
@@ -113,7 +103,6 @@ export function CompactRow({
           aria-hidden="true"
         />
       )}
-      {/* Name with progress inline */}
       <div className="flex items-center gap-2">
         {showCheckbox && (
           <div
@@ -151,7 +140,6 @@ export function CompactRow({
         </Badge>
       </div>
 
-      {/* Downloaded/Size and Ratio */}
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">
           {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
@@ -167,9 +155,7 @@ export function CompactRow({
         </div>
       </div>
 
-      {/* Bottom row: Category/tags and percentage/speeds */}
       <div className="flex items-center justify-between gap-2 text-xs">
-        {/* Left side: Category and Tags */}
         <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
           {displayCategory && (
             <span className="flex items-center gap-1 flex-shrink-0">
@@ -187,7 +173,6 @@ export function CompactRow({
           )}
         </div>
 
-        {/* Right side: Percentage and Speeds */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-muted-foreground">
             {torrent.progress >= 0.99 && torrent.progress < 1 ? (
@@ -196,7 +181,6 @@ export function CompactRow({
               Math.round(torrent.progress * 100)
             )}%
           </span>
-          {/* Speeds */}
           {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
             <div className="flex items-center gap-1">
               {torrent.dlspeed > 0 && (

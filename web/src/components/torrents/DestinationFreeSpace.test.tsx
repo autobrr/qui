@@ -12,8 +12,6 @@ vi.mock("@/lib/api", () => ({
   api: { getFreeSpaceAtPath: vi.fn() },
 }))
 
-// Render the interpolated value so the assertions read what a user sees. formatBytes
-// loads @/i18n, which needs the real initReactI18next.
 vi.mock("react-i18next", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-i18next")>()),
   useTranslation: () => ({
@@ -113,8 +111,6 @@ describe("DestinationFreeSpace", () => {
     })
 
     rerender(<DestinationFreeSpace instanceId={1} path="/current" />)
-    // Two ticks: the first passes the debounce and starts the query, the second
-    // lets its answer land.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600)
     })
@@ -123,7 +119,6 @@ describe("DestinationFreeSpace", () => {
     })
     expect(container.textContent).toContain("500 GiB")
 
-    // The earlier destination answers now; the shown value must stay with the current one.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000)
     })

@@ -241,10 +241,6 @@ func TestRejectSeasonPackFromEpisode(t *testing.T) {
 	}
 }
 
-// A stored verdict for one local episode never lets a downloaded season pack
-// through, whatever the individual episodes setting. The listing named the
-// episode, so the download check alone passes the pack when individual
-// episodes is on.
 func TestFindCandidatesRejectsPackDownloadForStoredEpisodeVerdict(t *testing.T) {
 	const (
 		instanceID  = 1
@@ -281,9 +277,6 @@ func TestFindCandidatesRejectsPackDownloadForStoredEpisodeVerdict(t *testing.T) 
 	}
 }
 
-// Apply has no sizes for a local torrent that search did not compare, so the
-// web source relabel does not admit it. The stored relabel verdict of the
-// torrent that search compared still holds.
 func TestFindCandidatesRelabelNeedsTheStoredVerdict(t *testing.T) {
 	const (
 		instanceID = 1

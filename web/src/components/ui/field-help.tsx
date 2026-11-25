@@ -9,8 +9,6 @@ import { useTranslation } from "react-i18next"
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
-// Field help lives in a tooltip on the label rather than a paragraph under the
-// control: forms carry enough controls that the prose made them scroll.
 export function FieldHelp({ children }: { children: ReactNode }) {
   const { t } = useTranslation("common")
 

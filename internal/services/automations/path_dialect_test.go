@@ -11,9 +11,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// A remote unix path is joined and judged in slash form on every host: this is
-// what a Windows-hosted qui against a seedbox needs, and it must not depend on
-// the GOOS the test runs under.
 func TestBuildFullPathSlashDialectIsHostIndependent(t *testing.T) {
 	t.Parallel()
 
@@ -25,17 +22,12 @@ func TestBuildFullPathSlashDialectIsHostIndependent(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "/data/torrents/a/b/c.mkv", got)
 
-	// A relative save path on the remote is refused the way it is locally.
 	_, ok = buildFullPath(fsops.SlashPaths, "torrents", "episode.mkv")
 	require.False(t, ok)
-	// Under the slash dialect a drive-qualified save path is relative, so it is
-	// refused too rather than joined onto the working directory.
 	_, ok = buildFullPath(fsops.SlashPaths, `C:\torrents`, "episode.mkv")
 	require.False(t, ok)
 }
 
-// The file-name rejections are about what a torrent may name, not about the
-// filesystem's grammar, so both dialects refuse both attack forms.
 func TestBuildFullPathRejectionsAreDialectIndependent(t *testing.T) {
 	t.Parallel()
 
@@ -50,9 +42,6 @@ func TestBuildFullPathRejectionsAreDialectIndependent(t *testing.T) {
 		`AC\DC.mkv`,
 		"",
 	}
-	// The base must be absolute under each dialect, or the base check would
-	// refuse first and prove nothing about the names ("/data" is relative on
-	// a Windows host).
 	bases := map[fsops.PathDialect]string{
 		fsops.HostPaths:  t.TempDir(),
 		fsops.SlashPaths: "/data",
@@ -78,8 +67,6 @@ func TestIsPathInsideBaseSlashDialect(t *testing.T) {
 		{"/data", "/data/../etc/passwd", false},
 		{"/data", "/etc/passwd", false},
 		{"/data", "/database/x", false},
-		// Backslash is a filename byte on a unix remote, not a separator, so
-		// this is a file called `..\x` inside base rather than an escape.
 		{"/data", `/data/..\x`, true},
 	}
 	for _, tc := range cases {

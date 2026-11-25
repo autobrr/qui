@@ -9,10 +9,6 @@ import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-// DiscScanToasts shows a toast when a Disc scan finishes, wherever the user is
-// in qui. The discscan.run event carries the run id only, so each event reads
-// the run. A progress event's read can land after the run completed and so
-// can the completion event's read; the toasted set keeps that to one toast.
 export function DiscScanToasts(): null {
   const { subscribeActivity } = useSyncStreamManager()
   const { t } = useTranslation("torrents")

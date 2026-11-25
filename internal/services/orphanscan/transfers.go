@@ -11,21 +11,15 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// transfers names what orphan scan leaves alone for Transfers and Shares: the
-// helper torrents, and the folders of running Transfers. ADR 0005.
 type transfers interface {
-	// HelperCheck returns nil when the instance has no helper torrent.
 	HelperCheck(instanceID int) func(hash string) bool
 	RunningFolders(ctx context.Context, instanceID int) ([]string, error)
 }
 
-// SetTransfers is called one time at start-up, before the first scan.
 func (s *Service) SetTransfers(t transfers) {
 	s.transfers = t
 }
 
-// leaveOutHelpers returns the torrents without the helper torrents. torrents
-// is the Sync snapshot, so it copies the list before it leaves one out.
 func (s *Service) leaveOutHelpers(instanceID int, torrents []*qbt.Torrent) []*qbt.Torrent {
 	if s.transfers == nil {
 		return torrents
@@ -41,8 +35,6 @@ func (s *Service) leaveOutHelpers(instanceID int, torrents []*qbt.Torrent) []*qb
 	return slices.DeleteFunc(slices.Clone(torrents), out)
 }
 
-// runningTransferFolders returns the folders that the running Transfers of the
-// instance read or write.
 func (s *Service) runningTransferFolders(ctx context.Context, instanceID int) ([]string, error) {
 	if s.transfers == nil {
 		return nil, nil

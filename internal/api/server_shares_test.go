@@ -57,8 +57,6 @@ func TestShareStartRoute(t *testing.T) {
 	})
 }
 
-// newShareRig builds the router on a Share service whose database the test
-// fills through the returned store.
 func newShareRig(t *testing.T) (*permissionRig, *share.Store, *transfer.Store) {
 	t.Helper()
 	db := testdb.NewMigratedSQLite(t, "api-shares")

@@ -175,10 +175,6 @@ export function InstanceBackups() {
   const instanceCapabilitiesPending = (instances?.length ?? 0) > 0
     && instanceCapabilitiesQueries.some(query => query.isPending)
 
-  // An errored capabilities query is as unresolved as a pending one: deciding
-  // on it would drop its instance from supportedInstances and clear a saved
-  // selection over a transient failure. Only the selection effect cares; the
-  // UI keeps treating an error as "not checking".
   const instanceCapabilitiesUnresolved = instanceCapabilitiesPending
     || instanceCapabilitiesQueries.some(query => query.isError)
 
@@ -530,7 +526,6 @@ export function InstanceBackups() {
 
   const requiresCadenceSelection = Boolean(formState?.enabled && !hasActiveCadence)
 
-  // formState keeps the previous instance's values until the new instance's settings load.
   const saveDisabled = !settings || !formState || updateSettings.isPending || requiresCadenceSelection
 
   const handleToggle = (key: SettingsToggleKey) => (checked: boolean) => {

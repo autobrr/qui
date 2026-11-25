@@ -17,12 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// benchCrossMatchService builds one local instance with pairs of torrents that
-// match on name. With extraFile, the second torrent of each pair has an extra
-// file that search does not ignore, so its sizes do not pair and the hardlink
-// check runs. Its main file is a hardlink of the first torrent's file. With
-// sharedFolder, both torrents of a pair sit in the first torrent's folder and
-// read the same files, so addSharedPathPicks links them.
 func benchCrossMatchService(b *testing.B, pairs int, extraFile, sharedFolder bool) *Service {
 	b.Helper()
 	root := b.TempDir()
@@ -92,9 +86,6 @@ func BenchmarkBuildCrossMatchSets(b *testing.B) {
 	}
 }
 
-// benchCopyGroupInput builds about 6,000 torrents and 40,000 files: releases
-// with three copies each, two in separate folders on instance 1 and one on
-// instance 2. A third of the releases are season packs of 15 episodes.
 func benchCopyGroupInput() (map[int][]qbittorrent.CrossInstanceTorrentView, map[int]map[string]qbt.TorrentFiles) {
 	torrents := make(map[int][]qbittorrent.CrossInstanceTorrentView)
 	files := map[int]map[string]qbt.TorrentFiles{1: {}, 2: {}}

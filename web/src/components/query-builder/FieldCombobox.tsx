@@ -33,7 +33,6 @@ export function FieldCombobox({ value, onChange, disabledFields }: FieldCombobox
 
   const selectedLabel = value ? getFieldLabel(value, t) : null;
 
-  // Check if a field is disabled and get its reason
   const getDisabledReason = (field: string): string | null => {
     const disabled = disabledFields?.find(d => d.field === field);
     return disabled?.reason ?? null;

@@ -48,7 +48,6 @@ function Form({ onRecent }: { onRecent: (search: TorznabRecentSearch) => void })
 }
 
 describe("SearchForm", () => {
-  // regression: #4354
   it("highlights no recent search once the list is cleared or dismissed, so Enter runs none", () => {
     const onRecent = vi.fn()
     render(<Form onRecent={onRecent} />)
@@ -80,7 +79,6 @@ describe("SearchForm", () => {
     expectNoHighlight()
   })
 
-  // regression: #4354
   it("leaves the arrow keys and Enter to an input method while it composes", () => {
     const onRecent = vi.fn()
     render(<Form onRecent={onRecent} />)

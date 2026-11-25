@@ -45,7 +45,7 @@ func TestTorznabSearchCacheStore_RebaseTTL_ExtendsExistingEntries(t *testing.T) 
 
 	require.NoError(t, store.Store(ctx, entry))
 
-	rebased, err := store.RebaseTTL(ctx, 7*24*60) // 7 days
+	rebased, err := store.RebaseTTL(ctx, 7*24*60)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), rebased)
 
@@ -78,11 +78,10 @@ func TestTorznabSearchCacheStore_RebaseTTL_CanExpireEntries(t *testing.T) {
 
 	require.NoError(t, store.Store(ctx, entry))
 
-	rebased, err := store.RebaseTTL(ctx, 30) // 30 minutes
+	rebased, err := store.RebaseTTL(ctx, 30)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), rebased)
 
-	// After rebasing to 30 minutes, this entry is now expired relative to now.
 	_, found, err := store.Fetch(ctx, entry.CacheKey)
 	require.NoError(t, err)
 	require.False(t, found, "expired entry should be pruned after TTL shrink")
@@ -129,7 +128,6 @@ func checkSearchCacheStatsTimeRange(t *testing.T, db *database.DB) {
 	require.True(t, stats.NewestCachedAt.Equal(newest), "newest %s, want %s", stats.NewestCachedAt, newest)
 	require.True(t, stats.LastUsedAt.Equal(newest.Add(time.Minute)), "last used %s", stats.LastUsedAt)
 
-	// Rows that the database clock wrote hold whole seconds in this form.
 	for key, cachedAt := range map[string]time.Time{"oldest": oldest, "newest": newest} {
 		_, err := db.ExecContext(ctx, `UPDATE torznab_search_cache SET cached_at = ?, last_used_at = ? WHERE cache_key = ?`,
 			cachedAt.Format(time.DateTime), cachedAt.Add(time.Minute).Format(time.DateTime), key)

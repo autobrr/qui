@@ -300,7 +300,7 @@ func TestPartialPoolOrphanedPropagationClaimResetsOrRetries(t *testing.T) {
 			require.NoError(t, err)
 			target := partialPoolMemberByTorrentKey(pool, "target")
 			targetFile := target.Files[0]
-			targetFile.SourceFileID = nil // Mirrors ON DELETE SET NULL after source removal.
+			targetFile.SourceFileID = nil
 			if failedCAS {
 				targetFile.Status = models.CrossSeedPartialPoolFileStatusVerifying
 			}
@@ -1554,7 +1554,6 @@ func TestPartialPoolReflinkCrashStagingCleanupFailureDelaysMemberRemovalAndReadd
 	require.Equal(t, stagingPath, readdedStagingPath)
 }
 
-// windowsNamePaths keeps host joins but applies the Windows name rules, so Linux CI reaches them.
 type windowsNamePaths struct{ fsops.PathDialect }
 
 func (windowsNamePaths) Separator() string { return `\` }
@@ -1723,8 +1722,6 @@ func TestPartialPoolPropagationPauseFailureRetriesUntilStopped(t *testing.T) {
 }
 
 func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testing.T) {
-	// Older qBittorrent reports a skip_checking add as complete before its first
-	// piece check; 5.2 reports missingFiles when an extra file is absent.
 	for _, targetState := range []qbt.TorrentState{qbt.TorrentStateStoppedUp, qbt.TorrentStateMissingFiles} {
 		t.Run(string(targetState), func(t *testing.T) {
 			testPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t, targetState)

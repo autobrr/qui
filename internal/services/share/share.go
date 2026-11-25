@@ -12,8 +12,6 @@ type State string
 
 const (
 	StateActive State = "active"
-	// StateEnding: qui removes the Share torrent from the client, and retries
-	// while the client is offline.
 	StateEnding State = "ending"
 	StateEnded  State = "ended"
 )
@@ -21,17 +19,10 @@ const (
 type TrackerKind string
 
 const (
-	TrackerOwn TrackerKind = "own"
-	// TrackerOutside is the tracker URL of the settings. qui receives no
-	// announces from it.
+	TrackerOwn     TrackerKind = "own"
 	TrackerOutside TrackerKind = "outside"
 )
 
-// Share is one Share. InstanceID, Hash, Name, SavePath, Files, and Size are
-// the real torrent at the start. HelperHash is the infohash of the Share
-// torrent. TorrentFile is the .torrent of the recipient; List leaves it out.
-// Holder is the address of the recipient client that holds the lock of a
-// Share with FirstDownloaderOnly, and zero while no client holds it.
 type Share struct {
 	ID                  int64
 	InstanceID          int
@@ -56,9 +47,6 @@ type Share struct {
 	EndedAt   time.Time
 }
 
-// Activity is what qui learned of the recipient: the addresses that
-// announced (the connected peers with an outside tracker), the bytes that
-// the recipient has, and the bytes that the user's client sent.
 type Activity struct {
 	Peers      []Peer
 	Downloaded int64

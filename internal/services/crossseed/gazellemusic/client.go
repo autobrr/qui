@@ -1,8 +1,6 @@
 // Copyright (c) 2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package gazellemusic implements gzlx-style cross-seed matching against Gazelle trackers
-// (OPS/RED) using their JSON APIs.
 package gazellemusic
 
 import (
@@ -27,7 +25,6 @@ import (
 	"github.com/autobrr/qui/internal/buildinfo"
 )
 
-// sharedTransport enables connection pooling across clients.
 var sharedTransport = func() *http.Transport {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.MaxIdleConns = 100
@@ -40,16 +37,9 @@ var sharedTransport = func() *http.Transport {
 	return t
 }()
 
-// blockLiveTrackerDials stops the test suite from reaching a real tracker.
-// The tracker APIs are rate limited per account, so a stray call from a test
-// spends the maintainer's budget on every run. Callers log a failed lookup as a
-// warning and carry on, so a returned error would keep the test green: this
-// panics instead, which no caller can swallow.
 func blockLiveTrackerDials(t *http.Transport) {
-	t.Proxy = nil // an HTTP_PROXY on the test process would route around the check below
+	t.Proxy = nil
 	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
-	// Control receives the address after DNS resolution, so a host name is
-	// already an IP here and needs no separate lookup.
 	dialer.Control = func(_, address string, _ syscall.RawConn) error {
 		if host, _, err := net.SplitHostPort(address); err == nil {
 			if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
@@ -62,28 +52,18 @@ func blockLiveTrackerDials(t *http.Transport) {
 	t.DialContext = dialer.DialContext
 }
 
-// ErrAccessDenied means the tracker rejects every request from this client: the
-// API key is wrong or the tracker banned this IP. The wrapped message carries
-// the tracker's own text.
 var ErrAccessDenied = errors.New("rejected the API key or this IP")
 
-// sharedLimiters ensures we don't create one rate limiter per qBittorrent instance/client.
-// Rate limits are per tracker host and must be shared across the whole qui process.
-var sharedLimiters sync.Map // map[string]*rate.Limiter
+var sharedLimiters sync.Map
 
 type TrackerSpec struct {
-	Host       string
-	RateLimit  int
-	RatePeriod int
-	SourceFlag string
-	// LegacyFlags are the source flags the tracker used before SourceFlag.
-	// Uploads from that time still carry them, so the target hash can be any of these.
+	Host        string
+	RateLimit   int
+	RatePeriod  int
+	SourceFlag  string
 	LegacyFlags []string
 }
 
-// TargetHashes returns every info hash the torrent can have on this tracker:
-// the current source flag first, then the legacy flags. The tracker writes a
-// flag into every upload, so a flagless hash is not a case worth a call.
 func (s TrackerSpec) TargetHashes(torrentBytes []byte) ([]string, error) {
 	flags := append([]string{s.SourceFlag}, s.LegacyFlags...)
 	hashes, err := CalculateHashesWithSources(torrentBytes, flags)
@@ -135,7 +115,6 @@ type SearchTorrent struct {
 	Size      int64   `json:"size"`
 }
 
-// FlexInt handles JSON fields that can be either string or number.
 type FlexInt int64
 
 func (f *FlexInt) UnmarshalJSON(data []byte) error {
@@ -193,10 +172,6 @@ func sharedLimiterForTracker(spec TrackerSpec) (*rate.Limiter, error) {
 	return actual.(*rate.Limiter), nil
 }
 
-// NewClient builds a client for one of the Sites. trackerHost is the API host
-// of the site: it selects the rate limit and the source flag. baseURL is the
-// address to talk to, and is empty outside tests, where it means the site
-// itself. In a test, a client with a baseURL has no rate limit.
 func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
 	site, ok := SiteByHost(trackerHost)
 	if !ok {
@@ -210,8 +185,6 @@ func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = "https://" + host
 	} else if testing.Testing() {
-		// The limit of a site is shared by the whole test binary, so each request
-		// to a test server would wait for the requests of the other tests.
 		limiter = rate.NewLimiter(rate.Inf, 1)
 	}
 
@@ -238,7 +211,6 @@ func (c *Client) TargetHashes(torrentBytes []byte) ([]string, error) {
 func (c *Client) request(ctx context.Context, method, endpoint string, params url.Values) ([]byte, int, error) {
 	if err := c.limiter.Wait(ctx); err != nil {
 		if ctx.Err() == nil {
-			// Wait fails at once when the queue would pass the deadline of ctx.
 			err = fmt.Errorf("%w: %w", context.DeadlineExceeded, err)
 		}
 		return nil, 0, fmt.Errorf("rate limit wait failed: %w", err)
@@ -273,8 +245,6 @@ func (c *Client) request(ctx context.Context, method, endpoint string, params ur
 		if json.Unmarshal(body, &ajaxErr) == nil && ajaxErr.Error != "" {
 			text = ajaxErr.Error
 		}
-		// The run history stores this text: cap an HTML error page, and drop
-		// invalid UTF-8 (a rune the cut split, too), which Postgres rejects.
 		if len(text) > 200 {
 			text = text[:200]
 		}
@@ -282,7 +252,6 @@ func (c *Client) request(ctx context.Context, method, endpoint string, params ur
 		return body, resp.StatusCode, fmt.Errorf("%w: status %d: %s", ErrAccessDenied, resp.StatusCode, text)
 	}
 	if resp.StatusCode != http.StatusOK {
-		// Keep body text; callers may log a short snippet.
 		return body, resp.StatusCode, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 	return body, resp.StatusCode, nil
@@ -310,21 +279,15 @@ func (c *Client) ajax(ctx context.Context, action string, params url.Values) (*A
 	return &resp, nil
 }
 
-// CheckKey sends one cheap authenticated request. A wrong key or a banned IP
-// returns ErrAccessDenied.
 func (c *Client) CheckKey(ctx context.Context) error {
 	_, err := c.ajax(ctx, "index", nil)
 	return err
 }
 
-// isAccessDeniedText matches the texts OPS sends with HTTP 200 for an IP ban
-// and a wrong key. The RED ban text is unknown until a user reports it.
 func isAccessDeniedText(text string) bool {
 	return strings.EqualFold(text, "Your IP address has been banned.") || strings.EqualFold(text, "invalid token")
 }
 
-// SearchByHash looks up one hash. The Gazelle torrent action takes one hash per
-// call and browse has no hash param, so each legacy flag costs one more request.
 func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchResult, error) {
 	params := url.Values{}
 	params.Set("hash", strings.ToUpper(hash))
@@ -334,7 +297,6 @@ func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchR
 		return nil, err
 	}
 	if err != nil {
-		// Gazelle uses "bad parameters" for not-found. Treat as miss.
 		lower := strings.ToLower(err.Error())
 		if strings.Contains(lower, "bad id parameter") ||
 			strings.Contains(lower, "bad parameters") ||
@@ -397,7 +359,6 @@ func (c *Client) DownloadTorrent(ctx context.Context, torrentID int64) ([]byte, 
 		return nil, err
 	}
 
-	// Robust validation: accept any key ordering; ensure bencoded dict with torrent keys.
 	if !looksLikeTorrentPayload(body) {
 		var ajaxErr AjaxResponse
 		if json.Unmarshal(body, &ajaxErr) == nil && ajaxErr.Error != "" {
@@ -426,13 +387,11 @@ func looksLikeTorrentPayload(body []byte) bool {
 		return false
 	}
 
-	// "info" is required for .torrent files; it's specific enough to reject most non-torrent payloads.
 	info, ok := m["info"]
 	if !ok {
 		return false
 	}
 
-	// Ensure "info" is a dictionary.
 	_, ok = info.(map[string]any)
 	return ok
 }

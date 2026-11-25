@@ -20,10 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// createUsedAPIKey creates an API key that was used just now, so that
-// ValidateAPIKey starts no background write of the last-used time. On Windows,
-// a write that still runs when the test ends keeps the database file open, and
-// the TempDir cleanup fails.
 func createUsedAPIKey(t *testing.T, db *database.DB) string {
 	t.Helper()
 	store := models.NewAPIKeyStore(db)
@@ -49,7 +45,6 @@ func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 	})
 
 	authMiddleware := IsAuthenticated(authService, sessionManager, nil)
-	// Wrap with session middleware to avoid panic when session is checked
 	handler := sessionManager.LoadAndSave(authMiddleware(okHandler))
 
 	tests := []struct {
@@ -131,14 +126,10 @@ func TestRequireSetup_AuthDisabled(t *testing.T) {
 }
 
 func TestRequireSetup_ThemeCatalogAllowedBeforeSetup(t *testing.T) {
-	// A non-default status proves the inner handler ran: a bare recorder
-	// already reports 200.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 
-	// A nil auth service proves the allow-list short-circuits before the
-	// setup check: any fall-through would panic.
 	handler := RequireSetup(nil, &domain.Config{})(inner)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/themes", nil)
@@ -149,7 +140,6 @@ func TestRequireSetup_ThemeCatalogAllowedBeforeSetup(t *testing.T) {
 }
 
 func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {
-	// AuthDisabled alone without IAcknowledgeThisIsABadIdea should NOT bypass auth
 	cfg := &domain.Config{AuthDisabled: true, IAcknowledgeThisIsABadIdea: false}
 
 	db := testdb.NewMigratedSQLite(t, "middleware-auth")
@@ -182,7 +172,6 @@ func TestIsAuthenticatedRequiresRequestHeaderForCookieWrites(t *testing.T) {
 		),
 	)
 
-	// Mint a session cookie the way login does.
 	loginRec := httptest.NewRecorder()
 	sessionManager.LoadAndSave(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		sessionManager.Put(r.Context(), "authenticated", true)
@@ -228,8 +217,6 @@ func TestIsAuthenticatedRequiresRequestHeaderForCookieWrites(t *testing.T) {
 
 			assert.Equal(t, tt.want, rec.Code)
 			if tt.cookie && tt.want == http.StatusForbidden {
-				// The frontend treats a bare 403 "Unauthorized" as an expired
-				// session and bounces to login; a missing header must not.
 				assert.Contains(t, rec.Body.String(), "X-Requested-With")
 			}
 		})
@@ -280,7 +267,6 @@ func TestIsAuthenticatedRechecksOIDCAllowedUser(t *testing.T) {
 
 			require.Equal(t, tt.wantStatus, rec.Code)
 			if tt.wantStatus == http.StatusForbidden {
-				// The web UI logs out only on a 403 with this message.
 				assert.Equal(t, "Unauthorized\n", rec.Body.String())
 				ctx, err := sm.Load(t.Context(), token)
 				require.NoError(t, err)

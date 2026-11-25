@@ -37,8 +37,6 @@ func TestMkdirAll_WalksUpOverExistingPrefix(t *testing.T) {
 
 	require.NoError(t, b.MkdirAll(t.Context(), target, fsutil.ContentDirMode))
 
-	// The created list is what rollback removes, so a pre-existing prefix
-	// must never be on it.
 	client, err := b.client(t.Context())
 	require.NoError(t, err)
 	created, err := mkdirAll(t.Context(), client, remotePath(dir, "a", "b", "c", "d", "e"))
@@ -58,8 +56,6 @@ func TestMkdirAll_SymlinkedAncestorIsADirectory(t *testing.T) {
 		t.Skipf("symlinks unsupported: %v", err)
 	}
 
-	// Like os.MkdirAll: the child lands in the target, and the link itself
-	// is never recorded as created.
 	client, err := b.client(t.Context())
 	require.NoError(t, err)
 	created, err := mkdirAll(t.Context(), client, remotePath(link, "child"))
@@ -94,8 +90,6 @@ func TestMkdir_SecondCallSeesExist(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 
-	// The server answers SSH_FX_FAILURE for an existing path. A caller that
-	// reserves a folder name needs fs.ErrExist.
 	require.ErrorIs(t, b.Mkdir(t.Context(), target, fsutil.ContentDirMode), fs.ErrExist)
 
 	require.NoError(t, os.WriteFile(remotePath(dir, "file"), nil, 0o600))
@@ -123,8 +117,6 @@ func TestRemove_NonRecursiveDirFailsWhenNotEmpty(t *testing.T) {
 	sub := remotePath(dir, "sub")
 	writeFile(t, remotePath(sub, "f"), "x")
 
-	// Callers classify on ENOTEMPTY, which SSH_FX_FAILURE alone does not carry.
-	// fsops.IsDirNotEmpty reads only the code, so this is all it can match.
 	removeErr := b.Remove(t.Context(), sub, fsops.RemoveOptions{})
 	require.ErrorIs(t, removeErr, syscall.ENOTEMPTY)
 	require.True(t, fsops.IsDirNotEmpty(removeErr))
@@ -165,8 +157,6 @@ func TestRemove_Recursive_ChildSwappedForSymlinkIsNotDescended(t *testing.T) {
 	dir := t.TempDir()
 	keep := remotePath(dir, "keep")
 	writeFile(t, remotePath(keep, "precious"), "x")
-	// The listing saw a directory here; by the time the child is removed it
-	// is a symlink to keep, the swap SFTP v3 cannot rule out.
 	child := remotePath(dir, "child")
 	if err := os.Symlink(keep, child); err != nil {
 		t.Skipf("symlinks unsupported: %v", err)
@@ -261,13 +251,9 @@ func TestHardlinkTree_ExistingTargetFailsAndRollsBack(t *testing.T) {
 	t.Parallel()
 
 	b, server := newBackend(t)
-	// The pool reads the tier from a probe of the live connection, so the
-	// fake must refuse exec for this to be the sftp tier at all.
 	server.SetExec(sshtest.ExecSFTPOnly)
 	dir := t.TempDir()
 	plan := linkPlan(t, dir)
-	// Even a target that already links the source is a conflict over sftp:
-	// without identity the backend cannot tell it from a stranger's file.
 	require.NoError(t, os.MkdirAll(remotePath(plan.RootDir, "Sub -rf"), 0o755))
 	require.NoError(t, os.Link(plan.Files[1].SourcePath, plan.Files[1].TargetPath))
 
@@ -333,9 +319,6 @@ func TestRemove_RefusedUnlinkNeverReportsMissing(t *testing.T) {
 	server.SetSFTP(sshtest.SFTPRefuseRemove)
 	client, err := b.client(t.Context())
 	require.NoError(t, err)
-	// Remove and rmdir fail with different errors, so Client.Remove names the
-	// error from a link-following Stat, which reads "not found" for this
-	// dangling link. Our own lstat answers instead.
 	require.NoError(t, client.Symlink("/missing", "/link"))
 
 	err = b.Remove(t.Context(), "/link", fsops.RemoveOptions{})
@@ -366,11 +349,8 @@ func TestHardlinkTree_CancelledWriteCompletesAndRollsBack(t *testing.T) {
 		oneFile    bool
 		landed     []string
 	}{
-		// Without the root, the first write on the wire is the Mkdir of
-		// its first missing ancestor; with it, the Link.
 		{name: "mkdir", landed: []string{"links"}},
 		{name: "link", rootExists: true, landed: []string{"links", "Show.S01", "one.mkv"}},
-		// The last write in the plan: no later request fails on the cancel.
 		{name: "last link", rootExists: true, oneFile: true, landed: []string{"links", "Show.S01", "one.mkv"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -430,8 +410,6 @@ func TestRemove_CancelledRemoveCompletes(t *testing.T) {
 			var held error
 			go func() {
 				err := b.Remove(ctx, remotePath(dir, tc.remove), tc.opts)
-				// Read as the call returns: a call that does not wait for
-				// its held remove returns before the remove lands.
 				_, held = os.Lstat(remotePath(dir, tc.held))
 				done <- err
 			}()
@@ -443,9 +421,6 @@ func TestRemove_CancelledRemoveCompletes(t *testing.T) {
 	}
 }
 
-// On the exec tier a target that is already a link to its source is skipped,
-// the way the local backend skips it (#3237). The skip is not recorded: the
-// link belongs to whoever made it first.
 func TestHardlinkTree_ExecTierSkipsOwnLink(t *testing.T) {
 	t.Parallel()
 
@@ -487,8 +462,6 @@ func TestHardlinkTree_ExecTierStrangerStillRefuses(t *testing.T) {
 	assert.Equal(t, "stranger", string(body), "the stranger's file is untouched")
 }
 
-// A symlink at the target reports its own inode, never its target's, so it
-// can not pass as the source and stays a refusal.
 func TestHardlinkTree_ExecTierSymlinkAtTargetRefuses(t *testing.T) {
 	t.Parallel()
 
@@ -520,8 +493,6 @@ func TestHardlinkTree_ExecTierSkippedLinkSurvivesLaterFailure(t *testing.T) {
 	assert.Equal(t, src, dst, "the pre-existing link is left in place")
 }
 
-// A whole tree left on disk without its torrent is reused, which is what lets
-// cross-seed recreate a torrent whose own earlier tree occupies its target.
 func TestHardlinkTree_ExecTierReusesWholeTree(t *testing.T) {
 	t.Parallel()
 
@@ -544,9 +515,6 @@ func TestHardlinkTree_ExecTierReusesWholeTree(t *testing.T) {
 	}
 }
 
-// link(2) does not follow a symlinked source, so the link it makes carries
-// the symlink's own inode; comparing both sides unfollowed is what lets a
-// re-run recognise it.
 func TestHardlinkTree_ExecTierSymlinkedSourceReuses(t *testing.T) {
 	t.Parallel()
 
@@ -566,10 +534,6 @@ func TestHardlinkTree_ExecTierSymlinkedSourceReuses(t *testing.T) {
 	assert.Equal(t, 2, again.SkippedExists)
 }
 
-// A collision check cut short while the stat is running is the caller's
-// error, never a permanent ErrTargetExists that tells the user to clean up
-// their own link. The connection is opened and probed first, so the hang is
-// in the stat itself and not in the connect.
 func TestTargetIsSource_JobStoppedDuringStatIsAnError(t *testing.T) {
 	t.Parallel()
 
@@ -585,9 +549,6 @@ func TestTargetIsSource_JobStoppedDuringStatIsAnError(t *testing.T) {
 	assert.False(t, same)
 }
 
-// A source that vanished after the plan was built is not a reason to fall
-// back to a regular add into the matched torrent's path: the occupied target
-// still refuses, as it does on the sftp tier and the local backend.
 func TestHardlinkTree_ExecTierMissingSourceStillRefuses(t *testing.T) {
 	t.Parallel()
 
@@ -602,9 +563,6 @@ func TestHardlinkTree_ExecTierMissingSourceStillRefuses(t *testing.T) {
 	require.ErrorIs(t, err, hardlinktree.ErrTargetExists)
 }
 
-// The stored tier lags a key that just gained a shell: the probe writes the
-// row, not this backend's copy. The live connection decides, so the first
-// reuse after the upgrade already works.
 func TestHardlinkTree_StaleStoredTierStillReusesOnExecHost(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS != "linux" {
@@ -625,7 +583,6 @@ func TestHardlinkTree_StaleStoredTierStillReusesOnExecHost(t *testing.T) {
 
 func TestHardlinkTree_LstatFailureAfterLinkIsReported(t *testing.T) {
 	t.Parallel()
-	// Host directory modes cannot inject this failure on Windows or as root.
 	b, server := newBackend(t)
 	server.SetSFTP(sshtest.SFTPRefuseLinkAndLstat)
 	client, err := b.client(t.Context())

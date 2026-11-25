@@ -32,12 +32,10 @@ func TestShouldIgnoreFile(t *testing.T) {
 		{"Movie.2024/Movie 2024 sample.mkv", true},
 		{"Show.S02/Show.S02E01.nfo", true},
 
-		// A show or a movie whose title holds an ignore word.
 		{"Trailer.Park.Boys.S02.1080p.WEB.H264-GRP/Trailer.Park.Boys.S02E01.1080p.WEB.H264-GRP.mkv", false},
 		{"Extras.S02.1080p.WEB.H264-GRP/Extras.S02E01.1080p.WEB.H264-GRP.mkv", false},
 		{"Proof.2005.1080p.BluRay.x264-GRP/Proof.2005.1080p.BluRay.x264-GRP.mkv", false},
 		{"Kaiju.Squad.S02.1080p.WEB.H264-GRP/Kaiju.Squad.S02E01.The.Bonus.Round.1080p.WEB.H264-GRP.mkv", false},
-		// A keyword inside a word marks nothing.
 		{"Movie.Resample/video.mkv", false},
 		{"Movie.Resample.mkv", false},
 	}

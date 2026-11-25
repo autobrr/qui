@@ -10,16 +10,6 @@ import { APIError, api } from "@/lib/api"
 import { server } from "@/test/msw/server"
 import "@/i18n"
 
-// Contract tests for the lib/api.ts "export" method group (issue #1931).
-//
-// These call the REAL api client (no @/lib/api mock) and intercept HTTP with
-// MSW so we assert BOTH directions: request serialization (verb, encoded path,
-// absence of body/query) and response parsing into the typed return value.
-//
-// exportTorrent is special: it does NOT go through the shared request<T>()
-// wrapper, so on a non-2xx it throws a PLAIN Error (no .status), unlike the
-// APIError thrown elsewhere. That divergence is the key contract under test.
-
 describe("api.exportTorrent — request serialization", () => {
   it("issues GET to the percent-encoded export path with no body or query", async () => {
     let captured: Request | undefined
@@ -37,8 +27,6 @@ describe("api.exportTorrent — request serialization", () => {
       })
     )
 
-    // A hash containing '/' proves encodeURIComponent is applied (contrast with
-    // the crossseed methods which interpolate the raw hash).
     await api.exportTorrent(7, "ab/cd ef")
 
     expect(captured).toBeDefined()
@@ -47,11 +35,8 @@ describe("api.exportTorrent — request serialization", () => {
 
     const url = new URL(req.url)
     expect(url.pathname).toBe("/api/instances/7/torrents/ab%2Fcd%20ef/export")
-    // No query string is appended.
     expect(url.search).toBe("")
-    // GET carries no request body: no Content-Type request header is serialized.
     expect(req.headers.get("Content-Type")).toBeNull()
-    // ssoSafeFetch injects the XHR marker header.
     expect(req.headers.get("X-Requested-With")).toBe("XMLHttpRequest")
   })
 })
@@ -101,9 +86,6 @@ describe("api.exportTorrent — response parsing", () => {
 
     const result = await api.exportTorrent(1, "deadbeef")
 
-    // Assert the Blob structurally: the jsdom/undici Blob constructor differs
-    // from the global one vitest's `toBeInstanceOf` checks against, so verify
-    // the Blob contract (numeric size + readable body) instead.
     expect(typeof result.blob.size).toBe("number")
     expect(await result.blob.text()).toBe("binarydata")
     expect(result.filename).toBe("my file.torrent")
@@ -115,7 +97,6 @@ describe("api.exportTorrent — response parsing", () => {
         new HttpResponse("x", {
           status: 200,
           headers: {
-            // No surrounding quotes — exercises the optional-quote regex branch.
             "Content-Disposition": "attachment; filename=plain.torrent",
           },
         })
@@ -134,7 +115,6 @@ describe("api.exportTorrent — response parsing", () => {
         new HttpResponse("x", {
           status: 200,
           headers: {
-            // %E2%98%83 is the snowman ☃ — proves decodeURIComponent runs.
             "Content-Disposition": "attachment; filename*=UTF-8''na%CC%88me%E2%98%83.torrent",
           },
         })
@@ -167,7 +147,6 @@ describe("api.exportTorrent — response parsing", () => {
         new HttpResponse("x", {
           status: 200,
           headers: {
-            // No filename / filename* token at all.
             "Content-Disposition": "attachment",
           },
         })
@@ -196,7 +175,6 @@ describe("api.exportTorrent — error contract (plain Error, NOT APIError)", () 
     }
 
     expect(thrown).toBeInstanceOf(Error)
-    // KEY contract difference: it is a PLAIN Error, not the APIError thrown by request<T>().
     expect(thrown instanceof APIError).toBe(false)
     expect((thrown as { status?: unknown }).status).toBeUndefined()
     expect((thrown as Error).message).toBe("torrent not found")

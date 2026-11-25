@@ -17,66 +17,37 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { cn } from "@/lib/utils"
 
-/** ok: works. warn: works, with a problem. error: does not work. off: not in use. */
 export type ResourceTone = "ok" | "warn" | "error" | "off"
 
 export interface ResourceAction {
   label: string
   icon: LucideIcon
-  /** A promise keeps the confirm dialog open with a spinner until it settles. */
   onSelect: () => void | Promise<unknown>
   destructive?: boolean
   disabled?: boolean
-  /** The step runs, for example a test: the icon turns into a spinner, and the action takes no second press. */
   pending?: boolean
-  /** Asks first. Give it to each step that the user cannot undo. */
   confirm?: { title: string; description: ReactNode; confirmLabel: string }
 }
 
 export interface ResourceRow {
   title: string
-  /**
-   * Short muted facts under the title, for example the address and a count, joined with dots. A wide screen shows them
-   * on one line and cuts the end. A phone wraps them onto more lines, and a long fact wraps inside itself.
-   */
   meta?: readonly ReactNode[]
-  /** A lucide icon, or an element such as a tracker icon, in the tile at the start of the row. */
   icon?: LucideIcon | ReactElement
-  /** A colored dot and a word before the meta line, for the state of the item. */
   status?: { tone: ResourceTone; label: string }
-  /** An on/off switch for the item. An item that is off shows dimmed. */
   enabled?: { checked: boolean; onCheckedChange: (checked: boolean) => void; disabled?: boolean }
-  /**
-   * A box at the start of the row that adds the item to a selection, for steps on several items. A checked row shows
-   * tinted. In a list where some rows have a box, a row without one keeps the space, so the rows stay in line.
-   */
   select?: { checked: boolean; onCheckedChange: (checked: boolean) => void; disabled?: boolean }
-  /** Opens the item, usually in its Editor. The row and an Edit action both call it. */
   onOpen?: () => void
-  /**
-   * The steps for the item. A wide screen shows the first three as buttons and the rest in a menu. A phone shows a lone
-   * step as a button, and more in a menu. The menu puts the destructive steps last, under a line. On a phone, a row
-   * that only opens shows an arrow.
-   */
   actions?: readonly ResourceAction[]
-  /** More content under the row, for example the last errors of the item. */
   detail?: ReactNode
-  /**
-   * Details that a press on the row opens under it, and a second press closes. The row then shows an arrow that turns.
-   * With onOpen too, the item opens only from its Edit action.
-   */
   expand?: ReactNode
 }
 
 interface ResourceListProps<T> {
-  /** The accessible name of the list. */
   label: string
   items: readonly T[]
   itemKey: (item: T) => string | number
   row: (item: T) => ResourceRow
-  /** Puts the items under headings, in the order of the first item of each heading. Headings arrive translated. */
   group?: (item: T) => string
-  /** The tile that shows when the list is empty. With onAdd, the tile is a button. */
   empty: EmptyTileProps
 }
 
@@ -89,10 +60,8 @@ const TONE_DOT: Record<ResourceTone, string> = {
   off: "bg-muted-foreground/50",
 }
 
-/** The items of one kind in rows of 56 px, each with its state, its switch, and its steps. */
 export function ResourceList<T>({ label, items, itemKey, row, group, empty }: ResourceListProps<T>) {
   const [confirming, setConfirming] = useState<ResourceAction | null>(null)
-  // The dialog keeps its text while it fades out.
   const [shownConfirm, setShownConfirm] = useState<ResourceAction | null>(null)
 
   const run = (action: ResourceAction) => {
@@ -150,12 +119,10 @@ function ResourceListRow({ row, selectable, onRun }: { row: ResourceRow; selecta
     ? { label: t("kit.edit"), icon: Pencil, onSelect: row.onOpen }
     : null
   const actions: ResourceAction[] = [...(open ? [open] : []), ...(row.actions ?? [])]
-  // A wide screen shows the first actions as buttons, in the order of the caller. The menu puts the destructive ones last.
   const menu = [...actions.filter((action) => !action.destructive), ...actions.filter((action) => action.destructive)]
     .map((action) => ({ action, inline: actions.indexOf(action) < INLINE_ACTIONS }))
   const firstDestructive = menu.findIndex((entry) => entry.action.destructive)
   const wideMenuSplits = menu.some((entry) => !entry.inline && !entry.action.destructive) && menu.some((entry) => !entry.inline && entry.action.destructive)
-  // A phone shows a lone action as a button, and an arrow when that action opens the item.
   const phoneButton = actions.length === 1 ? actions[0] : null
   const facts: ReactNode[] = [
     ...(row.status ? [<StatusLabel key="status" {...row.status} />] : []),
@@ -172,7 +139,6 @@ function ResourceListRow({ row, selectable, onRun }: { row: ResourceRow; selecta
         {facts.length > 0 && (
           <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-muted-foreground sm:flex-nowrap">
             {facts.map((fact, index) => (
-              // The dot stays with the fact before it, so a line that wraps never starts with a dot.
               <span key={index} className="flex min-w-0 max-w-full items-baseline gap-1.5">
                 <span className="min-w-0 [overflow-wrap:anywhere] sm:truncate">{fact}</span>
                 {index < facts.length - 1 && <span aria-hidden="true" className="shrink-0">·</span>}
@@ -290,7 +256,6 @@ function ResourceListRow({ row, selectable, onRun }: { row: ResourceRow; selecta
                       variant={action.destructive ? "destructive" : "default"}
                       disabled={action.disabled || action.pending}
                       onSelect={() => onRun(action)}
-                      // A wide screen shows the first actions as buttons, so its menu lists only the rest.
                       className={cn("pointer-coarse:py-2.5", inline && "sm:hidden")}
                     >
                       <ActionIcon action={action} />

@@ -31,8 +31,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// crossSeedOf builds a torrent of the same files as s with another piece
-// size, as a cross-seed from another tracker has, and so another infohash.
 func crossSeedOf(t *testing.T, s show) (data []byte, hash string) {
 	t.Helper()
 	return qbtstub.NewContentTorrent(t, showName, 32,
@@ -40,7 +38,6 @@ func crossSeedOf(t *testing.T, s show) (data []byte, hash string) {
 		qbtstub.ContentFile{Path: "Show.S01E02.mkv", Data: s.files["Show.S01E02.mkv"]})
 }
 
-// seeding reports whether the instance seeds the torrent.
 func (r *rig) seeding(instanceID int, hash string) bool {
 	r.t.Helper()
 	torrents, err := r.sync.GetTorrentRefsFresh(r.t.Context(), instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
@@ -54,26 +51,17 @@ func (r routes) Get(_ context.Context, sourceInstanceID int) (*models.CrossSeedR
 	return r[sourceInstanceID], nil
 }
 
-// crossSeeds stands in for the routed cross-seed add: it links the files of
-// the matched torrent into the folder of the Cross-seed instance, and adds
-// the torrent there stopped, as the add leaves it after its check.
 type crossSeeds struct {
 	r        *rig
 	inst     *models.Instance
 	stub     *qbtstub.Server
 	dir      string
 	requests []crossseed.CrossSeedRequest
-	// refuse is the status of a refused add.
-	refuse string
-	// strand is the status of an add that leaves the torrent on the
-	// Cross-seed instance, and reports no success.
-	strand string
-	// taken is the status of an add that another client beats: it adds the
-	// torrent to the Cross-seed instance just before the add.
-	taken string
+	refuse   string
+	strand   string
+	taken    string
 }
 
-// withCrossSeedInstance gives the target a Cross-seed instance.
 func (r *rig) withCrossSeedInstance() *crossSeeds {
 	r.t.Helper()
 	c := r.newCrossSeeds("homelab cross-seed")
@@ -84,7 +72,6 @@ func (r *rig) withCrossSeedInstance() *crossSeeds {
 	return c
 }
 
-// newCrossSeeds adds an instance that takes routed cross-seeds.
 func (r *rig) newCrossSeeds(name string) *crossSeeds {
 	r.t.Helper()
 	c := &crossSeeds{r: r, dir: r.t.TempDir()}
@@ -95,9 +82,6 @@ func (r *rig) newCrossSeeds(name string) *crossSeeds {
 	return c
 }
 
-// followRoute is the routed cross-seed add as crossseed runs it: each add
-// reads the route of the matched instance, and goes where the route points
-// at that moment. Without a route, the add goes to the matched instance.
 type followRoute struct {
 	routes routes
 	on     map[int]*crossSeeds
@@ -173,9 +157,6 @@ func (c *crossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequ
 	}}, nil
 }
 
-// At a target with a Cross-seed instance, a group of the same files splits:
-// the Group representative lands on the target, and the other torrent on the
-// Cross-seed instance, through the routed cross-seed add.
 func TestTransferSendsTheCrossSeedToTheCrossSeedInstance(t *testing.T) {
 	r := newRig(t)
 	cs := r.withCrossSeedInstance()
@@ -204,9 +185,6 @@ func TestTransferSendsTheCrossSeedToTheCrossSeedInstance(t *testing.T) {
 	require.Empty(t, tree(t, r.srcDir))
 }
 
-// checkingCrossSeeds is the routed cross-seed add as crossseed runs it with
-// SkipAutoResume: the add sends the recheck and returns while qBittorrent
-// checks the links.
 type checkingCrossSeeds struct {
 	*crossSeeds
 	hash string
@@ -220,11 +198,6 @@ func (c checkingCrossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossS
 	return res, c.r.sync.BulkAction(ctx, c.inst.ID, []string{c.hash}, "recheck")
 }
 
-// The routed cross-seed add returns while qBittorrent checks the cross-seed.
-// qui waits for that check before it starts the cross-seed or ends the
-// Transfer, also when the check takes longer than a start.
-//
-// regression: #4231
 func TestTransferWaitsForTheCheckOfARoutedCrossSeed(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -261,11 +234,6 @@ func TestTransferWaitsForTheCheckOfARoutedCrossSeed(t *testing.T) {
 	}
 }
 
-// A failed cross-seed add fails the Transfer for a retry, and the source
-// keeps both torrents and their files. The retry adds a member that the add
-// refused again, and checks a member that the add left on the Cross-seed
-// instance.
-// regression: #4231
 func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -313,10 +281,6 @@ func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
 	}
 }
 
-// When the target sends its cross-seeds elsewhere while a Transfer waits for
-// its retry, the Transfer stops before its cross-seed add: the add would put
-// the member where qui does not look for it. The cleanup removes the copy.
-// regression: #4231
 func TestTransferStopsWhenTheTargetSendsItsCrossSeedsElsewhere(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -360,11 +324,6 @@ func TestTransferStopsWhenTheTargetSendsItsCrossSeedsElsewhere(t *testing.T) {
 	}
 }
 
-// A member that another client adds to the Cross-seed instance just before
-// the cross-seed add stays someone else's: the Transfer stops, and qui keeps
-// that torrent. The add reports exists when the other client came before its
-// own check, and a failed add when it came after.
-// regression: #4231
 func TestTransferKeepsACrossSeedThatSomeoneElseAdded(t *testing.T) {
 	for _, status := range []string{crossseed.StatusExists, "hardlink_error"} {
 		t.Run(status, func(t *testing.T) {
@@ -391,10 +350,6 @@ func TestTransferKeepsACrossSeedThatSomeoneElseAdded(t *testing.T) {
 	}
 }
 
-// A group whose torrents hold other files goes whole to the target, also
-// when the target has a Cross-seed instance. The request is the middle
-// episode of a pack: the pack copies only its other files, and the check on
-// the target proves the pieces that qui did not read.
 func TestTransferMovesAMixedGroupWholeToTheTarget(t *testing.T) {
 	r := newRig(t)
 	cs := r.withCrossSeedInstance()
@@ -418,11 +373,6 @@ func TestTransferMovesAMixedGroupWholeToTheTarget(t *testing.T) {
 	require.Empty(t, tree(t, r.srcDir))
 }
 
-// The target moves a torrent that it manages when the folder of its category
-// changes. A torrent in a folder below would then lose the files that it
-// shares with a managed one. So a group with such a torrent stays on manual
-// management as a whole.
-// regression: #4242
 func TestTransferLeavesAGroupWithATorrentBelowTheCategoryFolderOnManualManagement(t *testing.T) {
 	r := newRig(t)
 	r.dst.AutoManagement = true
@@ -442,8 +392,6 @@ func TestTransferLeavesAGroupWithATorrentBelowTheCategoryFolderOnManualManagemen
 	require.Equal(t, map[string]bool{pack.hash: false, episodeHash: false}, managed)
 }
 
-// seedHardlinkedCrossSeed seeds a cross-seed of s on the source that reads
-// hardlinks to the files of s in the folder links.
 func (r *rig) seedHardlinkedCrossSeed(s show) (links, hash string) {
 	r.t.Helper()
 	links = filepath.Join(r.srcDir, "links")
@@ -456,8 +404,6 @@ func (r *rig) seedHardlinkedCrossSeed(s show) (links, hash string) {
 	return links, hash
 }
 
-// Over SSH qui does not see a hardlink, so a cross-seed on links to the
-// files stays on the source and keeps its data.
 func TestTransferLeavesAHardlinkedCrossSeedOverSSH(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -473,12 +419,6 @@ func TestTransferLeavesAHardlinkedCrossSeedOverSSH(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, links))
 }
 
-// On qui's own disk, qui sees that a cross-seed reads the files through
-// hardlinks, so the cross-seed moves with the torrent. qui copies each file
-// once and links the path of the cross-seed to the copy where the target can
-// link, so the free space for one copy is enough. On one filesystem, both
-// paths link to the source. A target that cannot link gets a copy of each
-// path.
 func TestTransferMovesAHardlinkedCrossSeed(t *testing.T) {
 	const linkedLog = "2 files (70 B) are hardlinks of other files on seedbox, so qui copies them once and links them on homelab."
 	for _, tc := range []struct {
@@ -541,9 +481,6 @@ func TestTransferMovesAHardlinkedCrossSeed(t *testing.T) {
 	}
 }
 
-// A target that cannot link needs the free space for a second copy of a
-// hardlinked file. Without it, the Transfer stops, and qui removes what it
-// wrote.
 func TestTransferNeedsSpaceForACopyThatTheTargetCannotLink(t *testing.T) {
 	r := newRigOn(t, onDisk, onDisk)
 	r.disk.otherFilesystem = true
@@ -560,7 +497,6 @@ func TestTransferNeedsSpaceForACopyThatTheTargetCannotLink(t *testing.T) {
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
 	require.Equal(t, "Not enough free space on homelab: not enough free space on the target: the Transfer needs 40 B, and 30 B is free", record.FailureReason)
 	require.Empty(t, tree(t, r.dstDir))
-	// regression: #4231
 	entries, err := os.ReadDir(r.dstDir)
 	require.NoError(t, err)
 	require.Empty(t, entries, "the folders of the link that failed stay")
@@ -569,22 +505,17 @@ func TestTransferNeedsSpaceForACopyThatTheTargetCannotLink(t *testing.T) {
 	require.True(t, r.seeding(r.source.ID, crossSeedHash))
 }
 
-// A Transfer that resumes keeps the temporary files that it made for a
-// hardlinked cross-seed: the links, or the copies where the target cannot
-// link. It creates each temporary file once.
 func TestTransferKeepsTheFilesOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		noLinks bool
-		free    int64
-		// stopAt is the start of the name of the first write that stops qui.
+		name            string
+		noLinks         bool
+		free            int64
 		stopAt          string
 		writtenFolders  map[string]bool
 		oneFileOnTarget bool
 	}{
 		{name: "the links", free: 70, stopAt: showName + "/",
 			writtenFolders: map[string]bool{showName: true}, oneFileOnTarget: true},
-		// regression: #4231
 		{name: "a copy where the target cannot link", noLinks: true, free: 140, stopAt: "links/" + showName + "/Show.S01E02.mkv",
 			writtenFolders: map[string]bool{showName: true, "links/" + showName: true}},
 	} {
@@ -626,12 +557,6 @@ func TestTransferKeepsTheFilesOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
 	}
 }
 
-// A connection that drops while qui links a hardlink on the target, or
-// creates a temporary file there, is no sign that the target cannot link. qui
-// reconnects, makes again a name that the target may have made before the
-// drop, also when the removal of that name drops, and links the path of the
-// cross-seed to the copy. It writes no second copy.
-// regression: #4231
 func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -665,16 +590,11 @@ func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
 	}
 }
 
-// targetDrop drops the connections to an SFTP target once, at the first
-// request op of qui there: "link", "create", or "remove". With served, the
-// target takes the request, and only its answer is lost.
 type targetDrop struct {
 	op     string
 	served bool
 }
 
-// dropAtFirst starts qui again on an SFTP target whose connections drop as
-// each of ds says, in turn.
 func (r *rig) dropAtFirst(ds ...targetDrop) {
 	r.t.Helper()
 	ssh := sshpool.NewPool(sshpool.NewDialer(r.instances))
@@ -692,8 +612,6 @@ type drops struct {
 	pending []targetDrop
 }
 
-// request runs a request op on name, and fails it as the remote backend
-// fails on a dropped connection when it is the request that drops next.
 func (d *drops) request(op, name string, request func() error) error {
 	d.mu.Lock()
 	next := targetDrop{}
@@ -754,8 +672,6 @@ func (r *dropRoot) Create(ctx context.Context, name string) (fsops.FileWriter, e
 	return w, nil
 }
 
-// writtenFolders returns the folders below the root of the Transfer of the
-// files that the copy wrote.
 func (r *rig) writtenFolders() map[string]bool {
 	writes, _ := r.disk.log()
 	out := map[string]bool{}
@@ -774,10 +690,6 @@ func sameFile(t *testing.T, a, b string) bool {
 	return os.SameFile(ai, bi)
 }
 
-// Each running Transfer to a target holds its bytes of the free space there,
-// so a Transfer from another source cannot count them again. The disk has
-// the space for it, so it fails for a retry: the shortage ends with the
-// other Transfer.
 func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	r := newRig(t)
 	first := newShow(t, showName)
@@ -794,12 +706,8 @@ func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	other.Seed(small, otherPath)
 	r.disk.free = 100
 
-	// The first Transfer stops at its first write. The third Transfer waits
-	// behind the second on the same source, so its first write tells that the
-	// second has ended.
 	copying, held := make(chan struct{}), make(chan struct{})
 	release := sync.OnceFunc(func() { close(held) })
-	// Runs before the rig closes the Service, also when the test fails first.
 	t.Cleanup(release)
 	var writes atomic.Int32
 	r.disk.onWrite = func(string) {
@@ -827,17 +735,12 @@ func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	}
 	require.Equal(t, transfer.StateDone, records[firstID].State, records[firstID].FailureReason)
 	require.Equal(t, transfer.StateFailed, records[secondID].State)
-	// regression: #4231
 	require.Equal(t, transfer.FailureTemporary, records[secondID].FailureClass, records[secondID].FailureReason)
 	require.Equal(t, "Not enough free space on homelab for now: the Transfer needs 70 B, and 100 B is free, "+
 		"but other Transfers to homelab take 70 B of it.", records[secondID].FailureReason)
 	require.Equal(t, transfer.StateDone, records[thirdID].State, records[thirdID].FailureReason)
 }
 
-// A Transfer that ends gives back its free space on the target, and its
-// files take that space. A read of the free space from before that end does
-// not show them, so the Transfer that read it counts them.
-// regression: #4231
 func TestTransferCountsTheFilesOfATransferThatEndedAfterTheRead(t *testing.T) {
 	r := newRig(t)
 	first := newShow(t, showName)
@@ -854,12 +757,8 @@ func TestTransferCountsTheFilesOfATransferThatEndedAfterTheRead(t *testing.T) {
 	other.Seed(second.data, otherPath)
 	r.disk.free = 100
 
-	// The first Transfer copies once the second reads the free space, and
-	// that read answers once the first has ended: the third Transfer waits
-	// behind the first on the same source, so its read tells that.
 	reading, ended := make(chan struct{}), make(chan struct{})
 	read, end := sync.OnceFunc(func() { close(reading) }), sync.OnceFunc(func() { close(ended) })
-	// Runs before the rig closes the Service, also when the test fails first.
 	t.Cleanup(func() { read(); end() })
 	var reads atomic.Int32
 	r.disk.onStatfs = func() {
@@ -894,9 +793,6 @@ func TestTransferCountsTheFilesOfATransferThatEndedAfterTheRead(t *testing.T) {
 	require.Equal(t, transfer.StateDone, r.get(thirdID).State)
 }
 
-// A file of the group that is on the target before the Transfer is a head
-// start for each torrent of the group: qui writes only the missing file, and
-// once.
 func TestTransferUsesAFileOnTheTargetForTheWholeGroup(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)

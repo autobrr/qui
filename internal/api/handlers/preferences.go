@@ -32,7 +32,6 @@ func NewPreferencesHandler(syncManager *qbittorrent.SyncManager) *PreferencesHan
 	}
 }
 
-// GetPreferences returns the preference catalog view of the instance preferences.
 func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -44,7 +43,6 @@ func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Reque
 	h.respondWithView(w, r, instanceID, "preferences:get")
 }
 
-// UpdatePreferences writes the changed preference keys and returns the new view.
 func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -76,7 +74,6 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 	h.respondWithView(w, r, instanceID, "preferences:getUpdated")
 }
 
-// SendTestEmail asks qBittorrent to send a test email. Success means that qBittorrent queued it.
 func (h *PreferencesHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -101,7 +98,6 @@ func (h *PreferencesHandler) SendTestEmail(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetNetworkBinding returns the network interfaces and addresses that qBittorrent can bind to.
 func (h *PreferencesHandler) GetNetworkBinding(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -171,7 +167,6 @@ func hideTrackerPreferences(view []prefcatalog.Field) error {
 	return nil
 }
 
-// GetAlternativeSpeedLimitsMode returns the current alternative speed limits mode
 func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -198,7 +193,6 @@ func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter
 	}
 }
 
-// ToggleAlternativeSpeedLimits toggles alternative speed limits on/off
 func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -216,7 +210,6 @@ func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter,
 		return
 	}
 
-	// Return the new state
 	enabled, err := h.syncManager.GetAlternativeSpeedLimitsMode(r.Context(), instanceID)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "preferences:getAltSpeeds") {

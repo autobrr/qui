@@ -20,24 +20,13 @@ import (
 )
 
 var (
-	// ErrClaimed is the refusal of a torrent that a running Transfer holds.
-	ErrClaimed = errors.New("a Transfer holds this torrent")
-	// ErrHelper is the refusal of a helper torrent: its files are the files
-	// of a real torrent.
-	ErrHelper = errors.New("qui added this torrent for a Transfer or a Share")
-	// ErrHelperOwned is a second registration of a helper torrent by another owner.
-	ErrHelperOwned = errors.New("another Transfer or Share owns this helper torrent")
-	// ErrWaitsForUser is the refusal of a rule to transfer a torrent whose
-	// last Transfer failed permanently: the failure waits for the user.
+	ErrClaimed      = errors.New("a Transfer holds this torrent")
+	ErrHelper       = errors.New("qui added this torrent for a Transfer or a Share")
+	ErrHelperOwned  = errors.New("another Transfer or Share owns this helper torrent")
 	ErrWaitsForUser = errors.New("the last Transfer of this torrent failed and waits for the user")
-	// ErrStays is the refusal of a rule to pass the files of a torrent by a
-	// Transfer torrent again: a cross-seed that has the same files through
-	// hardlinks is in a Transfer or on the target.
-	ErrStays = errors.New("a cross-seed that has the same files through hardlinks is in a Transfer or on the target")
-	// ErrNotFound: no Transfer has the id.
-	ErrNotFound = errors.New("no Transfer has this id")
-	// ErrNotFinished refuses to remove a Transfer that holds its torrents.
-	ErrNotFinished = errors.New("the Transfer has not ended")
+	ErrStays        = errors.New("a cross-seed that has the same files through hardlinks is in a Transfer or on the target")
+	ErrNotFound     = errors.New("no Transfer has this id")
+	ErrNotFinished  = errors.New("the Transfer has not ended")
 )
 
 type torrentKey struct {
@@ -45,21 +34,15 @@ type torrentKey struct {
 	hash       string
 }
 
-// Store keeps Transfers and helper torrents in the database. It also keeps
-// the claimed torrents and the helper torrents in memory, so that a check of
-// one torrent reads no database.
 type Store struct {
 	db dbinterface.Querier
 
 	mu      sync.RWMutex
 	claims  map[torrentKey]int64
 	helpers map[torrentKey]OwnerKind
-	// orphans holds, for each helper torrent whose Transfer row is gone, the
-	// time after which a sync of its instance shows whether it is gone.
 	orphans map[torrentKey]time.Time
 }
 
-// NewStore reads the claims and the helper torrents of db.
 func NewStore(ctx context.Context, db dbinterface.Querier) (*Store, error) {
 	s := &Store{db: db, claims: make(map[torrentKey]int64), helpers: make(map[torrentKey]OwnerKind),
 		orphans: make(map[torrentKey]time.Time)}
@@ -106,9 +89,6 @@ func (s *Store) load(ctx context.Context) error {
 	return nil
 }
 
-// Create stores record and sets its ID. In the same write it claims each
-// member on the Transfer source. When another Transfer holds a member, it
-// stores nothing and returns ErrClaimed.
 func (s *Store) Create(ctx context.Context, record *Record) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -128,7 +108,6 @@ func (s *Store) Create(ctx context.Context, record *Record) error {
 			return err
 		}
 		if record.Kind == KindExport {
-			// An Export run takes nothing from the source.
 			continue
 		}
 		key := torrentKey{record.SourceInstanceID, member.Hash}
@@ -214,7 +193,6 @@ func insertMember(ctx context.Context, tx dbinterface.TxQuerier, transferID int6
 	return nil
 }
 
-// Get returns the Transfer with id and its members.
 func (s *Store) Get(ctx context.Context, id int64) (*Record, error) {
 	var (
 		r                                        Record
@@ -260,7 +238,6 @@ func (s *Store) Get(ctx context.Context, id int64) (*Record, error) {
 		return nil, err
 	}
 	if len(members) == 0 {
-		// A removal of the Transfer came between the two reads.
 		return nil, fmt.Errorf("%w: %d", ErrNotFound, id)
 	}
 	r.Members = members
@@ -294,9 +271,6 @@ func (s *Store) members(ctx context.Context, transferID int64) ([]Member, error)
 	return members, rows.Err()
 }
 
-// Save writes what changes while a Transfer runs: the state, the steps, the
-// log, the flush state, the reserved bytes, the retry, the failure, and the
-// way after a fall back.
 func (s *Store) Save(ctx context.Context, r *Record) error {
 	steps, err := json.Marshal(r.Steps)
 	if err != nil {
@@ -315,7 +289,6 @@ func (s *Store) Save(ctx context.Context, r *Record) error {
 	return nil
 }
 
-// SaveProven writes the Proven pieces of the member at position.
 func (s *Store) SaveProven(ctx context.Context, id int64, position int, proven []byte) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE torrent_transfer_members SET proven_pieces = ? WHERE transfer_id = ? AND position = ?`,
 		proven, id, position); err != nil {
@@ -324,7 +297,6 @@ func (s *Store) SaveProven(ctx context.Context, id int64, position int, proven [
 	return nil
 }
 
-// Finish ends the Transfer in state, and releases its torrents and folders.
 func (s *Store) Finish(ctx context.Context, id int64, state State) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -352,8 +324,6 @@ func (s *Store) Finish(ctx context.Context, id int64, state State) error {
 	return nil
 }
 
-// Unfinished returns the IDs of the Transfers that hold their torrents, in
-// the order they started.
 func (s *Store) Unfinished(ctx context.Context) ([]int64, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id FROM torrent_transfers WHERE finished_at IS NULL ORDER BY id`)
 	if err != nil {
@@ -371,8 +341,6 @@ func (s *Store) Unfinished(ctx context.Context) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// WaitsForUser reports whether the last Transfer of the torrent from the
-// instance failed permanently.
 func (s *Store) WaitsForUser(ctx context.Context, instanceID int, hash string) (bool, error) {
 	var state, class string
 	err := s.db.QueryRowContext(ctx, `SELECT t.state, t.failure_class FROM torrent_transfers t
@@ -388,17 +356,12 @@ func (s *Store) WaitsForUser(ctx context.Context, instanceID int, hash string) (
 	return State(state) == StateFailed && FailureClass(class) == FailurePermanent, nil
 }
 
-// HasClaims reports whether an unfinished Transfer holds a torrent. It reads
-// no database.
 func (s *Store) HasClaims() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.claims) > 0
 }
 
-// RunningFolders returns the save path of each member of each unfinished
-// Transfer that reads or writes on the instance: the save path on the source
-// and the save path of its placement on the target.
 func (s *Store) RunningFolders(ctx context.Context, instanceID int) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT m.source_save_path FROM torrent_transfer_members m
 			JOIN torrent_transfers t ON t.id = m.transfer_id
@@ -424,10 +387,6 @@ func (s *Store) RunningFolders(ctx context.Context, instanceID int) ([]string, e
 	return folders, rows.Err()
 }
 
-// RegisterHelper writes the row of a helper torrent. Call it before the add
-// of the helper: from the write on, every protection of qui knows the
-// torrent as a helper. A second call for the same owner does nothing, and a
-// call for another owner returns ErrHelperOwned.
 func (s *Store) RegisterHelper(ctx context.Context, h Helper) error {
 	hash := strings.ToLower(h.Hash)
 	result, err := s.db.ExecContext(ctx, `INSERT INTO helper_torrents (instance_id, hash, random, owner_kind, owner_id)
@@ -456,7 +415,6 @@ func (s *Store) RegisterHelper(ctx context.Context, h Helper) error {
 	return nil
 }
 
-// HelpersOf returns the helper torrents of one Transfer or Share.
 func (s *Store) HelpersOf(ctx context.Context, owner OwnerKind, ownerID int64) ([]Helper, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT instance_id, hash, random, owner_kind, owner_id, created_at
 		FROM helper_torrents WHERE owner_kind = ? AND owner_id = ? ORDER BY instance_id, hash`, string(owner), ownerID)
@@ -477,9 +435,6 @@ func (s *Store) HelpersOf(ctx context.Context, owner OwnerKind, ownerID int64) (
 	return helpers, rows.Err()
 }
 
-// RemoveHelpers deletes the rows of the helper torrents of one Transfer or
-// Share. Call it only when the helper torrents are gone from the clients:
-// from then on, qui protects them no more.
 func (s *Store) RemoveHelpers(ctx context.Context, owner OwnerKind, ownerID int64) error {
 	helpers, err := s.HelpersOf(ctx, owner, ownerID)
 	if err != nil {
@@ -496,7 +451,6 @@ func (s *Store) RemoveHelpers(ctx context.Context, owner OwnerKind, ownerID int6
 	return nil
 }
 
-// IsClaimed reports whether a running Transfer holds the torrent.
 func (s *Store) IsClaimed(instanceID int, hash string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -507,14 +461,10 @@ func (s *Store) IsClaimed(instanceID int, hash string) bool {
 	return ok
 }
 
-// IsHelper reports whether qui added the torrent as a helper torrent. Only
-// the registry answers: the tag of a helper torrent proves nothing.
 func (s *Store) IsHelper(instanceID int, hash string) bool {
 	return s.HelperKind(instanceID, hash) != ""
 }
 
-// HelperKind returns the kind of the owner of a helper torrent, transfer or
-// share, and "" for any other torrent.
 func (s *Store) HelperKind(instanceID int, hash string) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -524,8 +474,6 @@ func (s *Store) HelperKind(instanceID int, hash string) string {
 	return string(s.helpers[torrentKey{instanceID, strings.ToLower(hash)}])
 }
 
-// Hold returns why qui refuses a delete, a move, or a rename of the torrent:
-// ErrClaimed or ErrHelper. It returns nil for any other torrent.
 func (s *Store) Hold(instanceID int, hash string) error {
 	if s.IsClaimed(instanceID, hash) {
 		return ErrClaimed
@@ -536,9 +484,6 @@ func (s *Store) Hold(instanceID int, hash string) error {
 	return nil
 }
 
-// HelperKinds returns the owner kind of each helper torrent of one instance,
-// by its hash in lower case. It reads the registry one time, and returns nil
-// when the instance has no helper torrent.
 func (s *Store) HelperKinds(instanceID int) map[string]string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -555,9 +500,6 @@ func (s *Store) HelperKinds(instanceID int) map[string]string {
 	return kinds
 }
 
-// HelperCheck is IsHelper for a pass over the torrents of one instance: it
-// reads the registry one time. It returns nil when the instance has no helper
-// torrent.
 func (s *Store) HelperCheck(instanceID int) func(hash string) bool {
 	s.mu.RLock()
 	helpers := hashesOn(nil, s.helpers, instanceID)
@@ -565,9 +507,6 @@ func (s *Store) HelperCheck(instanceID int) func(hash string) bool {
 	return hashCheck(helpers)
 }
 
-// HoldCheck reports for a pass over the torrents of one instance whether Hold
-// refuses a torrent: it reads the claims and the registry one time. It
-// returns nil when Hold refuses no torrent of the instance.
 func (s *Store) HoldCheck(instanceID int) func(hash string) bool {
 	s.mu.RLock()
 	held := hashesOn(hashesOn(nil, s.claims, instanceID), s.helpers, instanceID)
@@ -575,9 +514,6 @@ func (s *Store) HoldCheck(instanceID int) func(hash string) bool {
 	return hashCheck(held)
 }
 
-// hashesOn adds the hashes of the entries of one instance to hashes, and
-// returns hashes. It returns nil when hashes is nil and the instance has no
-// entry.
 func hashesOn[V any](hashes map[string]struct{}, entries map[torrentKey]V, instanceID int) map[string]struct{} {
 	for key := range entries {
 		if key.instanceID != instanceID {
@@ -591,8 +527,6 @@ func hashesOn[V any](hashes map[string]struct{}, entries map[torrentKey]V, insta
 	return hashes
 }
 
-// hashCheck returns a check of whether a hash, in any case, is in hashes. It
-// returns nil when hashes is nil.
 func hashCheck(hashes map[string]struct{}) func(hash string) bool {
 	if hashes == nil {
 		return nil
@@ -603,9 +537,6 @@ func hashCheck(hashes map[string]struct{}) func(hash string) bool {
 	}
 }
 
-// lowerHash is strings.ToLower for the hash of a torrent. qBittorrent sends
-// the hash in lower case, and on a hex hash strings.ToLower costs a pass over
-// the torrents about 100 ns per torrent.
 func lowerHash(hash string) string {
 	for i := 0; i < len(hash); i++ {
 		if c := hash[i]; c >= utf8.RuneSelf || 'A' <= c && c <= 'Z' {

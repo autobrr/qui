@@ -18,8 +18,6 @@ import "./spreadsheet-chrome.css"
 setupLaunchQueueConsumer()
 keepDocumentAtTop()
 
-// Wait for the active language's resources (lazily loaded for non-English) before
-// mounting, so the first paint is already in the user's chosen language.
 void initI18n().finally(() => {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

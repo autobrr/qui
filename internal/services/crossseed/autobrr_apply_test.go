@@ -445,9 +445,6 @@ func TestAutobrrApplyTargetInstanceIDs(t *testing.T) {
 	}
 }
 
-// TestAutobrrApply_IndexerPassthrough verifies that Indexer from the request
-// is passed through to the CrossSeedRequest, enabling "Use indexer name as category" mode
-// for webhook applies where the indexer cannot be derived from the torrent file.
 func TestAutobrrApply_IndexerPassthrough(t *testing.T) {
 	t.Parallel()
 
@@ -490,9 +487,6 @@ func TestAutobrrApply_IndexerPassthrough(t *testing.T) {
 	}
 }
 
-// TestAutobrrApply_RespectsWebhookSourceFilters verifies that AutobrrApply passes
-// webhook source filters through to the CrossSeedRequest. This is an integration test
-// that catches the bug where filters worked in isolation but weren't passed through the flow.
 func TestAutobrrApply_RespectsWebhookSourceFilters(t *testing.T) {
 	t.Parallel()
 
@@ -594,7 +588,6 @@ func TestAutobrrApply_RespectsWebhookSourceFilters(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
 
-			// Verify source filters were passed through
 			require.Equal(t, tt.expectCategories, captured.sourceFilter.categories, "categories mismatch")
 			require.Equal(t, tt.expectTags, captured.sourceFilter.tags, "tags mismatch")
 			require.Equal(t, tt.expectExcludeCategories, captured.sourceFilter.excludeCategories, "excludeCategories mismatch")
@@ -603,9 +596,6 @@ func TestAutobrrApply_RespectsWebhookSourceFilters(t *testing.T) {
 	}
 }
 
-// TestAutobrrApplyBindsAnnouncementDecision catches an apply planner that
-// authorizes from downloaded info.name, or loses the instance/hash that
-// supplied the exact byte evidence.
 func TestAutobrrApplyBindsAnnouncementDecision(t *testing.T) {
 	t.Parallel()
 
@@ -654,9 +644,6 @@ func TestAutobrrApplyBindsAnnouncementDecision(t *testing.T) {
 	require.Equal(t, []string{"from-webhook"}, captured.Tags)
 }
 
-// TestAutobrrApplyRejectsAnnouncementActualSizeMismatch catches a relaxed
-// apply that treats an announced name as authority when metainfo bytes do not
-// have the exact size that matched the local source.
 func TestAutobrrApplyRejectsAnnouncementActualSizeMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -688,9 +675,6 @@ func TestAutobrrApplyRejectsAnnouncementActualSizeMismatch(t *testing.T) {
 	require.Empty(t, response.Results)
 }
 
-// TestAutobrrApplyTriesLaterBoundSource catches an apply planner that discards
-// a lower-ranked source before CrossSeed can reject the first source's file or
-// add plan and accept the next one.
 func TestAutobrrApplyTriesLaterBoundSource(t *testing.T) {
 	t.Parallel()
 
@@ -734,9 +718,6 @@ func TestAutobrrApplyTriesLaterBoundSource(t *testing.T) {
 	require.Equal(t, "added", response.Results[0].Status)
 }
 
-// TestAutobrrApplyNonexactAnnouncementCheapGate catches apply planning that
-// fetches selected files for a nonexact source before raw strict/tolerance
-// matching decides whether the source can be replayed.
 func TestAutobrrApplyNonexactAnnouncementCheapGate(t *testing.T) {
 	t.Parallel()
 
@@ -805,10 +786,6 @@ func TestAutobrrApplyNonexactAnnouncementCheapGate(t *testing.T) {
 	}
 }
 
-// TestAutobrrApplyUsesARRAlternateTitles catches an apply path that loses the
-// announce's ARR alias titles between the webhook check and injection: the
-// bound decision must carry them into the CrossSeed revalidation, with exactly
-// one ARR lookup for the whole request.
 func TestAutobrrApplyUsesARRAlternateTitles(t *testing.T) {
 	t.Parallel()
 
@@ -881,8 +858,6 @@ func TestAutobrrApplyUsesARRAlternateTitles(t *testing.T) {
 	}
 }
 
-// TestAutobrrApplyRetainsPartialSuccess catches a webhook response that drops
-// a successful add because a later target instance returned an error.
 func TestAutobrrApplyRetainsPartialSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -941,9 +916,6 @@ func TestAutobrrApplyRetainsPartialSuccess(t *testing.T) {
 	require.Contains(t, response.Results[1].Message, "beta unavailable")
 }
 
-// TestAutobrrApplyReadsSeasonFolderFromFiles catches an apply that reads a
-// local "Season 2" folder by its name, which has no title, after the webhook
-// check read it from its files and accepted a pack of a slightly larger size.
 func TestAutobrrApplyReadsSeasonFolderFromFiles(t *testing.T) {
 	t.Parallel()
 
@@ -982,7 +954,6 @@ func TestAutobrrApplyReadsSeasonFolderFromFiles(t *testing.T) {
 	require.Equal(t, 1, invocations)
 }
 
-// regression: #3626
 func TestAutobrrApplySkipsSourceThatIsNotSettled(t *testing.T) {
 	t.Parallel()
 
@@ -1071,17 +1042,11 @@ func TestAutobrrApplySharesTheFailedRouteFoldersOfOneWebhook(t *testing.T) {
 		InstanceIDs: []int{instance.ID},
 	})
 	require.NoError(t, err)
-	// Each try of the webhook sees the same memory of failed route folders, so
-	// a later try under a hidden folder lists once.
 	require.Len(t, runs, 2)
 	require.NotNil(t, runs[0], "the webhook does not start a route run")
 	require.Same(t, runs[0], runs[1])
 }
 
-// TestBoundAnnouncementStopsAfterStrandedAdd catches a source loop that tries
-// the next source after qBittorrent already holds the torrent, so the later
-// "exists" result replaces the failure.
-// regression: #3824
 func TestBoundAnnouncementStopsAfterStrandedAdd(t *testing.T) {
 	t.Parallel()
 
@@ -1124,10 +1089,6 @@ func TestBoundAnnouncementStopsAfterStrandedAdd(t *testing.T) {
 	}
 }
 
-// TestAutobrrApplyNotifiesStrandedAddBeforeLaterSource catches a stranded add
-// on the first bound source that a later source's "exists" result hides, so
-// the user gets no failure notification.
-// regression: #3824
 func TestAutobrrApplyNotifiesStrandedAddBeforeLaterSource(t *testing.T) {
 	t.Parallel()
 

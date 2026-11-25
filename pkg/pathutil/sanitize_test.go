@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 )
 
-// regression: #4073
 func TestSanitizePathSegment(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -183,7 +182,6 @@ func TestIsolationFolder(t *testing.T) {
 		{name: "name over 255 bytes of 2-byte characters", torrent: strings.Repeat("é", 200), want: strings.Repeat("é", 122)},
 		{name: "cut never splits a 4-byte character", torrent: strings.Repeat("a", 243) + "😀" + "bbb", want: strings.Repeat("a", 243)},
 		{name: "trailing dots and spaces after the cut", torrent: strings.Repeat("a", 241) + ". .." + "tail", want: strings.Repeat("a", 241)},
-		// regression: #4423
 		{name: "device name after the cut", torrent: "AUX" + strings.Repeat(" ", 300) + "x", want: "_AUX"},
 	}
 
@@ -207,7 +205,6 @@ func TestHashedIsolationFolder(t *testing.T) {
 	}
 }
 
-// regression: #4220
 func FuzzTorrentFilePathMatchesReference(f *testing.F) {
 	for _, seed := range [][3]string{
 		{"Album", "Disc 1", "01 - Track.flac"},

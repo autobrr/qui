@@ -5,7 +5,6 @@ package prefcatalog
 
 import "slices"
 
-// A change in qui to one of these keys can stop the connection of qui to qBittorrent.
 const reasonQuiConnection = "qui connects to qBittorrent with this setting"
 
 var webUIEntries = slices.Concat(

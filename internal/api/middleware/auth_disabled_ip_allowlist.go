@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 )
 
-// RequireAuthDisabledIPAllowlist enforces authDisabledAllowedCIDRs when
-// built-in authentication is disabled.
 func RequireAuthDisabledIPAllowlist(cfg *domain.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

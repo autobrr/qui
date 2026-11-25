@@ -116,7 +116,6 @@ func prepareConfigDir(t *testing.T, dir string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, config.WriteDefaultConfig(filepath.Join(dir, "config.toml")))
-	// A migrated clone spares each command a full migration run.
 	require.NoError(t, os.Rename(testdb.CloneMigratedSQLite(t, "qui"), databasePath(dir)))
 }
 

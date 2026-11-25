@@ -19,9 +19,6 @@ import (
 
 const maxFilterViewNameLength = 100
 
-// filterViewUserID is the owner of every filter view. qui is single-user
-// self-hosted and there is no user id in the request context; this mirrors
-// DashboardSettingsHandler.
 const filterViewUserID = 1
 
 type FilterViewHandler struct {
@@ -37,9 +34,6 @@ type filterViewPayload struct {
 	Filters json.RawMessage `json:"filters"`
 }
 
-// decodeFilterViewPayload decodes and validates a create/update body, returning
-// the trimmed name and the raw filters blob. It responds to the client and
-// returns false when the body is unusable.
 func decodeFilterViewPayload(w http.ResponseWriter, r *http.Request) (string, json.RawMessage, bool) {
 	var payload filterViewPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -56,8 +50,6 @@ func decodeFilterViewPayload(w http.ResponseWriter, r *http.Request) (string, js
 	case len([]rune(name)) > maxFilterViewNameLength:
 		RespondError(w, http.StatusBadRequest, "Name is too long")
 		return "", nil, false
-	// json.Decoder already validated the syntax and leaves no surrounding
-	// whitespace, so a leading '{' is enough to prove this is an object.
 	case len(payload.Filters) == 0 || payload.Filters[0] != '{':
 		RespondError(w, http.StatusBadRequest, "Filters must be a JSON object")
 		return "", nil, false

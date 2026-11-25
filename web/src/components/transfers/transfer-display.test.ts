@@ -20,7 +20,6 @@ function row(edit: Partial<TransferRow>): TransferRow {
 }
 
 describe("the Retry of a row", () => {
-  // regression: #4242
   it("waits for the end of the cleanup of a cancelled run", () => {
     expect(canRetry(row({ state: "cancelled", finishedAt: null }))).toBe(false)
     expect(canRetry(row({ state: "cancelled", finishedAt: "2026-11-17T11:00:00Z" }))).toBe(true)

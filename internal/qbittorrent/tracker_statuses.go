@@ -12,12 +12,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// urlPattern matches http:// and https:// URLs to strip them from tracker messages.
-// This prevents false positives when URLs contain words like "forbidden" or "down"
-// (e.g., "https://site.com/forbidden-world-1982" should not match "forbidden").
 var urlPattern = regexp.MustCompile(`(?i)https?://\S+`)
 
-// defaultUnregisteredStatuses lists tracker messages we map to the Unregistered health state.
 var defaultUnregisteredStatuses = []string{
 	"complete season uploaded",
 	"dead",
@@ -59,7 +55,6 @@ var defaultUnregisteredStatuses = []string{
 	"nem található",
 }
 
-// trackerDownStatuses lists tracker messages indicating an outage.
 var trackerDownStatuses = []string{
 	"continue",
 	"multiple choices",
@@ -99,11 +94,7 @@ var trackerDownStatuses = []string{
 	"<none>",
 }
 
-// trackerHealthOf decides the tracker health of a torrent from its trackers. During the grace hour
-// an unregistered message gives no unregistered label, because a tracker can say
-// that before it registers a new upload. The tracker down label can still show.
 func trackerHealthOf(torrent *qbt.Torrent, trackers []qbt.TorrentTracker, now time.Time) TrackerHealth {
-	// Most torrents have no tracker data, so they skip the time math.
 	if torrent == nil || len(trackers) == 0 {
 		return ""
 	}
@@ -113,7 +104,6 @@ func trackerHealthOf(torrent *qbt.Torrent, trackers []qbt.TorrentTracker, now ti
 	for _, tracker := range trackers {
 		switch tracker.Status {
 		case qbt.TrackerStatusDisabled:
-			// Skip DHT/PeX entries
 		case qbt.TrackerStatusOK:
 			working = true
 		case qbt.TrackerStatusUpdating:
@@ -122,14 +112,11 @@ func trackerHealthOf(torrent *qbt.Torrent, trackers []qbt.TorrentTracker, now ti
 		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
 			failed = true
 			unregistered = unregistered || TrackerMessageMatchesUnregistered(tracker.Message)
-			// After the grace hour an unregistered message decides the verdict,
-			// so the down list is not read.
 			down = down || ((!unregistered || !graceOver) && TrackerMessageMatchesDown(tracker.Message))
 		case qbt.TrackerStatusUnreachable:
 			failed = true
 			down = true
 		default:
-			// Not contacted yet, or a status qui does not know.
 			pending = true
 		}
 	}
@@ -147,23 +134,12 @@ func trackerHealthOf(torrent *qbt.Torrent, trackers []qbt.TorrentTracker, now ti
 	return ""
 }
 
-// trackerAuthErrorStatuses lists tracker messages that reject the user's passkey
-// or account, not the torrent. "Passkey does not exist" and "User does not exist"
-// would match "not exist", and "unregistered torrent pass" would match "unregistered".
 var trackerAuthErrorStatuses = []string{
 	"passkey",
 	"torrent pass",
 	"user does not exist",
 }
 
-// TrackerMessageMatchesUnregistered reports whether the tracker message indicates an unregistered torrent.
-// A message that rejects the passkey or the user never does: after a passkey
-// reset every torrent of the tracker gets it, and the torrents still exist.
-// A URL in the message can carry a passkey parameter, so the passkey check
-// reads the message without its URLs.
-// libtorrent reports an HTTP status without a reason phrase as
-// "<code> (unknown HTTP error)". That text would match "unknown", but the
-// tracker did not answer, so it is removed before matching.
 func TrackerMessageMatchesUnregistered(message string) bool {
 	text := strings.ToLower(strings.ReplaceAll(message, "(unknown HTTP error)", ""))
 	if !slices.ContainsFunc(defaultUnregisteredStatuses, func(pattern string) bool { return strings.Contains(text, pattern) }) {
@@ -176,12 +152,7 @@ func TrackerMessageMatchesUnregistered(message string) bool {
 	return !slices.ContainsFunc(trackerAuthErrorStatuses, func(pattern string) bool { return strings.Contains(authText, pattern) })
 }
 
-// TrackerMessageMatchesDown reports whether the tracker message indicates tracker outage.
-// URLs are stripped from the message before matching to avoid false positives from
-// torrent names containing words like "forbidden" or "down" in replacement URLs.
 func TrackerMessageMatchesDown(message string) bool {
-	// Only a message with "://" can contain a URL, and almost none do, so the
-	// regex and its per-call allocation are skipped for the rest.
 	if strings.Contains(message, "://") {
 		message = urlPattern.ReplaceAllString(message, "")
 	}

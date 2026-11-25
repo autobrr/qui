@@ -211,7 +211,6 @@ func TestProxyTorrentPeersPassesThroughWithoutCacheWarming(t *testing.T) {
 			}))
 			defer upstream.Close()
 
-			// A full response must not access the client pool to start another fetch.
 			handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
 			instanceURL, err := url.Parse(upstream.URL)
 			require.NoError(t, err)
@@ -506,8 +505,6 @@ func TestProxyDropsClientRefererAndOrigin(t *testing.T) {
 		{"referer replayed after re-login", "Referer", "foo", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// Like the qBittorrent CSRF check, refuse any Referer or Origin.
-			// With relogin, the first request gets the 403 of an expired session, so the proxy replays it.
 			var requests atomic.Int64
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if requests.Add(1) == 1 && tc.relogin {

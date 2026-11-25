@@ -15,7 +15,6 @@ import {
   type DisplayProfileNameError
 } from "@/lib/display-profiles"
 
-/** useDisplayProfiles with the names that the UI shows: Default shows "Default" in the language of the app until the user renames it. */
 export function useNamedDisplayProfiles(): DisplayProfilesApi {
   const { t } = useTranslation("torrents")
   const api = useDisplayProfiles()
@@ -27,16 +26,12 @@ export function useNamedDisplayProfiles(): DisplayProfilesApi {
 }
 
 export interface DisplayProfileNameCheck {
-  /** The error of the name rule, also while the field is still blank. */
   error: DisplayProfileNameError | null
-  /** The error to show: none while the field is blank, until the user submits. */
   shownError: DisplayProfileNameError | null
   errorTexts: Record<DisplayProfileNameError, string>
-  /** The count of characters out of the limit, for example "6/32". */
   count: string
 }
 
-/** The name rule of a field that takes a profile name. Pass the id of the profile that the field renames as ignoreId. */
 export function useDisplayProfileNameCheck(name: string, submitted: boolean, ignoreId?: string): DisplayProfileNameCheck {
   const { t } = useTranslation("torrents")
   const { profiles } = useNamedDisplayProfiles()

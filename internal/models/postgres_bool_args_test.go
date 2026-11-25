@@ -297,7 +297,6 @@ func TestArrIDCacheSetUsesIntegerNegativeArg(t *testing.T) {
 	store := NewArrIDCacheStore(q)
 	err := store.Set(context.Background(), "title-hash", "movie", nil, nil, false, time.Hour)
 	require.NoError(t, err)
-	// 14 insert columns plus the now bound in the upsert's expired-row check (#2300).
 	require.Len(t, insertArgs, 15)
 
 	mapKnownArg, ok := insertArgs[11].(int)

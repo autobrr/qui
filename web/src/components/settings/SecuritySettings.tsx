@@ -16,7 +16,6 @@ import { useAuth } from "@/hooks/useAuth"
 import { api } from "@/lib/api"
 import { canRegisterProtocolHandler, getMagnetHandlerRegistrationGuidance, registerMagnetHandler } from "@/lib/protocol-handler"
 
-/** The Security tab: the password of the account, and the magnet link handler of the browser. */
 export function SecuritySettings() {
   return (
     <>
@@ -40,8 +39,6 @@ function ChangePasswordSection() {
     mutationFn: () => api.changePassword(values.currentPassword, values.newPassword),
     onSuccess: () => {
       toast.success(t("changePassword.toasts.success"))
-      // The server ended every session, this one included. Dropping the
-      // cached user sends the authenticated layout back to the login page.
       setIsAuthenticated(false)
     },
     onError: () => toast.error(t("changePassword.toasts.error")),
@@ -88,7 +85,6 @@ function ChangePasswordSection() {
       description={t("security.changePassword.description")}
       submit={{ label: t("changePassword.submit"), onSubmit: submit, pending: mutation.isPending }}
     >
-      {/* Password managers read the account name from the form. */}
       <input type="text" name="username" autoComplete="username" value={user?.username ?? ""} readOnly hidden />
       <div className="grid gap-6 sm:grid-cols-2">
         <Field label={t("changePassword.currentPassword")} error={errors.currentPassword}>

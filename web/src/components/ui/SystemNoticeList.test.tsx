@@ -22,7 +22,6 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }))
 
-// The test adds a fix page for a kind that qui does not have, to test the link of a kind with no texts.
 vi.mock("@/lib/system-notice", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/system-notice")>()
   return {
@@ -72,7 +71,6 @@ describe("SystemNoticeList", () => {
     expect(list.textContent).toContain("Needs attention2")
   })
 
-  // regression: #4110
   it("opens the detail of a notice with its effect, fix, and cause", async () => {
     renderList([recordingStopped])
 
@@ -86,7 +84,6 @@ describe("SystemNoticeList", () => {
     expect(within(detail).queryByRole("link")).toBeNull()
   })
 
-  // regression: #4110
   it("counts a notice that opened under a minute ago as one minute old", async () => {
     renderList([notice("recording_stopped", "database or disk is full", 0)])
 

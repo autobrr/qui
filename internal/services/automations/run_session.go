@@ -15,36 +15,26 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// runSession owns the Shared-file groups and the facts of one run, dry run, or preview (ADR 0042).
 type runSession struct {
-	// ctx is the run context, or the context of the live plan step.
-	ctx        context.Context
-	session    CrossMatchSession
-	instanceID int
-	filesRead  filesReader
-	evalCtx    *EvalContext
-	groups     *crossSeedGroups
-	// The Deletion selection sorts torrents in place, so position keeps the order at open.
-	torrents []*qbt.Torrent
-	position map[string]int
-	links    map[string][]string
-	// groupsOff is set when no reader needs groups, so an ask reads nothing.
-	groupsOff bool
-	grouped   map[string]struct{} // torrents asked with Groups
-	allFacts  bool
-	// factsAsked holds the asked torrents. A member that only a group ask reached has no
-	// other-instance facts.
-	factsAsked map[string]struct{}
-	sharedRead bool
-	// files is made once, because cachedTorrentFilesFetcher keeps the map.
+	ctx         context.Context
+	session     CrossMatchSession
+	instanceID  int
+	filesRead   filesReader
+	evalCtx     *EvalContext
+	groups      *crossSeedGroups
+	torrents    []*qbt.Torrent
+	position    map[string]int
+	links       map[string][]string
+	groupsOff   bool
+	grouped     map[string]struct{}
+	allFacts    bool
+	factsAsked  map[string]struct{}
+	sharedRead  bool
 	files       map[string]qbt.TorrentFiles
 	filesLoaded bool
-	// Only a due tag rule that includes cross-seeds lets an expansion override a tag.
-	tagGroups bool
+	tagGroups   bool
 }
 
-// openRunSession opens the run session of evalCtx. It asks for nothing: each reader asks for the
-// torrents that it reads.
 func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents []*qbt.Torrent, needs RuleNeeds, evalCtx *EvalContext) error {
 	session, err := s.crossMatcher.OpenCrossMatchSession(ctx, instanceID, needs.CrossMatch)
 	if err != nil {
@@ -82,10 +72,6 @@ func conditionReadsCrossSeedFacts(cond *RuleCondition) bool {
 	return slices.ContainsFunc(crossSeedFactFields, func(f ConditionField) bool { return conditionTreeUsesField(cond, f) })
 }
 
-// askRuleFacts asks the run session once, before the rules sort and evaluate, for the facts of
-// the torrents that the rules evaluate: each torrent in the Rule scope of a rule that reads a
-// cross-seed field, with the members of the GroupID groups that the rule checks. A sort on such a
-// field scores every torrent, so it asks for the whole list.
 func askRuleFacts(rules []*models.Automation, torrents []*qbt.Torrent, evalCtx *EvalContext, scope *ruleScope) {
 	groups := evalCtx.crossSeeds
 	if groups == nil || groups.session == nil {
@@ -123,11 +109,8 @@ func askRuleFacts(rules []*models.Automation, torrents []*qbt.Torrent, evalCtx *
 	groups.session.resolveFacts(slices.Compact(hashes))
 }
 
-// askedFactGroup is a group of a GroupID that askRuleFacts already asked for.
 type askedFactGroup struct{ groupID, key string }
 
-// factGroupIDs returns the GroupIDs whose members must all meet an action condition that reads a
-// cross-seed field.
 func factGroupIDs(ac *models.ActionConditions) []string {
 	if ac == nil {
 		return nil
@@ -150,7 +133,6 @@ func factGroupIDs(ac *models.ActionConditions) []string {
 	return ids
 }
 
-// askFacts reads the cross-seed facts of a torrent that no ask covered.
 func (g *crossSeedGroups) askFacts(hash string) {
 	if g != nil && g.session != nil {
 		g.session.resolveFacts([]string{hash})
@@ -178,7 +160,6 @@ func (r *runSession) ensureGroups(hash string) {
 	}
 }
 
-// An answer holds whole components, so a member of a known group is covered.
 func (r *runSession) covered(hash string) bool {
 	if r.groupsOff {
 		return true
@@ -190,8 +171,6 @@ func (r *runSession) covered(hash string) bool {
 	return grouped
 }
 
-// resolveDeletes follows the hardlink copies of linkHashes and their groups, so the expansion and the
-// FREE_SPACE projection meet no miss. otherShared also asks for the Shared-file check.
 func (g *crossSeedGroups) resolveDeletes(hashes, linkHashes []string, hardlinks *HardlinkIndex, otherShared bool) {
 	if g == nil || g.session == nil || len(hashes)+len(linkHashes) == 0 {
 		return
@@ -230,7 +209,6 @@ func memberHashes(members []*qbt.Torrent) []string {
 	return hashes
 }
 
-// readsGroups reports whether the run session reads groups, so a reader asks before its loop.
 func (g *crossSeedGroups) readsGroups() bool {
 	return g != nil && g.session != nil && !g.session.groupsOff
 }
@@ -241,7 +219,6 @@ func (g *crossSeedGroups) setContext(ctx context.Context) {
 	}
 }
 
-// With a run session, only a due tag rule that includes cross-seeds reads the group.
 func (g *crossSeedGroups) tagOwnerMembers(hash string) []*qbt.Torrent {
 	if g != nil && g.session != nil && !g.session.tagGroups {
 		return nil
@@ -337,7 +314,6 @@ func mergeSet(dst *map[string]struct{}, src map[string]struct{}) {
 	maps.Copy(*dst, src)
 }
 
-// The walk starts at the member first in the run list, so a group has one order whatever the ask.
 func (r *runSession) addGroups(starts []string) []string {
 	byHash := r.groups.byHash
 	var groups [][]string
@@ -406,7 +382,6 @@ func (r *runSession) walk(start string, seen map[string]struct{}) []string {
 	return queue
 }
 
-// loadFiles reads through filesReader only the members without a list and the hardlink groups.
 func (r *runSession) loadFiles(ctx context.Context, hardlinks *HardlinkIndex) {
 	r.evalCtx.CrossSeedFilesByHash = r.files
 	r.filesLoaded = true
@@ -438,17 +413,14 @@ func (r *runSession) readMissingFiles(ctx context.Context, hashes []string) {
 	maps.Copy(r.files, filesByHash)
 }
 
-// freeSpaceReadAheadBatch is the first read-ahead batch of a FREE_SPACE delete rule.
 const freeSpaceReadAheadBatch = 32
 
-// freeSpaceReadAhead reads the groups of the torrents that a FREE_SPACE delete rule can claim next.
-// Each claim changes the FREE_SPACE value, so a batch holds every torrent in the rule's scope.
 type freeSpaceReadAhead struct {
 	groups      *crossSeedGroups
-	hardlinks   *HardlinkIndex // nil when the expansion follows no hardlink copy
+	hardlinks   *HardlinkIndex
 	otherShared bool
 	size        int
-	next        int // the first position in sort order that no batch holds
+	next        int
 }
 
 func newFreeSpaceReadAhead(groups *crossSeedGroups, hardlinks *HardlinkIndex, otherShared bool) *freeSpaceReadAhead {
@@ -458,7 +430,6 @@ func newFreeSpaceReadAhead(groups *crossSeedGroups, hardlinks *HardlinkIndex, ot
 	return &freeSpaceReadAhead{groups: groups, hardlinks: hardlinks, otherShared: otherShared, size: freeSpaceReadAheadBatch}
 }
 
-// ask must get the same sorted torrents and inScope on each call, with i ascending.
 func (a *freeSpaceReadAhead) ask(torrents []*qbt.Torrent, i int, inScope func(*qbt.Torrent) bool) {
 	if a == nil || i < a.next {
 		return

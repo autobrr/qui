@@ -16,7 +16,6 @@ interface SameColumnsSwitchProps {
   instances: readonly { id: number; name: string }[]
 }
 
-/** Same columns on every instance for one profile, in a place with no instance on screen, such as Settings. */
 export function SameColumnsSwitch({ profileId, instances }: SameColumnsSwitchProps) {
   const { t, i18n } = useTranslation("torrents")
   const { profiles, settled, setSameColumns } = useDisplayProfiles()

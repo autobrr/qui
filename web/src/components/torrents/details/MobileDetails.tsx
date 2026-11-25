@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// The parts of the torrent details view on the mobile layout.
-
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CopyButton } from "@/components/ui/copy-button"
@@ -21,11 +19,6 @@ import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-/**
- * The one layout of each mobile section: an optional fixed header, a single
- * scroll area, and an optional fixed footer. A section passes its title and
- * actions here, never inside its scroll area.
- */
 export function MobilePane({ header, footer, children }: { header?: ReactNode; footer?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -54,7 +47,6 @@ export function MobileInfoGroup({ title, children }: { title: string; children: 
   )
 }
 
-/** A label and a short value on one line. */
 export function MobileInfoRow({ label, children, sub, valueClassName }: { label: string; children: ReactNode; sub?: ReactNode; valueClassName?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4 px-3 py-2">
@@ -67,7 +59,6 @@ export function MobileInfoRow({ label, children, sub, valueClassName }: { label:
   )
 }
 
-/** The label above the value, for names, hashes, and paths. */
 export function MobileInfoBlock({ label, children, mono, copyValue }: { label: string; children: ReactNode; mono?: boolean; copyValue?: string }) {
   return (
     <div className="flex items-center gap-1 py-1.5 pl-3 pr-1">
@@ -116,7 +107,6 @@ export function MobileCategoryTagsRow({ category, tags }: { category: string; ta
   const tagList = tags.split(",").map(tag => tag.trim()).filter(Boolean)
   if (!category && tagList.length === 0) return null
   return (
-    // About three rows of badges: many tags must leave room for the section
     <div className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-b px-4 py-2.5">
       {category && (
         <Badge variant="secondary" className="gap-1 text-xs">
@@ -132,7 +122,6 @@ export function MobileCategoryTagsRow({ category, tags }: { category: string; ta
   )
 }
 
-// qBittorrent lists DHT, PeX, and LSD as trackers, first and often as working
 const PSEUDO_TRACKER = /^\*\* \[(DHT|PeX|LSD)\] \*\*$/
 
 function trackerHost(url: string): string {
@@ -143,7 +132,6 @@ function trackerHost(url: string): string {
   }
 }
 
-// Working first, disabled last, the others in their order
 function trackerRank(status: number): number {
   return status === 2 ? 0 : status === 0 ? 2 : 1
 }

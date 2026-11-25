@@ -14,7 +14,6 @@ import (
 	gojackett "github.com/autobrr/qui/pkg/gojackett"
 )
 
-// TorznabCaps captures the parsed capability and category data from a Torznab caps response.
 type TorznabCaps struct {
 	Capabilities []string
 	Categories   []models.TorznabIndexerCategory
@@ -117,7 +116,6 @@ func parseTorznabCapsResponse(r io.Reader, retryAfter string) (*TorznabCaps, err
 		}
 	}
 
-	// Parse limits if present
 	if resp.Limits.Default != "" {
 		if v, err := strconv.Atoi(resp.Limits.Default); err == nil && v > 0 {
 			caps.LimitDefault = v
@@ -141,16 +139,13 @@ func appendSearchCapabilities(capabilities []string, searchType string, searchNo
 		return capabilities
 	}
 
-	// Add the basic search capability
 	capabilities = append(capabilities, searchType)
 
-	// Add detailed parameter support capabilities if available
 	if searchNode.SupportedParams != "" {
 		params := strings.SplitSeq(searchNode.SupportedParams, ",")
 		for param := range params {
 			param = strings.TrimSpace(param)
 			if param != "" {
-				// Create specific capability names for supported parameters
 				capName := fmt.Sprintf("%s-%s", searchType, param)
 				capabilities = append(capabilities, capName)
 			}

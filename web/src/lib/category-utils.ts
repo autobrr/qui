@@ -5,7 +5,6 @@
 
 import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
 
-/** Build category select options from categories object, preserving any manually-typed selections */
 export function buildCategorySelectOptions(
   categories: Record<string, { name: string; savePath: string }>,
   ...selectedArrays: string[][]
@@ -21,7 +20,6 @@ export function buildCategorySelectOptions(
   }
   visitNodes(tree)
 
-  // Add any extras from selected arrays that aren't in the tree
   const allSelected = selectedArrays.flat()
   for (const cat of allSelected) {
     if (!flattened.some(opt => opt.value === cat)) {
@@ -32,7 +30,6 @@ export function buildCategorySelectOptions(
   return flattened
 }
 
-/** Build tag select options from available tags, preserving any manually-typed selections */
 export function buildTagSelectOptions(
   availableTags: string[],
   ...selectedArrays: string[][]

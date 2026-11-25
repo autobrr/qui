@@ -36,7 +36,6 @@ interface TransferChartProps {
   displayName: (group: string) => string
 }
 
-/** Stacked bars of the metric, one series for each of the top Tracker groups, and Other for the rest. */
 export function TransferChart({ bars, groups, metric, unit, displayName }: TransferChartProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language

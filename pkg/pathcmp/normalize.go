@@ -1,9 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package pathcmp provides shared path normalization helpers used for
-// cross-platform path comparisons. qBittorrent paths are generally forward-slashed,
-// so we normalize using path semantics (not filepath).
 package pathcmp
 
 import (
@@ -11,9 +8,6 @@ import (
 	"strings"
 )
 
-// IsWindowsDriveAbs returns true if p is a Windows absolute path (e.g., C:/...).
-// It requires a drive letter, colon, and forward slash. Backslashes should be
-// normalized before calling.
 func IsWindowsDriveAbs(p string) bool {
 	if len(p) < 3 {
 		return false
@@ -22,7 +16,6 @@ func IsWindowsDriveAbs(p string) bool {
 	return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) && p[1] == ':' && p[2] == '/'
 }
 
-// IsAbsolute reports whether p is absolute on any client OS; filepath.IsAbs would judge qui's host.
 func IsAbsolute(p string) bool {
 	p = strings.ReplaceAll(p, `\`, "/")
 	return strings.HasPrefix(p, "/") || IsWindowsDriveAbs(p)
@@ -33,8 +26,6 @@ func NormalizePath(p string) string {
 		return ""
 	}
 	p = strings.ReplaceAll(p, "\\", "/")
-	// Keep the UNC server/share outside path.Clean, which collapses // and
-	// would otherwise let .. move above the share root.
 	if strings.HasPrefix(p, "//") && !strings.HasPrefix(p, "///") {
 		server, rest, found := strings.Cut(p[2:], "/")
 		share, _, _ := strings.Cut(rest, "/")
@@ -52,7 +43,6 @@ func NormalizePath(p string) string {
 		drive := p[:2]
 		rest := p[2:]
 
-		// Bare drive letter (C:) is drive-relative.
 		if rest == "" {
 			return drive
 		}

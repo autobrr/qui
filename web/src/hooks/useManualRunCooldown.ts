@@ -22,7 +22,6 @@ function formatDurationShort(ms: number): string {
   return parts.join(" ")
 }
 
-/** Manual RSS runs wait one run interval after the last run. Ticks once a second while the wait is on. */
 export function useManualRunCooldown(runIntervalMinutes: number, lastRunStartedAt?: string) {
   const enforcedRunIntervalMinutes = Math.max(runIntervalMinutes, MIN_RSS_INTERVAL_MINUTES)
   const [now, setNow] = useState(() => Date.now())

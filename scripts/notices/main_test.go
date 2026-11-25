@@ -16,7 +16,6 @@ func TestLicenseFiles(t *testing.T) {
 	if err := os.MkdirAll(pkg, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// A folder that matches the name is not a license file.
 	if err := os.Mkdir(filepath.Join(root, "license"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +27,6 @@ func TestLicenseFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// A sibling package outside the walk from pkg to root stays out.
 	sibling := filepath.Join(root, "other")
 	if err := os.Mkdir(sibling, 0o755); err != nil {
 		t.Fatal(err)

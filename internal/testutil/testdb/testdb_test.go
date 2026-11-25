@@ -239,7 +239,6 @@ func disableBenchmarkLogs(b *testing.B) {
 	})
 }
 
-// Two tests that start in the same clock tick must not claim the same schema.
 func TestSchemaNamesDifferWithinOneClockTick(t *testing.T) {
 	now := time.Now()
 	first := testSchemaName("filesmanager", now)
@@ -249,9 +248,6 @@ func TestSchemaNamesDifferWithinOneClockTick(t *testing.T) {
 	}
 }
 
-// cloneHelperEnv makes TestTemplateSharedAcrossProcesses act as the subprocess
-// that clones the template, the way another package process would. The
-// cross-process tests start it with cloneHelperCmd.
 const cloneHelperEnv = "QUI_TESTDB_CLONE_HELPER"
 
 func TestTemplateSharedAcrossProcesses(t *testing.T) {
@@ -354,7 +350,6 @@ func runCloneHelper(t *testing.T, cacheDir, tmpDir string) {
 	}
 }
 
-// onlyTemplate fails unless dir holds exactly one finished template file.
 func onlyTemplate(t *testing.T, dir string) os.FileInfo {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -377,8 +372,6 @@ func TestTemplateCacheDirFallsBackToTempDir(t *testing.T) {
 	t.Setenv("TMP", tmp)
 	t.Setenv("TEMP", tmp)
 
-	// A regular file where the cache directory should be makes it impossible
-	// to create, even for root.
 	blocker := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
 		t.Fatal(err)

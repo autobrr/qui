@@ -17,8 +17,6 @@ import (
 	"github.com/autobrr/qui/pkg/releases"
 )
 
-// ManualAssembleRequest selects episode torrents from one instance.
-// An empty selection asks the check endpoint to suggest targets.
 type ManualAssembleRequest struct {
 	InstanceID   int      `json:"instance_id"`
 	TorrentData  string   `json:"torrent_data"`
@@ -67,13 +65,11 @@ type manualAssemblePlan struct {
 	response *ManualAssembleResponse
 	prep     *seasonPackPrep
 	instance *models.Instance
-	// route sends the add to the Cross-seed instance (ADR 0035), or nil.
 	route    *candidateRoute
 	build    *seasonPackPlanBuild
 	episodes map[episodeIdentity]episodeMatch
 }
 
-// CheckManualAssemble resolves the selected files without creating links or adding a torrent.
 func (s *Service) CheckManualAssemble(ctx context.Context, req *ManualAssembleRequest) (*ManualAssembleResponse, error) {
 	plan, err := s.planManualAssemble(ctx, req)
 	if err != nil {
@@ -110,7 +106,6 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, receiverID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil //nolint:nilerr // resp reports the link failure as link_failed
 	}
-	// A cross-device retry may have moved the tree to another base dir.
 	resp.Destination, _ = seasonPackSavePath(planned.route, planned.build)
 	result, err := s.addSeasonPack(ctx, prep, inst, planned.route, check, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
 	if err != nil {
@@ -147,14 +142,10 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	if err != nil {
 		return nil, err
 	}
-	// A route sends the add to the Cross-seed instance (ADR 0035). Its rule
-	// check, the availability check, and the Source instance row come before
-	// the plan, so the plan and its destination use them.
 	route, routeErr := s.routeOf(ctx, inst.ID)
 	var routeStatus, routeMessage string
 	switch {
 	case routeErr != nil && route == nil:
-		// A failed read, not a broken route.
 		return nil, routeErr
 	case routeErr != nil:
 		routeStatus, routeMessage = routeFailure(routeErr)
@@ -202,7 +193,6 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 		if err != nil {
 			return nil, err
 		}
-		// Use the apply's file pairing, including its ignored sidecars.
 		usableFiles := func(files qbt.TorrentFiles) qbt.TorrentFiles {
 			return slices.DeleteFunc(slices.Clone(files), func(file qbt.TorrentFile) bool {
 				return shouldIgnoreFile(file.Name, normalizerForService(s))

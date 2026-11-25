@@ -14,11 +14,8 @@ import (
 type FailureKind int
 
 const (
-	// NoBaseDir: no Link base directory is on the filesystem of every source
-	// folder, or none could be made.
 	NoBaseDir FailureKind = iota + 1
 	InvalidPlan
-	// NotSupported: the filesystem has no reflinks, or the question failed.
 	NotSupported
 	TargetExists
 	CrossDevice

@@ -3,13 +3,11 @@
 
 package tray
 
-// Menu holds what the Tray shows and what its items do.
 type Menu struct {
 	Version   string
 	URL       string
 	ConfigDir string
-	// Binary is the resolved qui-tray.exe path that Start with Windows registers.
-	Binary  string
-	Restart func()
-	Quit    func()
+	Binary    string
+	Restart   func()
+	Quit      func()
 }

@@ -40,7 +40,6 @@ func NewService(log zerolog.Logger, enabled bool, currentVersion, userAgent stri
 
 func (s *Service) Start(ctx context.Context) {
 	go func() {
-		// Run an initial check shortly after startup so the banner can appear quickly.
 		s.initialCheck(ctx)
 
 		ticker := time.NewTicker(defaultCheckInterval)

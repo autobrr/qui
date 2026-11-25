@@ -58,8 +58,6 @@ function getScrollableParent(element: HTMLElement | null): HTMLElement | null {
 
 const DURATION_UNITS: DurationUnit[] = ["seconds", "minutes", "hours", "days"]
 
-// Grouped torrent states matching FilterSidebar categories
-// These are expanded to individual qBittorrent states in columnFilterToExpr
 const TORRENT_STATES = [
   "downloading",
   "uploading",

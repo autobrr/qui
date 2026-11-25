@@ -11,7 +11,6 @@ import { renderHook } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 const COUNTS = { status: {}, categories: {}, tags: {}, trackers: {} } as unknown as UseTorrentTableNotificationsParams["counts"]
-// Stable references so the lastMetadataRef no-op suppression can be exercised across rerenders.
 const CATEGORIES = {}
 const TAGS: string[] = []
 
@@ -68,12 +67,10 @@ describe("useTorrentTableNotifications — onFilteredDataUpdate", () => {
     })
     expect(cb1).toHaveBeenCalledTimes(1)
 
-    // New callback identity but identical metadata -> suppressed by lastMetadataRef.
     const cb2 = vi.fn()
     rerender(makeParams({ onFilteredDataUpdate: cb2 }))
     expect(cb2).not.toHaveBeenCalled()
 
-    // A real change (totalCount) fires again.
     const cb3 = vi.fn()
     rerender(makeParams({ onFilteredDataUpdate: cb3, totalCount: 2 }))
     expect(cb3).toHaveBeenCalledTimes(1)
@@ -85,8 +82,6 @@ describe("useTorrentTableNotifications — onFilteredDataUpdate", () => {
       initialProps: makeParams({ onFilteredDataUpdate: cb, instanceId: 1 }),
     })
     expect(cb).toHaveBeenCalledTimes(1)
-    // instanceId is not a dep, so change a real dep (torrents length) to run the effect;
-    // the instanceId mismatch resets the cache and forces a re-fire.
     rerender(makeParams({ onFilteredDataUpdate: cb, instanceId: 2, torrents: [makeTorrent({ hash: "h0" }), makeTorrent({ hash: "h1" })] }))
     expect(cb).toHaveBeenCalledTimes(2)
   })

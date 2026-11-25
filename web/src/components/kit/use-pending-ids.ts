@@ -5,10 +5,6 @@
 
 import { useMutationState, type MutationKey } from "@tanstack/react-query"
 
-/**
- * The ids of the items that a mutation with this key still runs for, so that a list can show a spinner on each of them
- * and hold off a second press. The variables of the mutation are the id of the item, or an object with an `id`.
- */
 export function usePendingIds(mutationKey: MutationKey): ReadonlySet<number> {
   const ids = useMutationState({
     filters: { mutationKey, status: "pending" },

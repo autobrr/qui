@@ -410,8 +410,6 @@ func matchFileIntegrity(source, destination windows.Handle) error {
 		return nil
 	}
 
-	// ReFS block cloning requires matching Integrity Streams settings.
-	// https://learn.microsoft.com/en-us/windows/win32/fileio/block-cloning
 	if err := setFileIntegrityFn(destination, src); err != nil {
 		return fmt.Errorf("set destination integrity: Integrity Streams settings differ: %w", err)
 	}

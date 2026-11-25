@@ -162,7 +162,6 @@ function openThemeMenu(): HTMLElement {
   return screen.getByRole("dialog")
 }
 
-// The theme in use adds themes.menu.inUse to the name of its row.
 function menuCheckbox(menu: HTMLElement, name: string): HTMLElement {
   return within(menu).getByRole("checkbox", { name: (accessibleName) => accessibleName === name || accessibleName === `${name} themes.menu.inUse` })
 }
@@ -172,7 +171,6 @@ async function chooseCardAction(name: string, action: "themes.custom.edit" | "th
   fireEvent.click(await screen.findByRole("menuitem", { name: action }))
 }
 
-// Opens the client settings push and resolves with the body of the next PUT.
 function nextSettingsPush(): Promise<Record<string, string>> {
   seedAndMarkReady({})
   return new Promise((resolve) => {
@@ -217,7 +215,6 @@ describe("ThemeSelector", () => {
   })
 
   it("shows two rows of themes until Show all, and every match during a search", () => {
-    // jsdom lays out no grid, so the theme grid reports two columns here.
     const realGetComputedStyle = window.getComputedStyle.bind(window)
     const twoColumns = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
       const style = realGetComputedStyle(element, pseudo)
@@ -246,7 +243,6 @@ describe("ThemeSelector", () => {
       expect(themeCards()).toHaveLength(5)
       expect(screen.queryByRole("button", { name: "themes.selector.showAll" })).toBeNull()
 
-      // An expanded grid collapses again when the search or the filter changes.
       fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "" } })
       fireEvent.click(screen.getByRole("button", { name: "themes.selector.showAll" }))
       fireEvent.click(screen.getByRole("button", { name: /^themes\.groups\.all/ }))
@@ -510,7 +506,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests[0].body).toEqual({ id: "blood-moon", css: RED_THEME.replace("Red Alert", "Blood Moon") })
   })
 
-  // regression: #4124
   it("keeps a typed name through a later CSS edit", async () => {
     const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "blood-moon", filename: "blood-moon.css", css: "" }, { status: 201 }))
     render(<ThemeSelector />)
@@ -526,7 +521,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests[0].body).toEqual({ id: "blood-moon", css: RED_THEME.replace("darkred", "maroon").replace("Red Alert", "Blood Moon") })
   })
 
-  // regression: #4124
   it("loads the other theme when Edit is clicked while the editor is open", async () => {
     render(<ThemeSelector />)
 
@@ -561,7 +555,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(saveButton().disabled).toBe(true)
   })
 
-  // regression: #4124
   it("leaves CSS that loads an outside file out of the preview, and Save still asks the server", async () => {
     const refusal = "The theme can load a file from another website, line 4: url() can only use a data: address or a #fragment"
     const requests = recordCustomThemeApi(() => HttpResponse.json({ error: refusal }, { status: 400 }))
@@ -581,7 +574,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests).toHaveLength(1)
   })
 
-  // regression: #4124
   it("asks before it replaces a theme with the same name, and a yes replaces and selects it", async () => {
     const requests = recordCustomThemeApi((req) =>
       req.method === "POST"
@@ -607,7 +599,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests[1].body).toEqual({ css: RED_THEME })
   })
 
-  // regression: #4124
   it("closes with a message when the list does not load after a save, and selects nothing", async () => {
     const { toast } = await import("sonner")
     recordCustomThemeApi(() => HttpResponse.json({ id: "red-alert", filename: "red-alert.css", css: RED_THEME }, { status: 201 }))
@@ -623,7 +614,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(themeUtils.setTheme).not.toHaveBeenCalled()
   })
 
-  // regression: #4124
   it("keeps a New theme draft when an earlier Edit finishes loading later", async () => {
     let finishLoad: (files: Array<{ id: string; filename: string; css: string }>) => void = () => {}
     customThemesHook.refreshCustomThemes.mockReturnValueOnce(new Promise(resolve => { finishLoad = resolve }))
@@ -640,7 +630,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(screen.getByText("themes.custom.editor.newTitle")).toBeTruthy()
   })
 
-  // regression: #4124
   it("finishes a save when New theme is clicked again while it runs", async () => {
     let finishSave: () => void = () => {}
     const saved = new Promise<void>(resolve => { finishSave = resolve })
@@ -660,7 +649,6 @@ describe("ThemeSelector custom theme editor", () => {
     await waitFor(() => expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull())
   })
 
-  // regression: #4124
   it("keeps an editor that opened while an earlier save was still running", async () => {
     let finishSave: () => void = () => {}
     const saved = new Promise<void>(resolve => { finishSave = resolve })
@@ -716,7 +704,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(themeUtils.setTheme).not.toHaveBeenCalled()
   })
 
-  // regression: #4124
   it("drops a refused save message when the CSS changes, and shows the live problem", async () => {
     recordCustomThemeApi(() => HttpResponse.json({ error: "line 3: url() can only use a data: address" }, { status: 400 }))
     render(<ThemeSelector />)
@@ -732,7 +719,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(screen.getByText("themes.custom.editor.problems.missingDark")).toBeTruthy()
   })
 
-  // regression: #4124
   it("edits the current file of a custom theme with replace and keeps the selection", async () => {
     const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "local", filename: "local.css", css: "" }))
     const onDisk = fixture.customThemes[0].rawCss.replace("white", "linen")
@@ -754,7 +740,6 @@ describe("ThemeSelector custom theme editor", () => {
     expect(themeUtils.setTheme).not.toHaveBeenCalled()
   })
 
-  // regression: #4124
   it("keeps the editor closed when Edit cannot read the file, and a retry opens the current file", async () => {
     const { toast } = await import("sonner")
     const onDisk = fixture.customThemes[0].rawCss.replace("white", "linen")

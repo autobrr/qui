@@ -18,10 +18,6 @@ import (
 
 const lookupHash = "dddd000000000000000000000000000000000001"
 
-// The tracker conditions of automations read the trackers from the lookup.
-// It must give the trackers that qBittorrent reports for the hash, on each
-// version that the old write into the torrents supported, and leave the
-// shared torrents of the Sync snapshot as they are.
 func TestTrackerDetailsGivesTheTrackersOfEachHash(t *testing.T) {
 	t.Parallel()
 
@@ -80,7 +76,6 @@ func TestTrackerDetailsGivesTheTrackersOfEachHash(t *testing.T) {
 			}
 			require.Equal(t, tc.wantURLs, urls)
 
-			// The seal panics in this sync when a lookup wrote to a shared torrent.
 			require.NoError(t, client.SyncOwner().Sync(t.Context()))
 			require.Empty(t, shared[0].Trackers)
 		})

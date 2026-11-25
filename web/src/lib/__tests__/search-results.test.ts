@@ -29,7 +29,6 @@ function result(overrides: Partial<TorznabSearchResult>): TorznabSearchResult {
 const categoryName = (r: TorznabSearchResult) => r.categoryName ?? ""
 
 describe("buildSearchRequest", () => {
-  // regression: #4354
   it("sends only the fields of the search type, and drops bad numbers and fractions", () => {
     const params = { season: "2", episode: "x", year: "2020", imdbId: " tt0000001 " }
     const tv = buildSearchRequest({ query: "Sample Show", type: "tv", indexerIds: [1, 2], params })
@@ -108,7 +107,6 @@ describe("tickResult", () => {
     expect([...tickResult(new Set(["x"]), keys, "c", "x")].sort()).toEqual(["c", "x"])
   })
 
-  // regression: #4354
   it("changes nothing for a row that left the page, also with Shift down after a tick on the last row", () => {
     expect([...tickResult(new Set(["b"]), keys, "gone", "d")]).toEqual(["b"])
   })

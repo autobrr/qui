@@ -20,7 +20,6 @@ describe("computePieceBarColumns", () => {
     ])
   })
 
-  // regression: #4093
   it("gives a column with 2 finished pieces of 6 a finished share of one third", () => {
     const states = [MISSING, FINISHED, MISSING, MISSING, FINISHED, MISSING]
 
@@ -54,7 +53,6 @@ describe("computePieceBarColumns", () => {
     expect(right.finished).toBeCloseTo(1 / 3, 2)
   })
 
-  // regression: #4093
   it("keeps the mean finished share at the piece count share when finished pieces are spread out", () => {
     const pieceCount = 11592
     const finishedCount = 3955
@@ -101,7 +99,6 @@ describe("computePieceBarFill", () => {
     expect(computePieceBarFill({ finished: 0.01, downloading: 1 }, 12)).toEqual({ finishedPixels: 1, downloadingPixels: 11 })
   })
 
-  // regression: #4097
   it("leaves one pixel empty for one missing piece in a column of 151 pieces", () => {
     const states = [...Array(75).fill(FINISHED), ...Array(75).fill(DOWNLOADING), MISSING]
 
@@ -113,7 +110,6 @@ describe("computePieceBarFill", () => {
     expect(finishedPixels + downloadingPixels).toBeLessThan(12)
   })
 
-  // regression: #4097
   it("keeps one pixel for one finished piece in a column of 300 pieces", () => {
     const states: number[] = Array(300).fill(MISSING)
     states[150] = FINISHED
@@ -123,7 +119,6 @@ describe("computePieceBarFill", () => {
     expect(computePieceBarFill(column, 12)).toEqual({ finishedPixels: 1, downloadingPixels: 0 })
   })
 
-  // regression: #4097
   it("fills each column of a finished torrent to the whole height when a column holds a part of a piece", () => {
     const columns = computePieceBarColumns(Array(11592).fill(FINISHED), 1000)
 
@@ -132,7 +127,6 @@ describe("computePieceBarFill", () => {
     expect(notFull).toEqual([])
   })
 
-  // regression: #4097
   it("draws a finished piece that ends at a column edge in its own column only", () => {
     const states: number[] = Array(1400).fill(MISSING)
     states[1021] = FINISHED
@@ -145,7 +139,6 @@ describe("computePieceBarFill", () => {
     expect(filled).toEqual([729])
   })
 
-  // regression: #4097
   it("fills the whole height of each column that holds only finished and downloading pieces", () => {
     const states = Array.from({ length: 1600 }, (_, piece) => (piece % 3 === 0 ? DOWNLOADING : FINISHED))
 

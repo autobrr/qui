@@ -58,14 +58,6 @@ export function parseThemeCSS(cssContent: string): ParsedTheme | null {
   }
 }
 
-/**
- * Extract metadata from CSS comments
- * Expected format:
- * /* @name: Theme Name
- *  * @description: Theme description
- *  * @lightOnly: true/false (optional)
- *  * @variations: orange, blue, green (optional)
- *  */
 function extractMetadata(cssContent: string): ThemeMetadata {
   const metadata: ThemeMetadata = {
     name: "Untitled Theme",

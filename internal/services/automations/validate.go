@@ -16,7 +16,6 @@ import (
 	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
-// RuleError is a validation failure. Message is safe to show the user.
 type RuleError struct {
 	Message string
 }
@@ -31,16 +30,10 @@ const (
 	errMsgAllowanceSourceAccessRequired = "Free space allowance source requires local filesystem access, or SSH access with a shell. Set it up in instance settings first."
 )
 
-// windowsLocalPathSource reports whether a path source would read a Windows
-// host's own disks. The local backend could stat them, but the path check
-// accepts only a leading "/" and the local refusal from #1915 still holds.
 func windowsLocalPathSource(instance *models.Instance) bool {
 	return runtime.GOOS == "windows" && instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeLocal
 }
 
-// ValidateRule checks a rule against itself and its instance. It normalizes
-// rule.Conditions. A nil instance has no filesystem access. Checks that look up
-// other records, such as an export target, stay with the caller.
 func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	if rule.Name == "" {
 		return ruleError("Name is required")
@@ -74,18 +67,16 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
-	// Validate delete is standalone - it cannot be combined with any other action
 	if del := conditions.Delete; del != nil && del.Enabled {
 		if del.Condition == nil {
 			return ruleError("Delete action requires at least one condition")
 		}
-		enabled := 0 // delete itself is one
+		enabled := 0
 		for c := range conditions.Conditions() {
 			if c.Enabled {
 				enabled++
 			}
 		}
-		// A tag action blocks delete even when it is disabled.
 		if enabled > 1 || len(conditions.TagActions()) > 0 {
 			return ruleError("Delete action cannot be combined with other actions")
 		}
@@ -105,7 +96,6 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
-	// A disabled rule skips these, so one saved before a check existed stays editable.
 	if rule.Enabled {
 		if err := validateMovePath(conditions.Move); err != nil {
 			return err
@@ -120,12 +110,7 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	if instance != nil {
 		capabilities = models.FilesystemCapabilitiesOf(instance)
 	}
-	// A remote instance cannot turn on local access without becoming a local
-	// one, so it gets the answer the UI gives, not that advice.
 	isRemote := instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeRemote
-	// Two passes over the map, so the answer does not depend on its order: a
-	// field that needs trusted identity decides first, since only local access
-	// grants that and advising SSH for a Read field beside it would mislead.
 	missing := func(want func(fieldData) bool) bool {
 		for field, data := range conditionFieldData {
 			if want(data) && actionConditionsUseField(conditions, field) {
@@ -145,8 +130,6 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		return ruleError("File conditions need access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first.")
 	}
 
-	// Keep-files mode doesn't free disk space, so a FREE_SPACE < X condition
-	// would match all eligible torrents indefinitely (foot-gun).
 	if deleteUsesKeepFilesWithFreeSpace(conditions) {
 		return ruleError("Free Space delete rules must use 'Remove with files' or 'Preserve cross-seeds'. Keep-files mode cannot satisfy a free space target because no disk space is freed.")
 	}
@@ -165,7 +148,6 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	}
 
 	if del := conditions.Delete; del != nil && del.IncludeHardlinks {
-		// Only valid when mode is deleteWithFilesIncludeCrossSeeds
 		if del.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
 			return ruleError("includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'")
 		}
@@ -178,7 +160,6 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	}
 
 	if source := rule.FreeSpaceSource; source != nil {
-		// Enforce regardless of whether FREE_SPACE is used.
 		if (source.Type == models.FreeSpaceSourcePath || source.Type == models.FreeSpaceSourceAllowance) && windowsLocalPathSource(instance) {
 			return ruleError(errMsgWindowsPathSourceNotSupported)
 		}
@@ -194,7 +175,6 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	return nil
 }
 
-// validateMovePath rejects a move path that renders relative for a placeholder torrent.
 func validateMovePath(move *models.MoveAction) error {
 	if move == nil || !move.Enabled {
 		return nil
@@ -207,7 +187,6 @@ func validateMovePath(move *models.MoveAction) error {
 	if err != nil {
 		return ruleError(fmt.Sprintf("Invalid move path template: %v", err))
 	}
-	// A conditional template can render empty for the placeholder yet be absolute for a real torrent.
 	if rendered == "" || pathcmp.IsAbsolute(rendered) {
 		return nil
 	}
@@ -218,20 +197,15 @@ func validateMovePath(move *models.MoveAction) error {
 	return ruleError(msg)
 }
 
-// deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode
-// with a FREE_SPACE condition. This combination is a foot-gun because keep-files
-// doesn't free disk space, so the condition would match indefinitely.
 func deleteUsesKeepFilesWithFreeSpace(conditions *models.ActionConditions) bool {
 	if conditions == nil || conditions.Delete == nil || !conditions.Delete.Enabled {
 		return false
 	}
 
-	// Check if delete condition uses FREE_SPACE field
 	if !ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
 		return false
 	}
 
-	// Check if mode is keep-files (or empty, which defaults to keep-files)
 	mode := conditions.Delete.Mode
 	return mode == "" || mode == models.DeleteModeKeepFiles
 }
@@ -268,15 +242,10 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 	return "", nil
 }
 
-// groupIDKnown reports whether an id names a custom group in grouping or a built-in group.
-// It uses the lookup of a rule run, so an id that passes also resolves to a group when the rule runs.
 func groupIDKnown(grouping *models.GroupingConfig) func(string) bool {
 	return func(id string) bool { return groupDefinition(grouping, id) != nil }
 }
 
-// ConditionGroupIDsError returns a RuleError for the first group ID in grouping.defaultGroupId, an enabled
-// delete, category or move action, or an action condition that names no group. ValidateRule does not call it,
-// because an update skips the check when the conditions did not change.
 func ConditionGroupIDsError(conditions *models.ActionConditions) error {
 	if conditions == nil {
 		return nil
@@ -306,8 +275,6 @@ func ConditionGroupIDsError(conditions *models.ActionConditions) error {
 	return conditionTreesGroupIDsError(conditionTreesForValidation(conditions), known)
 }
 
-// ScoreRuleGroupIDsError returns a RuleError for the first group ID in a score condition of sorting that names
-// no group. grouping holds the custom groups of the rule. An update skips the check when the sorting did not change.
 func ScoreRuleGroupIDsError(grouping *models.GroupingConfig, sorting *models.SortingConfig) error {
 	return conditionTreesGroupIDsError(sortingConfigConditionTrees(sorting), groupIDKnown(grouping))
 }
@@ -354,13 +321,8 @@ func validateConditionTreeGroupIDs(cond *models.RuleCondition, known func(string
 	return "", nil
 }
 
-// minRlsYear is the lowest year a RLS_YEAR condition may use. The release-name
-// parser performs no range sanity check, so we reject obviously-bogus values at save time.
 const minRlsYear = 1900
 
-// validateRlsYearConditions rejects RLS_YEAR conditions whose values fall outside a
-// plausible range (minRlsYear..currentYear+1), guarding against typos and stray 4-digit
-// tokens that the parser might otherwise surface as a real year.
 func validateRlsYearConditions(conditions *models.ActionConditions) (string, error) {
 	maxYear := time.Now().Year() + 1
 	for _, tree := range conditionTreesForValidation(conditions) {
@@ -420,15 +382,11 @@ func validateRlsYearLeaf(cond *models.RuleCondition, maxYear int) (string, error
 	return "", nil
 }
 
-// validateFreeSpaceSource validates the FreeSpaceSource configuration.
-// Returns a message and an error if invalid, or ("", nil) if valid.
 func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.Instance, usesFreeSpace bool) (msg string, err error) {
-	// If workflow doesn't use FREE_SPACE, any source config is acceptable (will be ignored)
 	if !usesFreeSpace {
 		return "", nil
 	}
 
-	// nil or empty means default (qbittorrent) - always valid
 	if source == nil || source.Type == "" || source.Type == models.FreeSpaceSourceQBittorrent {
 		return "", nil
 	}
@@ -439,9 +397,6 @@ func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.In
 	case models.FreeSpaceSourceAllowance:
 		return validateFreeSpaceAllowanceSource(source, instance)
 	case models.FreeSpaceSourceQbitPath:
-		// qBittorrent resolves this path on its own host, so qui neither needs
-		// filesystem access nor knows the server's path syntax. Unsupported servers
-		// surface at read time as a failed source read, never as zero free space.
 		if strings.TrimSpace(source.Path) == "" {
 			return "Free space path source requires a path", errors.New("path required")
 		}
@@ -451,7 +406,6 @@ func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.In
 	}
 }
 
-// validateFreeSpacePathSource validates path-based free space source configuration.
 func validateFreeSpacePathSource(source *models.FreeSpaceSource, instance *models.Instance) (msg string, err error) {
 	if instance == nil || !models.FilesystemCapabilitiesOf(instance).Read {
 		return errMsgPathSourceAccessRequired, errors.New("filesystem access required for path source")
@@ -460,8 +414,6 @@ func validateFreeSpacePathSource(source *models.FreeSpaceSource, instance *model
 	return validateFreeSpaceSourcePath(source.Path)
 }
 
-// validateFreeSpaceAllowanceSource validates an allowance source. The source
-// needs file identity, so that a hardlinked file counts one time.
 func validateFreeSpaceAllowanceSource(source *models.FreeSpaceSource, instance *models.Instance) (msg string, err error) {
 	if windowsLocalPathSource(instance) {
 		return errMsgWindowsPathSourceNotSupported, errors.New("allowance source not supported on Windows with local access")
@@ -491,16 +443,14 @@ func validateFreeSpaceSourcePath(sourcePath string) (msg string, err error) {
 	return "", nil
 }
 
-// RegexValidationError represents a regex compilation error at a specific path in the condition tree.
 type RegexValidationError struct {
-	Path     string `json:"path"`     // JSON pointer to the condition, e.g., "/conditions/delete/condition/conditions/0"
-	Message  string `json:"message"`  // Error message from regex compilation
-	Pattern  string `json:"pattern"`  // The invalid pattern
-	Field    string `json:"field"`    // Field name being matched
-	Operator string `json:"operator"` // Operator (MATCHES or string op with regex flag)
+	Path     string `json:"path"`
+	Message  string `json:"message"`
+	Pattern  string `json:"pattern"`
+	Field    string `json:"field"`
+	Operator string `json:"operator"`
 }
 
-// ConditionRegexErrors lists every invalid regex pattern in the action conditions, including disabled actions.
 func ConditionRegexErrors(conditions *models.ActionConditions) []RegexValidationError {
 	var result []RegexValidationError
 	for c := range conditions.Conditions() {
@@ -509,13 +459,11 @@ func ConditionRegexErrors(conditions *models.ActionConditions) []RegexValidation
 	return result
 }
 
-// validateConditionRegex recursively validates regex patterns in a condition tree.
 func validateConditionRegex(cond *models.RuleCondition, path string, errs *[]RegexValidationError) {
 	if cond == nil {
 		return
 	}
 
-	// Check if this condition uses regex
 	isRegex := cond.Regex || cond.Operator == models.OperatorMatches
 	if isRegex && cond.Value != "" {
 		if err := cond.CompileRegex(); err != nil {
@@ -529,7 +477,6 @@ func validateConditionRegex(cond *models.RuleCondition, path string, errs *[]Reg
 		}
 	}
 
-	// Recurse into child conditions
 	for i, child := range cond.Conditions {
 		validateConditionRegex(child, fmt.Sprintf("%s/conditions/%d", path, i), errs)
 	}

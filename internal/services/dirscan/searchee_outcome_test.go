@@ -69,8 +69,7 @@ func TestDecideSearcheeOutcome(t *testing.T) {
 	const hashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 	tests := []struct {
-		name string
-		// files defaults to the movie files.
+		name     string
 		files    []string
 		final    []string
 		canceled bool
@@ -174,13 +173,11 @@ func TestDecideSearcheeOutcome(t *testing.T) {
 			want:  map[string]dirScanFileUpdate{outcomeMovie: noMatchUpdate, outcomeMovieExtra: noMatchUpdate},
 		},
 		{
-			// Known bug #2736: the next scan never tries the download again.
 			name:  "a failed download after a full search gives no_match (#2736)",
 			items: []workItemReport{fullSearch(outcomeMovieFiles, candidateReport{event: candidateDownloadFailed})},
 			want:  map[string]dirScanFileUpdate{outcomeMovie: noMatchUpdate, outcomeMovieExtra: noMatchUpdate},
 		},
 		{
-			// Known bug #3664: the next scan never tries the match again.
 			name:  "a Pre-add check error gives no_match (#3664)",
 			items: []workItemReport{fullSearch(outcomeMovieFiles, candidateReport{event: candidateRefused, class: crossseed.ClassFailed})},
 			want:  map[string]dirScanFileUpdate{outcomeMovie: noMatchUpdate, outcomeMovieExtra: noMatchUpdate},
@@ -207,7 +204,6 @@ func TestDecideSearcheeOutcome(t *testing.T) {
 			want: map[string]dirScanFileUpdate{outcomeEp2: noMatchUpdate, outcomeShowExtra: noMatchUpdate},
 		},
 		{
-			// Known bug #2736: the episode search missed indexer 2, but the season search counts for the episode file.
 			name:  "a full season search and an episode search that misses an indexer give no_match for the episode (#2736)",
 			files: outcomeSeasonFiles,
 			items: []workItemReport{fullSearch(outcomeSeasonFiles), episodeSearch(partialSearch([]string{outcomeEp1}))},

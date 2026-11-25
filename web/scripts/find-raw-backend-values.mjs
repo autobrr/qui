@@ -39,7 +39,6 @@ const SAFE_PATTERNS = [
   /currentCategory=\{/,
   /currentFilter=\{/,
   /checkoutPaymentStatus=\{/,
-  // Dynamic or unstructured text that can't be translated
   /event\.reason/,
   /disabledInfo\.reason/,
   /entry\.level/,
@@ -117,10 +116,6 @@ function isInJsxContext(line) {
   );
 }
 
-// React never renders a key prop, so it cannot show a raw value. A key= counts as a prop
-// only inside a tag that opens on the same line. A line cannot tell a key prop on its own
-// line from text, so that case stays reported.
-// A < or > inside a {...} expression (() => x, count > 0) or a quoted attribute is not a tag bracket.
 function withoutKeyProps(line) {
   return line.replace(/(^|\s)key=\{(?:[^{}]|\{[^{}]*\})*\}/g, (match, space, offset) => {
     let depth = 0;

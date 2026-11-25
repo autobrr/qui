@@ -17,8 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// The bytes that the stream allocates to build the payload of one view on a
-// library of biglib.Size torrents (ADR 0051).
 func TestMemoryBudget_StreamPayload(t *testing.T) {
 	const budget = 10 * biglib.MB
 

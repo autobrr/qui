@@ -11,9 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The transfer-info contract is consumed by the dashboard, the title bar and by
-// external clients that poll it instead of requesting a full torrent list for the
-// all-time totals. Every key below is load-bearing for one of them.
 func TestTransferInfoResponseFromServerState(t *testing.T) {
 	state := &qbt.ServerState{
 		AlltimeDl:        111,
@@ -49,9 +46,6 @@ func TestTransferInfoResponseFromServerState(t *testing.T) {
 	}, decoded, "server state must project onto the transfer-info keys and nothing else")
 }
 
-// qBittorrent's /transfer/info carries no all-time totals. Emitting zeros there
-// would overwrite a client's last known totals with 0, so the keys must be absent
-// and let the client keep the value it already has.
 func TestTransferInfoResponseFallbackOmitsAlltimeTotals(t *testing.T) {
 	payload, err := json.Marshal(transferInfoResponse{
 		ConnectionStatus: "connected", DlInfoSpeed: 42,

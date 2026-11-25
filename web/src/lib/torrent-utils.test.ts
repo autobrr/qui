@@ -13,8 +13,6 @@ describe("getToggleSelectionState", () => {
     { name: "all disabled offers the enable direction", values: [false, false], stateUnknown: false, allEnabled: false, mixed: false },
     { name: "disagreeing values are mixed", values: [true, false, true], stateUnknown: false, allEnabled: false, mixed: true },
     { name: "an empty selection is neither enabled nor mixed", values: [], stateUnknown: false, allEnabled: false, mixed: false },
-    // Select-all over more torrents than are loaded: the loaded rows can agree by
-    // chance, so a direction read from them would be applied to unseen torrents.
     { name: "unloaded rows make an all-enabled window mixed", values: [true, true], stateUnknown: true, allEnabled: true, mixed: true },
     { name: "unloaded rows make an all-disabled window mixed", values: [false, false], stateUnknown: true, allEnabled: false, mixed: true },
     { name: "unloaded rows with nothing loaded are mixed", values: [], stateUnknown: true, allEnabled: false, mixed: true },
@@ -28,7 +26,6 @@ describe("getToggleSelectionState", () => {
 })
 
 describe("resolveStreamRow", () => {
-  // The panel selected the hybrid torrent by its v2 hash; the server keys the row by v1.
   const previous = { hash: "bb22bb22", name: "Hybrid.Release.S02E03.2160p.WEB-GRPB" } as Torrent
   const v1Row = { ...previous, hash: "aa11" }
   const cases: Array<{ name: string; data: { torrents: Torrent[]; total: number }; want: Torrent | null }> = [

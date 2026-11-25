@@ -15,14 +15,10 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// testFreeSpaceLedger makes a ledger with the free space at the start and the freed bytes
-// that its rule counted.
 func testFreeSpaceLedger(startBytes, freedBytes int64) *freeSpaceLedger {
 	return &freeSpaceLedger{startBytes: startBytes, freedBytes: freedBytes}
 }
 
-// testFreeSpaceLedgers makes the ledgers that the run makes for the rules, with the same
-// free space at the start for each source.
 func testFreeSpaceLedgers(startBytes int64, rules ...*models.Automation) map[int]*freeSpaceLedger {
 	ledgers := make(map[int]*freeSpaceLedger)
 	for _, rule := range rules {
@@ -33,7 +29,6 @@ func testFreeSpaceLedgers(startBytes int64, rules ...*models.Automation) map[int
 	return ledgers
 }
 
-// countingLedger is the ledger of a FREE_SPACE delete rule in the mode.
 func countingLedger(mode string, includeHardlinks bool) *freeSpaceLedger {
 	return newFreeSpaceLedger(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{
 		Enabled: true, Mode: mode, IncludeHardlinks: includeHardlinks,
@@ -44,7 +39,6 @@ func countingLedger(mode string, includeHardlinks bool) *freeSpaceLedger {
 func TestFreeSpaceLedger_Count(t *testing.T) {
 	t.Run("adds size for non-cross-seed torrent with deleteWithFiles", func(t *testing.T) {
 		ledger := countingLedger(DeleteModeWithFiles, true)
-		// A torrent without a cross-seed is a group of its own.
 		torrent := qbt.Torrent{Hash: "abc123", Size: 50000000000}
 
 		require.True(t, ledger.count(torrent, nil, &EvalContext{}))
@@ -53,7 +47,6 @@ func TestFreeSpaceLedger_Count(t *testing.T) {
 
 	t.Run("does not double-count cross-seed torrents", func(t *testing.T) {
 		ledger := countingLedger(DeleteModeWithFiles, true)
-		// The cross-seed has the same paths and a different hash.
 		torrent1 := qbt.Torrent{Hash: "abc123", Size: 50000000000, ContentPath: "/data/movie", SavePath: "/data"}
 		torrent2 := qbt.Torrent{Hash: "def456", Size: 50000000000, ContentPath: "/data/movie", SavePath: "/data"}
 		evalCtx := &EvalContext{CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
@@ -116,7 +109,6 @@ func TestFreeSpaceLedger_Count(t *testing.T) {
 
 	t.Run("does not add size for preserve-cross-seeds mode when cross-seeds exist", func(t *testing.T) {
 		ledger := countingLedger(DeleteModeWithFilesPreserveCrossSeeds, true)
-		// Two torrents resolve to the same file and are cross-seeds.
 		torrent1 := qbt.Torrent{Hash: "abc123", Size: 50000000000, ContentPath: "/data/movie", SavePath: "/data"}
 		torrent2 := qbt.Torrent{Hash: "def456", Size: 50000000000, ContentPath: "/data/movie", SavePath: "/data"}
 		evalCtx := &EvalContext{CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
@@ -124,7 +116,6 @@ func TestFreeSpaceLedger_Count(t *testing.T) {
 			"def456": {{Name: "movie/main.mkv", Size: 50000000000}},
 		}}
 
-		// torrent2 keeps the files.
 		require.True(t, ledger.count(torrent1, testCrossSeedGroups([]qbt.Torrent{torrent1, torrent2}), evalCtx))
 		require.Zero(t, ledger.projectedFreedBytes())
 	})
@@ -138,7 +129,6 @@ func TestFreeSpaceLedger_Count(t *testing.T) {
 	})
 }
 
-// The "eligible" view keeps the free space at the start, so the ledger counts nothing.
 func TestFreeSpaceLedger_EligibleViewCountsNothing(t *testing.T) {
 	rule := &models.Automation{ID: 1, Conditions: &models.ActionConditions{Delete: &models.DeleteAction{
 		Enabled: true, Mode: DeleteModeWithFiles,
@@ -167,7 +157,6 @@ func TestFreeSpaceLedger_UnreadExpandedMemberDoesNotCount(t *testing.T) {
 	require.False(t, ledger.count(torrents[0], groups, evalCtx))
 	require.Zero(t, ledger.projectedFreedBytes())
 
-	// The failed count took no member, so the group counts once its file list is read.
 	evalCtx.CrossSeedFilesByHash["source"] = sourceFiles
 	require.True(t, ledger.count(torrents[0], groups, evalCtx))
 	require.Equal(t, int64(2000), ledger.projectedFreedBytes())
@@ -191,12 +180,10 @@ func TestFreeSpaceLedger_ResetReadsZero(t *testing.T) {
 	ledger.reset()
 	require.Zero(t, ledger.projectedFreedBytes())
 
-	// The reset forgets the counted paths, so the episode file counts again.
 	ledger.count(torrents[1], groups, evalCtx)
 	require.Equal(t, int64(2000), ledger.projectedFreedBytes())
 }
 
-// statfsCounter answers Statfs by path and counts the calls.
 type statfsCounter struct {
 	fsops.Backend
 	available map[string]int64

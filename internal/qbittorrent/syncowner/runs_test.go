@@ -144,7 +144,6 @@ func TestOwnerPendingSyncIsARunningOrDueSync(t *testing.T) {
 			startSync(o)
 			addAfter(0)(o)
 		}, ends: 300 * ms, syncs: 3},
-		// regression: #4475
 		"a sync is due while another runs": {takes: 1500 * ms, before: func(o *syncowner.Owner) {
 			addAfter(time.Minute)(o)
 			addAfter(100 * ms)(o)

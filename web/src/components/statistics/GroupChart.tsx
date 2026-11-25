@@ -20,18 +20,15 @@ interface ChartRow {
   width: BarWidth
   gapSeconds: number
   uploaded: number
-  // Negative, so that the bar hangs below the zero line.
   downloaded: number
 }
 
 interface GroupChartProps {
   bars: StatisticsBar[]
   unit: ChartUnit
-  // The theme colors of the upload series.
   color: { light: string; dark: string } | undefined
 }
 
-/** The upload of one group above the zero line and its download below it. */
 export function GroupChart({ bars, unit, color }: GroupChartProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language

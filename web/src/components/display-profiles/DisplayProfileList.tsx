@@ -19,14 +19,10 @@ interface DisplayProfileListProps {
   selectedId: string
   onSelect: (profile: DisplayProfile) => void
   onNewProfile: () => void
-  /** Adds a › on each row that opens the profile in the editor. */
   onEdit?: (profile: DisplayProfile) => void
-  /** Disables the rows, for a list where a tap picks the profile of this browser. */
   rowsDisabled?: boolean
 }
 
-// Not a ResourceList: a tap on a row here picks the profile, where a tap on a ResourceList row opens the item.
-/** The profiles in rows of 56 px. While only Default exists, a dashed tile below it opens the New profile dialog. */
 export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit, rowsDisabled = false }: DisplayProfileListProps) {
   const { t } = useTranslation("torrents")
   const { profiles, active, settled } = useNamedDisplayProfiles()
@@ -52,7 +48,6 @@ export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit,
             >
               <DisplayProfileTile profile={profile} size="md" />
               <span className="min-w-0 flex-1">
-                {/* A tap here opens the profile, not a tooltip, so on a touch screen the name wraps. */}
                 <TruncatedText wrap openOnTap={false} className="block text-sm font-medium [overflow-wrap:anywhere] pointer-fine:truncate">{profile.name}</TruncatedText>
                 {profile.id === active.id && (
                   <span className="flex items-center gap-1 text-xs font-medium text-primary">

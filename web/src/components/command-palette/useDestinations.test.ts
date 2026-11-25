@@ -38,7 +38,6 @@ function runEntry(id: string) {
 }
 
 describe("useDestinations", () => {
-  // regression: #4229
   it("keeps the search of the open list when Add torrent of that instance opens the dialog", () => {
     runEntry("instance.1.add")
 
@@ -52,7 +51,6 @@ describe("useDestinations", () => {
     expect(fixture.navigate).toHaveBeenCalledWith({ to: "/instances/$instanceId", params: { instanceId: "2" }, search: { modal: "add-torrent" } })
   })
 
-  // regression: #4260
   it("opens a section of Automations", () => {
     runEntry("automations.orphan-scan")
 

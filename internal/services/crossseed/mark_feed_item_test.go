@@ -30,7 +30,7 @@ func TestMarkFeedItemWritesOnlyChangedOutcomes(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		stored     models.CrossSeedFeedItemStatus // pending: no row yet
+		stored     models.CrossSeedFeedItemStatus
 		storedSeen time.Time
 		status     models.CrossSeedFeedItemStatus
 		infoHash   *string
@@ -102,7 +102,6 @@ func TestRunPruneLeavesFeedItemsPostgresIntegration(t *testing.T) {
 	checkRunPruneLeavesFeedItems(t, testdb.NewMigratedPostgres)
 }
 
-// CreateRun prunes the oldest run on every automation run; the feed rows written during it stay as they are.
 func checkRunPruneLeavesFeedItems(t *testing.T, newDB func(testing.TB, string) *database.DB) {
 	t.Helper()
 
@@ -129,7 +128,6 @@ func checkRunPruneLeavesFeedItems(t *testing.T, newDB func(testing.TB, string) *
 	service.markFeedItem(ctx, inserted, models.CrossSeedFeedItemStatusPending, models.CrossSeedFeedItemStatusSkipped, nil)
 	service.markFeedItem(ctx, updated, models.CrossSeedFeedItemStatusSkipped, models.CrossSeedFeedItemStatusProcessed, &hash)
 
-	// Postgres gives every updated row a new xmin; SQLite has none, so a trigger counts updates.
 	if !postgres {
 		for _, stmt := range []string{
 			"CREATE TABLE feed_writes (n INTEGER NOT NULL)",

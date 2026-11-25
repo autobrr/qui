@@ -18,19 +18,14 @@ import (
 	"github.com/autobrr/qui/pkg/releases"
 )
 
-// ContentTypeInfo contains all information about a torrent's detected content type
 type ContentTypeInfo struct {
-	ContentType  string   // "movie", "tv", "music", "audiobook", "book", "comic", "game", "app", "adult", "unknown"
-	Categories   []int    // Torznab category IDs
-	SearchType   string   // "search", "movie", "tvsearch", "music", "book"
-	RequiredCaps []string // Required indexer capabilities
-	IsMusic      bool     // Helper flag for music-related content
+	ContentType  string
+	Categories   []int
+	SearchType   string
+	RequiredCaps []string
+	IsMusic      bool
 }
 
-// audioFileExtensions lists the extensions of standalone audio content for the
-// byte-weighted signal in DetermineContentTypeWithFiles. It is deliberately a
-// separate list from gazellePlausibleExtensions: that one encodes what RED/OPS
-// host, this one encodes what is audio.
 var audioFileExtensions = map[string]bool{
 	".flac": true,
 	".mp3":  true,
@@ -55,15 +50,6 @@ var audioFileExtensions = map[string]bool{
 	".aob":  true,
 }
 
-// dominantFileContent reports which class of content holds the majority of a
-// torrent's bytes: rls.Music for audio, rls.Movie for video, or rls.Unknown
-// when neither dominates. It weighs total bytes per class instead of picking
-// the largest file, because booklet scans and cover art outweigh individual
-// tracks in many music releases.
-//
-// ponytail: videoExtensions is the season-pack list and misses .vob, .mpg,
-// .webm, and .m4v; those torrents fall through to name-based classification.
-// Widen the list if field reports show it.
 func dominantFileContent(files qbt.TorrentFiles) rls.Type {
 	var audioBytes, videoBytes, totalBytes int64
 	for _, file := range files {
@@ -84,14 +70,6 @@ func dominantFileContent(files qbt.TorrentFiles) rls.Type {
 	return rls.Unknown
 }
 
-// DetermineContentTypeWithFiles classifies a release like DetermineContentType,
-// but first corrects the parsed type with the byte-weighted extension signal
-// from the torrent's files (discussion #1734). Release names often defeat the
-// rls parser, music names most of all. A recognized disc layout is authoritative
-// video content and preserves explicit TV structure. Otherwise, audio bytes
-// force the music classification, and video bytes pull a music parse back to tv
-// or movie. The tv/movie split stays with the name-based parse. Without files,
-// or when neither class dominates, the name decides.
 func DetermineContentTypeWithFiles(release *rls.Release, files qbt.TorrentFiles) ContentTypeInfo {
 	if isDisc, _ := isDiscLayoutTorrent(files); isDisc {
 		if isTVRelease(release) {
@@ -109,8 +87,6 @@ func DetermineContentTypeWithFiles(release *rls.Release, files qbt.TorrentFiles)
 			adjusted.Type = rls.Music
 			release = &adjusted
 		}
-		// Skip the music-to-video name rescue: the bytes are audio, so a
-		// video-looking token in the name must not flip the type back.
 		return classifyRelease(release)
 	}
 	if dominant == rls.Movie && release.Type == rls.Music {
@@ -120,16 +96,10 @@ func DetermineContentTypeWithFiles(release *rls.Release, files qbt.TorrentFiles)
 	return DetermineContentType(release)
 }
 
-// DetermineContentType classifies a release with pkg/releases and adds the Torznab search parameters.
 func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	return torznabContentTypeInfo(releases.DetermineContentType(release))
 }
 
-// RuleContentTypeInfo builds the classification a category mapping rule forces.
-// It classifies a synthetic release of the rule's content type, so the result
-// stays identical to a release that parsed as that type. Returns false for
-// content types a rule cannot force. The API handler also uses it to validate
-// incoming rules, so the list of valid content types lives here only.
 func RuleContentTypeInfo(contentType string) (ContentTypeInfo, bool) {
 	var releaseType rls.Type
 	switch contentType {
@@ -163,45 +133,38 @@ func classifyReleaseAs(release *rls.Release, releaseType rls.Type) ContentTypeIn
 	return torznabContentTypeInfo(releases.ClassifyAs(release, releaseType))
 }
 
-// torznabContentTypeInfo adds the Torznab search parameters for a content type.
-// The slice literals give each call its own Categories and RequiredCaps, so one
-// caller's append cannot change the result of the next.
 func torznabContentTypeInfo(classified releases.ContentTypeInfo) ContentTypeInfo {
 	info := ContentTypeInfo{
 		ContentType: string(classified.ContentType),
 	}
 	switch classified.ContentType {
 	case releases.ContentTypeMovie:
-		info.Categories = []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080} // Movies
+		info.Categories = []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080}
 		info.SearchType = "movie"
 		info.RequiredCaps = []string{"movie-search"}
 	case releases.ContentTypeTV:
-		info.Categories = []int{5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080} // TV
+		info.Categories = []int{5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080}
 		info.SearchType = "tvsearch"
 		info.RequiredCaps = []string{"tv-search"}
 	case releases.ContentTypeMusic, releases.ContentTypeAudiobook:
-		info.Categories = []int{3000} // Audio
+		info.Categories = []int{3000}
 		info.SearchType = "music"
 		info.RequiredCaps = []string{"music-search", "audio-search"}
 		info.IsMusic = true
 	case releases.ContentTypeBook:
-		// Books is 7000, not 8000. 8000 is Other, and an indexer that advertises
-		// its caps drops a request for a category it does not carry, so books were
-		// skipped at every book indexer. Torznab derives the search mode from these
-		// categories, so the 7000 range is also what makes the request t=book.
-		info.Categories = []int{7000, 7010, 7020, 7040, 7050, 7060} // Books, minus comics
+		info.Categories = []int{7000, 7010, 7020, 7040, 7050, 7060}
 		info.SearchType = "book"
 		info.RequiredCaps = []string{"book-search"}
 	case releases.ContentTypeComic:
-		info.Categories = []int{7000, 7030} // Books, Books/Comics
+		info.Categories = []int{7000, 7030}
 		info.SearchType = "book"
 		info.RequiredCaps = []string{"book-search"}
 	case releases.ContentTypeGame, releases.ContentTypeApp:
-		info.Categories = []int{4000} // PC
+		info.Categories = []int{4000}
 		info.SearchType = "search"
 		info.RequiredCaps = []string{}
 	case releases.ContentTypeAdult:
-		info.Categories = []int{6000} // XXX
+		info.Categories = []int{6000}
 		info.SearchType = "search"
 		info.RequiredCaps = []string{}
 	default:
@@ -212,8 +175,6 @@ func torznabContentTypeInfo(classified releases.ContentTypeInfo) ContentTypeInfo
 	return info
 }
 
-// demoteMusicToVideo returns a copy of a music-typed release retyped as video.
-// Episode metadata is preserved when present so TV content keeps season info.
 func demoteMusicToVideo(release *rls.Release) *rls.Release {
 	demoted := *release
 	if demoted.Series > 0 || demoted.Episode > 0 {
@@ -224,28 +185,20 @@ func demoteMusicToVideo(release *rls.Release) *rls.Release {
 	return &demoted
 }
 
-// parseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
-// First tries RLS's built-in parsing, then falls back to manual "Artist - Album" format parsing
 func (m matcher) parseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName string) *rls.Release {
-	// First, try RLS's built-in parsing on the torrent name directly
-	// This can handle complex release names like "Artist-Album-Edition-Source-Year-GROUP"
 	torrentRelease := *m.parseReleaseName(torrentName)
 
-	// rls fills Artist only for a music parse. The parser can still turn a music
-	// name with an episode range into a TV pack, so read Artist, not Type.
 	if torrentRelease.Artist != "" && torrentRelease.Title != "" {
 		musicRelease := torrentRelease
 		musicRelease.Type = rls.Music
 		return &musicRelease
 	}
 
-	// Fallback: use our manual parsing approach for simpler names
 	musicRelease := *baseRelease
-	musicRelease.Type = rls.Music // Ensure it's marked as music
+	musicRelease.Type = rls.Music
 
 	cleanName := torrentName
 
-	// Extract release group if present [GROUP]
 	if strings.Contains(cleanName, "[") && strings.Contains(cleanName, "]") {
 		groupStart := strings.LastIndex(cleanName, "[")
 		groupEnd := strings.LastIndex(cleanName, "]")
@@ -255,7 +208,6 @@ func (m matcher) parseMusicReleaseFromTorrentName(baseRelease *rls.Release, torr
 		}
 	}
 
-	// Remove year (YYYY) from the end for parsing
 	if strings.Contains(cleanName, "(") && strings.Contains(cleanName, ")") {
 		yearStart := strings.LastIndex(cleanName, "(")
 		yearEnd := strings.LastIndex(cleanName, ")")
@@ -264,10 +216,8 @@ func (m matcher) parseMusicReleaseFromTorrentName(baseRelease *rls.Release, torr
 		}
 	}
 
-	// Parse "Artist - Album" format
 	if parts := strings.Split(cleanName, " - "); len(parts) >= 2 {
 		musicRelease.Artist = strings.TrimSpace(parts[0])
-		// Join remaining parts as album title (in case there are multiple " - " separators)
 		musicRelease.Title = strings.TrimSpace(strings.Join(parts[1:], " - "))
 	}
 
@@ -282,8 +232,6 @@ type TorrentMetadata struct {
 	Info   *metainfo.Info
 }
 
-// ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
-// including the raw metainfo.Info for piece-level operations.
 func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) {
 	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
 	if err != nil {
@@ -321,8 +269,6 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 	}, nil
 }
 
-// BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info.
-// It returns an error for a path component that directional-character removal empties.
 func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) (qbt.TorrentFiles, error) {
 	rootName = pathutil.TorrentPathName(rootName)
 	var files qbt.TorrentFiles
@@ -332,7 +278,6 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) (qbt.Torrent
 	}
 
 	if len(info.Files) == 0 {
-		// Single file torrent
 		pieceStart := 0
 		pieceEnd := 0
 		if info.Length > 0 {
@@ -405,10 +350,6 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) (qbt.Torrent
 	return files, nil
 }
 
-// torrentFilePath returns the name qBittorrent stores for f: rootName and the
-// file's path for a directory torrent, else the torrent name, falling back to
-// rootName. It returns an error for a component that directional-character
-// removal empties.
 func torrentFilePath(info *metainfo.Info, f *metainfo.FileInfo, rootName string) (string, error) {
 	if !info.IsDir() {
 		if name := pathutil.TorrentPathName(info.BestName()); name != "" {
@@ -419,9 +360,6 @@ func torrentFilePath(info *metainfo.Info, f *metainfo.FileInfo, rootName string)
 	return pathutil.TorrentFilePath(rootName, f.BestPath())
 }
 
-// ParseTorrentAnnounceDomain extracts the primary announce URL's domain from torrent bytes.
-// Prefers the first entry in announce-list if present; falls back to announce.
-// Returns an empty string if no announce URL is found.
 func ParseTorrentAnnounceDomain(torrentBytes []byte) string {
 	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
 	if err != nil {
@@ -429,11 +367,9 @@ func ParseTorrentAnnounceDomain(torrentBytes []byte) string {
 	}
 
 	var announceURL string
-	// Prefer first tier of announce-list
 	if len(mi.AnnounceList) > 0 && len(mi.AnnounceList[0]) > 0 {
 		announceURL = mi.AnnounceList[0][0]
 	}
-	// Fall back to announce
 	if announceURL == "" {
 		announceURL = mi.Announce
 	}
@@ -441,38 +377,28 @@ func ParseTorrentAnnounceDomain(torrentBytes []byte) string {
 		return ""
 	}
 
-	// Extract domain from URL
 	return extractDomainFromAnnounce(announceURL)
 }
 
-// extractDomainFromAnnounce extracts and normalizes the domain from an announce URL.
 func extractDomainFromAnnounce(announceURL string) string {
-	// Handle various URL schemes (http, https, udp, etc.)
 	url := announceURL
-	// Remove scheme
 	if idx := strings.Index(url, "://"); idx != -1 {
 		url = url[idx+3:]
 	}
-	// Remove path
 	if idx := strings.Index(url, "/"); idx != -1 {
 		url = url[:idx]
 	}
-	// Remove port
 	if idx := strings.LastIndex(url, ":"); idx != -1 {
-		// Make sure this is a port, not part of IPv6
 		if !strings.Contains(url[idx:], "]") {
 			url = url[:idx]
 		}
 	}
-	// Remove userinfo if present
 	if idx := strings.Index(url, "@"); idx != -1 {
 		url = url[idx+1:]
 	}
 	return strings.ToLower(url)
 }
 
-// FindLargestFile returns the file with the largest size from a list of torrent files.
-// This is useful for content type detection as the largest file usually represents the main content.
 func FindLargestFile(files qbt.TorrentFiles) *qbt.TorrentFile {
 	if len(files) == 0 {
 		return nil

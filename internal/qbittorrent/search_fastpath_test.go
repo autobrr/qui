@@ -15,10 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The search hot path replaces three allocating helpers with fast paths. Each
-// one is only valid because it produces exactly what the original produced, so
-// pin that here rather than in the behaviour tests.
-
 var searchFastPathSamples = []string{
 	"",
 	"a",
@@ -28,19 +24,17 @@ var searchFastPathSamples = []string{
 	"mixed_Case-With[Brackets](And){Braces}",
 	"  leading and trailing  ",
 	"multiple    inner   spaces",
-	"Bjørnen.Sover.2019.1080p",            // non-ASCII
-	"Æbler.Og.Pærer",                      // non-ASCII
-	"Ünïcödé Ñämé",                        // non-ASCII with marks
-	"Amélie",                              // accented, one byte longer than its
-	"Amelie",                              // unaccented twin: Rank refuses the pair, Match folds first
-	"tab\tand\nnewline",                   // whitespace variants
-	"...leading.separators",               // separator run at the start
-	"trailing.separators...",              // separator run at the end
-	"cross-seed, unregistered, permaseed", // tag-shaped
+	"Bjørnen.Sover.2019.1080p",
+	"Æbler.Og.Pærer",
+	"Ünïcödé Ñämé",
+	"Amélie",
+	"Amelie",
+	"tab\tand\nnewline",
+	"...leading.separators",
+	"trailing.separators...",
+	"cross-seed, unregistered, permaseed",
 }
 
-// normalizeForSearchUnicode is the original implementation, kept as the
-// non-ASCII fallback. The ASCII fast path has to agree with it exactly.
 func TestNormalizeForSearchMatchesReference(t *testing.T) {
 	for _, sample := range searchFastPathSamples {
 		assert.Equal(t, normalizeForSearchUnicode(sample), normalizeForSearch(sample), "input %q", sample)
@@ -56,7 +50,6 @@ func TestRankFuzzyMatchesLibrary(t *testing.T) {
 			target := normalizeForSearch(rawTarget)
 			rank := rankFuzzy(source, target, folded)
 
-			// Membership must match the fold-first Match; see rankFuzzy.
 			assert.Equal(t, fuzzy.MatchNormalizedFold(source, target), rank >= 0,
 				"membership for source %q target %q", source, target)
 
@@ -67,8 +60,6 @@ func TestRankFuzzyMatchesLibrary(t *testing.T) {
 	}
 }
 
-// The expression filter hands expr.Run a copy of each torrent. Pin that the
-// env still works.
 func TestListRulesExprFilter(t *testing.T) {
 	sm := &SyncManager{exprCache: ttlcache.New[string, *vm.Program](ttlcache.SetDefaultTTL(5 * time.Minute))}
 	torrents := []qbt.Torrent{

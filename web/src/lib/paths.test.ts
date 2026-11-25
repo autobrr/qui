@@ -12,7 +12,6 @@ describe("pathSeparator", () => {
     ["/data/movies", "/"],
     ["C:\\data", "\\"],
     ["\\\\server\\share", "\\"],
-    // A drive letter or UNC prefix later in a Unix path does not make it a Windows path.
     ["/data/C:/movies", "/"],
     ["/data/\\\\share", "/"],
   ])("%j -> %j", (input, expected) => {

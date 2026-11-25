@@ -110,10 +110,9 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 	}
 
 	err := service.executeCompletionSearch(t.Context(), instanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{
-		InstanceID: instanceID,
-		Enabled:    true,
-		IndexerIDs: []int{indexerID},
-		// The completion source filters must reach the add request.
+		InstanceID:        instanceID,
+		Enabled:           true,
+		IndexerIDs:        []int{indexerID},
 		Categories:        []string{"tv"},
 		Tags:              []string{"keep"},
 		ExcludeCategories: []string{"cleanup"},

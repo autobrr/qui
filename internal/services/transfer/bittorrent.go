@@ -24,9 +24,6 @@ import (
 )
 
 const (
-	// stepTorrent comes before qui adds the Transfer torrent of a member, with
-	// its hash, and stepTorrentDone once the target has every piece, with the
-	// bytes that the target downloaded.
 	stepTorrent     = "pass by BitTorrent"
 	stepTorrentDone = "passed by BitTorrent"
 	stepFallBack    = "fall back to SFTP"
@@ -92,8 +89,6 @@ func (j *job) fallBack(ctx context.Context, why *noConnectionError) error {
 	return nil
 }
 
-// pass passes the files of p by a Transfer torrent, after base bytes of the
-// parts before.
 func (j *job) pass(ctx context.Context, p *part, base int64) error {
 	if !j.blind {
 		defer j.unlink(context.WithoutCancel(ctx), p)
@@ -163,25 +158,15 @@ func (j *job) pass(ctx context.Context, p *part, base int64) error {
 			return temporary("qui cannot remove the Transfer torrent from %s: %v", inst.Name, err)
 		}
 	}
-	// A failed pass leaves its reservation to the end of the run.
 	j.unclaim(left)
-	// The fresh read of the source also drops the Transfer torrent from
-	// what qui knows of it.
 	if err := j.checkSource(ctx); err != nil {
 		return err
 	}
 	p.passed = true
-	// qBittorrent counts the bytes of a session as they arrive, and adds
-	// them to its count of all sessions about once a second. So that count
-	// misses the last bytes when the download ends, and the count of the
-	// session misses the bytes from before a restart of the client.
 	got := max(torrent.Downloaded, torrent.DownloadedSession)
 	return j.stepWith(ctx, StateCopying, stepTorrentDone, strconv.FormatInt(got, 10))
 }
 
-// blindFreeSpace reads the free space on a target without file access
-// before the add of a Transfer torrent: qBittorrent can allocate its files
-// at once.
 func (j *job) blindFreeSpace(ctx context.Context) (space, error) {
 	if !j.blind {
 		return space{}, nil
@@ -189,8 +174,6 @@ func (j *job) blindFreeSpace(ctx context.Context) (space, error) {
 	return j.freeSpace(ctx)
 }
 
-// claimLeft reserves the bytes that a checked Transfer torrent still needs,
-// when blindFreeSpace knew the free space.
 func (j *job) claimLeft(torrent *qbt.Torrent, read space) (int64, error) {
 	if !read.known {
 		return 0, nil
@@ -222,10 +205,6 @@ func (j *job) addHelper(ctx context.Context, inst *models.Instance, helper helpe
 	return nil
 }
 
-// seedFromSource renames the files of the stopped Transfer torrent to the
-// files of the source: a rename of a missing file changes only its name. A
-// file at an old name is a conflict: qBittorrent would move it over the file
-// of the source.
 func (j *job) seedFromSource(ctx context.Context, p *part, helper helpertorrent.Helper, random string, targetNames []string) error {
 	sourceNames := names(p.plan)
 	if err := j.noFileOnSource(ctx, p, targetNames, sourceNames); err != nil {
@@ -265,8 +244,6 @@ func (j *job) seedFromSource(ctx context.Context, p *part, helper helpertorrent.
 	return nil
 }
 
-// noFileOnSource fails when the source has a file at an old name of a
-// rename in seedFromSource.
 func (j *job) noFileOnSource(ctx context.Context, p *part, targetNames, sourceNames []string) error {
 	if j.srcFiles == nil {
 		return nil
@@ -320,8 +297,6 @@ func (j *job) connect(ctx context.Context, hash string) error {
 	return &noConnectionError{reason: "The clients did not connect: " + strings.Join(why, ", and ") + "."}
 }
 
-// download waits until the target has every piece of the Transfer torrent of
-// size bytes, after base bytes of the parts before.
 func (j *job) download(ctx context.Context, hash string, base, size int64) (*qbt.Torrent, error) {
 	cfg := j.svc.deps.Config
 	last, idle := int64(-1), 0
@@ -367,9 +342,6 @@ func (j *job) await(ctx context.Context, inst *models.Instance, hash string, pol
 	return torrent, false, nil
 }
 
-// eagerPolls is how many polls of a wait read a fresh sync, so that a short
-// wait ends as fast as qBittorrent allows. The poll that can end a wait
-// without success is fresh too.
 const eagerPolls = 5
 
 func (j *job) helperOn(ctx context.Context, inst *models.Instance, hash string, fresh bool) (*qbt.Torrent, error) {

@@ -5,8 +5,6 @@
 
 package crossseed
 
-// partialPoolPlatformCrossDeviceError has no additional native error outside
-// Windows; syscall.EXDEV is handled by the shared classifier.
 func partialPoolPlatformCrossDeviceError(error) bool {
 	return false
 }

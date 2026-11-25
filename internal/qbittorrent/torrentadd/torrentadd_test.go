@@ -21,7 +21,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// sample is a torrent of three small files in the folder Sample.Show.S01-GRP.
 type sample struct {
 	file []byte
 	hash string
@@ -39,7 +38,6 @@ func newSample(t *testing.T) sample {
 	return sample{file: file, hash: hash}
 }
 
-// writeSample puts the files of the sample torrent under dir.
 func writeSample(t *testing.T, dir string) {
 	t.Helper()
 	root := filepath.Join(dir, "Sample.Show.S01-GRP")
@@ -57,8 +55,6 @@ type rig struct {
 	adder      *torrentadd.Adder
 }
 
-// newRig starts a stub qBittorrent on WebAPI webAPI with a default save path
-// in a temporary folder.
 func newRig(t *testing.T, webAPI string) *rig {
 	t.Helper()
 	dir := t.TempDir()
@@ -90,10 +86,6 @@ func (r *rig) add(t *testing.T, torrent sample, settings torrentadd.Settings) to
 	})
 }
 
-// The add reports what qBittorrent shows after the last poll: verified once a
-// check found every file, checking while the check runs, accepted for a
-// torrent that qBittorrent lists without its files, and failed with the
-// reason.
 func TestAddReportsTheResult(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -135,7 +127,6 @@ func TestAddReportsTheResult(t *testing.T) {
 	}
 }
 
-// qBittorrent refuses bytes that are no torrent.
 func TestAddRefused(t *testing.T) {
 	r := newRig(t, "2.16.2")
 
@@ -146,8 +137,6 @@ func TestAddRefused(t *testing.T) {
 	require.ErrorContains(t, res.Err, "torrent file not valid")
 }
 
-// Each stated setting reaches the add call as qBittorrent names it, and an
-// unset one is left out, so qBittorrent applies its own default.
 func TestAddSendsEverySetting(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -190,9 +179,6 @@ func TestAddSendsEverySetting(t *testing.T) {
 	}
 }
 
-// qBittorrent 5.3 refuses file priorities in the upload of a .torrent, so the
-// add is stopped, the priorities follow with the file priority call, and the
-// torrent then starts as the caller asked. Only the wanted files are on disk.
 func TestAddSetsPrioritiesThenStarts(t *testing.T) {
 	priorities := []int{7, 0, 1}
 	for _, tc := range []struct {
@@ -206,9 +192,6 @@ func TestAddSetsPrioritiesThenStarts(t *testing.T) {
 		{name: "starts forced", settings: torrentadd.Settings{Forced: true}, want: torrentadd.Verified, wantState: "forcedUP",
 			wantStart: []string{"torrents/setForceStart"}},
 		{name: "stays stopped", settings: torrentadd.Settings{Stopped: new(true)}, want: torrentadd.Accepted, wantState: "stoppedDL"},
-		// libtorrent drops seed mode when a file priority is "do not download"
-		// at add time (the torrent constructor in torrent.cpp), but keeps it
-		// when the priority comes later. The check would still run here.
 		{name: "keeps seed mode", settings: torrentadd.Settings{SeedMode: true}, checkSyncs: 1000, want: torrentadd.Verified,
 			wantState: "stalledUP", wantStart: []string{"torrents/start"}},
 	} {
@@ -235,8 +218,6 @@ func TestAddSetsPrioritiesThenStarts(t *testing.T) {
 	}
 }
 
-// qBittorrent lists a new torrent only once libtorrent added it. The calls
-// after the add wait for it with the retry for calls after an add.
 func TestAddWaitsForTheNewTorrent(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -257,9 +238,6 @@ func TestAddWaitsForTheNewTorrent(t *testing.T) {
 	}
 }
 
-// With the stop condition "files checked", a torrent that qBittorrent stops
-// after its check cannot change any more, so the polls end there, also when
-// the check found pieces missing.
 func TestAddEndsWhenTheCheckStopsTheTorrent(t *testing.T) {
 	r := newRig(t, "2.16.2")
 	r.stub.CheckSyncs = 1
@@ -278,11 +256,6 @@ func TestAddEndsWhenTheCheckStopsTheTorrent(t *testing.T) {
 	require.Less(t, r.stub.Syncs(), 10)
 }
 
-// The user can raise the status refresh interval in qBittorrent while qui
-// holds the old one in its cache of the preferences. The wait after a recheck
-// reads the interval fresh, so it does not take the complete state from
-// before the recheck as the result of the check.
-// regression: #4242
 func TestRecheckReadsTheRefreshIntervalFromQBittorrent(t *testing.T) {
 	r := newRig(t, "2.16.2")
 	r.stub.CheckSyncs, r.stub.StaleSyncs = 1, 3

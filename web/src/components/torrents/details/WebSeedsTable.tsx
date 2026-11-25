@@ -100,7 +100,6 @@ export const WebSeedsTable = memo(function WebSeedsTable({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b text-xs min-h-9">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />

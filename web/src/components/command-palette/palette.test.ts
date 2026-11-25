@@ -29,12 +29,10 @@ const ids = (entries: PaletteEntry[]) => entries.map(found => found.id)
 
 describe("searchEntries", () => {
   it("puts the best match first", () => {
-    // "seedbox" comes before "Dashboard" in the list, and it has its "d" in the middle of the word.
     expect(ids(searchEntries(groups, "d")).at(0)).toBe("page.dashboard")
   })
 
   it("puts an entry whose label matches before an entry that matches through its trail", () => {
-    // The trail "Settings › General" is a better match for "seg" than the label "Settings".
     expect(ids(searchEntries(groups, "seg"))).toEqual(["page.settings", "settings.themes"])
   })
 

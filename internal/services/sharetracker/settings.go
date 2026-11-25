@@ -18,10 +18,6 @@ import (
 
 var ErrInvalidSettings = errors.New("invalid Share tracker settings")
 
-// Settings are the Share tracker settings. Port 0 means that the user set no
-// port, and the tracker does not listen. PublicAddress is the http or https
-// URL at which recipients reach the tracker. TrustedProxies are the addresses
-// and CIDR prefixes whose X-Forwarded-For the tracker trusts.
 type Settings struct {
 	Port           int      `json:"port"`
 	PublicAddress  string   `json:"publicAddress"`
@@ -57,7 +53,6 @@ func (s Settings) trustedProxies() ([]netip.Prefix, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%w: trusted proxy %q is not an address or a CIDR prefix", ErrInvalidSettings, entry)
 		}
-		// chi compares an IPv4-mapped client address in its IPv4 form.
 		if prefix.Addr().Is4In6() && prefix.Bits() >= 96 {
 			prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
 		}
@@ -74,8 +69,6 @@ func NewSettingsStore(db dbinterface.Querier) *SettingsStore {
 	return &SettingsStore{db: db}
 }
 
-// Settings returns the saved settings. Before the first save, they have no
-// port.
 func (s *SettingsStore) Settings(ctx context.Context) (Settings, error) {
 	var settings Settings
 	var proxies string

@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// Folder cleanup reads the ignore paths through this matcher, and they must
-// protect a folder with orphan scan turned off.
 func TestIgnoredPathMatcher(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "orphanscan-ignored-path-matcher")
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -44,8 +42,6 @@ func TestIgnoredPathMatcher(t *testing.T) {
 	_, err = store.UpsertSettings(t.Context(), settings)
 	require.NoError(t, err)
 
-	// TestProtectedPaths holds the matching rules. This only checks that the
-	// matcher reads the settings and protects a folder that holds an ignore path.
 	ignored, err = svc.IgnoredPathMatcher(t.Context(), instance.ID, fsops.HostPaths)
 	require.NoError(t, err)
 	require.True(t, ignored(keep))

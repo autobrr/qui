@@ -10,9 +10,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Win32PathPointer returns an absolute UTF-16 path for raw Win32 file APIs.
-// Extended prefixes preserve long drive and UNC paths independently of the
-// host's long-path setting. Existing extended and device prefixes are retained.
 func Win32PathPointer(path string) (*uint16, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {

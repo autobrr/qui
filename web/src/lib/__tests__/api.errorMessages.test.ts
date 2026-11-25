@@ -10,9 +10,6 @@ import { api } from "@/lib/api"
 import { server } from "@/test/msw/server"
 import "@/i18n"
 
-// api.ts reads these messages from the i18next singleton that "@/i18n" initializes,
-// with no hardcoded English fallback: the English text lives in en/common.json only.
-
 afterEach(() => {
   sessionStorage.clear()
 })
@@ -26,8 +23,6 @@ describe("api error messages", () => {
       }))
     )
 
-    // Recovery navigation is attempted first and only throws once it is blocked;
-    // the guard key is what a second attempt in the same tab would find.
     sessionStorage.setItem("qui_sso_recovery_attempted", "1")
 
     await expect(api.getInstances()).rejects.toThrow(

@@ -14,8 +14,6 @@ export function setupPWAAutoUpdate(): void {
   if (hasRegistered || isDemo) return
   hasRegistered = true
 
-  // A stale page asks for lazy chunks that the new build no longer has. The reload loads the new build.
-  // Offline, the Peers tab flag CSS also fails (not precached), and a reload there would loop.
   window.addEventListener("vite:preloadError", () => {
     if (navigator.onLine) window.location.reload()
   })
@@ -121,7 +119,6 @@ export function setupPWAAutoUpdate(): void {
         console.error("Service worker registration failed", error)
       })
 
-      // A phone PWA resumes from the background without a navigation, so the browser never checks for a new sw.js.
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState !== "visible") return
         wb.update().catch((error) => {

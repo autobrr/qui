@@ -14,17 +14,14 @@ import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { IndexerCooldownStatus, SchedulerTaskStatus } from "@/types"
 
-// The queue can hold hundreds of tasks. The list shows the first ones and a count of the rest.
 const QUEUE_SHOWN = 10
 
 type ActivityItem =
   | { kind: "running" | "queued"; task: SchedulerTaskStatus }
   | { kind: "cooldown"; cooldown: IndexerCooldownStatus }
 
-/** What the search scheduler does now: the running and queued searches, and the indexers in a rate limit. */
 export function IndexerActivityPanel() {
   const { t } = useTranslation("settings")
-  // The "indexer.activity" events of the stream refresh the query, so it needs no polling.
   useActivityStream(true)
   const query = useQuery({
     queryKey: ["indexer-activity"],
@@ -37,7 +34,6 @@ export function IndexerActivityPanel() {
   const items: ActivityItem[] = [
     ...(scheduler?.inFlightTasks ?? []).map((task) => ({ kind: "running" as const, task })),
     ...(query.data?.cooldownIndexers ?? []).map((cooldown) => ({ kind: "cooldown" as const, cooldown })),
-    // Last, so the count of the hidden queue sits right under the queue.
     ...queued.slice(0, QUEUE_SHOWN).map((task) => ({ kind: "queued" as const, task })),
   ]
 
@@ -63,7 +59,6 @@ export function IndexerActivityPanel() {
         : { tone: "off", label: t("indexers.activity.queued") },
       meta: [
         priorityLabel(task.priority),
-        // An RSS task usually has the RSS priority too. The label then shows once.
         ...(task.isRss && task.priority !== "rss" ? [t("indexers.priorityLabels.rss")] : []),
         formatRelativeTime(new Date(task.createdAt)),
       ],

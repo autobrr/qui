@@ -49,12 +49,10 @@ type notificationTestRequest struct {
 
 const maxNotificationBodySize = 1 << 20
 
-// ListEvents handles GET /api/notifications/events
 func (h *NotificationsHandler) ListEvents(w http.ResponseWriter, _ *http.Request) {
 	RespondJSON(w, http.StatusOK, notifications.EventDefinitions())
 }
 
-// ListTargets handles GET /api/notifications/targets
 func (h *NotificationsHandler) ListTargets(w http.ResponseWriter, r *http.Request) {
 	if h.store == nil {
 		RespondError(w, http.StatusInternalServerError, "notification store unavailable")
@@ -84,7 +82,6 @@ func notificationURLScheme(rawURL string) string {
 	return parsed.Scheme + "://"
 }
 
-// CreateTarget handles POST /api/notifications/targets
 func (h *NotificationsHandler) CreateTarget(w http.ResponseWriter, r *http.Request) {
 	if h.store == nil {
 		RespondError(w, http.StatusInternalServerError, "notification store unavailable")
@@ -150,7 +147,6 @@ func (h *NotificationsHandler) CreateTarget(w http.ResponseWriter, r *http.Reque
 	RespondJSON(w, http.StatusCreated, created)
 }
 
-// UpdateTarget handles PUT /api/notifications/targets/{id}
 func (h *NotificationsHandler) UpdateTarget(w http.ResponseWriter, r *http.Request) {
 	if h.store == nil {
 		RespondError(w, http.StatusInternalServerError, "notification store unavailable")
@@ -237,7 +233,6 @@ func (h *NotificationsHandler) UpdateTarget(w http.ResponseWriter, r *http.Reque
 	RespondJSON(w, http.StatusOK, updated)
 }
 
-// DeleteTarget handles DELETE /api/notifications/targets/{id}
 func (h *NotificationsHandler) DeleteTarget(w http.ResponseWriter, r *http.Request) {
 	if h.store == nil {
 		RespondError(w, http.StatusInternalServerError, "notification store unavailable")
@@ -274,7 +269,6 @@ func validateNotificationURL(ctx context.Context, url string) error {
 	return nil
 }
 
-// TestTarget handles POST /api/notifications/targets/{id}/test
 func (h *NotificationsHandler) TestTarget(w http.ResponseWriter, r *http.Request) {
 	if h.store == nil || h.service == nil {
 		RespondError(w, http.StatusInternalServerError, "notification service unavailable")
@@ -318,7 +312,6 @@ func (h *NotificationsHandler) TestTarget(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := h.service.SendTest(r.Context(), target, title, message); err != nil {
-		// Redact: shoutrrr errors embed the post URL, which carries the webhook token
 		log.Error().Str("error", redact.String(err.Error())).Str("target", target.Name).Msg("notifications: test send failed")
 		RespondError(w, http.StatusBadGateway, "failed to send test notification")
 		return

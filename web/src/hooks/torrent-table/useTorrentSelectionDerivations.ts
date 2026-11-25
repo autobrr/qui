@@ -14,12 +14,9 @@ export interface UseTorrentSelectionDerivationsParams {
   selection: TorrentSelectionState
   getSelectionIdentity: (torrent: Torrent) => string
   getVisibleRows: () => SelectionRow[]
-  /** Every loaded row, the hidden copies of a Copy group included. */
   sortedTorrents: Torrent[]
-  /** The list holds Copy groups: the Action target then reads every loaded row, not the row model. */
   isGrouped?: boolean
   columnFiltersExpr: string | null
-  // True when the table, not the backend, applies the column filters (cross-seed mode).
   clientSideFiltering?: boolean
   filters: TorrentFilters
   search: string
@@ -30,10 +27,6 @@ export interface UseTorrentSelectionDerivationsParams {
   instanceIds?: number[]
 }
 
-/**
- * Derives the Action target of the desktop table (ADR 0034) and the sizes that
- * the status bar shows, and the size facts that the delete dialog needs.
- */
 export function useTorrentSelectionDerivations({
   selection,
   getSelectionIdentity,
@@ -50,7 +43,6 @@ export function useTorrentSelectionDerivations({
   instanceId,
   instanceIds,
 }: UseTorrentSelectionDerivationsParams) {
-  // Read the latest row accessor without making it a memo dependency.
   const getVisibleRowsRef = useRef(getVisibleRows)
   getVisibleRowsRef.current = getVisibleRows
 
@@ -59,14 +51,9 @@ export function useTorrentSelectionDerivations({
   const actionTarget = useMemo(() => {
     const { isAllSelected, selected } = selection
     if (!isAllSelected && selected.size === 0) {
-      // A stable result for the steady state: sortedTorrents is a fresh array on
-      // every stream tick, and row and menu memoization compares this reference.
       tickedTorrentsRef.current.clear()
       return EMPTY_ACTION_TARGET
     }
-    // On a flat list the table's row model, not sortedTorrents: in cross-seed mode
-    // the column filter applies client-side, and select-all is the visible set (#1925).
-    // A grouped list never filters in the browser, and its row model leaves out the hidden copies.
     const loaded = isGrouped ? sortedTorrents : getVisibleRowsRef.current().map(row => row.original)
     const ticked = isAllSelected ? [] : rememberTickedTorrents(tickedTorrentsRef.current, selected, loaded, getSelectionIdentity)
     const scope: ActionTargetScope = {
@@ -81,7 +68,6 @@ export function useTorrentSelectionDerivations({
   }, [selection, sortedTorrents, isGrouped, columnFiltersExpr, clientSideFiltering, filters, search, totalCount, isCrossInstanceEndpoint, instanceId, instanceIds, getSelectionIdentity])
 
   const { isAllSelected, excluded } = selection
-  // The table filters in the browser in cross-seed mode, so the total of the filter does not apply.
   const totalSize = isAllSelected && !clientSideFiltering ? stats?.totalSize ?? 0 : 0
   const excludedSize = useMemo(() => {
     if (!isAllSelected || clientSideFiltering || excluded.size === 0) {

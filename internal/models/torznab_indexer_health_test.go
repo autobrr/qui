@@ -14,13 +14,11 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// regression: #2714
 func TestTorznabIndexerHealthReadsLastMeasuredTime(t *testing.T) {
 	t.Parallel()
 	checkIndexerHealthLastMeasuredTime(t, testdb.NewMigratedSQLite(t, "torznab-indexer-health-timestamps"))
 }
 
-// regression: #2714
 func TestTorznabIndexerHealthReadsLastMeasuredTimePostgresIntegration(t *testing.T) {
 	t.Parallel()
 	checkIndexerHealthLastMeasuredTime(t, testdb.NewMigratedPostgres(t, "torznab-indexer-health-timestamps"))
@@ -38,7 +36,6 @@ func checkIndexerHealthLastMeasuredTime(t *testing.T, db *database.DB) {
 	require.NoError(t, err)
 
 	measuredAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
-	// One row in the form that the database clock writes, and one bound time.
 	for operation, value := range map[string]any{"caps": measuredAt.Format(time.DateTime), "search": measuredAt} {
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO torznab_indexer_latency (indexer_id, operation_type, latency_ms, success, measured_at)

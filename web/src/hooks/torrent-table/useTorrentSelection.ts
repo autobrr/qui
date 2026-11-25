@@ -16,28 +16,18 @@ import type { CopyGroupExpansion } from "@/lib/copy-groups"
 import type { Torrent } from "@/types"
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react"
 
-// Minimal structural shape of a TanStack row that the selection logic reads.
 export interface SelectionRow {
   id: string
   original: Torrent
 }
 
 export interface UseTorrentSelectionParams {
-  /** The rows that the table shows. The header checkbox reads them. */
   visibleTorrents: Torrent[]
-  /** The open Copy groups. A change moves the rows, so it clears the Shift-select anchor. */
   groupExpansion: CopyGroupExpansion
-  /** True when the rows are grouped. The switch and the end of Grouping… change it, and the rows move, so it clears the Shift-select anchor. */
   groupedRows: boolean
   isReadOnly: boolean
   isCrossInstanceEndpoint?: boolean
   instanceId: number
-  /**
-   * Lazily returns the currently visible table rows. Passed as a callback
-   * because the table is created *after* this hook (it consumes the hook's
-   * handlers via createColumns), so the latest reference is read inside
-   * handlers rather than captured at call time.
-   */
   getVisibleRows: () => SelectionRow[]
 }
 
@@ -60,11 +50,6 @@ export interface TorrentSelection {
   handleCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
 }
 
-/**
- * The desktop table's view of the shared selection: it sends the table's
- * events to the selection provider, ignores them in read-only mode, and keeps
- * the shift-click anchor, which depends on row order.
- */
 export function useTorrentSelection({
   visibleTorrents,
   groupExpansion,
@@ -77,15 +62,12 @@ export function useTorrentSelection({
   const { selection, dispatch } = useTorrentSelectionContext()
   const hasSelection = selectionIsActive(selection)
 
-  // State for range select capabilities for checkboxes
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
 
-  // Always read the latest row accessor (the table is created after this hook).
   const getVisibleRowsRef = useRef(getVisibleRows)
   getVisibleRowsRef.current = getVisibleRows
 
-  // Escape and finished deletes clear the selection from outside the table.
   useEffect(() => {
     if (!hasSelection) {
       lastSelectedIndexRef.current = null

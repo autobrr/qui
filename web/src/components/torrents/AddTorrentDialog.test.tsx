@@ -26,7 +26,6 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }))
 
 beforeEach(() => {
-  // jsdom has no layout, so it lacks scrollIntoView, which opening "More options" calls.
   Element.prototype.scrollIntoView = vi.fn()
 })
 
@@ -47,11 +46,9 @@ const preferences = {
 
 const magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
 
-// Mounts the dialog with no metadata yet, the way the /add magnet handler route does.
 function renderColdDialog() {
   vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
   vi.mocked(api.addTorrent).mockResolvedValue({ added: 1, failed: 0, message: "" })
-  // The test resolves the preferences itself.
   vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
@@ -94,7 +91,6 @@ it("seeds the option defaults from preferences that resolve after a cold mount",
     autoTMM: false,
     savePath: "/data/complete",
     contentLayout: "Subfolder",
-    // The late seed must leave the magnet the route injected alone.
     urls: [magnet],
   })
 })
@@ -103,7 +99,6 @@ it("keeps a change made before preferences resolve", async () => {
   const ui = renderColdDialog()
   ui.openMoreOptions()
 
-  // Cold mount falls back to autoTMM on; the user turns it off before preferences land.
   const toggle = await waitFor(() => ui.getByLabelText("addTorrentDialog.options.autoTmm"))
   expect(toggle.getAttribute("aria-checked")).toBe("true")
   fireEvent.click(toggle)
@@ -122,7 +117,6 @@ it("applies the defaults that the fetch on open returns, after a dropped magnet"
   let resolveView: (fields: PreferenceField[]) => void = () => {}
   vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(resolve => { resolveView = resolve }) as never)
 
-  // Another screen filled the cache before a default changed in qBittorrent.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
   client.setQueryData(["instance-preferences", 1], preferences)
   const dialog = (open: boolean, dropPayload: AddTorrentDropPayload | null) => (
@@ -134,7 +128,6 @@ it("applies the defaults that the fetch on open returns, after a dropped magnet"
   )
 
   const ui = render(dialog(false, null))
-  // The dropped magnet touches the form before the fetch answers.
   ui.rerender(dialog(true, { type: "url", urls: [magnet] }))
   await waitFor(() => expect(api.getInstancePreferenceView).toHaveBeenCalled())
   resolveView([{ key: "auto_tmm_enabled", value: false }, { key: "save_path", value: "/data/changed" }] as PreferenceField[])
@@ -154,12 +147,10 @@ it("sends the category and tags picked in the pickers, a new tag included", asyn
   const categoryTrigger = ui.getByRole("combobox", { name: "addTorrentDialog.options.category" })
   fireEvent.click(categoryTrigger)
   fireEvent.click(await waitFor(() => ui.getByRole("option", { name: /tv\/x265/ })))
-  // The closed popover hands focus back to its trigger; let it settle before the next picker opens.
   await waitFor(() => expect(document.activeElement).toBe(categoryTrigger))
 
   fireEvent.click(ui.getByRole("button", { name: /addTorrentDialog\.options\.addTags/ }))
   const options = await waitFor(() => ui.getAllByRole("option"))
-  // A numeric sort keeps batch-2 ahead of batch-10.
   expect(options.map(option => option.textContent)).toEqual(["batch-2", "batch-10"])
   fireEvent.click(options[1])
   fireEvent.change(ui.getByPlaceholderText("addTorrentDialog.options.tagsPlaceholder"), { target: { value: "fresh" } })
@@ -180,16 +171,13 @@ it("picks the matching tag on Enter and adds typed names and comma lists", async
 
   fireEvent.click(ui.getByRole("button", { name: /addTorrentDialog\.options\.addTags/ }))
   const search = await waitFor(() => ui.getByPlaceholderText("addTorrentDialog.options.tagsPlaceholder"))
-  // A partial match must not turn into a new tag "aut".
   fireEvent.change(search, { target: { value: "aut" } })
   await waitFor(() => expect(ui.getByRole("option", { name: "autobrr" }).getAttribute("aria-selected")).toBe("true"))
   fireEvent.keyDown(search, { key: "Enter" })
-  // A list of tags that all exist still adds them, each once.
   fireEvent.change(search, { target: { value: "radarr, sonarr ,sonarr" } })
   fireEvent.keyDown(search, { key: "Enter" })
   fireEvent.change(search, { target: { value: "fresh" } })
   fireEvent.keyDown(search, { key: "Enter" })
-  // Return with search text only adds; it never removes a tag that is already picked.
   fireEvent.change(search, { target: { value: "auto" } })
   await waitFor(() => expect(ui.getByRole("option", { name: /^autobrr/ }).getAttribute("aria-selected")).toBe("true"))
   fireEvent.keyDown(search, { key: "Enter" })
@@ -209,7 +197,6 @@ it("presses a focused button on Enter instead of the highlighted tag", async () 
   await waitFor(() => expect(ui.getByRole("option", { name: /rule-1/ }).getAttribute("aria-selected")).toBe("true"))
   const createButton = ui.getByRole("button", { name: "addTorrentDialog.options.createTag" })
   createButton.focus()
-  // The browser turns Enter on a focused button into a click; jsdom does not, so send both.
   fireEvent.keyDown(createButton, { key: "Enter" })
   fireEvent.click(createButton)
 
@@ -227,7 +214,6 @@ it("adds the tag picked with the arrow keys and Enter", async () => {
   fireEvent.keyDown(search, { key: "ArrowDown" })
   await waitFor(() => expect(ui.getByRole("option", { name: "radarr" }).getAttribute("aria-selected")).toBe("true"))
   fireEvent.keyDown(search, { key: "Enter" })
-  // Screen readers hear the picked state, which cmdk's aria-selected does not carry.
   expect(ui.getByRole("option", { name: /^radarr\s*addTorrentDialog\.options\.selectedState$/ })).toBeTruthy()
 
   fireEvent.click(ui.getByRole("button", { name: "addTorrentDialog.footer.add" }))
@@ -244,7 +230,6 @@ it("ignores Return on an empty tag search and matches every word of a category s
 
   fireEvent.click(ui.getByRole("button", { name: /addTorrentDialog\.options\.addTags/ }))
   const search = await waitFor(() => ui.getByPlaceholderText("addTorrentDialog.options.tagsPlaceholder"))
-  // A second Return after a pick must not toggle the top row.
   fireEvent.keyDown(search, { key: "Enter" })
   fireEvent.keyDown(search, { key: "Escape" })
 
@@ -264,7 +249,6 @@ it("ignores Return on an empty tag search and matches every word of a category s
   expect(sent.category).toBe("tv/x265")
 })
 
-// regression: #4129
 it("leaves Return alone while an input method composes text", async () => {
   metadataResult.data = { categories: {}, tags: ["autobrr"] }
   const ui = renderColdDialog()
@@ -272,7 +256,6 @@ it("leaves Return alone while an input method composes text", async () => {
   fireEvent.click(ui.getByRole("button", { name: /addTorrentDialog\.options\.addTags/ }))
   const search = await waitFor(() => ui.getByPlaceholderText("addTorrentDialog.options.tagsPlaceholder"))
   fireEvent.change(search, { target: { value: "にほん" } })
-  // This Return confirms the composed text; it must not add the tag yet.
   fireEvent.keyDown(search, { key: "Enter", isComposing: true })
 
   fireEvent.click(ui.getByRole("button", { name: "addTorrentDialog.footer.add" }))
@@ -280,7 +263,6 @@ it("leaves Return alone while an input method composes text", async () => {
   expect(vi.mocked(api.addTorrent).mock.calls[0][1].tags).toBeUndefined()
 })
 
-// regression: #4129
 it("keeps a tag picked with the arrow keys when Return is pressed again", async () => {
   metadataResult.data = { categories: {}, tags: ["autobrr"] }
   const ui = renderColdDialog()

@@ -15,8 +15,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// benchTorrents builds a library that looks like a real one: long dotted release
-// names, mixed case, several categories, multi-tag strings and a spread of states.
 func benchTorrents(count int) []qbt.Torrent {
 	rng := rand.New(rand.NewPCG(1, 2))
 
@@ -26,8 +24,6 @@ func benchTorrents(count int) []qbt.Torrent {
 		qbt.TorrentStateError, qbt.TorrentStateQueuedUp,
 	}
 	categories := []string{"", "movies", "tv", "music", "tv/anime", "books"}
-	// One category bucket plus 3.8 tag buckets on average, close to the 4.7
-	// buckets per torrent a real 5630-torrent library carries.
 	tagSets := []string{
 		"cross-seed, permaseed, hardlinked",
 		"cross-seed, unregistered, permaseed, hardlinked, autobrr",
@@ -48,10 +44,6 @@ func benchTorrents(count int) []qbt.Torrent {
 		name := fmt.Sprintf("Some.Release.Title.%d.S%02dE%02d.2160p.WEB-DL.DDP5.1.HDR.H.265-%s",
 			i, i%12+1, i%24+1, groups[i%len(groups)])
 		hash := fmt.Sprintf("%040x", rng.Uint64())
-		// 3 of 10 torrents sit on a content path another torrent also claims, in
-		// groups of 3, close to the 28% measured on an instance that cross-seeds
-		// by hardlink. Regular cross-seed mode reuses the matched path and pushes
-		// that share much higher; the counts pass stays faster there too.
 		contentName := name
 		if i%10 < 3 {
 			contentName = fmt.Sprintf("Some.Release.Title.%d.Shared.Content", i-i%10)
@@ -79,8 +71,6 @@ func benchTorrents(count int) []qbt.Torrent {
 			Priority:          int64(i % 20),
 			Tracker:           trackers[i%len(trackers)],
 		}
-		// Roughly a third of the library carries hydrated tracker data, so the
-		// tracker-health checks are exercised instead of short-circuiting.
 		switch i % 9 {
 		case 0:
 			torrents[i].Trackers = []qbt.TorrentTracker{
@@ -97,15 +87,10 @@ func benchTorrents(count int) []qbt.Torrent {
 			}
 		}
 	}
-	// Shuffle so no sort key arrives pre-ordered. Production input is usually
-	// partially ordered (qBittorrent sorts before qui re-sorts), so this is the
-	// pessimistic end of the range, not the typical one.
 	rng.Shuffle(len(torrents), func(i, j int) { torrents[i], torrents[j] = torrents[j], torrents[i] })
 	return torrents
 }
 
-// benchTrackerHealth builds the snapshot that a refresh stores for these
-// torrents, so the state sort reads real verdicts.
 func benchTrackerHealth(torrents []qbt.Torrent) *TrackerHealthSnapshot {
 	now := time.Now()
 	byHash := make(map[string]TrackerHealth)
@@ -126,14 +111,11 @@ func benchSilence(b *testing.B) {
 
 const benchSize = 10000
 
-// --- search ---------------------------------------------------------------
-
 func BenchmarkHotSearch(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
 	refs := torrentRefs(benchTorrents(benchSize))
 
-	// "hit" matches on the cheap exact path, "miss" walks every fallback tier.
 	for _, tc := range []struct{ name, search string }{
 		{"hit", "s01e01"},
 		{"miss", "zzzzz nothing here"},
@@ -153,8 +135,6 @@ func BenchmarkNormalizeForSearch(b *testing.B) {
 		_ = normalizeForSearch(name)
 	}
 }
-
-// --- list rules -----------------------------------------------------------
 
 func BenchmarkHotListRules(b *testing.B) {
 	benchSilence(b)
@@ -177,8 +157,6 @@ func BenchmarkHotListRules(b *testing.B) {
 	}
 }
 
-// --- counts and stats -----------------------------------------------------
-
 func BenchmarkHotCounts(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
@@ -189,8 +167,6 @@ func BenchmarkHotCounts(b *testing.B) {
 	}
 }
 
-// BenchmarkHotCountsWithTrackers exercises the tracker-domain half of the counts
-// path, which BenchmarkHotCounts skips because it passes a nil client.
 func BenchmarkHotCountsWithTrackers(b *testing.B) {
 	benchSilence(b)
 	torrents := benchTorrents(benchSize)
@@ -204,9 +180,6 @@ func BenchmarkHotCountsWithTrackers(b *testing.B) {
 			mapping.DomainToHashes[domain] = make(map[string]struct{})
 		}
 		mapping.DomainToHashes[domain][hash] = struct{}{}
-		// Production mappings carry one entry per hash here. The counts path reads
-		// only DomainToHashes, so this half must stay filled for the benchmark to
-		// catch a caller that goes back to copying the whole mapping.
 		mapping.HashToDomains[hash] = map[string]struct{}{domain: {}}
 	}
 
@@ -229,12 +202,6 @@ func BenchmarkHotStats(b *testing.B) {
 	}
 }
 
-// --- response encoding ----------------------------------------------------
-
-// BenchmarkHotResponseEncode measures a full page response through the same
-// streaming encoder RespondJSON uses. A custom MarshalJSON on any type in here
-// makes encoding/json build the whole body and then rescan every byte of it to
-// compact the result, which costs more than the counts pass.
 func BenchmarkHotResponseEncode(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
@@ -263,8 +230,6 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 		}
 	}
 }
-
-// --- sorting --------------------------------------------------------------
 
 func BenchmarkHotSort(b *testing.B) {
 	benchSilence(b)
@@ -295,8 +260,6 @@ func BenchmarkHotSort(b *testing.B) {
 	}
 }
 
-// --- unified (cross-instance) tab -----------------------------------------
-
 func benchCrossInstanceViews(count int) []CrossInstanceTorrentView {
 	torrents := benchTorrents(count)
 	views := make([]CrossInstanceTorrentView, count)
@@ -313,8 +276,6 @@ func benchCrossInstanceViews(count int) []CrossInstanceTorrentView {
 
 func BenchmarkHotSortCrossInstance(b *testing.B) {
 	benchSilence(b)
-	// benchTorrents is deterministic, so this snapshot holds the hashes of the
-	// views. Each instance gets all of them, and a lookup finds its own rows.
 	health := benchTrackerHealth(benchTorrents(benchSize))
 	sm := &SyncManager{trackerHealthCache: map[int]*TrackerHealthSnapshot{0: health, 1: health, 2: health}}
 	src := benchCrossInstanceViews(benchSize)
@@ -332,11 +293,6 @@ func BenchmarkHotSortCrossInstance(b *testing.B) {
 	}
 }
 
-// --- filtered list --------------------------------------------------------
-
-// BenchmarkFilteredList sends one filtered page of 300 rows through
-// ListTorrents, with the counts cached and the cached read, as a
-// stream tick between syncs does.
 func BenchmarkFilteredList(b *testing.B) {
 	benchSilence(b)
 	for _, size := range []int{5600, 50000} {
@@ -348,7 +304,6 @@ func BenchmarkFilteredList(b *testing.B) {
 			return []qbt.TorrentTracker{{Url: torrents[i].Tracker, Status: qbt.TrackerStatusOK}}
 		})
 		sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
-		// The health pass stores the tracker mapping. Without one, the counts cache stays off.
 		sm.refreshTrackerHealthCounts(b.Context(), 1)
 		if !sm.hasTrackerMapping(1) {
 			b.Fatal("no tracker mapping")

@@ -22,7 +22,6 @@ function flushRaf() {
   pending.forEach(cb => cb(0))
 }
 
-// jsdom does no layout, so give the container a list that is taller than the screen
 function makeContainer(size = { scrollHeight: 1000, clientHeight: 400 }) {
   const el = document.createElement("div")
   Object.defineProperty(el, "scrollHeight", { get: () => size.scrollHeight })
@@ -77,7 +76,6 @@ describe("useMobileScroll", () => {
     act(() => scrollTo(container, 600))
     expect(result.current.isFooterVisible).toBe(false)
 
-    // The footer padding goes away, so the browser clamps scrollTop to the new bottom
     size.scrollHeight = 808
     act(() => scrollTo(container, 408))
     expect(result.current.isFooterVisible).toBe(false)
@@ -133,8 +131,6 @@ describe("useMobileScroll", () => {
       )
     }
 
-    // Old list mounts, new list mounts beside it, then the old one unmounts —
-    // the route-transition interleaving where cleanup runs after the takeover.
     const { rerender } = render(<Harness phase={0} />)
     rerender(<Harness phase={1} />)
     rerender(<Harness phase={2} />)

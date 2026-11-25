@@ -8,14 +8,12 @@ import { createContext, useContext } from "react"
 export const databaseShrinkQueryKey = ["database-shrink"]
 
 export interface DatabaseShrinkContextValue {
-  /** Stores the "shrink pending" mark and restarts qui, or tells the user that the shrink waits for the next start. */
   requestShrink: () => Promise<void>
   pending: boolean
 }
 
 export const DatabaseShrinkContext = createContext<DatabaseShrinkContextValue | null>(null)
 
-/** The shrink request of DatabaseShrinkProvider in the app layout. */
 export function useDatabaseShrink(): DatabaseShrinkContextValue {
   const value = useContext(DatabaseShrinkContext)
   if (!value) {

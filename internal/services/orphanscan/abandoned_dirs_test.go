@@ -69,7 +69,6 @@ func TestAbandonedDirs_SkipsReadsForKnownKeptFiles(t *testing.T) {
 	}
 }
 
-// mkdirs creates each relative directory under root and returns root.
 func mkdirs(t *testing.T, root string, rel ...string) string {
 	t.Helper()
 	for _, r := range rel {
@@ -90,8 +89,6 @@ func writeFile(t *testing.T, path string) {
 	}
 }
 
-// abandonedPaths runs a walk over root and returns the directories the
-// abandoned-directory pass would remove.
 func abandonedPaths(t *testing.T, root string, categoryPaths []string, ignorePaths []string) []string {
 	t.Helper()
 
@@ -131,8 +128,6 @@ func TestAbandonedDirs_EmptyTreeIsRemovedDeepestFirst(t *testing.T) {
 		t.Fatalf("abandoned dirs = %v, want %v", sorted, want)
 	}
 
-	// Order is the contract deletion relies on: a directory is always listed
-	// before the one that contains it, so each is empty when its turn comes.
 	for i, dir := range got {
 		for _, earlier := range got[:i] {
 			if isPathUnderNormalized(fsops.HostPaths, fsops.NormalizePath(fsops.HostPaths, dir), fsops.NormalizePath(fsops.HostPaths, earlier)) {
@@ -146,7 +141,6 @@ func TestAbandonedDirs_DirectoryHoldingOnlyOrphansIsRemoved(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	// Nothing owns payload.mkv, so deleting it empties both directories above.
 	writeFile(t, filepath.Join(root, "show", "season", "payload.mkv"))
 	mkdirs(t, root, "gone")
 
@@ -191,21 +185,15 @@ func TestAbandonedDirs_DirectoryHoldingAKeptFileIsKept(t *testing.T) {
 	}
 }
 
-// TestAbandonedDirs_DiscUnitInternalsFollowTheUnit covers an empty directory
-// inside a disc layout. When the unit is deleted the file pass takes the whole
-// tree, so the directory is not listed on its own. When a torrent owns part of
-// the layout the unit stays, and the empty directory is a plain candidate, in
-// whichever order the walk met the owned and the orphan file.
 func TestAbandonedDirs_DiscUnitInternalsFollowTheUnit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name       string
-		owned      string // relative to Feature/BDMV; "" means the whole layout is orphaned
+		owned      string
 		wantBackup bool
 	}{
 		{name: "whole layout orphaned", owned: "", wantBackup: false},
-		// Lexical walk order: BACKUP/, STREAM/00001.m2ts, index.bdmv.
 		{name: "owned file met after the orphan", owned: "index.bdmv", wantBackup: true},
 		{name: "owned file met before the orphan", owned: filepath.Join("STREAM", "00001.m2ts"), wantBackup: true},
 	}
@@ -250,9 +238,6 @@ func TestAbandonedDirs_DiscUnitInternalsFollowTheUnit(t *testing.T) {
 	}
 }
 
-// TestAbandonedDirs_NestedScanRootIsNeverRemoved covers a scan root that sits
-// inside another root's walk. It holds only orphans, so nothing but the root
-// check keeps it off the preview.
 func TestAbandonedDirs_NestedScanRootIsNeverRemoved(t *testing.T) {
 	t.Parallel()
 
@@ -272,10 +257,6 @@ func TestAbandonedDirs_NestedScanRootIsNeverRemoved(t *testing.T) {
 	}
 }
 
-// TestAbandonedDirs_CaseTwinOfADeletedOrphanStillBlocks covers a symlink whose
-// name differs only by case from an orphan in the same directory. The walk skips
-// symlinks, so only childrenAllKept sees it, and it must not pass for the
-// orphan. Needs a case-sensitive filesystem.
 func TestAbandonedDirs_CaseTwinOfADeletedOrphanStillBlocks(t *testing.T) {
 	t.Parallel()
 
@@ -322,9 +303,6 @@ func TestAbandonedDirs_CategoryDestinationsAreProtected(t *testing.T) {
 
 	got := abandonedPaths(t, root, []string{category}, nil)
 
-	// The category folder itself stays. So does anything above it, and the
-	// staging directory inside it is fair game only because it is not the
-	// destination qBittorrent writes to.
 	if slices.Contains(got, category) {
 		t.Fatalf("category destination %q must not be removed: %v", category, got)
 	}
@@ -379,9 +357,6 @@ func TestAbandonedDirs_GracePeriodHoldsFreshDirectories(t *testing.T) {
 	}
 }
 
-// qBittorrent downloads into the download path and each category's download
-// folder again, so the abandoned-directory pass protects them, but they are not
-// scan roots. The category save folders are both.
 func TestDeclaredScanRoots_ProtectsTheDownloadFolders(t *testing.T) {
 	t.Parallel()
 
@@ -424,10 +399,6 @@ func TestDeclaredScanRoots_ProtectsTheDownloadFolders(t *testing.T) {
 	}
 }
 
-// TestAbandonedDirs_DirectoryHoldingASymlinkIsKept covers the promise that a
-// directory is only removed when everything in it is also going. The walk skips
-// symlinks, so a directory holding nothing else looks file-free; childrenAllKept
-// is what stops it being reported.
 func TestAbandonedDirs_DirectoryHoldingASymlinkIsKept(t *testing.T) {
 	t.Parallel()
 

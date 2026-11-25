@@ -23,7 +23,6 @@ export type IndexerSaveRequest =
 interface IndexerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** The indexer to edit, or null for a new one. */
   indexer: TorznabIndexer | null
   pending: boolean
   error?: string
@@ -49,7 +48,6 @@ interface FormValues {
 type FieldName = "name" | "baseUrl" | "indexerId" | "apiKey" | "basicUsername" | "basicPassword" | "priority" | "timeout"
 type FormErrors = Partial<Record<FieldName, string>>
 
-// The order in which a failed save puts focus on a field.
 const FIELD_ORDER: readonly FieldName[] = ["name", "indexerId", "baseUrl", "apiKey", "priority", "timeout", "basicUsername", "basicPassword"]
 
 function initialValues(indexer: TorznabIndexer | null): FormValues {
@@ -62,7 +60,6 @@ function initialValues(indexer: TorznabIndexer | null): FormValues {
     backend: indexer.backend,
     baseUrl: indexer.base_url,
     indexerId: indexer.indexer_id,
-    // The server never returns the API key.
     apiKey: "",
     basicAuth,
     basicUsername: indexer.basic_username ?? "",
@@ -84,7 +81,6 @@ function isAbsoluteUrl(value: string) {
   }
 }
 
-/** The form to add or edit one Torznab indexer. */
 export function IndexerDialog({ open, onOpenChange, indexer, pending, error, onSave }: IndexerDialogProps) {
   const { t } = useTranslation("settings")
   const [values, setValues] = useState(() => initialValues(indexer))
@@ -161,7 +157,6 @@ export function IndexerDialog({ open, onOpenChange, indexer, pending, error, onS
       data.basic_username = basicUsername
       if (values.basicPassword !== REDACTED) data.basic_password = values.basicPassword
     } else {
-      // Empty values clear the stored basic auth.
       data.basic_username = ""
       data.basic_password = ""
     }
@@ -253,7 +248,6 @@ export function IndexerDialog({ open, onOpenChange, indexer, pending, error, onS
         help={t("indexers.dialog.labels.basicAuthDescription")}
         checked={values.basicAuth}
         onCheckedChange={(basicAuth) => {
-          // Turning it off throws the credentials away, so turning it on again asks for both.
           update(basicAuth ? { basicAuth } : { basicAuth, basicUsername: "", basicPassword: "" })
           setErrors((prev) => ({ ...prev, basicUsername: undefined, basicPassword: undefined }))
         }}
@@ -281,7 +275,6 @@ export function IndexerDialog({ open, onOpenChange, indexer, pending, error, onS
               value: indexer.capabilities?.length ? indexer.capabilities.join(", ") : t("indexers.table.noCapabilities"),
               mono: Boolean(indexer.capabilities?.length),
             },
-            // The list shows two lines of the last test error. The editor shows all of it.
             ...(indexer.last_test_status === "error" && indexer.last_test_error
               ? [{ label: t("indexers.toast.testFailed"), value: indexer.last_test_error, mono: true, copy: indexer.last_test_error }]
               : []),

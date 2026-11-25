@@ -29,7 +29,6 @@ const (
 	maxIconBytes     = 1 << 20
 	fetchTimeout     = 15 * time.Second
 
-	// The same waits as tracker icons: doubled after each failure, capped.
 	baseFailureCooldown = 30 * time.Minute
 	maxFailureCooldown  = 24 * time.Hour
 )
@@ -65,9 +64,8 @@ func NewService(dataDir, userAgent string, icons []Icon) (*Service, error) {
 	s := &Service{
 		dir: dir,
 		client: &http.Client{
-			Timeout:   fetchTimeout,
-			Transport: transport,
-			// The URLs are pinned raw files; a redirect is a failure.
+			Timeout:       fetchTimeout,
+			Transport:     transport,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 		ua:       userAgent,
@@ -102,7 +100,6 @@ func (s *Service) GetIcon(ctx context.Context, name string) ([]byte, string, err
 		if !s.fetchEnabled.Load() {
 			return nil, "", errNotFound
 		}
-		// Detached from the request, so one closed browser tab does not count as a failure.
 		select {
 		case res := <-s.group.DoChan(name, func() (any, error) { return s.fetch(context.WithoutCancel(ctx), icon) }):
 			if res.Err != nil {
@@ -120,8 +117,6 @@ func (s *Service) GetIcon(ctx context.Context, name string) ([]byte, string, err
 	return data, icon.ContentType, nil
 }
 
-// readVerified checks the hash on each read, so a file that someone put in
-// the directory by hand is never served.
 func (s *Service) readVerified(icon Icon) ([]byte, error) {
 	data, err := os.ReadFile(s.path(icon))
 	if err != nil {

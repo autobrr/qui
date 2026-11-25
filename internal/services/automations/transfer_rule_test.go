@@ -24,21 +24,14 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// transfers stands in for the Transfer module. It records each request.
 type transfers struct {
-	mu       sync.Mutex
-	started  []transfer.Request
-	previews []transfer.Request
-	// startErr is the answer of Start and Preview, by infohash.
-	startErr map[string]error
-	// previewErr is the answer of Preview alone, by infohash.
+	mu         sync.Mutex
+	started    []transfer.Request
+	previews   []transfer.Request
+	startErr   map[string]error
 	previewErr map[string]error
-	// preview is the answer of Preview, by infohash. Without one, Preview
-	// answers a Transfer of the torrent alone of 10 bytes, the way of the
-	// request or "sftp".
-	preview map[string]*transfer.Preview
-	// onStart runs at each Start, before Start reads its context.
-	onStart func()
+	preview    map[string]*transfer.Preview
+	onStart    func()
 }
 
 func (f *transfers) Start(ctx context.Context, req transfer.Request) (int64, error) {
@@ -85,8 +78,6 @@ func (f *transfers) hashes() []string {
 	return out
 }
 
-// transferRig is a source instance with torrents, a target instance, and a
-// fake Transfer module.
 func transferRig(t *testing.T, torrents string) (*Service, *database.DB, *transfers, []int) {
 	t.Helper()
 	svc, db, instanceIDs := newStubService(t, nil, newStubQbt(t, torrents), newStubQbt(t, `{}`))
@@ -124,9 +115,6 @@ func storedTransferActivities(t *testing.T, db *database.DB, instanceID int) []m
 	return out
 }
 
-// A rule with Transfer to Instance starts a Transfer of each torrent that it
-// matches, with the fields of the action and the save path rendered for the
-// torrent, and records each start.
 func TestTransferToInstanceStartsATransfer(t *testing.T) {
 	svc, db, runner, instanceIDs := transferRig(t, snapshotTorrent)
 	rule := transferRule(1, instanceIDs[1], models.TransferToInstanceAction{
@@ -156,9 +144,6 @@ const (
 	movingHash = "5555555555555555555555555555555555555555"
 )
 
-// precedenceTorrents holds a torrent that a rule moves, one that a rule
-// deletes, one that qBittorrent moves now, and one that only the Transfer
-// rule matches.
 func precedenceTorrents() string {
 	torrent := func(name, state string) string {
 		return `{"name":"` + name + `","state":"` + state + `","progress":1,"size":10,"tags":"","category":"","save_path":"/data","content_path":"/data/` + name + `"}`
@@ -169,9 +154,6 @@ func precedenceTorrents() string {
 		`,"` + stillHash + `":` + torrent("still", "stalledUP") + `}`
 }
 
-// Delete wins over Transfer in one run, and a Move in the same run, or one
-// that qBittorrent runs now, makes the Transfer wait for a later run. A dry
-// run lists the same Transfers.
 func TestTransferToInstanceLosesToDeleteAndWaitsForAMove(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		svc, _, runner, instanceIDs := transferRig(t, precedenceTorrents())
@@ -200,19 +182,13 @@ func TestTransferToInstanceLosesToDeleteAndWaitsForAMove(t *testing.T) {
 	}
 }
 
-// A Transfer can remove the torrent from the source before a queued Export to
-// another instance reads it. So the Transfer waits for a later run while that
-// instance does not have the torrent. An Export to the target of the Transfer
-// holds nothing back.
-// regression: #4242
 func TestTransferToInstanceWaitsForAnExportToAnotherInstance(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		exported      string
 		toTheSameSide bool
 		started       []string
-		// asked counts the questions to the module about what a Transfer takes along.
-		asked int
+		asked         int
 	}{
 		{name: "the Export is still to do", exported: `{}`, started: []string{}},
 		{name: "the other instance has the torrent", exported: snapshotTorrent, started: []string{runningHash}},
@@ -239,10 +215,6 @@ func TestTransferToInstanceWaitsForAnExportToAnotherInstance(t *testing.T) {
 	}
 }
 
-// A Transfer takes the cross-seeds of its torrent along. It waits, in a dry run
-// too, while the Export of another rule still has to bring one of them to
-// another instance.
-// regression: #4242
 func TestTransferToInstanceWaitsForTheExportOfACrossSeed(t *testing.T) {
 	crossSeed := `{"` + stoppedHash + `":{"name":"stopped","state":"stoppedUP","progress":1,"size":10}}`
 	for _, tc := range []struct {
@@ -250,9 +222,8 @@ func TestTransferToInstanceWaitsForTheExportOfACrossSeed(t *testing.T) {
 		exported string
 		alone    bool
 		refused  bool
-		// listed counts the activities of the Transfer in the dry run.
-		listed  int
-		started []string
+		listed   int
+		started  []string
 	}{
 		{name: "the Export of the cross-seed is still to do", exported: `{}`, started: []string{}},
 		{name: "the other instance has the cross-seed", exported: crossSeed, listed: 1, started: []string{runningHash}},
@@ -288,7 +259,6 @@ func TestTransferToInstanceWaitsForTheExportOfACrossSeed(t *testing.T) {
 	}
 }
 
-// exportsEnd ends each Export run at once, with no result.
 type exportsEnd struct{}
 
 func (exportsEnd) Export(context.Context, transfer.ExportRequest) (int64, <-chan transfer.ExportResult, error) {
@@ -297,9 +267,6 @@ func (exportsEnd) Export(context.Context, transfer.ExportRequest) (int64, <-chan
 	return 1, done, nil
 }
 
-// A dry run lists the Transfers that a live run starts, by target and way,
-// each with its size. A torrent that the Transfer of another torrent takes
-// along, as a cross-seed, shows once.
 func TestTransferToInstanceDryRunListsWayAndSize(t *testing.T) {
 	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	runner.preview = map[string]*transfer.Preview{
@@ -335,11 +302,6 @@ func TestTransferToInstanceDryRunListsWayAndSize(t *testing.T) {
 	}
 }
 
-// regression: #4242
-// Two torrents that share their files match two Transfer rules. The module
-// takes the whole group at the first Start, so the Transfer of the rule that
-// comes last in the rule order starts first, as one torrent follows the last
-// rule that matches it. Each run reads the torrents in a random order.
 func TestTransferToInstanceFollowsTheLastRuleForTorrentsThatShareFiles(t *testing.T) {
 	torrent := func(name string) string {
 		return `{"name":"` + name + `","state":"stalledUP","progress":1,"size":10,"tags":"","category":"","save_path":"/data","content_path":"/data/shared"}`
@@ -364,10 +326,6 @@ func TestTransferToInstanceFollowsTheLastRuleForTorrentsThatShareFiles(t *testin
 	}
 }
 
-// When the Transfer module refuses a Transfer, the rule records the reason
-// and asks again no sooner than an hour later. A torrent that a Transfer
-// holds, or whose last Transfer failed for good and waits for the user, gets
-// no new Transfer and no activity.
 func TestTransferToInstanceAsksAgainAnHourAfterARefusal(t *testing.T) {
 	svc, db, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	at := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
@@ -402,11 +360,6 @@ func TestTransferToInstanceAsksAgainAnHourAfterARefusal(t *testing.T) {
 	require.Len(t, storedTransferActivities(t, db, instanceIDs[0]), 2)
 }
 
-// regression: #4242
-// A rule matches both torrents of a set that reads one copy of the files
-// through hardlinks. A Transfer torrent leaves the second torrent on the
-// source, and the module refuses its Transfer with ErrStays. The rule records
-// nothing for it and sets no hold, and a dry run lists one Transfer of the set.
 func TestTransferToInstancePassesASetOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	svc, db, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
@@ -442,10 +395,6 @@ func TestTransferToInstancePassesASetOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	require.Equal(t, 1, listed, "the dry run lists one Transfer torrent for the set")
 }
 
-// regression: #4242
-// When qBittorrent moves a torrent of the group, the module refuses the
-// Transfer with ErrMoving. The rule records nothing and sets no hold, so the
-// next run asks again. A dry run lists nothing for it.
 func TestTransferToInstanceAsksAgainInTheNextRunWhileATorrentMoves(t *testing.T) {
 	svc, db, runner, instanceIDs := transferRig(t, snapshotTorrent)
 	runner.startErr = map[string]error{runningHash: fmt.Errorf("Show.S01E01.mkv shares the files of this torrent: %w", transfer.ErrMoving)}
@@ -464,9 +413,6 @@ func TestTransferToInstanceAsksAgainInTheNextRunWhileATorrentMoves(t *testing.T)
 	require.Empty(t, storedTransferActivities(t, db, instanceIDs[0]))
 }
 
-// regression: #4242
-// When the run ends during a Start, the Transfers that did not start get no
-// hold, and the next run starts them.
 func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T) {
 	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
@@ -484,12 +430,6 @@ func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T
 	require.Subset(t, hashes, []string{runningHash, stoppedHash, doomedHash})
 }
 
-// regression: #4242
-// A target that answers no check before the timeout costs the plan of a run
-// one wait, and not one for each torrent, so the other actions of the run keep
-// their time. Each torrent still goes to the Transfer module, which decides.
-// A target that answers is asked for each torrent, and the torrents that it
-// has stay out.
 func TestTransferToInstanceWaitsForASlowTargetOncePerRun(t *testing.T) {
 	torrents := []qbt.Torrent{{Hash: "a", Tags: "x"}, {Hash: "b", Tags: "x"}, {Hash: "c", Tags: "x"}}
 	rule := planTestRule(1, &models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{

@@ -149,13 +149,6 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	verifyPragmas(ctx, t, conn2)
 }
 
-// TestConnectionPragmasApplyWithoutNew pins the pragma hook to package init:
-// qui db migrate opens the source database with a bare sql.Open, never New.
-//
-// ponytail: only proves the regression in isolation, with
-// `go test -run TestConnectionPragmasApplyWithoutNew ./internal/database/`.
-// A full-suite run may call New first, which was enough to register the hook
-// under the old lazy path.
 func TestConnectionPragmasApplyWithoutNew(t *testing.T) {
 	sqlDB, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
@@ -383,8 +376,6 @@ var (
 	buildTestTemplateOnce = sync.OnceValue(func() error { return buildTestTemplate(testTemplatePath) })
 )
 
-// TestMain holds the migrated template that openTestDatabase copies. The
-// package cannot use testdb, which imports it.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "qui-database-test-")
 	if err != nil {
@@ -397,9 +388,6 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// openTestDatabase opens a copy of a migrated template, so only the first call
-// in the package runs every migration. A test of the migrations or of a fresh
-// open calls New itself.
 func openTestDatabase(t *testing.T) *DB {
 	t.Helper()
 	require.NoError(t, buildTestTemplateOnce())
@@ -626,15 +614,6 @@ func TestCleanupUnusedStrings_BasicAuthStringRefs(t *testing.T) {
 	require.False(t, exists, "orphan string should be cleaned up")
 }
 
-// TestStringPoolFKColumnsAreIndexed guards the string_pool GC stall fixed in migration 078
-// (discussion #2048). Every column that references string_pool via ON DELETE RESTRICT must:
-//  1. have a leading index, or FK enforcement full-scans it once per deleted string during
-//     CleanupUnusedStrings and eventually exceeds its deadline; and
-//  2. be collected by referencedStringsInsertQuery, or the GC would try to delete strings the
-//     column still references and fail the RESTRICT check.
-//
-// The check is schema-driven (PRAGMA foreign_key_list), so any future table that adds a
-// string_pool FK is covered automatically without touching this test.
 func TestStringPoolFKColumnsAreIndexed(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
@@ -655,8 +634,6 @@ func TestStringPoolFKColumnsAreIndexed(t *testing.T) {
 	type fkCol struct{ table, column string }
 	var fkCols []fkCol
 	for _, table := range tables {
-		// Table names come from sqlite_master (trusted schema), so interpolation is safe;
-		// PRAGMA foreign_key_list does not accept bound parameters.
 		fkRows, err := conn.QueryContext(ctx, fmt.Sprintf("PRAGMA foreign_key_list(%q)", table))
 		require.NoError(t, err)
 		for fkRows.Next() {
@@ -677,9 +654,6 @@ func TestStringPoolFKColumnsAreIndexed(t *testing.T) {
 	require.NotEmpty(t, fkCols, "expected to discover string_pool foreign-key columns")
 
 	for _, fc := range fkCols {
-		// (1) FK enforcement during DELETE probes `WHERE col = ?`; this must resolve via an
-		// index (SEARCH), not a full table scan (SCAN). Verified against the freshly migrated
-		// (empty) schema: the planner picks SEARCH purely on index availability here.
 		planRows, err := conn.QueryContext(ctx, fmt.Sprintf("EXPLAIN QUERY PLAN SELECT 1 FROM %q WHERE %q = 1", fc.table, fc.column))
 		require.NoError(t, err)
 		var plan strings.Builder
@@ -698,8 +672,6 @@ func TestStringPoolFKColumnsAreIndexed(t *testing.T) {
 				"full-scan it during string_pool GC. Add an index (see migration 078). Plan:\n%s",
 			fc.table, fc.column, plan.String())
 
-		// (2) The GC must actually collect this reference, or it will try to delete strings the
-		// column still points at and fail the RESTRICT check.
 		require.Containsf(t, referencedStringsInsertQuery,
 			fmt.Sprintf("SELECT %s AS string_id FROM %s", fc.column, fc.table),
 			"%s.%s references string_pool but is not collected by referencedStringsInsertQuery; "+
@@ -939,7 +911,6 @@ func TestReadOnlyTransactionConcurrency(t *testing.T) {
 	require.NoError(t, txWrite.Commit())
 }
 
-// regression: #3738
 func TestSQLiteReaderPoolSizeFollowsCPUsWithinBounds(t *testing.T) {
 	for _, tc := range []struct{ procs, want int }{{2, 8}, {12, 12}, {32, 16}} {
 		prev := runtime.GOMAXPROCS(tc.procs)
@@ -949,7 +920,6 @@ func TestSQLiteReaderPoolSizeFollowsCPUsWithinBounds(t *testing.T) {
 	}
 }
 
-// regression: #3738
 func TestReaderPoolCapsOpenConnections(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	db := openTestDatabase(t)
@@ -996,10 +966,6 @@ func TestReaderPoolCapsOpenConnections(t *testing.T) {
 	require.LessOrEqual(t, db.readerPool.Stats().OpenConnections, limit)
 }
 
-// A read-only transaction runs a query that has no prepared statement yet on its
-// own connection. It must not wait for a second read connection: with every
-// connection held by such a transaction, that wait would last until the deadline.
-// regression: #3738
 func TestReadOnlyTransactionsFillingPoolRunUnpreparedQueries(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	db := openTestDatabase(t)
@@ -1039,8 +1005,6 @@ func TestReadOnlyTransactionsFillingPoolRunUnpreparedQueries(t *testing.T) {
 	}
 }
 
-// Concurrent misses on one query must converge on a single cached statement;
-// the losers close theirs instead of leaking a driver-side prepared statement.
 func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
 	db := openTestDatabase(t)
 	ctx := t.Context()
@@ -1081,7 +1045,6 @@ func TestWriterLockWaitHonorsContext(t *testing.T) {
 	_, err = holder.ExecContext(t.Context(), "BEGIN EXCLUSIVE")
 	require.NoError(t, err)
 
-	// This writer takes the write lock and then waits in busy_timeout on the exclusive lock.
 	blockerDone := make(chan error, 1)
 	go func() {
 		_, err := db.ExecContext(t.Context(), "INSERT INTO string_pool (value) VALUES (?)", "blocker")
@@ -1131,7 +1094,6 @@ func TestWriterLockWaitHonorsContext(t *testing.T) {
 	require.NoError(t, <-blockerDone)
 }
 
-// regression: #4470
 func TestNewStartsWhileAnotherConnectionReadsTheWAL(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	db, err := New(dbPath)

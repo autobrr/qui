@@ -18,7 +18,6 @@ interface InstanceSettingsButtonProps {
   onClick?: (e: React.MouseEvent) => void
   showButton?: boolean
   defaultTab?: string
-  /** Use a proper Button component instead of a span */
   asButton?: boolean
 }
 

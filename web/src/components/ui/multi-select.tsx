@@ -24,15 +24,9 @@ export interface Option {
   label: string
   value: string
   level?: number
-  /** Optional icon element to display before the label */
   icon?: React.ReactNode
 }
 
-/**
- * Toggles `item` in `selected`. In single mode a new pick replaces whatever was
- * there instead of appending, so a caller that stores one string does not keep
- * the stale first entry and appear to ignore the click.
- */
 export function nextSelection(selected: string[], item: string, single: boolean): string[] {
   if (selected.includes(item)) {
     return selected.filter((i) => i !== item)
@@ -50,15 +44,8 @@ interface MultiSelectProps {
   creatable?: boolean
   onCreateOption?: (inputValue: string) => void
   disabled?: boolean
-  /** Hide the check icon in dropdown items (useful when options have icons) */
   hideCheckIcon?: boolean
   title?: string
-  /**
-   * Hold at most one value. Picking a second option replaces the first instead
-   * of appending, and the popover closes on select. Callers that store a single
-   * string need this: without it the appended value lands at the end of the
-   * array, the caller keeps `selected[0]`, and the click looks ignored.
-   */
   single?: boolean
 }
 
@@ -241,11 +228,10 @@ function MultiSelectContent({
             return (
               <ResponsiveCommandItem
                 key={option.value}
-                value={option.label} // Use label for search matching
+                value={option.label}
                 disableHighlight={isMobile}
                 onSelect={() => {
                   handleSelect(option.value)
-                  // Keep open for multi-select convenience
                 }}
                 className={isSelected ? "text-primary" : undefined}
               >

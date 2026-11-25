@@ -21,14 +21,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TorrentFile is one file of a .torrent that NewTorrentFile builds.
 type TorrentFile struct {
 	Path string
 	Size int64
 }
 
-// NewTorrentFile builds a .torrent whose files sit in the folder name, and
-// returns it with its infohash.
 func NewTorrentFile(t *testing.T, name string, files ...TorrentFile) (data []byte, hash string) {
 	t.Helper()
 	info := metainfo.Info{Name: name, PieceLength: 16384, Pieces: make([]byte, metainfo.HashSize)}
@@ -43,53 +40,32 @@ func NewTorrentFile(t *testing.T, name string, files ...TorrentFile) (data []byt
 	return buf.Bytes(), mi.HashInfoBytes().HexString()
 }
 
-// added is the state of a torrent that came in through torrents/add.
 type added struct {
-	// torrent is the .torrent file that torrents/export gives back.
-	torrent     []byte
-	pieceLength int64
-	pieces      []byte
-	sizes       []int64
-	priorities  []int
-	stopped     bool
-	forced      bool
-	seedMode    bool
-	// stopWhenChecked is the stop condition "FilesChecked".
+	torrent         []byte
+	pieceLength     int64
+	pieces          []byte
+	sizes           []int64
+	priorities      []int
+	stopped         bool
+	forced          bool
+	seedMode        bool
 	stopWhenChecked bool
-	// pieceStates is what the last hash check found, nil before one.
-	pieceStates []int
-	// checked is set once a check ran, or at the add in seed mode.
-	checked  bool
-	checking bool
-	reload   bool
-	// checkLeft counts the syncs that still report the running check.
-	checkLeft int
-	// progress is what the last check found.
-	progress float64
-	missing  bool
-	// listAfter counts the syncs that still leave the torrent out.
-	listAfter int
-	// staleRows counts the syncs after a recheck that still report
-	// staleState and staleProgress, the row from before it.
-	staleRows     int
-	staleState    string
-	staleProgress float64
-	// downloaded is the bytes that the torrent got from its peers.
-	downloaded int64
-	// allTime is the count of all sessions, which qBittorrent reports as
-	// downloaded. qBittorrent adds the bytes of a session to it about once a
-	// second, so it is late when a download ends: allTimeLate counts the
-	// syncs that still report the count from before the last bytes.
-	allTime     int64
-	allTimeLate int
+	pieceStates     []int
+	checked         bool
+	checking        bool
+	reload          bool
+	checkLeft       int
+	progress        float64
+	missing         bool
+	listAfter       int
+	staleRows       int
+	staleState      string
+	staleProgress   float64
+	downloaded      int64
+	allTime         int64
+	allTimeLate     int
 }
 
-// add answers torrents/add for uploaded .torrent files, as qBittorrent 5
-// does: it refuses file priorities in an upload from WebAPI 2.11.9, a torrent
-// it already has with 409, and bytes that are no torrent with 415. Seed mode
-// takes the files on trust, but finds missing wanted files at the add, also
-// when the torrent is stopped. A stopped torrent without seed mode is not
-// checked until it starts or a recheck.
 func (s *Server) add(w http.ResponseWriter, form *multipart.Form, param func(string) string) {
 	if param("filePriorities") != "" && s.webAPIAtLeast("2.11.9") {
 		http.Error(w, "Cannot specify filePriorities when uploading torrent files", http.StatusBadRequest)
@@ -170,7 +146,6 @@ func parseTorrent(data []byte) (*Torrent, bool) {
 	return t, true
 }
 
-// place applies the add parameters to a new torrent.
 func (s *Server) place(t *Torrent, param func(string) string) {
 	a := t.add
 	t.Category = param("category")
@@ -186,7 +161,6 @@ func (s *Server) place(t *Torrent, param func(string) string) {
 	case t.Layout == RootFolder && layout == "NoSubfolder":
 		t.Layout = NoRootFolder
 	case t.Layout == SingleFile && layout == "Subfolder":
-		// qBittorrent names the folder after the file, without its extension.
 		folder, _, _ := strings.CutLast(t.Name, ".")
 		t.Layout, t.Files = NoRootFolder, []string{folder + "/" + t.Name}
 	}
@@ -204,9 +178,6 @@ func (s *Server) place(t *Torrent, param func(string) string) {
 	}
 }
 
-// run starts a torrent: seed mode looks for missing files again, as
-// qBittorrent loads a torrent with missing files again at its start, and
-// checks the files that a rename gave it. A torrent never checked is checked.
 func (s *Server) run(t *Torrent) {
 	a := t.add
 	switch {
@@ -221,8 +192,6 @@ func (s *Server) run(t *Torrent) {
 	}
 }
 
-// onDisk is the share of the wanted bytes whose files are on disk at their
-// size.
 func (s *Server) onDisk(t *Torrent) float64 {
 	var have, want int64
 	for i, f := range s.diskFiles(t) {
@@ -244,8 +213,6 @@ func (s *Server) startCheck(t *Torrent) {
 	t.add.checking, t.add.checkLeft = true, s.CheckSyncs
 }
 
-// addedRow is the state and progress that a sync reports for an added
-// torrent. listed is false while the torrent is not listed yet.
 func (s *Server) addedRow(t *Torrent) (state string, progress float64, listed bool) {
 	a := t.add
 	if a.listAfter > 0 {
@@ -273,7 +240,6 @@ func (s *Server) addedRow(t *Torrent) (state string, progress float64, listed bo
 	return state, progress, true
 }
 
-// row is the state and progress of a torrent that runs no check.
 func (a *added) row() (state string, progress float64) {
 	switch {
 	case a.missing:
@@ -294,8 +260,6 @@ func (a *added) row() (state string, progress float64) {
 	return "stalled" + suffix, a.progress
 }
 
-// amountLeft is the bytes of the pieces that the last check did not pass,
-// as qBittorrent reports amount_left. It ignores file priorities.
 func (a *added) amountLeft() int64 {
 	var total int64
 	for _, size := range a.sizes {
@@ -316,7 +280,6 @@ func (a *added) amountLeft() int64 {
 	return left
 }
 
-// start answers torrents/start and torrents/setForceStart.
 func (s *Server) start(t *Torrent, forced bool) {
 	if t.add == nil {
 		return
@@ -325,10 +288,6 @@ func (s *Server) start(t *Torrent, forced bool) {
 	s.run(t)
 }
 
-// recheck answers torrents/recheck, which ends seed mode. A stopped torrent
-// stays stopped after the check. The next sync, or the next StaleSyncs syncs,
-// still report the state from before the recheck, as qBittorrent does until
-// its next refresh.
 func (s *Server) recheck(t *Torrent) {
 	a := t.add
 	if a == nil {
@@ -342,7 +301,6 @@ func (s *Server) recheck(t *Torrent) {
 	s.startCheck(t)
 }
 
-// filePrio answers torrents/filePrio as qBittorrent 5 does.
 func (s *Server) filePrio(w http.ResponseWriter, param func(string) string) {
 	t, ok := s.torrents[strings.ToLower(param("hash"))]
 	if !ok || t.add == nil {
@@ -368,8 +326,6 @@ func (s *Server) filePrio(w http.ResponseWriter, param func(string) string) {
 	}
 }
 
-// FilePriorities returns the file priorities of a torrent that came in
-// through torrents/add.
 func (s *Server) FilePriorities(hash string) []int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

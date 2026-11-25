@@ -21,7 +21,6 @@ import (
 	"github.com/autobrr/qui/internal/themes"
 )
 
-// maxCustomThemeRequestBody leaves room for the JSON escapes of a 1 MiB theme.
 const maxCustomThemeRequestBody = 8 << 20
 
 var customThemeIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
@@ -35,7 +34,6 @@ type replaceCustomThemeRequest struct {
 	CSS string `json:"css"`
 }
 
-// requirePremium answers 403 without the license, or 500 when the check fails.
 func (h *ThemesHandler) requirePremium(w http.ResponseWriter, r *http.Request) bool {
 	hasPremium, err := h.premium.HasPremiumAccess(r.Context())
 	if err != nil {
@@ -88,10 +86,6 @@ func validCustomThemeCSS(w http.ResponseWriter, css string) bool {
 	return true
 }
 
-// CreateCustomTheme writes <id>.css into the custom themes directory. It
-// answers 409 when a file with that name exists in any letter case, and 400
-// when the directory already holds maxCustomThemeFiles theme files or the CSS
-// breaks the outside-file rule.
 func (h *ThemesHandler) CreateCustomTheme(w http.ResponseWriter, r *http.Request) {
 	if !h.requirePremium(w, r) {
 		return
@@ -144,9 +138,6 @@ func (h *ThemesHandler) CreateCustomTheme(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusCreated, CustomTheme{ID: req.ID, Filename: filename, CSS: req.CSS})
 }
 
-// ReplaceCustomTheme replaces the CSS of the theme file whose id the list
-// route returns. A file that the user put in the directory by hand keeps its
-// name and its file mode.
 func (h *ThemesHandler) ReplaceCustomTheme(w http.ResponseWriter, r *http.Request) {
 	if !h.requirePremium(w, r) {
 		return
@@ -177,7 +168,6 @@ func (h *ThemesHandler) ReplaceCustomTheme(w http.ResponseWriter, r *http.Reques
 	RespondJSON(w, http.StatusOK, CustomTheme{ID: customThemeID(entry.Name()), Filename: entry.Name(), CSS: req.CSS})
 }
 
-// DeleteCustomTheme deletes the theme file whose id the list route returns.
 func (h *ThemesHandler) DeleteCustomTheme(w http.ResponseWriter, r *http.Request) {
 	if !h.requirePremium(w, r) {
 		return
@@ -196,10 +186,7 @@ func (h *ThemesHandler) DeleteCustomTheme(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// findCustomTheme matches the id of the route against the ids of the theme
-// files, exact case first, so the path never comes from the request.
 func (h *ThemesHandler) findCustomTheme(w http.ResponseWriter, r *http.Request) (string, os.DirEntry, bool) {
-	// chi routes on RawPath when Go sets it, and then the id arrives still escaped.
 	id := chi.URLParam(r, "id")
 	if r.URL.RawPath != "" {
 		unescaped, err := url.PathUnescape(id)
@@ -233,10 +220,6 @@ func (h *ThemesHandler) findCustomTheme(w http.ResponseWriter, r *http.Request) 
 
 var errCustomThemeNotFound = errors.New("custom theme not found")
 
-// findCustomThemeFile returns the index of the theme file with the id, exact case first.
-// It returns errCustomThemeNotFound when no file has the id, and an error that
-// names the files when two files have it, as Ocean.css and Ocean.CSS can on a
-// case-sensitive file system, so that no change picks one of them.
 func findCustomThemeFile(entries []os.DirEntry, id string) (int, error) {
 	var exact, folded []int
 	for i, entry := range entries {
@@ -273,9 +256,6 @@ func (h *ThemesHandler) respondWriteError(w http.ResponseWriter, dir string, err
 	RespondError(w, http.StatusInternalServerError, msg)
 }
 
-// writeCustomThemeFile writes css to a temporary file in dir and renames it
-// over name, so a reader sees the old file or the new one. A zero perm keeps
-// the mode of the temporary file (0600).
 func writeCustomThemeFile(dir, name, css string, perm os.FileMode) (err error) {
 	tmp, err := os.CreateTemp(dir, ".qui-theme-*.tmp")
 	if err != nil {

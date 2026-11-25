@@ -33,29 +33,24 @@ func NewClientAPIKeyStore(db dbinterface.Querier) *ClientAPIKeyStore {
 }
 
 func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, instanceID int) (string, *ClientAPIKey, error) {
-	// Generate new API key
 	rawKey, err := GenerateAPIKey()
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to generate API key: %w", err)
 	}
 
-	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
-	// Use a transaction to atomically intern the string and insert the API key
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Intern the client name
 	ids, err := dbinterface.InternStringNullable(ctx, tx, &clientName)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to intern client_name: %w", err)
 	}
 
-	// Insert the client API key
 	clientAPIKey := &ClientAPIKey{}
 	var createdAt, lastUsedAt sql.NullTime
 	err = tx.QueryRowContext(ctx, `
@@ -84,7 +79,6 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 		clientAPIKey.LastUsedAt = &lastUsedAt.Time
 	}
 
-	// Return both the raw key (to show user once) and the model
 	return rawKey, clientAPIKey, nil
 }
 

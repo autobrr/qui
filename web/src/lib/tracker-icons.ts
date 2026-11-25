@@ -27,7 +27,6 @@ export function resolveTrackerIconSrc(
       return trackerIcons[key]
     }
 
-    // Try the www/bare hostname variant as a fallback.
     const alias = key.startsWith("www.") ? key.slice(4) : `www.${key}`
     if (trackerIcons[alias]) {
       return trackerIcons[alias]
@@ -53,7 +52,6 @@ export function pickTrackerIconDomain(
     }
   }
 
-  // Fall back to the first parseable host/domain.
   for (const candidate of candidates) {
     const key = extractTrackerHost(candidate)
     if (key) {

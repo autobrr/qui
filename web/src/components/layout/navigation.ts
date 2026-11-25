@@ -29,7 +29,6 @@ export interface NavItem {
   isActive?: (pathname: string, search: Record<string, unknown> | undefined) => boolean
 }
 
-/** The pages of the app, in the order of the sidebar. */
 export const NAV_ITEMS: NavItem[] = [
   {
     id: "dashboard",

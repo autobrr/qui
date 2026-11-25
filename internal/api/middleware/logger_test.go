@@ -17,8 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The production logger already carries a timestamp in its context, so a
-// Timestamp() call here emits a duplicate "time" key.
 func TestLoggerEmitsSingleTimestamp(t *testing.T) {
 	var buf bytes.Buffer
 	logger := zerolog.New(&buf).With().Timestamp().Logger().Level(zerolog.TraceLevel)
@@ -41,7 +39,6 @@ func TestLoggerEmitsSingleTimestamp(t *testing.T) {
 	require.NotEmpty(t, decoded.Time)
 }
 
-// A DEBUG-level logger stays silent for healthy traffic.
 func TestLoggerLevelBySeverity(t *testing.T) {
 	tests := []struct {
 		name      string

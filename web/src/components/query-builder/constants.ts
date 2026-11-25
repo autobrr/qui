@@ -7,11 +7,6 @@ import type { TFunction } from "i18next";
 import type { AutomationRuleSkip, ConditionField, ConditionOperator } from "@/types";
 import { CONDITION_FIELDS } from "./fields.generated";
 
-// find-hardcoded-i18n-literals.mjs skips this file: its English is only a t() defaultValue.
-// A table rendered raw, instead of through a getTranslated* helper, ships English unnoticed.
-
-// Clock fields cycle, so a BETWEEN range whose minimum is above its maximum wraps
-// past the end of the field. Mirrors ConditionField.WrapsBetween in the backend.
 export const WRAPPING_BETWEEN_FIELDS: ReadonlySet<ConditionField> = new Set<ConditionField>([
   "SYSTEM_HOUR",
   "SYSTEM_MINUTE",
@@ -23,11 +18,9 @@ export { CONDITION_FIELDS };
 
 type FieldSpec = (typeof CONDITION_FIELDS)[ConditionField];
 
-// A stored rule can hold a field id that this version does not know. It gets the string operators.
 const UNKNOWN_FIELD: FieldSpec = CONDITION_FIELDS.HASH;
 
 function getFieldSpec(field: string): FieldSpec {
-  // Own keys only: saved rules can hold any id, and "constructor" would read Object.prototype.
   return Object.hasOwn(CONDITION_FIELDS, field) ? CONDITION_FIELDS[field as ConditionField] : UNKNOWN_FIELD;
 }
 
@@ -35,19 +28,15 @@ function sortKind(field: ConditionField): "number" | "text" | undefined {
   return (CONDITION_FIELDS[field] as { sort?: "number" | "text" }).sort;
 }
 
-// The fields that the sort dropdown and the score dropdown of a workflow offer. A clock field gives every
-// torrent the same value, so the dropdowns leave it out. The backend still accepts it.
 export const SORT_FIELDS: ReadonlySet<ConditionField> = new Set((Object.keys(CONDITION_FIELDS) as ConditionField[])
   .filter((field) => sortKind(field) !== undefined && !field.startsWith("SYSTEM_")));
 
 export const SCORE_FIELDS: ReadonlySet<ConditionField> = new Set([...SORT_FIELDS].filter((field) => sortKind(field) === "number"));
 
-// The field type picks the value input of a condition.
 export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope" | "seasonPackStatus";
 
 type EnumField = { [F in ConditionField]: (typeof CONDITION_FIELDS)[F]["type"] extends "enum" ? F : never }[ConditionField];
 
-// The value input of each enum field. The type check fails when the Go table adds an enum field.
 const ENUM_FIELD_TYPES = {
   STATE: "state",
   TRACKER_STATUS: "trackerStatus",
@@ -75,7 +64,6 @@ export function getOperatorsForField(field: string): readonly ConditionOperator[
   return getFieldSpec(field).operators;
 }
 
-// Field groups for organized selection
 export const FIELD_GROUPS = [
   {
     label: "Identity",
@@ -135,8 +123,6 @@ export const FIELD_GROUPS = [
   },
 ];
 
-// The capability that each field needs before it has data: a field of the instance capabilities
-// response, or an instance capability. The Go condition field table names it.
 type RequiresOf<S> = S extends { requires: infer R } ? R : never
 export type CapabilityKey = RequiresOf<FieldSpec>
 
@@ -163,17 +149,12 @@ export const STATE_VALUE_REQUIREMENTS = {
   tracker_error: "supportsTrackerHealth",
 } as const satisfies Record<string, CapabilityKey>;
 
-// Uncategorized sentinel (Radix Select requires non-empty values)
 export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";
 
-// --- i18n helper functions ---
-
-/** Get translated label for a condition field */
 export function getFieldLabel(field: string, t: TFunction): string {
   return t(`queryBuilder.fields.${field}`);
 }
 
-/** Get translated reason a rule does not run on this instance */
 export function getRuleSkipReason(skip: Partial<AutomationRuleSkip> | undefined, t: TFunction): string {
   return t("queryBuilder.ruleSkip", {
     ns: "automations",
@@ -182,7 +163,6 @@ export function getRuleSkipReason(skip: Partial<AutomationRuleSkip> | undefined,
   });
 }
 
-/** Get translated reason a field or state value is unavailable on this instance */
 export function getCapabilityReason(capability: CapabilityKey, t: TFunction, isRemote = false): string {
   switch (capability) {
     case "supportsLiveReannounce":
@@ -193,32 +173,26 @@ export function getCapabilityReason(capability: CapabilityKey, t: TFunction, isR
     case "supportsListCreatedBy":
       return t("queryBuilder.capabilityReasons.qbittorrent52", { ns: "automations" });
     case "trustedIdentity":
-      // Trusted identity needs local access, which a remote instance can never have.
       return isRemote ?
         t("queryBuilder.capabilityReasons.remoteInstance", { ns: "automations" }) :
         t("queryBuilder.capabilityReasons.localFilesystemAccess", { ns: "automations" });
     case "read":
-      // An instance without Read has no filesystem access; local access or SSH access gives it.
       return t("queryBuilder.capabilityReasons.filesystemAccess", { ns: "automations" });
     default:
-      // A new requirement in the Go table fails the type check here until it has a reason.
       return capability satisfies never;
   }
 }
 
-/** The fields that the instance has no data for, with the reason */
 export function getDisabledFields(capabilities: Capabilities, isRemote: boolean, t: TFunction): DisabledField[] {
   return Object.entries(FIELD_REQUIREMENTS)
     .filter(([, capability]) => !capabilities[capability])
     .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t, isRemote) }))
 }
 
-/** Get translated label for a field group */
 export function getFieldGroupLabel(label: string, t: TFunction): string {
   return t(`queryBuilder.fieldGroups.${label}`);
 }
 
-// Numeric fields show these operators as symbols, which need no translation.
 const OPERATOR_SYMBOLS: Partial<Record<ConditionOperator, string>> = {
   EQUAL: "=",
   NOT_EQUAL: "!=",
@@ -246,7 +220,6 @@ export function getTranslatedOperatorsForField(field: string, t: TFunction): { v
   return getOperatorsForField(field).map((op) => {
     const symbol = OPERATOR_SYMBOLS[op];
     if (symbol && (type === "integer" || type === "number")) return { value: op, label: symbol };
-    // A field with a value list offers only EQUAL and NOT_EQUAL, shown as "is" and "is not".
     if (type === "enum" || type === "boolean") {
       return { value: op, label: op === "EQUAL" ? t("queryBuilder.operators.is") : t("queryBuilder.operators.isNot") };
     }
@@ -254,31 +227,24 @@ export function getTranslatedOperatorsForField(field: string, t: TFunction): { v
   });
 }
 
-/** Get translated torrent states */
 export function getTranslatedTorrentStates(t: TFunction): { value: string; label: string }[] {
   return CONDITION_FIELDS.STATE.values.map((value) => ({ value, label: t(`queryBuilder.torrentStates.${value}`) }));
 }
 
-/** Get translated tracker status values */
 export function getTranslatedTrackerStatuses(t: TFunction): { value: string; label: string }[] {
   return CONDITION_FIELDS.TRACKER_STATUS.values.map((value) => ({ value, label: t(`queryBuilder.trackerStatuses.${value}`) }));
 }
 
-/** Get translated hardlink scope values */
 export function getTranslatedHardlinkScopes(t: TFunction): { value: string; label: string }[] {
-  // The rule builder never offered "both". It matches only a torrent linked both inside and outside
-  // qBittorrent, and "inside_qbittorrent" and "outside_qbittorrent" each match that torrent too.
   return CONDITION_FIELDS.HARDLINK_SCOPE.values
     .filter((value) => value !== "both")
     .map((value) => ({ value, label: t(`queryBuilder.hardlinkScopes.${value}`) }));
 }
 
-/** Get translated content type values */
 export function getTranslatedContentTypes(t: TFunction): { value: string; label: string }[] {
   return CONDITION_FIELDS.CONTENT_TYPE.values.map((value) => ({ value, label: t(`common:contentTypeLabels.${value}`) }));
 }
 
-/** Get translated season pack status values */
 export function getTranslatedSeasonPackStatuses(t: TFunction): { value: string; label: string }[] {
   return CONDITION_FIELDS.SEASON_PACK_STATUS.values.map((value) => ({ value, label: t(`queryBuilder.seasonPackStatuses.${value}`) }));
 }

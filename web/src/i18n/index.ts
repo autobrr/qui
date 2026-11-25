@@ -8,10 +8,6 @@ import { spreadsheetPostProcessor } from "@/lib/spreadsheet-disguise"
 import i18n, { type ResourceKey, type ResourceLanguage } from "i18next"
 import { initReactI18next } from "react-i18next"
 
-// English is the fallback and is always needed, so bundle it eagerly into the main
-// chunk. Every other language is split into its own lazily-loaded chunk so the main
-// bundle stays small and adding languages does not grow it (keeps the PWA precache
-// happy). See loadLanguageResources / changeLanguage below.
 const enModules = import.meta.glob("./locales/en/*.json", { eager: true, import: "default" }) as Record<string, ResourceKey>
 const lazyLoaders = import.meta.glob("./locales/**/*.json", { import: "default" }) as Record<string, () => Promise<ResourceKey>>
 
@@ -75,8 +71,6 @@ function detectBrowserLanguage(): AppLanguage | null {
   const browserLanguages = navigator.languages ?? [navigator.language]
   for (const lang of browserLanguages) {
     if (isAppLanguage(lang)) return lang
-    // Traditional Chinese tags ("zh-Hant", "zh-Hant-TW", "zh-HK", "zh-MO") have no
-    // exact match, and the prefix match below would hand them zh-CN.
     if (/^zh-(hant|hk|mo)\b/i.test(lang)) return "zh-TW"
     const prefix = lang.split("-")[0]
     const match = supportedLanguages.find((s) => s === prefix || s.startsWith(`${prefix}-`))
@@ -96,12 +90,9 @@ function getStoredLanguage(): AppLanguage | null {
 }
 
 function persistLanguage(lng: AppLanguage) {
-  // writeRaw caches locally and queues the server push (issue #2406).
   writeRaw(LANGUAGE_STORAGE_KEY, lng)
 }
 
-// Monotonic token so that rapid language switches can't apply out of order: a slow
-// chunk load for an earlier selection must not overwrite a newer one once it finishes.
 let latestLanguageRequest = 0
 
 export async function changeLanguage(lng: AppLanguage) {
@@ -127,9 +118,6 @@ export const namespaces = [
   "shares",
 ] as const
 
-// Initialize synchronously with English so i18n.t works the moment this module is
-// imported (lib helpers and tests rely on this). The active language, if not English,
-// falls back to English until its chunk is loaded by initI18n().
 i18n.use(initReactI18next).use(spreadsheetPostProcessor).init({
   resources: { en: enResources },
   lng: getStoredLanguage() ?? detectBrowserLanguage() ?? "en",
@@ -138,25 +126,18 @@ i18n.use(initReactI18next).use(spreadsheetPostProcessor).init({
   ns: [...namespaces],
   postProcess: ["spreadsheetDisguise"],
   interpolation: {
-    escapeValue: false, // React already escapes
+    escapeValue: false,
   },
 })
 
-// The Spreadsheet theme swaps a handful of visible strings; a theme switch must
-// re-render translated components for the swap to take effect immediately.
 window.addEventListener("themechange", () => {
   i18n.emit("languageChanged", i18n.language)
 })
 
-// Ensure the active language's resources are loaded before the app renders, so users
-// who picked a non-English language don't see an English flash on first paint. Await
-// this in the entry point before mounting React. i18next set i18n.language from the
-// stored/detected language above; English is already bundled.
 export async function initI18n(): Promise<typeof i18n> {
   const active = i18n.language
   if (active && active !== "en" && !loadedLanguages.has(active)) {
     await loadLanguageResources(active)
-    // Re-resolve so react-i18next switches from the English fallback to the now-loaded language.
     await i18n.changeLanguage(active)
   }
   return i18n

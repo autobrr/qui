@@ -22,8 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// newDiskRouter wires the real handler and the local backend to a synthetic
-// qBittorrent whose default save path is savePath, and counts the reads of it.
 func newDiskRouter(t *testing.T, name, savePath string, localAccess bool) (*chi.Mux, int, <-chan struct{}) {
 	t.Helper()
 
@@ -62,7 +60,6 @@ func newDiskRouter(t *testing.T, name, savePath string, localAccess bool) (*chi.
 	return router, instance.ID, reads
 }
 
-// regression: #4305
 func TestGetDiskHandler(t *testing.T) {
 	t.Parallel()
 

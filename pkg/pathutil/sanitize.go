@@ -57,19 +57,8 @@ func IsWindowsDeviceName(component string) bool {
 	}
 }
 
-// errFilteredEmptyPath refuses a name that only directional-character removal
-// emptied: libtorrent 1.2 and 2.0 place such a name differently.
 var errFilteredEmptyPath = errors.New("torrent path is empty after removing directional characters")
 
-// TorrentPathComponent maps one component of a torrent's file path to the name
-// libtorrent, and therefore qBittorrent, puts on disk for it. It returns an error
-// when the component is not empty but TorrentPathName empties it.
-//
-// libtorrent's sanitize_append_path_element replaces an empty component with "_"
-// instead of dropping it, on every release line qBittorrent ships (1.1, 1.2, 2.0).
-// Go's path.Join drops it, which would place a link tree one directory above where
-// qBittorrent looks for the data. This and directional-character removal are
-// mirrored; dot-component handling differs between libtorrent 1.x and 2.0.
 func TorrentPathComponent(component string) (string, error) {
 	if component == "" {
 		return "_", nil
@@ -106,9 +95,6 @@ func TorrentFilePath(root string, components []string) (string, error) {
 	return b.String(), nil
 }
 
-// TorrentPathName returns a torrent name or path component as qBittorrent shows it:
-// malformed UTF-8 replaced and the directional characters libtorrent filters removed.
-// A caller must refuse a nonempty name that comes back empty.
 func TorrentPathName(name string) string {
 	if utf8.ValidString(name) && indexTorrentPathControl(name) < 0 {
 		return name
@@ -134,12 +120,10 @@ func writeTorrentPathName(b *strings.Builder, name string) {
 	}
 }
 
-// torrentPathControlLen is the UTF-8 length of every rune isTorrentPathControl reports.
 const torrentPathControlLen = 3
 
 func indexTorrentPathControl(name string) int {
 	offset := 0
-	// Every filtered rune starts with 0xe2.
 	for {
 		i := strings.IndexByte(name[offset:], '\xe2')
 		if i < 0 {
@@ -154,8 +138,6 @@ func indexTorrentPathControl(name string) int {
 	}
 }
 
-// Both libtorrent 1.2 and 2.0 filter this set in filter_path_character:
-// https://github.com/arvidn/libtorrent/blob/RC_1_2/src/torrent_info.cpp
 func isTorrentPathControl(r rune) bool {
 	switch r {
 	case '\u200e', '\u200f', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e':
@@ -165,9 +147,6 @@ func isTorrentPathControl(r rune) bool {
 	}
 }
 
-// maxIsolationNameBytes keeps room for "--<shortHash>" in a folder name of
-// 255 bytes, the per-name limit of ext4, Btrfs, ZFS, and NTFS. 255 UTF-8 bytes
-// are never more than 255 UTF-16 units, so the limit also holds on NTFS.
 const maxIsolationNameBytes = 255 - len("--") - 8
 
 func IsolationFolder(name string) string {
@@ -182,10 +161,6 @@ func IsolationFolder(name string) string {
 	return SanitizePathSegment(result[:cut])
 }
 
-// HashedIsolationFolder returns <IsolationFolder>--<shortHash>, where shortHash
-// is the first 8 characters of infohash, lowercased. It is the isolation
-// folder for a torrent whose plain name is taken. It is also the automations
-// template variable {{.IsolationFolderName}}.
 func HashedIsolationFolder(infohash, name string) string {
 	return IsolationFolder(name) + "--" + strings.ToLower(infohash[:min(len(infohash), 8)])
 }

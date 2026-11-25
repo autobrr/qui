@@ -9,23 +9,14 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// discLayoutMarkers are directory names that indicate disc-based media (Blu-ray, DVD).
-// The Adder adds such a torrent paused and resumes it only after a full recheck.
 var discLayoutMarkers = []string{"BDMV", "VIDEO_TS"}
 
-// AddPolicy defines constraints for how a torrent should be added.
-// These policies are derived from torrent content and override user settings.
 type AddPolicy struct {
-	// DiscLayout indicates this is a disc-based media torrent (Blu-ray/DVD).
 	DiscLayout bool
 
-	// DiscMarker is the marker directory name that triggered disc layout detection
-	// (e.g., "BDMV" or "VIDEO_TS"). Empty if DiscLayout is false.
 	DiscMarker string
 }
 
-// PolicyForSourceFiles analyzes source files and returns an AddPolicy.
-// Currently detects disc layouts (BDMV, VIDEO_TS directories).
 func PolicyForSourceFiles(sourceFiles qbt.TorrentFiles) AddPolicy {
 	isDisc, marker := isDiscLayoutTorrent(sourceFiles)
 	if isDisc {
@@ -37,28 +28,12 @@ func PolicyForSourceFiles(sourceFiles qbt.TorrentFiles) AddPolicy {
 	return AddPolicy{}
 }
 
-// isDiscLayoutTorrent checks if any file path contains a disc layout marker directory.
-// Returns true and the matched marker if found, otherwise false and empty string.
-//
-// Detection is case-insensitive and matches folder names anywhere in the path,
-// after normalizing path separators. Only matches exact folder names, not substrings.
-// The final path segment (filename) is excluded from matching.
-//
-// Examples:
-//   - "Movie/BDMV/index.bdmv" -> true, "BDMV"
-//   - "Show/Season1/VIDEO_TS/video.vob" -> true, "VIDEO_TS"
-//   - "BDMV_backup/file.txt" -> false (substring, not folder name)
-//   - "movie.bdmv" -> false (file extension, not folder)
-//   - "BDMV" -> false (single segment = filename only, no directory)
 func isDiscLayoutTorrent(files qbt.TorrentFiles) (isDisc bool, marker string) {
 	for _, f := range files {
-		// Normalize Windows path separators
 		path := strings.ReplaceAll(f.Name, "\\", "/")
 
-		// Split into segments; exclude the last segment (filename)
 		segments := strings.Split(path, "/")
 		if len(segments) < 2 {
-			// Single segment means no directory, just a filename
 			continue
 		}
 		dirSegments := segments[:len(segments)-1]
@@ -75,9 +50,6 @@ func isDiscLayoutTorrent(files qbt.TorrentFiles) (isDisc bool, marker string) {
 	return false, ""
 }
 
-// KeepAtSavePath turns off the download path ("Keep incomplete torrents in") of an
-// add that sets an explicit save path. Without it, qBittorrent moves a torrent that
-// a recheck finds incomplete out of its save path into the download path.
 func KeepAtSavePath(options map[string]string) {
 	if options["savepath"] != "" {
 		options["useDownloadPath"] = "false"

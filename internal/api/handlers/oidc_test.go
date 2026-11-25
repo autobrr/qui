@@ -37,18 +37,12 @@ type discoveryDocument struct {
 	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
 }
 
-// fakeOIDCProvider serves discovery, a JWKS, a token endpoint that returns a
-// signed ID token, and a user-info endpoint.
 type fakeOIDCProvider struct {
 	codeChallenges []string
-	// idClaims are added to every ID token, overriding the defaults.
-	idClaims map[string]any
-	// userInfo is the user-info response; nil makes the endpoint fail.
-	userInfo map[string]any
+	idClaims       map[string]any
+	userInfo       map[string]any
 }
 
-// fakeOIDCUserInfoError is the body of a failed user-info response. It must
-// stay in the log and never reach the browser.
 const fakeOIDCUserInfoError = "provider unavailable: internal.example.lan"
 
 var fakeOIDCKey = sync.OnceValue(func() *rsa.PrivateKey {
@@ -141,14 +135,12 @@ func signFakeIDToken(t *testing.T, claims map[string]any) string {
 func newTestOIDCHandler(t *testing.T, issuer string) *OIDCHandler {
 	t.Helper()
 
-	// Test-only OIDC client config values.
 	cfg := &domain.Config{
 		OIDCEnabled:     true,
 		OIDCIssuer:      issuer,
 		OIDCClientID:    "client-id",
 		OIDCRedirectURL: "http://localhost/callback",
 	}
-	// Test-only placeholder used to satisfy OIDC config validation.
 	cfg.OIDCClientSecret = "placeholder"
 
 	handler, err := NewOIDCHandler(cfg, scs.New())
@@ -280,8 +272,6 @@ func TestOIDCConfigReturnsInternalServerErrorWhenPKCEVerifierGenerationFails(t *
 	assert.Empty(t, handler.sessionManager.GetString(req.Context(), "oidc_pkce_verifier"))
 }
 
-// responseSessionCookie returns the session cookie that rec sets, or fallback when rec
-// sets none.
 func responseSessionCookie(rec *httptest.ResponseRecorder, name string, fallback *http.Cookie) *http.Cookie {
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == name {

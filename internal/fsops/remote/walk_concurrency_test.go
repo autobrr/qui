@@ -25,8 +25,6 @@ func writeWideTree(t *testing.T, root string, dirs int) {
 	}
 }
 
-// The latency gives the workers time to overlap their round trips, which the
-// server counts.
 func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 	t.Parallel()
 
@@ -79,18 +77,12 @@ func TestWalkDir_OrderWithinDirectoryAndParentFirst(t *testing.T) {
 	assert.Equal(t, []string{"a", "z"}, byDir["b"])
 }
 
-// walkGoroutines counts goroutines still inside walk or the walker. The
-// context.AfterFunc callback of walk is left out: it only wakes the workers,
-// and it can still be running after walk returns.
 func walkGoroutines() int {
 	buf := make([]byte, 1<<20)
 	stacks := string(buf[:runtime.Stack(buf, true)])
 	return strings.Count(stacks, "fsops/remote.(*Backend).walk(") + strings.Count(stacks, "fsops/remote.(*walker)")
 }
 
-// A cancelled walk ends every goroutine it started, whether the consumer
-// cancels or a worker cuts the walk on a lost connection. Not parallel: the
-// stack scan must see only this test's walker.
 func TestWalkDir_CancelLeavesNoGoroutines(t *testing.T) {
 	tests := []struct {
 		name string
@@ -102,7 +94,6 @@ func TestWalkDir_CancelLeavesNoGoroutines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			const dirs = 200
-			// Close the pool and server before TempDir cleanup removes open directories.
 			dir := t.TempDir()
 			b, server := newBackend(t)
 			server.SetLatency(5 * time.Millisecond)

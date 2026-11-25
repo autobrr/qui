@@ -320,9 +320,6 @@ func TestSessionSecretRejectsEmpty(t *testing.T) {
 		})
 	}
 
-	// An empty QUI__SESSION_SECRET reads as unset, because viper's AllowEmptyEnv
-	// is off, so the file value or the generated default still applies. Empty
-	// therefore never becomes the key from this source either.
 	t.Run("empty_env_var_reads_as_unset", func(t *testing.T) {
 		dir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte("sessionSecret = \"from-the-file-abcdefghijklmnop\"\n"), 0o600))
@@ -334,10 +331,6 @@ func TestSessionSecretRejectsEmpty(t *testing.T) {
 	})
 }
 
-// TestSessionSecretFileRejectsEmptyFile covers the _FILE source.
-// bindOrReadFromFile refuses an empty file with log.Fatal, so this needs a
-// subprocess. The child builds its own paths: passing an env-derived path into
-// New puts production code on gosec's G703 taint path.
 func TestSessionSecretFileRejectsEmptyFile(t *testing.T) {
 	if os.Getenv("QUI_TEST_EMPTY_SECRET_FILE") == "1" {
 		dir := t.TempDir()
@@ -358,11 +351,6 @@ func TestSessionSecretFileRejectsEmptyFile(t *testing.T) {
 	assert.Contains(t, string(output), "file is empty")
 }
 
-// TestGetEncryptionKeyGoldenVector freezes the hash, the nil salt and the info
-// string together. A row sealed under a different derivation still carries the
-// qui2 prefix, so the rewrite pass skips it and the legacy key does not apply.
-// Every stored credential then becomes permanently unreadable, with no warning.
-// Changing this constant means changing that contract, not fixing a test.
 func TestGetEncryptionKeyGoldenVector(t *testing.T) {
 	cfg := &AppConfig{Config: &domain.Config{SessionSecret: "qui-golden-vector-session-secret"}}
 
@@ -532,12 +520,11 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 
 func TestNewWithConfigDirWritesDefaultWhenMissing(t *testing.T) {
 	tests := []struct {
-		name        string
-		prepare     func(t *testing.T, tmpDir string) (inputPath, configPath string)
-		wantErr     string
-		wantPort    int
-		wantCreated bool
-		// needsPermissionDenial skips where file modes are not enforced: Windows, or running as root.
+		name                  string
+		prepare               func(t *testing.T, tmpDir string) (inputPath, configPath string)
+		wantErr               string
+		wantPort              int
+		wantCreated           bool
 		needsPermissionDenial bool
 	}{
 		{
@@ -989,7 +976,6 @@ func TestBaseURLNormalization(t *testing.T) {
 	}
 }
 
-// regression: #2669
 func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1099,7 +1085,6 @@ func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
 	assert.Equal(t, int32(1), listenerCalls.Load())
 }
 
-// regression: #3860
 func TestReloadChangesOnlyTheNextPublishedConfig(t *testing.T) {
 	previousLevel := zerolog.GlobalLevel()
 	t.Cleanup(func() {
@@ -1123,9 +1108,6 @@ func TestReloadChangesOnlyTheNextPublishedConfig(t *testing.T) {
 	assert.Equal(t, []string{"/new"}, cfg.Config.Live().ExternalProgramAllowList, "the next request reads the reloaded config")
 }
 
-// The watcher reads the file before configReloadDelay, so reload must read
-// the file as it is when the delay ends.
-// regression: #3797
 func TestReloadReadsCurrentConfigFile(t *testing.T) {
 	previousLevel := zerolog.GlobalLevel()
 	t.Cleanup(func() {
@@ -1156,7 +1138,6 @@ func TestReloadKeepsExperimentalFeatures(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte(testConfigContent+"experimentalFeatures = [\"testAlpha\"]\n"), 0o600))
 
-	// Build the config without New, so no file watcher reads the file while the test calls reload.
 	cfg := &AppConfig{viper: viper.New(), Config: &domain.Config{}, version: "test", logManager: NewLogManager("test")}
 	require.NoError(t, cfg.load(path))
 	require.NoError(t, cfg.viper.Unmarshal(cfg.Config))

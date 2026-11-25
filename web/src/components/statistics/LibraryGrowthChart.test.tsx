@@ -20,7 +20,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => i18n,
 }))
 
-// jsdom has no layout, so the chart gets a fixed size in place of the size of its container.
 vi.mock("recharts", async (importOriginal) => ({
   ...await importOriginal<typeof import("recharts")>(),
   ResponsiveContainer: ({ children }: { children: ReactNode }) => isValidElement(children) ? cloneElement(children, { width: 800, height: 240 } as object) : null,
@@ -36,7 +35,6 @@ function point(day: number, totalSize: number | null, uniqueSize: number | null)
 
 describe("LibraryGrowthChart", () => {
   it("draws a dot only for a day with a value between two gaps", () => {
-    // The Unique size of day 3 sits between two gaps. The total size has a line through each day.
     const points = [point(0, 100, 50), point(1, 100, 50), point(2, 100, null), point(3, 100, 50), point(4, 100, null), point(5, 100, 50), point(6, 100, 50)]
     const { container } = render(<LibraryGrowthChart points={points} />)
 

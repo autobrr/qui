@@ -106,7 +106,7 @@ func TestDirScanStore_WindowsCaseSensitiveDirectoryIdentity(t *testing.T) {
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
 		nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
 	require.NoError(t, err)
-	flags := []byte{1, 0, 0, 0} // FILE_CS_FLAG_CASE_SENSITIVE_DIR
+	flags := []byte{1, 0, 0, 0}
 	err = windows.SetFileInformationByHandle(handle, windows.FileCaseSensitiveInfo, &flags[0], uint32(len(flags)))
 	require.NoError(t, windows.CloseHandle(handle))
 	if errors.Is(err, windows.ERROR_ACCESS_DENIED) || errors.Is(err, windows.ERROR_NOT_SUPPORTED) {

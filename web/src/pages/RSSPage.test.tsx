@@ -72,7 +72,6 @@ describe("ArticlesPanel", () => {
 describe("FeedTree", () => {
   afterEach(() => vi.restoreAllMocks())
 
-  // regression: #4358
   it("shows the full name of a feed when it is cut off and the feed has no other title", () => {
     delete (window as Window & { ontouchstart?: unknown }).ontouchstart
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(200)

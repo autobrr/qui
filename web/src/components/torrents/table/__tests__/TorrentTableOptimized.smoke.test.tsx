@@ -3,24 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-/**
- * Whole-table mount smoke test — the cross-PR regression tripwire for the
- * TorrentTableOptimized decomposition (issue #1963).
- *
- * It mounts the REAL component with the network/router/stream boundaries
- * mocked and a deterministic virtualizer, then asserts the behaviours most
- * likely to break while extracting seams: rows render, the header
- * select-all toggles row selection, and cross-seed mode keeps the rows the
- * backend matched for a multi-word search (#2525). The external data/action
- * hooks mocked here are NOT what the decomposition refactors, so this harness
- * stays stable across the 10 PRs it guards; `scenario` is the only per-test
- * knob they read. Real virtualized scrolling and column-filter
- * UI are intentionally left to per-seam unit tests + the manual smoke per PR.
- *
- * IMPORTANT: every mocked hook returns a STABLE singleton reference. Returning
- * fresh objects per render makes the table's effects re-fire forever (OOM).
- */
-
 import { TorrentTableOptimized } from "@/components/torrents/TorrentTableOptimized"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
@@ -42,23 +24,19 @@ import type { ActionTarget } from "@/lib/torrent-selection"
 import { formatBytes } from "@/lib/utils"
 import type { InstanceCapabilities, LocalCrossSeedMatch, Torrent } from "@/types"
 
-// Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
 const scenario = vi.hoisted(() => ({
   routeSearch: "",
   isCrossSeedFiltering: false,
   totalCount: 3,
-  // The loaded rows; undefined means `torrents`.
   rows: undefined as Torrent[] | undefined,
   totalSize: 0,
   copyGroupsReady: undefined as boolean | undefined,
-  // The options that the table last gave the list hook.
   listOptions: undefined as { groupCopies?: boolean } | undefined,
   isDemo: false,
   capabilities: undefined as InstanceCapabilities | undefined,
   streamError: null as string | null,
   streamRetrying: false,
 }))
-// The real list controller, so a test can read its load-more window.
 const controller = vi.hoisted(() => ({ current: undefined as undefined | { loadedRows: number; reportNearEnd: () => void } }))
 
 const torrents = [
@@ -67,11 +45,8 @@ const torrents = [
   makeTorrent({ hash: "hash-ccc", name: "Charlie Release", state: "stalledUP", progress: 1 }),
 ]
 
-// i18n: keep the real exports (i18n bootstrap needs initReactI18next), but
-// override useTranslation with a stable passthrough translator.
 vi.mock("react-i18next", async (importOriginal) => {
   const translation = {
-    // Copy group keys echo their values, so a test can assert the count.
     t: (key: string | string[], options?: Record<string, unknown>) =>
       typeof key === "string" && key.startsWith("copyGroups.") && options ? `${key} ${JSON.stringify(options)}` : key,
     i18n: { resolvedLanguage: "en", language: "en" },
@@ -82,7 +57,6 @@ vi.mock("react-i18next", async (importOriginal) => {
   }
 })
 
-// Router: avoid needing a real router tree.
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const search = { get q() { return scenario.routeSearch || undefined } }
   const navigate = vi.fn()
@@ -93,7 +67,6 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   }
 })
 
-// SyncStream: keep the pure error-code helper, stub the live connection.
 vi.mock("@/contexts/SyncStreamContext", async (importOriginal) => {
   const streamState = {
     connected: false,
@@ -109,9 +82,6 @@ vi.mock("@/contexts/SyncStreamContext", async (importOriginal) => {
   }
 })
 
-// Deterministic virtualizer: render the first rows of `count` regardless of
-// jsdom layout, as a screen of rows would. One stable singleton; the items
-// change only with the count.
 vi.mock("@tanstack/react-virtual", () => {
   const screenRows = 20
   let count = 0
@@ -152,17 +122,12 @@ vi.mock("@/lib/demo", async (importOriginal) => ({
 }))
 
 
-// Network boundary: any api.* call resolves to undefined (real hooks degrade
-// gracefully via their ?? fallbacks). One spy per method so a test can read
-// what the table sent.
 vi.mock("@/lib/api", () => ({
   api: new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
     get: (target, prop: string) => (target[prop] ??= vi.fn(() => Promise.resolve(undefined))),
   }),
 }))
 
-// Tracker query hooks subscribe to the activity stream (needs a provider);
-// the table only reads their `.data`, so stub that directly with stable refs.
 vi.mock("@/hooks/useTrackerIcons", () => {
   const result = { data: {} as Record<string, string> }
   return { useTrackerIcons: () => result }
@@ -172,8 +137,6 @@ vi.mock("@/hooks/useTrackerCustomizations", () => {
   return { useTrackerCustomizations: () => result }
 })
 
-// The data hook that drives the table body. Built lazily (reads `torrents`
-// after init) and cached so the reference is stable across renders.
 vi.mock("@/hooks/useTorrentsList", () => {
   let result: Record<string, unknown> | undefined
   return {
@@ -227,7 +190,6 @@ vi.mock("@/hooks/useTorrentsList", () => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
-  // jsdom has no execCommand; the copy tests below stub one in.
   delete (document as { execCommand?: unknown }).execCommand
 })
 
@@ -240,7 +202,6 @@ function checkedRows(container: HTMLElement) {
   return torrents.map(t => t.name).filter(name => isRowChecked(container, name))
 }
 
-// The Action target that the table publishes to the bulk action module.
 let publishedTarget: ActionTarget | undefined
 let bulkPick: ReturnType<typeof useBulkActions>["pick"] = () => {}
 function PublishedTargetProbe() {
@@ -249,7 +210,6 @@ function PublishedTargetProbe() {
   return null
 }
 
-// Opens the menu of the row and clicks Pause. Returns the ticked hashes of the request, undefined in Select all mode.
 async function pauseFromMenu(container: HTMLElement, name: string, findByRole: (role: string, options: { name: RegExp }) => Promise<HTMLElement>) {
   fireEvent.contextMenu(within(container).getByText(name))
   fireEvent.click(await findByRole("menuitem", { name: /^contextMenu\.pause/ }))
@@ -302,8 +262,6 @@ describe("TorrentTableOptimized smoke", () => {
     const header = checkboxes[0]
     expect(header.getAttribute("aria-checked")).not.toBe("true")
     fireEvent.click(header)
-    // Exclude the header itself so this asserts ROW checkboxes became checked,
-    // not just the select-all control reflecting its own click.
     const checkedRowsAfter = within(container).getAllByRole("checkbox").filter(
       (cb) => cb !== header && cb.getAttribute("aria-checked") === "true"
     )
@@ -325,8 +283,6 @@ describe("TorrentTableOptimized smoke", () => {
     expect(onFilterChange).not.toHaveBeenCalled()
   })
 
-  // Issue #3364: in select all mode a plain click selects only the clicked row,
-  // so the next menu action reaches that row and not every matching torrent.
   it("plain click in select all mode selects only the clicked row", async () => {
     const { container, findByRole } = renderTable()
     fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
@@ -349,8 +305,6 @@ describe("TorrentTableOptimized smoke", () => {
     expect(checkedRows(container)).toEqual(["Alpha Release"])
   })
 
-  // Issue #3364: a right-click on a row excluded from select all must not act
-  // on the rest of the selection.
   it("right-click on a row outside the selection selects only that row", async () => {
     const { container, findByRole } = renderTable()
     fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
@@ -391,7 +345,6 @@ describe("TorrentTableOptimized smoke", () => {
     fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
 
     fireEvent.click(within(container).getByText("Bravo Release"))
-    // The page closes the panel when it gets the open torrent again.
     expect(onTorrentSelect).not.toHaveBeenCalled()
     expect(checkedRows(container)).toEqual(["Bravo Release"])
 
@@ -400,8 +353,6 @@ describe("TorrentTableOptimized smoke", () => {
     expect(checkedRows(container)).toEqual([])
   })
 
-  // regression: #4023
-  // The menu renames only the torrent. The user renames files and folders in the Content tab.
   it("right-click shows one Rename Torrent item that opens the Rename Torrent dialog", async () => {
     const { container, findByRole, queryByRole, findByText } = renderTable()
     fireEvent.contextMenu(within(container).getByText("Alpha Release"))
@@ -435,9 +386,6 @@ describe("TorrentTableOptimized smoke", () => {
     expect(queryByRole("menuitem", { name: "renameSubmenu.renameTorrent" })).toBeNull()
   })
 
-  // Issue #2525: in cross-seed mode the table filters client-side. The search
-  // already narrowed rows on the backend (every word must appear somewhere in
-  // the name), so the table must not re-apply it as a literal substring.
   it("keeps backend-matched rows when a multi-word search meets the cross-seed filter", () => {
     scenario.routeSearch = "release a"
     scenario.isCrossSeedFiltering = true
@@ -446,16 +394,12 @@ describe("TorrentTableOptimized smoke", () => {
     expect(container.textContent).toContain("Bravo Release")
   })
 
-  // Issue #1925 on the copy side: when select-all reaches past the loaded rows,
-  // the field request joins the column filter with the filter expression like a
-  // bulk action does, not the list expression.
   it("copy-all names past the loaded rows sends the column filter AND the filter expression", async () => {
     const expr = "Ratio > 1"
     const columnFilter = { columnId: "name", operation: "contains", value: "Release" } as const
     localStorage.setItem("qui-column-filters-1", JSON.stringify([columnFilter]))
     scenario.totalCount = 10
     vi.mocked(api.getTorrentField).mockResolvedValue({ values: ["Alpha Release"], total: 1 })
-    // jsdom has no clipboard; the copy fallback calls execCommand.
     document.execCommand = vi.fn(() => true)
     const { container, findByRole } = renderTable({ filters: makeFilters({ expr }) })
 
@@ -470,14 +414,10 @@ describe("TorrentTableOptimized smoke", () => {
     expect(request.filters?.expr).toBe(`(${columnFiltersToExpr([columnFilter])}) && (${expr})`)
   })
 
-  // Issue #1925 on the copy side: in cross-seed mode the column filter applies
-  // client-side, so select-all must mean the rows the user sees. Copy-all names
-  // then copies those rows only, and the selection count says so.
   it("copy-all names in cross-seed mode copies the rows the column filter left visible", async () => {
     localStorage.setItem("qui-column-filters-1", JSON.stringify([{ columnId: "name", operation: "contains", value: "Alpha" }]))
     scenario.isCrossSeedFiltering = true
     let copied = ""
-    // jsdom has no clipboard; the copy fallback selects a textarea and calls execCommand.
     document.execCommand = vi.fn(() => {
       copied = (document.activeElement as HTMLTextAreaElement).value
       return true
@@ -487,7 +427,6 @@ describe("TorrentTableOptimized smoke", () => {
 
     fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
     fireEvent.contextMenu(within(container).getByText("Alpha Release"))
-    // The copy items sit in a submenu; ArrowRight opens it without pointer events.
     fireEvent.keyDown(await findByRole("menuitem", { name: "contextMenu.copy" }), { key: "ArrowRight" })
     fireEvent.click(await findByRole("menuitem", { name: "contextMenu.copyName" }))
 
@@ -496,10 +435,6 @@ describe("TorrentTableOptimized smoke", () => {
   })
 })
 
-// A release on three trackers: one Copy group with two hidden copies, and one
-// plain row. Server order under the default sort (added_on desc): the group
-// takes the place of its first-sorted member, the Group representative is on
-// top, then the other members in sort order.
 function copyGroupRows(overrides: { top?: Partial<Torrent>; sorted?: Partial<Torrent>; third?: Partial<Torrent> } = {}) {
   return [
     makeTorrent({ hash: "hash-top", name: "Delta Release", added_on: 1_700_000_000, priority: 0, copy_group: { id: "g1", first_sorted: { instance_id: 1, hash: "hash-sorted" } }, ...overrides.top }),
@@ -509,7 +444,6 @@ function copyGroupRows(overrides: { top?: Partial<Torrent>; sorted?: Partial<Tor
   ]
 }
 
-// In the grid only: the toolbar button also has a copyGroups label.
 const pills = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLButtonElement>("[role=grid] button[aria-label^=\"copyGroups.\"]"))
 const warnings = (container: HTMLElement) => container.querySelectorAll<HTMLButtonElement>("[role=grid] button[aria-label^=\"copyGroups.labelWithProblem\"]")
 const rowOf = (container: HTMLElement, name: string) => within(container).getByText(name).closest(".cursor-pointer") as HTMLElement
@@ -527,7 +461,6 @@ function renderGroups(rows: Torrent[], props: Partial<ComponentProps<typeof Torr
   const view = renderTable(props)
   return {
     ...view,
-    // A new prop renders the memoized table again with the new rows.
     showRows(next: Torrent[]) {
       scenario.rows = next
       view.rerender(<TorrentTableOptimized instanceId={1} filters={makeFilters()} {...props} onFilteredDataUpdate={vi.fn()} />)
@@ -610,7 +543,6 @@ describe("TorrentTableOptimized Copy groups", () => {
       const view = renderGroups(rows)
       expect(warnings(view.container).length).toBe(0)
 
-      // The top row keeps its object: only the hidden copy changes.
       view.showRows([rows[0], rows[1], { ...rows[2], state: "error" }, rows[3]])
       expect(warnings(view.container).length).toBe(1)
 
@@ -650,7 +582,6 @@ describe("TorrentTableOptimized Copy groups", () => {
 
       fireEvent.click(pills(container)[0])
 
-      // An open group shows the own value of each row.
       expect(collapsedAdded).toBe(cellOf(rowOf(container, "Delta Release copy B"), "added_on").textContent)
       expect(collapsedAdded).not.toBe(cellOf(rowOf(container, "Delta Release"), "added_on").textContent)
     })
@@ -660,7 +591,6 @@ describe("TorrentTableOptimized Copy groups", () => {
       const view = renderGroups(rows)
       const before = cellOf(rowOf(view.container, "Delta Release"), "added_on").textContent
 
-      // The top row keeps its object: only the hidden copy changes.
       view.showRows([rows[0], { ...rows[1], added_on: 1_760_000_000 }, rows[2], rows[3]])
 
       expect(cellOf(rowOf(view.container, "Delta Release"), "added_on").textContent).not.toBe(before)
@@ -688,11 +618,9 @@ describe("TorrentTableOptimized Copy groups", () => {
     expect(container.textContent).not.toContain("Alpha Copy Of Delta")
   })
 
-  // regression: #3922
   it("shows the status of the first-sorted copy on a Stacked row under a sort by the status icon column", () => {
     localStorage.setItem("qui-torrent-desktop-view-mode", "compact")
     localStorage.setItem("qui-column-sorting:1", JSON.stringify([{ id: "status_icon", desc: false }]))
-    // Only the hidden first-sorted copy differs between the two lists.
     const seeding = renderGroups(copyGroupRows({ sorted: { state: "uploading" } }))
     const seedingText = seeding.container.textContent
     seeding.unmount()
@@ -703,7 +631,6 @@ describe("TorrentTableOptimized Copy groups", () => {
   })
 
   it("shows no tooltip on the pill on a device that can hover", () => {
-    // jsdom has no matchMedia; without one, the device counts as one that cannot hover.
     window.matchMedia = ((query: string) => ({
       matches: query === "(hover: hover)",
       media: query,
@@ -713,7 +640,6 @@ describe("TorrentTableOptimized Copy groups", () => {
     try {
       const { container, queryByRole } = renderGroups(copyGroupRows())
 
-      // A keyboard user tabs to the pill.
       fireEvent.keyDown(pills(container)[0], { key: "Tab" })
       act(() => pills(container)[0].focus())
 
@@ -724,7 +650,6 @@ describe("TorrentTableOptimized Copy groups", () => {
     }
   })
 
-  // regression: #3922
   it("names the torrent that a Stacked row shows in incognito mode under a name sort", () => {
     localStorage.setItem("qui-torrent-desktop-view-mode", "compact")
     localStorage.setItem("qui-incognito-mode", "true")
@@ -902,7 +827,6 @@ describe("TorrentTableOptimized stream status", () => {
     scenario.streamRetrying = false
   })
 
-  // regression: #4206
   it("shows only the dot while the stream connects, and names the dot and the tooltip with the label", async () => {
     const { getByRole, queryByText, findByRole } = renderTable()
 
@@ -989,7 +913,6 @@ describe("TorrentTableOptimized Group copies switch", () => {
     expect(container.textContent?.includes("copyGroups.grouping")).toBe(shown)
   })
 
-  // A phone reaches this table in the Unified view.
   it("asks for groups and shows the switch on a phone", () => {
     window.matchMedia = ((query: string) => ({
       matches: query === "(max-width: 767px)",

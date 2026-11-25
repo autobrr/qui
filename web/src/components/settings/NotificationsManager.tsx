@@ -42,7 +42,6 @@ export function NotificationsManager() {
   const queryClient = useQueryClient()
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<NotificationTarget | null>(null)
-  // A new key on each open gives the form fresh state.
   const [editorSession, setEditorSession] = useState(0)
 
   const eventsQuery = useQuery({
@@ -62,7 +61,6 @@ export function NotificationsManager() {
     mutationFn: ({ id, data }: { id: number | null; data: NotificationTargetRequest }) =>
       id === null ? api.createNotificationTarget(data) : api.updateNotificationTarget(id, data),
     onSuccess: (saved, { id }) => {
-      // The switch sends the name and the URL of its row, so the row holds the saved values before the switch is in reach again.
       if (id !== null) queryClient.setQueryData<NotificationTarget[]>(TARGETS_KEY, (old) => old?.map((item) => item.id === id ? saved : item))
       void queryClient.invalidateQueries({ queryKey: TARGETS_KEY })
       setEditorOpen(false)
@@ -73,10 +71,8 @@ export function NotificationsManager() {
   const setEnabledInCache = (id: number, enabled: boolean) =>
     queryClient.setQueryData<NotificationTarget[]>(TARGETS_KEY, (old) => old?.map((item) => item.id === id ? { ...item, enabled } : item))
 
-  // The switch and the editor of a target take no save while its switch save runs, so two saves of one target never overlap.
   const toggleMutation = useMutation({
     mutationKey: TOGGLE_KEY,
-    // The event list stays out of the request, so the server keeps it as it is.
     mutationFn: ({ id, name, url, enabled }: NotificationTarget) => api.updateNotificationTarget(id, { name, url, enabled }),
     onMutate: async (target) => {
       await queryClient.cancelQueries({ queryKey: TARGETS_KEY })
@@ -174,7 +170,6 @@ export function NotificationsManager() {
           }}
         />
       </Section>
-      {/* Outside the section, so a failed refetch of the list never takes an open form away. */}
       {definitions && (
         <TargetEditor
           key={editorSession}
@@ -195,7 +190,6 @@ export function NotificationsManager() {
 interface TargetEditorProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** The target to edit, or null for a new one. */
   target: NotificationTarget | null
   definitions: readonly NotificationEventDefinition[]
   pending: boolean
@@ -218,7 +212,6 @@ function TargetEditor({ open, onOpenChange, target, definitions, pending, submit
   const [enabled, setEnabled] = useState(target?.enabled ?? true)
   const [eventTypes, setEventTypes] = useState<ReadonlySet<string>>(() => {
     const known = definitions.map((event) => event.type)
-    // The server takes only the events that it knows, so a type that it no longer knows drops out here.
     return new Set(target ? known.filter((type) => target.eventTypes?.includes(type)) : known)
   })
   const [errors, setErrors] = useState<FormErrors>({})
@@ -317,7 +310,6 @@ interface EventPickerProps {
   onChange: (next: ReadonlySet<string>) => void
 }
 
-/** The events of a target in their groups. A group folds open to show its events, and its checkbox sets them all. */
 function EventPicker({ ref, groups, selected, error, onChange }: EventPickerProps) {
   const { t } = useTranslation("settings")
   const labelId = useId()

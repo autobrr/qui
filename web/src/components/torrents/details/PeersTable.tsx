@@ -39,7 +39,6 @@ interface PeersTableProps {
 
 const columnHelper = createColumnHelper<typeof sortableDetailsTableFeatures, SortedPeer>()
 
-// Sorting function that pushes 0/null/undefined values to the bottom
 const zeroLastSortingFn: SortFn<typeof sortableDetailsTableFeatures, SortedPeer> = (rowA, rowB, columnId) => {
   const a = (rowA.getValue(columnId) as number | undefined | null) ?? 0
   const b = (rowB.getValue(columnId) as number | undefined | null) ?? 0
@@ -89,7 +88,6 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 150,
     }),
-    // Sort by the shown name, so a peer that sends only a peer ID sorts with its client.
     columnHelper.accessor((row) => matchPeerClient(row.client, row.peer_id_client).name, {
       id: "client",
       header: t("peersTable.client"),

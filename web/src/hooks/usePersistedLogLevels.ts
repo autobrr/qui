@@ -19,7 +19,6 @@ const parseLogLevels = (raw: string): Set<LogLevel> => {
 
 const serializeLogLevels = (value: Set<LogLevel>): string => JSON.stringify(Array.from(value))
 
-/** The live log viewer's level filter; it never changes the server log level. */
 export function usePersistedLogLevels() {
   return useClientSetting<Set<LogLevel>>("qui-log-levels", {
     defaultValue: ALL_LEVELS_SET,

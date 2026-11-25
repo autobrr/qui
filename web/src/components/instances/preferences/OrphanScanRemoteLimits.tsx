@@ -6,7 +6,6 @@
 import { Info } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-// hasIdentity: the instance reads file identity, so a second path to a file in use is not listed.
 export function OrphanScanRemoteLimits({ hasIdentity }: { hasIdentity: boolean }) {
   const { t } = useTranslation("instances")
   return (

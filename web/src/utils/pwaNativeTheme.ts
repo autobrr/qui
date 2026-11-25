@@ -45,7 +45,6 @@ function updateManifestThemeColor(color: string): void {
   }
   themeColorMeta.setAttribute("content", color)
 
-  // Also update Apple-specific meta tags for better iOS support
   let appleStatusBarMeta = document.querySelector("meta[name=\"apple-mobile-web-app-status-bar-style\"]")
   if (!appleStatusBarMeta) {
     appleStatusBarMeta = document.createElement("meta")
@@ -105,8 +104,6 @@ export function initializePWANativeTheme(): void {
 
       const isDark = document.documentElement.classList.contains("dark")
 
-      // Prefer stored critical vars to avoid forcing a style/layout recalculation.
-      // `theme.ts` writes `theme-critical-vars` on theme application.
       let backgroundColor = cachedBackground()
 
       if (!backgroundColor) {
@@ -114,7 +111,6 @@ export function initializePWANativeTheme(): void {
         backgroundColor = rootStyles.getPropertyValue("--background").trim()
       }
 
-      // Use background color for seamless status bar
       let themeColor = backgroundColor
 
       if (themeColor.includes("oklch")) {
@@ -132,7 +128,6 @@ export function initializePWANativeTheme(): void {
     }
   }
 
-  // Coalesce multiple rapid updates (theme application can trigger several mutations)
   let scheduled = false
   const scheduleUpdate = () => {
     if (scheduled) return

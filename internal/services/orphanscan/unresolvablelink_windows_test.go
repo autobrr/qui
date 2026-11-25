@@ -19,7 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// errnoStatBackend fails Stat of one path with a Windows error code.
 type errnoStatBackend struct {
 	fsops.Backend
 	path  string
@@ -33,10 +32,6 @@ func (b errnoStatBackend) Stat(ctx context.Context, p string) (*fsops.LstatInfo,
 	return b.Backend.Stat(ctx, p)
 }
 
-// Only the code for a link Windows cannot resolve lets the run go on. The
-// neighbouring code means the file is there but cannot be accessed, so it could
-// be a listed file under another path.
-// regression: #3596
 func TestExecuteDeletion_WindowsTorrentFileErrorCodes(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -72,8 +67,6 @@ func TestExecuteDeletion_WindowsTorrentFileErrorCodes(t *testing.T) {
 	}
 }
 
-// A disc unit whose link cannot be resolved stays and names the link, unlike
-// the same code at a torrent's path, which collectInUseIDs skips.
 func TestCheckEntryInUse_WindowsUnresolvableSymlinkKeepsTheUnit(t *testing.T) {
 	link := filepath.Join(t.TempDir(), "00001.m2ts")
 	backend := errnoStatBackend{Backend: newTestBackend(), path: link, errno: windows.ERROR_CANT_RESOLVE_FILENAME}

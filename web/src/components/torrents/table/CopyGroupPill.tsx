@@ -15,11 +15,8 @@ interface CopyGroupPillProps {
   id: string
   open: boolean
   copies: number
-  /** Only on a collapsed group: the worst problem of its hidden copies. */
   hiddenProblem?: CopyProblem
-  /** Only on a collapsed group outside Select all mode: the ticked copies that it hides. */
   hiddenTicks: number
-  /** The name that the row shows, so each pill has its own accessible name. */
   name: string
   size: CopyGroupPillSize
   onToggle: (id: string) => void
@@ -27,8 +24,6 @@ interface CopyGroupPillProps {
 
 const HEIGHT: Record<CopyGroupPillSize, string> = { normal: "h-5", dense: "h-[18px]", stacked: "h-[22px]" }
 
-// The "+N" toggle at the end of the name of a Copy group's top row. The name
-// stays the same in both states: aria-expanded tells open from closed.
 export function CopyGroupPill({ id, open, copies, hiddenProblem, hiddenTicks, name, size, onToggle }: CopyGroupPillProps) {
   const { t } = useTranslation("torrents")
   const canHover = useMediaQuery("(hover: hover)")
@@ -36,7 +31,6 @@ export function CopyGroupPill({ id, open, copies, hiddenProblem, hiddenTicks, na
   const copiesLabel = problem ? t("copyGroups.labelWithProblem", { label: t("copyGroups.copies", { count: copies, name }), problem: t(problem.labelKey) }) : t("copyGroups.copies", { count: copies, name })
   const label = hiddenTicks > 0 ? t("copyGroups.labelWithTicks", { label: copiesLabel, ticks: t("copyGroups.hiddenTicked", { count: hiddenTicks }) }) : copiesLabel
   return (
-    // The 18px pill takes 16px of its line, so it does not make the smallest card taller.
     <span className={cn("ml-auto flex shrink-0 pl-2", size === "stacked" && "mr-2", size === "dense" && "-my-px")}>
       <button
         type="button"
@@ -46,13 +40,10 @@ export function CopyGroupPill({ id, open, copies, hiddenProblem, hiddenTicks, na
           event.stopPropagation()
           onToggle(id)
         }}
-        // A press on the pill must not start the long press of its card.
         onTouchStart={(event) => event.stopPropagation()}
         className={cn(
           "relative flex cursor-pointer items-center gap-0.5 rounded-md border pl-1.5 pr-1 text-xs font-medium tabular-nums transition-colors",
           HEIGHT[size],
-          // An invisible hit area 5px past the border on each side. A touch screen
-          // gets the full height: the zone is taller than any row, and the row or the card clips it.
           "before:absolute before:-inset-x-[5px] before:content-['']",
           canHover ? "before:-inset-y-[5px]" : "before:-inset-y-48",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",

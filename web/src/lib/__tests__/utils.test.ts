@@ -65,7 +65,6 @@ describe("formatBytesOrFallback", () => {
   })
 })
 
-// regression: #3764, the Unified tracker URL sample
 describe("takeTurns", () => {
   it("takes one item from each list in turn, so a long list cannot fill a sample", () => {
     expect(takeTurns([["a1", "a2", "a3"], ["b1"], [], ["c1", "c2"]]).slice(0, 4)).toEqual(["a1", "b1", "c1", "a2"])

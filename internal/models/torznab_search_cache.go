@@ -18,7 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// TorznabSearchCacheEntry captures a cached Torznab search response.
 type TorznabSearchCacheEntry struct {
 	ID                 int64
 	CacheKey           string
@@ -35,7 +34,6 @@ type TorznabSearchCacheEntry struct {
 	HitCount           int64
 }
 
-// TorznabSearchCacheStats provides aggregated cache metrics for observability.
 type TorznabSearchCacheStats struct {
 	Entries         int64      `json:"entries"`
 	TotalHits       int64      `json:"totalHits"`
@@ -47,7 +45,6 @@ type TorznabSearchCacheStats struct {
 	TTLMinutes      int        `json:"ttlMinutes"`
 }
 
-// TorznabRecentSearch captures metadata about a cached search request for UI consumption.
 type TorznabRecentSearch struct {
 	CacheKey     string     `json:"cacheKey"`
 	Scope        string     `json:"scope"`
@@ -61,23 +58,19 @@ type TorznabRecentSearch struct {
 	HitCount     int64      `json:"hitCount"`
 }
 
-// TorznabSearchCacheSettings tracks persisted cache configuration.
 type TorznabSearchCacheSettings struct {
 	TTLMinutes int
 	UpdatedAt  *time.Time
 }
 
-// TorznabSearchCacheStore persists search cache entries.
 type TorznabSearchCacheStore struct {
 	db dbinterface.Querier
 }
 
-// NewTorznabSearchCacheStore constructs a new search cache store.
 func NewTorznabSearchCacheStore(db dbinterface.Querier) *TorznabSearchCacheStore {
 	return &TorznabSearchCacheStore{db: db}
 }
 
-// Fetch returns a cached search response by cache key.
 func (s *TorznabSearchCacheStore) Fetch(ctx context.Context, cacheKey string) (*TorznabSearchCacheEntry, bool, error) {
 	if strings.TrimSpace(cacheKey) == "" {
 		return nil, false, errors.New("cache key cannot be empty")
@@ -152,7 +145,6 @@ func (s *TorznabSearchCacheStore) Fetch(ctx context.Context, cacheKey string) (*
 	return entry, true, nil
 }
 
-// Store inserts or updates a cached search response.
 func (s *TorznabSearchCacheStore) Store(ctx context.Context, entry *TorznabSearchCacheEntry) error {
 	if entry == nil {
 		return errors.New("entry cannot be nil")
@@ -221,7 +213,6 @@ func (s *TorznabSearchCacheStore) Store(ctx context.Context, entry *TorznabSearc
 	return nil
 }
 
-// RecentSearches returns the most recently used cached search queries.
 func (s *TorznabSearchCacheStore) RecentSearches(ctx context.Context, scope string, limit int) ([]*TorznabRecentSearch, error) {
 	if limit <= 0 {
 		limit = 10
@@ -312,7 +303,6 @@ func (s *TorznabSearchCacheStore) RecentSearches(ctx context.Context, scope stri
 	return results, nil
 }
 
-// FindActiveByScopeAndQuery returns matching, non-expired cache entries for a scope/query pair.
 func (s *TorznabSearchCacheStore) FindActiveByScopeAndQuery(ctx context.Context, scope string, query string) ([]*TorznabSearchCacheEntry, error) {
 	scope = strings.TrimSpace(scope)
 	query = strings.TrimSpace(query)
@@ -397,7 +387,6 @@ func (s *TorznabSearchCacheStore) FindActiveByScopeAndQuery(ctx context.Context,
 	return entries, nil
 }
 
-// CleanupExpired removes all expired cache rows.
 func (s *TorznabSearchCacheStore) CleanupExpired(ctx context.Context) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM torznab_search_cache WHERE expires_at <= CURRENT_TIMESTAMP`)
 	if err != nil {
@@ -410,7 +399,6 @@ func (s *TorznabSearchCacheStore) CleanupExpired(ctx context.Context) (int64, er
 	return deleted, nil
 }
 
-// Flush removes every cache entry.
 func (s *TorznabSearchCacheStore) Flush(ctx context.Context) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM torznab_search_cache`)
 	if err != nil {
@@ -423,7 +411,6 @@ func (s *TorznabSearchCacheStore) Flush(ctx context.Context) (int64, error) {
 	return deleted, nil
 }
 
-// InvalidateByIndexerIDs removes cache entries referencing any of the provided indexers.
 func (s *TorznabSearchCacheStore) InvalidateByIndexerIDs(ctx context.Context, indexerIDs []int) (int64, error) {
 	if len(indexerIDs) == 0 {
 		return 0, nil
@@ -456,7 +443,6 @@ func (s *TorznabSearchCacheStore) InvalidateByIndexerIDs(ctx context.Context, in
 	return deleted, nil
 }
 
-// Stats returns summary metrics for the search cache table.
 func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCacheStats, error) {
 	const query = `
 		SELECT
@@ -507,7 +493,6 @@ func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCach
 	return stats, nil
 }
 
-// GetSettings returns the current cache settings (if any).
 func (s *TorznabSearchCacheStore) GetSettings(ctx context.Context) (*TorznabSearchCacheSettings, error) {
 	const query = `SELECT ttl_minutes, updated_at FROM torznab_search_cache_settings WHERE id = 1`
 
@@ -535,7 +520,6 @@ func (s *TorznabSearchCacheStore) GetSettings(ctx context.Context) (*TorznabSear
 	return settings, nil
 }
 
-// UpdateSettings persists TTL minutes and returns the updated settings.
 func (s *TorznabSearchCacheStore) UpdateSettings(ctx context.Context, ttlMinutes int) (*TorznabSearchCacheSettings, error) {
 	if ttlMinutes <= 0 {
 		return nil, errors.New("ttlMinutes must be positive")
@@ -554,7 +538,6 @@ func (s *TorznabSearchCacheStore) UpdateSettings(ctx context.Context, ttlMinutes
 	return s.GetSettings(ctx)
 }
 
-// RebaseTTL recalculates expires_at for all cached entries using the provided TTL minutes.
 func (s *TorznabSearchCacheStore) RebaseTTL(ctx context.Context, ttlMinutes int) (int64, error) {
 	if ttlMinutes <= 0 {
 		return 0, errors.New("ttlMinutes must be positive")
@@ -610,7 +593,6 @@ func (s *TorznabSearchCacheStore) touchEntry(ctx context.Context, id int64) {
 	}
 }
 
-// Touch updates last_used_at and hit_count for a cache entry.
 func (s *TorznabSearchCacheStore) Touch(ctx context.Context, id int64) {
 	if id <= 0 {
 		return
