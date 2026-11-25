@@ -33,7 +33,7 @@ A percent alone reports 0.6 µs of a 5 µs function and hides 100 ms of a 5 s pa
 - A slow path needs a benchmark of the whole pass. 1 µs per torrent is below the limit, and at 50,000 torrents it is 50 ms.
 - A change of a benchmark's workload ends its history. Its starting commit becomes the commit that merges the change, so a loss before that commit no longer counts.
 - A starting commit must still build. When it no longer does, the weekly job fails and names the benchmark.
-- A run may take only its share of the time limit: the limit divided by the runs of both sides. A benchmark that needs longer is `CAN'T TELL` at once, so one that hangs does not use up the time of the others. The weekly job fails for it, and for a benchmark that fails on `develop` but not at its starting commit.
+- A run may take only its share of the time limit: the limit divided by the runs of both sides. A benchmark that needs longer is `CAN'T TELL` at once, so one that hangs does not use up the time of the others. The weekly job fails for it, and for a benchmark that fails in more than half of its runs on `develop` but not at its starting commit.
 - When the time budget of the weekly job ends, the summary lists the benchmarks without a result, and the next run starts with them.
 - A pull request cannot change its own approval check. A change to it takes effect after it merges.
 
