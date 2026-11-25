@@ -325,7 +325,6 @@ describe("bulk action module - confirmations", () => {
     expect(dialogTitle()).toBeNull()
   })
 
-  // regression: #3983
   it("closes an open confirmation when the selection becomes empty", () => {
     const { result, publish } = renderModule({ actionTarget: ticks("h1", "h2") })
 
@@ -504,7 +503,6 @@ describe("bulk action module - delete", () => {
     expect(deleteTitle()).toBe("deleteDialog.title/2")
   })
 
-  // regression: #3989
   it("keeps the dialog open while the delete runs, so Cancel and Escape do not suggest that they stop it", async () => {
     let finish = () => {}
     mockedApi.bulkAction.mockReturnValueOnce(new Promise(resolve => {
@@ -524,7 +522,6 @@ describe("bulk action module - delete", () => {
     expect(deleteTitle()).toBeNull()
   })
 
-  // regression: #3989
   it("locks the delete options while the delete runs, so the dialog shows the choices that the request carries", async () => {
     let finish = () => {}
     mockedApi.bulkAction.mockReturnValueOnce(new Promise(resolve => {
@@ -604,7 +601,6 @@ describe("bulk action module - delete", () => {
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.deleteWithFiles/2")
   })
 
-  // regression: #3592
   it("sends the chosen cross-seeds to the all-instances scope when one is on another instance", async () => {
     const { result, queryClient } = renderModule({ actionTarget: ticks("h1") })
     queryClient.setQueryData(TORRENTS_LIST_KEY, {
@@ -642,7 +638,6 @@ describe("bulk action module - delete", () => {
     expect(deleteTitle()).toBeNull()
   })
 
-  // regression: #3989
   it("closes the dialog and clears the selection when a Select all delete fails in the Unified view", async () => {
     mockedApi.bulkAction.mockRejectedValueOnce(new Error("boom"))
     const { result } = renderModule({ instanceId: ALL_INSTANCES_ID, actionTarget: selectAll(50, {}, ["a"]) })
@@ -657,7 +652,6 @@ describe("bulk action module - delete", () => {
     expect(deleteTitle()).toBeNull()
   })
 
-  // regression: #3989
   it("refetches the list when a delete fails in the Unified view, for Select all and for ticked torrents", async () => {
     const targets: ActionTarget[] = [selectAll(50, {}, ["a"]), pairs([{ instanceId: INSTANCE_ID, hash: "h1" }, { instanceId: 9, hash: "h2" }])]
     for (const actionTarget of targets) {
@@ -924,7 +918,6 @@ describe("bulk action module - dialogs with values", () => {
     expect(dialogTitle()).toBeNull()
   })
 
-  // regression: #3992
   it("stays pending until both speed-limit requests settle", async () => {
     let finishUpload: () => void = () => {}
     mockedApi.bulkAction
@@ -979,7 +972,6 @@ describe("bulk action module - dialogs with values", () => {
     expect(dialogValues("transfer")).toBe(JSON.stringify([3, "a", "Some.Linux.ISO"]))
   })
 
-  // regression: #4242
   it("clears the selection when a Transfer starts, so a phone leaves its selection mode", () => {
     const { result } = renderModule({ actionTarget: ticks("a") })
     act(() => result.current.dispatchSelection({ type: "tick", keys: ["a"], checked: true }))

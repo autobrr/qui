@@ -426,7 +426,6 @@ func TestCrossSeedRouteAvailabilityChecksVersionOnlyForListing(t *testing.T) {
 	require.ErrorIs(t, f.routes.CheckAvailable(t.Context(), instance.ID, true), crossseedroute.ErrUnavailable)
 }
 
-// regression: #3651
 func TestCrossSeedRouteAvailabilityStopsALoginAtTheDeadline(t *testing.T) {
 	f := newRouteFixture(t)
 	var arrived atomic.Bool

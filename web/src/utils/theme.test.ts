@@ -164,7 +164,6 @@ describe("custom theme preview", () => {
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
   })
 
-  // regression: #4124
   it("stays on the page through a mode change and a theme change", async () => {
     const draft = ":root { --background: red; } .dark { --background: maroon; }"
     registerCustomThemes([customTheme])
@@ -183,7 +182,6 @@ describe("custom theme preview", () => {
     expect(customStyle()).toBe(customTheme.rawCss)
   })
 
-  // regression: #4124
   it("reports the css of the applied theme, not the draft", async () => {
     registerCustomThemes([customTheme])
     await setTheme("custom:ocean")
@@ -202,7 +200,6 @@ describe("custom theme preview", () => {
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
   })
 
-  // regression: #4124
   it("keeps css that loads an outside file off the page, and keeps the last good preview", async () => {
     const good = ":root { --background: red; } .dark { --background: maroon; }"
     await setTheme("minimal")
@@ -217,7 +214,6 @@ body { background: url(https://example.invalid/a.png); }`
 })
 
 describe("custom theme preview mode", () => {
-  // regression: #4124
   it("shows a light-only theme in light mode and an ordinary theme in the selected mode", async () => {
     await setTheme("minimal", "dark")
     expect(document.documentElement.classList.contains("dark")).toBe(true)

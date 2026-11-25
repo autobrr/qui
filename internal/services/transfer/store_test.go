@@ -304,7 +304,6 @@ func normalizeSteps(steps []transfer.Step) []transfer.Step {
 	return steps
 }
 
-// regression: #4242
 func TestTheCleanupKeepsAPermanentFailureThatWaitsForTheUserPostgresIntegration(t *testing.T) {
 	t.Parallel()
 

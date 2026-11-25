@@ -34,7 +34,6 @@ func TestGetAppPreferencesServesStaleCacheWhenRefreshFails(t *testing.T) {
 	require.Equal(t, "203.0.113.7", prefs.AnnounceIP)
 }
 
-// regression: #4242
 func TestGetLastAppPreferencesAsksOnlyWithoutACache(t *testing.T) {
 	var asked atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

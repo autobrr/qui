@@ -537,7 +537,6 @@ func TestRuleContentTypeInfo(t *testing.T) {
 	}
 }
 
-// regression: #4211
 func TestParseTorrentMetadata_DirectionalControls(t *testing.T) {
 	const controls = "\u200e\u200f\u202a\u202b\u202c\u202d\u202e"
 	for _, multi := range []bool{false, true} {

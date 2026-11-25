@@ -880,7 +880,6 @@ func TestGetTorrentFilesBatch_DefaultOmitsPerHashFailure(t *testing.T) {
 	require.Equal(t, []cacheCall{{hash: "goodhash", print: barePrint}}, fm.cacheCalls)
 }
 
-// regression: #3738
 func TestGetTorrentFilesBatch_CacheReadErrorFailsBatchWithoutFetching(t *testing.T) {
 	t.Parallel()
 
@@ -901,7 +900,6 @@ func TestGetTorrentFilesBatch_CacheReadErrorFailsBatchWithoutFetching(t *testing
 	require.Empty(t, client.calls)
 }
 
-// regression: #3738
 func TestGetTorrentFilesBatch_CacheReadErrorSingleHashFetchesFromClient(t *testing.T) {
 	t.Parallel()
 
@@ -3513,7 +3511,6 @@ func (c *blockingTorrentFilesClient) GetFilesInformationCtx(ctx context.Context,
 	return &files, nil
 }
 
-// regression: #3739
 func TestGetTorrentFilesBatch_CancelSavesFinishedLists(t *testing.T) {
 	t.Parallel()
 
@@ -3534,7 +3531,6 @@ func TestGetTorrentFilesBatch_CancelSavesFinishedLists(t *testing.T) {
 	require.Equal(t, files, fm.cached["done"], "the list that came back before the cancel is in the file cache")
 }
 
-// regression: #3739, #3934
 func TestInvalidateFileCacheNotifiesFilesChanged(t *testing.T) {
 	t.Parallel()
 
@@ -3579,7 +3575,6 @@ func TestInvalidateFileCacheNotifiesAfterFilesAreGone(t *testing.T) {
 	require.False(t, cachedAtNotify, "a read that starts after the notify must not find the old file list")
 }
 
-// regression: #2523
 func TestSetRSSRuleMirrorsTorrentParamsOntoLegacyFields(t *testing.T) {
 	tests := []struct {
 		name string

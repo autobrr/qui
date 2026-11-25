@@ -228,7 +228,6 @@ func TestIsEpisodeRange(t *testing.T) {
 	require.True(t, IsEpisodeRange(parser.Parse("[Grp] Show Name - 01 - 12 [1080p]")))
 }
 
-// regression: #3286
 func TestParser_ReadsWebSourceAfterUHDAndAnotherTag(t *testing.T) {
 	t.Parallel()
 
@@ -269,7 +268,6 @@ func TestParser_KeepsATagListOfTheExactSize(t *testing.T) {
 	require.LessOrEqual(t, cap(tags), len(tags)+len(tags)/8+1)
 }
 
-// regression: #4289
 func TestParser_ReadsAKGListingAsItsDownloadName(t *testing.T) {
 	t.Parallel()
 
@@ -293,7 +291,6 @@ func TestParser_ReadsAKGListingAsItsDownloadName(t *testing.T) {
 	}
 }
 
-// regression: #4289
 func TestParser_KeepsABracketTagThatIsNoKGDownloadName(t *testing.T) {
 	t.Parallel()
 

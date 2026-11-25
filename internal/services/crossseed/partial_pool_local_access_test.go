@@ -64,7 +64,6 @@ func partialPoolAccessCases() []partialPoolAccessCase {
 	}
 }
 
-// regression: #3090
 func TestPartialPoolPassSettlesHardlinkRecheckOnlyWithLocalAccess(t *testing.T) {
 	for _, tc := range partialPoolAccessCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -143,7 +142,6 @@ func TestPartialPoolPassSettlesHardlinkRecheckOnlyWithLocalAccess(t *testing.T) 
 	}
 }
 
-// regression: #3090
 func TestPartialPoolPassCleansReflinkStagingOnlyWithLocalAccess(t *testing.T) {
 	for _, tc := range partialPoolAccessCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -209,7 +207,6 @@ func partialPoolLocalInstances(instanceIDs ...int) instanceProvider {
 	return newOrderedInstanceStore(instances...)
 }
 
-// regression: #3090
 func TestPartialPoolPassPropagatesOnlyIntoTargetWithLocalAccess(t *testing.T) {
 	for _, tc := range partialPoolAccessCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -273,7 +270,6 @@ func TestPartialPoolPassPropagatesOnlyIntoTargetWithLocalAccess(t *testing.T) {
 	}
 }
 
-// regression: #3090
 func TestPartialPoolInstanceLookupFailureKeepsPoolActiveBetweenFullScans(t *testing.T) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	base := t.TempDir()
@@ -318,7 +314,6 @@ func TestPartialPoolInstanceLookupFailureKeepsPoolActiveBetweenFullScans(t *test
 	require.Equal(t, models.CrossSeedPartialPoolStatusActive, pool.Status, "the next active-recovery pass must retry the instance lookup")
 }
 
-// regression: #3090
 func TestPartialPoolPassFinishesFilesOfMemberInReviewForLostLocalAccess(t *testing.T) {
 	for _, tc := range partialPoolAccessCases()[:2] {
 		t.Run(tc.name, func(t *testing.T) {
@@ -368,7 +363,6 @@ func TestPartialPoolPassFinishesFilesOfMemberInReviewForLostLocalAccess(t *testi
 	}
 }
 
-// regression: #3090
 func TestPartialPoolReviewPauseWithoutLocalAccessEndsRecovery(t *testing.T) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	base := t.TempDir()

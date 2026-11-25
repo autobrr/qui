@@ -110,7 +110,6 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 				{Hash: "partial", Name: "Show.Title.S01E03.1080p.WEB.H264-GRP", Progress: 0.5},
 			},
 		},
-		// regression: #3707
 		{
 			name: "moving episode does not count toward the group",
 			torrents: []qbt.Torrent{

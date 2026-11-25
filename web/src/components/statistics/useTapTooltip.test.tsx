@@ -47,7 +47,6 @@ afterEach(() => {
 })
 
 describe("useTapTooltip", () => {
-  // regression: #4179
   it("leaves the tooltip to recharts on a screen with hover", () => {
     const chart = renderChart(true)
     tap(chart)
@@ -55,7 +54,6 @@ describe("useTapTooltip", () => {
     expect(chart.getAttribute("data-active")).toBe("undefined")
   })
 
-  // regression: #4179
   it("opens the tooltip on a tap on the plot, and keeps it open on the next tap on the plot", () => {
     const chart = renderChart(false)
     expect(chart.getAttribute("data-active")).toBe("false")
@@ -67,7 +65,6 @@ describe("useTapTooltip", () => {
     expect(chart.getAttribute("data-active")).toBe("true")
   })
 
-  // regression: #4179
   it("opens no tooltip on a tap below the plot, and closes an open one", () => {
     const chart = renderChart(false)
     tap(screen.getByText("axis"), BELOW_PLOT)
@@ -79,7 +76,6 @@ describe("useTapTooltip", () => {
     expect(chart.getAttribute("data-active")).toBe("false")
   })
 
-  // regression: #4179
   it("closes the tooltip on a tap on the tooltip", () => {
     const chart = renderChart(false)
     tap(chart)
@@ -89,7 +85,6 @@ describe("useTapTooltip", () => {
     expect(chart.getAttribute("data-active")).toBe("false")
   })
 
-  // regression: #4179
   it("closes the tooltip on a tap outside the chart", () => {
     const chart = renderChart(false)
     tap(chart)
@@ -99,7 +94,6 @@ describe("useTapTooltip", () => {
     expect(chart.getAttribute("data-active")).toBe("false")
   })
 
-  // regression: #4179
   it("leaves the tooltip to recharts on a touch screen after a key on the chart, and opens it on the next tap again", () => {
     const chart = renderChart(false)
 
@@ -110,7 +104,6 @@ describe("useTapTooltip", () => {
     expect(chart.getAttribute("data-active")).toBe("true")
   })
 
-  // regression: #4179
   it("scrolls the chart into view above the bottom nav on a tap that opens the tooltip, and keeps it open through that scroll", () => {
     const chart = renderChart(false)
 
@@ -122,7 +115,6 @@ describe("useTapTooltip", () => {
     expect(chart.getAttribute("data-active")).toBe("true")
   })
 
-  // regression: #4179
   it("closes the tooltip on a scroll of the user right after the tap that opened it", () => {
     const chart = renderChart(false)
     tap(chart)
@@ -133,7 +125,6 @@ describe("useTapTooltip", () => {
     expect(chart.getAttribute("data-active")).toBe("false")
   })
 
-  // regression: #4179
   it("closes the tooltip when the page scrolls", () => {
     vi.useFakeTimers({ toFake: ["Date"] })
     const chart = renderChart(false)

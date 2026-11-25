@@ -249,7 +249,6 @@ it("ignores Return on an empty tag search and matches every word of a category s
   expect(sent.category).toBe("tv/x265")
 })
 
-// regression: #4129
 it("leaves Return alone while an input method composes text", async () => {
   metadataResult.data = { categories: {}, tags: ["autobrr"] }
   const ui = renderColdDialog()
@@ -264,7 +263,6 @@ it("leaves Return alone while an input method composes text", async () => {
   expect(vi.mocked(api.addTorrent).mock.calls[0][1].tags).toBeUndefined()
 })
 
-// regression: #4129
 it("keeps a tag picked with the arrow keys when Return is pressed again", async () => {
   metadataResult.data = { categories: {}, tags: ["autobrr"] }
   const ui = renderColdDialog()

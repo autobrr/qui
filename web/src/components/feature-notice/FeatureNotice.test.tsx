@@ -218,7 +218,6 @@ describe("FeatureNotice", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "next control" }))
   })
 
-  // regression: #4070
   it.each([
     ["Got it", "common:featureNotice.gotIt"],
     ["the primary action", "first.action"],

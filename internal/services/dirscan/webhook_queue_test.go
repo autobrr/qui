@@ -35,7 +35,6 @@ func TestMergeWebhookScanRoots(t *testing.T) {
 	))
 }
 
-// regression: #2919
 func TestMergeWebhookScanRootsKeepsABackslashInASlashName(t *testing.T) {
 	t.Parallel()
 
@@ -46,7 +45,6 @@ func TestMergeWebhookScanRootsKeepsABackslashInASlashName(t *testing.T) {
 	require.Equal(t, dir, mergeWebhookScanRoots(fsops.SlashPaths, dir, target, "/data/lib/other"))
 }
 
-// regression: #2919
 func TestMergeWebhookScanRootsStaysInsideAnEditedDirectory(t *testing.T) {
 	t.Parallel()
 

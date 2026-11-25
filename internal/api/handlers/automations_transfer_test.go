@@ -88,7 +88,6 @@ func TestAutomationRuleWithATransferSaves(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestATransferRuleNeedsTheCrossSeedInstanceOfItsTargetInTheKeyLimit(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "automation-transfer-route")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))

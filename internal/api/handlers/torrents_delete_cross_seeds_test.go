@@ -36,7 +36,6 @@ func (f *fakeDeleteMatches) FindDeleteMatches(_ context.Context, selection map[i
 	}, nil
 }
 
-// regression: #3341
 func TestGetDeleteCrossSeeds_SelectAllChecksEverySelectedTorrent(t *testing.T) {
 	t.Parallel()
 

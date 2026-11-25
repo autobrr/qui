@@ -118,7 +118,6 @@ describe("ThemeToggle with the qui API", () => {
     expect(await openMenuNames()).toEqual(defaultMenu)
   })
 
-  // regression: #3790
   it("keeps a hidden custom theme in use after a reload", async () => {
     localStorage.setItem("color-theme", "custom:local")
     localStorage.setItem("qui-theme-visibility", JSON.stringify({ "custom:local": false }))

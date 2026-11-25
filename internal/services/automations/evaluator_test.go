@@ -4082,7 +4082,6 @@ func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
 	}
 }
 
-// regression: #3870
 func TestEvaluateCondition_StateCompletedReadsProgress(t *testing.T) {
 	cond := &RuleCondition{Field: FieldState, Operator: OperatorEqual, Value: "completed"}
 
@@ -4101,7 +4100,6 @@ func TestEvaluateCondition_StateCompletedReadsProgress(t *testing.T) {
 	}
 }
 
-// regression: #3870
 func TestEvaluateCondition_StateDownloadingMatchesForcedMetaDL(t *testing.T) {
 	cond := &RuleCondition{Field: FieldState, Operator: OperatorEqual, Value: "downloading"}
 	torrent := qbt.Torrent{Hash: "hash1", State: qbt.TorrentStateForcedMetaDl}

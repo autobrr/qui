@@ -143,11 +143,8 @@ func TestPoolWritesTheTierOnConnect(t *testing.T) {
 		{"an existing instance moves up", sshtest.ExecGNU, models.SSHTierSFTP, models.SSHTierExec},
 		{"a key that lost its shell moves down", sshtest.ExecSFTPOnly, models.SSHTierExec, models.SSHTierSFTP},
 		{"a bsd userland moves down", sshtest.ExecBSD, models.SSHTierExec, models.SSHTierSFTP},
-		// regression: #4345
 		{"a fish login shell moves up", sshtest.ExecNonPOSIX, models.SSHTierSFTP, models.SSHTierExec},
-		// regression: #4345
 		{"a nushell login shell moves up", sshtest.ExecSplitQuote, models.SSHTierSFTP, models.SSHTierExec},
-		// regression: #4345
 		{"a csh login shell moves up", sshtest.ExecCsh, models.SSHTierSFTP, models.SSHTierExec},
 	}
 	for _, tt := range tests {

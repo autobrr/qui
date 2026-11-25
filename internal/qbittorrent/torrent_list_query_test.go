@@ -221,7 +221,6 @@ func rowHashes(resp *TorrentResponse) []string {
 	return hashes
 }
 
-// regression: #3868
 func TestListTorrentsFollowsOneRule(t *testing.T) {
 	t.Parallel()
 
@@ -406,7 +405,6 @@ func TestTrackerGroupsDoNotDeduplicateEmptyContentPath(t *testing.T) {
 	}, groups)
 }
 
-// regression: #4100
 func TestTrackerFilterFindsATorrentThatTheMappingDoesNotHoldUnderEachDomain(t *testing.T) {
 	t.Parallel()
 

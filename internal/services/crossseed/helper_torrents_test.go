@@ -43,7 +43,6 @@ func TestCrossSeedSkipsHelperTorrents(t *testing.T) {
 	require.Equal(t, map[string]string{"dddd": matchTypeContentPath}, matchedTiers(matches))
 }
 
-// regression: #4231
 func TestCrossSeedViewsLeaveOutTheBadgedTorrents(t *testing.T) {
 	t.Parallel()
 

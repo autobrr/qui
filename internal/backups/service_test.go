@@ -294,7 +294,6 @@ func TestShouldSkipLiveExportForBackup(t *testing.T) {
 	}
 }
 
-// regression: #3765
 func TestExecuteBackupFailsWhenTheVersionIsUnknown(t *testing.T) {
 	t.Parallel()
 
@@ -760,7 +759,6 @@ func TestCheckMissedBackupsFirstRun(t *testing.T) {
 	require.Equal(t, string(models.BackupRunKindHourly), kind)
 }
 
-// regression: #3875
 func TestSchedulerSkipsDisabledInstanceUntilEnabled(t *testing.T) {
 	db := setupTestBackupDB(t)
 

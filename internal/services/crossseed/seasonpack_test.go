@@ -676,7 +676,6 @@ func TestMatchEpisodeCandidates_IgnoresTorrentSizeOfNameMatch(t *testing.T) {
 	require.Len(t, got, 1)
 }
 
-// regression: #4331
 func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 	if os.Getenv("QUI_TEST_FILTER_LOG_LEVELS_CHILD") != "1" {
 		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestMatchEpisodeCandidates_FilterLogLevels$", "-test.timeout=30s")
@@ -1123,7 +1122,6 @@ func TestCheckSeasonPackWebhook_IgnoresIncompleteEpisodeTorrents(t *testing.T) {
 	require.InDelta(t, 0.75, resp.Matches[0].Coverage, 0.001)
 }
 
-// regression: #3626
 func TestCheckSeasonPackWebhook_CountsUnsettledEpisodeAsMissing(t *testing.T) {
 	tests := []struct {
 		name           string

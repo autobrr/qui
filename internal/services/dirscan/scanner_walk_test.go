@@ -169,7 +169,6 @@ func (b failingDirBackend) WalkDir(ctx context.Context, root string, opts fsops.
 	return out, nil
 }
 
-// regression: #3613
 func TestScanDirectory_RootNameSwappedDuringTheWalk(t *testing.T) {
 	t.Parallel()
 
@@ -219,7 +218,6 @@ func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
 	}{
 		{name: "permission denied", err: &fs.PathError{Op: "open", Err: fs.ErrPermission}, want: []string{"Film", "Other"}},
 		{name: "input/output error", err: &fs.PathError{Op: "readdirent", Err: syscall.EIO}, want: []string{"Other"}},
-		// regression: #3613
 		{name: "connection lost", err: fmt.Errorf("read directory: %w", fsops.ErrConnectionLost), wantErr: fsops.ErrConnectionLost},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -268,9 +266,7 @@ func TestScanDirectory_LostConnectionReadingRootLinks(t *testing.T) {
 		name    string
 		backend fsops.Backend
 	}{
-		// regression: #3613
 		{name: "stat", backend: lostStatBackend{Backend: local.NewBackend()}},
-		// regression: #3755
 		{name: "identity read", backend: lostIdentityBackend{Backend: local.NewBackend()}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

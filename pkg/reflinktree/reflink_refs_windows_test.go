@@ -19,7 +19,6 @@ import (
 	"github.com/autobrr/qui/pkg/sharedextents"
 )
 
-// regression: #4074
 func TestCloneFile_ReFSIntegrity(t *testing.T) {
 	root := os.Getenv("QUI_REFS_TEST_DIR")
 	if root == "" {

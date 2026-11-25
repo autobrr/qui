@@ -566,7 +566,6 @@ func TestTransferFollowsTheAfterChoice(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestTransferPutsATorrentAtTheSavePathOfItsCategory(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -601,7 +600,6 @@ func TestTransferPutsATorrentAtTheSavePathOfItsCategory(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestTransferLeavesATorrentOnAutomaticManagement(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -671,35 +669,29 @@ func TestTransferRefuses(t *testing.T) {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.InfohashV2 = strings.Repeat("ab", 32) })
 			return r.request(s)
 		}, reason: "v2 and hybrid torrents are unsupported"},
-		// regression: #4231
 		{name: "a source that swapped two file names", setup: func(r *rig, s show) transfer.Request {
 			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01E01.tmp", "Show.S01E02.mkv", "Show.S01E01.mkv",
 				"Show.S01E01.tmp", "Show.S01E02.mkv")
 			return r.request(s)
 		}, reason: showName + "/Show.S01E02.mkv has the original name of another file of " + showName + "."},
-		// regression: #4231
 		{name: "a source that moved a file to the original name of another", setup: func(r *rig, s show) transfer.Request {
 			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01E00.mkv", "Show.S01E02.mkv", "Show.S01E01.mkv")
 			return r.request(s)
 		}, reason: showName + "/Show.S01E01.mkv has the original name of another file of " + showName + "."},
-		// regression: #4231
 		{name: "a source that moved a file to the original name of another in other case", setup: func(r *rig, s show) transfer.Request {
 			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01E00.mkv", "Show.S01E02.mkv", "show.s01e01.mkv")
 			return r.request(s)
 		}, reason: showName + "/show.s01e01.mkv has the original name of another file of " + showName + "."},
-		// regression: #4231
 		{name: "a source without a common folder that moved a file to the original name of another", setup: func(r *rig, s show) transfer.Request {
 			for _, rename := range [][2]string{{"Show.S01E01.mkv", "Show.S01E02.mkv"}, {"Show.S01E02.mkv", "Extras/Show.S01E02.mkv"}} {
 				require.NoError(t, r.sync.RenameTorrentFile(t.Context(), r.source.ID, s.hash, showName+"/"+rename[0], rename[1]))
 			}
 			return r.request(s)
 		}, reason: "Show.S01E02.mkv has the original name of another file of " + showName + "."},
-		// regression: #4231
 		{name: "a torrent that qBittorrent moves", setup: func(r *rig, s show) transfer.Request {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.Moving = true })
 			return r.request(s)
 		}, reason: "qBittorrent is moving " + showName + ".", moving: true},
-		// regression: #4231
 		{name: "a group member that qBittorrent moves", setup: func(r *rig, s show) transfer.Request {
 			episode := r.seedEpisode(s)
 			r.src.Edit(episode, func(t *qbtstub.Torrent) { t.Moving = true })
@@ -759,7 +751,6 @@ func (r *rig) renameOnSource(s show, names ...string) {
 	}
 }
 
-// regression: #4231
 func TestTransferKeepsTheFileNamesOfTheSource(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -779,7 +770,6 @@ func TestTransferKeepsTheFileNamesOfTheSource(t *testing.T) {
 		[]string{(*files)[0].Name, (*files)[1].Name})
 }
 
-// regression: #4231
 func TestTransferKeepsARenameInCase(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -925,7 +915,6 @@ func TestCancelOfAWaitingTransferRunsNoCleanup(t *testing.T) {
 	require.Equal(t, transfer.StateDone, r.get(firstID).State)
 }
 
-// regression: #4242
 func TestASavedCancelEndsTheTransferAtTheNextStart(t *testing.T) {
 	r := newRig(t)
 	record := r.waiting("bbbb")
@@ -948,7 +937,6 @@ func TestASavedCancelEndsTheTransferAtTheNextStart(t *testing.T) {
 	require.False(t, r.store.IsClaimed(r.source.ID, "bbbb"), "the end frees the torrent")
 }
 
-// regression: #4242
 func TestACancelIsSavedBeforeCancelAnswers(t *testing.T) {
 	r := newRig(t)
 	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")
@@ -1000,10 +988,8 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 		inCase   bool
 	}{
 		{name: "a file at a name that the copy writes", theirs: "Show.S01E02.mkv"},
-		// regression: #4231
 		{name: "a file at the original name of a renamed file", rename: []string{"Show.S01E01.mkv", "Show.S01E00.mkv"},
 			theirs: "Show.S01E01.mkv", sameSize: true},
-		// regression: #4231
 		{name: "a file at the original name of a file renamed in case", rename: []string{"Show.S01E01.mkv", "Show.S01e01.mkv"},
 			theirs: "Show.S01E01.mkv", sameSize: true, inCase: true},
 	} {
@@ -1024,7 +1010,6 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 			record := r.run(r.request(s))
 
 			require.Equal(t, transfer.StateFailed, record.State, "target: %v", tree(t, r.dstDir))
-			// regression: #4231
 			require.Contains(t, record.FailureReason, "Conflict: a file is in the way on homelab at "+filepath.Join(r.dstDir, showName, tc.theirs))
 			require.Equal(t, map[string]string{showName + "/" + tc.theirs: string(theirs)}, tree(t, r.dstDir))
 			require.True(t, r.src.Has(s.hash))
@@ -1033,7 +1018,6 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferRetriesALookupThatGetsNoAnswer(t *testing.T) {
 	const episode, temp = "Show.S01E01.mkv", "Show.S01E01.mkv.qui-transfer-1"
 	for _, tc := range []struct {
@@ -1130,7 +1114,6 @@ func TestTransferRetriesALookupThatGetsNoAnswer(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferKeepsAFileInTheWayWhenItCannotRemoveItsCopy(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -1164,7 +1147,6 @@ func TestTransferFailsWhenTheSourceChanges(t *testing.T) {
 		{name: "a move", change: func(r *rig, s show) {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.SavePath = filepath.Join(r.srcDir, "moved") })
 		}, reason: "it moved", class: transfer.FailurePermanent},
-		// regression: #4231
 		{name: "a move that has not ended", change: func(r *rig, s show) {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.Moving = true })
 		}, reason: "it moved", class: transfer.FailurePermanent},
@@ -1243,7 +1225,6 @@ func logOf(record *transfer.Record) string {
 	return strings.Join(lines, "\n")
 }
 
-// regression: #4231
 func TestTransferCloseGivesUpOnARunThatDoesNotStop(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -1307,7 +1288,6 @@ func TestTransferKeepsSourceFiles(t *testing.T) {
 		require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 		require.Contains(t, logOf(record), "kept its files, because second client uses the same SSH server: 70 B stay in use.")
 	})
-	// regression: #4231
 	t.Run("another instance on the same SSH server, added while the removal waits for its retry", func(t *testing.T) {
 		r := newRig(t)
 		s := newShow(t, showName)

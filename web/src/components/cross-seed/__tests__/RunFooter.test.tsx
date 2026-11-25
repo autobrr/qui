@@ -53,7 +53,6 @@ describe("RunFooter", () => {
     expect(screen.getByRole("button", { name: "automation.stopping" }).hasAttribute("disabled")).toBe(true)
   })
 
-  // regression: #4263
   it("shows why the run is blocked on a tap of the disabled run button", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null

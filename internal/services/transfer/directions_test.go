@@ -150,7 +150,6 @@ func TestTransferWithNoCopy(t *testing.T) {
 	require.False(t, r.src.Has(s.hash))
 }
 
-// regression: #4242
 func TestTransferWithNoCopyLeavesTheFilesToASourceThatKeepsSeeding(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -315,7 +314,6 @@ func TestTransferRelayGoesOnAfterDropsWithoutFsync(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferPushGoesOnAfterTheTargetDrops(t *testing.T) {
 	r := newRigOn(t, onDisk, overSFTP, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
 	r.dstSSH.SetFsync(true)

@@ -141,7 +141,6 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Other: Repack available, or grab internal:",
 			want:    true,
 		},
-		// regression: #3725
 		{
 			name:    "other removal reason",
 			message: "Other: No b-frame comps provided to coexist with current releases",
@@ -157,14 +156,12 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Unknown torrent",
 			want:    true,
 		},
-		// regression: #3987
 		{
 			name:    "removal reason with a passkey only in a URL",
 			message: "Trumped: download the new torrent from https://tracker.example.invalid/download?id=1&passkey=abc",
 			want:    true,
 		},
 
-		// regression: #3987
 		{
 			name:    "UNIT3D old passkey",
 			message: "Passkey does not exist! Please Re-download the .torrent",
@@ -235,7 +232,6 @@ func TestTrackerHealthOf(t *testing.T) {
 		{name: "unregistered added 61 minutes ago", addedOn: addedAgo(61 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}, want: TrackerHealthUnregistered},
 		{name: "unregistered added exactly one hour ago", addedOn: addedAgo(time.Hour), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}, want: TrackerHealthUnregistered},
 		{name: "unregistered with no added time", trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}, want: TrackerHealthUnregistered},
-		// regression: #3616
 		{name: "unregistered tracker error added 10 minutes ago", addedOn: addedAgo(10 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusTrackerError, "Unregistered torrent")}},
 		{name: "unregistered not working", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Torrent not registered on tracker")}, want: TrackerHealthUnregistered},
 		{name: "unregistered while updating", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusUpdating, "Torrent not registered on tracker")}, want: TrackerHealthUnregistered},

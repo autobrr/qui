@@ -1588,7 +1588,6 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 	require.Equal(t, 0, callCount)
 }
 
-// regression: #4320
 func TestSearchGazelleMatches_AsksSiteWhenLocalContentHoldsPartOfSource(t *testing.T) {
 	const album = "Lumen Harbor - Quiet Tides (2024) [FLAC]"
 	sourceTorrent := &qbt.Torrent{

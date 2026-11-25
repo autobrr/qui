@@ -13,7 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// regression: #4118
 func TestTheTorrentDaysOfAnInstanceReadInTheOrderOfTheKey(t *testing.T) {
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "torrent-days-plan")

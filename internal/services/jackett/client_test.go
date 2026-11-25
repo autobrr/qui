@@ -202,7 +202,6 @@ func TestMagnetDownloadError_RedactsTrackerPasskeys(t *testing.T) {
 	assert.Equal(t, rawMagnet, err.MagnetURL)
 }
 
-// regression: #4473
 func TestDownloadHidesTheKeysOfALinkThatDoesNotParse(t *testing.T) {
 	client := NewClient("https://indexer.example.invalid", "test-api-secret", nil, nil, "jackett", 5)
 
@@ -210,11 +209,8 @@ func TestDownloadHidesTheKeysOfALinkThatDoesNotParse(t *testing.T) {
 		name string
 		link string
 	}{
-		// regression: #4473
 		{name: "keys in the query", link: "https://indexer.example.invalid/download?apikey=test-api-secret&passkey=test-pass-secret\x7f"},
-		// regression: #4473
 		{name: "key in the path", link: "https://indexer.example.invalid/test-pass-secret/download\x7f"},
-		// regression: #4473
 		{name: "key in the place of the port", link: "https://indexer.example.invalid:test-pass-secret/download"},
 	}
 	for _, tt := range tests {

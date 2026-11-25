@@ -120,7 +120,6 @@ describe("SetCategoryDialog", () => {
   }
   const row = (name: string) => screen.getByRole("button", { name })
 
-  // regression: #2512
   it("keeps a typed name that extends an existing category", async () => {
     const { input, onConfirm } = renderCategoryDialog()
     await userEvent.type(input, "anime")
@@ -138,7 +137,6 @@ describe("SetCategoryDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith("anime.x")
   })
 
-  // regression: #2512
   it("selects a clicked row and empties the typed name", async () => {
     const { input, onConfirm } = renderCategoryDialog()
     await userEvent.type(input, "new")
@@ -153,7 +151,6 @@ describe("SetCategoryDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith("anime")
   })
 
-  // regression: #4358
   it("shows the full path of a subcategory on a tap, and the tap still selects it", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null

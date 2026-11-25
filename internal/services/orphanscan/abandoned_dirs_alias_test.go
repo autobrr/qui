@@ -24,7 +24,6 @@ import (
 
 const dirAliasStatus = "skipped: a torrent now uses this directory through another path"
 
-// regression: #3652
 func TestExecuteScan_KeepsEmptyFolderATorrentReachesThroughAnAlias(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -74,7 +73,6 @@ func (b eioLstatBackend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo,
 	return b.Backend.Lstat(ctx, p)
 }
 
-// regression: #3652
 func TestExecuteScan_FolderWithoutIdentityIsNotListed(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -117,7 +115,6 @@ func lockOrSkip(t *testing.T, locked, target string) {
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o750) })
 }
 
-// regression: #3652
 func TestExecuteScan_DeniedTorrentFolderListsNoFolder(t *testing.T) {
 	var locked string
 	opts := orphanOnlyOptions{beforeScan: func(svc *Service, ownedSavePath string) {
@@ -138,7 +135,6 @@ func TestExecuteScan_DeniedTorrentFolderListsNoFolder(t *testing.T) {
 	require.Contains(t, run.ErrorMessage, "permission denied")
 }
 
-// regression: #3652
 func TestExecuteScan_UnreadableTorrentFolderListsNoFolder(t *testing.T) {
 	var junk, broken string
 	opts := orphanOnlyOptions{
@@ -168,7 +164,6 @@ func TestExecuteScan_UnreadableTorrentFolderListsNoFolder(t *testing.T) {
 	require.FileExists(t, junk)
 }
 
-// regression: #3652
 func TestExecuteDeletion_KeepsEmptyFolderATorrentReachesThroughAnAliasSinceTheScan(t *testing.T) {
 	var pack, movie, leftover string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-dir-alias-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -206,7 +201,6 @@ func (b lateDirIdentityBackend) Lstat(ctx context.Context, p string) (*fsops.Lst
 	return info, err
 }
 
-// regression: #3652
 func TestExecuteDeletion_FolderIdentityReadFailures(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
@@ -275,7 +269,6 @@ func TestExecuteDeletion_FolderIdentityReadFailures(t *testing.T) {
 	}
 }
 
-// regression: #3652
 func TestExecuteDeletion_ReadsOnlyTheTorrentPathsOfWhatItLists(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -346,7 +339,6 @@ func findBatches(server *sshtest.Server) int {
 	return n
 }
 
-// regression: #3652
 func TestExecuteScan_RemoteExecTierKeepsEmptyFolderATorrentReachesThroughAnAlias(t *testing.T) {
 	t.Parallel()
 
@@ -383,7 +375,6 @@ func TestExecuteScan_RemoteExecTierKeepsEmptyFolderATorrentReachesThroughAnAlias
 	require.Equal(t, dirAliasStatus, fileStatuses(t, f.store, run.ID)[sftpPath(movie)])
 }
 
-// regression: #3652
 func TestExecuteScan_SFTPTierListsEmptyFolderBySpelling(t *testing.T) {
 	t.Parallel()
 
@@ -415,7 +406,6 @@ func fileListLess(svc *Service, ownedSavePath, savePath string, magnet bool) {
 	}
 }
 
-// regression: #3652
 func TestOrphanScan_KeepsEmptyFolderATorrentWithoutAFileListReachesThroughAnAlias(t *testing.T) {
 	for _, tc := range []struct {
 		magnet bool
@@ -463,7 +453,6 @@ func TestOrphanScan_KeepsEmptyFolderATorrentWithoutAFileListReachesThroughAnAlia
 	}
 }
 
-// regression: #3652
 func TestExecuteDeletion_FilesOnlyRunErrorNamesOnlyFiles(t *testing.T) {
 	var junk, broken string
 	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
@@ -488,7 +477,6 @@ func TestExecuteDeletion_FilesOnlyRunErrorNamesOnlyFiles(t *testing.T) {
 	require.FileExists(t, junk)
 }
 
-// regression: #3652
 func TestExecuteDeletion_DiscUnitHoldingASymlinkToAFolderATorrentReachesIsDeleted(t *testing.T) {
 	var unit, stored string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-disc-dir-link", orphanOnlyOptions{}, func(defaultSavePath string) {

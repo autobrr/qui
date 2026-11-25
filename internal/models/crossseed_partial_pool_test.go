@@ -786,7 +786,6 @@ func TestCrossSeedPartialPoolInstanceCascadePreservesOtherMembers(t *testing.T) 
 	require.Error(t, err)
 }
 
-// regression: #3945
 func TestCrossSeedPartialPoolMemberAdmittedBeforeTimeFormMigrationStillMatches(t *testing.T) {
 	t.Parallel()
 
@@ -833,14 +832,12 @@ func TestCrossSeedPartialPoolMemberAdmittedBeforeTimeFormMigrationStillMatches(t
 	require.Error(t, err, "the removal of the last member deletes the pool")
 }
 
-// regression: #3946
 func TestCrossSeedPartialPoolClaimHoldsInEachProcessZone(t *testing.T) {
 	checkPartialPoolClaimHoldsInEachProcessZone(t, func(t *testing.T) *database.DB {
 		return testdb.NewMigratedSQLite(t, "partial-pool-claim-zone")
 	})
 }
 
-// regression: #3946
 func TestCrossSeedPartialPoolClaimHoldsInEachProcessZonePostgresIntegration(t *testing.T) {
 	checkPartialPoolClaimHoldsInEachProcessZone(t, func(t *testing.T) *database.DB {
 		return testdb.NewMigratedPostgres(t, "partial-pool-claim-zone")

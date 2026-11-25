@@ -182,7 +182,6 @@ describe("useTorrentListController — list", () => {
     expect(lastExpr()).toBe("(AddedOn > 1704067200) && (state == \"x\")")
   })
 
-  // regression: #1925
   it("leaves the column filters out of a cross-seed request", async () => {
     const crossSeedExpr = "Hash == \"abc\" || Hash == \"def\""
     renderLayout({ filters: { ...FILTERS, expr: crossSeedExpr }, columnFiltersExpr: "AddedOn > 1704067200" })
@@ -230,7 +229,6 @@ describe("useTorrentListController — load more", () => {
     expect(result.current.list.hasMoreRows).toBe(false)
   })
 
-  // regression: #3657
   it("loads the next server page while the last 100 rows in memory still wait to show", async () => {
     const { result } = renderLayout()
     await flush()
@@ -242,7 +240,6 @@ describe("useTorrentListController — load more", () => {
     expect(result.current.list.loadedRows).toBe(300)
   })
 
-  // regression: #3657
   it("shows the rows of a page that was still loading when the user reached the end", async () => {
     let sendPage: () => void = () => {}
     mockedApi.getTorrents.mockImplementation((_instanceId, params) => params.page === 0

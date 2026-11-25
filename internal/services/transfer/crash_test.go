@@ -77,9 +77,7 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 		{at: "after:check the files on the target", headStart: true, want: "done"},
 		{killAtAdd: 1, headStart: true, want: "done"},
 		{at: "after:copy the missing files", headStart: true, want: "done"},
-		// regression: #4242
 		{at: "after:clean up", unconfirmed: true, damage: true, want: "cleaned up"},
-		// regression: #4242
 		{at: "after:clean up", cancel: true, want: "cancelled"},
 		{at: "after:added", group: true, want: "done"},
 		{killAtAdd: 3, group: true, want: "ownership unknown"},
@@ -216,7 +214,6 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferCleanupKeepsTheHeadStartWhenTheResumeFails(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -238,7 +235,6 @@ func TestTransferCleanupKeepsTheHeadStartWhenTheResumeFails(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 }
 
-// regression: #4231
 func TestTransferStopsAtARenameWhileQuiIsStopped(t *testing.T) {
 	const first, second, spare = "Show.S01E05.mkv", "Show.S01E06.mkv", "Show.S01E07.mkv"
 	swap := []string{first, spare, second, first, spare, second}
@@ -283,7 +279,6 @@ func TestTransferStopsAtARenameWhileQuiIsStopped(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferCleanupUsesTheRecordedNames(t *testing.T) {
 	const renamed = "Show.S01E05.mkv"
 	for _, tc := range []struct {
@@ -344,7 +339,6 @@ func TestTransferCleanupUsesTheRecordedNames(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferKeepsTheSourceFilesAfterAChangeOnTheSource(t *testing.T) {
 	const renamed = "Show.S01E05.mkv"
 	theirs := bytes.Repeat([]byte("x"), 40)
@@ -405,7 +399,6 @@ func TestTransferKeepsTheSourceFilesAfterAChangeOnTheSource(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferCleanupKeepsAFileInTheWayAfterACrash(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

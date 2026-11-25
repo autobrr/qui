@@ -347,7 +347,6 @@ func TestStreamKeepsPasskeysFromReadKey(t *testing.T) {
 	})
 }
 
-// regression: #3852
 func TestReadKeyCannotFilterTrackerPasskeys(t *testing.T) {
 	rig := newPasskeyRig(t)
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})

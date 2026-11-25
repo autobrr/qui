@@ -265,7 +265,6 @@ describe("the Transfers tab", () => {
     await waitFor(() => expect(requests).toContain("POST /api/transfers/2/retry"))
   })
 
-  // regression: #4242
   it("sends one Retry for each row while the answers wait", async () => {
     let answer: () => void = () => {}
     const answered = new Promise<void>(resolve => { answer = resolve })
@@ -288,7 +287,6 @@ describe("the Transfers tab", () => {
     expect(requests.filter(r => r.endsWith("/retry"))).toEqual(["POST /api/transfers/2/retry", "POST /api/transfers/4/retry"])
   })
 
-  // regression: #4242
   it("sends one Cancel and one Remove for a row while the answers wait, and keeps the Cancel question open until its answer", async () => {
     let answer: () => void = () => {}
     const answered = new Promise<void>(resolve => { answer = resolve })
@@ -396,7 +394,6 @@ describe("the Transfers tab", () => {
     expect(within(selectionBar()!).getByText("3 selected")).toBeTruthy()
   })
 
-  // regression: #4242
   it("holds the steps of each row that a bulk step names until the bulk step answers", async () => {
     let answer: () => void = () => {}
     const answered = new Promise<void>(resolve => { answer = resolve })
@@ -421,7 +418,6 @@ describe("the Transfers tab", () => {
     expect(requests.filter(r => r.endsWith("/retry"))).toEqual([])
   })
 
-  // regression: #4242
   it("leaves a row whose own Retry waits for its answer out of a bulk Retry", async () => {
     let answer: () => void = () => {}
     const answered = new Promise<void>(resolve => { answer = resolve })
@@ -501,7 +497,6 @@ describe("the Transfers tab", () => {
     await waitFor(() => expect(toast.info).toHaveBeenCalledWith("The action does not apply to any selected row."))
   })
 
-  // regression: #4242
   it("names the reason of each row that qui refused", async () => {
     answerBulk({ done: 1, skipped: 0, failed: 1, reasons: ["The target has no free space for this Transfer."] })
     renderTab()
@@ -513,7 +508,6 @@ describe("the Transfers tab", () => {
     }))
   })
 
-  // regression: #4242
   it("takes no tick and no step on the rows of the last chip while the rows of the next chip load", async () => {
     let answer: () => void = () => {}
     const loaded = new Promise<void>(resolve => { answer = resolve })
@@ -535,7 +529,6 @@ describe("the Transfers tab", () => {
     expect(within(await rowOf("Film.2019.2160p-ABC")).getByRole<HTMLButtonElement>("checkbox").disabled).toBe(false)
   })
 
-  // regression: #4242
   it("keeps the start of a Shift range on its row when a refresh moves the rows", async () => {
     let newest = false
     server.use(http.get("*/api/transfers", () => {
@@ -579,7 +572,6 @@ describe("the Transfers tab", () => {
     expect(within(dialog).getByRole("tabpanel").textContent).toContain("Passing by a Transfer torrent")
   })
 
-  // regression: #4242
   it("keeps the step that records the file names out of the Details dialog", async () => {
     renderTab()
     const dialog = await openDetails("Film.2019.2160p-ABC")
@@ -587,7 +579,6 @@ describe("the Transfers tab", () => {
     expect(stepLabels(dialog)).toEqual(["Started", "Passing by a Transfer torrent", "Another step", "Failed"])
   })
 
-  // regression: #4242
   it("names the torrent of a step that adds one, shows an add that ended once, and shows no other step data", async () => {
     server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({
       ...detail,
@@ -611,7 +602,6 @@ describe("the Transfers tab", () => {
     expect(steps.textContent).not.toContain("Film.2019.2160p-ABC.mkv")
   })
 
-  // regression: #4242
   it("names the size, and the day of the steps and the log lines when they span more than one day", async () => {
     server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({
       ...detail,
@@ -634,7 +624,6 @@ describe("the Transfers tab", () => {
     expect(lines).toEqual(["2026-11-15", expect.stringMatching(/First line\.$/), expect.stringMatching(/Second line\.$/), "2026-11-17", expect.stringMatching(/Last line\.$/)])
   })
 
-  // regression: #4242
   it("says that the details can be out of date when a refresh fails", async () => {
     renderTab()
     const dialog = await openDetails("Film.2019.2160p-ABC")
@@ -677,7 +666,6 @@ describe("the Transfers tab", () => {
     expect(selectedTab(dialog)).toBe("Overview")
   })
 
-  // regression: #4242
   it("shows made-up names in incognito mode, and hides the failure reason", async () => {
     incognito.on = true
     renderTab()
@@ -691,7 +679,6 @@ describe("the Transfers tab", () => {
     expect(table).toContain("Hidden in incognito mode")
   })
 
-  // regression: #4242
   it("shows made-up names and save paths in the Details dialog in incognito mode, and hides the log and the step data", async () => {
     incognito.on = true
     server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({

@@ -12,7 +12,6 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// regression: #4242
 func TestProgressCountsTheCopiedBytes(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)

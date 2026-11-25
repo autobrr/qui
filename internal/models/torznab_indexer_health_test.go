@@ -14,13 +14,11 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// regression: #2714
 func TestTorznabIndexerHealthReadsLastMeasuredTime(t *testing.T) {
 	t.Parallel()
 	checkIndexerHealthLastMeasuredTime(t, testdb.NewMigratedSQLite(t, "torznab-indexer-health-timestamps"))
 }
 
-// regression: #2714
 func TestTorznabIndexerHealthReadsLastMeasuredTimePostgresIntegration(t *testing.T) {
 	t.Parallel()
 	checkIndexerHealthLastMeasuredTime(t, testdb.NewMigratedPostgres(t, "torznab-indexer-health-timestamps"))

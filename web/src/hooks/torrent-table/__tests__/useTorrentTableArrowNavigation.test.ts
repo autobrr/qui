@@ -118,7 +118,6 @@ describe("useTorrentTableArrowNavigation", () => {
     expect(event.defaultPrevented).toBe(false)
   })
 
-  // regression: #3922
   it("leaves Enter on a focused button to that button", () => {
     const props = baseProps({ selectedKeys: new Set(["hash2"]) })
     renderHook(() => useTorrentTableArrowNavigation(props))

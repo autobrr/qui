@@ -182,7 +182,6 @@ func TestTransferToInstanceLosesToDeleteAndWaitsForAMove(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestTransferToInstanceWaitsForAnExportToAnotherInstance(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
@@ -216,7 +215,6 @@ func TestTransferToInstanceWaitsForAnExportToAnotherInstance(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestTransferToInstanceWaitsForTheExportOfACrossSeed(t *testing.T) {
 	crossSeed := `{"` + stoppedHash + `":{"name":"stopped","state":"stoppedUP","progress":1,"size":10}}`
 	for _, tc := range []struct {
@@ -304,7 +302,6 @@ func TestTransferToInstanceDryRunListsWayAndSize(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestTransferToInstanceFollowsTheLastRuleForTorrentsThatShareFiles(t *testing.T) {
 	torrent := func(name string) string {
 		return `{"name":"` + name + `","state":"stalledUP","progress":1,"size":10,"tags":"","category":"","save_path":"/data","content_path":"/data/shared"}`
@@ -363,7 +360,6 @@ func TestTransferToInstanceAsksAgainAnHourAfterARefusal(t *testing.T) {
 	require.Len(t, storedTransferActivities(t, db, instanceIDs[0]), 2)
 }
 
-// regression: #4242
 func TestTransferToInstancePassesASetOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	svc, db, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
@@ -399,7 +395,6 @@ func TestTransferToInstancePassesASetOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	require.Equal(t, 1, listed, "the dry run lists one Transfer torrent for the set")
 }
 
-// regression: #4242
 func TestTransferToInstanceAsksAgainInTheNextRunWhileATorrentMoves(t *testing.T) {
 	svc, db, runner, instanceIDs := transferRig(t, snapshotTorrent)
 	runner.startErr = map[string]error{runningHash: fmt.Errorf("Show.S01E01.mkv shares the files of this torrent: %w", transfer.ErrMoving)}
@@ -418,7 +413,6 @@ func TestTransferToInstanceAsksAgainInTheNextRunWhileATorrentMoves(t *testing.T)
 	require.Empty(t, storedTransferActivities(t, db, instanceIDs[0]))
 }
 
-// regression: #4242
 func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T) {
 	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
@@ -436,7 +430,6 @@ func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T
 	require.Subset(t, hashes, []string{runningHash, stoppedHash, doomedHash})
 }
 
-// regression: #4242
 func TestTransferToInstanceWaitsForASlowTargetOncePerRun(t *testing.T) {
 	torrents := []qbt.Torrent{{Hash: "a", Tags: "x"}, {Hash: "b", Tags: "x"}, {Hash: "c", Tags: "x"}}
 	rule := planTestRule(1, &models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{

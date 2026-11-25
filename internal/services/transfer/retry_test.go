@@ -37,7 +37,6 @@ func (h holdFirstRetryWrite) ExecContext(ctx context.Context, query string, args
 	return h.Querier.ExecContext(ctx, query, args...)
 }
 
-// regression: #4242
 func TestRetryRunsATemporaryFailureNow(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -142,7 +141,6 @@ func (s stopWrites) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterfa
 	return s.Querier.BeginTx(ctx, opts)
 }
 
-// regression: #4242
 func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
 	r := newRig(t, func(c *transfer.Config) { c.ExportPolls, c.ExportPollInterval = 2, time.Hour })
 	var stopped atomic.Bool
@@ -201,7 +199,6 @@ func (p pauseRead) QueryContext(ctx context.Context, query string, args ...any) 
 	return p.Querier.QueryContext(ctx, query, args...)
 }
 
-// regression: #4242
 func TestCancelLeavesAnExportRunThatEndedMeanwhile(t *testing.T) {
 	r := newRig(t, exportPolls)
 	hold := newHoldAt(r.db, "added")
@@ -230,7 +227,6 @@ func TestCancelLeavesAnExportRunThatEndedMeanwhile(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
 }
 
-// regression: #4242
 func TestCancelLeavesATransferThatEndedMeanwhile(t *testing.T) {
 	r := newRig(t)
 	hold := newHoldAt(r.db, "added")
@@ -297,7 +293,6 @@ func (f failTx) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.T
 	return f.Querier.BeginTx(ctx, opts)
 }
 
-// regression: #4242
 func TestCancelBeforeAnExportRunStartsKeepsItCancelled(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -348,7 +343,6 @@ func TestCancelBeforeAnExportRunStartsKeepsItCancelled(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestCancelLeavesAnExportRunThatRecordsItsEnd(t *testing.T) {
 	r := newRig(t, exportPolls)
 	hold := newHoldAt(r.db, "done")
@@ -408,7 +402,6 @@ func TestRetryKeepsTheCategoryOfTheTarget(t *testing.T) {
 	require.Equal(t, transfer.StateCancelled, r.get(failed.ID).State, "the cancelled row stays")
 }
 
-// regression: #4242
 func TestRetryUsesTheFolderOfTheCategoryAgain(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

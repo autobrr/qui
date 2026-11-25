@@ -291,7 +291,6 @@ func (b dialectDirBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, 
 	return &fsops.LstatInfo{Path: p, IsDir: true, Mode: fs.ModeDir}, nil
 }
 
-// regression: #2919
 func TestCalculateSavePathUsesBackendDialect(t *testing.T) {
 	t.Parallel()
 

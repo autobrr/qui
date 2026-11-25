@@ -58,7 +58,6 @@ func requireSkipEntry(t *testing.T, activities []*models.AutomationActivity, out
 	require.Equal(t, RuleSkip{Field: field, Requires: requires}, details)
 }
 
-// regression: #3763
 func TestRun_PrivateRuleSkipsAnInstanceBeforeQbit5(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit46)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -72,7 +71,6 @@ func TestRun_PrivateRuleSkipsAnInstanceBeforeQbit5(t *testing.T) {
 	require.NotZero(t, svc.lastRuleRun[ruleKey{instanceID, rule.ID}])
 }
 
-// regression: #3763
 func TestRun_PlansTheDeletesAtQbit52(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit52)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -84,7 +82,6 @@ func TestRun_PlansTheDeletesAtQbit52(t *testing.T) {
 	require.Equal(t, []string{"withmeta"}, deletedHashes(stub))
 }
 
-// regression: #3763
 func TestRun_SkipsARuleThatReadsAnUnknownField(t *testing.T) {
 	deleteAll := func(cond *models.RuleCondition) *models.Automation {
 		rule := parityDeleteRule(DeleteModeKeepFiles, cond)
@@ -160,7 +157,6 @@ func TestRun_SkipsARuleThatReadsAnUnknownField(t *testing.T) {
 	}
 }
 
-// regression: #3763
 func TestRun_UnknownVersionSkipsUntilARead(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit52)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -186,7 +182,6 @@ func TestRun_UnknownVersionSkipsUntilARead(t *testing.T) {
 	require.Equal(t, []string{"withmeta"}, deletedHashes(stub))
 }
 
-// regression: #3763
 func TestRun_SkipStaysOnTheRuleThatReadsTheField(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit46)
 	skipped := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -208,7 +203,6 @@ func TestRun_SkipStaysOnTheRuleThatReadsTheField(t *testing.T) {
 	require.Equal(t, []int{1}, skips)
 }
 
-// regression: #3763
 func TestDryRunAndPreviews_ShowTheSkip(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit46)
 	want := &RuleSkip{Field: string(models.FieldPrivate), Requires: "qBittorrent 5.0+"}
@@ -241,7 +235,6 @@ func TestDryRunAndPreviews_ShowTheSkip(t *testing.T) {
 	require.Empty(t, stub.recordedWrites())
 }
 
-// regression: #3763
 func TestPreview_SkipsForAFieldInAnotherAction(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit46)
 	rule := parityCategoryRule(models.CategoryAction{})
@@ -253,7 +246,6 @@ func TestPreview_SkipsForAFieldInAnotherAction(t *testing.T) {
 	require.Equal(t, &RuleSkip{Field: string(models.FieldPrivate), Requires: "qBittorrent 5.0+"}, preview.Skipped)
 }
 
-// regression: #3763
 func TestRun_WritesOneEntryForEachRuleOnEachInstance(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit46)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -287,7 +279,6 @@ func TestRun_WritesOneEntryForEachRuleOnEachInstance(t *testing.T) {
 	require.Equal(t, 3, entries())
 }
 
-// regression: #3763
 func TestRun_WritesTheEntryAgainAfterTheRuleRan(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		t.Run(map[bool]string{false: "live", true: "scheduled dry run"}[dryRun], func(t *testing.T) {
@@ -331,7 +322,6 @@ func TestRun_WritesTheEntryAgainAfterTheRuleRan(t *testing.T) {
 	}
 }
 
-// regression: #3763
 func TestRun_TorrentWithoutMetadataDropsOutOfAPrivateRule(t *testing.T) {
 	name := func(value string) *models.RuleCondition {
 		return &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: value}
@@ -357,7 +347,6 @@ func TestRun_TorrentWithoutMetadataDropsOutOfAPrivateRule(t *testing.T) {
 	}
 }
 
-// regression: #3763
 func TestPlan_TorrentWithoutMetadataDropsOutOfEachActionOfTheRule(t *testing.T) {
 	torrents := []qbt.Torrent{{Hash: "withmeta", HasMetadata: new(true)}, {Hash: "magnet", HasMetadata: new(false)}}
 	rule := planTestRule(7, &models.ActionConditions{
@@ -370,7 +359,6 @@ func TestPlan_TorrentWithoutMetadataDropsOutOfEachActionOfTheRule(t *testing.T) 
 	require.Equal(t, []string{"withmeta"}, plan.pause.hashes)
 }
 
-// regression: #3763
 func TestEvaluate_UnknownPrivateNeverMatches(t *testing.T) {
 	torrent := qbt.Torrent{Hash: "magnet", HasMetadata: new(false)}
 	for _, cond := range []*models.RuleCondition{privateIs("false", false), privateIs("true", true)} {
@@ -378,7 +366,6 @@ func TestEvaluate_UnknownPrivateNeverMatches(t *testing.T) {
 	}
 }
 
-// regression: #3763
 func TestRun_DryRunDoesNotHideTheLiveEntry(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit46)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -394,7 +381,6 @@ func TestRun_DryRunDoesNotHideTheLiveEntry(t *testing.T) {
 	requireSkipEntry(t, live, models.ActivityOutcomeSkipped, string(models.FieldPrivate), "qBittorrent 5.0+")
 }
 
-// regression: #3763
 func TestPreview_TorrentWithoutMetadataDropsOutForAFieldInAnotherAction(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit52)
 	rule := parityCategoryRule(models.CategoryAction{})
@@ -409,7 +395,6 @@ func TestPreview_TorrentWithoutMetadataDropsOutForAFieldInAnotherAction(t *testi
 	require.Equal(t, "withmeta", preview.Examples[0].Hash)
 }
 
-// regression: #3763
 func TestRun_TorrentWithoutMetadataKeepsItsManagedTags(t *testing.T) {
 	const torrents = `{
 		"withmeta": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
@@ -451,7 +436,6 @@ func TestRun_TorrentWithoutMetadataKeepsItsManagedTags(t *testing.T) {
 	}
 }
 
-// regression: #3763
 func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -486,7 +470,6 @@ func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.
 	}
 }
 
-// regression: #3763
 func TestRun_GroupWithATorrentWithoutMetadataSkipsTheGroupedAction(t *testing.T) {
 	name := &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "m"}
 	grouping := &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "bysave", Keys: []string{"savePath"}}}}
@@ -527,7 +510,6 @@ func TestRun_GroupWithATorrentWithoutMetadataSkipsTheGroupedAction(t *testing.T)
 	})
 }
 
-// regression: #3763
 func TestPreview_GroupWithATorrentWithoutMetadataShowsNoCategoryChange(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit52)
 	rule := parityCategoryRule(models.CategoryAction{})
@@ -542,7 +524,6 @@ func TestPreview_GroupWithATorrentWithoutMetadataShowsNoCategoryChange(t *testin
 	require.Zero(t, preview.TotalMatches)
 }
 
-// regression: #3763
 func TestRun_WritesTheSkipEntryWhenSetupFailsForAnotherRule(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit46)
 	emptyStore, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, t.Name()+"-empty"), make([]byte, 32))

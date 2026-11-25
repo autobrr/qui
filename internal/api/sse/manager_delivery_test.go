@@ -573,7 +573,6 @@ func TestServeServerStateOnlyTickSkipsRebuild(t *testing.T) {
 	require.Equal(t, builds, provider.torrentsCallCount(), "a server-state tick must not rebuild the view")
 }
 
-// regression: #3760
 func TestServerStateTickRebuildsWhenAVersionChanged(t *testing.T) {
 	store := newTestInstanceStore(t)
 

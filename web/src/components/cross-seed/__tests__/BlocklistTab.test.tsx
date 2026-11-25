@@ -40,7 +40,6 @@ const alpha = { id: 1, name: "alpha" } as Instance
 const beta = { id: 2, name: "beta" } as Instance
 
 describe("BlocklistTab instance", () => {
-  // regression: #4443
   it("keeps the first instance it showed when the instances are reordered", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const view = render(

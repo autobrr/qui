@@ -333,7 +333,7 @@ func TestManualMatchProposals(t *testing.T) {
 	require.InDelta(t, 1.0, resp.Proposals[0].OverlapFraction, 0.001)
 	for _, p := range resp.Proposals {
 		require.NotEqual(t, incomplete.Hash, p.Hash, "incomplete torrents are not proposable")
-		require.NotEqual(t, moving.Hash, p.Hash, "moving torrents are not proposable") // regression: #3626
+		require.NotEqual(t, moving.Hash, p.Hash, "moving torrents are not proposable")
 		require.NotEqual(t, noOverlap.Hash, p.Hash, "zero-overlap torrents are not proposed")
 	}
 	require.Equal(t, "/downloads", resp.Proposals[0].EffectiveSavePath)
@@ -507,8 +507,6 @@ func TestManualMatchProposalsPinnedCategory(t *testing.T) {
 	}
 }
 
-// regression: #3626
-// regression: #3707
 func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	t.Parallel()
 
@@ -553,7 +551,6 @@ func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	}
 }
 
-// regression: #4137
 func TestManualMatchPreviewShowsTheSavePathOfTheSingleAdd(t *testing.T) {
 	const name = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
 	tests := []struct {

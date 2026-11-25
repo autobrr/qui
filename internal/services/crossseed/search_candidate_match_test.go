@@ -843,7 +843,6 @@ func TestFindCandidatesLeavesOmittedListingFieldToFileCheck(t *testing.T) {
 	require.Len(t, response.Candidates, 1)
 }
 
-// regression: #3697
 func TestFindCandidatesKeepsStrictVerdictWhenDownloadNameDropsGroup(t *testing.T) {
 	t.Parallel()
 
@@ -2616,7 +2615,6 @@ func TestDownloadReadsAsListing(t *testing.T) {
 			local:    "Kaiju.Squad.S02E06.1080p.WEB.H264-GRP",
 			download: "Kaiju.Squad.S02E06.1080p.WEB.H264-OTHER",
 		},
-		// regression: #3697
 		{
 			name:     "the download drops the group that the listing has",
 			class:    searchCandidateClassStrict,

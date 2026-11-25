@@ -265,7 +265,6 @@ func TestExecWalkFallsBackToSFTPOnATornRecord(t *testing.T) {
 	assert.ErrorIs(t, files[0].FileIDErr, errNoIdentity, "the sftp walk carries no identity")
 }
 
-// regression: #3838
 func TestExecWalkEndsWhenFindLosesTheConnection(t *testing.T) {
 	t.Parallel()
 

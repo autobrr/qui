@@ -67,7 +67,6 @@ describe("useSwipeToClose", () => {
     vi.useRealTimers()
   })
 
-  // regression: #3703
   it("returns the view to its place when the browser cancels the touch", () => {
     vi.useFakeTimers()
     const { view, onClose } = startSwipe()
@@ -77,7 +76,6 @@ describe("useSwipeToClose", () => {
     expect(view.style.transform).toBe("")
   })
 
-  // regression: #3703
   it("returns the view to its place when a second finger touches it", () => {
     vi.useFakeTimers()
     const { view, onClose } = startSwipe()

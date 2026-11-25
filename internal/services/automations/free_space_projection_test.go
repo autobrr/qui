@@ -146,7 +146,6 @@ func TestPlainFreeSpaceProjection_LoadsFileListsOnlyForFreeSpaceDeletes(t *testi
 	require.False(t, ruleNeedsCrossSeedFiles(rule))
 }
 
-// regression: #2953
 func TestPreviewFreeSpaceRule_FailsWhenTheInstanceDoesNotLoad(t *testing.T) {
 	svc, instanceID := newDryRunParityService(t, defaultParityFixture())
 	emptyStore, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, t.Name()+"-empty"), make([]byte, 32))

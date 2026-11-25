@@ -65,7 +65,6 @@ describe("theme slots during a default theme visit", () => {
     expect(mockApi.updateThemeSettings).not.toHaveBeenCalled()
   })
 
-  // regression: #4124
   it("keeps the switch for a separate mobile theme off, so no slot is written", async () => {
     const Wrapper = withSlots({ default: { themeId: "custom:broken", mode: "dark" } })
     render(<Wrapper><ThemeLayoutSettings /></Wrapper>)

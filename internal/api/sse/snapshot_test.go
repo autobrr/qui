@@ -51,7 +51,6 @@ func snapshotPage(librarySize, pageSize int, cross bool) *qbittorrent.TorrentRes
 	return response
 }
 
-// regression: #3771
 func TestBaselineOwnsPageRows(t *testing.T) {
 	for _, cross := range []bool{false, true} {
 		for _, init := range []bool{false, true} {

@@ -49,7 +49,6 @@ func newOIDCOnlyConfig() *domain.Config {
 	return cfg
 }
 
-// regression: #3404
 func TestNewOIDCHandlerStartsWhileProviderIsDown(t *testing.T) {
 	stubOIDCNewProvider(t, func(context.Context, string) (*oidc.Provider, error) {
 		return nil, errors.New("connection refused")
@@ -69,7 +68,6 @@ func TestNewOIDCHandlerStartsWhileProviderIsDown(t *testing.T) {
 	assert.NotContains(t, rec.Body.String(), "connection refused")
 }
 
-// regression: #3860
 func TestOIDCDiscoveryReadsPublishedConfig(t *testing.T) {
 	var requestedIssuer string
 	stubOIDCNewProvider(t, func(ctx context.Context, issuer string) (*oidc.Provider, error) {
@@ -89,7 +87,6 @@ func TestOIDCDiscoveryReadsPublishedConfig(t *testing.T) {
 	assert.Equal(t, "client-id", client.oauthConfig.ClientID)
 }
 
-// regression: #3404
 func TestOIDCConfigAnswersWithinWaitWhileDiscoveryHangs(t *testing.T) {
 	sessionManager := scs.New()
 	synctest.Test(t, func(t *testing.T) {
@@ -115,7 +112,6 @@ func TestOIDCConfigAnswersWithinWaitWhileDiscoveryHangs(t *testing.T) {
 	})
 }
 
-// regression: #3404
 func TestOIDCCallbackKeepsStateWhileProviderIsUnavailable(t *testing.T) {
 	stubOIDCNewProvider(t, func(context.Context, string) (*oidc.Provider, error) {
 		return nil, errors.New("connection refused")

@@ -198,7 +198,6 @@ func TestFingerprintDistinguishesNaNRows(t *testing.T) {
 	require.NotEqual(t, a, b)
 }
 
-// regression: #3760, #3761
 func TestStreamResendsARowThatGainsAnOptionalValue(t *testing.T) {
 	gains := map[string]func(*qbittorrent.TorrentView){
 		"Reannounce": func(tv *qbittorrent.TorrentView) { tv.Reannounce = new(int64(30)) },

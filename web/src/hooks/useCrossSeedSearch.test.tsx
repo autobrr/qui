@@ -904,7 +904,6 @@ describe("useCrossSeedSearch", () => {
     expect(mockedToast.success).not.toHaveBeenCalled()
   })
 
-  // regression: #3826
   describe("apply toast", () => {
     const added: CrossSeedInstanceResult = { instanceId: 1, instanceName: "a", success: true, status: "added_hardlink", class: "added" }
     const exists: CrossSeedInstanceResult = { instanceId: 2, instanceName: "b", success: false, status: "exists", class: "exists" }
@@ -1221,7 +1220,6 @@ describe("useCrossSeedSearch", () => {
       expect(dialogProps(result).gazelleLookups).toEqual(lookups)
     })
 
-    // regression: #4126
     it("loads the plan again when the user retries after a failed analysis", async () => {
       mockedApi.analyzeTorrentForCrossSeedSearch.mockRejectedValueOnce(new Error("analyze failed"))
       const { result } = await renderSettled()

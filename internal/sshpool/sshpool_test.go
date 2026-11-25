@@ -247,13 +247,9 @@ func TestExecCapabilities(t *testing.T) {
 		{name: "sftp only key", mode: sshtest.ExecSFTPOnly},
 		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, posixShell: true, gnuUserland: true},
 		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true, posixShell: true},
-		// regression: #4341
 		{name: "uutils stat", mode: sshtest.ExecUutils, exec: true, posixShell: true, gnuUserland: true},
-		// regression: #4345
 		{name: "fish login shell", mode: sshtest.ExecNonPOSIX, exec: true, posixShell: true, gnuUserland: true},
-		// regression: #4345
 		{name: "nushell login shell", mode: sshtest.ExecSplitQuote, exec: true, posixShell: true, gnuUserland: true},
-		// regression: #4345
 		{name: "csh login shell", mode: sshtest.ExecCsh, exec: true, posixShell: true, gnuUserland: true},
 		{name: "restricted bash login shell", mode: sshtest.ExecRestrictedBash, exec: true, posixShell: true, gnuUserland: true},
 		{name: "login shell that prints a banner", mode: sshtest.ExecLoginBanner, exec: true},

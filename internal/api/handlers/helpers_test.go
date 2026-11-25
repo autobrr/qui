@@ -91,7 +91,6 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// regression: #2713
 func TestRespondJSON_ClientDisconnectLogsDebug(t *testing.T) {
 	logs := captureLogs(t)
 	w := &failingWriter{err: &net.OpError{Op: "write", Net: "tcp", Err: os.NewSyscallError("write", syscall.EPIPE)}}

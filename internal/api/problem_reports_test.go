@@ -343,12 +343,9 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 
 	text := "Uploads stall.\nMy announce is udp://tracker.example.invalid:6969/" + reportPasskey + "/announce and my key " + rig.apiKey +
 		"\nqui reaches " + rig.stub.URL + " as " + reportInstanceUser + ", and http://localhost/ answers, and so does localhost." +
-		// regression: #4288
 		"\nThe files sit on " + reportSSHHost + " for " + reportSSHUser + " with this key:\n" + rig.sshKey +
 		"\nRED/OPS is off, its key was " + reportREDKey +
-		// regression: #4288
 		"\nMy notification tokens are " + reportWebhookToken + ", " + reportGotifyToken + " and " + reportPushoverUser +
-		// regression: #4288
 		"\nPeers reach me at " + reportPeerAddress + ", my webhooks use " + reportHookToken + " and ntfy topic " + reportNtfyTopic
 	status, answer := rig.send(menuReport(text, facts, "warnings", facts.Logs.Warnings), nil)
 	require.Equal(t, http.StatusCreated, status, answer)
@@ -362,11 +359,8 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 	assert.Empty(t, request.Header.Get("Authorization"), "an anonymous report carries no token")
 	raw := string(request.Report)
 	for _, private := range []string{reportPasskey, rig.apiKey, reportInstanceUser, reportBasicUser, stubHost, "127.0.0.1", reportIndexerKey,
-		// regression: #4288
 		reportSSHHost, reportSSHUser, strings.TrimSpace(rig.sshKey), reportREDKey,
-		// regression: #4288
 		reportWebhookToken, reportGotifyToken, reportPushoverUser,
-		// regression: #4288
 		reportPeerAddress, "203.0.113.7", reportHookToken, reportNtfyTopic} {
 		assert.NotContains(t, raw, private)
 	}
@@ -393,7 +387,6 @@ func TestProblemReportSendCleansALicenseKeyFromAFailedRequest(t *testing.T) {
 		removed bool
 	}{
 		{name: "the key is still stored"},
-		// regression: #4299
 		{name: "a retry removed the license", removed: true},
 	}
 	for _, tt := range tests {
@@ -662,7 +655,6 @@ func TestProblemReportImageRefusedBeforeBrrbin(t *testing.T) {
 	assert.Equal(t, png, rig.brrbinRequests(signedIn)[0].Image)
 }
 
-// regression: #4360
 func TestProblemReportSendKeepsToTheSenderTheDialogShowed(t *testing.T) {
 	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
 	rig := signInRig(t)
@@ -695,7 +687,6 @@ func TestProblemReportSendKeepsToTheSenderTheDialogShowed(t *testing.T) {
 	assert.Len(t, rig.brrbinRequests(signedIn), 1, "only the anonymous report reached brrbin")
 }
 
-// regression: #4288
 func TestProblemReportOversizedReportPartIsTooLarge(t *testing.T) {
 	rig := newReportRig(t, reportRigOptions{})
 	_, facts := rig.facts("startedFrom=menu")
@@ -706,7 +697,6 @@ func TestProblemReportOversizedReportPartIsTooLarge(t *testing.T) {
 	assert.Empty(t, rig.fake.Requests())
 }
 
-// regression: #4288
 func TestProblemReportTVDBReadFailure(t *testing.T) {
 	rig := newReportRig(t, reportRigOptions{})
 	_, facts := rig.facts("startedFrom=menu")
@@ -883,7 +873,6 @@ func (h *holdFirstStatusRead) RoundTrip(req *http.Request) (*http.Response, erro
 	return http.DefaultTransport.RoundTrip(req)
 }
 
-// regression: #4302
 func TestProblemReportSentReportsStampsAChangeWhenBrrbinAnswers(t *testing.T) {
 	hold := &holdFirstStatusRead{held: make(chan struct{}), release: make(chan struct{})}
 	rig := newReportRig(t, reportRigOptions{client: &http.Client{Transport: hold}})

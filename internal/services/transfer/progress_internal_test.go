@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// regression: #4242
 func TestTheSpeedOfACopyThatStallsAfterQuickWritesDropsToZero(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		m := &meter{now: time.Now}

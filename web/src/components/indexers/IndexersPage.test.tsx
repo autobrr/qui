@@ -69,7 +69,6 @@ afterEach(() => {
 })
 
 describe("IndexersPage", () => {
-  // regression: #4233
   it("keeps a newer switch state when a capability sync answers late", async () => {
     mocks.stored = INDEXER
     let finishSync: (indexer: TorznabIndexer) => void = () => {}

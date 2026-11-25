@@ -285,7 +285,6 @@ func TestFindCopyGroups_AsksOnlyForTheListsOfPossibleCopies(t *testing.T) {
 	assert.Equal(t, []string{"1|" + a, "1|" + b, "1|" + d}, asked)
 }
 
-// regression: #4024
 func TestFindCopyGroups_AnUnreadFlatFolderCostsItsTorrentCount(t *testing.T) {
 	const count = 300
 	torrents := map[int][]qbittorrent.CrossInstanceTorrentView{}
@@ -539,7 +538,6 @@ func TestFindCopyGroups_AsksOnlyForTheChangedTorrentsAndTheirCopies(t *testing.T
 	require.Len(t, groups[0].Members, 4)
 }
 
-// regression: #4024
 func TestFindCopyGroups_ATorrentWhoseListNoLongerReadsLeavesItsGroup(t *testing.T) {
 	a, b, c := cgHash('a'), cgHash('b'), cgHash('c')
 	copyOf := func(hash string) qbittorrent.CrossInstanceTorrentView {
@@ -588,7 +586,6 @@ func TestFindCopyGroups_APackThatMovesKeepsTheFileOfItsEpisode(t *testing.T) {
 	require.Equal(t, shared, partHolders(links.parts))
 }
 
-// regression: #4041
 func TestFindCopyGroups_APackThatSkipsAFileNoLongerHoldsIt(t *testing.T) {
 	a, b := cgHash('a'), cgHash('b')
 	view := func(hash, name, content string, size, totalSize int64) qbittorrent.CrossInstanceTorrentView {

@@ -53,7 +53,6 @@ describe("buildLiveLayers", () => {
     expect(buildLiveLayers(live({ 1: [[60, 1, 0]] }), instanceLayers([1]))).toEqual([])
   })
 
-  // regression: #4192
   it("does not join two samples more than 6 seconds apart, also when their slots are 3 apart", () => {
     expect(buildLiveLayers(live({ 1: [[7.9, 1, 0], [0.1, 2, 0]] }), instanceLayers([1]))).toEqual([])
   })
@@ -66,7 +65,6 @@ describe("buildLiveLayers", () => {
     expect(filled(layers[0], "up")).toEqual({ 87: 5, 88: 15, 89: 15 })
   })
 
-  // regression: #4192
   it("draws an instance that syncs a little slower than each 2 seconds without holes", () => {
     const steady = Array.from({ length: 80 }, (_, index): [number, number, number] => [178 - index * 2.2, 100, 0])
     const slow = Array.from({ length: 43 }, (_, index): [number, number, number] => [178 - index * 4.2, 10, 0])
@@ -117,7 +115,6 @@ describe("isLowDisk", () => {
     } as DashboardInstanceStats
   }
 
-  // regression: #4328
   it("never warns from an estimate, with no disk or with a disk that qui could not read", () => {
     expect(isLowDisk(instance(4 * GiB, 1000 * GiB, null))).toBe(false)
     expect(isLowDisk(instance(4 * GiB, 1000 * GiB, { freeBytes: null, totalBytes: null }))).toBe(false)

@@ -16,7 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// regression: #4100
 func TestTheFirstReadingAfterARestartKeepsTheTrackerGroup(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	customizations := models.NewTrackerCustomizationStore(db)

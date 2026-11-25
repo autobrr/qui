@@ -62,7 +62,6 @@ func TestProxyDeletesTheFilesOfATorrentThatIsNoHelper(t *testing.T) {
 	r.requireGone("torrents/tv/Show.S01E02-GRP")
 }
 
-// regression: #4231
 func TestProxyRefusesDeleteOfAllWithFilesAfterANewHelper(t *testing.T) {
 	t.Parallel()
 	r := newProxyRigWorker(t, false)
@@ -78,7 +77,6 @@ func TestProxyRefusesDeleteOfAllWithFilesAfterANewHelper(t *testing.T) {
 	require.Zero(t, r.stub.Calls("torrents/delete"), "qBittorrent gets no delete")
 }
 
-// regression: #4231
 func TestProxyDeleteOfAllWithFilesReadsNoMaindataWithoutAHelper(t *testing.T) {
 	t.Parallel()
 	r := newProxyRigWorker(t, false)
@@ -95,7 +93,6 @@ func TestProxyDeleteOfAllWithFilesReadsNoMaindataWithoutAHelper(t *testing.T) {
 	require.Equal(t, reads, r.stub.Calls("sync/maindata"))
 }
 
-// regression: #4231
 func TestProxyRefusesADeleteThatQuiCannotRead(t *testing.T) {
 	t.Parallel()
 	r := newHelperProxyRig(t)

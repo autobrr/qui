@@ -59,7 +59,6 @@ describe("default theme visit", () => {
     expect(isDefaultThemeVisit()).toBe(true)
   })
 
-  // regression: #4124
   it("keeps the default theme on a mode change, and keeps the mode out of storage", async () => {
     const before = bootCaches()
 

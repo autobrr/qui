@@ -65,7 +65,6 @@ func findCrossSeeds(t *testing.T, svc *Service, hash string) map[string]string {
 	return tabTiers(response.Matches)
 }
 
-// regression: #3853
 func TestFindCrossSeedsListsCopiesThatKeepTheirFiles(t *testing.T) {
 	t.Parallel()
 
@@ -90,7 +89,6 @@ func TestFindCrossSeedsListsCopiesThatKeepTheirFiles(t *testing.T) {
 	require.Empty(t, matches)
 }
 
-// regression: #3555
 func TestFindCrossSeedsHoldsTheDeleteCheck(t *testing.T) {
 	t.Parallel()
 
@@ -142,7 +140,6 @@ func TestFindCrossSeedsHoldsTheDeleteCheck(t *testing.T) {
 	require.Equal(t, 9, checked)
 }
 
-// regression: #3585
 func TestFindCrossSeedsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	t.Parallel()
 
@@ -225,7 +222,6 @@ func TestFindCrossSeedsSkipsSizeOnlyCandidatesWithoutTrustedSource(t *testing.T)
 	require.Empty(t, response.Matches)
 }
 
-// regression: #3591
 func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	t.Parallel()
 
@@ -328,7 +324,6 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	}
 }
 
-// regression: #3592
 func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 	t.Parallel()
 

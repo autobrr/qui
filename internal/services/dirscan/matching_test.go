@@ -56,7 +56,6 @@ func TestParseTorrentBytes_MultiFilePrefixesRootFolder(t *testing.T) {
 	require.Equal(t, "Example.Show.S01.1080p.WEB-DL.DDP5.1.x264-GROUP/Example.Show.S01E02.mkv", parsed.Files[1].Path)
 }
 
-// regression: #4220
 func TestParseTorrentBytes_MultiFilePreservesMatchingChildFolder(t *testing.T) {
 	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
 		Name:        "Example.Show.S02.1080p.WEB-DL.x264-GROUP",
@@ -88,7 +87,6 @@ func TestParseTorrentBytes_SanitizesInvalidUTF8(t *testing.T) {
 	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/Movie.\uFFFD.2024.1080p-GROUP.mkv", parsed.Files[0].Path)
 }
 
-// regression: #4220
 func TestParseTorrentBytes_InvalidUTF8PreservesMatchingChildFolder(t *testing.T) {
 	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
 		Name:        "Movie.\xe1.2024.1080p-GROUP",
@@ -104,7 +102,6 @@ func TestParseTorrentBytes_InvalidUTF8PreservesMatchingChildFolder(t *testing.T)
 	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/Movie.\uFFFD.2024.1080p-GROUP/file.mkv", parsed.Files[0].Path)
 }
 
-// regression: #4211
 func TestParseTorrentBytes_DirectionalControls(t *testing.T) {
 	for _, tt := range []struct {
 		name     string

@@ -331,7 +331,6 @@ func TestCopyGroupsJob_NoWorkBeforeTheStart(t *testing.T) {
 	})
 }
 
-// regression: #3977
 func TestCopyGroupsJob_PublishesAfterADemand(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.startAndWait()
@@ -341,7 +340,6 @@ func TestCopyGroupsJob_PublishesAfterADemand(t *testing.T) {
 	})
 }
 
-// regression: #3977
 func TestCopyGroupsJob_EachInstanceGroupsWhenItsFirstReadEnds(t *testing.T) {
 	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		h.add(2, cgC, "/data/c", cgOld.Add(2*time.Hour), cgPackFiles())
@@ -384,7 +382,6 @@ func TestCopyGroupsJob_NoRebuildWithoutAMove(t *testing.T) {
 	})
 }
 
-// regression: #3913
 func TestCopyGroupsJob_RebuildsAfterASizeChange(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.firstMap()
@@ -397,7 +394,6 @@ func TestCopyGroupsJob_RebuildsAfterASizeChange(t *testing.T) {
 	})
 }
 
-// regression: #3913
 func TestCopyGroupsJob_RebuildsAfterAContentPathChange(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.firstMap()
@@ -435,7 +431,6 @@ func TestCopyGroupsJob_RetriesUnreadableTorrents(t *testing.T) {
 	})
 }
 
-// regression: #3930
 func TestCopyGroupsJob_ARetryRunReadsEachTorrentOnce(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())
@@ -458,7 +453,6 @@ func TestCopyGroupsJob_ARetryRunReadsEachTorrentOnce(t *testing.T) {
 	})
 }
 
-// regression: #3930
 func TestCopyGroupsJob_ARetryBatchErrorReadsNoTorrentTwice(t *testing.T) {
 	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())
@@ -482,7 +476,6 @@ func TestCopyGroupsJob_ARetryBatchErrorReadsNoTorrentTwice(t *testing.T) {
 	})
 }
 
-// regression: #4024
 func TestCopyGroupsJob_ABatchErrorReadsNoTorrentOfAnotherInstanceTwice(t *testing.T) {
 	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())
@@ -499,7 +492,6 @@ func TestCopyGroupsJob_ABatchErrorReadsNoTorrentOfAnotherInstanceTwice(t *testin
 	})
 }
 
-// regression: #4024
 func TestCopyGroupsJob_AnUnreadableTorrentWithoutACopyKeepsItsRetryTime(t *testing.T) {
 	cgTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.add(1, cgA, "/data/a", cgOld, cgPackFiles())
@@ -766,7 +758,6 @@ func TestCopyGroupsJob_ASyncThatChangesATorrentStartsATick(t *testing.T) {
 	})
 }
 
-// regression: #4026
 func TestCopyGroupsJob_AChangeDuringARebuildStartsATickWhenTheRebuildEnds(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.firstMap()

@@ -408,7 +408,6 @@ func TestAutomationStrictDecode(t *testing.T) {
 		require.Equal(t, []string{"Unknown grouping ID 'my_group' in grouped condition"}, errorLines(t, rec))
 	})
 
-	// regression: #4186
 	t.Run("a saved rule has one condition for its running actions", func(t *testing.T) {
 		const packed = `{"field":"NAME","operator":"CONTAINS","value":"packed"}`
 		const unpacked = `{"field":"NAME","operator":"CONTAINS","value":"unpacked"}`

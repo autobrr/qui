@@ -21,7 +21,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// regression: #3868
 func TestTorrentsInfoFiltersLikeQBittorrent(t *testing.T) {
 	t.Parallel()
 

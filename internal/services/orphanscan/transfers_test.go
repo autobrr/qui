@@ -47,7 +47,6 @@ func (e endingTransfer) RunningFolders(_ context.Context, instanceID int) ([]str
 	return []string{e.folder}, nil
 }
 
-// regression: #4231
 func TestScanKeepsTheFilesOfATransferThatEndsDuringTheRead(t *testing.T) {
 	t.Parallel()
 	svc, store, presentRoot, _ := newScanTestService(t)

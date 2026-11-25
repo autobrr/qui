@@ -3211,7 +3211,6 @@ func TestSearchIDDrivenMovieCategoryBehavior(t *testing.T) {
 	}
 }
 
-// regression: #3306
 func TestSearchIDDrivenMovieOmitsYear(t *testing.T) {
 	tests := []struct {
 		name         string

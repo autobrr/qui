@@ -460,7 +460,6 @@ func TestSkippedFileStaysCompleteThroughStatAll(t *testing.T) {
 	}
 }
 
-// regression: #2919
 func TestScanFailsWhenIndexBuildLosesConnection(t *testing.T) {
 	lost := fmt.Errorf("stat: %w", fsops.ErrConnectionLost)
 	saveDir := &fsops.LstatInfo{Path: "/data/torrents", IsDir: true, FileID: remoteID(9)}

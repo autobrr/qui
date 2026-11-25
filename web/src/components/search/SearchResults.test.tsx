@@ -84,7 +84,6 @@ describe("SearchResults", () => {
     expect(onAdd.mock.calls[0][1]).toBe(2)
   })
 
-  // regression: #4354
   it("ticks the range from the row ticked before, also when React renders both ticks at once", () => {
     renderResults([first, second, third])
 
@@ -151,7 +150,6 @@ describe("SearchResults", () => {
     await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("2026"))
   })
 
-  // regression: #4354
   it("names a row button in a tooltip also when Chrome reports the mouse as coming from the parent of a button that the row above rebuilt", async () => {
     screenSize.wide = true
     renderResults([first, second])
@@ -191,7 +189,6 @@ describe("SearchResults", () => {
     await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Copy title"))
   })
 
-  // regression: #4263
   it("offers no action that a result cannot do, and a tap on its actions leaves the row unticked", () => {
     const noPage = result({ infoUrl: undefined })
     const onAdd = renderResults([noPage])

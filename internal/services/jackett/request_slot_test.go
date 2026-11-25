@@ -369,7 +369,6 @@ func download(service *Service, indexer *models.TorznabIndexer, pace bool) error
 	return err
 }
 
-// regression: #2735
 func TestDirScanDownloadWaitsForOpenSearch(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		searchOpen := make(chan struct{})
@@ -396,7 +395,6 @@ func TestDirScanDownloadWaitsForOpenSearch(t *testing.T) {
 	})
 }
 
-// regression: #2735
 func TestDirScanDownloadRetryWaitsForRequestGap(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var tries int

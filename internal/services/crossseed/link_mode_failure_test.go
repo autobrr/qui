@@ -169,7 +169,6 @@ func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 			wantMessage: "Failed to create reflink tree: disk full",
 		},
 		{
-			// regression: #4303
 			name: "cleanup of the failed tree also fails",
 			mode: "reflink",
 			setup: func(_ *testing.T, e *linkFailureEnv) {

@@ -90,7 +90,6 @@ func rowJSON(t *testing.T, row any) map[string]any {
 	return decoded
 }
 
-// regression: #3761
 func TestTorrentListLeavesOutPopularityAndPrivateThatTheInstanceDoesNotSend(t *testing.T) {
 	t.Parallel()
 	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "qbittorrent-unknown-list-fields"), make([]byte, 32))

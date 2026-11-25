@@ -252,7 +252,6 @@ describe("DashboardOverview, 24 h", () => {
     expect(screen.getByText("chart.gapLabel duration=30m")).toBeTruthy()
   })
 
-  // regression: #4141
   it("labels the hours in the timezone of the date and time preferences", async () => {
     localStorage.setItem("qui-datetime-preferences", JSON.stringify({ timezone: "Asia/Kolkata", timeFormat: "24h", dateFormat: "iso" }))
     answer = () => [hourRow("a.test", 2, GiB, 0)]
@@ -264,7 +263,6 @@ describe("DashboardOverview, 24 h", () => {
     expect(times.every(time => time?.endsWith(":30"))).toBe(true)
   })
 
-  // regression: #4141
   it("opens with a saved timezone that the browser does not know, and labels the hours in the browser zone", async () => {
     localStorage.setItem("qui-datetime-preferences", JSON.stringify({ timezone: "Bogus/Zone", timeFormat: "24h", dateFormat: "iso" }))
     answer = () => [hourRow("a.test", 2, GiB, 0)]
@@ -328,7 +326,6 @@ describe("DashboardOverview, Live", () => {
     expect(screen.getByRole("tab", { name: "stream.live" }).getAttribute("aria-selected")).toBe("true")
   })
 
-  // regression: #4192
   it("waits for the saved view from the server before it offers 24 h and Live, so that a tap is not lost", async () => {
     _resetClientSettingsForTests()
     answer = () => [hourRow("a.test", 2, GiB, 0)]
@@ -344,7 +341,6 @@ describe("DashboardOverview, Live", () => {
     expect(screen.getByRole("tab", { name: "stream.day" }).hasAttribute("disabled")).toBe(false)
   })
 
-  // regression: #4192
   it("offers 24 h and Live with the local view when the saved settings cannot load", async () => {
     _resetClientSettingsForTests()
     localStorage.setItem("qui-dashboard-chart-view", JSON.stringify("live"))
@@ -374,7 +370,6 @@ describe("DashboardOverview, Live", () => {
     expect(screen.getAllByText(/^stream.peakSpeed/).map(peak => peak.textContent)).toEqual(["stream.peakSpeed speed=4 KiB/s", "stream.peakSpeed speed=0 B/s"])
   })
 
-  // regression: #4192
   it("shows the error in place of the Live chart when a later read of the samples fails", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     localStorage.setItem("qui-dashboard-chart-view", JSON.stringify("live"))
@@ -410,7 +405,6 @@ describe("DashboardOverview without history", () => {
     expect(readRaw("qui-dashboard-chart-view")).toBeNull()
   })
 
-  // regression: #4141
   it("opens on Live when no active instance recorded in the last 24 hours, also when a disabled one did", async () => {
     statuses = [recorded(1, 48), recorded(2, 48)]
     answer = id => id === 2 ? [hourRow("a.test", 2, GiB, 0)] : []
@@ -449,7 +443,6 @@ describe("DashboardOverview instances", () => {
     ])
   })
 
-  // regression: #4328
   it("does not list a disk as almost full when qui only estimates its size", () => {
     renderOverview([
       stats(1, {}, {}, { free_space_on_disk: 4 * GiB }),
@@ -459,7 +452,6 @@ describe("DashboardOverview instances", () => {
     expect(screen.queryByRole("region", { name: "attention.title" })).toBeNull()
   })
 
-  // regression: #4328
   it("warns only about the measured disk when a large library sits next to a mostly empty estimated disk", () => {
     const library = { ...stats(0).stats!, uniqueSize: 9 * 1024 * GiB }
     renderOverview([
@@ -477,7 +469,6 @@ describe("DashboardOverview instances", () => {
     expect(within(storage).getByRole("button", { name: "fieldHelp.trigger" })).toBeTruthy()
   })
 
-  // regression: #4305
   it("judges two instances on one disk by the size of the disk, not by their own torrents", () => {
     const disk = { freeBytes: 60 * GiB, totalBytes: 2000 * GiB }
     const big = { ...stats(0).stats!, uniqueSize: 1900 * GiB }
@@ -494,7 +485,6 @@ describe("DashboardOverview instances", () => {
     ])
   })
 
-  // regression: #4305
   it("waits for the free space of qBittorrent before it warns about a measured disk", () => {
     const disk = { freeBytes: 10 * GiB, totalBytes: 1000 * GiB }
     renderOverview([
@@ -506,7 +496,6 @@ describe("DashboardOverview instances", () => {
     expect(items.map(item => item.textContent)).toEqual([`attention.lowDisk name=instance 2 free=${formatBytes(10 * GiB)}`])
   })
 
-  // regression: #4305
   it("explains the Storage bars only while one of them is an estimate", () => {
     const disk = { freeBytes: 400 * GiB, totalBytes: 1000 * GiB }
     const measured = renderOverview([stats(1, { disk }), stats(2, { disk })])
@@ -517,7 +506,6 @@ describe("DashboardOverview instances", () => {
     expect(within(screen.getByRole("region", { name: "storage.title" })).getByRole("button", { name: "fieldHelp.trigger" })).toBeTruthy()
   })
 
-  // regression: #4179
   it("leaves out Needs attention when nothing needs an action", () => {
     renderOverview([stats(1), stats(2)])
 
@@ -525,7 +513,6 @@ describe("DashboardOverview instances", () => {
     expect(screen.queryByRole("region", { name: "attention.title" })).toBeNull()
   })
 
-  // regression: #4141
   it("shows a free space that qBittorrent cannot read as unknown, not as an amount", async () => {
     renderOverview([stats(1, {}, {}, { free_space_on_disk: -1 })])
 
@@ -535,7 +522,6 @@ describe("DashboardOverview instances", () => {
     expect(within(sheet).getByTestId("fact-free").textContent).toBe("details.unknowndetails.freeSpace")
   })
 
-  // regression: #4141
   it("opens no bottom sheet for an instance that is still loading", () => {
     renderOverview([stats(1, { stats: null, isLoading: true })])
 
@@ -633,7 +619,6 @@ describe("DashboardOverview instances", () => {
     expect(emptyDay).toBeUndefined()
   })
 
-  // regression: #4141
   it("lets Enter on an issue link in a desktop row open the link, not the detail band", async () => {
     desktop = true
     renderOverview([stats(1, { torrentCounts: { status: { unregistered: 4 }, categories: {}, tags: {}, trackers: {}, total: 10 } })])
@@ -687,7 +672,6 @@ describe("DashboardOverview instances", () => {
     expect(within(table).queryByRole("button", { name: "instances.altSpeedTurnOff" })).toBeNull()
   })
 
-  // regression: #4141
   it("tells the user when qBittorrent rejects the change of the alternative speed limits", async () => {
     toggleFails = true
     renderOverview([stats(1)])
@@ -699,7 +683,6 @@ describe("DashboardOverview instances", () => {
     expect(String(mocks.toastError.mock.calls[0][0])).toMatch(/^common:errors\.altSpeedToggle message=/)
   })
 
-  // regression: #4141
   it("leaves the cause out of the speed limit error in incognito mode", async () => {
     mocks.incognitoMode = [true, () => {}]
     toggleFails = true

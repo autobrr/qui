@@ -82,7 +82,6 @@ func TestReport(t *testing.T) {
 	})
 }
 
-// regression: #4109
 func TestAShrinkThatAnotherProgramBlocksOpensShrinkFailed(t *testing.T) {
 	service, db, notices := newService(t, nil, plenty)
 	require.NoError(t, db.RequestShrink(t.Context()))
@@ -109,7 +108,6 @@ func TestAShrinkThatAnotherProgramBlocksOpensShrinkFailed(t *testing.T) {
 	require.Nil(t, status.Result)
 }
 
-// regression: #4109
 func TestStatusReadsTheFreeSpaceOfTheDiskThatHoldsTheData(t *testing.T) {
 	root := t.TempDir()
 	dataDir := filepath.Join(root, "data")

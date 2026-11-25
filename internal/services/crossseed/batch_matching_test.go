@@ -357,7 +357,6 @@ func TestBuildCrossMatchSets_OtherInstance(t *testing.T) {
 	})
 }
 
-// regression: #3587
 func TestBuildCrossMatchSets_SizeGroup(t *testing.T) {
 	const (
 		retitledSource = "Quiet.Coast.2020.1080p.BluRay.x264-GRP"
@@ -412,7 +411,6 @@ func TestBuildCrossMatchSets_ReleaseMetadataTraceLogsRejection(t *testing.T) {
 	require.Contains(t, logOutput, `"reason":"group mismatch"`)
 }
 
-// regression: #4331
 func TestBuildCrossMatchSets_ReleaseMetadataTraceLimit(t *testing.T) {
 	const rounds = releaseRejectTraceLimit + 6
 	tests := []struct {

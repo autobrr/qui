@@ -83,7 +83,6 @@ afterEach(() => {
   cleanup()
 })
 
-// regression: #4263
 it("shows the full cut-off name on a tap inside a filter row, and the tap still toggles the filter", () => {
   touchWindow.ontouchstart = null
   layout({ scrollWidth: 200 })
@@ -106,7 +105,6 @@ it("shows the full cut-off name on a tap inside a filter row, and the tap still 
   expect(screen.getByRole("tooltip").textContent).toContain("A very long category name")
 })
 
-// regression: #4358
 it("highlights the menu item under the pointer when its label fits", () => {
   layout({})
   render(

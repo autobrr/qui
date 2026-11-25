@@ -911,7 +911,6 @@ func TestReadOnlyTransactionConcurrency(t *testing.T) {
 	require.NoError(t, txWrite.Commit())
 }
 
-// regression: #3738
 func TestSQLiteReaderPoolSizeFollowsCPUsWithinBounds(t *testing.T) {
 	for _, tc := range []struct{ procs, want int }{{2, 8}, {12, 12}, {32, 16}} {
 		prev := runtime.GOMAXPROCS(tc.procs)
@@ -921,7 +920,6 @@ func TestSQLiteReaderPoolSizeFollowsCPUsWithinBounds(t *testing.T) {
 	}
 }
 
-// regression: #3738
 func TestReaderPoolCapsOpenConnections(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	db := openTestDatabase(t)
@@ -968,7 +966,6 @@ func TestReaderPoolCapsOpenConnections(t *testing.T) {
 	require.LessOrEqual(t, db.readerPool.Stats().OpenConnections, limit)
 }
 
-// regression: #3738
 func TestReadOnlyTransactionsFillingPoolRunUnpreparedQueries(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	db := openTestDatabase(t)
@@ -1097,7 +1094,6 @@ func TestWriterLockWaitHonorsContext(t *testing.T) {
 	require.NoError(t, <-blockerDone)
 }
 
-// regression: #4470
 func TestNewStartsWhileAnotherConnectionReadsTheWAL(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	db, err := New(dbPath)

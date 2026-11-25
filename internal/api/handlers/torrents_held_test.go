@@ -55,9 +55,8 @@ func TestBulkAction_RefusesDeleteAndMoveOfHeldTorrents(t *testing.T) {
 		"toggleAutoTMM":   {"action": "toggleAutoTMM", "enable": true},
 	}
 	held := map[string]string{
-		claimedHash: "a Transfer holds this torrent",
-		helperHash:  "qui added this torrent for a Transfer or a Share",
-		// regression: #4231
+		claimedHash:           "a Transfer holds this torrent",
+		helperHash:            "qui added this torrent for a Transfer or a Share",
 		"cccc|" + claimedHash: "a Transfer holds this torrent",
 	}
 	for name, payload := range actions {

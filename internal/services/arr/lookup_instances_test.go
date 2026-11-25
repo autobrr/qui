@@ -69,7 +69,6 @@ var (
 	downSonarr = arrAnswers{}
 )
 
-// regression: #4478
 func TestService_LookupExternalIDsAsksEachLibraryBeforeACatalogue(t *testing.T) {
 	for name, instances := range map[string][]http.Handler{
 		"library first":   {librarySonarr, catalogueSonarr},
@@ -90,7 +89,6 @@ func TestService_LookupExternalIDsAsksEachLibraryBeforeACatalogue(t *testing.T) 
 	}
 }
 
-// regression: #4478
 func TestService_LookupExternalIDsKeepsAnIncompleteAnswerShortly(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -130,7 +128,6 @@ func TestService_LookupExternalIDsKeepsAnIncompleteAnswerShortly(t *testing.T) {
 	}
 }
 
-// regression: #4478
 func TestService_LookupExternalIDsKeepsAMovieWithoutDetailsShortly(t *testing.T) {
 	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, arrAnswers{
 		"/api/v3/parse": `{"movie": {"id": 7, "title": "Solitude", "tmdbId": 471000}}`,
@@ -205,7 +202,6 @@ func (failedWrites) ExecContext(context.Context, string, ...any) (sql.Result, er
 	return nil, errors.New("no database in the bubble")
 }
 
-// regression: #4478
 func TestService_LookupExternalIDsLeavesTimeForTheCatalogue(t *testing.T) {
 	tests := []struct {
 		name          string

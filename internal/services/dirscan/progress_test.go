@@ -26,7 +26,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// regression: #3736
 func TestBuildTrackedFileUpsert_ComparesModTimeInWholeSeconds(t *testing.T) {
 	t.Parallel()
 
@@ -70,13 +69,11 @@ func TestBuildTrackedFileUpsert_ComparesModTimeInWholeSeconds(t *testing.T) {
 	}
 }
 
-// regression: #3736
 func TestRefreshTrackedFilesKeepsFinalStatusAcrossScansSQLite(t *testing.T) {
 	t.Parallel()
 	runTrackedFileRescanTest(t, testdb.NewMigratedSQLite(t, "dirscan-rescan"))
 }
 
-// regression: #3736
 func TestRefreshTrackedFilesKeepsFinalStatusAcrossScansPostgresIntegration(t *testing.T) {
 	runTrackedFileRescanTest(t, testdb.NewMigratedPostgres(t, "dirscan-rescan"))
 }
@@ -210,7 +207,6 @@ func (b statBackend) Stat(context.Context, string) (*fsops.LstatInfo, error) {
 	return b.info, b.err
 }
 
-// regression: #3613
 func TestBuildFileIDIndexCompleteness(t *testing.T) {
 	notExist := &fs.PathError{Op: "stat", Err: fs.ErrNotExist}
 	onDisk := &fsops.LstatInfo{Size: 1, FileID: hardlink.UnixFileID(7, 42)}
@@ -232,7 +228,6 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 		{name: "unreadable file", err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false, reason: "torrent bbbb file other.mkv"},
 		{name: "no identity", info: &fsops.LstatInfo{Size: 1}, want: false, reason: "torrent bbbb file other.mkv"},
 		{name: "no file list", noList: true, want: false, reason: "no file list for torrent bbbb"},
-		// regression: #3613
 		{name: "empty file list", emptyList: true, want: false, reason: "empty file list for torrent bbbb"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -255,7 +250,6 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 	}
 }
 
-// regression: #3605
 func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -277,7 +271,6 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 			qbt:  stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": {{Name: "other.mkv"}}}},
 			want: models.DirScanFileStatusPending,
 		},
-		// regression: #3613
 		{
 			name: "first sync not done",
 			qbt:  stubTorrentFiles{empty: true, unsynced: true},
@@ -323,7 +316,6 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 	}
 }
 
-// regression: #3605
 func TestRefreshTrackedFilesKeepsAlreadySeedingWithoutProof(t *testing.T) {
 	id := hardlink.UnixFileID(7, 42)
 	key, ok := fsops.FileKeyOf(id, nil)
@@ -338,9 +330,7 @@ func TestRefreshTrackedFilesKeepsAlreadySeedingWithoutProof(t *testing.T) {
 		want    models.DirScanFileStatus
 	}{
 		{name: "identity not read", size: 100, seeding: &seedingIndex{complete: true}, want: models.DirScanFileStatusAlreadySeeding},
-		// regression: #3613
 		{name: "changed, index incomplete", id: id, size: 200, seeding: &seedingIndex{}, want: models.DirScanFileStatusAlreadySeeding},
-		// regression: #3613
 		{name: "changed, still seeding", id: id, size: 200, seeding: seeding, want: models.DirScanFileStatusAlreadySeeding},
 		{name: "changed, torrent removed", id: id, size: 200, seeding: &seedingIndex{byKey: map[fsops.FileKey]string{}, complete: true}, want: models.DirScanFileStatusPending},
 	} {

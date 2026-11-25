@@ -251,7 +251,6 @@ func TestWebhookNotificationCountsOnlyFailures(t *testing.T) {
 	}
 }
 
-// regression: #3826
 func TestApplyReplyEncodesClassBesideUnchangedStatus(t *testing.T) {
 	t.Parallel()
 

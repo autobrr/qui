@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// regression: #4113
 func TestALimitAboveTheGroupsAllocatesForTheGroupsOnly(t *testing.T) {
 	rows := []TransferRow{{Group: "a", Uploaded: 2}, {Group: "b", Uploaded: 1}}
 	var before, after runtime.MemStats

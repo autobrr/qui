@@ -36,7 +36,6 @@ func TestFilesPrintCachePostgresIntegration(t *testing.T) {
 	runFilesPrintCacheTests(t, testdb.NewMigratedPostgres)
 }
 
-// regression: #3945
 func TestFilesPrintStaysValidAfterTimeFormMigration(t *testing.T) {
 	t.Parallel()
 

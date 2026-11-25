@@ -280,7 +280,6 @@ func TestBuildRefusesInputThatGivesAWrongHelper(t *testing.T) {
 		{name: "Windows separator", fileNames: []string{"Some.Show.S01/E01.mkv", `Some.Show.S01\E02.mkv`}, salt: "salt-1"},
 		{name: "Windows drive", fileNames: []string{"Some.Show.S01/E01.mkv", "C:/E02.mkv"}, salt: "salt-1"},
 		{name: "empty folder name", fileNames: []string{"Some.Show.S01/E01.mkv", "Some.Show.S01//E02.mkv"}, salt: "salt-1"},
-		// regression: #4439
 		{name: "dot as a file name", fileNames: []string{"Some.Show.S01/E01.mkv", "."}, salt: "salt-1"},
 		{name: "no salt", fileNames: []string{"Some.Show.S01/E01.mkv", "Some.Show.S01/E02.mkv"}, salt: ""},
 	} {

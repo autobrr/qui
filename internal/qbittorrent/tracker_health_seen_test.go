@@ -58,7 +58,6 @@ func (rig *flagsRig) readTrackers(t *testing.T, hash string) {
 	rig.sm.applySeenTrackers(t.Context(), 1, rig.queueTrackersRead(t, hash))
 }
 
-// regression: #4371
 func TestTrackersReadUpdatesLabelBeforeDetailsExpire(t *testing.T) {
 	t.Parallel()
 
@@ -81,7 +80,6 @@ func TestTrackersReadUpdatesLabelBeforeDetailsExpire(t *testing.T) {
 	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "the next pass keeps the label of the read")
 }
 
-// regression: #4371
 func TestTrackersReadGivesNoLabelWithoutAnnounceFlags(t *testing.T) {
 	t.Parallel()
 
@@ -97,7 +95,6 @@ func TestTrackersReadGivesNoLabelWithoutAnnounceFlags(t *testing.T) {
 	require.NotContains(t, rig.health(t), flagsHashHealthy, "qBittorrent reports no announce problem, as the pass reads it")
 }
 
-// regression: #4371
 func TestTrackersReadIsDroppedWhenFlagsChangeBeforeItApplies(t *testing.T) {
 	t.Parallel()
 
@@ -119,7 +116,6 @@ func TestTrackersReadIsDroppedWhenFlagsChangeBeforeItApplies(t *testing.T) {
 	require.Equal(t, TrackerHealthDown, rig.health(t)[flagsHashError])
 }
 
-// regression: #4371
 func TestTrackersReadKeepsTheFlagsFromBeforeTheRequest(t *testing.T) {
 	t.Parallel()
 
@@ -139,7 +135,6 @@ func TestTrackersReadKeepsTheFlagsFromBeforeTheRequest(t *testing.T) {
 	require.Equal(t, TrackerHealthError, rig.health(t)[flagsHashError], "a response that started before the flag change sets no label")
 }
 
-// regression: #4371
 func TestTrackersReadIsDroppedWhenAPassFetchedNewerDetails(t *testing.T) {
 	t.Parallel()
 
@@ -166,7 +161,6 @@ func TestTrackersReadIsDroppedWhenAPassFetchedNewerDetails(t *testing.T) {
 	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "the next pass keeps the details of the earlier pass")
 }
 
-// regression: #4371
 func TestOlderTrackersReadIsDroppedWhenItFinishesLast(t *testing.T) {
 	t.Parallel()
 
@@ -192,7 +186,6 @@ func TestOlderTrackersReadIsDroppedWhenItFinishesLast(t *testing.T) {
 	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "the next pass keeps the details of the newer read")
 }
 
-// regression: #4371
 func TestTrackersReadAppliesAfterAPassThatReusedOlderDetails(t *testing.T) {
 	t.Parallel()
 
@@ -212,7 +205,6 @@ func TestTrackersReadAppliesAfterAPassThatReusedOlderDetails(t *testing.T) {
 	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError], "the read is newer than the details the pass reused")
 }
 
-// regression: #4371
 func TestTrackersReadIsDroppedWhenAPassFetchedNewerTrackersOn51(t *testing.T) {
 	t.Parallel()
 

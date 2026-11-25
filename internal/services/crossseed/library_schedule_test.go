@@ -243,7 +243,6 @@ func TestExecuteCompletionSearch_NextScheduledRunAsksOnlyFailedIndexer(t *testin
 		olderCopies int
 	}{
 		{name: "one copy"},
-		// regression: #4246
 		{name: "newer copy of content already seeded", olderCopies: 1},
 	}
 	for _, tt := range tests {
@@ -672,7 +671,6 @@ func TestLibraryScheduleLoop_StartsAfterManualRun(t *testing.T) {
 	f.waitRunEnd(t)
 }
 
-// regression: #4246
 func TestProcessEnsembleSeasonCandidate_FailedSearchCountsAsSent(t *testing.T) {
 	t.Parallel()
 	tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -711,7 +709,6 @@ func episodeAddedDaysAgo(hash, name string, days int) qbt.Torrent {
 	return qbt.Torrent{Hash: hash, Name: name, Progress: 1.0, Size: 1 << 30, AddedOn: time.Now().Add(-time.Duration(days) * 24 * time.Hour).Unix()}
 }
 
-// regression: #4246
 func TestScheduledSearchRun_SeasonGroupDatedByNewestCopy(t *testing.T) {
 	t.Parallel()
 	episodes := []qbt.Torrent{
@@ -727,7 +724,6 @@ func TestScheduledSearchRun_SeasonGroupDatedByNewestCopy(t *testing.T) {
 	require.Equal(t, "season:azure compass:s01", state.queue[0].Hash)
 }
 
-// regression: #4246
 func TestScheduledSearchRun_UnsearchedSeasonGroupGoesFirst(t *testing.T) {
 	t.Parallel()
 	episodes := []qbt.Torrent{
@@ -749,7 +745,6 @@ func TestScheduledSearchRun_UnsearchedSeasonGroupGoesFirst(t *testing.T) {
 	require.Equal(t, []string{"season:brass lantern:s01", "season:azure compass:s01"}, hashes)
 }
 
-// regression: #4246
 func TestNotifySearchRun_ScheduledRunWithError(t *testing.T) {
 	t.Parallel()
 	notifier := &recordingNotifier{}
@@ -763,7 +758,6 @@ func TestNotifySearchRun_ScheduledRunWithError(t *testing.T) {
 	require.Len(t, notifier.Events(), 1)
 }
 
-// regression: #4246
 func TestLibrarySchedule_HugeValues(t *testing.T) {
 	searched := make(chan struct{}, 1)
 	tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

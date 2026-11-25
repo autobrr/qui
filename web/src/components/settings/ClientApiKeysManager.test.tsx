@@ -41,7 +41,6 @@ function renderManager() {
 }
 
 describe("ClientApiKeysManager", () => {
-  // regression: #4233
   it("lets the user create the first key when the server sends no list", async () => {
     server.use(
       http.get("*/api/client-api-keys", () => HttpResponse.json(null)),
@@ -54,7 +53,6 @@ describe("ClientApiKeysManager", () => {
     expect(create.disabled).toBe(false)
   })
 
-  // regression: #4233
   it("takes no second key until the user is done with the proxy URL of the first", async () => {
     const instance = { id: 1, name: "Seedbox", host: "http://127.0.0.1:8080" }
     const keys: unknown[] = []

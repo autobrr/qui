@@ -30,7 +30,6 @@ import (
 
 const mediaIDWiringSourceHash = "14a238e56ab06fed600c38d5068998d95e9338c2"
 
-// regression: #3306
 func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 	const sourceName = "Signal.Static.1997.1080p.BluRay.DD5.1.x264-FIELDTEST"
 

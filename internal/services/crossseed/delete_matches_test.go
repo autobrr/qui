@@ -47,7 +47,6 @@ func matchedTiers(matches []LocalMatch) map[string]string {
 	return tiers
 }
 
-// regression: #3341
 func TestFindDeleteMatchesSharedPath(t *testing.T) {
 	t.Parallel()
 
@@ -67,7 +66,6 @@ func TestFindDeleteMatchesSharedPath(t *testing.T) {
 	require.Equal(t, "local", matches[0].InstanceName)
 }
 
-// regression: #3341
 func TestFindDeleteMatchesHardlinkWithPairedSizes(t *testing.T) {
 	t.Parallel()
 
@@ -89,7 +87,6 @@ func TestFindDeleteMatchesHardlinkWithPairedSizes(t *testing.T) {
 	require.Equal(t, map[string]string{"bbbb": matchTypeHardlink}, matchedTiers(matches))
 }
 
-// regression: #3341
 func TestFindDeleteMatchesFailsWhenFilesCannotBeRead(t *testing.T) {
 	t.Parallel()
 
@@ -104,7 +101,6 @@ func TestFindDeleteMatchesFailsWhenFilesCannotBeRead(t *testing.T) {
 	require.ErrorContains(t, err, "read the file list of torrent cccc")
 }
 
-// regression: #3341
 func TestFindDeleteMatchesSelectsHybridByV1Hash(t *testing.T) {
 	t.Parallel()
 
@@ -120,7 +116,6 @@ func TestFindDeleteMatchesSelectsHybridByV1Hash(t *testing.T) {
 	require.Equal(t, map[string]string{"cccc": matchTypeContentPath}, matchedTiers(matches))
 }
 
-// regression: #3341
 func TestFindDeleteMatchesSharedPathOutranksLink(t *testing.T) {
 	t.Parallel()
 
@@ -143,7 +138,6 @@ func TestFindDeleteMatchesSharedPathOutranksLink(t *testing.T) {
 	require.Equal(t, map[string]string{"cccc": matchTypeContentPath}, matchedTiers(matches))
 }
 
-// regression: #3587
 func TestFindDeleteMatchesLinkedCopyInSizeGroup(t *testing.T) {
 	t.Parallel()
 

@@ -294,7 +294,6 @@ func (h *statFailingHost) MkdirAll(context.Context, string, fs.FileMode) error {
 	return h.err
 }
 
-// regression: #2919
 func TestInjectDoesNotGuessTheLayoutWhenTheHostStopsAnswering(t *testing.T) {
 	t.Parallel()
 

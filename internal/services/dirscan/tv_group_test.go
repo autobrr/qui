@@ -51,7 +51,6 @@ func (s *episodeSearcher) SearchWithScope(_ context.Context, req *jackett.Torzna
 	return nil
 }
 
-// regression: #3571
 func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 	t.Parallel()
 

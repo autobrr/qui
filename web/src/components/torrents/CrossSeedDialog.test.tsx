@@ -409,7 +409,6 @@ describe("CrossSeedDialog search scope", () => {
     expect(onToggleSelection).toHaveBeenCalledTimes(1)
   })
 
-  // regression: #4126
   it("offers Retry when the analysis fails before any search", () => {
     const onRetry = vi.fn()
     const { getByText } = render(<CrossSeedDialog {...baseProps} error="analyze failed" onRetry={onRetry} />)

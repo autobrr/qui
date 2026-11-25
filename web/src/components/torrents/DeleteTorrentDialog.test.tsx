@@ -118,7 +118,6 @@ describe("DeleteTorrentDialog", () => {
     expect(screen.getByRole("button", { name: "Delete 12 torrents" })).not.toBeNull()
   })
 
-  // regression: #3592
   it("names each instance that the cross-seed check did not read", () => {
     const uncheckedInstances = [
       { instanceId: 3, instanceName: "Basement", reason: "offline" },
@@ -141,7 +140,6 @@ describe("DeleteTorrentDialog", () => {
     }
   })
 
-  // regression: #4234
   it("moves focus to Cancel when it opens, on a desktop and on a phone", () => {
     for (const isMobile of [false, true]) {
       mobile = isMobile

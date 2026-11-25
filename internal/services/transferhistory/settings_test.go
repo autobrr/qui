@@ -172,7 +172,6 @@ func TestDetailRetentionPostgresIntegration(t *testing.T) {
 	}
 }
 
-// regression: #4119
 func TestANewUTCDayMovesTheTorrentDaysBeforeItPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	for _, retentionDays := range transferhistory.DetailRetentions {
@@ -233,7 +232,6 @@ func TestAFoldMovesTheDaysOfATorrentIntoItsYearPostgresIntegration(t *testing.T)
 	})
 }
 
-// regression: #4113
 func TestARecentPeriodOfAnIdleInstanceGetsNoFoldedYearPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	later := day10.Add(100 * 24 * time.Hour)
@@ -328,7 +326,6 @@ func TestRecordingSwitchPostgresIntegration(t *testing.T) {
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 1}, deleted("a", at(10*time.Minute), 0, 0, outside)),
 			},
 		},
-		// regression: #4085
 		{
 			name: "a delete note before the switch goes off keeps its cause",
 			steps: []step{
@@ -424,7 +421,6 @@ func (u unreadableSettings) QueryRowContext(ctx context.Context, query string, a
 	return u.DB.QueryRowContext(ctx, query, args...)
 }
 
-// regression: #4085
 func TestShutdownReportsReadingsThatWaitForUnreadableSettings(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	module := transferhistory.New(unreadableSettings{db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
@@ -432,7 +428,6 @@ func TestShutdownReportsReadingsThatWaitForUnreadableSettings(t *testing.T) {
 	require.Error(t, module.Shutdown(t.Context()))
 }
 
-// regression: #4085
 func TestAFoldWritesTheChangesInMemoryFirstPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
@@ -493,7 +488,6 @@ func (b *blockedFold) QueryContext(ctx context.Context, query string, args ...an
 	return b.DB.QueryContext(ctx, query, args...)
 }
 
-// regression: #4085
 func TestATransferQueryDoesNotWaitForTheTorrentDaysOfAnEarlierFold(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	q, folding := newBlockedFold(db)

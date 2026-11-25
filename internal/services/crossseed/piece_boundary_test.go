@@ -518,7 +518,6 @@ func TestPathFormatMatchesSourceFiles(t *testing.T) {
 	require.Equal(t, "test-root/b-extra.nfo", files[1].Path, "path should include root folder")
 }
 
-// regression: #4220
 func TestBuildFilesForBoundaryCheck_MatchesQbtFileNames(t *testing.T) {
 	info := metainfo.Info{
 		Name:        "Movie.\xe1.2024",

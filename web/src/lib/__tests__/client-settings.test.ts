@@ -298,7 +298,6 @@ describe("push queue", () => {
   })
 })
 
-// regression: #4194
 describe("large batches", () => {
   const MAX_BODY_BYTES = 64 * 1024
 
@@ -391,7 +390,6 @@ describe("large batches", () => {
     expect(server).toEqual({ ...values, "qui-test-bool": "true" })
   })
 
-  // regression: #4206
   it("sends the newer value again when the page-hide PUT lands after a newer save", async () => {
     const server: Record<string, string> = {}
     const inFlight: (() => void)[] = []
@@ -422,7 +420,6 @@ describe("large batches", () => {
     expect(server["qui-test-bool"]).toBe("2")
   })
 
-  // regression: #4206
   it("keeps the newer value when the page-hide PUT lands before an older PUT and a snapshot of it", async () => {
     const server: Record<string, string> = {}
     const inFlight: (() => void)[] = []
@@ -453,7 +450,6 @@ describe("large batches", () => {
     expect(server["qui-test-bool"]).toBe("2")
   })
 
-  // regression: #4206
   it("sends the newer value again when the page-hide PUT commits after a newer PUT but answers first", async () => {
     const server: Record<string, string> = {}
     const puts: { commit: () => void; answer: () => void }[] = []

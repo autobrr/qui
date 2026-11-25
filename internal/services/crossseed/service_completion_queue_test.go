@@ -730,7 +730,6 @@ func TestWaitForCompletionTorrentReady_ReturnsNotCompleteAfterChecking(t *testin
 	})
 }
 
-// regression: #3707
 func TestWaitForCompletionTorrentReady_ErroredSourceGoesOnToItsRefusal(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		hash := "abababababababababababababababababababab"
@@ -929,7 +928,6 @@ func (*completionPollingSyncMock) GetDirectoryContentCtx(context.Context, int, s
 	return nil, nil
 }
 
-// regression: #4379
 func TestHandleTorrentCompletion_CompletionSearchOffWritesNoLog(t *testing.T) {
 	const instanceWithoutSettings = 2
 	svc := &Service{completionStore: setupCompletionStoreForQueueTests(t)}

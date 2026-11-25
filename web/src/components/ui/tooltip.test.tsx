@@ -82,7 +82,6 @@ describe("Tooltip with disabled", () => {
     expect(tooltipShown()).toBe(false)
   })
 
-  // regression: #4286
   it("keeps the touch guard after disabled closes a tapped tooltip", () => {
     const tree = (disabled: boolean) => (
       <TooltipProvider>
@@ -111,7 +110,6 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
-  // regression: #4263
   it("runs the action of a button and stays closed", () => {
     const onClick = vi.fn()
     renderTooltip(<TooltipTrigger asChild><button type="button" onClick={onClick}>Pause</button></TooltipTrigger>)
@@ -122,7 +120,6 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(false)
   })
 
-  // regression: #4263
   it("stays closed when the icon sits inside a link", () => {
     renderTooltip(
       <a href="/instances/1" onClick={(event) => event.preventDefault()}>
@@ -144,7 +141,6 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
-  // regression: #4263
   it("stays closed on a label that toggles a checkbox, and opens when the checkbox is disabled", () => {
     renderTooltip(<TooltipTrigger asChild><label><input type="checkbox" />Include</label></TooltipTrigger>)
     tap(screen.getByText("Include"))
@@ -174,7 +170,6 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
-  // regression: #4263
   it("opens on a pen tap of a trigger marked openOnTap only, and keeps the tap from the row", () => {
     const openRow = vi.fn()
     renderTooltip(

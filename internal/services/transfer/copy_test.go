@@ -169,7 +169,6 @@ func TestTransferResumesACopyInSeveralRanges(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferResumeClosesTheFilesOfEachTask(t *testing.T) {
 	r := newRig(t)
 	sizes := make([]int, 40)

@@ -68,7 +68,6 @@ afterEach(() => {
 })
 
 describe("NotificationsManager switch", () => {
-  // regression: #4233
   it("keeps a saved edit when the switch is pressed before the list refetch answers", async () => {
     mocks.listNotificationTargets.mockResolvedValueOnce([TARGET]).mockReturnValue(new Promise(() => {}))
     mocks.updateNotificationTarget.mockImplementation((id: number, request: NotificationTargetRequest) => Promise.resolve({ ...TARGET, ...request, id }))
@@ -82,7 +81,6 @@ describe("NotificationsManager switch", () => {
     expect(sentRequests()[1]).toMatchObject({ name: "New name", enabled: false })
   })
 
-  // regression: #4233
   it("sends an edit only after the switch save of the same target ends", async () => {
     mocks.listNotificationTargets.mockResolvedValue([TARGET])
     let finishSwitch: (target: NotificationTarget) => void = () => {}

@@ -22,7 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
-// regression: #4242
 func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -59,7 +58,6 @@ func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	require.ErrorIs(t, whileHeld, transfer.ErrClaimed)
 }
 
-// regression: #4242
 func TestARulePassesTheFilesOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	r := newRigOn(t, onDisk, noAccess)
 	r.connect()
@@ -104,7 +102,6 @@ func TestARulePassesTheFilesOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	require.Equal(t, 1, preview.Stay)
 }
 
-// regression: #4242
 func TestARuleMovesACrossSeedThatHasOtherFiles(t *testing.T) {
 	r := newRigOn(t, onDisk, noAccess)
 	r.connect()
@@ -135,7 +132,6 @@ func TestARuleMovesACrossSeedThatHasOtherFiles(t *testing.T) {
 	require.Empty(t, preview.Versions)
 }
 
-// regression: #4242
 func TestARuleWaitsForTheUserAfterAPermanentFailure(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -185,7 +181,6 @@ func TestTransferSendsItsEndAsAnEvent(t *testing.T) {
 	require.True(t, strings.HasPrefix(failed.Message, "Torrent: "+showName+"\nTarget: homelab\nError: Not enough free space on homelab"), failed.Message)
 }
 
-// regression: #4242
 func TestATransferSendsOneEventAfterTheRecordOfItsEnd(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -221,7 +216,6 @@ func TestATransferSendsOneEventAfterTheRecordOfItsEnd(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestATransferSendsItsEndAfterAnInstanceIsDeleted(t *testing.T) {
 	for _, side := range []string{"source", "target"} {
 		r := newRig(t)

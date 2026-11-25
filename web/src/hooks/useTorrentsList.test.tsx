@@ -237,7 +237,6 @@ describe("useTorrentsList", () => {
     expect(result.current.isLoadingMore).toBe(false)
   })
 
-  // regression: #2507
   it("does not retain pagination loading across a view change", async () => {
     mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
       if (params.search === "new") {
@@ -271,7 +270,6 @@ describe("useTorrentsList", () => {
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(1, expect.objectContaining({ page: 1, search: "new" }), expect.any(AbortSignal))
   })
 
-  // regression: #2507
   it.each([0, 1])("allows pagination during a background refresh of page %i", async currentPage => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     let refreshing = false
@@ -309,7 +307,6 @@ describe("useTorrentsList", () => {
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(1, expect.objectContaining({ page: 0 }), expect.any(AbortSignal))
   })
 
-  // regression: #2507
   it("retries a failed page without skipping it or sticking in loading", async () => {
     mockedApi.getTorrents.mockResolvedValueOnce(makeResponse({
       torrents: [makeTorrent({ hash: "a" })], total: 3, hasMore: true,
@@ -635,7 +632,6 @@ describe("useTorrentsList", () => {
     expect(pageCalls().filter(page => page === 2).length).toBe(1)
   })
 
-  // regression: #2507
   it("polls every loaded page regardless of row state", async () => {
     let refreshed = false
     mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
@@ -701,7 +697,6 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents.some(t => t.hash === "d")).toBe(false)
   })
 
-  // regression: #2507
   it.each([false, true])("keeps newer streamed rows over an older loaded window (cross-instance: %s)", async crossInstance => {
     const instanceId = crossInstance ? 0 : 1
     const listResponse = (overrides: Partial<TorrentResponse>) => {
@@ -836,7 +831,6 @@ describe("useTorrentsList", () => {
     expect(remounted.result.current.torrents.find(torrent => torrent.hash === "a")?.state).toBe("uploading")
   })
 
-  // regression: #2507
   it("keeps an optimistic page-zero delete after a newer stream frame", async () => {
     const pageZero = makeResponse({ torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })], total: 4, hasMore: true })
     mockedApi.getTorrents.mockImplementation((_id, params) => Promise.resolve(params.page === 0 ? pageZero : makeResponse({
@@ -863,7 +857,6 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["b", "c", "d"])
   })
 
-  // regression: #2507
   it("preserves a stream frame received before the window effect commits", async () => {
     const pageZero = makeResponse({
       torrents: [makeTorrent({ hash: "a", state: "downloading" }), makeTorrent({ hash: "b" })],
@@ -1053,7 +1046,6 @@ describe("useTorrentsList", () => {
     expect(mockedApi.getTorrents).not.toHaveBeenCalledWith(1, expect.objectContaining({ page: 2 }), expect.anything())
   })
 
-  // regression: #2507
   it("keeps pagination alive without replacing newer streamed rows or metadata", async () => {
     let pageOneSignal: AbortSignal | undefined
     let resolvePageOne: ((response: TorrentResponse) => void) | undefined
@@ -1224,7 +1216,6 @@ describe("useTorrentsList", () => {
       return { getCapabilities, ...rendered }
     }
 
-    // regression: #3760
     it("starts a capabilities request from a stream frame only when the version changes", async () => {
       streamState = { ...DISCONNECTED, connected: true, initialized: true }
       mockedApi.getTorrents.mockImplementation((_instanceId, params) => Promise.resolve(makeResponse({
@@ -1259,7 +1250,6 @@ describe("useTorrentsList", () => {
       expect(result.current.capabilities?.webAPIVersion).toBe("2.9.3")
     })
 
-    // regression: #3760
     it("starts a capabilities request from a REST page when the version changes", async () => {
       mockedApi.getTorrents.mockResolvedValue(makeResponse({ webAPIVersions: { 1: "2.9.3" } }))
       const { getCapabilities, result } = renderWithCapabilities()
@@ -1756,7 +1746,6 @@ describe("useTorrentsList", () => {
     )
   })
 
-  // regression: #2507
   it.each([
     { instanceId: 1, page: 1 },
     { instanceId: 0, page: 0 },
@@ -1809,7 +1798,6 @@ describe("useTorrentsList", () => {
     unmount()
   })
 
-  // regression: #2507
   it.each([1, 0])("refreshes instance %i on focus only after the loaded window becomes stale", async instanceId => {
     focusManager.setFocused(true)
     const response = (page: number) => makeResponse({
@@ -1850,7 +1838,6 @@ describe("useTorrentsList", () => {
     unmount()
   })
 
-  // regression: #2507
   it("keeps loaded-window polling across stream stalls", async () => {
     streamState = { ...DISCONNECTED, connected: true, initialized: true }
     const firstPage = makeResponse({
@@ -2194,7 +2181,6 @@ describe("useTorrentsList Copy groups", () => {
   })
 })
 
-// regression: #3807
 describe("useTorrentsList categories and tags", () => {
   it("stays undefined until the first response, then reads missing fields as empty", async () => {
     let resolve!: (response: TorrentResponse) => void

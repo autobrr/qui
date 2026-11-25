@@ -161,7 +161,6 @@ describe("formatTimeOnly", () => {
 })
 
 describe("formatClockTime", () => {
-  // regression: #4110
   it("falls back to local time for a saved time zone that Intl rejects", () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     try {

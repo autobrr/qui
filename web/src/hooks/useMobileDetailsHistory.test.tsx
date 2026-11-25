@@ -136,7 +136,6 @@ describe("useMobileDetailsHistory", () => {
     leavesInOneBack(rig)
   })
 
-  // regression: #3702
   it("closes on one Back when the same torrent opens again after a link from another page", async () => {
     const rig = mount(["/other", "/list?torrent=a"])
     await settle()
@@ -148,7 +147,6 @@ describe("useMobileDetailsHistory", () => {
     leavesInOneBack(rig)
   })
 
-  // regression: #3703
   it("starts a new count when it opens from a list entry that Back left a count on", async () => {
     const rig = mount(["/other", "/list"])
     await settle()
@@ -163,7 +161,6 @@ describe("useMobileDetailsHistory", () => {
     expect(shown()).toBe("list")
   })
 
-  // regression: #3703
   it("closes in place when a link to a torrent takes the index of a view that Back left", async () => {
     const rig = mount(["/other", "/list"])
     await settle()
@@ -181,7 +178,6 @@ describe("useMobileDetailsHistory", () => {
     expect(shown()).toBe("list")
   })
 
-  // regression: #3703
   it("goes back over its entry on close after Back and Forward", async () => {
     const rig = mount(["/other", "/list"])
     await settle()
@@ -195,7 +191,6 @@ describe("useMobileDetailsHistory", () => {
     leavesInOneBack(rig)
   })
 
-  // regression: #3703
   it("closes a view that a link opened when a close goes back to it from a match", async () => {
     const rig = mount(["/other", "/list?torrent=a"])
     await settle()
@@ -206,7 +201,6 @@ describe("useMobileDetailsHistory", () => {
     leavesInOneBack(rig)
   })
 
-  // regression: #3703
   it("closes a view that a link opened when a close goes back to it from the same torrent", async () => {
     const rig = mount(["/other", "/list?torrent=a"])
     await settle()
@@ -218,7 +212,6 @@ describe("useMobileDetailsHistory", () => {
     leavesInOneBack(rig)
   })
 
-  // regression: #3703
   it("shows the next open after a close that went back to a view that a link opened", async () => {
     mount(["/other", "/list?torrent=a"])
     await settle()
@@ -230,7 +223,6 @@ describe("useMobileDetailsHistory", () => {
     expect(shown()).toBe("b")
   })
 
-  // regression: #3703
   it("closes in place on the desktop layout after a resize", async () => {
     const rig = mount(["/other", "/list"])
     await settle()

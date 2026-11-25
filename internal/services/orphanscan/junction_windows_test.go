@@ -99,7 +99,6 @@ func TestOrphanScan_WindowsJunctionProtectsSeededDescendant(t *testing.T) {
 	})
 }
 
-// regression: #3652
 func TestOrphanScan_WindowsJunctionKeepsEmptyFolderATorrentReaches(t *testing.T) {
 	root := t.TempDir()
 	scanRoot := filepath.Join(root, "scan root")

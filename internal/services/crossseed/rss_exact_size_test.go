@@ -972,7 +972,6 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 	}
 }
 
-// regression: #3626
 func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 	const (
 		instanceID = 9
@@ -1033,7 +1032,6 @@ func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 	}
 }
 
-// regression: #3824
 func TestAutomationRunRetriesStrandedAddOnNextPoll(t *testing.T) {
 	const (
 		instanceID = 21

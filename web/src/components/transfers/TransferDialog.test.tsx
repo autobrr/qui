@@ -198,7 +198,6 @@ describe("the Transfer dialog", () => {
     expect(memberRow("Show.S01.1080p-GRP.cs")).toBe("Show.S01.1080p-GRP.csCross-seed")
   })
 
-  // regression: #4242
   it("names the target of the summary that shows while the summary of the next target loads", async () => {
     summary = { ...summary, noFileAccess: true }
     renderDialog()
@@ -220,7 +219,6 @@ describe("the Transfer dialog", () => {
     await waitFor(() => expect(screen.getByText(/qui cannot see the files on crossbox/)).toBeTruthy())
   })
 
-  // regression: #4242
   it("shows the figures next to Start on a narrow screen, and lists the torrents on a tap", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: query === "(max-width: 1023px)", media: query, addEventListener: () => {}, removeEventListener: () => {},
@@ -264,8 +262,6 @@ describe("the Transfer dialog", () => {
     }
   })
 
-  // regression: #4242
-  // regression: #4242
   it("shows one line of each warning on a phone until a tap opens them, and shows them in full on a wide screen", async () => {
     summary = { ...summary, noFileAccess: true }
     const text = "qui cannot see the files on homelab, so a file with other content at the same path can be replaced."
@@ -325,7 +321,6 @@ describe("the Transfer dialog", () => {
     expect(summaryPanel().getAttribute("aria-busy")).toBe("false")
   })
 
-  // regression: #4242
   it("keeps Start off while the browser is offline and the summary of the last form shows", async () => {
     const queryClient = newQueryClient()
     renderDialog(queryClient)
@@ -365,7 +360,6 @@ describe("the Transfer dialog", () => {
     expect(startButton().disabled).toBe(true)
   })
 
-  // regression: #4242
   it("starts the Transfer into a target category whose name equals the value of No category", async () => {
     server.use(http.get("*/api/instances/:id/categories", () => HttpResponse.json({ __none__: { name: "__none__", savePath: "" } })))
     renderDialog()
@@ -380,7 +374,6 @@ describe("the Transfer dialog", () => {
     expect(starts[0].category).toBe("__none__")
   })
 
-  // regression: #4242
   it("renders nothing more while the form stays as it is", async () => {
     const queryClient = newQueryClient()
     queryClient.setQueryData(["instance-metadata", 2], { categories: { tv: { name: "tv", savePath: "" } }, tags: [] })
@@ -392,7 +385,6 @@ describe("the Transfer dialog", () => {
     expect(commits).toBe(settled)
   })
 
-  // regression: #4242
   it("leaves the next dialog open when the answer of a start comes after the user closed this one", async () => {
     let answer = () => {}
     const held = new Promise<void>(resolve => { answer = resolve })
@@ -414,7 +406,6 @@ describe("the Transfer dialog", () => {
     expect(onStarted).not.toHaveBeenCalled()
   })
 
-  // regression: #4242
   it("shows made-up names in incognito mode, and hides the reason of a refusal", async () => {
     incognito.on = true
     const onOpenChange = renderDialog()

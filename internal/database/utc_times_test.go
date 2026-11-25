@@ -26,7 +26,6 @@ type wrappedTime struct{ at time.Time }
 
 func (w wrappedTime) Value() (driver.Value, error) { return w.at, nil }
 
-// regression: #3942
 func TestTimesReadBackAsUTCSQLite(t *testing.T) {
 	for _, zone := range utcContractZones {
 		t.Run(zone, func(t *testing.T) {
@@ -36,7 +35,6 @@ func TestTimesReadBackAsUTCSQLite(t *testing.T) {
 	}
 }
 
-// regression: #3942
 func TestTimesReadBackAsUTCPostgresIntegration(t *testing.T) {
 	for _, zone := range utcContractZones {
 		t.Run(zone, func(t *testing.T) {
@@ -46,7 +44,6 @@ func TestTimesReadBackAsUTCPostgresIntegration(t *testing.T) {
 	}
 }
 
-// regression: #3942
 func TestOffsetTextRowReadsBackAsUTCSQLite(t *testing.T) {
 	for _, zone := range utcContractZones {
 		t.Run(zone, func(t *testing.T) {

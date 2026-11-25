@@ -648,7 +648,6 @@ describe("TorrentCardsMobile Transfer and Share", () => {
     return within(view.getByRole("dialog"))
   }
 
-  // regression: #4242
   it("offers Transfer and Share for one selected torrent, and the pick reaches only that torrent", () => {
     const view = renderCards(flatRows(3))
     longPress(cardOf(view.container, "Release 1"))

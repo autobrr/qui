@@ -200,7 +200,6 @@ describe("usePathAutocomplete keyboard navigation", () => {
     requestedPaths.length = 0
   })
 
-  // regression: #3204
   it.each([false, true])("arrow keys move and wrap the highlight with includeFiles %s", (includeFiles) => {
     const onSelect = vi.fn()
     const { result } = renderHook(() => usePathAutocomplete(onSelect, 1, { includeFiles }))
@@ -222,7 +221,6 @@ describe("usePathAutocomplete keyboard navigation", () => {
     expect(onSelect).toHaveBeenCalledWith("/data/alps/")
   })
 
-  // regression: #3204
   it("typing new input resets the highlight to the first suggestion", () => {
     const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1))
     mountRefs(result)

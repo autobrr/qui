@@ -46,7 +46,6 @@ func runTorznabTorrentCacheStoreTests(t *testing.T, open func(t *testing.T) *dat
 	})
 }
 
-// regression: #3100
 func checkRefreshedEntrySurvivesExpiredFetch(t *testing.T, db *database.DB) {
 	indexerID := insertTestTorznabIndexer(t, db, "Cache Indexer", "http://indexer.example")
 	const cacheKey = "cache-key-refresh"

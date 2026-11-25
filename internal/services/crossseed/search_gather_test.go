@@ -204,7 +204,6 @@ func TestGatherSearchResults(t *testing.T) {
 			wantTitles:   []string{},
 			wantPartial:  true,
 		},
-		// regression: #3306
 		{
 			name:  "yearless retry targets only the indexers that searched by title",
 			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2, 3}, IMDbID: "tt1", OmitQueryForIDs: true},
@@ -222,7 +221,6 @@ func TestGatherSearchResults(t *testing.T) {
 			wantTitles:   []string{junk, junk},
 			wantJobID:    1,
 		},
-		// regression: #3306
 		{
 			name:  "narrowed yearless retry keeps its own job when the primary came from cache",
 			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2, 3}, IMDbID: "tt1", OmitQueryForIDs: true},
@@ -240,7 +238,6 @@ func TestGatherSearchResults(t *testing.T) {
 			wantTitles:   []string{junk, junk},
 			wantJobID:    2,
 		},
-		// regression: #3306
 		{
 			name:  "every indexer searching by ID sends no yearless retry",
 			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2}, IMDbID: "tt1", OmitQueryForIDs: true},
@@ -253,7 +250,6 @@ func TestGatherSearchResults(t *testing.T) {
 			wantAnswered: true,
 			wantTitles:   []string{junk},
 		},
-		// regression: #3306
 		{
 			name:          "title retry after tag-sourced IDs drops the year when every indexer searched by ID",
 			req:           jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2}, IMDbID: "tt1", OmitQueryForIDs: true},
@@ -271,7 +267,6 @@ func TestGatherSearchResults(t *testing.T) {
 			wantAnswered: true,
 			wantTitles:   []string{match},
 		},
-		// regression: #3306
 		{
 			name:  "failed yearless retry uncovers only the title indexers it targeted",
 			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2, 3}, IMDbID: "tt1", OmitQueryForIDs: true},

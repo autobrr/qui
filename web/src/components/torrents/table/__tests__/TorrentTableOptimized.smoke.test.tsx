@@ -353,7 +353,6 @@ describe("TorrentTableOptimized smoke", () => {
     expect(checkedRows(container)).toEqual([])
   })
 
-  // regression: #4023
   it("right-click shows one Rename Torrent item that opens the Rename Torrent dialog", async () => {
     const { container, findByRole, queryByRole, findByText } = renderTable()
     fireEvent.contextMenu(within(container).getByText("Alpha Release"))
@@ -619,7 +618,6 @@ describe("TorrentTableOptimized Copy groups", () => {
     expect(container.textContent).not.toContain("Alpha Copy Of Delta")
   })
 
-  // regression: #3922
   it("shows the status of the first-sorted copy on a Stacked row under a sort by the status icon column", () => {
     localStorage.setItem("qui-torrent-desktop-view-mode", "compact")
     localStorage.setItem("qui-column-sorting:1", JSON.stringify([{ id: "status_icon", desc: false }]))
@@ -652,7 +650,6 @@ describe("TorrentTableOptimized Copy groups", () => {
     }
   })
 
-  // regression: #3922
   it("names the torrent that a Stacked row shows in incognito mode under a name sort", () => {
     localStorage.setItem("qui-torrent-desktop-view-mode", "compact")
     localStorage.setItem("qui-incognito-mode", "true")
@@ -830,7 +827,6 @@ describe("TorrentTableOptimized stream status", () => {
     scenario.streamRetrying = false
   })
 
-  // regression: #4206
   it("shows only the dot while the stream connects, and names the dot and the tooltip with the label", async () => {
     const { getByRole, queryByText, findByRole } = renderTable()
 

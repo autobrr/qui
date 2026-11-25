@@ -28,7 +28,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
-// regression: #4242
 it("counts the Transfers that run or wait, and the Shares that have not ended", async () => {
   vi.spyOn(transfersApi, "list").mockResolvedValue({ rows: [], counts: { active: 2, waiting: 4, finished: 9, failed: 1 } } as TransferList)
   vi.mocked(listShares).mockResolvedValue([{ state: "active" }, { state: "ending" }, { state: "ended" }] as Share[])

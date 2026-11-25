@@ -395,7 +395,6 @@ func TestOnlyTheFirstDownloaderGetsTheUsersAddressUntilAnUnlock(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{addr("198.51.100.2:6882")}, r.announce(owner, announce{}).peers(t))
 }
 
-// regression: #4231
 func TestAnAnnounceWithAnOlderTableKeepsTheLockOfANewShare(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
@@ -552,7 +551,6 @@ func TestTheTrackerAnswersAClientWithoutAnAddressWithABare404(t *testing.T) {
 	require.Empty(t, r.reports.all())
 }
 
-// regression: #4231
 func TestTheTrackerTrustsAProxyWrittenAsAnIPv4MappedAddress(t *testing.T) {
 	t.Parallel()
 	for _, proxy := range []string{"::ffff:127.0.0.1", "::ffff:127.0.0.1/128", "::ffff:127.0.0.0/104"} {

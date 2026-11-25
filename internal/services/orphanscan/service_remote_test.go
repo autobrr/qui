@@ -345,7 +345,6 @@ func TestExecuteScan_ExecTierFallbackLeavesIdentityIncomplete(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// regression: #3838
 func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -372,7 +371,6 @@ func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
 	require.True(t, next.IdentityComplete)
 }
 
-// regression: #3838
 func TestExecuteScan_FindLosingTheConnectionOnALaterRootLeavesAPartialPreview(t *testing.T) {
 	t.Parallel()
 

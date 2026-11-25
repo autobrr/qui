@@ -906,7 +906,6 @@ func TestValidateRule(t *testing.T) {
 		{name: "free space path source without instance", edit: freeSpacePath, wantMsg: errMsgPathSourceAccessRequired},
 		{name: "free space path source with local access", edit: freeSpacePath, instance: local, wantMsg: localFreeSpacePathMsg},
 		{name: "free space path source with SSH access", edit: freeSpacePath, instance: remote},
-		// regression: #4092
 		{name: "free space only in the sorting still checks the path source", instance: &models.Instance{}, wantMsg: errMsgPathSourceAccessRequired,
 			edit: func(r *models.Automation) {
 				r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Field: FieldFreeSpace, Direction: models.SortDirectionASC}

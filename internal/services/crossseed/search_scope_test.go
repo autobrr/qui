@@ -489,7 +489,6 @@ func torznabMatchTracker(t *testing.T, title string) string {
 	return trackerURL
 }
 
-// regression: #4379
 func TestSearchRunLoop_MissingKeyWithoutSearchStartsNoGazelleCooldown(t *testing.T) {
 	name := "Artist - Album (2024) [WEB FLAC]"
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 13), Name: name, Progress: 1.0, Size: 1_000, Tracker: redTracker}
@@ -588,7 +587,6 @@ func TestSkippedTorznabIndexers(t *testing.T) {
 	assert.Empty(t, asked)
 	assert.Equal(t, map[int]string{1: "within cooldown", 2: "does not support the required caps"}, reasons)
 
-	// regression: #4288
 	asked, reasons = skipped(searchScopeFacts{
 		requestedIndexerIDs: []int{1, 2},
 		contentFilter:       contentFilterFacts{done: true, indexerIDs: []int{}, noCapableIndexers: true},

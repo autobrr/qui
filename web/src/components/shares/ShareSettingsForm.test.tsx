@@ -133,7 +133,6 @@ describe("ShareSettingsForm", () => {
     })
   })
 
-  // regression: #4242
   it("refuses a port that is not a whole number, and keeps qui's tracker on", async () => {
     stored = { ...defaults, port: 6969, publicAddress: "https://share.example.com", trackerInUse: "own" }
     renderForm()

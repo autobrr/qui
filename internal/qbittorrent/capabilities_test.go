@@ -80,7 +80,6 @@ func TestClientSupports(t *testing.T) {
 	}
 }
 
-// regression: #3765
 func TestClientKeepsTheVersionWhenAReadTimesOutOrIsCancelled(t *testing.T) {
 	t.Parallel()
 
@@ -144,7 +143,6 @@ func forgetVersion(t *testing.T, client *Client, stub *qbtstub.Server) {
 	stub.WebAPIVersion = good
 }
 
-// regression: #3765
 func TestShareLimitEditReadsAnUnknownVersion(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -167,7 +165,6 @@ func TestShareLimitEditReadsAnUnknownVersion(t *testing.T) {
 		"an edit that cannot read the version fails, not sends without the action")
 }
 
-// regression: #3765
 func TestOmitsTrackersOnExportReadsAnUnknownVersion(t *testing.T) {
 	t.Parallel()
 	client, stub := newStubClient(t, "2.9.2")
@@ -211,7 +208,6 @@ func newSyncedStubClient(t *testing.T, version string) (*Client, *qbtstub.Server
 	return client, stub, NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil), sink
 }
 
-// regression: #3760
 func TestFullSyncUpdateReadsTheVersionFirst(t *testing.T) {
 	t.Parallel()
 
@@ -235,7 +231,6 @@ func TestFullSyncUpdateReadsTheVersionFirst(t *testing.T) {
 	}
 }
 
-// regression: #3760
 func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.T) {
 	t.Parallel()
 	client, stub, sm, sink := newSyncedStubClient(t, "2.15.1")
@@ -251,7 +246,6 @@ func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.
 	require.Equal(t, map[int]string{1: ""}, resp.WebAPIVersions)
 }
 
-// regression: #3760
 func TestFullSyncUpdateWithATimedOutVersionReadLeavesTheVersionUnknown(t *testing.T) {
 	t.Parallel()
 	client, stub := newStubClient(t, "2.15.1")

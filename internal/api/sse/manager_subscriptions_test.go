@@ -163,7 +163,6 @@ func TestSubscriptionChangeOnOpenStream(t *testing.T) {
 	})
 }
 
-// regression: #3845
 func TestSubscriptionChangeOnlyFromTheOpener(t *testing.T) {
 	logsRead := &models.APIKey{ID: 7, Permissions: []models.Permission{{Area: models.AreaLogs, Level: models.LevelRead}}}
 	torrentsRead := &models.APIKey{ID: 8, Permissions: []models.Permission{{Area: models.AreaTorrents, Level: models.LevelRead}}}

@@ -340,7 +340,6 @@ func TestRecordInUse_FileIDErr(t *testing.T) {
 	}
 }
 
-// regression: #3908
 func TestExecuteScan_ListsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
@@ -372,7 +371,6 @@ func TestExecuteScan_ListsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 	}
 }
 
-// regression: #3908
 func TestExecuteScan_KeepsAliasOfAHardlinkedTorrentFileThroughASymlinkedFolder(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
@@ -517,7 +515,6 @@ func linkedPeerFixture(t *testing.T, f *modeFixture, path func(string) string, r
 	return movie
 }
 
-// regression: #3572
 func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

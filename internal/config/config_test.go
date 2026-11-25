@@ -976,7 +976,6 @@ func TestBaseURLNormalization(t *testing.T) {
 	}
 }
 
-// regression: #2669
 func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1086,7 +1085,6 @@ func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
 	assert.Equal(t, int32(1), listenerCalls.Load())
 }
 
-// regression: #3860
 func TestReloadChangesOnlyTheNextPublishedConfig(t *testing.T) {
 	previousLevel := zerolog.GlobalLevel()
 	t.Cleanup(func() {
@@ -1110,7 +1108,6 @@ func TestReloadChangesOnlyTheNextPublishedConfig(t *testing.T) {
 	assert.Equal(t, []string{"/new"}, cfg.Config.Live().ExternalProgramAllowList, "the next request reads the reloaded config")
 }
 
-// regression: #3797
 func TestReloadReadsCurrentConfigFile(t *testing.T) {
 	previousLevel := zerolog.GlobalLevel()
 	t.Cleanup(func() {

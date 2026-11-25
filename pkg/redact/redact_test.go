@@ -513,7 +513,6 @@ func TestSecrets(t *testing.T) {
 	assert.Equal(t, "cfg dump: <<REDACTED>>|pw=REDACTED|REDACTED;abc stays;hunter2 stays", got)
 }
 
-// regression: #4288
 func TestSecretsRemovesTheJSONEscapedForm(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -3213,7 +3213,6 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 	}
 }
 
-// regression: #3626
 func TestCheckWebhook_SettledSource(t *testing.T) {
 	t.Parallel()
 
@@ -3276,7 +3275,6 @@ func TestCheckWebhook_SettledSource(t *testing.T) {
 	}
 }
 
-// regression: #3626
 func TestFindCandidatesSkipsSourceThatIsNotSettled(t *testing.T) {
 	t.Parallel()
 

@@ -62,7 +62,6 @@ describe("InstanceList", () => {
     expect((await screen.findByRole("tooltip")).textContent).toContain("No reflinks on a remote instance.")
   })
 
-  // regression: #4263
   it("shows the limits on a tap of the file access, and leaves the editor closed", async () => {
     const onEdit = vi.fn()
     render(

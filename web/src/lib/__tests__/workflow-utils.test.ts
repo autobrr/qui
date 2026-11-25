@@ -120,7 +120,6 @@ describe("fromImportFormat", () => {
     expect(fromImportFormat(baseExport({ name: "My workflow" }), ["MY WORKFLOW", "My workflow (copy)"]).name).toBe("My workflow (copy 2)")
   })
 
-  // regression: #4062
   it("keeps the name when the instance has no rule with that name", () => {
     expect(fromImportFormat(baseExport({ name: "My workflow" }), ["Other"]).name).toBe("My workflow")
   })
@@ -182,13 +181,11 @@ describe("toDuplicateInput", () => {
     expect(result.dryRun).toBe(true)
   })
 
-  // regression: #4062
   it("adds a copy suffix when no existing name is known", () => {
     expect(toDuplicateInput(makeAutomation({ name: "Source" }), []).name).toBe("Source (copy)")
   })
 })
 
-// regression: #4062
 describe("toCopyInput", () => {
   it("keeps the name when the target instance has no rule with that name", () => {
     const result = toCopyInput(makeAutomation({ name: "Source", enabled: true }), ["Other"])
@@ -203,7 +200,6 @@ describe("toCopyInput", () => {
   })
 })
 
-// regression: #4062
 describe("loadWorkflowNames", () => {
   afterEach(() => {
     listAutomations.mockReset()
@@ -401,7 +397,6 @@ describe("allowanceInputOf", () => {
   })
 })
 
-// regression: #3012
 describe("hasMixedActionConditions", () => {
   const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
   const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
@@ -419,7 +414,6 @@ describe("hasMixedActionConditions", () => {
   })
 })
 
-// regression: #4186
 describe("firstActionCondition", () => {
   const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
   const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }

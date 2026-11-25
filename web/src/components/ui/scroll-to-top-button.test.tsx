@@ -61,7 +61,6 @@ function bottomOf(el: HTMLElement) {
   return el.style.bottom
 }
 
-// regression: #4264 (the CSS breakpoints themselves need a browser; jsdom applies none)
 describe("ScrollToTopButton", () => {
   beforeEach(() => {
     state.isMobile = true

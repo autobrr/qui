@@ -127,7 +127,6 @@ func TestRecorderTakesZeroSpeedsOfAnIdleInstanceThatSyncs(t *testing.T) {
 	})
 }
 
-// regression: #4141
 func TestRecorderDropsSamplesOlderThanTheWindowAndForgetsAnInstanceWithNone(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
@@ -146,7 +145,6 @@ func TestRecorderDropsSamplesOlderThanTheWindowAndForgetsAnInstanceWithNone(t *t
 	})
 }
 
-// regression: #4141
 func TestRecorderTakesNoSampleWhileASyncFails(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
@@ -165,7 +163,6 @@ func TestRecorderTakesNoSampleWhileASyncFails(t *testing.T) {
 	})
 }
 
-// regression: #4192
 func TestRecorderTakesTheSpeedsThatReachTheCacheAfterTheSyncTime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()

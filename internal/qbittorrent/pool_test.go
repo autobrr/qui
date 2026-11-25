@@ -421,7 +421,6 @@ func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T
 	require.Same(t, existing, client)
 }
 
-// regression: #4380
 func TestClientPool_CloseWaitsForBackgroundWork(t *testing.T) {
 	const instanceID = 1
 

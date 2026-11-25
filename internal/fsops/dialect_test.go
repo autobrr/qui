@@ -63,7 +63,6 @@ func TestSlashPathsRel(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestWindowsPathsIsHostIndependent(t *testing.T) {
 	d := WindowsPaths
 	onWindows := filepath.Separator == '\\'
@@ -89,7 +88,6 @@ func TestWindowsPathsIsHostIndependent(t *testing.T) {
 		{p: `a\b\..\c`, clean: `a\c`, dir: "a", base: "c"},
 		{p: "/data", clean: `\data`, dir: `\`, base: "data"},
 		{p: "", clean: ".", dir: ".", base: "."},
-		// regression: #4426
 		{p: "./0:", clean: `.\0:`, dir: ".", base: "0:"},
 		{p: "a/../c:/b", clean: `.\c:\b`, dir: `.\c:`, base: "b"},
 		{p: `x\..\C:\Windows`, clean: `.\C:\Windows`, dir: `.\C:`, base: "Windows"},
@@ -121,7 +119,6 @@ func TestWindowsPathsIsHostIndependent(t *testing.T) {
 		{base: `C:\`, name: `\Show`, want: `C:\Show`},
 		{base: "", name: "Show/E01.mkv", want: `Show\E01.mkv`},
 		{base: "", name: "", want: ""},
-		// regression: #4426
 		{base: "", name: `x/../D:\evil`, want: `.\D:\evil`},
 		{base: ".", name: `D:\evil`, want: `.\D:\evil`},
 	} {
@@ -162,7 +159,6 @@ func TestWindowsPathsIsHostIndependent(t *testing.T) {
 	}
 }
 
-// regression: #4426
 func TestWindowsPathsCleanGainsNoVolume(t *testing.T) {
 	d := WindowsPaths
 	for _, p := range []string{"./0:", "a/../c:/b", `x\..\C:\Windows`, `\..\:`, "/./:", "/:", `\a\..\??\c:\x`, "ab:c/d"} {
@@ -173,7 +169,6 @@ func TestWindowsPathsCleanGainsNoVolume(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestClientPaths(t *testing.T) {
 	for _, tc := range []struct {
 		savePath string

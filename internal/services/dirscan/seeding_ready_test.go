@@ -15,7 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// regression: #3613
 func TestSyncManagerSeedingReady(t *testing.T) {
 	ctx := t.Context()
 	stub := qbtstub.New(t, t.TempDir())

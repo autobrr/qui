@@ -954,7 +954,6 @@ func TestAutobrrApplyReadsSeasonFolderFromFiles(t *testing.T) {
 	require.Equal(t, 1, invocations)
 }
 
-// regression: #3626
 func TestAutobrrApplySkipsSourceThatIsNotSettled(t *testing.T) {
 	t.Parallel()
 
@@ -1048,7 +1047,6 @@ func TestAutobrrApplySharesTheFailedRouteFoldersOfOneWebhook(t *testing.T) {
 	require.Same(t, runs[0], runs[1])
 }
 
-// regression: #3824
 func TestBoundAnnouncementStopsAfterStrandedAdd(t *testing.T) {
 	t.Parallel()
 
@@ -1091,7 +1089,6 @@ func TestBoundAnnouncementStopsAfterStrandedAdd(t *testing.T) {
 	}
 }
 
-// regression: #3824
 func TestAutobrrApplyNotifiesStrandedAddBeforeLaterSource(t *testing.T) {
 	t.Parallel()
 

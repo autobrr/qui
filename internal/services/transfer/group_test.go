@@ -198,7 +198,6 @@ func (c checkingCrossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossS
 	return res, c.r.sync.BulkAction(ctx, c.inst.ID, []string{c.hash}, "recheck")
 }
 
-// regression: #4231
 func TestTransferWaitsForTheCheckOfARoutedCrossSeed(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -235,7 +234,6 @@ func TestTransferWaitsForTheCheckOfARoutedCrossSeed(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -283,7 +281,6 @@ func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferStopsWhenTheTargetSendsItsCrossSeedsElsewhere(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -327,7 +324,6 @@ func TestTransferStopsWhenTheTargetSendsItsCrossSeedsElsewhere(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferKeepsACrossSeedThatSomeoneElseAdded(t *testing.T) {
 	for _, status := range []string{crossseed.StatusExists, "hardlink_error"} {
 		t.Run(status, func(t *testing.T) {
@@ -377,7 +373,6 @@ func TestTransferMovesAMixedGroupWholeToTheTarget(t *testing.T) {
 	require.Empty(t, tree(t, r.srcDir))
 }
 
-// regression: #4242
 func TestTransferLeavesAGroupWithATorrentBelowTheCategoryFolderOnManualManagement(t *testing.T) {
 	r := newRig(t)
 	r.dst.AutoManagement = true
@@ -502,7 +497,6 @@ func TestTransferNeedsSpaceForACopyThatTheTargetCannotLink(t *testing.T) {
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
 	require.Equal(t, "Not enough free space on homelab: not enough free space on the target: the Transfer needs 40 B, and 30 B is free", record.FailureReason)
 	require.Empty(t, tree(t, r.dstDir))
-	// regression: #4231
 	entries, err := os.ReadDir(r.dstDir)
 	require.NoError(t, err)
 	require.Empty(t, entries, "the folders of the link that failed stay")
@@ -522,7 +516,6 @@ func TestTransferKeepsTheFilesOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
 	}{
 		{name: "the links", free: 70, stopAt: showName + "/",
 			writtenFolders: map[string]bool{showName: true}, oneFileOnTarget: true},
-		// regression: #4231
 		{name: "a copy where the target cannot link", noLinks: true, free: 140, stopAt: "links/" + showName + "/Show.S01E02.mkv",
 			writtenFolders: map[string]bool{showName: true, "links/" + showName: true}},
 	} {
@@ -564,7 +557,6 @@ func TestTransferKeepsTheFilesOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -743,14 +735,12 @@ func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	}
 	require.Equal(t, transfer.StateDone, records[firstID].State, records[firstID].FailureReason)
 	require.Equal(t, transfer.StateFailed, records[secondID].State)
-	// regression: #4231
 	require.Equal(t, transfer.FailureTemporary, records[secondID].FailureClass, records[secondID].FailureReason)
 	require.Equal(t, "Not enough free space on homelab for now: the Transfer needs 70 B, and 100 B is free, "+
 		"but other Transfers to homelab take 70 B of it.", records[secondID].FailureReason)
 	require.Equal(t, transfer.StateDone, records[thirdID].State, records[thirdID].FailureReason)
 }
 
-// regression: #4231
 func TestTransferCountsTheFilesOfATransferThatEndedAfterTheRead(t *testing.T) {
 	r := newRig(t)
 	first := newShow(t, showName)

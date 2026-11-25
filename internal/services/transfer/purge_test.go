@@ -70,7 +70,6 @@ func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	require.True(t, r.exists(running.ID), "a Transfer that runs stays")
 }
 
-// regression: #4242
 func TestTheRowOfATransferTakesOnlyItsGoneHelpersAlong(t *testing.T) {
 	removals := []struct {
 		name   string
@@ -141,7 +140,6 @@ func TestTheRowOfATransferTakesOnlyItsGoneHelpersAlong(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 	removals := []struct {
 		name   string
@@ -230,7 +228,6 @@ func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestAHelperThatASyncLeftOutStaysProtectedUntilAFullSync(t *testing.T) {
 	ways := []struct {
 		name    string
@@ -277,7 +274,6 @@ func TestAHelperThatASyncLeftOutStaysProtectedUntilAFullSync(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestGetOfATransferThatARemovalTook(t *testing.T) {
 	r := newRig(t)
 	id := r.ended("aaaa", transfer.StateDone)

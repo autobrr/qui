@@ -66,7 +66,6 @@ describe("RSSRunItem", () => {
     expect(screen.getByRole("tooltip").textContent).toContain(`automation.runError:${message}`)
   })
 
-  // regression: #4358
   it("shows the full cut-off run error on a tap on a phone, also when the run has no results to open", () => {
     touchWindow.ontouchstart = null
     const message = "all indexers unreachable"

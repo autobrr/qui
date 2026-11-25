@@ -14,7 +14,6 @@ import (
 
 const migrationSessionZone = "Pacific/Honolulu"
 
-// regression: #3943
 func TestSQLiteToPostgresMigrationKeepsEachInstantPostgresIntegration(t *testing.T) {
 	for _, zone := range []string{"America/New_York", "Asia/Tokyo"} {
 		t.Run(zone, func(t *testing.T) {
@@ -59,7 +58,6 @@ func TestSQLiteToPostgresMigrationKeepsEachInstantPostgresIntegration(t *testing
 	}
 }
 
-// regression: #3943
 func TestSQLiteToPostgresMigrationPoolUsesUTCPostgresIntegration(t *testing.T) {
 	setMigrationProcessZone(t, "Asia/Tokyo")
 	ctx, testDSN := openPostgresTestSchema(t)

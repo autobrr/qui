@@ -56,7 +56,6 @@ func checkPack(t *testing.T, svc *Service) *WebhookCheckResponse {
 	return resp
 }
 
-// regression: #3739
 func TestCheckWebhookRemembersFileReads(t *testing.T) {
 	folder := seasonFolderTorrent("folder")
 	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
@@ -69,7 +68,6 @@ func TestCheckWebhookRemembersFileReads(t *testing.T) {
 	require.Equal(t, []string{"folder"}, recorder.requests(), "the second check reads no file list")
 }
 
-// regression: #3739
 func TestCheckWebhookReadsNewSeasonFolderOnceFilesArrive(t *testing.T) {
 	torrents := []qbt.Torrent{seasonFolderTorrent("folder")}
 	folder := &torrents[0]
@@ -92,7 +90,6 @@ func TestCheckWebhookReadsNewSeasonFolderOnceFilesArrive(t *testing.T) {
 	})
 }
 
-// regression: #3739
 func TestCheckWebhookSkipsErroredTorrentFiles(t *testing.T) {
 	errored := seasonFolderTorrent("errored")
 	errored.State = qbt.TorrentStateError
@@ -106,7 +103,6 @@ func TestCheckWebhookSkipsErroredTorrentFiles(t *testing.T) {
 	require.Empty(t, recorder.requests(), "with recovery off, the check reads no files of an errored torrent")
 }
 
-// regression: #3739
 func TestCheckWebhookDropsReadsOfFillDuringSettingsSave(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "local-reads-settings")
 	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
@@ -142,7 +138,6 @@ func TestCheckWebhookDropsReadsOfFillDuringSettingsSave(t *testing.T) {
 	require.Equal(t, []string{"folder", "folder"}, recorder.requests(), "the reads that the fill made with the old rules are not stored")
 }
 
-// regression: #4072
 func TestCheckWebhookKeepsReadsAfterSettingsSaveWithSameRules(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "local-reads-same-rules")
 	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
@@ -161,7 +156,6 @@ func TestCheckWebhookKeepsReadsAfterSettingsSaveWithSameRules(t *testing.T) {
 	require.Equal(t, []string{"folder"}, recorder.requests())
 }
 
-// regression: #3739
 func TestCheckWebhookReadsFilesAgainAfterChange(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -186,7 +180,6 @@ func TestCheckWebhookReadsFilesAgainAfterChange(t *testing.T) {
 	}
 }
 
-// regression: #3739
 func TestBatchMatcherReadsTorrentsOutsideWebhookFilter(t *testing.T) {
 	inFilter := seasonFolderTorrent("in-filter")
 	inFilter.Category = "tv"
@@ -210,7 +203,6 @@ func TestBatchMatcherReadsTorrentsOutsideWebhookFilter(t *testing.T) {
 	require.Contains(t, result.SameInstanceExists, "outside", "the Batch matcher reads the folder outside the filter from its files")
 }
 
-// regression: #3739
 func TestCheckWebhookAnswersWithNameReadsWhenFillHangs(t *testing.T) {
 	folder := seasonFolderTorrent("folder")
 	named := qbt.Torrent{Hash: "named", Name: localReadsPack, Size: folder.Size, TotalSize: folder.Size, Progress: 1}
@@ -270,7 +262,6 @@ func TestCheckWebhookWaitsOnceForFillsOfAllInstances(t *testing.T) {
 	})
 }
 
-// regression: #3739
 func TestCheckWebhookDropsRememberedReadForgottenDuringWait(t *testing.T) {
 	folder, other := seasonFolderTorrent("folder"), seasonFolderTorrent("other")
 	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{
@@ -292,7 +283,6 @@ func TestCheckWebhookDropsRememberedReadForgottenDuringWait(t *testing.T) {
 	require.Equal(t, []string{"other"}, hashes, "the check drops the read that qui forgot during the wait")
 }
 
-// regression: #3739
 func TestCheckWebhookRefreshesRememberedReadAfterAnHour(t *testing.T) {
 	folder := seasonFolderTorrent("folder")
 	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
@@ -315,7 +305,6 @@ func TestCheckWebhookRefreshesRememberedReadAfterAnHour(t *testing.T) {
 	})
 }
 
-// regression: #3739
 func TestCheckWebhookRemembersFailedReadForAMinute(t *testing.T) {
 	folder := seasonFolderTorrent("folder")
 	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
@@ -335,7 +324,6 @@ func TestCheckWebhookRemembersFailedReadForAMinute(t *testing.T) {
 	})
 }
 
-// regression: #3739
 func TestCheckWebhookStartsFillsOfAllInstancesBeforeWaiting(t *testing.T) {
 	svc, recorder := localReadsService([]qbt.Torrent{seasonFolderTorrent("slow")}, nil)
 	second := &models.Instance{ID: localReadsInstance.ID + 1, Name: "second", IsActive: true}
@@ -361,7 +349,6 @@ func TestCheckWebhookStartsFillsOfAllInstancesBeforeWaiting(t *testing.T) {
 	})
 }
 
-// regression: #3739
 func TestCheckWebhookDropsRememberedReadForgottenWhileOtherInstanceFills(t *testing.T) {
 	svc, recorder := localReadsService([]qbt.Torrent{seasonFolderTorrent("slow")}, nil)
 	second := &models.Instance{ID: localReadsInstance.ID + 1, Name: "second", IsActive: true}

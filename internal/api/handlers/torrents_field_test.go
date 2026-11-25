@@ -267,7 +267,6 @@ func TestGetTorrentField_SingleInstanceFormatsLikeUnified(t *testing.T) {
 	}
 }
 
-// regression: #3558
 func TestListCrossInstanceTorrentsSyncsInstanceWithDataInBackground(t *testing.T) {
 	h := newUnifiedPollHarness(t)
 	h.makeWarmDataStale(t)
@@ -286,7 +285,6 @@ func TestListCrossInstanceTorrentsSyncsInstanceWithDataInBackground(t *testing.T
 	require.Contains(t, h.warm.requestsFromTest(), false, "the poll started no background sync")
 }
 
-// regression: #3558
 func TestListCrossInstanceTorrentsDoesNotWaitForInstanceWithoutData(t *testing.T) {
 	h := newUnifiedPollHarness(t)
 	h.makeWarmDataStale(t)
@@ -306,7 +304,6 @@ func TestListCrossInstanceTorrentsDoesNotWaitForInstanceWithoutData(t *testing.T
 	}
 }
 
-// regression: #3558
 func TestCrossInstanceStreamReadStartsNoSync(t *testing.T) {
 	h := newUnifiedPollHarness(t)
 	h.makeWarmDataStale(t)

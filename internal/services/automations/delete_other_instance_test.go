@@ -11,7 +11,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// regression: #3591
 func TestApplyRules_DeleteKeepsFilesThatAnotherInstanceNeeds(t *testing.T) {
 	const (
 		a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

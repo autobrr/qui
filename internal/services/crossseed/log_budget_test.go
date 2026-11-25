@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// regression: #4266
 func TestWebhookCheckLogBudget(t *testing.T) {
 	const batchSize = 3_000_000_000
 	instance := &models.Instance{ID: 12, Name: "primary", IsActive: true}

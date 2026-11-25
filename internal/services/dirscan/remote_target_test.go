@@ -76,7 +76,6 @@ func TestScanLogsFilesWithoutIdentity(t *testing.T) {
 	}
 }
 
-// regression: #2919
 func TestStoredIdentityFollowsTheEndpoint(t *testing.T) {
 	base := remoteInstance(models.SSHTierExec)
 	base.SSHUsername = "seed"
@@ -154,7 +153,6 @@ func TestStoredIdentityOfALocalRowIsUnchanged(t *testing.T) {
 	require.False(t, ok)
 }
 
-// regression: #2919
 func TestScanFailsWhenTheEndpointChangesDuringTheWalk(t *testing.T) {
 	walked := remoteInstance(models.SSHTierExec)
 	otherHost := *walked
@@ -415,7 +413,6 @@ func (sshCreds) SetSSHProbe(context.Context, *models.Instance, models.SSHTier, b
 	return nil
 }
 
-// regression: #3838
 func TestScanFailsWhenFindLosesTheConnection(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the fake exec handler runs the local GNU find and stat")

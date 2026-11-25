@@ -116,7 +116,6 @@ describe("TransferChart", () => {
     expect(names(render(chart).container)).toEqual([["Sat, Jan 10", "hidden"], ["Sun, Jan 11", "hidden"]])
   })
 
-  // regression: #4441
   it("draws the day names over the bars", () => {
     const { container } = render(<TransferChart bars={twoDaysOfHours} groups={["a.test"]} metric="uploaded" unit="hour" displayName={group => group} />)
 

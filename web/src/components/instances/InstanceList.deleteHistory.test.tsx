@@ -95,7 +95,6 @@ describe("the instance removal dialog", () => {
     expect(toast.success).toHaveBeenCalled()
   })
 
-  // regression: #4101
   it("warns about the history when the list is gone before the history delete fails", async () => {
     historyStatus = 500
     let answer = () => {}

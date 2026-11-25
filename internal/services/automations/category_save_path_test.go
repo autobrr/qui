@@ -342,7 +342,6 @@ func TestNeedsForSavePaths(t *testing.T) {
 		{name: "move uses CategorySavePath", rule: rule(true, move(true, "{{.CategorySavePath}}/done")), want: true},
 		{name: "move uses DefaultSavePath", rule: rule(true, move(true, "{{.DefaultSavePath}}/archive")), want: true},
 		{name: "export uses CategorySavePath", rule: rule(true, exportPath), want: true},
-		// regression: #4242
 		{name: "transfer uses CategorySavePath", rule: rule(true, transferPath), want: true},
 		{name: "disabled rule", rule: rule(false, move(true, "{{.CategorySavePath}}/done"))},
 		{name: "disabled move action", rule: rule(true, move(false, "{{.CategorySavePath}}/done"))},
@@ -384,7 +383,6 @@ func TestLoadCategorySavePaths_UsesInstanceFolderNameRule(t *testing.T) {
 	}, svc.loadCategorySavePaths(t.Context(), instanceID))
 }
 
-// regression: #2882
 func TestLoadCategorySavePaths_OnePreferencesRead(t *testing.T) {
 	var prefsReads atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

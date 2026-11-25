@@ -122,7 +122,6 @@ func newTorznabGazelleFixture(t *testing.T, dbName, trackerURL string) (*Service
 	return svc, instance.ID, clients
 }
 
-// regression: #4181
 func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 	downedTracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)

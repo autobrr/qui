@@ -32,7 +32,6 @@ func (b errnoStatBackend) Stat(ctx context.Context, p string) (*fsops.LstatInfo,
 	return b.Backend.Stat(ctx, p)
 }
 
-// regression: #3596
 func TestExecuteDeletion_WindowsTorrentFileErrorCodes(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

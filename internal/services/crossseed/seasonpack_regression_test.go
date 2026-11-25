@@ -619,7 +619,6 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 	require.ErrorIs(t, statErr, os.ErrNotExist, "a cancelled run must still roll back its partial pack tree")
 }
 
-// regression: #4068
 func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 	const packName = "Show.S01.1080p.WEB.x264-GRP"
 	for _, episodes := range []string{"S01E01E02", "S01E00E01"} {

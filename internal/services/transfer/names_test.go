@@ -33,7 +33,6 @@ var ways = []struct {
 	{name: "Transfer torrent", target: noAccess},
 }
 
-// regression: #4242
 func TestTransferKeepsTheFolderOfOneFile(t *testing.T) {
 	for _, tc := range ways {
 		t.Run(tc.name, func(t *testing.T) {
@@ -53,7 +52,6 @@ func TestTransferKeepsTheFolderOfOneFile(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestTransferChecksATorrentThatItRenamed(t *testing.T) {
 	for _, tc := range ways {
 		t.Run(tc.name, func(t *testing.T) {
@@ -75,7 +73,6 @@ func TestTransferChecksATorrentThatItRenamed(t *testing.T) {
 	}
 }
 
-// regression: #4242
 func TestTransferSendsEachRenameOnce(t *testing.T) {
 	r := newRig(t)
 	r.dst.StaleFileLists = 2
@@ -91,7 +88,6 @@ func TestTransferSendsEachRenameOnce(t *testing.T) {
 	require.True(t, r.seeding(r.target.ID, s.hash), "the target seeds the torrent")
 }
 
-// regression: #4242
 func TestTransferFailsWhenTheCheckAfterTheRenameFails(t *testing.T) {
 	r := newRig(t)
 	data := numbered("E01", 40)
@@ -122,7 +118,6 @@ func (r *rig) seedMovedFolder(data []byte) string {
 	return hash
 }
 
-// regression: #4242
 func TestTransferFailsWhenARenameMovesAnotherFileOverTheCopy(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()
@@ -138,7 +133,6 @@ func TestTransferFailsWhenARenameMovesAnotherFileOverTheCopy(t *testing.T) {
 	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
 }
 
-// regression: #4242
 func TestTransferWaitsForTheCheckOfATargetWithASlowRefresh(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.dst.RefreshInterval, r.dst.StaleSyncs = 4, 6
@@ -155,7 +149,6 @@ func TestTransferWaitsForTheCheckOfATargetWithASlowRefresh(t *testing.T) {
 	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
 }
 
-// regression: #4242
 func TestTransferKeepsTheSourceWhenTheWaitForTheCheckRunsOut(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.dst.RefreshInterval, r.dst.StaleSyncs = 1000, 100
@@ -172,7 +165,6 @@ func TestTransferKeepsTheSourceWhenTheWaitForTheCheckRunsOut(t *testing.T) {
 	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
 }
 
-// regression: #4242
 func TestRetryChecksATorrentThatAnEarlierRunRenamed(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()

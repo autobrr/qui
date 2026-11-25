@@ -265,7 +265,6 @@ func setRecording(m *Module, on bool) {
 	m.settingsLoaded, m.settings.Recording = true, on
 }
 
-// regression: #4096
 func TestAdapterDropsTheSpeedsOfAnUpdateThatWaitsWhenRecordingGoesOff(t *testing.T) {
 	owner, syncManager, _ := newAdapterRig(t)
 	synctest.Test(t, func(t *testing.T) {
@@ -293,7 +292,6 @@ func TestAdapterDropsTheSpeedsOfAnUpdateThatWaitsWhenRecordingGoesOff(t *testing
 	})
 }
 
-// regression: #4143
 func TestAdapterShutdownKeepsTheCauseOfADeleteThatTheNextReadingWouldShow(t *testing.T) {
 	const kept, deleted = "aaaa000000000000000000000000000000000001", "aaaa000000000000000000000000000000000002"
 	var gone atomic.Bool

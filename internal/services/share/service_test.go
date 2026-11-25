@@ -321,7 +321,6 @@ func TestAShareSeedsAShareTorrentThatQuisTrackerAnnounces(t *testing.T) {
 	require.Zero(t, listed.Downloaded)
 }
 
-// regression: #4231
 func TestQuisTrackerAnswersTheFirstAnnounceOfAShareTorrent(t *testing.T) {
 	for name, otherShare := range map[string]bool{
 		"the first Share":                false,
@@ -373,7 +372,6 @@ func TestAShareWithoutTheEndAtTheFirstDownloadRunsOn(t *testing.T) {
 	require.Equal(t, share.StateActive, r.get(sh.ID).State)
 }
 
-// regression: #4231
 func TestAnEndReasonWithoutACodeIsOther(t *testing.T) {
 	t.Parallel()
 
@@ -563,7 +561,6 @@ func (r *rig) stored(id int64) *share.Share {
 	return sh
 }
 
-// regression: #4231
 func TestTheCheckWritesTheActivityAgainAfterAFailedWrite(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
@@ -578,7 +575,6 @@ func TestTheCheckWritesTheActivityAgainAfterAFailedWrite(t *testing.T) {
 	require.Len(t, r.stored(sh.ID).Peers, 1, "the activity of the Share is saved")
 }
 
-// regression: #4231
 func TestAnEndingShareKeepsItsActivityUntilQuiSavesIt(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
@@ -624,7 +620,6 @@ func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	require.Equal(t, []share.Peer{{Address: "127.0.0.1:6881", Progress: 1, SeenAt: r.clock.Now()}}, ended.Peers)
 }
 
-// regression: #4231
 func TestTheShareTrackerStartsAtTheNextCheckOnceItsPortIsFree(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
@@ -667,7 +662,6 @@ func TestAShareKeepsToTheLimitsOfTheSettings(t *testing.T) {
 	r.start(share.Request{Hash: other})
 }
 
-// regression: #4231
 func TestAStartThatTheUserCancelsAfterTheAddEndsItsShare(t *testing.T) {
 	r := newRig(t)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -815,7 +809,6 @@ func TestTheShareSettingsMoveTheTracker(t *testing.T) {
 	require.ErrorIs(t, r.svc.SaveSettings(t.Context(), changed), share.ErrInvalidSettings)
 }
 
-// regression: #4231
 func TestTheShareSettingsKeepTheTrackerWhileASharesRunsOnIt(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
@@ -870,7 +863,6 @@ func TestUnlockLetsTheNextDownloaderIn(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers)
 }
 
-// regression: #4231
 func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
 	r := newRig(t)
 	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
@@ -906,7 +898,6 @@ func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "Unlock after a restart lets the next downloader in")
 }
 
-// regression: #4231
 func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing.T) {
 	r := newRig(t)
 	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
@@ -948,7 +939,6 @@ func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "the next downloader holds the Share after a restart")
 }
 
-// regression: #4231
 func TestTheCheckStoresTheLockHolderAfterAFailedWrite(t *testing.T) {
 	r := newRig(t)
 	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
@@ -970,7 +960,6 @@ func TestTheCheckStoresTheLockHolderAfterAFailedWrite(t *testing.T) {
 	require.Equal(t, netip.MustParseAddr(first), r.stored(sh.ID).Holder, "the lock holder outlives a restart of qui")
 }
 
-// regression: #4231
 func TestALockedOutDownloaderDoesNotEndTheShare(t *testing.T) {
 	for _, event := range []string{"completed", "stopped"} {
 		t.Run(event, func(t *testing.T) {
@@ -1015,7 +1004,6 @@ func TestUnlockIsRefused(t *testing.T) {
 	require.EqualError(t, err, "Unlock needs qui's own tracker. With an outside tracker, every downloader gets the address.")
 }
 
-// regression: #4242
 func TestAShareOnAnOutsideTrackerEndsWhenTheClientSentEveryByte(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

@@ -71,7 +71,6 @@ describe("SystemNoticeList", () => {
     expect(list.textContent).toContain("Needs attention2")
   })
 
-  // regression: #4110
   it("opens the detail of a notice with its effect, fix, and cause", async () => {
     renderList([recordingStopped])
 
@@ -85,7 +84,6 @@ describe("SystemNoticeList", () => {
     expect(within(detail).queryByRole("link")).toBeNull()
   })
 
-  // regression: #4110
   it("counts a notice that opened under a minute ago as one minute old", async () => {
     renderList([notice("recording_stopped", "database or disk is full", 0)])
 

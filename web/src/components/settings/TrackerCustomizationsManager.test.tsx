@@ -74,7 +74,6 @@ afterEach(() => {
 })
 
 describe("TrackerCustomizationsManager", () => {
-  // regression: #4108
   it("clears the group selection when the selected customization is deleted", async () => {
     mocks.customizations = [customization(1, "Alpha", ["a.example.invalid"]), customization(2, "Bravo", ["b.example.invalid"])]
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
@@ -94,7 +93,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.queryByRole("checkbox", { name: "Bravo" })).not.toBeNull()
   })
 
-  // regression: #4108
   it("asks again about a conflict after the pasted text changes", async () => {
     mocks.customizations = [customization(1, "Alpha", ["a.example.invalid"]), customization(2, "Bravo", ["b.example.invalid"])]
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
@@ -113,7 +111,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(importButton().hasAttribute("disabled")).toBe(true)
   })
 
-  // regression: #4108
   it("does not reopen the import dialog while an import still runs", async () => {
     mocks.customizations = []
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
@@ -131,7 +128,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.getByRole("button", { name: "trackerCustomizations.importButton" }).hasAttribute("disabled")).toBe(true)
   })
 
-  // regression: #4108
   it("drops a domain from the selection when an import gives it a customization", async () => {
     mocks.deleteTrackerCustomization.mockImplementation((id: number) => {
       mocks.customizations = mocks.customizations.filter(c => c.id !== id)
@@ -166,7 +162,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
   })
 
-  // regression: #4108
   it("keeps the selection of a rename that opens while a cancelled import still runs", async () => {
     mocks.instances = [{ id: 1, isActive: true }]
     mocks.activeTrackers = { "a.example.invalid": "https://a.example.invalid/announce", "b.example.invalid": "https://b.example.invalid/announce" }
@@ -199,7 +194,6 @@ describe("TrackerCustomizationsManager", () => {
 })
 
 describe("useUpdateTrackerCustomization", () => {
-  // regression: #4108
   it("puts the saved customization in the cache before the refetch answers", async () => {
     const client = newClient()
     const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>

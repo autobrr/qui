@@ -148,7 +148,6 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 	}
 }
 
-// regression: #4219
 func TestSearchTorrentMatches_GazelleHashMatchOutsideMusicAndBooks(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -352,7 +351,6 @@ func TestSkippedRejectedSiteDoesNotReopenNotice(t *testing.T) {
 	require.False(t, gazelleRequestsSent(second), "the skip sent no request")
 }
 
-// regression: #4126
 func TestOldClientRejectionAfterSaveOpensNoNotice(t *testing.T) {
 	stubGazelleMatchLookupError(t, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied))
 	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
@@ -373,7 +371,6 @@ func TestOldClientRejectionAfterSaveOpensNoNotice(t *testing.T) {
 	require.Empty(t, svc.systemNotices.List())
 }
 
-// regression: #4126
 func TestUnrelatedSaveKeepsRejectionNotice(t *testing.T) {
 	stubGazelleMatchLookupError(t, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied))
 	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
@@ -393,7 +390,6 @@ func TestUnrelatedSaveKeepsRejectionNotice(t *testing.T) {
 	require.Len(t, svc.systemNotices.List(), 1)
 }
 
-// regression: #4126
 func TestOldClientAnswerKeepsNewKeyNotice(t *testing.T) {
 	stubGazelleMatchLookup(t)
 	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
@@ -416,7 +412,6 @@ func TestOldClientAnswerKeepsNewKeyNotice(t *testing.T) {
 	require.Len(t, svc.systemNotices.List(), 1, "the old key answered, the new key still fails")
 }
 
-// regression: #4126
 func TestUnreadableKeySendsNoRequest(t *testing.T) {
 	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
 	files := qbt.TorrentFiles{{Name: gazelleSeamName + "/01 - Track.flac", Size: 123}}
@@ -433,7 +428,6 @@ func TestUnreadableKeySendsNoRequest(t *testing.T) {
 	require.False(t, gazelleRequestsSent(lookups))
 }
 
-// regression: #4126
 func TestSearchAfterPlanReusesLocalChecks(t *testing.T) {
 	svc := newGazelleSeamService(t, redTracker, bothGazelleKeys(), nil)
 	svc.gazelleLocalCache = ttlcache.New[string, gazelleLocalResult]()
@@ -471,7 +465,6 @@ func TestPlanMarksSiteWithOpenRejectedNotice(t *testing.T) {
 
 var gazelleWords = []string{"RED/OPS", "gazelle", "redacted", "orpheus"}
 
-// regression: #4379
 func TestSearchRunLoop_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
 	name := "Artist - Album (2024) [WEB FLAC]"
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 31), Name: name, Progress: 1.0, Size: 123, Tracker: otherTracker}
@@ -487,7 +480,6 @@ func TestSearchRunLoop_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
 	require.Empty(t, state.run.GazelleSummary)
 }
 
-// regression: #4379
 func TestExecuteCompletionSearch_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: false}
 	svc := newGazelleSeamService(t, otherTracker, settings, nil)
@@ -508,7 +500,6 @@ func TestExecuteCompletionSearch_GazelleOffSaysNothingAboutREDOPS(t *testing.T) 
 	require.NotContains(t, notifier.Events()[0].Message, "RED/OPS")
 }
 
-// regression: #4379
 func TestSearchReportFacts_NamesEachGazelleSite(t *testing.T) {
 	tests := []struct {
 		name     string

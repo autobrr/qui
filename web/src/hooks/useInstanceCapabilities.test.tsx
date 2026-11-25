@@ -42,7 +42,6 @@ describe("refreshChangedCapabilities", () => {
   })
 })
 
-// regression: #3764
 describe("useInstancesSupport", () => {
   function mountSupport(answers: Record<number, Promise<Partial<InstanceCapabilities>>>, instanceIds: number[] | undefined, activeIds: number[] = []) {
     getInstanceCapabilities.mockImplementation((id: number) => answers[id])

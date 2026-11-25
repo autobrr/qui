@@ -467,7 +467,6 @@ func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
 	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
 }
 
-// regression: #2538
 func TestSyncManager_FilterTorrentsBySearch_BracketsAndGlobs(t *testing.T) {
 	sm := &SyncManager{}
 	torrents := []qbt.Torrent{

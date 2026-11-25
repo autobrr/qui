@@ -59,7 +59,6 @@ describe("SystemNoticeMenuItems", () => {
     expect(screen.queryByRole("menu")).toBeNull()
   })
 
-  // regression: #4110
   it("keeps the age in an open dialog up to date", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "Date"] })
     try {
@@ -77,7 +76,6 @@ describe("SystemNoticeMenuItems", () => {
     }
   })
 
-  // regression: #4110
   it("gives focus back to the menu button when the dialog closes", async () => {
     render(<Menu notices={open} />)
     fireEvent.click(await screen.findByRole("menuitem", { name: /Recording stopped/ }))
@@ -90,7 +88,6 @@ describe("SystemNoticeMenuItems", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "menu" }))
   })
 
-  // regression: #4110
   it("keeps the dialog closed when a notice that closed while open comes back", async () => {
     const { rerender } = render(<Menu notices={open} />)
     fireEvent.click(await screen.findByRole("menuitem", { name: /Recording stopped/ }))

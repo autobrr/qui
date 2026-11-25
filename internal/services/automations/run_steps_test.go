@@ -139,7 +139,6 @@ func TestPlanSteps_CoverEveryRunPlanField(t *testing.T) {
 	}
 }
 
-// regression: #3710
 func TestPlanSteps_ShareLimitsAddUpGroupsWithTheSameLimits(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		t.Run(map[bool]string{false: "live", true: "dry run"}[dryRun], func(t *testing.T) {

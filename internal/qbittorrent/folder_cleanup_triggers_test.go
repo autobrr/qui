@@ -775,7 +775,6 @@ func TestFolderCleanupPrepareTakesOneBatchStatOnARemoteInstance(t *testing.T) {
 	require.Equal(t, map[string]bool{hashA: true, hashB: true, hashC: false}, existed)
 }
 
-// regression: #3739
 func TestBulkDeleteNotifiesFilesChanged(t *testing.T) {
 	t.Parallel()
 	for _, deleteFiles := range []bool{false, true} {

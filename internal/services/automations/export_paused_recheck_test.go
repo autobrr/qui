@@ -27,7 +27,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// regression: #3015
 func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
 	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsPayload})
 
@@ -41,7 +40,6 @@ func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
 	require.Equal(t, []string{"stoppedDL", "checkingDL", "stoppedUP"}, result.statesAfterRecheck[:3])
 }
 
-// regression: #3015
 func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
 	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusInternalServerError, afterRecheck: recheckFindsPayload})
 
@@ -56,7 +54,6 @@ func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
 	require.Zero(t, result.starts.Load())
 }
 
-// regression: #3015
 func TestExecuteExportToInstance_PausedRecheckPayloadMissing(t *testing.T) {
 	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsNoPayload})
 
@@ -68,7 +65,6 @@ func TestExecuteExportToInstance_PausedRecheckPayloadMissing(t *testing.T) {
 	require.Equal(t, []string{"false"}, result.deleteFiles)
 }
 
-// regression: #3015
 func TestExecuteExportToInstance_PausedRecheckStillChecking(t *testing.T) {
 	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckKeepsChecking})
 

@@ -207,7 +207,6 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
 	r := newRig(t, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
 	s := newBigShow(t)
@@ -467,7 +466,6 @@ func (r *rig) restartWithNewClients(edit ...func(*transfer.Deps)) {
 	r.restart()
 }
 
-// regression: #4231
 func TestTransferStopsWhenTheCrossSeedInstanceGetsANewAddress(t *testing.T) {
 	r := newRig(t)
 	s, id, moved := r.moveTheCrossSeedInstance()
@@ -487,7 +485,6 @@ func TestTransferStopsWhenTheCrossSeedInstanceGetsANewAddress(t *testing.T) {
 	require.True(t, moved.Has(s.hash))
 }
 
-// regression: #4231
 func TestTransferCancelRemovesNothingFromACrossSeedInstanceWithANewAddress(t *testing.T) {
 	r := newRig(t)
 	s, id, moved := r.moveTheCrossSeedInstance()
@@ -500,7 +497,6 @@ func TestTransferCancelRemovesNothingFromACrossSeedInstanceWithANewAddress(t *te
 	require.True(t, moved.Has(s.hash))
 }
 
-// regression: #4231
 func TestTransferCancelRemovesNothingFromACrossSeedInstanceThatMovedDuringTheRun(t *testing.T) {
 	r := newRig(t)
 	cs := r.withCrossSeedInstance()
@@ -528,7 +524,6 @@ func TestTransferCancelRemovesNothingFromACrossSeedInstanceThatMovedDuringTheRun
 	require.True(t, cs.stub.Has(s.hash))
 }
 
-// regression: #4231
 func TestTransferRemovesItsCopyWhenTheCrossSeedInstanceGetsANewAddress(t *testing.T) {
 	r := newRig(t)
 	cs := r.withCrossSeedInstance()
@@ -554,7 +549,6 @@ func TestTransferRemovesItsCopyWhenTheCrossSeedInstanceGetsANewAddress(t *testin
 	require.Zero(t, sent(moved), "qui sends nothing to the new address")
 }
 
-// regression: #4231
 func TestTransferRollbackStartsOnlyWhatQuiStopped(t *testing.T) {
 	for _, tc := range []struct {
 		name                string
@@ -701,7 +695,6 @@ func TestTransferCancel(t *testing.T) {
 		require.Equal(t, transfer.StateDone, r.get(id).State)
 		require.False(t, r.src.Has(s.hash))
 	})
-	// regression: #4231
 	t.Run("while the run records a temporary failure", func(t *testing.T) {
 		r := newRig(t)
 		s := newShow(t, showName)

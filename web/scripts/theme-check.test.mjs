@@ -101,7 +101,6 @@ test("each built-in theme keeps its colors inside sRGB", () => {
   }
 })
 
-// regression: #4230
 test("each community theme keeps its ratio colors readable on the plain and the striped row", () => {
   const files = builtInThemeFiles().filter(file => path.basename(path.dirname(file)) === "premium")
   assert.ok(files.length > 0)

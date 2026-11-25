@@ -16,7 +16,6 @@ function Row({ label }: { label: string }) {
 afterEach(cleanup)
 
 describe("TapMenu", () => {
-  // regression: #3702
   it("opens on a tap on a row component", () => {
     render(<TapMenu content={<DropdownMenuItem>Copy address</DropdownMenuItem>}><Row label="peer" /></TapMenu>)
 

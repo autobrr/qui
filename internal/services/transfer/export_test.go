@@ -236,9 +236,7 @@ func TestExportResumesAfterACrash(t *testing.T) {
 	}{
 		{at: "after:add", want: transfer.StateDone},
 		{killAtAdd: true, want: transfer.StateDone},
-		// regression: #4231
 		{killAtAdd: true, missing: true, want: transfer.StateFailed, kept: "Files missing on target instance"},
-		// regression: #4231
 		{killAtAdd: true, recheckFails: true, want: transfer.StateFailed, kept: "Recheck on target failed"},
 		{at: "after:added", missing: true, want: transfer.StateFailed},
 		{at: "after:clean up", missing: true, want: transfer.StateFailed},
@@ -342,7 +340,6 @@ func (t wakeTx) Commit() error {
 	return err
 }
 
-// regression: #4231
 func TestExportSendsItsResultWhenAWakeComesFirst(t *testing.T) {
 	r := newRig(t, exportPolls)
 	r.restartOn(wakeAtCommit{Querier: r.db, wake: func() { r.svc.Wake() }})
@@ -357,7 +354,6 @@ func TestExportSendsItsResultWhenAWakeComesFirst(t *testing.T) {
 	require.Equal(t, 1, r.dst.Writes("torrents/add"))
 }
 
-// regression: #4231
 func TestExportRechecksAPausedAddAfterACrash(t *testing.T) {
 	r := newRig(t, exportPolls)
 	s := newShow(t, showName)
@@ -383,7 +379,6 @@ func TestExportRechecksAPausedAddAfterACrash(t *testing.T) {
 	require.True(t, r.dst.Stopped(s.hash), "the torrent stays paused")
 }
 
-// regression: #4231
 func TestExportTouchesNothingOnATargetWithANewAddress(t *testing.T) {
 	for _, tc := range []struct {
 		at     string

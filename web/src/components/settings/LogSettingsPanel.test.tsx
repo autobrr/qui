@@ -71,7 +71,6 @@ function renderPanel() {
 const save = () => fireEvent.click(screen.getByRole("button", { name: "logs.configuration.saveSettings" }))
 
 describe("LogSettingsPanel", () => {
-  // regression: #4233
   it("saves a level change while the environment locks the max size at 0", async () => {
     mocks.settings = { ...mocks.settings!, maxSize: 0, locked: { maxSize: "environment" } }
     renderPanel()
@@ -84,7 +83,6 @@ describe("LogSettingsPanel", () => {
     expect(screen.queryByText("logs.validation.maxSize")).toBeNull()
   })
 
-  // regression: #4233
   it("reads a max size in exponent form as the whole number", async () => {
     renderPanel()
 
@@ -94,7 +92,6 @@ describe("LogSettingsPanel", () => {
     await waitFor(() => expect(mocks.updateLogSettings).toHaveBeenCalledWith({ maxSize: 1000 }))
   })
 
-  // regression: #4233
   it("mutes an entry, and does not open it, on Enter on its level badge", async () => {
     const user = userEvent.setup()
     renderPanel()
@@ -107,7 +104,6 @@ describe("LogSettingsPanel", () => {
     expect(screen.queryByText("logs.entryDialog.title")).toBeNull()
   })
 
-  // regression: #4233
   it("takes no level pick until the saved client settings load", async () => {
     renderPanel()
     fireEvent.click(screen.getByRole("button", { name: /logs\.viewer\.allLevels/ }))

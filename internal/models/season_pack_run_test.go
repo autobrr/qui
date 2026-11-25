@@ -117,7 +117,6 @@ func TestSeasonPackRunStore_CreatePrunesOldRuns(t *testing.T) {
 	require.Equal(t, 200, count)
 }
 
-// regression: #3683
 func TestSeasonPackRunStore_FailedRunsKeepAppliedHistory(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
 	store := models.NewSeasonPackRunStore(db)

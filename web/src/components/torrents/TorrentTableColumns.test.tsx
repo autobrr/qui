@@ -58,7 +58,6 @@ describe("reannounce column", () => {
   })
 })
 
-// regression: #3761
 describe("popularity and private columns", () => {
   afterEach(cleanup)
 

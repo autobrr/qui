@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// regression: #4100
 func TestTorrentFactsOfGivesEachDomainOfTheSyncBeforeTheMapping(t *testing.T) {
 	t.Parallel()
 

@@ -43,7 +43,6 @@ afterEach(() => {
 })
 
 describe("CustomThemeEditor during a default theme visit", () => {
-  // regression: #4124
   it("previews an edited theme only after a change, because the saved CSS can hide the page", async () => {
     render(
       <QueryClientProvider client={new QueryClient()}>

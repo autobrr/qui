@@ -191,7 +191,6 @@ func TestTransferTorrentWritesTheTemporaryNamesOfTheCopy(t *testing.T) {
 	r.requireNoHelpers(record)
 }
 
-// regression: #4348
 func TestTransferTorrentConnectsAfterTheCheckOnTheSource(t *testing.T) {
 	r := newRigOn(t, overSFTP, onDisk)
 	r.connect()
@@ -208,7 +207,6 @@ func TestTransferTorrentConnectsAfterTheCheckOnTheSource(t *testing.T) {
 	require.Zero(t, r.src.Calls("torrents/addPeers"), "the target reached the source at its first try")
 }
 
-// regression: #4348
 func TestTransferTorrentWaitsForACheckOnTheSourceLongerThanAWait(t *testing.T) {
 	r := newRigOn(t, overSFTP, onDisk, func(c *transfer.Config) { c.CheckPolls = 100 })
 	r.connect()
@@ -224,7 +222,6 @@ func TestTransferTorrentWaitsForACheckOnTheSourceLongerThanAWait(t *testing.T) {
 	require.Equal(t, transfer.WayBitTorrent, record.Way)
 }
 
-// regression: #4231
 func TestTransferTorrentStopsAtAFileInTheWayOnTheSource(t *testing.T) {
 	r := newRigOn(t, overSFTP, onDisk)
 	r.connect()
@@ -322,14 +319,10 @@ func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 		{name: "5.3 at another save path", webAPI: "2.15.2", free: 70, elsewhere: true},
 		{name: "5.1 elsewhere", free: 69, elsewhere: true,
 			log: "Free space unknown on homelab: before qBittorrent 5.3, qBittorrent reports it only at its default save path."},
-		// regression: #4231
 		{name: "5.3 at a Windows save path", webAPI: "2.15.2", free: 69, savePath: "C:/Downloads", placed: `C:\Downloads`, reason: noAdd},
-		// regression: #4231
 		{name: "5.3 at a UNC save path", webAPI: "2.15.2", free: 69, savePath: `\\nas\media\Downloads`,
 			placed: `\\nas\media\Downloads`, reason: noAdd},
-		// regression: #4231
 		{name: "5.1 at a Windows default save path", free: 69, defaultSavePath: "C:/Downloads", placed: `C:\Downloads`, reason: noAdd},
-		// regression: #4231
 		{name: "5.3 at a slash save path", webAPI: "2.15.2", free: 69, savePath: "/srv/downloads", placed: "/srv/downloads", reason: noAdd},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -393,7 +386,6 @@ func TestTransferTorrentKeepsTheFilesThatTheTargetHad(t *testing.T) {
 	}{
 		{name: "every file", place: func(t *testing.T, r *rig, s show) { write(t, filepath.Join(r.dstDir, showName), s.files) },
 			reason: "homelab had the files before the Transfer"},
-		// regression: #4231
 		{name: "a link to a file of the source", place: func(t *testing.T, r *rig, _ show) {
 			require.NoError(t, os.MkdirAll(filepath.Join(r.dstDir, showName), 0o755))
 			err := os.Symlink(filepath.Join(r.srcDir, showName, "Show.S01E01.mkv"), filepath.Join(r.dstDir, showName, "Show.S01E01.mkv"))
@@ -490,7 +482,6 @@ func TestTransferTorrentStartsAfterTheHeadStart(t *testing.T) {
 	})
 }
 
-// regression: #4231
 func TestTransferTorrentNeverWritesIntoAFileOnTheTarget(t *testing.T) {
 	const nfo = "Show.S01.nfo"
 	edges := numbered("E02", 36)
@@ -538,11 +529,8 @@ func TestTransferTorrentRetries(t *testing.T) {
 		before func(r *rig, s show)
 		source func(s show) map[string]string
 	}{
-		// regression: #4231
-		// regression: #4242
 		{name: "nothing on the target", before: func(*rig, show) {},
 			source: func(show) map[string]string { return map[string]string{} }},
-		// regression: #4231
 		{name: "a download that stopped", before: func(r *rig, s show) {
 			write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode1: s.files[episode1]})
 			r.dst.FreeSpace = 38
@@ -623,7 +611,6 @@ func TestTransferTorrentLeavesAHardlinkedCrossSeed(t *testing.T) {
 	}
 }
 
-// regression: #4231
 func TestTransferTorrentPlacesAGroupBelowAWindowsSavePath(t *testing.T) {
 	r := newRigOn(t, onDisk, noAccess)
 	r.connect()

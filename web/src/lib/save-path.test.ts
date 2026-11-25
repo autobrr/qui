@@ -79,7 +79,6 @@ describe("resolveDestinationPath", () => {
     })).toBe("/downloads")
   })
 
-  // regression: #4129
   it.each([
     ["tv/anime", { tv: { name: "tv", savePath: "/media/tv" }, "tv/anime": { name: "tv/anime", savePath: "" } }, "/data", "/media/tv/anime"],
     ["tv/anime/new", { tv: { name: "tv", savePath: "" } }, "/data", "/data/tv/anime/new"],
@@ -97,7 +96,6 @@ describe("resolveDestinationPath", () => {
     })).toBe(expected)
   })
 
-  // regression: #4129
   it("uses <default save path>/<category> without parent paths (qBittorrent 4.x, or subcategories off before 5.2)", () => {
     expect(resolveDestinationPath({
       autoTMM: true,

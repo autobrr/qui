@@ -452,7 +452,6 @@ func TestSafeDeleteTarget_FailsClosedWhenChildStatFails(t *testing.T) {
 	})
 }
 
-// regression: #4146
 func TestOrphanScan_RecoverStuckRuns_FailsEveryInterruptedRun(t *testing.T) {
 	t.Parallel()
 

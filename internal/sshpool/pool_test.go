@@ -320,7 +320,6 @@ func TestPoolRunningSFTPCallKeepsTheConnectionFromIdleClose(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts())
 }
 
-// regression: #4231
 func TestPoolClosesAConnectionWhoseSFTPCallsGetNoAnswer(t *testing.T) {
 	t.Parallel()
 
@@ -349,7 +348,6 @@ func TestPoolClosesAConnectionWhoseSFTPCallsGetNoAnswer(t *testing.T) {
 	require.Error(t, <-call, "the pool must close a connection whose sftp calls get no answer")
 }
 
-// regression: #4231
 func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
 	t.Parallel()
 
@@ -372,7 +370,6 @@ func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
 	assert.False(t, unused(calls, &lastUsed))
 }
 
-// regression: #4231
 func TestPoolSFTPCallsStallOnlyWithoutAnAnswer(t *testing.T) {
 	t.Parallel()
 
@@ -410,7 +407,6 @@ type discardCloser struct{ io.Writer }
 
 func (discardCloser) Close() error { return nil }
 
-// regression: #4231
 func TestPoolSFTPAnswersPastTheStderrOfTheServer(t *testing.T) {
 	t.Parallel()
 
@@ -825,7 +821,6 @@ func TestPoolSFTPConnsTakesFewerWhenTheHostRefuses(t *testing.T) {
 	assert.Equal(t, dials+2, server.Dials(), "the next caller asks the host again")
 }
 
-// regression: #4231
 func TestPoolSFTPInitWithNoEndStopsAtTheTimeout(t *testing.T) {
 	t.Parallel()
 

@@ -182,7 +182,6 @@ func TestStaleSearchWork(t *testing.T) {
 			wantIndexers: nil,
 			wantGazelle:  true,
 		},
-		// regression: #4246
 		{
 			name:         "a newer search of another copy counts",
 			hash:         expiredHash,

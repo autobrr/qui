@@ -256,7 +256,6 @@ func TestAddEndsWhenTheCheckStopsTheTorrent(t *testing.T) {
 	require.Less(t, r.stub.Syncs(), 10)
 }
 
-// regression: #4242
 func TestRecheckReadsTheRefreshIntervalFromQBittorrent(t *testing.T) {
 	r := newRig(t, "2.16.2")
 	r.stub.CheckSyncs, r.stub.StaleSyncs = 1, 3

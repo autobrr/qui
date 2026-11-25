@@ -23,8 +23,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// regression: #3626
-// regression: #3707
 func TestSourceGateCheck(t *testing.T) {
 	t.Parallel()
 
@@ -129,7 +127,6 @@ func requireNoSearchHistory(t *testing.T, svc *Service, instanceID int, hashes .
 	}
 }
 
-// regression: #3707
 func TestSearchRunLoop_SkipsSourceThatCannotGiveFilesAtItsTurn(t *testing.T) {
 	const name = "Artist - Album (2024) [WEB FLAC]"
 	picked := qbt.Torrent{Hash: fmt.Sprintf("%040x", 1), Name: name, Progress: 1, Size: 1_000, AddedOn: 1, Tracker: "https://tracker.example.invalid/announce"}
@@ -177,7 +174,6 @@ func TestSearchRunLoop_SkipsSourceThatCannotGiveFilesAtItsTurn(t *testing.T) {
 	}
 }
 
-// regression: #3707
 func TestProcessSearchCandidate_ContentAnalysisRefusalWritesNoHistory(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -236,7 +232,6 @@ func (m *laterLookupSyncManager) GetTorrentRefs(ctx context.Context, instanceID 
 	return torrents, err
 }
 
-// regression: #3707
 func TestProcessSearchCandidate_SearchSourceLoadRefusalWritesNoHistory(t *testing.T) {
 	ctx, env := newSearchHistoryTestEnv(t, "crossseed-source-gate-load", 2)
 	instanceStore, err := models.NewInstanceStore(env.db, []byte("01234567890123456789012345678901"))
@@ -278,7 +273,6 @@ func TestProcessSearchCandidate_SearchSourceLoadRefusalWritesNoHistory(t *testin
 	requireNoSearchHistory(t, svc, env.instanceID, torrent.Hash)
 }
 
-// regression: #3707
 func TestSearchRunLoop_SourceThatSettledBeforeItsTurnGetsItsSearch(t *testing.T) {
 	const name = "Artist - Album (2024) [WEB FLAC]"
 	checking := qbt.Torrent{Hash: fmt.Sprintf("%040x", 4), Name: name, Progress: 0.4, Size: 1_000, State: qbt.TorrentStateCheckingUp, Tracker: "https://tracker.example.invalid/announce"}
@@ -305,7 +299,6 @@ func TestSearchRunLoop_SourceThatSettledBeforeItsTurnGetsItsSearch(t *testing.T)
 	require.True(t, found)
 }
 
-// regression: #3707
 func TestRefreshSearchQueue_IncompleteCopyDoesNotHideCompleteCopy(t *testing.T) {
 	const name = "Artist - Album (2024) [WEB FLAC]"
 	older := qbt.Torrent{Hash: fmt.Sprintf("%040x", 5), Name: name, Progress: 0.5, Size: 1_000, AddedOn: 1, State: qbt.TorrentStateDownloading}
@@ -323,7 +316,6 @@ func TestRefreshSearchQueue_IncompleteCopyDoesNotHideCompleteCopy(t *testing.T) 
 	require.Equal(t, 1, state.run.TotalTorrents)
 }
 
-// regression: #3707
 func TestSearchDialogRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	t.Parallel()
 
@@ -368,7 +360,6 @@ func TestSearchDialogRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	}
 }
 
-// regression: #3707
 func TestExecuteCompletionSearch_StopsForErroredSource(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))

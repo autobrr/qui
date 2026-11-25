@@ -45,7 +45,6 @@ func TestAlternateTitleQuery(t *testing.T) {
 			wantOK:       true,
 		},
 		{
-			// regression: #3823
 			name:         "title with three AKA names retries with the second name",
 			primaryQuery: "Der Film",
 			releaseName:  "Der.Film.AKA.The.Movie.AKA.La.Pelicula.2020.1080p.WEB.h264-GRP",

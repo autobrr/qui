@@ -487,7 +487,6 @@ func settingsBodyWithoutTimestamps(t *testing.T, body string) map[string]any {
 	return fields
 }
 
-// regression: #3691
 func TestAutomationSettingsPutRoundTripKeepsEveryField(t *testing.T) {
 	rows := map[string]func(*models.CrossSeedAutomationSettings){
 		"inheritSourceTags":            func(s *models.CrossSeedAutomationSettings) { s.InheritSourceTags = true },
@@ -515,7 +514,6 @@ func TestAutomationSettingsPutRoundTripKeepsEveryField(t *testing.T) {
 	}
 }
 
-// regression: #3691
 func TestAutomationSettingsPutWithoutFieldsKeepsDefaults(t *testing.T) {
 	tests := []struct {
 		name     string

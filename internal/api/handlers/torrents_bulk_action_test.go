@@ -338,7 +338,6 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 	require.Equal(t, []string{"aaa"}, rechecked)
 }
 
-// regression: #3868
 func TestBulkAction_SelectAllFollowsTheTorrentListRule(t *testing.T) {
 	t.Parallel()
 

@@ -233,7 +233,6 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByLabelText("table.nextPage")).toBeNull()
   })
 
-  // regression: #4132
   it("shows a delete once when a new delete moves it onto the next page", async () => {
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
@@ -252,7 +251,6 @@ describe("DeletedTorrents", () => {
     expect(new Set(names).size).toBe(60)
   })
 
-  // regression: #4132
   it("keeps the rows while the rows of a moved period load", async () => {
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     const { moveTo } = renderTable([instance(1, "Seedbox")])
@@ -270,7 +268,6 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.1-GRP", "Built.Name.1.0-GRP"]))
   })
 
-  // regression: #4132
   it("lets the user load a page again after it failed", async () => {
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     let failNext = true
@@ -294,7 +291,6 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 50)))
   })
 
-  // regression: #4179
   it("shows the deletes that a phone loaded on Show more, also after a reload failed", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -314,7 +310,6 @@ describe("DeletedTorrents", () => {
     expect(shownNames()).toHaveLength(15)
   })
 
-  // regression: #4179
   it("shows five deletes on a phone, ten more for each Show more, and loads the next page after the loaded ones", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -336,7 +331,6 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByText("deletes.more")).toBeNull()
   })
 
-  // regression: #4179
   it("shows the next loaded deletes on a phone at once, also while the loaded pages load again", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -355,7 +349,6 @@ describe("DeletedTorrents", () => {
     release()
   })
 
-  // regression: #4179
   it("shows five deletes again on a phone after Show fewer, and keeps its button in view", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -375,7 +368,6 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByText("table.showFewer")).toBeNull()
   })
 
-  // regression: #4179
   it("loads the first page of the other filters of each instance after the first filter", async () => {
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     deletesOf.set(2, [event(2, 0, 4_000, "automation")])
@@ -391,7 +383,6 @@ describe("DeletedTorrents", () => {
     expect(shownNames()).toEqual(["Built.Name.1.0-GRP"])
   })
 
-  // regression: #4179
   it("keeps the rows of the last filter, dimmed, until the rows of the next filter load", async () => {
     deletesOf.set(1, [event(1, 0, 5_000, "user"), event(1, 1, 4_000, "automation")])
     let preloading = false
@@ -419,7 +410,6 @@ describe("DeletedTorrents", () => {
     expect(document.querySelector("table")!.closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("false")
   })
 
-  // regression: #4179
   it("shows five deletes again on a phone after a return to an earlier filter", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -437,7 +427,6 @@ describe("DeletedTorrents", () => {
     expect(shownNames()).toHaveLength(5)
   })
 
-  // regression: #4179
   it("opens a delete with a cut name on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {
     stubPhone("upright")
     vi.spyOn(Element.prototype, "scrollHeight", "get").mockReturnValue(60)
@@ -454,7 +443,6 @@ describe("DeletedTorrents", () => {
     expect(name.getAttribute("aria-expanded")).toBe("false")
   })
 
-  // regression: #4179
   it("offers no opener on a phone for a delete whose name and cause show in full", async () => {
     stubPhone("upright")
     deletesOf.set(1, [event(1, 0, 5_000, "automation", "Tidy up")])
@@ -466,7 +454,6 @@ describe("DeletedTorrents", () => {
     expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
   })
 
-  // regression: #4358
   it("shows a cut-off cause on a tap on a touch screen wider than a phone, where the row does not open", async () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null

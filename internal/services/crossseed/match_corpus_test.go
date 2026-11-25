@@ -339,7 +339,6 @@ var corpusRows = []corpusRow{
 		want:           corpusNoMatch,
 	},
 	{
-		// regression: #3823
 		name:           "two dotted AKAs against a listing with the titles in another order",
 		source:         "Alpha.Film.AKA.Beta.Film.AKA.Gamma.Film.1999.1080p.BluRay.REMUX.AVC.FLAC.1.0-GRP.mkv",
 		candidate:      "Gamma Film AKA Alpha Film 1999 1080p BluRay REMUX AVC FLAC 1.0-GRP",
@@ -349,7 +348,6 @@ var corpusRows = []corpusRow{
 		want:           corpusMatch,
 	},
 	{
-		// regression: #3823
 		name:           "two dotted AKAs against a listing with only the second and third title",
 		source:         "Alpha.Film.AKA.Beta.Film.AKA.Gamma.Film.1999.1080p.BluRay.REMUX.AVC.FLAC.1.0-GRP.mkv",
 		candidate:      "Gamma Film AKA Beta Film 1999 1080p BluRay REMUX AVC FLAC 1.0-GRP",
@@ -359,7 +357,6 @@ var corpusRows = []corpusRow{
 		want:           corpusMatch,
 	},
 	{
-		// regression: #3823
 		name:           "lowercase aka against a listing with the titles in another order",
 		source:         "Alpha.Film.aka.Beta.Film.1999.BluRay.1080p.DTS-HD.MA.5.1.AVC.REMUX-GRP",
 		candidate:      "Beta Film aka Alpha Film 1999 1080p BluRay REMUX AVC  DTS-HD MA 5.1-GRP",
@@ -369,7 +366,6 @@ var corpusRows = []corpusRow{
 		want:           corpusMatch,
 	},
 	{
-		// regression: #3823
 		name:           "title word Aka against the title after it",
 		source:         "Mister.Aka.Manson.1999.1080p.BluRay.REMUX.AVC.FLAC.1.0-GRP.mkv",
 		candidate:      "Manson 1999 1080p BluRay REMUX AVC FLAC 1.0-GRP",
@@ -379,7 +375,6 @@ var corpusRows = []corpusRow{
 		want:           corpusNoMatch,
 	},
 	{
-		// regression: #2997
 		name:          "leading CJK title bracket against the same name without it",
 		source:        "Harbor.Lights.2022.S01E01.1080p.WEB.H264-GRP",
 		candidate:     "[港灯].Harbor.Lights.2022.S01E01.1080p.WEB.H264-GRP",
@@ -388,7 +383,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #3549
 		name:          "bare software name against the tracker name with the platform list",
 		source:        "Harbor.Toolkit-GRP",
 		candidate:     "Harbor.Toolkit-GRP (2019) [Windows / Multi-Language / Full ISO]",
@@ -397,7 +391,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #4289
 		name:          "listing with the year, the country, and the file name in brackets",
 		source:        "Quiet.Harbour.1987.DVDRip.x264-GRP.mkv",
 		candidate:     "Quiet Harbour 1987 France [Quiet.Harbour.1987.DVDRip.x264-GRP.mkv]",
@@ -406,7 +399,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #4289
 		name:          "folder against a listing with an AKA title and the folder name in brackets",
 		source:        "Still.Waters.1957",
 		candidate:     "Still Waters AKA Tikhie Vody 1957 USSR [Still.Waters.1957]",
@@ -415,7 +407,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #4289
 		name:          "groupless file against a listing with the file name in brackets",
 		source:        "Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv",
 		candidate:     "Kein - Ein Wienerfilm 1997 Austria [Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv]",
@@ -424,7 +415,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #4289
 		name:          "groupless file against a listing with a download name without a year",
 		source:        "Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv",
 		candidate:     "Kein - Ein Wienerfilm 1997 Austria [Kein.Ein.Wienerfilm]",
@@ -433,7 +423,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #4289
 		name:          "listing of a film with the same title and another year",
 		source:        "Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv",
 		candidate:     "Kein - Ein Wienerfilm 2004 Austria [Kein.Ein.Wienerfilm]",
@@ -442,7 +431,6 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
-		// regression: #4289
 		name:          "listing of another film with an AKA title and the file name in brackets",
 		source:        "Kein-Ein.Wienerfilm.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv",
 		candidate:     "Ein Floh AKA Fleas Do Not 1997 Denmark [Ein.Floh.1997.Hans.Bauer.DVDRip.DD2.0.x264.mkv]",
@@ -451,7 +439,6 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
-		// regression: #4289
 		name:          "another show with the same trailing bracket tag",
 		source:        "[GRP] Kaiju Squad - 05 [1080p][Multi-Subs]",
 		candidate:     "[GRP] Monster Unit - 05 [1080p][Multi-Subs]",
@@ -509,7 +496,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #3730
 		name:           "bracket batch with a Batch tag against the same pack without it",
 		source:         "[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]",
 		candidate:      "[KaijuSubs] Kaiju Squad S2 (1080p)",
@@ -520,7 +506,6 @@ var corpusRows = []corpusRow{
 		want:           corpusMatch,
 	},
 	{
-		// regression: #3730
 		name:           "bracket batch against the same pack with a Batch tag",
 		source:         "[KaijuSubs] Kaiju Squad S2 (1080p)",
 		candidate:      "[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]",
@@ -531,7 +516,6 @@ var corpusRows = []corpusRow{
 		want:           corpusMatch,
 	},
 	{
-		// regression: #3730
 		name:           "bracket batch with a Batch tag against the pack of another fansub",
 		source:         "[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]",
 		candidate:      "[OtherSubs] Kaiju Squad S2 (1080p)",
@@ -542,7 +526,6 @@ var corpusRows = []corpusRow{
 		want:           corpusNoMatch,
 	},
 	{
-		// regression: #4068
 		name:          "bracket fansub against a listing with no group",
 		source:        "[KaijuSubs] Kaiju Squad - 81 (1080p)",
 		candidate:     "Kaiju Squad - 81 (1080p)",
@@ -551,7 +534,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #4068
 		name:          "group tag that repeats its site label against another group under the label",
 		source:        "Kaiju.Squad.S02E05.1080p.WEB-DL.AAC2.0.H.264-kaijutv[kaijutv]",
 		candidate:     "Kaiju.Squad.S02E05.1080p.WEB-DL.AAC2.0.H.264-OTHER[kaijutv]",
@@ -560,7 +542,6 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
-		// regression: #4068
 		name:          "RERIP flag in a trailing bracket against the plain name",
 		source:        "Kaiju.Squad.S02E05.1080p.WEB.H264-KAIJU [RERIP]",
 		candidate:     "Kaiju.Squad.S02E05.1080p.WEB.H264-KAIJU",
@@ -569,7 +550,6 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
-		// regression: #4068
 		name:          "RERIP flag in the name against the plain name",
 		source:        "Kaiju.Squad.S02E05.RERIP.1080p.WEB.H264-KAIJU",
 		candidate:     "Kaiju.Squad.S02E05.1080p.WEB.H264-KAIJU",
@@ -578,7 +558,6 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
-		// regression: #3292
 		name:          "REPACK flag in a trailing bracket against the flag in the name",
 		source:        "Kaiju Squad (2020) REPACK (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
 		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK]",
@@ -590,7 +569,6 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
-		// regression: #3292
 		name:          "REPACK flag in a trailing bracket at another size",
 		source:        "Kaiju Squad (2020) REPACK (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
 		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK]",
@@ -599,7 +577,6 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
-		// regression: #3292
 		name:          "REPACK2 flag in a trailing bracket against the flag in the name",
 		source:        "Kaiju Squad (2020) REPACK2 (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
 		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK2]",
@@ -611,7 +588,6 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
-		// regression: #3292
 		name:          "REPACK2 flag in a trailing bracket at another size",
 		source:        "Kaiju Squad (2020) REPACK2 (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
 		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK2]",
@@ -821,7 +797,6 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
-		// regression: #3286
 		name:          "UHD after a WEB tag against a plain WEB",
 		source:        "Kaiju.Squad.S02E05.2160p.WEB.UHD.H265-GRP",
 		candidate:     "Kaiju.Squad.S02E05.2160p.WEB.H265-GRP",
@@ -831,7 +806,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #3286
 		name:          "UHD WEB-DL against a plain WEB-DL",
 		source:        "Harbor.Lights.2022.UHD.2160p.WEB-DL.DDP5.1.x265-GRP",
 		candidate:     "Harbor.Lights.2022.2160p.WEB-DL.DDP5.1.x265-GRP",
@@ -841,7 +815,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #3286
 		name:          "UHD BluRay against a plain BluRay",
 		source:        "Harbor.Lights.2022.2160p.UHD.BluRay.x265-GRP",
 		candidate:     "Harbor.Lights.2022.2160p.BluRay.x265-GRP",
@@ -851,7 +824,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #3286
 		name:          "UHD WEBRip from a 4K source against a WEB-DL",
 		source:        "Harbor.Lights.2022.UHD.WEBRip.1080p.DDP.5.1.Atmos.DoVi.HDR.x265-GRP",
 		candidate:     "Harbor.Lights.2022.1080p.WEB-DL.DDP.5.1.Atmos.DoVi.HDR.x265-GRP",
@@ -866,7 +838,6 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
-		// regression: #3286
 		name:          "UHD and a collection before WEB-DL against the plain WEB-DL",
 		source:        "Harbor.Lights.2022.2160p.UHD.AMZN.WEB-DL.DDP5.1.x265-GRP",
 		candidate:     "Harbor.Lights.2022.2160p.AMZN.WEB-DL.DDP5.1.x265-GRP",
@@ -876,7 +847,6 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
-		// regression: #3286
 		name:          "UHD and a collection before WEB-DL against a plain BluRay",
 		source:        "Harbor.Lights.2022.2160p.UHD.AMZN.WEB-DL.DDP5.1.x265-GRP",
 		candidate:     "Harbor.Lights.2022.2160p.BluRay.DDP5.1.x265-GRP",

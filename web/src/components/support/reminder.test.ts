@@ -95,7 +95,6 @@ describe("useSupportReminder", () => {
     _resetClientSettingsForTests()
   })
 
-  // regression: #4276
   it("keeps the due time of the server when the first read of the server failed", () => {
     markClientSettingsUnavailable()
     renderHook(() => useSupportReminder())

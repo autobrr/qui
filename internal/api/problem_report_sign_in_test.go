@@ -280,14 +280,12 @@ func (rig *reportRig) startDuringSignOut() int {
 	return <-started
 }
 
-// regression: #4360
 func TestProblemReportSignOutDropsASignInThatIsStillStarting(t *testing.T) {
 	rig := signInRig(t)
 	assert.Equal(t, http.StatusBadGateway, rig.startDuringSignOut(), "the sign-out ended the start, so the browser closes the popup")
 	assert.Equal(t, problemreport.SignInState{State: problemreport.SignInExpired}, rig.signInState(), "qui polls no sign-in after the sign-out")
 }
 
-// regression: #4464
 func TestProblemReportSignOutDropsAStartThatBrrbinAnswersAfterTheSignOut(t *testing.T) {
 	answerAfterCancel := testutil.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return http.DefaultTransport.RoundTrip(r.WithContext(context.WithoutCancel(r.Context())))

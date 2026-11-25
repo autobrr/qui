@@ -224,7 +224,6 @@ func TestCustomTheme_EditsAndRemovesNameThatCreateRefuses(t *testing.T) {
 	require.Equal(t, []string{"My Theme.css"}, rig.fileNames(t))
 }
 
-// regression: #4124
 func TestCustomTheme_EscapedIDReachesFile(t *testing.T) {
 	rig := newCustomThemeRig(t, true)
 	rig.write(t, "My Theme (dark).css", "hand made")
@@ -239,7 +238,6 @@ func TestCustomTheme_EscapedIDReachesFile(t *testing.T) {
 	require.Equal(t, []string{"My Theme (dark).css"}, rig.fileNames(t))
 }
 
-// regression: #4124
 func TestCustomTheme_PercentInFileNameIsNotDecodedTwice(t *testing.T) {
 	rig := newCustomThemeRig(t, true)
 	rig.write(t, "100%.css", "hundred")
@@ -256,7 +254,6 @@ func TestCustomTheme_PercentInFileNameIsNotDecodedTwice(t *testing.T) {
 	require.Equal(t, "space name", rig.read(t, "a b.css"))
 }
 
-// regression: #4124
 func TestCustomTheme_ConcurrentCreatesOfOneID(t *testing.T) {
 	rig := newCustomThemeRig(t, true)
 	const callers = 8
@@ -383,7 +380,6 @@ func TestCustomTheme_CreateAppliesOutsideFileRule(t *testing.T) {
 	require.Empty(t, rig.fileNames(t))
 	require.Empty(t, rig.pub.events)
 
-	// regression: #4124
 	rec = rig.create(t, "ocean", "body::after { content: \"a\nb\"; }")
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	require.Equal(t, "The outside-file check cannot read the theme, line 1: a quoted string has a line break", errorMessage(t, rec))
@@ -408,7 +404,6 @@ func TestCustomTheme_ReplaceAppliesOutsideFileRule(t *testing.T) {
 	require.Contains(t, list.Body.String(), "a.png", "the list route serves a hand-made file with a url()")
 }
 
-// regression: #4124
 func TestFindCustomThemeFile(t *testing.T) {
 	folder := fstest.MapFS{
 		"Ocean.CSS": {}, "Ocean.css": {},

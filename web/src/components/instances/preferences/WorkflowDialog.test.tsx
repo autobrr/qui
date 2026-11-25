@@ -344,7 +344,6 @@ describe("WorkflowDialog move path on a disabled rule", () => {
   })
 })
 
-// regression: #3859
 describe("WorkflowDialog Save flow", () => {
   const actions: Record<string, Automation["conditions"]> = {
     delete: {
@@ -722,7 +721,6 @@ describe("WorkflowDialog Save flow", () => {
   })
 })
 
-// regression: #3012
 describe("WorkflowDialog mixed action conditions", () => {
   const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
   const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
@@ -753,7 +751,6 @@ describe("WorkflowDialog mixed action conditions", () => {
   })
 })
 
-// regression: #4188
 describe("WorkflowDialog switched-off actions", () => {
   const shown: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "shown" }
   const other: RuleCondition = { field: "RATIO", operator: "GREATER_THAN", value: "3" }
@@ -848,7 +845,6 @@ describe("WorkflowDialog free space source", () => {
     mocks.save.mockResolvedValue(rule)
   })
 
-  // regression: #4092
   it("keeps a saved allowance source while the capabilities load", async () => {
     const client = renderDialog(allowanceRule({
       schemaVersion: "1",
@@ -869,7 +865,6 @@ describe("WorkflowDialog free space source", () => {
     client.clear()
   })
 
-  // regression: #4092
   it("refuses an allowance that rounds to zero bytes", async () => {
     const client = renderDialog(allowanceRule({
       schemaVersion: "1",

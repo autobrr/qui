@@ -486,7 +486,6 @@ func TestPreferencesViewConnectionProxyAndI2P(t *testing.T) {
 	assert.JSONEq(t, `"127.0.0.1"`, string(view["proxy_ip"].Value))
 }
 
-// regression: #4472
 func TestPreferencesViewSendsPasswordsEmpty(t *testing.T) {
 	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
 	fake.prefs["proxy_password"] = "made-up-proxy-password"
@@ -509,13 +508,11 @@ func TestPreferencesUpdateKeepsAnEmptyPassword(t *testing.T) {
 		patch string
 		want  map[string]any
 	}{
-		// regression: #4472
 		{
 			name:  "empty keeps the saved passwords",
 			patch: `{"proxy_username": "user", "proxy_password": "", "mail_notification_password": ""}`,
 			want:  map[string]any{"proxy_username": "user"},
 		},
-		// regression: #4472
 		{
 			name:  "a new password replaces the saved one",
 			patch: `{"proxy_password": "made-up-new-proxy-password", "mail_notification_password": "made-up-new-mail-password"}`,

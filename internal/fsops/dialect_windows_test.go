@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// regression: #2919
 func TestHostPathsRelShareRoots(t *testing.T) {
 	t.Parallel()
 
