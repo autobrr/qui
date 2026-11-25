@@ -29,6 +29,7 @@ type webhookCheckAnswer struct {
 	hasPendingMatch  bool
 	nearMisses       int
 	nothingHeld      bool
+	seasonPack       *WebhookSeasonPack
 }
 
 func (s *Service) webhookMatchAllTorrents(ctx context.Context, input webhookCheckInput) (webhookCheckAnswer, error) {

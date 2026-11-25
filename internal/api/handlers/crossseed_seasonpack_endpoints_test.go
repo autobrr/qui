@@ -32,6 +32,7 @@ type seasonPackEndpointCase struct {
 	held          []string
 	heldElsewhere []string
 	alternates    seasonPackAlternateTitles
+	sonarrTitles  []string
 	total         int
 	request       seasonPackEndpointRequest
 	torrent       []byte

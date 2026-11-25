@@ -122,6 +122,9 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents from instance")
 		}
 		answer, err = s.webhookMatchHeldTitles(ctx, input, contentInfo.ContentType, lookup)
+		if err == nil && len(answer.matches) == 0 {
+			answer.seasonPack, err = s.webhookSeasonPackCheck(ctx, input, lookup)
+		}
 	} else {
 		input.policy.candidateTitles, input.policy.episodeMap = s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
 		answer, err = s.webhookMatchAllTorrents(ctx, input)
@@ -130,14 +133,14 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		return nil, err
 	}
 
-	canCrossSeed := answer.hasCompleteMatch
+	canCrossSeed := answer.hasCompleteMatch || answer.seasonPack != nil
 	recommendation := "skip"
-	if answer.hasCompleteMatch || answer.hasPendingMatch {
+	if canCrossSeed || answer.hasPendingMatch {
 		recommendation = "download"
 	}
 
 	level := zerolog.TraceLevel
-	if len(answer.matches) > 0 || answer.nearMisses > 0 {
+	if canCrossSeed || len(answer.matches) > 0 || answer.nearMisses > 0 {
 		level = zerolog.DebugLevel
 	}
 	summary := log.WithLevel(level)
@@ -154,6 +157,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Int("matchCount", len(answer.matches)).
 		Int("nearMisses", answer.nearMisses).
 		Bool("canCrossSeed", canCrossSeed).
+		Bool("seasonPack", answer.seasonPack != nil).
 		Str("recommendation", recommendation).
 		Msg("Webhook check completed")
 
@@ -161,6 +165,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		CanCrossSeed:   canCrossSeed,
 		Matches:        answer.matches,
 		Recommendation: recommendation,
+		SeasonPack:     answer.seasonPack,
 	}, nil
 }
 

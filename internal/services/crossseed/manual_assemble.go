@@ -111,7 +111,7 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 	if err != nil {
 		return nil, err
 	}
-	resp.Applied, resp.Reason, resp.Message = result.Applied, result.Reason, result.Message
+	resp.Applied, resp.Reason, resp.Message = result.applied, result.reason, result.message
 	return resp, nil
 }
 

@@ -266,19 +266,7 @@
       "reason": "no_matches",
       "message": "no matching episodes found on any instance"
     },
-    "runs": [
-      {
-        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
-        "phase": "check",
-        "status": "skipped",
-        "reason": "no_matches",
-        "message": "no matching episodes found on any instance",
-        "matchedEpisodes": 0,
-        "totalEpisodes": 4,
-        "coverage": 0,
-        "linkMode": ""
-      }
-    ]
+    "runs": []
   },
   "nothing held with torrent": {
     "status": 404,
@@ -287,41 +275,16 @@
       "reason": "no_matches",
       "message": "no matching episodes found on any instance"
     },
-    "runs": [
-      {
-        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
-        "phase": "check",
-        "status": "skipped",
-        "reason": "no_matches",
-        "message": "no matching episodes found on any instance",
-        "matchedEpisodes": 0,
-        "totalEpisodes": 4,
-        "coverage": 0,
-        "linkMode": ""
-      }
-    ]
+    "runs": []
   },
   "nothing held, no threshold": {
     "status": 404,
     "response": {
       "ready": false,
       "reason": "no_matches",
-      "message": "no matching episodes found on any instance",
-      "thresholdSkipped": true
+      "message": "no matching episodes found on any instance"
     },
-    "runs": [
-      {
-        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
-        "phase": "check",
-        "status": "skipped",
-        "reason": "no_matches",
-        "message": "no matching episodes found on any instance",
-        "matchedEpisodes": 0,
-        "totalEpisodes": 0,
-        "coverage": 0,
-        "linkMode": ""
-      }
-    ]
+    "runs": []
   },
   "ready by name": {
     "status": 200,

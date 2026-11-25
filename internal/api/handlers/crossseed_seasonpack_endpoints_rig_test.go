@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -114,6 +115,7 @@ func (a seasonPackAlternateTitles) AlternateTitles(_ context.Context, held cross
 
 type seasonPackEndpointArr struct {
 	total   int
+	titles  []string
 	lookups atomic.Int64
 	totals  atomic.Int64
 }
@@ -128,7 +130,7 @@ func (a *seasonPackEndpointArr) LookupSeasonEpisodeTotal(context.Context, string
 	if a.total == 0 {
 		return nil, nil
 	}
-	return &arr.SeasonEpisodeTotalResult{TotalEpisodes: a.total}, nil
+	return &arr.SeasonEpisodeTotalResult{TotalEpisodes: a.total, Titles: a.titles}, nil
 }
 
 type seasonPackEndpointSync struct {
@@ -141,6 +143,13 @@ type seasonPackEndpointSync struct {
 	checks  atomic.Int64
 	adds    atomic.Int64
 	onAdd   func()
+}
+
+func (s *seasonPackEndpointSync) GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	return s.SyncManager.GetSyncOwner(ctx, instanceID)
 }
 
 func (s *seasonPackEndpointSync) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
@@ -219,7 +228,7 @@ func newSeasonPackEndpointRig(t *testing.T, tc *seasonPackEndpointCase, held hel
 	r := &seasonPackEndpointRig{
 		t: t, root: root, links: filepath.Join(root, "links"),
 		settings: models.DefaultCrossSeedAutomationSettings(),
-		arr:      &seasonPackEndpointArr{total: tc.total},
+		arr:      &seasonPackEndpointArr{total: tc.total, titles: tc.sonarrTitles},
 		servers:  map[int]*qbtstub.Server{},
 		db:       testdb.NewMigratedSQLite(t, "season-pack-endpoints"),
 	}

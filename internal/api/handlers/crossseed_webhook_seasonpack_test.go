@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -191,7 +192,9 @@ func TestWebhookCheckNeedsALinkEligibleInstanceForAnAssembly(t *testing.T) {
 	status, answer := rig.webhookCheck(webhookPackRequest{TorrentName: endpointPack})
 	require.Equal(t, http.StatusNotFound, status)
 	require.Nil(t, answer.SeasonPack)
+	require.False(t, rig.webhookApply(endpointPack, endpointPackTorrent(t, 1, 4)).Success)
 	require.Zero(t, rig.arr.totals.Load())
+	require.Empty(t, rig.runs())
 }
 
 func TestWebhookApplyAssemblesThePackThatTheCheckMatched(t *testing.T) {
@@ -216,6 +219,7 @@ func TestWebhookApplyAssemblesThePackThatTheCheckMatched(t *testing.T) {
 	}{
 		{name: "episodes", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: endpointEpisodes(4), total: 4}},
 		{name: "seasonless episodes", pack: absolutePack, torrent: endpointTorrent(t, absolutePack, 1, absoluteFiles...), rig: seasonPackEndpointCase{held: absolute}},
+		{name: "Sonarr title", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: slices.Concat(endpointEpisodes(2), renamed[2:]), total: 4, sonarrTitles: []string{"Hafensignal"}}},
 		{name: "alternate title", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: renamed, total: 4, alternates: seasonPackAlternateTitles{"Hafensignal": {"Harbor Signal"}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -240,6 +244,15 @@ func TestWebhookApplyAssemblesThePackThatTheCheckMatched(t *testing.T) {
 	}
 }
 
+func TestWebhookApplyOfAPackWithNothingHeldWritesNoRun(t *testing.T) {
+	rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{total: 4}, heldTitlesReady)
+	applied := rig.webhookApply(endpointPack, endpointPackTorrent(t, 1, 4))
+	require.False(t, applied.Success)
+	require.Empty(t, applied.Results)
+	require.Zero(t, rig.arr.totals.Load())
+	require.Empty(t, rig.runs())
+}
+
 func TestWebhookApplyWithoutANameFollowsTheAutomaticSwitch(t *testing.T) {
 	pack := endpointPackTorrent(t, 1, 4)
 	for _, automatic := range []bool{false, true} {
@@ -249,7 +262,7 @@ func TestWebhookApplyWithoutANameFollowsTheAutomaticSwitch(t *testing.T) {
 			}}, heldTitlesReady)
 			applied := rig.webhookApply("", pack)
 			require.Equal(t, automatic, applied.Success)
-			require.EqualValues(t, map[bool]int64{true: 1}[automatic], rig.sync.adds.Load())
+			require.Equal(t, map[bool]int64{true: 1}[automatic], rig.sync.adds.Load())
 		})
 	}
 }

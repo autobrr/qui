@@ -75,6 +75,12 @@ func (l *heldLookup) addTitles(titles []string) {
 	}
 }
 
+func (l *heldLookup) shareWait(wait *heldWait) {
+	if l != nil && wait != nil {
+		l.wait = wait
+	}
+}
+
 func (l *heldLookup) awaitDueSyncs(ctx context.Context) (due bool) {
 	return l != nil && l.wait.await(ctx)
 }

@@ -111,7 +111,7 @@ func (s *Service) applyAutobrrAnnouncement(ctx context.Context, announcedName st
 	}
 	matches := s.findAutobrrAnnouncementMatches(ctx, announcedName, meta.Info.TotalLength(), instances, baseRequest, settings)
 	if len(matches) == 0 {
-		return &CrossSeedResponse{}, nil
+		return s.webhookSeasonPackApply(ctx, announcedName, baseRequest, instances, settings)
 	}
 
 	return s.invokeBoundAnnouncementMatches(ctx, matches, func(match boundAnnouncementMatch) *CrossSeedRequest {
