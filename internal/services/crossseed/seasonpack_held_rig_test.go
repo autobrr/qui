@@ -6,6 +6,7 @@ package crossseed
 import (
 	"encoding/base64"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -41,9 +42,9 @@ type packService struct {
 	sonarr *spyARRLookupService
 }
 
-func newPackRig(t *testing.T, libraries ...*heldLibrary) *packRig {
+func newPackRig(t *testing.T, root string, libraries ...*heldLibrary) *packRig {
 	t.Helper()
-	rig := &packRig{heldRig: newHeldRig(t, libraries...), links: t.TempDir()}
+	rig := &packRig{heldRig: newHeldRig(t, libraries...), links: filepath.Join(root, "links")}
 	for id := range rig.instances {
 		rig.linkTo(id)
 	}

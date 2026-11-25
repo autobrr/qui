@@ -70,11 +70,11 @@ type heldCandidates struct {
 }
 
 type heldTitlesQuery struct {
-	announced   namedRelease
-	size        int64
-	titles      []string
-	titlesOnly  bool
-	everySynced bool
+	announced     namedRelease
+	size          int64
+	addedKeys     []string
+	titlesOnly    bool
+	everyInstance bool
 }
 
 func (s *Service) StartHeldTitles(ctx context.Context, features *experimental.Features, reader heldTitlesSync, sinks syncSinks, sources []AlternateTitleSource) {
@@ -138,7 +138,7 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 	for _, title := range h.alternates.namedByAny(keys) {
 		keys = append(keys, title.identity.key)
 	}
-	keys = append(keys, query.titles...)
+	keys = append(keys, query.addedKeys...)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	found := map[int]heldCandidates{}
@@ -148,7 +148,7 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 			continue
 		}
 		isHelper := func(hash string) bool { return h.svc.isHelper(id, hash) }
-		held, waiting := inst.index.candidates(keys, query.size, !query.titlesOnly)
+		held, waiting := inst.index.candidates(keys, query)
 		held, waiting = slices.DeleteFunc(held, isHelper), slices.DeleteFunc(waiting, isHelper)
 		if len(held)+len(waiting) > 0 {
 			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting), alternateTitles: inst.alternateTitles(held)}
@@ -181,7 +181,7 @@ func (inst *heldInstance) alternateTitles(hashes []string) map[*qbt.Torrent][]st
 	return titles
 }
 
-func (x *heldIndex) candidates(keys []string, size int64, withWaiting bool) (held, waiting []string) {
+func (x *heldIndex) candidates(keys []string, query heldTitlesQuery) (held, waiting []string) {
 	seen := map[string]struct{}{}
 	add := func(hashes *[]string, hash string) {
 		if _, ok := seen[hash]; !ok {
@@ -194,11 +194,11 @@ func (x *heldIndex) candidates(keys []string, size int64, withWaiting bool) (hel
 			add(&held, hash)
 		}
 	}
-	for _, hash := range x.bySize[size] {
-		add(&held, hash)
-	}
-	if !withWaiting {
+	if query.titlesOnly {
 		return held, nil
+	}
+	for _, hash := range x.bySize[query.size] {
+		add(&held, hash)
 	}
 	for hash := range x.waiting {
 		add(&waiting, hash)

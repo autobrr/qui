@@ -55,9 +55,9 @@ func (p *packApplyService) linked() []string {
 	return sources
 }
 
-func packLibraryOnDisk(t *testing.T, torrents []qbt.Torrent) *heldLibrary {
+func packLibraryOnDisk(t *testing.T, root string, torrents []qbt.Torrent) *heldLibrary {
 	t.Helper()
-	media := t.TempDir()
+	media := filepath.Join(root, "media")
 	files := map[string]qbt.TorrentFiles{}
 	for i := range torrents {
 		file := torrents[i].Name + ".mkv"
@@ -108,7 +108,8 @@ func TestSeasonPackApplyEndsAsWithTheFullScan(t *testing.T) {
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			rig := newPackRig(t, packLibraryOnDisk(t, append(packTorrents('2', packNotHeldFile, 1), tt.held...)))
+			root := t.TempDir()
+			rig := newPackRig(t, root, packLibraryOnDisk(t, root, append(packTorrents('2', packNotHeldFile, 1), tt.held...)))
 			full, held := rig.applying(rig.full()), rig.applying(rig.held())
 			torrent := pack
 			if tt.torrent != "" {
@@ -158,7 +159,8 @@ func TestSeasonPackApplyLinksWhatTheCheckCountsThroughAnAlternateTitle(t *testin
 		"Sonarr down": func(s *spyARRLookupService) { s.err = errors.New("Sonarr does not answer") },
 	} {
 		t.Run(name, func(t *testing.T) {
-			rig := newPackRig(t, packLibraryOnDisk(t, packTorrents('4', packAliasedLocal, 1, 2, 3, 4)))
+			root := t.TempDir()
+			rig := newPackRig(t, root, packLibraryOnDisk(t, root, packTorrents('4', packAliasedLocal, 1, 2, 3, 4)))
 			held := rig.applying(rig.held(packAliasSource()))
 			requireAlternateTitles(t, held.Service, packAliasedKey)
 			set(held.sonarr)
@@ -196,7 +198,8 @@ func TestSeasonPackApplySurvivesARebuildBetweenCoverageAndAssembly(t *testing.T)
 		{"alternate title", packAliasedLocal, packAliased, packAliasedFile},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			rig := newPackRig(t, packLibraryOnDisk(t, packTorrents('4', tt.local, 1, 2, 3, 4)))
+			root := t.TempDir()
+			rig := newPackRig(t, root, packLibraryOnDisk(t, root, packTorrents('4', tt.local, 1, 2, 3, 4)))
 			held := rig.applying(rig.held(packAliasSource()))
 			if tt.local == packAliasedLocal {
 				requireAlternateTitles(t, held.Service, packAliasedKey)
@@ -215,7 +218,8 @@ func TestSeasonPackApplySurvivesARebuildBetweenCoverageAndAssembly(t *testing.T)
 
 func TestSeasonPackApplyTakesTheInstanceThatTheFullScanTakes(t *testing.T) {
 	pack := packOf(t, packShow, packShowEpisode, 1, 2, 3, 4)
-	rig := newPackRig(t, packLibraryOnDisk(t, packTorrents('1', packShowEpisode, 1, 2, 3)), packLibraryOnDisk(t, packTorrents('1', packShowEpisode, 1, 2, 3, 4)))
+	root := t.TempDir()
+	rig := newPackRig(t, root, packLibraryOnDisk(t, root, packTorrents('1', packShowEpisode, 1, 2, 3)), packLibraryOnDisk(t, root, packTorrents('1', packShowEpisode, 1, 2, 3, 4)))
 	full, held := rig.applying(rig.full()), rig.applying(rig.held())
 
 	want, got := full.apply(t, packShow, pack), held.apply(t, packShow, pack)

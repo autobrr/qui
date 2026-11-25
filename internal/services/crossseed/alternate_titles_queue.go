@@ -43,8 +43,8 @@ type alternateTitleQueue struct {
 type titleRetry struct {
 	*heldTitle
 
-	at         time.Time
-	unanswered bool
+	at   time.Time
+	owed bool
 }
 
 func (q *alternateTitleQueue) wakeRun() {
@@ -83,7 +83,7 @@ func (q *alternateTitleQueue) run(ctx context.Context) {
 			failed++
 			q.retry(title, time.Now().Add(alternateTitleRetry), !errors.Is(err, ErrTitleUnanswered))
 		} else if answer.Incomplete {
-			q.retry(title, time.Now().Add(incompleteAnswerRetry).Truncate(incompleteAnswerBatch), false)
+			q.retry(title, time.Now().Add(incompleteAnswerRetry).Truncate(incompleteAnswerBatch), true)
 		}
 		q.asked()
 		q.count(answer, err)
@@ -140,14 +140,14 @@ func (q *alternateTitleQueue) asked() {
 func (q *alternateTitleQueue) owesAnswer() bool {
 	return q.asking != nil && q.asking.holders > 0 ||
 		slices.ContainsFunc(q.waiting, func(title *heldTitle) bool { return title.holders > 0 }) ||
-		slices.ContainsFunc(q.retries, func(retry titleRetry) bool { return retry.unanswered && retry.holders > 0 })
+		slices.ContainsFunc(q.retries, func(retry titleRetry) bool { return retry.owed && retry.holders > 0 })
 }
 
-func (q *alternateTitleQueue) retry(title *heldTitle, at time.Time, unanswered bool) {
+func (q *alternateTitleQueue) retry(title *heldTitle, at time.Time, owed bool) {
 	q.titles.mu.Lock()
 	defer q.titles.mu.Unlock()
 	i, _ := slices.BinarySearchFunc(q.retries, at, func(r titleRetry, at time.Time) int { return r.at.Compare(at) })
-	q.retries = slices.Insert(q.retries, i, titleRetry{heldTitle: title, at: at, unanswered: unanswered})
+	q.retries = slices.Insert(q.retries, i, titleRetry{heldTitle: title, at: at, owed: owed})
 }
 
 func (q *alternateTitleQueue) count(answer AlternateTitles, err error) {
