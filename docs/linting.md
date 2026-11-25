@@ -67,8 +67,6 @@ Rule 8 reads each Go file that the branch changes. It takes a comment together w
 - These fail: a new or reworded comment, and an old comment whose line of code changes, moves away, or gets a new line above it.
 - These pass: a comment that moves with its code, also to another file, code that only gofmt changes, a directive between a comment and its code, and a change elsewhere in the function.
 
-Rule 8 also runs by itself, without golangci-lint: `go run ./scripts/ratchet -touched-comments`. The prek hook in `.pre-commit-config.yaml` runs it before a commit that changes a Go file.
-
 `web/scripts/no-comments-rule.mjs` and `scripts/comments/gocomments` list the markers that are not comments for this rule. The ESLint rule has no fix, because `make fmt` runs `eslint --fix` and must not delete a comment that nobody read. The `/delete-comment` skill sorts the comments of a file and deletes them.
 
 ### Lines About an Off Feature
