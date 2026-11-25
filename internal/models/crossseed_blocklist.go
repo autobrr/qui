@@ -14,7 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// CrossSeedBlocklistEntry represents a per-instance cross-seed blocklist item.
 type CrossSeedBlocklistEntry struct {
 	InstanceID int       `json:"instanceId"`
 	InfoHash   string    `json:"infoHash"`
@@ -130,7 +129,6 @@ func (s *CrossSeedBlocklistStore) Delete(ctx context.Context, instanceID int, in
 	return nil
 }
 
-// FindBlocked returns the first blocked infohash from the provided list.
 func (s *CrossSeedBlocklistStore) FindBlocked(ctx context.Context, instanceID int, hashes []string) (string, bool, error) {
 	if instanceID <= 0 || len(hashes) == 0 {
 		return "", false, nil

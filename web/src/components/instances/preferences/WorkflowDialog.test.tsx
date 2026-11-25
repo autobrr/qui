@@ -74,7 +74,6 @@ const key = (suffix: string) => `preferences.workflowDialog.${suffix}`
 
 describe("WorkflowDialog category validation", () => {
   it("rejects an unselected category for save and dry run, but accepts Uncategorized", async () => {
-    // Radix scrolls focused select options; jsdom has no layout.
     Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -126,9 +125,7 @@ describe("WorkflowDialog include hardlinks", () => {
   it.each([
     { name: "a local instance", hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true }, enabled: true },
     { name: "a remote instance", hasLocalFilesystemAccess: false, filesystemMode: "remote", capabilities: { ...noCapabilities, read: true }, enabled: false },
-    // Identity a remote host reports never adds torrents to a delete.
     { name: "a remote instance with the identity capability", hasLocalFilesystemAccess: false, filesystemMode: "remote", capabilities: { ...noCapabilities, read: true, identity: true }, enabled: false },
-    // The setting is off here, so only the capability can offer the option.
     { name: "an instance with the trusted identity capability", hasLocalFilesystemAccess: false, filesystemMode: "local", capabilities: { ...noCapabilities, read: true, identity: true, trustedIdentity: true }, enabled: true },
   ])("follows the trusted identity capability for $name", ({ hasLocalFilesystemAccess, filesystemMode, capabilities, enabled }) => {
     mocks.instancesQuery.data = [{ id: 1, hasLocalFilesystemAccess, filesystemMode, capabilities }]
@@ -169,7 +166,6 @@ describe("WorkflowDialog tracker pattern", () => {
     for (const chip of chips) {
       expect(screen.getAllByText(chip).length).toBeGreaterThan(0)
     }
-    // The selected mode button has the secondary variant; mixed selects neither.
     const selectedModes = ["trackerMatchInclude", "trackerMatchExclude"].filter((m) =>
       screen.queryByRole("button", { name: key(m) })?.className.includes("bg-secondary"))
     expect(selectedModes).toEqual(mode ? [mode] : [])
@@ -185,7 +181,6 @@ describe("WorkflowDialog tracker pattern", () => {
 })
 
 function renderDialog(dialogRule: Automation | null, instances: unknown[] = []) {
-  // Radix scrolls focused select options; jsdom has no layout.
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
   mocks.instancesQuery.data = instances
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -205,7 +200,6 @@ async function optionLabels(trigger: HTMLElement) {
   return screen.getAllByRole("option").map(option => option.textContent)
 }
 
-// Labels in actionRunOrder, without delete.
 const combinableLabels = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance", "transferToInstance"]
   .map(action => key(`actions.${action}`))
 
@@ -287,7 +281,6 @@ describe("WorkflowDialog Transfer to Instance", () => {
   })
 
   it("asks for a target instance before a save", async () => {
-    // Radix scrolls focused select options; jsdom has no layout.
     Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
     const client = renderRule({ schemaVersion: "1", pause: { enabled: true } })
 
@@ -334,7 +327,6 @@ describe("WorkflowDialog move path on a disabled rule", () => {
 
     expect(mocks.dryRun).not.toHaveBeenCalled()
     expect(screen.getByText(key("move.errors.mustBeAbsolute"))).not.toBeNull()
-    // The error explains the dry run; saving the disabled rule stays allowed.
     expect(screen.getByRole("button", { name: key("save") }).hasAttribute("disabled")).toBe(false)
     client.clear()
   })
@@ -352,7 +344,6 @@ describe("WorkflowDialog move path on a disabled rule", () => {
   })
 })
 
-// regression: #3859
 describe("WorkflowDialog Save flow", () => {
   const actions: Record<string, Automation["conditions"]> = {
     delete: {
@@ -382,7 +373,6 @@ describe("WorkflowDialog Save flow", () => {
     vi.useRealTimers()
   })
 
-  // Past the 400 ms debounce of the live preview and the 1 s minimum of the preview dialog.
   const settle = () => act(() => vi.advanceTimersByTimeAsync(1100))
 
   async function openEditor(dialogRule?: Automation) {
@@ -731,7 +721,6 @@ describe("WorkflowDialog Save flow", () => {
   })
 })
 
-// regression: #3012
 describe("WorkflowDialog mixed action conditions", () => {
   const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
   const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
@@ -762,7 +751,6 @@ describe("WorkflowDialog mixed action conditions", () => {
   })
 })
 
-// regression: #4188
 describe("WorkflowDialog switched-off actions", () => {
   const shown: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "shown" }
   const other: RuleCondition = { field: "RATIO", operator: "GREATER_THAN", value: "3" }
@@ -857,9 +845,7 @@ describe("WorkflowDialog free space source", () => {
     mocks.save.mockResolvedValue(rule)
   })
 
-  // regression: #4092
   it("keeps a saved allowance source while the capabilities load", async () => {
-    // The capabilities query has no data yet: mocks.query.data is undefined.
     const client = renderDialog(allowanceRule({
       schemaVersion: "1",
       pause: { enabled: true, condition: { field: "FREE_SPACE", operator: "LESS_THAN", value: "1000" } },
@@ -879,14 +865,12 @@ describe("WorkflowDialog free space source", () => {
     client.clear()
   })
 
-  // regression: #4092
   it("refuses an allowance that rounds to zero bytes", async () => {
     const client = renderDialog(allowanceRule({
       schemaVersion: "1",
       pause: { enabled: true, condition: { field: "FREE_SPACE", operator: "LESS_THAN", value: "1000" } },
     }), [localInstance])
 
-    // This figure is 0.1 bytes in TiB. A save would send no source, and the rule would read qBittorrent's free space.
     fireEvent.change(screen.getByLabelText(key("freeSpace.allowanceLabel")), { target: { value: "0.0000000000001" } })
     fireEvent.click(screen.getByRole("button", { name: key("save") }))
 

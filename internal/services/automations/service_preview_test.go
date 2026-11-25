@@ -72,7 +72,6 @@ func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 		trackerCustomizationStore: store,
 	}
 
-	// Both tracker fields match display names, so both must load the map.
 	for _, field := range []ConditionField{FieldTracker, FieldTrackers} {
 		t.Run(string(field), func(t *testing.T) {
 			cond := &RuleCondition{

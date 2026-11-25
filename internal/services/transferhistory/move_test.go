@@ -16,8 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// Writes that add to the recent torrent days while a move of those days runs
-// lose no byte and count no byte twice.
 func TestAMoveOfTheRecentTorrentDaysKeepsEachByteOfTheWritesBesideItPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {

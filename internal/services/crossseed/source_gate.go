@@ -12,8 +12,6 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// sourceFilter limits which local torrents a cross-seed can match. The zero
-// value passes every torrent.
 type sourceFilter struct {
 	categories        []string
 	tags              []string
@@ -25,10 +23,6 @@ func (f sourceFilter) hasRules() bool {
 	return len(f.categories) > 0 || len(f.tags) > 0 || len(f.excludeCategories) > 0 || len(f.excludeTags) > 0
 }
 
-// match reports whether a torrent is inside the filter. Matches are exact and
-// case-sensitive, and exclude rules come ahead of include rules. The webhook
-// check and the RSS loop call it for each torrent of an instance, so it reads
-// the tags only when the filter has a tag rule, and it allocates nothing.
 func (f sourceFilter) match(torrent *qbt.Torrent) bool {
 	if slices.Contains(f.excludeCategories, torrent.Category) {
 		return false
@@ -54,7 +48,6 @@ func (f sourceFilter) match(torrent *qbt.Torrent) bool {
 	return included
 }
 
-// sourceAnswer is what the Source gate says about one torrent.
 type sourceAnswer int
 
 const (
@@ -65,16 +58,10 @@ const (
 	sourceIncomplete
 )
 
-// lasting reports a refusal that does not end when qBittorrent finishes its
-// current work. An errored source needs the user, so it is no match at any
-// progress.
 func (a sourceAnswer) lasting() bool {
 	return a == sourceOutsideFilter || a == sourceErrored
 }
 
-// sourceGate is the Source gate (GLOSSARY.md): the one rule that says if a
-// torrent can give files to a cross-seed now. It joins the source filter, the
-// errored rule, and Settled source.
 type sourceGate struct {
 	recoverErrored bool
 }
@@ -83,8 +70,6 @@ func (s *Service) sourceGate() sourceGate {
 	return sourceGate{recoverErrored: s.recoverErroredTorrentsEnabled}
 }
 
-// check answers for one torrent. A moving torrent still reports the content
-// path of its download path, so a cross-seed added from it misses its files.
 func (g sourceGate) check(torrent *qbt.Torrent, filter sourceFilter) sourceAnswer {
 	switch {
 	case !filter.match(torrent):
@@ -100,7 +85,6 @@ func (g sourceGate) check(torrent *qbt.Torrent, filter sourceFilter) sourceAnswe
 	}
 }
 
-// requireSource returns why one named torrent cannot be a search source now.
 func (s *Service) requireSource(torrent *qbt.Torrent) error {
 	switch s.sourceGate().check(torrent, sourceFilter{}) {
 	case sourceErrored:
@@ -114,9 +98,6 @@ func (s *Service) requireSource(torrent *qbt.Torrent) error {
 	}
 }
 
-// sourceTurnRefusal returns the refusal in err that a Library Scan run reports
-// as a Skipped row with no cooldown, so the next run can search the torrent. It
-// returns nil for any other err.
 func sourceTurnRefusal(err error) error {
 	switch {
 	case errors.Is(err, ErrSourceNotSettled):
@@ -141,8 +122,6 @@ func isSourceMovingOrChecking(state qbt.TorrentState) bool {
 		state == qbt.TorrentStateMoving
 }
 
-// sourceFilterCounts counts, by category, what a source filter kept and
-// dropped. The RSS and webhook debug lines report it.
 type sourceFilterCounts struct {
 	kept     int
 	included map[string]int

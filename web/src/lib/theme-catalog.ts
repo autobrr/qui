@@ -5,11 +5,8 @@
 
 import type { Theme } from "@/config/themes"
 
-/** Theme id to shown (true) or hidden (false). Holds only the user's changes. */
 export type ThemeVisibility = Record<string, boolean>
 
-// The licensed themes that the quick pickers showed before the community themes
-// were built in (#3772). Every other licensed built-in theme starts hidden.
 const SHOWN_BY_DEFAULT = new Set([
   "amber-minimal",
   "amethyst-haze",
@@ -37,7 +34,6 @@ export function themeGroup(theme: Theme): ThemeGroup {
   return theme.isPremium ? "licensed" : "free"
 }
 
-/** True when the search text is in the name or the description of the theme, in any case. An empty search matches every theme. */
 export function themeMatchesSearch(theme: Theme, search: string): boolean {
   const needle = search.trim().toLowerCase()
   return !needle || theme.name.toLowerCase().includes(needle) || !!theme.description?.toLowerCase().includes(needle)
@@ -51,10 +47,6 @@ export function isThemeShown(theme: Theme, visibility: ThemeVisibility): boolean
   return Object.hasOwn(visibility, theme.id) ? visibility[theme.id] : isThemeShownByDefault(theme)
 }
 
-/**
- * Every theme in free, premium, custom order. With picker options, only the
- * themes that the quick pickers show, plus the theme in use.
- */
 export function buildThemeCatalog(
   builtInThemes: readonly Theme[],
   customThemes: readonly Theme[],

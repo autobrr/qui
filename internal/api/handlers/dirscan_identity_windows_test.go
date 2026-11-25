@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -43,10 +41,7 @@ func TestWebhookTriggerScan_WindowsDirectoryIdentity(t *testing.T) {
 			require.NoError(t, err)
 			instance, err := instances.Create(ctx, "synthetic", "http://localhost:8080", "", "", nil, nil, false, new(true))
 			require.NoError(t, err)
-			service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(db), nil,
-				nil, nil, nil, nil, nil, fsops.NewPool(instances, localbackend.NewBackend()), nil)
-			hub, events := newActivityHub(t)
-			service.SetActivityPublisher(hub)
+			service, scan := newSingleDirScanRun(db, fsops.NewPool(instances, localbackend.NewBackend()))
 			created, err := service.CreateDirectory(ctx, &models.DirScanDirectory{
 				Path: path, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
 			})
@@ -68,11 +63,9 @@ func TestWebhookTriggerScan_WindowsDirectoryIdentity(t *testing.T) {
 			if rec.Code != http.StatusAccepted {
 				return
 			}
-			var response dirScanTriggerResponse
-			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+			response := scan.response(t, rec)
 			assert.Equal(t, created.ID, response.DirectoryID)
 			assert.Equal(t, path, response.DirectoryPath)
-			waitDirScanIdle(t, service, events, created.ID)
 		})
 	}
 }

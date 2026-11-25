@@ -10,49 +10,41 @@ import (
 
 const defaultHistoryCapacity = 500
 
-// SearchHistoryEntry captures details of a completed search task.
 type SearchHistoryEntry struct {
 	ID     uint64 `json:"id"`
 	JobID  uint64 `json:"jobId"`
 	TaskID uint64 `json:"taskId"`
 
-	// Indexer details
 	IndexerID   int    `json:"indexerId"`
 	IndexerName string `json:"indexerName"`
 
-	// Search parameters
 	Query       string            `json:"query,omitempty"`
-	ReleaseName string            `json:"releaseName,omitempty"` // Original full release name
-	Params      map[string]string `json:"params,omitempty"`      // Raw params sent to indexer
+	ReleaseName string            `json:"releaseName,omitempty"`
+	Params      map[string]string `json:"params,omitempty"`
 	Categories  []int             `json:"categories,omitempty"`
 	ContentType string            `json:"contentType,omitempty"`
 	Priority    string            `json:"priority"`
 	SearchMode  string            `json:"searchMode,omitempty"`
 
-	// Results
-	Status      string `json:"status"` // success, error, skipped, rate_limited
+	Status      string `json:"status"`
 	ResultCount int    `json:"resultCount"`
 
-	// Timing
 	StartedAt   time.Time `json:"startedAt"`
 	CompletedAt time.Time `json:"completedAt"`
 	DurationMs  int       `json:"durationMs"`
 
-	// Error details (if applicable)
 	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
-// SearchHistoryBuffer is a thread-safe ring buffer for live search history.
 type SearchHistoryBuffer struct {
 	mu       sync.RWMutex
 	entries  []SearchHistoryEntry
-	head     int // Next write position
-	count    int // Current count (0 to capacity)
+	head     int
+	count    int
 	capacity int
 	nextID   uint64
 }
 
-// NewSearchHistoryBuffer creates a new ring buffer with the given capacity.
 func NewSearchHistoryBuffer(capacity int) *SearchHistoryBuffer {
 	if capacity <= 0 {
 		capacity = defaultHistoryCapacity
@@ -64,7 +56,6 @@ func NewSearchHistoryBuffer(capacity int) *SearchHistoryBuffer {
 	}
 }
 
-// Push adds an entry to the buffer and returns its assigned ID.
 func (b *SearchHistoryBuffer) Push(entry SearchHistoryEntry) uint64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -82,8 +73,6 @@ func (b *SearchHistoryBuffer) Push(entry SearchHistoryEntry) uint64 {
 	return entry.ID
 }
 
-// GetRecent returns the most recent entries, up to the specified limit.
-// Entries are returned in reverse chronological order (newest first).
 func (b *SearchHistoryBuffer) GetRecent(limit int) []SearchHistoryEntry {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -98,7 +87,6 @@ func (b *SearchHistoryBuffer) GetRecent(limit int) []SearchHistoryEntry {
 
 	result := make([]SearchHistoryEntry, limit)
 
-	// Start from the most recent entry (one before head)
 	idx := (b.head - 1 + b.capacity) % b.capacity
 	for i := 0; i < limit; i++ {
 		result[i] = b.entries[idx]
@@ -108,69 +96,55 @@ func (b *SearchHistoryBuffer) GetRecent(limit int) []SearchHistoryEntry {
 	return result
 }
 
-// Count returns the current number of entries in the buffer.
 func (b *SearchHistoryBuffer) Count() int {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.count
 }
 
-// HistoryRecorder is the interface for recording search history.
 type HistoryRecorder interface {
 	Record(entry SearchHistoryEntry)
 }
 
-// historyRecorderImpl combines in-memory buffer with optional persistent store.
 type historyRecorderImpl struct {
 	buffer *SearchHistoryBuffer
-	// store will be added when SQLite persistence is implemented
 }
 
-// NewHistoryRecorder creates a new history recorder with the given buffer.
 func NewHistoryRecorder(buffer *SearchHistoryBuffer) HistoryRecorder {
 	return &historyRecorderImpl{
 		buffer: buffer,
 	}
 }
 
-// Record adds an entry to both the in-memory buffer and persistent store.
 func (r *historyRecorderImpl) Record(entry SearchHistoryEntry) {
 	if r.buffer != nil {
 		r.buffer.Push(entry)
 	}
-	// Persistent store recording will be added later
 }
-
-// --- Indexer Outcome Tracking ---
 
 const defaultOutcomeCapacity = 1000
 
-// IndexerOutcome represents the cross-seed outcome for a specific indexer's search results.
 type IndexerOutcome struct {
-	Outcome    string    `json:"outcome"`              // "added", "failed", "no_match", ""
-	AddedCount int       `json:"addedCount,omitempty"` // Number of torrents added from this indexer
+	Outcome    string    `json:"outcome"`
+	AddedCount int       `json:"addedCount,omitempty"`
 	Message    string    `json:"message,omitempty"`
 	RecordedAt time.Time `json:"recordedAt"`
 }
 
-// indexerOutcomeKey uniquely identifies an indexer's results within a job.
 type indexerOutcomeKey struct {
 	JobID     uint64
 	IndexerID int
 }
 
-// IndexerOutcomeStore tracks cross-seed outcomes per (JobID, IndexerID).
-// Uses a bounded map with a ring buffer for FIFO eviction.
 type IndexerOutcomeStore struct {
 	mu       sync.RWMutex
 	outcomes map[indexerOutcomeKey]IndexerOutcome
-	ring     []indexerOutcomeKey // Ring buffer for FIFO eviction
-	head     int                 // Next write position (also oldest entry when full)
-	count    int                 // Current entries (0 to maxSize)
+	ring     []indexerOutcomeKey
+	head     int
+	count    int
 	maxSize  int
 }
 
-// NewIndexerOutcomeStore creates a new outcome store with the given capacity.
 func NewIndexerOutcomeStore(maxSize int) *IndexerOutcomeStore {
 	if maxSize <= 0 {
 		maxSize = defaultOutcomeCapacity
@@ -182,14 +156,12 @@ func NewIndexerOutcomeStore(maxSize int) *IndexerOutcomeStore {
 	}
 }
 
-// Record stores an outcome for a specific (jobID, indexerID) pair.
 func (s *IndexerOutcomeStore) Record(jobID uint64, indexerID int, outcome string, addedCount int, message string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	key := indexerOutcomeKey{JobID: jobID, IndexerID: indexerID}
 
-	// Update existing entry without changing eviction order
 	if _, exists := s.outcomes[key]; exists {
 		s.outcomes[key] = IndexerOutcome{
 			Outcome:    outcome,
@@ -200,7 +172,6 @@ func (s *IndexerOutcomeStore) Record(jobID uint64, indexerID int, outcome string
 		return
 	}
 
-	// New entry - evict oldest if at capacity
 	if s.count >= s.maxSize {
 		oldest := s.ring[s.head]
 		delete(s.outcomes, oldest)
@@ -208,7 +179,6 @@ func (s *IndexerOutcomeStore) Record(jobID uint64, indexerID int, outcome string
 		s.count++
 	}
 
-	// Write new key at head and advance
 	s.ring[s.head] = key
 	s.head = (s.head + 1) % s.maxSize
 
@@ -220,7 +190,6 @@ func (s *IndexerOutcomeStore) Record(jobID uint64, indexerID int, outcome string
 	}
 }
 
-// Get retrieves the outcome for a specific (jobID, indexerID) pair.
 func (s *IndexerOutcomeStore) Get(jobID uint64, indexerID int) (IndexerOutcome, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -228,23 +197,20 @@ func (s *IndexerOutcomeStore) Get(jobID uint64, indexerID int) (IndexerOutcome, 
 	return oc, ok
 }
 
-// Count returns the current number of outcomes stored.
 func (s *IndexerOutcomeStore) Count() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.outcomes)
 }
 
-// SearchHistoryEntryWithOutcome extends SearchHistoryEntry with outcome data for API responses.
 type SearchHistoryEntryWithOutcome struct {
 	SearchHistoryEntry
-	Outcome    string `json:"outcome,omitempty"`    // "added", "failed", "no_match", ""
-	AddedCount int    `json:"addedCount,omitempty"` // Torrents added from this indexer
+	Outcome    string `json:"outcome,omitempty"`
+	AddedCount int    `json:"addedCount,omitempty"`
 }
 
-// SearchHistoryResponseWithOutcome is the API response that includes outcome data.
 type SearchHistoryResponseWithOutcome struct {
 	Entries []SearchHistoryEntryWithOutcome `json:"entries"`
 	Total   int                             `json:"total"`
-	Source  string                          `json:"source"` // "memory" or "database"
+	Source  string                          `json:"source"`
 }

@@ -15,21 +15,14 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// exportRunner runs Export to Instance as Export runs of the Transfer
-// module.
 type exportRunner interface {
 	Export(ctx context.Context, req transfer.ExportRequest) (int64, <-chan transfer.ExportResult, error)
 }
 
-// SetExportRunner runs Export to Instance on the Transfer module. Call it
-// once at start-up.
 func (s *Service) SetExportRunner(runner exportRunner) {
 	s.exportRunner = runner
 }
 
-// exportOnTransfers runs one export as an Export run of the Transfer module,
-// and sends the activity of its end. The run has no time limit, and it
-// resumes after a restart of qui, without an activity.
 func (s *Service) exportOnTransfers(ctx context.Context, sourceInstanceID int, exec pendingExportToInstance, ch chan<- *models.AutomationActivity) {
 	ctx = context.WithoutCancel(ctx)
 	defer func() {
@@ -37,7 +30,6 @@ func (s *Service) exportOnTransfers(ctx context.Context, sourceInstanceID int, e
 		delete(s.inFlightExports, fmt.Sprintf("%d:%s", exec.action.TargetInstanceID, exec.hash))
 		s.mu.Unlock()
 	}()
-	// Another run can export the torrent after this run planned it.
 	if _, exists, err := s.targetLookup.HasTorrentByAnyHash(ctx, exec.action.TargetInstanceID, []string{exec.hash}); err == nil && exists {
 		return
 	}
@@ -69,7 +61,6 @@ func (s *Service) exportOnTransfers(ctx context.Context, sourceInstanceID int, e
 	s.sendExportActivity(ctx, ch, exportActivity(sourceInstanceID, exec, cmp.Or(res.TrackerDomain, exec.trackerDomain), outcome, res.Failure))
 }
 
-// exportActivity is the activity of the end of an export.
 func exportActivity(sourceInstanceID int, exec pendingExportToInstance, trackerDomain, outcome, reason string) *models.AutomationActivity {
 	details, _ := json.Marshal(struct { //nolint:errchkjson // int and string fields cannot fail to encode
 		Count            int    `json:"count"`

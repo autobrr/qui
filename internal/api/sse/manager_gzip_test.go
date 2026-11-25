@@ -15,9 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// connectStreamGzip opens an SSE connection that advertises gzip and returns a
-// reader over the decompressed body plus the response, so callers can assert on
-// the negotiated encoding.
 func connectStreamGzip(t *testing.T, srv *httptest.Server, payload []map[string]any) (*sseReader, *http.Response) {
 	t.Helper()
 
@@ -27,12 +24,6 @@ func connectStreamGzip(t *testing.T, srv *httptest.Server, payload []map[string]
 	return newSSEReader(zr), resp
 }
 
-// TestGzipStreamFlushesEveryEvent is the reason this change is risky. A gzip
-// writer that is not flushed per event holds bytes in the deflate buffer, so the
-// init snapshot may still arrive (it is large enough to spill on its own) while
-// every later tick sits in the compressor until the buffer fills. The visible
-// failure is "the whole table stopped updating", not a decode error, so assert a
-// second event arrives on a still-open compressed stream.
 func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -61,9 +52,6 @@ func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 	require.Equal(t, canned.Total, updatePayload.Data.Total)
 }
 
-// TestStreamStaysPlainWithoutGzip pins the negotiated half. A reverse proxy that
-// strips or refuses gzip must still get a readable stream, byte for byte what it
-// got before compression existed.
 func TestStreamStaysPlainWithoutGzip(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -74,9 +62,6 @@ func TestStreamStaysPlainWithoutGzip(t *testing.T) {
 	instanceID := seedActiveInstance(t, manager)
 	srv := startStreamServer(t, manager)
 
-	// DisableCompression keeps the transport from adding its own Accept-Encoding and
-	// transparently decoding the reply, which would hide an unwanted Content-Encoding
-	// from the assertion below.
 	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
 
 	for _, encoding := range []string{"", "identity", "gzip;q=0"} {
@@ -104,9 +89,6 @@ func TestStreamStaysPlainWithoutGzip(t *testing.T) {
 	}
 }
 
-// TestGzipNegotiationReadsRepeatedHeaderLines guards the Values-not-Get call site:
-// Go keeps repeated Accept-Encoding field lines separate, so Header.Get would read
-// only "br" here and the client would silently lose compression.
 func TestGzipNegotiationReadsRepeatedHeaderLines(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -157,10 +139,6 @@ func TestAcceptsGzip(t *testing.T) {
 	}
 }
 
-// TestGzipSessionWriterKeepsUnwrapChain guards the silent failure. Three loops walk
-// this chain (flushSession, initFlushError, and the ResponseController Serve builds
-// from the raw writer). A wrapper without Unwrap still streams perfectly while
-// slow-client eviction and init-flush error detection quietly stop working.
 func TestGzipSessionWriterKeepsUnwrapChain(t *testing.T) {
 	rec := httptest.NewRecorder()
 	sw := newBufferedSessionWriter(rec, http.NewResponseController(rec), streamWriteTimeout, func() {})

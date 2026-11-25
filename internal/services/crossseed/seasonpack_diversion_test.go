@@ -20,8 +20,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// buildSeasonPackTorrentB64 builds a minimal multi-file season pack torrent and
-// returns it base64-encoded, as CrossSeedRequest.TorrentData expects.
 func buildSeasonPackTorrentB64(t *testing.T, name string, episodeFiles []string) string {
 	t.Helper()
 
@@ -198,10 +196,6 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 	}
 }
 
-// TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend covers the mixed-instance
-// case: the diverted instance has no prior entry in response.Results (direct
-// candidates existed on another instance), so the appended result must resolve
-// the instance name via the store instead of staying blank.
 func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
 	t.Parallel()
 
@@ -236,8 +230,6 @@ func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
 	require.Equal(t, "Show.Title.S01.1080p.WEB.H264-GRP", response.Results[1].MatchedTorrent.Name)
 }
 
-// TestMaybeDivertSeasonPack_NamesTheCrossSeedInstance covers a routed pack: the
-// result keeps the Source instance and names the Cross-seed instance that got the add.
 func TestMaybeDivertSeasonPack_NamesTheCrossSeedInstance(t *testing.T) {
 	t.Parallel()
 
@@ -269,10 +261,6 @@ func TestMaybeDivertSeasonPack_NamesTheCrossSeedInstance(t *testing.T) {
 	require.Equal(t, "seedbox", result.CrossSeedInstanceName)
 }
 
-// TestProcessAutomationCandidate_DownloadsPackForDiversion covers the RSS flow:
-// zero direct candidates normally skip before downloading the torrent, but when
-// the library holds same-title episodes and the automation toggle is on, the item
-// must still be downloaded and passed to CrossSeed so the diversion can run.
 func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 	t.Parallel()
 
@@ -360,10 +348,6 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 	}
 }
 
-// TestMaybeDivertSeasonPack_RecordsFailCooldown verifies which diversion
-// outcomes stamp the packfail cooldown: verdict-style failures cool, while
-// invalid_torrent (another indexer may serve a valid payload) and success
-// leave no stamp.
 func TestMaybeDivertSeasonPack_RecordsFailCooldown(t *testing.T) {
 	t.Parallel()
 
@@ -411,10 +395,6 @@ func TestMaybeDivertSeasonPack_RecordsFailCooldown(t *testing.T) {
 	}
 }
 
-// TestProcessAutomationCandidate_PackFailCooldownSkipsDownload covers the RSS
-// chokepoint: when diversion is the only reason to download and the release
-// name recently failed diversion, the item is skipped before the .torrent
-// download; an expired stamp downloads again.
 func TestProcessAutomationCandidate_PackFailCooldownSkipsDownload(t *testing.T) {
 	t.Parallel()
 
@@ -499,8 +479,6 @@ func TestPrepareSeasonPack_AutonomousGating(t *testing.T) {
 		automationEnabled bool
 		wantReason        string
 	}{
-		// Empty payloads: passing the enable gate yields "invalid_payload",
-		// failing it yields "disabled" — enough to observe the gate alone.
 		{"autonomous requires automation toggle", true, true, false, "disabled"},
 		{"autonomous admitted by automation toggle", true, false, true, "invalid_payload"},
 		{"webhook requires webhook toggle", false, false, true, "disabled"},

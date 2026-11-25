@@ -11,17 +11,12 @@ import { cn } from "@/lib/utils"
 export interface Fact {
   label: string
   value: ReactNode
-  /** A second line under the value, for example a relative time. */
   hint?: ReactNode
-  /** Sets the value in the monospace font, for a version, a path, or an address. */
   mono?: boolean
-  /** The text that a copy button next to the value copies. */
   copy?: string
-  /** A button for the value, for example Install update. */
   action?: ReactNode
 }
 
-/** Read-only values with their labels: side by side on a wide screen, the label above the value on a phone. */
 export function Facts({ items }: { items: readonly Fact[] }) {
   return (
     <dl className="divide-y">
@@ -30,7 +25,7 @@ export function Facts({ items }: { items: readonly Fact[] }) {
           <dt className="text-sm text-muted-foreground">{fact.label}</dt>
           <dd className="flex min-w-0 items-start gap-2">
             <div className="min-w-0 flex-1">
-              <div className={cn("[overflow-wrap:anywhere]", fact.mono ? "font-mono text-[13px]" : "text-sm font-medium")}>{fact.value}</div>
+              <div className={cn("[overflow-wrap:anywhere]", fact.mono ? "font-mono text-13" : "text-sm font-medium")}>{fact.value}</div>
               {fact.hint && <div className="mt-0.5 text-xs text-muted-foreground">{fact.hint}</div>}
             </div>
             {fact.action}

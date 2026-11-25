@@ -5,12 +5,6 @@ const webRoot = path.resolve(import.meta.dirname, "..")
 const localesRoot = path.join(webRoot, "src", "i18n", "locales")
 const enRoot = path.join(localesRoot, "en")
 
-// Plural rules are written out per locale, never derived from CLDR: i18next resolves a category a
-// locale lacks against English instead of against another category, and the categories a locale
-// actually needs are narrower than CLDR lists. ko has no `one` at all; cs `many` covers decimals
-// only, which every count is floored past; fr/it/ca/pt-BR `many` fires at exact millions alone.
-// `hasOne: false` lets a locale omit `_one`; a required category is satisfied by an unsuffixed
-// catch-all key, which i18next answers every category with.
 const localeRules = {
   fr: {},
   de: {},
@@ -126,8 +120,6 @@ function hasBOM(buffer) {
     && buffer[2] === 0xBF
 }
 
-// Bases English pluralizes. Only these require plural forms from a locale, and only these make a
-// locale-only `_few`/`_many` key legitimate rather than a leftover.
 function englishPluralBases(enFlat) {
   const bases = new Set()
 
@@ -142,8 +134,6 @@ function englishPluralBases(enFlat) {
   return bases
 }
 
-// The English key a locale key is compared against: itself, or the `_other` form behind a category
-// English does not have, so a cs `_few` value is still checked for placeholders and markup.
 function comparableEnKey(key, enFlat, rule) {
   if (enFlat.has(key)) return key
 
@@ -189,8 +179,6 @@ function checkExtraKeys(enFlat, localeFlat, namespace, rule, pluralBases) {
   return errors
 }
 
-// Without its required categories a locale renders English at those counts, which reads as a working
-// translation. checkMissingKeys already covers the categories English itself has.
 function checkPluralForms(localeFlat, namespace, rule, pluralBases) {
   const errors = []
 
@@ -262,8 +250,6 @@ function classifyUntranslated(key, value) {
   if (/^[\w+.-]+:\/\//.test(value)) return "url"
   if (/^[*?[\]{}|\\^$.,;:!@#%&()=<>_+\-\w\s]+$/.test(value) && /[*?|\\]/.test(value)) return "pattern"
   if (/placeholder/i.test(key) || /example/i.test(key)) return "example"
-  // A rate suffix such as "{{unit}}/s" is the same string in most locales; a locale that does
-  // write its own (uk "{{unit}}/с") differs from English and never reaches this classifier.
   if (/^\s*\/\s*(s|min|h|d)\s*$/.test(value.replace(/\{\{[^}]*\}\}/g, ""))) return "rate"
   if (passthroughTerms.has(value)) return "technical"
 
@@ -446,7 +432,6 @@ function checkLocale(locale) {
   const rule = localeRules[locale]
   const localeRoot = path.join(localesRoot, locale)
 
-  // A configured locale without a directory is a misconfiguration, not a locale still being added.
   if (!fs.existsSync(localeRoot)) {
     console.error(`${locale} locale directory not found: ${localeRoot}`)
     return 1

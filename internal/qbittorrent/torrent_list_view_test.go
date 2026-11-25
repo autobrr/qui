@@ -18,8 +18,6 @@ const (
 	viewTestOrigin  = "https://tracker.example.invalid"
 )
 
-// newViewTestManager serves two active instances that each hold the same two
-// torrents. It returns the ID of the first instance.
 func newViewTestManager(t *testing.T) (*SyncManager, int) {
 	t.Helper()
 	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "qbittorrent-list-view"), make([]byte, 32))

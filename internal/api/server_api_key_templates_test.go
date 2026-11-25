@@ -85,9 +85,7 @@ type templateRig struct {
 
 func (rig *templateRig) keyWith(t *testing.T, perms []models.Permission, instanceIDs []int) string {
 	t.Helper()
-	raw, _, err := rig.deps.AuthService.CreateAPIKey(t.Context(), "template", slices.Clone(perms), instanceIDs)
-	require.NoError(t, err)
-	return raw
+	return newUsedAPIKey(t, rig.authDB, "template", slices.Clone(perms), instanceIDs)
 }
 
 func (rig *templateRig) call(t *testing.T, method, pattern string, keyInQuery bool, key string) (int, string) {

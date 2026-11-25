@@ -29,24 +29,20 @@ const (
 	adderBudget = int64(5 << 20)
 )
 
-// withAdder gives svc the real Adder over its own qBittorrent fake,
-// blocklist store, and Settler, and an Aligner with short waits.
 func withAdder(svc *Service) {
 	svc.adder = NewAdder(svc.syncManager, svc.blocklistStore, svc.settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = testAligner(svc.syncManager)
 }
 
-// adderFake is the qBittorrent seam of the Adder.
 type adderFake struct {
 	addedIDs    []string
 	instanceIDs []int
 	existing    *qbt.Torrent
-	// existingOn limits existing to one instance when it is set.
-	existingOn int
-	findErr    error
-	addErr     error
-	added      []map[string]string
-	actions    []string
+	existingOn  int
+	findErr     error
+	addErr      error
+	added       []map[string]string
+	actions     []string
 }
 
 func (f *adderFake) AddTorrent(_ context.Context, instanceID int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -69,14 +65,10 @@ func (f *adderFake) BulkAction(_ context.Context, _ int, hashes []string, action
 	return nil
 }
 
-// linkCheck is the Pre-add check that the regular add hands to link mode.
 func linkCheck(instanceID int, hashes ...string) PreAddCheck {
 	return PreAddCheck{instanceID: instanceID, hashes: dedupeHashes(hashes...)}
 }
 
-// withLinkAdder gives svc the real Adder over the three-method qBittorrent fake
-// and the blocklist store of svc. Call it after startSettleScript, which
-// replaces the Settler.
 func withLinkAdder(svc *Service) *adderFake {
 	sync := &adderFake{}
 	svc.adder = NewAdder(sync, svc.blocklistStore, svc.settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
@@ -100,7 +92,6 @@ func newAdderRig(t *testing.T, sync *adderFake, blocklist *models.CrossSeedBlock
 	return rig
 }
 
-// queued returns the torrent that the add handed to Settle, or nil.
 func (r *adderRig) queued() *pendingResume {
 	select {
 	case req := <-r.settler.queue:
@@ -554,17 +545,14 @@ func TestAdderAddFailureDoesNotRetry(t *testing.T) {
 	require.Empty(t, rig.programs)
 }
 
-// Dir Scan reads the Result class of each refusal and each add.
 func TestAdderResultClass(t *testing.T) {
 	t.Parallel()
 
 	existing := &qbt.Torrent{Hash: adderV1, Name: "Existing"}
 	tests := []struct {
-		name string
-		sync *adderFake
-		// blocked puts adderV1 on the blocklist.
-		blocked bool
-		// add runs the add with these facts after a clear Pre-add check.
+		name          string
+		sync          *adderFake
+		blocked       bool
 		add           *AddFacts
 		afterAddFails bool
 		want          ResultClass
@@ -607,7 +595,6 @@ func TestAdderResultClass(t *testing.T) {
 		})
 	}
 
-	// A refusal status with no entry in the table is failed.
 	require.Equal(t, ClassFailed, AddResult{Status: "unknown_status"}.Class())
 }
 
@@ -616,20 +603,17 @@ func TestAdderCheck(t *testing.T) {
 
 	existing := &qbt.Torrent{Hash: adderV1, Name: "Existing"}
 	tests := []struct {
-		name         string
-		facts        AddFacts
-		blocked      string
-		blocklistErr bool
-		existing     *qbt.Torrent
-		existingOn   int
-		findErr      error
-		// link stores a route between instance 1 and instance 2.
-		link *adderLink
-		// noRoutes leaves the Adder without the route service.
-		noRoutes    bool
-		wantStatus  string
-		wantMessage string
-		// wantMessageRe matches a message that holds a transport error.
+		name          string
+		facts         AddFacts
+		blocked       string
+		blocklistErr  bool
+		existing      *qbt.Torrent
+		existingOn    int
+		findErr       error
+		link          *adderLink
+		noRoutes      bool
+		wantStatus    string
+		wantMessage   string
 		wantMessageRe string
 		wantExisting  *qbt.Torrent
 	}{
@@ -665,7 +649,6 @@ func TestAdderCheck(t *testing.T) {
 			wantStatus: "error", wantMessage: "Cross-seed instance unavailable: seeds: qBittorrent instance is disabled",
 		},
 		{name: "blocklist of a Source instance does not apply", link: &adderLink{fromSource: true, blocked: true}},
-		// A user with no saved route sees no change.
 		{name: "no saved route checks no other instance", link: &adderLink{unsaved: true}, existing: existing, existingOn: 2},
 		{name: "without the route service no linked instance is checked", link: &adderLink{}, noRoutes: true, existing: existing, existingOn: 2},
 	}
@@ -706,8 +689,6 @@ func TestAdderCheck(t *testing.T) {
 	}
 }
 
-// adderBlocklist returns a blocklist store on the test database that blocks
-// hash on instance 1, or no entry when hash is empty, and the database.
 func adderBlocklist(t *testing.T, hash string) (*models.CrossSeedBlocklistStore, *database.DB) {
 	t.Helper()
 
@@ -725,22 +706,13 @@ func adderBlocklist(t *testing.T, hash string) (*models.CrossSeedBlocklistStore,
 	return store, db
 }
 
-// adderLink is a route between instance 1 and instance 2.
 type adderLink struct {
-	// fromSource makes instance 2 a Source instance that routes to instance 1.
-	// Otherwise instance 1 routes to instance 2.
 	fromSource bool
-	// state of instance 2: online when empty, "disabled", or "offline".
-	state string
-	// blocked puts adderV1 on the blocklist of instance 2.
-	blocked bool
-	// unsaved leaves the route table empty.
-	unsaved bool
+	state      string
+	blocked    bool
+	unsaved    bool
 }
 
-// adderRoutes adds instance 2 to db, "lib" as a Source instance or "seeds" as
-// a Cross-seed instance, on a local fake qBittorrent. It stores the route of
-// link, unless link.unsaved, and returns the route service.
 func adderRoutes(t *testing.T, db *database.DB, link adderLink) *crossseedroute.Service {
 	t.Helper()
 	ctx := t.Context()

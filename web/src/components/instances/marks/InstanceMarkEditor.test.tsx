@@ -39,7 +39,6 @@ function renderEditor() {
 }
 
 describe("InstanceMarkEditor", () => {
-  // regression: #4290
   it.each([
     { name: "closes on Enter", init: {}, closes: true },
     { name: "stays open on the Enter that confirms input-method text in Safari", init: { keyCode: 229 }, closes: false },
@@ -51,7 +50,6 @@ describe("InstanceMarkEditor", () => {
     expect(onOpenChange.mock.calls).toEqual(closes ? [[false]] : [])
   })
 
-  // regression: #4290
   it("leaves the icon grid with Shift+Tab after an arrow key moved the focus", async () => {
     const user = userEvent.setup()
     renderEditor()

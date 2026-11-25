@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The category edit tests in internal/qbittorrent depend on the stub editing
-// a category the way each qBittorrent version does.
 func TestEditCategoryFollowsTheVersion(t *testing.T) {
 	edit := func(t *testing.T, s *Server, form url.Values) int {
 		t.Helper()
@@ -61,8 +59,6 @@ func TestEditCategoryFollowsTheVersion(t *testing.T) {
 	})
 }
 
-// The Transfer tests depend on the stub checking pieces as qBittorrent does:
-// a damaged piece fails, and an incomplete file gets the .!qB extension.
 func TestHashCheckFindsDamagedPieces(t *testing.T) {
 	dir := t.TempDir()
 	s := New(t, dir)

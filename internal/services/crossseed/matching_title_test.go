@@ -13,8 +13,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// strictCompare is the strict compare of two releases without raw names or
-// Sonarr alternate titles.
 func (m matcher) strictCompare(source, candidate *rls.Release, findIndividualEpisodes bool) releaseComparison {
 	return m.compareReleases(namedRelease{release: source}, namedRelease{release: candidate}, nil, nil, findIndividualEpisodes, true)
 }
@@ -70,7 +68,6 @@ func TestReleasesMatch_NonTVRequiresCompatibleType(t *testing.T) {
 func TestReleasesMatch_ArtistMustMatch(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
-	// Different artists with same title should NOT match (regression test for 0day scene)
 	adamBeyer := rls.Release{
 		Type:   rls.Music,
 		Artist: "Adam Beyer",
@@ -113,7 +110,6 @@ func TestReleasesMatch_ArtistMustMatch(t *testing.T) {
 func TestReleasesMatch_DateBasedReleasesRequireExactDate(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
-	// Same year but different month/day should NOT match (0day scene releases)
 	oct4 := rls.Release{
 		Type:   rls.Music,
 		Artist: "Artist",
@@ -144,7 +140,6 @@ func TestReleasesMatch_DateBasedReleasesRequireExactDate(t *testing.T) {
 		Group:  "GROUP",
 	}
 
-	// Release with only year (no month/day) - e.g. albums
 	yearOnly := rls.Release{
 		Type:   rls.Music,
 		Artist: "Artist",
@@ -158,7 +153,6 @@ func TestReleasesMatch_DateBasedReleasesRequireExactDate(t *testing.T) {
 	require.True(t, s.strictCompare(&oct4, &sameDate, false).matched(),
 		"same year/month/day should match")
 
-	// Year-only releases should still be allowed to match each other
 	anotherYearOnly := rls.Release{
 		Type:   rls.Music,
 		Artist: "Artist",
@@ -361,14 +355,11 @@ func TestReleasesMatch_PunctuationVariations(t *testing.T) {
 func TestReleasesMatch_TVTitleMustNotUseSubstringMatching(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
-	// Regression: different shows that share a common prefix should not match.
-	// Example: "FBI" vs "FBI Most Wanted".
 	fbi := rls.ParseString("FBI.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb")
 	fbiMostWanted := rls.ParseString("FBI.Most.Wanted.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb")
 	require.False(t, s.strictCompare(&fbi, &fbiMostWanted, false).matched())
 	require.False(t, s.strictCompare(&fbiMostWanted, &fbi, false).matched(), "match should be symmetric")
 
-	// Another common case: main series vs spinoff where the spinoff embeds the parent title.
 	sao := rls.ParseString("Sword.Art.Online.S01.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0")
 	ggo := rls.ParseString("Sword.Art.Online.Alternative.Gun.Gale.Online.S01.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0")
 	require.False(t, s.strictCompare(&sao, &ggo, false).matched())
@@ -460,8 +451,6 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 	}
 }
 
-// rls ends a title at a slash, so "Fate/strange Fake" parsed as only "Fate" and
-// an exact-size cross-seed of the same release was rejected as a title mismatch.
 func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -516,13 +505,11 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 	}
 }
 
-// A season pack named "Title III" with S03 files is the release a tracker lists
-// as "Title S03", so the title without the season numeral must match.
 func TestReleasesMatch_SeasonNumeral(t *testing.T) {
 	tests := []struct {
 		name          string
 		sourceName    string
-		sourceSeason  int // season read from the files, which the name lacks
+		sourceSeason  int
 		candidateName string
 		wantReason    string
 	}{
@@ -685,9 +672,6 @@ func TestRawAKATitleParts(t *testing.T) {
 	}
 }
 
-// A matcher built without a release cache must read the same titles as one
-// built with a cache. Before the fallback, a bare matcher parsed every name to
-// an empty release and lost the slash title (ADR 0008).
 func TestAppendNormalizedReleaseTitles_NoReleaseCacheReadsLikeCache(t *testing.T) {
 	for _, name := range []string{
 		"Fate/strange Fake S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",

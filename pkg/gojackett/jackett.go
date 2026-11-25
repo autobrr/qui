@@ -39,8 +39,6 @@ type Config struct {
 	Timeout int
 	Log     *log.Logger
 
-	// DirectMode enables direct tracker API access instead of proxying through Jackett
-	// When true, Host should be the direct tracker URL (e.g., https://www.morethantv.me/api/torznab)
 	DirectMode bool
 }
 

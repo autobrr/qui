@@ -20,20 +20,16 @@ import { useId } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-// A running Share changes as its recipient announces, every few minutes at most.
 const REFRESH_MS = 15_000
 
-/** The icon of each state, in the colors of the state icons of the Transfers section. */
 const stateIcons: Record<ShareState, { icon: LucideIcon; className: string }> = {
   active: { icon: Radio, className: "text-emerald-500" },
   ending: { icon: Loader2, className: "motion-safe:animate-spin" },
   ended: { icon: CircleSlash, className: "text-muted-foreground" },
 }
 
-/** The end reason codes that have a text in each language. The server sends "other" for a reason with no code. */
 const translatedEndReasons = new Set(["downloaded", "expired", "stopped", "torrent_deleted", "torrent_moved", "files_renamed", "share_torrent_gone"])
 
-/** The Shares section of the Transfers page: one row for each Share, the newest first. */
 export function SharesTab() {
   const { t } = useTranslation("shares")
   const query = useQuery({ queryKey: sharesQueryKey, queryFn: listShares, refetchInterval: REFRESH_MS })
@@ -51,7 +47,6 @@ export function SharesTab() {
       {shares.length === 0 ? (
         <EmptyTile title={t("tab.empty")} />
       ) : (
-        // The table reaches the edges of the card, as the tables of Statistics do, and fits its columns to the card.
         <div className="@container -mx-6 border-t max-sm:-mx-4">
           <Table>
             <TableHeader>
@@ -89,7 +84,6 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
     ? t("tab.endedAt", { date: formatDate(new Date(share.endedAt)) })
     : t("tab.endsAt", { date: formatDate(new Date(share.expiresAt)) })
 
-  // A step of the row runs: every button waits, and the one that runs shows a spinner.
   const step = (label: string, icon: LucideIcon, run: (id: number) => Promise<void>, destructive = false): RowAction => ({
     label,
     icon,
@@ -118,14 +112,12 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
   return (
     <TableRow data-share-id={share.id}>
       <TableCell className="w-full max-w-0 pl-6 align-top whitespace-normal max-sm:pl-4">
-        {/* The name wraps in full on touch, where no pointer opens its tooltip. */}
         <div id={nameId} className="font-medium"><TorrentName name={display.name(share)} className="pointer-fine:line-clamp-2" /></div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
           <span>{instanceName}</span>
           <span aria-hidden="true">·</span>
           <span>{end}</span>
         </div>
-        {/* A narrow table has no State column, so the row names the state and the progress here. */}
         <div className="mt-1 text-xs @lg:hidden">
           <StateLabel state={share.state} />
           {progress}
@@ -134,8 +126,6 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
           <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
             {translatedEndReasons.has(share.endReasonCode)
               ? t(`tab.endReason.${share.endReasonCode}`)
-              // A reason with no code, such as a failed start, has no translation, so the row shows the English text of the server.
-              // That text can name the instance, so incognito mode hides it.
               : display.text(share.endReason)}
           </p>
         )}

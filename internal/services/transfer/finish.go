@@ -31,10 +31,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
-// prove proves each member before qui touches the source: by its own check
-// of every piece with a confirmed flush, or else by a check-only helper
-// torrent that checks every piece of the member on the target. qui's own
-// check never covers the files that were on the target before the Transfer.
 func (j *job) prove(ctx context.Context) error {
 	checking := false
 	for _, p := range j.parts {
@@ -78,11 +74,6 @@ func (j *job) prove(ctx context.Context) error {
 	return nil
 }
 
-// checkOnTarget checks every piece of the member on the target with a
-// check-only helper torrent and returns what the check found. The helper
-// finds each file that qui writes under its temporary name, and each file
-// that was on the target through a hardlink, so that qBittorrent renames no
-// file that qui did not write. The links are gone when it returns.
 func (j *job) checkOnTarget(ctx context.Context, p *part) ([]qbt.PieceState, error) {
 	defer j.unlink(context.WithoutCancel(ctx), p)
 	if err := j.link(ctx, p); err != nil {
@@ -169,10 +160,6 @@ func (j *job) removeHelper(ctx context.Context) error {
 	return nil
 }
 
-// place renames the copy into place and adds each member: on the target,
-// stopped and in seed mode, with the file names of the source, and on the
-// Cross-seed instance of the target through the routed cross-seed add. A
-// member that the target took in an earlier run stays.
 func (j *job) place(ctx context.Context) error {
 	again := j.reached(stepPlace)
 	if err := j.stepWith(ctx, StateFinishing, stepPlace, headStartDetail(j.files)); err != nil {
@@ -203,9 +190,6 @@ func (j *job) place(ctx context.Context) error {
 	return j.addMembers(ctx)
 }
 
-// addMembers adds each member that the target or its Cross-seed instance
-// does not have yet, and waits for the check of each routed member. Then it
-// turns Automatic Torrent Management on.
 func (j *job) addMembers(ctx context.Context) error {
 	var representative *part
 	for _, p := range j.parts {
@@ -235,8 +219,6 @@ func (j *job) addMembers(ctx context.Context) error {
 	return j.manage(ctx)
 }
 
-// addOnTarget adds the member on the target when the target does not have it
-// yet, and leaves it complete there, at the file names of the source.
 func (j *job) addOnTarget(ctx context.Context, p *part) error {
 	complete := false
 	if !j.added(p) {
@@ -250,20 +232,14 @@ func (j *job) addOnTarget(ctx context.Context, p *part) error {
 	}
 	switch {
 	case j.reachedFor(stepRename, p.Hash):
-		// Seed mode takes a file that a rename moved on trust, in this run
-		// and in each later one. Only a check of the bytes proves it.
 		j.logf("%s checks the files of %s after their rename.", j.target.Name, j.the(p, "the"))
 		return j.recheck(ctx, p)
 	case !complete:
-		// A member from an earlier run can miss its files on the target.
 		return j.check(ctx, p)
 	}
 	return nil
 }
 
-// putInPlace renames each file that qui wrote from its temporary name to its
-// name. A Transfer torrent on a target that qui cannot reach downloaded the
-// files in place.
 func (j *job) putInPlace(ctx context.Context, again bool) error {
 	if j.blind {
 		return nil
@@ -278,8 +254,6 @@ func (j *job) putInPlace(ctx context.Context, again bool) error {
 	return nil
 }
 
-// placeFile renames the temporary file of a file into place. When the
-// Transfer resumes after the step place, the file can be in place already.
 func (j *job) placeFile(ctx context.Context, name string, again bool) error {
 	temp := j.tempName(name)
 	_, err := j.root.Lstat(ctx, temp)
@@ -304,7 +278,6 @@ func (j *job) placeFile(ctx context.Context, name string, again bool) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, fs.ErrExist) && again:
-		// A stop can come between the link and the remove of the rename.
 		same, err := j.sameFile(ctx, temp, name)
 		switch {
 		case err != nil:
@@ -334,12 +307,6 @@ func (j *job) sameFile(ctx context.Context, a, b string) (bool, error) {
 	return ai.FileIDErr == nil && !ai.FileID.IsZero() && bi.FileIDErr == nil && ai.FileID == bi.FileID, nil
 }
 
-// add adds the member on the target, stopped and in seed mode. qui records
-// that the target did not have it before the add, and that the target took
-// it after the answer. Without an answer, a torrent on the target may be
-// qui's or the user's. It reports whether the target shows the member
-// complete: the target misses the files of a member whose names no layout
-// gives, until the rename and the check after it.
 func (j *job) add(ctx context.Context, p *part) (complete bool, err error) {
 	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash); err != nil {
 		return false, err
@@ -377,8 +344,6 @@ func (j *job) add(ctx context.Context, p *part) (complete bool, err error) {
 	return res.Outcome == torrentadd.Verified, nil
 }
 
-// check makes sure that the target shows the member complete, and has the
-// target check its files when it does not.
 func (j *job) check(ctx context.Context, p *part) error {
 	req := torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: 1, PollInterval: j.svc.deps.Config.PollInterval}
 	if res := j.svc.adder.Confirm(ctx, req); res.Outcome == torrentadd.Verified {
@@ -391,8 +356,6 @@ func (j *job) check(ctx context.Context, p *part) error {
 	return j.recheck(ctx, p)
 }
 
-// recheck has the target check the files of the member, and fails when a
-// piece does not pass. The member stays stopped.
 func (j *job) recheck(ctx context.Context, p *part) error {
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.Recheck(ctx, torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: cfg.CheckPolls, PollInterval: cfg.PollInterval})
@@ -405,11 +368,6 @@ func (j *job) recheck(ctx context.Context, p *part) error {
 	return nil
 }
 
-// manage turns Automatic Torrent Management on for the members that the
-// target manages. Each add put its member on manual management at the folder
-// of its files, so that the target found them there. A target that saves the
-// category elsewhere by now moves the files itself, so this comes after the
-// last add, in one request: the members move together.
 func (j *job) manage(ctx context.Context) error {
 	var hashes []string
 	for _, p := range j.parts {
@@ -427,17 +385,10 @@ func (j *job) manage(ctx context.Context) error {
 	return nil
 }
 
-// addCrossSeed adds the member on the Cross-seed instance of the target, on
-// links to the files of the representative. The cross-seed add starts a
-// check of the member and leaves it stopped. qui records the add once the
-// member is on the Cross-seed instance, so the next run adds a member that
-// the cross-seed add refused again. A member that is there after a refused
-// add stays someone else's.
 func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 	if representative == nil {
 		return permanent("%s has no torrent on %s to link %s to.", j.crossSeed.Name, j.target.Name, p.Name)
 	}
-	// The routed add reads the route when it runs, so it goes where the route points now.
 	route, err := j.svc.deps.Routes.Get(ctx, j.target.ID)
 	if err != nil {
 		return temporary("qui cannot read the cross-seed route of %s: %v", j.target.Name, err)
@@ -487,8 +438,6 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 	return temporary("%s did not take %s: %s", j.crossSeed.Name, p.Name, why)
 }
 
-// crossSeedChecked waits until the check that the cross-seed add started
-// finds every piece of the member, also when a stop came during the wait.
 func (j *job) crossSeedChecked(ctx context.Context, p *part) error {
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.ConfirmRecheck(ctx, torrentadd.Request{
@@ -506,9 +455,6 @@ func (j *job) crossSeedChecked(ctx context.Context, p *part) error {
 	return nil
 }
 
-// ownershipUnknown stops the Transfer when an instance has a member after
-// an add that did not answer. qui keeps the torrents and their files there,
-// and leaves the source as it is.
 func (j *job) ownershipUnknown(p *part) error {
 	inst := j.instanceOf(p)
 	return permanent("Ownership unknown: %s has %s, but its add did not answer, so qui cannot tell who added it. "+
@@ -541,18 +487,11 @@ func commonRoot(names []string) string {
 	return root
 }
 
-// rename gives each file of the member on the target the name that it has
-// on the source. A file at an old name is a conflict: qBittorrent would move
-// it over the copy. qBittorrent lists a new name some time after it takes
-// the rename, and refuses a second rename from the old name, so qui sends
-// each rename once and then waits for the names. It records that it sends
-// renames for the member before the first one.
 func (j *job) rename(ctx context.Context, p *part) error {
 	ctx = qbittorrent.WithPostAddBulkActionRetry(ctx)
 	want := names(p.plan)
 	sent := false
 	for poll := range j.svc.deps.Config.Polls {
-		// The first list after the renames comes at once.
 		if poll > 1 {
 			if err := j.pause(ctx, poll); err != nil {
 				return err
@@ -577,8 +516,6 @@ func (j *job) rename(ctx context.Context, p *part) error {
 	return temporary("The file names of the torrent on %s differ from the source.", j.target.Name)
 }
 
-// sendRenames sends a rename for each file of the member that the target
-// lists at another name than want.
 func (j *job) sendRenames(ctx context.Context, p *part, listed []qbt.TorrentFile, want []string) error {
 	if !j.reachedFor(stepRename, p.Hash) {
 		if err := j.stepWith(ctx, StateFinishing, stepRename, p.Hash); err != nil {
@@ -601,8 +538,6 @@ func (j *job) sendRenames(ctx context.Context, p *part, listed []qbt.TorrentFile
 	return nil
 }
 
-// noFileAtOldName fails when a file is at the old name of a rename on the
-// target. The copy itself under another case of its name is no conflict.
 func (j *job) noFileAtOldName(ctx context.Context, old, name string) error {
 	_, err := j.root.Lstat(ctx, old)
 	switch {
@@ -621,10 +556,6 @@ func (j *job) noFileAtOldName(ctx context.Context, old, name string) error {
 	return j.inTheWay(old)
 }
 
-// oneFile reports whether two names that differ only in case lead to one
-// file on the target, as in a folder that ignores case: no folder on the way
-// holds both names. It reads the folders, because a target over SFTP has no
-// file identities.
 func (j *job) oneFile(ctx context.Context, a, b string) (bool, error) {
 	if !strings.EqualFold(a, b) {
 		return false, nil
@@ -648,9 +579,6 @@ func (j *job) oneFile(ctx context.Context, a, b string) (bool, error) {
 	return true, nil
 }
 
-// after stops the source, starts the target, and then removes or keeps the
-// torrents on the source as the user chose. A cancel rolls back until the
-// removal from the source starts.
 func (j *job) after(ctx context.Context) error {
 	if err := j.checkInstances(ctx); err != nil {
 		return err
@@ -697,7 +625,6 @@ func (j *job) after(ctx context.Context) error {
 	return j.removeFromSource(ctx, keep)
 }
 
-// running returns the members that run on the source.
 func (j *job) running(ctx context.Context) ([]string, error) {
 	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
 	if err != nil {
@@ -712,9 +639,6 @@ func (j *job) running(ctx context.Context) ([]string, error) {
 	return running, nil
 }
 
-// finishRemoval goes on with the removal from the source after a stop. It
-// keeps the files when the recorded step says why, and else checks again
-// why to keep them, because an instance or a torrent may use them now.
 func (j *job) finishRemoval(ctx context.Context) error {
 	if !j.svc.commit(j.rec.ID) {
 		return errCancelled
@@ -746,9 +670,6 @@ func (j *job) finishRemoval(ctx context.Context) error {
 	return j.removeFromSource(ctx, keep)
 }
 
-// removeFromSource removes the torrents from the source, and their files
-// unless keep says why they stay or the user chose to keep them. On a source
-// whose files qui cannot reach, qBittorrent removes the files.
 func (j *job) removeFromSource(ctx context.Context, keep string) error {
 	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
 	if err != nil {
@@ -778,7 +699,6 @@ func (j *job) removeFromSource(ctx context.Context, keep string) error {
 	return nil
 }
 
-// startTarget starts the member where it landed and waits until it seeds.
 func (j *job) startTarget(ctx context.Context, p *part) error {
 	inst := j.instanceOf(p)
 	if err := j.svc.deps.Sync.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), inst.ID, []string{p.Hash}, "resume"); err != nil {
@@ -811,16 +731,11 @@ func (j *job) startTarget(ctx context.Context, p *part) error {
 	return temporary("%s on %s did not start to seed: qBittorrent shows %q.", j.the(p, "The"), inst.Name, last)
 }
 
-// keepReason says why qui keeps the files on the source, empty when it may
-// remove them.
 func (j *job) keepReason(ctx context.Context) string {
 	if j.rec.Way == WayNone {
 		return j.target.Name + " reads the same files"
 	}
 	if j.blind {
-		// Only a download of every byte proves that the target had no file
-		// of its own, which may be a file of the source. A resumed download
-		// counts only the bytes of its last run.
 		var size int64
 		for _, f := range j.files {
 			size += f.size
@@ -859,10 +774,6 @@ func (j *job) keepReason(ctx context.Context) string {
 	return ""
 }
 
-// changedOnSource says why qui keeps the files when a member on the source
-// moved or names its files otherwise than when qui copied them. qui removes
-// the files on the source by the recorded save path and names, so a file of
-// someone else may now have one of these paths.
 func (j *job) changedOnSource(ctx context.Context) string {
 	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
 	if err != nil {
@@ -896,9 +807,6 @@ func (j *job) hostKeyPin(inst *models.Instance) []byte {
 	return pin
 }
 
-// removeSourceFiles removes the files that qui copied from the source, and
-// the folders that this leaves empty below the save path of each member. A
-// file whose size changed stays.
 func (j *job) removeSourceFiles(ctx context.Context) {
 	paths := j.srcFiles.Paths()
 	folders := map[string]struct{}{}

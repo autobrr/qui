@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
-// File attaches a synthetic reparse tag to an existing fixture file.
-// It has no provider data, so metadata and deletion work but normal reads do not.
 func File(t *testing.T, path string, tag uint32) {
 	t.Helper()
 	p, err := pathutil.Win32PathPointer(path)
@@ -28,7 +26,6 @@ func File(t *testing.T, path string, tag uint32) {
 
 	data := make([]byte, 8)
 	if tag&0x80000000 == 0 {
-		// Non-Microsoft tags require a provider GUID as well as the header.
 		data = make([]byte, 24)
 		copy(data[8:], []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
 	}

@@ -42,7 +42,6 @@ describe("addUrlsByIndexer", () => {
     expect(partial.failedURLs).toEqual([{ url: "b", error: "indexer down" }, { url: "c", error: "indexer down" }])
   })
 
-  // regression: #4354
   it("fails when every request fails, so the dialog stays open", async () => {
     const add = async (): Promise<AddTorrentResponse> => {
       throw new Error("indexer down")

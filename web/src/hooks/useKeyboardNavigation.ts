@@ -6,7 +6,6 @@
 import { useEffect, type RefObject } from "react"
 import { type Virtualizer } from "@tanstack/react-virtual"
 
-// Number of rows from the end to trigger loading more data
 const LOAD_MORE_THRESHOLD = 50
 
 interface UseKeyboardNavigationProps {
@@ -29,17 +28,15 @@ export function useKeyboardNavigation({
   estimatedRowHeight = 40,
 }: UseKeyboardNavigationProps) {
 
-  // Set up keyboard event listeners
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Don't handle if typing in an input, textarea, or contenteditable
       const target = event.target as HTMLElement
       if (
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
         target.contentEditable === "true" ||
-        target.closest("[role=\"dialog\"]") || // Don't handle in modals
-        target.closest("[role=\"combobox\"]") // Don't handle in dropdowns
+        target.closest("[role=\"dialog\"]") ||
+        target.closest("[role=\"combobox\"]")
       ) {
         return
       }
@@ -49,17 +46,12 @@ export function useKeyboardNavigation({
 
       if (!container) return
 
-      // Note: Escape key handling is now unified in Torrents.tsx
-      // to close panel and clear selection atomically
-
-      // Only handle standard navigation keys
       const navigationKeys = ["PageUp", "PageDown", "Home", "End"]
       if (!navigationKeys.includes(key)) return
 
       event.preventDefault()
       event.stopPropagation()
 
-      // Check if user prefers reduced motion for scroll behavior
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
       const scrollBehavior = prefersReducedMotion ? "auto" : "smooth"
 
@@ -78,7 +70,6 @@ export function useKeyboardNavigation({
             behavior: scrollBehavior,
           })
 
-          // Trigger loading if needed
           if (targetIndex >= safeLoadedRows - LOAD_MORE_THRESHOLD && !hasLoadedAll && !isLoadingMore) {
             loadMore()
           }
@@ -97,7 +88,6 @@ export function useKeyboardNavigation({
             behavior: scrollBehavior,
           })
 
-          // Trigger loading if needed
           if (targetIndex >= safeLoadedRows - LOAD_MORE_THRESHOLD && !hasLoadedAll && !isLoadingMore) {
             loadMore()
           }
@@ -114,7 +104,6 @@ export function useKeyboardNavigation({
 
         case "End": {
           if (hasLoadedAll) {
-            // Scroll to the last item
             const lastItemOffset = (safeLoadedRows - 1) * estimatedRowHeight
             const targetOffset = Math.max(0, lastItemOffset - viewportHeight + estimatedRowHeight)
 
@@ -123,7 +112,6 @@ export function useKeyboardNavigation({
               behavior: scrollBehavior,
             })
           } else {
-            // Scroll to bottom of currently loaded content and trigger load
             const totalSize = virtualizer.getTotalSize()
             const targetOffset = Math.max(0, totalSize - viewportHeight)
 
@@ -132,7 +120,6 @@ export function useKeyboardNavigation({
               behavior: scrollBehavior,
             })
 
-            // Trigger loading of more items
             if (!isLoadingMore) {
               loadMore()
             }
@@ -142,7 +129,6 @@ export function useKeyboardNavigation({
       }
     }
 
-    // Use window-level listener to work anywhere on the page
     window.addEventListener("keydown", handleKeyDown)
 
     return () => {

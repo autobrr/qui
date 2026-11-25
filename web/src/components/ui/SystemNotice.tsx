@@ -58,7 +58,6 @@ export function SystemNoticeDetail({ notice, titleAs: Title = "p", titleId, onNa
   const hasDismissButton = notice.kind === "low_disk"
   const { formatClockTime } = useDateTimeFormatters()
   const openedAt = new Date(notice.openedAt)
-  // Like the row, the detail counts a notice under one minute old as one minute.
   const ageFrom = new Date(Math.min(openedAt.getTime(), now - 60 * 1000))
 
   return (
@@ -72,7 +71,7 @@ export function SystemNoticeDetail({ notice, titleAs: Title = "p", titleId, onNa
           </p>
         </div>
       </div>
-      <div className="space-y-1.5 px-4 pb-3 pl-9 pt-2.5 text-[13px] leading-relaxed">
+      <div className="space-y-1.5 px-4 pb-3 pl-9 pt-2.5 text-13 leading-relaxed">
         <p>{description.effect}</p>
         <p className="text-muted-foreground">{description.fix}</p>
       </div>
@@ -107,9 +106,6 @@ type SystemNoticeDialogProps = {
   onClose: () => void
 }
 
-// SystemNoticeDialog shows the detail of one notice, for the menus, where no
-// popover fits beside the row. It closes when notice becomes undefined, and
-// then gives focus to returnFocusTo, because the dialog has no trigger of its own.
 export function SystemNoticeDialog({ notice, returnFocusTo, onClose }: SystemNoticeDialogProps) {
   return (
     <Dialog open={notice !== undefined} onOpenChange={(open) => !open && onClose()}>

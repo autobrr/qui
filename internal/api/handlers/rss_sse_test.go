@@ -129,9 +129,6 @@ func TestRSSSSEInitialCheckOmitsArticleData(t *testing.T) {
 	}
 }
 
-// The last viewer can leave while a new viewer joins: removeClient decides to
-// stop the poller, the new viewer's ensurePoller sees it still running, and
-// then the stop lands. The poller must survive while the instance has a viewer.
 func TestRSSSSEStopPollerKeepsPollerForConnectedViewer(t *testing.T) {
 	handler := &RSSSSEHandler{
 		getRSSItems: func(context.Context, int, bool) (qbt.RSSItems, error) { return qbt.RSSItems{}, nil },
@@ -169,7 +166,6 @@ func TestRSSSSEEndsOnShutdown(t *testing.T) {
 		pollers:  make(map[int]context.CancelFunc),
 	}
 
-	// The request context stays open: http.Server.Shutdown does not cancel it.
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances/1/rss/events", nil)
 	routeCtx := chi.NewRouteContext()
 	routeCtx.URLParams.Add("instanceID", "1")
@@ -205,7 +201,6 @@ func readRSSEvent(t *testing.T, stream *bufio.Reader, eventType string) string {
 	}
 }
 
-// regression: #4474
 func TestRSSStreamHidesLinksPerSubscriber(t *testing.T) {
 	const fullFeed = `{"uid":"{1}","url":"https://tracker.example/rss/made-up-feed-key/feed.xml","title":"Feed https://tracker.example/rss?key=made-up-title-key","articles":[` +
 		`{"id":"https://tracker.example/dl/1?guid=made-up-guid-key","title":"Show.S01","date":"Tue, 24 Nov 2026 08:00:00 +0000",` +
@@ -237,11 +232,8 @@ func TestRSSStreamHidesLinksPerSubscriber(t *testing.T) {
 		feed       string
 		namedByURL string
 	}{
-		// regression: #4474
 		{"key without Torrents write", &models.APIKey{Permissions: []models.Permission{rssRead}}, hiddenFeed, hiddenNamedByURL},
-		// regression: #4474
 		{"key with Torrents write", &models.APIKey{Permissions: []models.Permission{rssRead, {Area: models.AreaTorrents, Level: models.LevelWrite}}}, fullFeed, namedByURL},
-		// regression: #4474
 		{"session", nil, fullFeed, namedByURL},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

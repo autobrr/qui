@@ -8,12 +8,9 @@ import { useInstances } from "@/hooks/useInstances"
 import { cn } from "@/lib/utils"
 import { Link } from "@tanstack/react-router"
 
-// Disguise vocabulary, not UI copy: deliberately English and not translated.
 const ADD_SHEET_ARIA = "Add workbook"
 const ADD_SHEET_MARK = "+"
 
-// Sheet tabs = instances. The "+" adds a workbook, i.e. links to instance
-// management in settings.
 export function SpreadsheetSheetTabs({ currentInstanceId }: { currentInstanceId: number }) {
   const { instances } = useInstances()
   const activeInstances = instances?.filter((instance) => instance.isActive) ?? []

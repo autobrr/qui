@@ -21,24 +21,18 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import type { Instance } from "@/types"
 import { ChevronDown, Loader2 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-// Nothing clones files over sftp, so reflink mode stays local-only even though
-// a remote instance has Write (#2942).
 function reflinkAllowed(instance: Instance): boolean {
   return instance.capabilities.write && instance.filesystemMode === "local"
 }
 
-// ponytail: trims, joins repeated separators after the first character (a UNC
-// prefix stays), drops a trailing separator, and applies NFC as the server keys
-// do. A path with "." or ".." segments reads as removed and opens one confirm too many.
 function baseDirKey(dir: string): string {
   return dir.trim().normalize("NFC").replace(/(?<=.)([\\/])[\\/]+/g, "$1").replace(/(?<=.)[\\/]+$/, "")
 }
 
-/** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */
 export function HardlinkModeSettings({
   pooledPartialCompletionEnabled,
   onPooledPartialCompletionEnabledChange,
@@ -67,13 +61,9 @@ export function HardlinkModeSettings({
     [instances]
   )
 
-  // Auto-expand when 3 or fewer instances (only on first load)
-  useEffect(() => {
-    if (isOpen === undefined && instances !== undefined) {
-      const activeCount = (instances ?? []).filter((inst) => inst.isActive).length
-      setIsOpen(activeCount <= 3)
-    }
-  }, [instances, isOpen])
+  if (isOpen === undefined && instances !== undefined) {
+    setIsOpen(activeInstances.length <= 3)
+  }
 
   const getForm = useCallback((instance: Instance) => {
     return formMap[instance.id] ?? {
@@ -120,7 +110,6 @@ export function HardlinkModeSettings({
   const handleSave = (instance: Instance) => {
     const form = getForm(instance)
 
-    // Validate before saving
     if ((form.useHardlinks && !instance.capabilities.write) || (form.useReflinks && !reflinkAllowed(instance))) {
       const mode = form.useReflinks ? "reflink" : "hardlink"
       toast.error(t("toast.cannotEnableMode", { mode }), {
@@ -137,16 +126,11 @@ export function HardlinkModeSettings({
       return
     }
 
-    // A switch to Regular or an empty list on a Source instance gets the
-    // server's refusal (#3259). Removing a base folder of a route asks first.
-    // The route is read now, not from a cached list, because another tab can have saved one.
     if (form.useHardlinks || form.useReflinks) {
       setChecking(true)
       void api.getCrossSeedRoute(instance.id)
         .then(route => {
           const kept = form.hardlinkBaseDir.split(",").map(baseDirKey)
-          // The read also has an empty row for a base folder saved after the route,
-          // and the orphan scan protects the torrents under it.
           const removed = route?.rows.filter(row => !kept.includes(baseDirKey(row.baseDir))) ?? []
           if (!route || !removed.length) return saveInstance(instance)
           const crossSeedName = instances?.find(i => i.id === route.crossSeedInstanceId)?.name ?? ""
@@ -266,7 +250,6 @@ export function HardlinkModeSettings({
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
                     <div className="space-y-4 pt-2">
-                      {/* Link mode selection */}
                       <div className="space-y-2">
                         <Label className="font-medium">{t("rules.crossSeedMode")}</Label>
                         {!canEnableModes && (
@@ -277,7 +260,6 @@ export function HardlinkModeSettings({
                         <RadioGroup
                           value={form.useReflinks ? "reflink" : form.useHardlinks ? "hardlink" : "regular"}
                           onValueChange={(value) => handleModeChange(instance.id, value as "regular" | "hardlink" | "reflink", form)}
-                          // The dialog counts the form read at Save, so the form waits for the route read.
                           disabled={isUpdating || checking}
                           className="space-y-2"
                         >
@@ -379,7 +361,6 @@ export function HardlinkModeSettings({
                         <Button
                           size="sm"
                           onClick={() => handleSave(instance)}
-                          // A second click during the route read would start a second check.
                           disabled={isUpdating || checking}
                         >
                           {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

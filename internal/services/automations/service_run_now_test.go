@@ -26,7 +26,6 @@ func (p *recordingPublisher) Publish(ev activity.Event) {
 	p.events = append(p.events, ev)
 }
 
-// newRunNowService gives a live run time to finish; Config{} leaves ApplyTimeout at zero.
 func newRunNowService(t *testing.T) (*Service, int) {
 	t.Helper()
 	svc, instanceID := newDryRunParityService(t, defaultParityFixture())

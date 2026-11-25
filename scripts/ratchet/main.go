@@ -28,22 +28,11 @@ type counts map[string]map[string]int
 
 func main() {
 	base := flag.String("base", "origin/develop", "git ref whose allowlist this one may not exceed")
-	updateComments := flag.Bool("update-comments", false, "write the comment count of each Go file to the allowlist, then stop")
 	lower := flag.Bool("lower", false, "lower each allowlist entry above the count of its file before the check, and delete an entry at 0")
 	flag.Parse()
 
-	if *updateComments {
-		if err := writeCommentCounts(); err != nil {
-			fail(err)
-		}
-		return
-	}
-
 	got, err := lint()
 	if err != nil {
-		fail(err)
-	}
-	if got[commentsLinter], err = goComments(); err != nil {
 		fail(err)
 	}
 	if got[mapAnyLinter], err = mapAnyCounts(); err != nil {
@@ -73,7 +62,6 @@ func main() {
 			fail(err)
 		}
 	}
-	// A wrong ref must fail, not skip the growth check.
 	//nolint:gosec // the developer or CI picks -base
 	if err := exec.CommandContext(context.Background(), "git", "rev-parse", "--verify", "--quiet", *base+"^{commit}").Run(); err != nil {
 		fail(fmt.Errorf("-base %s is not a commit: %w", *base, err))
@@ -109,6 +97,11 @@ func main() {
 		fail(err)
 	}
 	problems = append(problems, oversized...)
+	comments, err := commentProblems()
+	if err != nil {
+		fail(err)
+	}
+	problems = append(problems, comments...)
 
 	for _, linter := range slices.Sorted(maps.Keys(got)) {
 		fmt.Printf("ratchet: %s has %d problems in %d files\n", linter, sum(got[linter]), len(got[linter]))
@@ -162,7 +155,6 @@ func parseLint(raw []byte) (counts, error) {
 		if got[issue.FromLinter] == nil {
 			got[issue.FromLinter] = map[string]int{}
 		}
-		// The allowlist uses slash paths, including on Windows.
 		filename := strings.ReplaceAll(issue.Pos.Filename, `\`, "/")
 		got[issue.FromLinter][filename]++
 	}
@@ -243,8 +235,6 @@ func writeAllowlist(allow counts) error {
 func growth(allow, base counts) []string {
 	var problems []string
 	for _, linter := range slices.Sorted(maps.Keys(allow)) {
-		// A linter that the base does not list is a new rule, which starts
-		// with the count of each file.
 		if _, ok := base[linter]; !ok {
 			continue
 		}
@@ -305,7 +295,6 @@ func enabledLinters() (map[string]bool, error) {
 func nolintProblems(enabled map[string]bool) ([]string, error) {
 	out, err := exec.CommandContext(context.Background(), "git", "grep", "-lz", "nolint", "--", "*.go").Output()
 	if err != nil {
-		// git grep exits 1 when nothing matches.
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1 {
 			return nil, nil
 		}
@@ -347,10 +336,6 @@ func hidesGocognit(comment string) bool {
 	return slices.Contains(names, "gocognit") || slices.Contains(names, "all")
 }
 
-// nolintNames returns the linters that a nolint directive names, or "all". It
-// follows extractInlineRangeFromComment in golangci-lint v2.14.0
-// pkg/result/processors/nolint_filter.go, where a bare "nolint", "nolint "
-// and any "nolint:all" prefix hide every linter.
 func nolintNames(comment string) []string {
 	text := strings.TrimLeft(comment, "/ ")
 	list, ok := strings.CutPrefix(text, "nolint:")

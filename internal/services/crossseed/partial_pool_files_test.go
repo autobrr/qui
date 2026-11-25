@@ -16,7 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// regression: #4220
 func TestBuildPartialPoolFileDescriptorsJoinsV2RootsByPath(t *testing.T) {
 	t.Parallel()
 
@@ -26,7 +25,6 @@ func TestBuildPartialPoolFileDescriptorsJoinsV2RootsByPath(t *testing.T) {
 		Name:        "Synthetic.Release",
 		MetaVersion: 2,
 		PieceLength: 16,
-		// Hybrid v1 order deliberately disagrees with sorted v2 traversal.
 		Files: []metainfo.FileInfo{
 			{Path: []string{"sub\xff\xfe\u200e", "B.mkv"}, Length: 20},
 			{Path: []string{"A.mkv"}, Length: 10},
@@ -48,7 +46,6 @@ func TestBuildPartialPoolFileDescriptorsJoinsV2RootsByPath(t *testing.T) {
 	require.Equal(t, strings.Repeat("61", 32), descriptors[1].PiecesRoot)
 }
 
-// regression: #4220
 func TestBuildPartialPoolFileDescriptorsSingleFileSanitizesUTF8(t *testing.T) {
 	info := &metainfo.Info{
 		Name:        "Synthetic\xff\xfe\u200e.flac",

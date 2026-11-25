@@ -77,8 +77,6 @@ const SORT_COLUMNS: { column: FileSortColumn; labelKey: string }[] = [
   { column: "priority", labelKey: "filePriority.header" },
 ]
 
-// Sort control for the vertical layout, which has no header row to click.
-// Rendered by the details panel above the ScrollArea that holds the tree.
 export function TorrentFileSortBar({
   sort,
   supportsFilePriority,
@@ -143,14 +141,11 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   )
   const nodes = useMemo(() => sortFileTree(unsortedNodes, sort), [unsortedNodes, sort])
 
-  // Start with all folders expanded
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set(folderIds)
   )
   const [knownFolderIds, setKnownFolderIds] = useState(folderIds)
 
-  // Keep expandedFolders in sync when folder paths change (e.g., after rename);
-  // render-time adjustment so the reconciled tree commits in one pass
   if (knownFolderIds !== folderIds) {
     setKnownFolderIds(folderIds)
     setExpandedFolders(
@@ -163,8 +158,6 @@ export const TorrentFileTree = memo(function TorrentFileTree({
     [nodes, expandedFolders]
   )
 
-  // Row height: ~48px for tree rows (two lines with padding; the name line carries the
-  // compact priority dropdown when file priority is supported)
   const ROW_HEIGHT = 48
 
   const virtualizer = useVirtualizer({
@@ -178,7 +171,6 @@ export const TorrentFileTree = memo(function TorrentFileTree({
     }, [flatRows]),
   })
 
-  // Force virtualizer to recalculate when rows change
   useEffect(() => {
     virtualizer.measure()
   }, [flatRows.length, virtualizer])
@@ -235,7 +227,6 @@ export const TorrentFileTree = memo(function TorrentFileTree({
           )
 
           if (isFile && file) {
-            // File row
             const isSkipped = file.priority === 0
             const isComplete = file.progress === 1
             const progressPercent = file.progress * 100
@@ -290,7 +281,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                       {isPending && (
                         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
                       )}
-                      <span className="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
+                      <span className="text-10 text-muted-foreground tabular-nums whitespace-nowrap">
                         <span className={isComplete ? "text-green-500" : ""}>{Math.round(progressPercent)}%</span>
                         <span className="mx-1">·</span>
                         {formatBytes(file.size)}
@@ -367,7 +358,6 @@ export const TorrentFileTree = memo(function TorrentFileTree({
             )
           }
 
-          // Folder row
           const progressPercent = node.totalSize > 0? (node.totalProgress / node.totalSize) * 100: 0
           const isFolderComplete = progressPercent === 100
           const checkState: boolean | "indeterminate" = node.selectedCount === 0? false: node.selectedCount === node.totalCount? true: "indeterminate"
@@ -425,7 +415,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                     )}
                   </div>
                   <div className="flex items-center gap-2" style={{ paddingLeft: supportsFilePriority ? "40px" : "24px" }}>
-                    <span className="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
+                    <span className="text-10 text-muted-foreground tabular-nums whitespace-nowrap">
                       <span className={isFolderComplete ? "text-green-500" : ""}>{Math.round(progressPercent)}%</span>
                       <span className="mx-1">·</span>
                       {formatBytes(node.totalSize)}

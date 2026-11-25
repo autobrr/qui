@@ -66,7 +66,6 @@ export interface RSSAutoDownloadRule {
   smartFilter: boolean
   previouslyMatchedEpisodes?: string[]
   torrentParams?: RSSRuleTorrentParams
-  // Legacy fields
   addPaused?: boolean | null
   savePath?: string
   assignedCategory?: string
@@ -93,7 +92,7 @@ export interface SetRSSFeedURLRequest {
 
 export interface MoveRSSItemRequest {
   itemPath: string
-  destPath?: string // Optional: empty moves item to root
+  destPath?: string
 }
 
 export interface RemoveRSSItemRequest {

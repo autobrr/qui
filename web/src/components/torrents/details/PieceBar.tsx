@@ -9,12 +9,12 @@ import { memo, useEffect, useRef } from "react"
 interface PieceBarProps {
   pieceStates: number[] | undefined
   isLoading?: boolean
-  isComplete?: boolean // When true and no pieceStates, show solid green bar
+  isComplete?: boolean
 }
 
-const FINISHED_COLOR = "#22c55e"    // green-500
-const DOWNLOADING_COLOR = "#eab308" // yellow-500
-const EMPTY_COLOR = "#3f3f46"       // zinc-700
+const FINISHED_COLOR = "#22c55e"
+const DOWNLOADING_COLOR = "#eab308"
+const EMPTY_COLOR = "#3f3f46"
 
 export const PieceBar = memo(function PieceBar({
   pieceStates,
@@ -36,13 +36,11 @@ export const PieceBar = memo(function PieceBar({
     let rafId: number | undefined
 
     const draw = () => {
-      // Get container width for responsive sizing
       const containerWidth = container.clientWidth
       if (containerWidth <= 0) return
 
       const barHeight = 12
 
-      // Size the canvas in device pixels, so a column can be as narrow as one device pixel
       const dpr = window.devicePixelRatio || 1
       canvas.width = containerWidth * dpr
       canvas.height = barHeight * dpr
@@ -69,7 +67,6 @@ export const PieceBar = memo(function PieceBar({
         ctx.fillRect(left, finishedTop - downloadingPixels, right - left, downloadingPixels)
       })
 
-      // Apply rounded corners mask
       ctx.globalCompositeOperation = "destination-in"
       ctx.beginPath()
       ctx.roundRect(0, 0, canvas.width, canvas.height, radius)
@@ -102,7 +99,6 @@ export const PieceBar = memo(function PieceBar({
     }
   }, [pieceStates])
 
-  // Show solid green bar for completed torrents (no need to fetch piece states)
   if (isComplete && (!pieceStates || pieceStates.length === 0)) {
     return (
       <div
@@ -112,7 +108,6 @@ export const PieceBar = memo(function PieceBar({
     )
   }
 
-  // Show loading state or empty bar
   if (isLoading || !pieceStates || pieceStates.length === 0) {
     return (
       <div

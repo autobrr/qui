@@ -6,7 +6,6 @@
 import type { RSSItems } from "@/types"
 import { getApiBaseUrl } from "./base-url"
 
-// Event types from backend
 export type RSSEventType = "connected" | "feeds_update"
 
 export interface RSSEvent<T = unknown> {
@@ -82,7 +81,6 @@ export class RSSEventSource {
       this.eventSource.onerror = (error) => {
         this.handlers.onError?.(error)
 
-        // Don't reconnect if we intentionally closed
         if (!this.isIntentionalClose) {
           this.scheduleReconnect()
         }
@@ -117,18 +115,15 @@ export class RSSEventSource {
       return
     }
 
-    // Prevent overlapping reconnect timers when multiple error events fire quickly.
     if (this.reconnectTimer) {
       return
     }
 
-    // Close existing connection if any
     if (this.eventSource) {
       this.eventSource.close()
       this.eventSource = null
     }
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s
     const attempt = this.reconnectAttempts + 1
     const delay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts)
     this.reconnectAttempts = attempt

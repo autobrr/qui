@@ -19,7 +19,6 @@ import { useTranslation } from "react-i18next"
 import type { PaletteEntry, PaletteGroup } from "./palette"
 import { useThemeEntry } from "./useThemeEntry"
 
-/** The instances, pages and actions that the palette opens. `close` shuts the palette. */
 export function useDestinations(close: () => void): PaletteGroup[] {
   const { t } = useTranslation(["common", "settings", "crossseed", "rss", "dashboard", "search", "automations", "instances", "torrents"])
   const navigate = useNavigate()
@@ -37,9 +36,7 @@ export function useDestinations(close: () => void): PaletteGroup[] {
     action()
   }
 
-  // The header of a torrent list of one instance has the Add torrent button, and this id is that instance.
   const listInstanceId = layoutRoute.showInstanceControls && layoutRoute.instanceId !== null && layoutRoute.instanceId > 0 ? layoutRoute.instanceId : null
-  // The list that is open keeps its search under the dialog.
   const addTorrent = (instanceId: number) => go(() => instanceId === listInstanceId
     ? navigateWithSearch({ navigate, search: { ...routeSearch, modal: "add-torrent" } })
     : navigate({ to: "/instances/$instanceId", params: { instanceId: String(instanceId) }, search: { modal: "add-torrent" } }))
@@ -65,7 +62,6 @@ export function useDestinations(close: () => void): PaletteGroup[] {
             label: t("common:header.addTorrent"),
             icon: Plus,
             trail: instance.name,
-            // A search already finds the Add torrent action of the list that is open.
             ownListOnly: instance.id === listInstanceId,
             run: addTorrent(instance.id),
           },
@@ -96,7 +92,6 @@ export function useDestinations(close: () => void): PaletteGroup[] {
         icon: Settings,
         trail: [t("common:nav.settings"), groupLabel].filter(Boolean).join(" › "),
         current: pathname === "/settings" && (tab ?? DEFAULT_SETTINGS_TAB) === entry.tab,
-        // The Logs page of the sidebar is this section.
         ownListOnly: entry.tab === "logs",
         run: go(() => navigate({ to: "/settings", search: { tab: entry.tab } })),
       })),
@@ -161,7 +156,6 @@ export function useDestinations(close: () => void): PaletteGroup[] {
     rss: rssSections,
     settings: settingsSections,
   }
-  // Only the torrent lists run in the demo.
   const pageEntries: PaletteEntry[] = isDemo ? [] : NAV_ITEMS.map(item => ({
     id: `page.${item.id}`,
     label: t(`common:${item.titleKey}`),

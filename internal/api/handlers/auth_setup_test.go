@@ -54,7 +54,6 @@ func TestNewAuthHandlerFailsWhenOIDCInitFails(t *testing.T) {
 
 	config := &domain.Config{
 		OIDCEnabled: true,
-		// Missing mandatory OIDC settings so initialization fails before network calls.
 	}
 
 	_, err := NewAuthHandler(authService, sessionManager, config, nil, nil, nil)

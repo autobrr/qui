@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-// The tooltip wrapper reads "ontouchstart" in window to decide whether taps open the tooltip.
 const touchWindow = window as Window & { ontouchstart?: unknown }
 
 beforeEach(() => {
@@ -33,7 +32,6 @@ function renderTooltip(trigger: ReactNode) {
   )
 }
 
-// iOS Safari sends the click of a tap with the mouse pointer type.
 function tap(element: Element) {
   fireEvent.pointerDown(element, { pointerType: "touch" })
   fireEvent.pointerUp(element, { pointerType: "touch" })
@@ -54,7 +52,6 @@ describe("Tooltip with disabled", () => {
     )
     const { rerender } = render(tree(true))
 
-    // On a touch device, a mouse click opens a tooltip, as on a trackpad.
     fireEvent.click(screen.getByText("Statistics"))
     expect(tooltipShown()).toBe(false)
 
@@ -85,7 +82,6 @@ describe("Tooltip with disabled", () => {
     expect(tooltipShown()).toBe(false)
   })
 
-  // regression: #4286
   it("keeps the touch guard after disabled closes a tapped tooltip", () => {
     const tree = (disabled: boolean) => (
       <TooltipProvider>
@@ -100,7 +96,6 @@ describe("Tooltip with disabled", () => {
     rerender(tree(true))
     rerender(tree(false))
 
-    // A sheet that focuses the trigger must not open the tooltip on a touch device.
     fireEvent.focus(screen.getByText("12 GiB"))
     expect(tooltipShown()).toBe(false)
   })
@@ -115,7 +110,6 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
-  // regression: #4263
   it("runs the action of a button and stays closed", () => {
     const onClick = vi.fn()
     renderTooltip(<TooltipTrigger asChild><button type="button" onClick={onClick}>Pause</button></TooltipTrigger>)
@@ -126,7 +120,6 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(false)
   })
 
-  // regression: #4263
   it("stays closed when the icon sits inside a link", () => {
     renderTooltip(
       <a href="/instances/1" onClick={(event) => event.preventDefault()}>
@@ -148,7 +141,6 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
-  // regression: #4263
   it("stays closed on a label that toggles a checkbox, and opens when the checkbox is disabled", () => {
     renderTooltip(<TooltipTrigger asChild><label><input type="checkbox" />Include</label></TooltipTrigger>)
     tap(screen.getByText("Include"))
@@ -178,7 +170,6 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
-  // regression: #4263
   it("opens on a pen tap of a trigger marked openOnTap only, and keeps the tap from the row", () => {
     const openRow = vi.fn()
     renderTooltip(

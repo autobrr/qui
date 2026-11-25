@@ -21,21 +21,13 @@ import (
 )
 
 const (
-	copyGroupsTick = 30 * time.Second
-	// copyGroupsSettle is how long the job waits after a sync changed a
-	// torrent, so that one tick takes the changes of a burst of syncs.
-	copyGroupsSettle = 2 * time.Second
-	// copyGroupsListWait bounds a torrent list read: with no client, GetClient
-	// can wait 60 s on a login that ignores the context.
-	copyGroupsListWait = 10 * time.Second
-	// copyGroupsSliceFrom is the number of changed torrents above which a run
-	// compares them in copyGroupsSlices searches, so that it holds the file
-	// lists of one slice and not of the library.
+	copyGroupsTick      = 30 * time.Second
+	copyGroupsSettle    = 2 * time.Second
+	copyGroupsListWait  = 10 * time.Second
 	copyGroupsSliceFrom = 5000
 	copyGroupsSlices    = 5
 )
 
-// copyGroupsSync is what the Copy groups job reads and writes (ADR 0005).
 type copyGroupsSync interface {
 	ReadInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
@@ -43,54 +35,33 @@ type copyGroupsSync interface {
 	SetCopyGroups(groups *qbittorrent.CopyGroups)
 }
 
-// copyGroupsJob keeps the Copy groups of the torrent list current from the
-// start of qui. It looks at the torrents when a sync changed one of them, and
-// on each tick.
 type copyGroupsJob struct {
-	svc  *Service
-	sync copyGroupsSync
-	key  []byte
-	seed maphash.Seed
-	// interval is copyGroupsTick, except in tests that run on a real clock.
-	interval time.Duration
-	// sliceFrom is copyGroupsSliceFrom, except in tests.
+	svc       *Service
+	sync      copyGroupsSync
+	key       []byte
+	seed      maphash.Seed
+	interval  time.Duration
 	sliceFrom int
 
-	mu sync.Mutex
-	// cancel is nil until StartCopyGroups and after StopCopyGroups.
-	cancel     context.CancelFunc
-	rebuilding bool
-	// wake starts a tick before the ticker does.
-	wake chan struct{}
-	// seen holds each torrent as the last sync of its instance gave it.
-	seen map[int]map[string]copyGroupsPrint
-	// settling: a sync changed a torrent, and the tick for it waits for copyGroupsSettle.
-	settling bool
-	// firstReadEnded: an instance ended its first read after the last rebuild started.
-	firstReadEnded bool
-	// tickSkipped: a tick came while the rebuild ran, so it started no rebuild.
-	tickSkipped bool
-	listing     map[int]bool
-	firstReads  map[int]bool
-	// record holds the instances that ended a first read. No instance leaves it.
-	record map[int]struct{}
-	// fingerprints holds no value for an instance whose last read failed.
+	mu                sync.Mutex
+	cancel            context.CancelFunc
+	rebuilding        bool
+	wake              chan struct{}
+	seen              map[int]map[string]copyGroupsPrint
+	settling          bool
+	firstReadEnded    bool
+	tickSkipped       bool
+	listing           map[int]bool
+	firstReads        map[int]bool
+	record            map[int]struct{}
 	fingerprints      map[int]uint64
 	marks, builtMarks uint64
-	// links holds what the last rebuild found. A rebuild compares only the
-	// torrents that changed since then.
-	links *CopyLinks
-	// allForgotten is the mark of the last change that makes links of no use.
-	allForgotten uint64
-	// forgotten holds the mark of each torrent that qui changed after its links
-	// were found.
-	forgotten map[string]uint64
-	// ids is the last published map. It is nil before the first publish.
-	ids map[int]map[string]uint64
-	// parts holds the last published Shared parts.
-	parts map[int]map[string][]qbittorrent.SharedPart
-	// failed holds the time after which an unreadable torrent is read again.
-	failed map[int]map[string]time.Time
+	links             *CopyLinks
+	allForgotten      uint64
+	forgotten         map[string]uint64
+	ids               map[int]map[string]uint64
+	parts             map[int]map[string][]qbittorrent.SharedPart
+	failed            map[int]map[string]time.Time
 }
 
 func newCopyGroupsJob(svc *Service, sync copyGroupsSync) *copyGroupsJob {
@@ -104,7 +75,6 @@ func newCopyGroupsJob(svc *Service, sync copyGroupsSync) *copyGroupsJob {
 	}
 }
 
-// StartCopyGroups starts the Copy groups job. Its runs use ctx.
 func (s *Service) StartCopyGroups(ctx context.Context) {
 	j := s.copyGroups
 	if j == nil {
@@ -118,7 +88,6 @@ func (s *Service) StartCopyGroups(ctx context.Context) {
 	}
 }
 
-// StopCopyGroups ends the runs of the Copy groups job. The map stays.
 func (s *Service) StopCopyGroups() {
 	j := s.copyGroups
 	if j == nil {
@@ -132,15 +101,10 @@ func (s *Service) StopCopyGroups() {
 	j.cancel = nil
 }
 
-// CopyGroupsSyncSink returns the consumer of sync updates that wakes the Copy
-// groups job.
 func (s *Service) CopyGroupsSyncSink() qbittorrent.SyncEventSink {
 	return s.copyGroups
 }
 
-// HandleSyncUpdate wakes the job when a sync added or removed a torrent, or
-// changed what the group search reads of one. The first sync of an instance
-// wakes it at once.
 func (j *copyGroupsJob) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 	if j == nil {
 		return
@@ -184,13 +148,10 @@ func (j *copyGroupsJob) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) 
 	}
 }
 
-// HandleTrackerHealthUpdated is part of qbittorrent.SyncEventSink.
 func (j *copyGroupsJob) HandleTrackerHealthUpdated(int) {}
 
-// HandleSyncError is part of qbittorrent.SyncEventSink.
 func (j *copyGroupsJob) HandleSyncError(int, error) {}
 
-// forget makes the next tick rebuild the map and read the torrent again.
 func (j *copyGroupsJob) forget(instanceID int, hash string) {
 	if j == nil {
 		return
@@ -201,7 +162,6 @@ func (j *copyGroupsJob) forget(instanceID int, hash string) {
 	j.forgotten[cacheKeyForTorrentFiles(instanceID, hash)] = j.marks
 }
 
-// forgetAll makes the next tick rebuild the map and read every torrent again.
 func (j *copyGroupsJob) forgetAll() {
 	if j == nil {
 		return
@@ -212,7 +172,6 @@ func (j *copyGroupsJob) forgetAll() {
 	j.allForgotten = j.marks
 }
 
-// knownLinks returns the links that a run can start from. The caller holds mu.
 func (j *copyGroupsJob) knownLinks() *CopyLinks {
 	if j.builtMarks < j.allForgotten {
 		return nil
@@ -252,16 +211,12 @@ type copyGroupsRun struct {
 	torrents     map[int][]qbittorrent.CrossInstanceTorrentView
 	fingerprints map[int]uint64
 	marks        uint64
-	// links is nil for a run that compares every torrent.
-	links  *CopyLinks
-	failed map[int]map[string]time.Time
-	read   []int
-	prev   map[int]map[string]uint64
-	// offline holds the recorded instances that the run does not read.
-	offline []int
-	// retry: nothing moved, so the run rebuilds only if a due failed torrent
-	// reads or its file batch fails.
-	retry bool
+	links        *CopyLinks
+	failed       map[int]map[string]time.Time
+	read         []int
+	prev         map[int]map[string]uint64
+	offline      []int
+	retry        bool
 }
 
 func (j *copyGroupsJob) tick(ctx context.Context) bool {
@@ -326,7 +281,6 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 		go j.firstRead(ctx, id, known, run.links)
 	}
 	if len(run.torrents) == 0 && j.ids == nil && listFailed && !slices.ContainsFunc(active, func(id int) bool { return synced[id] }) {
-		// No instance can sync, so the list shows flat rows and no hint.
 		j.ids = map[int]map[string]uint64{}
 		j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(j.ids, nil, nil))
 	}
@@ -343,7 +297,6 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 	return true
 }
 
-// readLists leaves out an instance whose read did not return in time.
 func (j *copyGroupsJob) readLists(ctx context.Context, instanceIDs []int) map[int]copyGroupsList {
 	results := make(chan copyGroupsList, len(instanceIDs))
 	waiting := 0
@@ -380,14 +333,10 @@ func (j *copyGroupsJob) readLists(ctx context.Context, instanceIDs []int) map[in
 	return lists
 }
 
-// copyGroupsPrint is what the group search reads of a torrent outside its
-// file list. A torrent with a new print is a changed torrent.
 type copyGroupsPrint struct {
 	hash, name, category, savePath, contentPath string
 	size                                        int64
-	// wanted is the size of the files that qBittorrent downloads. It moves
-	// when the user selects or deselects a file, and the Shared parts read it.
-	wanted int64
+	wanted                                      int64
 }
 
 func newCopyGroupsPrint(t *qbt.Torrent) copyGroupsPrint {
@@ -402,15 +351,11 @@ func (j *copyGroupsJob) fingerprint(torrents []qbittorrent.CrossInstanceTorrentV
 	return sum
 }
 
-// filesContext reads cached file lists at any age until the torrent's maindata
-// entry moves: file sizes never change for a hash, and a change through qui
-// clears the row.
 func filesContext(ctx context.Context) context.Context {
 	ctx = qbittorrent.WithFileFetchLimit(ctx, localReadFetchSlots)
 	return qbittorrent.WithFilesUntilChanged(ctx)
 }
 
-// readFiles returns the next retry time of each torrent it could not read.
 func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, map[string]time.Time, error) {
 	failed := map[string]time.Time{}
 	var hashes []string
@@ -446,8 +391,6 @@ func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents 
 	return files, failed, nil
 }
 
-// firstRead stores the file lists of one instance that its groups with the
-// torrents of known need, so that a rebuild reads them from the cache.
 func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, known map[int][]qbittorrent.CrossInstanceTorrentView, links *CopyLinks) {
 	ctx, cancel := context.WithTimeout(ctx, localReadFillTimeout)
 	defer cancel()
@@ -479,23 +422,14 @@ func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, known map
 	}
 }
 
-// copyGroupsReader answers FindCopyGroups with the file lists of one run. It
-// reads each torrent one time, also when the run starts FindCopyGroups again.
 type copyGroupsReader struct {
-	job   *copyGroupsJob
-	files map[int]map[string]qbt.TorrentFiles
-	// failed holds the next retry time of each torrent that the run does not
-	// read: its last read failed and its retry time is later, or its read
-	// failed in this run.
-	failed map[int]map[string]time.Time
-	// broken is the instance whose file batch failed.
+	job      *copyGroupsJob
+	files    map[int]map[string]qbt.TorrentFiles
+	failed   map[int]map[string]time.Time
 	broken   int
 	isBroken bool
 }
 
-// newCopyGroupsReader starts with the reads of retried, so the run does not
-// fetch those torrents again. A failed torrent that the run does not ask for
-// keeps its retry time.
 func newCopyGroupsReader(j *copyGroupsJob, run copyGroupsRun, retried map[int]copyGroupsRead) *copyGroupsReader {
 	r := &copyGroupsReader{job: j, files: map[int]map[string]qbt.TorrentFiles{}, failed: map[int]map[string]time.Time{}}
 	now := time.Now()
@@ -537,14 +471,12 @@ func (r *copyGroupsReader) read(ctx context.Context, instanceID int, torrents []
 	return files, nil
 }
 
-// nextSlice forgets the file lists, so that the run holds the lists of one slice.
 func (r *copyGroupsReader) nextSlice() {
 	for _, files := range r.files {
 		clear(files)
 	}
 }
 
-// drop forgets the instance whose file batch failed.
 func (r *copyGroupsReader) drop(instanceID int) {
 	delete(r.files, instanceID)
 	delete(r.failed, instanceID)
@@ -628,9 +560,6 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 		Dur("elapsed", time.Since(started)).Msg("crossseed: Copy groups rebuilt")
 }
 
-// findInSlices is FindCopyGroups. Above j.sliceFrom changed torrents it
-// compares them in copyGroupsSlices searches, so that a search holds the file
-// lists of one slice. It calls nextSlice between two slices.
 func (j *copyGroupsJob) findInSlices(
 	ctx context.Context,
 	torrents map[int][]qbittorrent.CrossInstanceTorrentView,
@@ -671,7 +600,6 @@ func (j *copyGroupsJob) findInSlices(
 		if n > 0 {
 			nextSlice()
 		}
-		// Each torrent outside the slice counts as not changed in this search.
 		for _, t := range slice {
 			delete(prints, cacheKeyForTorrentFiles(t.InstanceID, t.Hash))
 		}
@@ -696,10 +624,6 @@ func (j *copyGroupsJob) findInSlices(
 	return groups, links, nil
 }
 
-// copyGroupSlices splits the changed torrents into slices of about size
-// torrents. A search reads the whole shared-path group of a changed torrent,
-// so the changed torrents of a group stay in one slice. Copies have like
-// names, so the slices follow the names.
 func copyGroupSlices(torrents map[int][]qbittorrent.CrossInstanceTorrentView, isChanged func(qbittorrent.CrossInstanceTorrentView) bool, size int) [][]qbittorrent.CrossInstanceTorrentView {
 	byName := func(a, b qbittorrent.CrossInstanceTorrentView) int {
 		return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.InstanceID, b.InstanceID), cmp.Compare(a.Hash, b.Hash))
@@ -750,15 +674,11 @@ func copyGroupSlices(torrents map[int][]qbittorrent.CrossInstanceTorrentView, is
 	return all
 }
 
-// copyGroupsRead holds what a retry read for one instance, so the rebuild of
-// the same run does not fetch those torrents again.
 type copyGroupsRead struct {
 	files  map[string]qbt.TorrentFiles
 	failed map[string]time.Time
 }
 
-// retryReads reports whether the run must rebuild: a due failed torrent read,
-// or a file batch failed. It returns the reads of the instances it finished.
 func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) (map[int]copyGroupsRead, bool) {
 	now := time.Now()
 	read := false
@@ -782,7 +702,6 @@ func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) (map[
 			return nil, false
 		}
 		if err != nil {
-			// The rebuild reads the batch of this instance again and keeps its entries.
 			return retried, true
 		}
 		for hash := range hashes {
@@ -801,8 +720,6 @@ func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) (map[
 	return nil, false
 }
 
-// oldGroupIDs links the torrents that shared an old group with an offline
-// instance. Two such ids that join keep the lower one.
 type oldGroupIDs struct {
 	prev   map[int]map[string]uint64
 	parent map[uint64]uint64
@@ -845,9 +762,6 @@ func (o *oldGroupIDs) join(group CopyGroup) {
 	}
 }
 
-// keepOfflineGroups builds the map from the groups of the instances that the
-// run read. An offline instance keeps its entries, and the torrents that shared
-// an old group with it stay linked under that id, also on the offline instance.
 func keepOfflineGroups(groups []CopyGroup, torrents map[int][]qbittorrent.CrossInstanceTorrentView, prev map[int]map[string]uint64, offline []int) map[int]map[string]uint64 {
 	old := newOldGroupIDs(prev, offline)
 	for _, group := range groups {

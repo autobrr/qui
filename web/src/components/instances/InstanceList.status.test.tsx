@@ -25,7 +25,6 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-// regression: #4233
 it("keeps the switch of an instance disabled until its own status save ends", async () => {
   const answers = new Map<string, () => void>()
   server.use(

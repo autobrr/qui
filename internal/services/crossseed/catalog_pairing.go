@@ -18,8 +18,6 @@ import (
 type catalogPairTier uint8
 
 const (
-	// catalogPairPath compares the full paths, so a renamed display name does
-	// not hide identical paths.
 	catalogPairPath catalogPairTier = iota
 	catalogPairExact
 	catalogPairBasename
@@ -52,8 +50,6 @@ func catalogPairName(name, root string, tier catalogPairTier) string {
 	case catalogPairNormalized:
 		return normalizeFileKey(name)
 	case catalogPairSize:
-		// Only files with the same extension can pair, so a renamed .cue and
-		// .log of the same size are not ambiguous.
 		return strings.ToLower(path.Ext(name))
 	}
 	return ""

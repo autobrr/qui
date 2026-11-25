@@ -65,8 +65,6 @@ func TestManualMatchPackProposalLimit(t *testing.T) {
 	}
 }
 
-// A name with only a Season numeral is a pack when its files are episodes,
-// and a movie sequel with one file stays a movie.
 func TestManualMatchSeasonNumeralPackMode(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -154,9 +152,6 @@ func TestFindCandidatesManualTarget(t *testing.T) {
 	})
 }
 
-// A retitled listing: the uploaded torrent's files are byte-identical to the
-// target's, but the target's qBittorrent name shares nothing with the incoming
-// name, so automatic matching rejects the pair on the release prefilter.
 func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
 	t.Parallel()
 
@@ -175,7 +170,6 @@ func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
 		targetHash: {{Name: incomingName + "/" + fileName, Size: size}},
 	})
 
-	// Without the pin the release prefilter rejects the pair.
 	auto, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 		TargetInstanceIDs: []int{instanceID},
@@ -197,9 +191,6 @@ func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
 	require.Equal(t, targetHash, resp.Results[0].MatchedTorrent.Hash)
 }
 
-// A zero-overlap pick must still reach the add, also on a link-mode instance
-// (no linkable files would fail materialization): the recheck is the arbiter
-// of a wrong pick, and a failed recheck leaves the torrent paused.
 func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 	t.Parallel()
 
@@ -241,8 +232,6 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 	}
 }
 
-// recordingApplySyncManager records add options and bulk actions so tests can
-// observe the recheck policy of an apply.
 type recordingApplySyncManager struct {
 	*applyFakeSyncManager
 	addOptions  []map[string]string
@@ -259,9 +248,6 @@ func (r *recordingApplySyncManager) BulkAction(ctx context.Context, instanceID i
 	return r.applyFakeSyncManager.BulkAction(ctx, instanceID, hashes, action)
 }
 
-// A perfect-twin Manual match (identical name and files) would sail through
-// the automatic pipeline with skip_checking and no recheck. Manual matches
-// bypass the release and content gates, so they must verify regardless.
 func TestCrossSeedManualTargetValidatedFilesStillRecheck(t *testing.T) {
 	t.Parallel()
 
@@ -347,13 +333,12 @@ func TestManualMatchProposals(t *testing.T) {
 	require.InDelta(t, 1.0, resp.Proposals[0].OverlapFraction, 0.001)
 	for _, p := range resp.Proposals {
 		require.NotEqual(t, incomplete.Hash, p.Hash, "incomplete torrents are not proposable")
-		require.NotEqual(t, moving.Hash, p.Hash, "moving torrents are not proposable") // regression: #3626
+		require.NotEqual(t, moving.Hash, p.Hash, "moving torrents are not proposable")
 		require.NotEqual(t, noOverlap.Hash, p.Hash, "zero-overlap torrents are not proposed")
 	}
 	require.Equal(t, "/downloads", resp.Proposals[0].EffectiveSavePath)
 	require.Equal(t, "tv", resp.Proposals[0].Category)
 
-	// A requested target is always reported, with its overlap, even at zero.
 	resp, err = svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, noOverlap.Hash)
 	require.NoError(t, err)
 	found := false
@@ -366,9 +351,6 @@ func TestManualMatchProposals(t *testing.T) {
 	require.True(t, found, "requested target must be included")
 }
 
-// On a link-mode instance the effective save path must track validation: a
-// validated pick lands at the link destination, but a zero-overlap pick takes
-// the regular add at the target's save path (the apply skips link modes for it).
 func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 	t.Parallel()
 
@@ -407,8 +389,6 @@ func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 		"zero-overlap pick previews the target save path (regular add)")
 }
 
-// The requested hash must survive a coarse pass crowded with same-title keeps
-// that outrank it on size ratio (e.g. every episode of a long-running show).
 func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
 	t.Parallel()
 
@@ -426,7 +406,7 @@ func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
 		Name:     "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI",
 		SavePath: "/downloads",
 		Progress: 1,
-		Size:     1, // worst possible ratio: crowded out without its reserved slot
+		Size:     1,
 	}
 	torrents := make([]qbt.Torrent, 0, manualMatchCoarseLimit+11)
 	torrents = append(torrents, requested)
@@ -448,8 +428,6 @@ func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
 	}), "requested target must be included even when title keeps fill the coarse pass")
 }
 
-// A rootless target sends the apply to the target's content dir, not its save
-// path. The preview must say the same, or the read-only save path lies.
 func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
 	t.Parallel()
 
@@ -463,8 +441,6 @@ func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
 	)
 	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
 
-	// No root folder in the file list, so the data sits directly in ContentPath's
-	// directory rather than under SavePath.
 	rootless := qbt.Torrent{
 		Hash:        "8888888888888888888888888888888888888888",
 		Name:        incomingName,
@@ -484,9 +460,6 @@ func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
 		"rootless target previews its content dir, not its save path")
 }
 
-// The dialog locks its category select on PinnedCategory, so the condition here
-// must stay in step with determineCrossSeedCategory. A pin the apply does not
-// honour locks the user out of a choice they still have.
 func TestManualMatchProposalsPinnedCategory(t *testing.T) {
 	t.Parallel()
 
@@ -534,8 +507,6 @@ func TestManualMatchProposalsPinnedCategory(t *testing.T) {
 	}
 }
 
-// regression: #3626
-// regression: #3707
 func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	t.Parallel()
 
@@ -580,7 +551,6 @@ func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	}
 }
 
-// regression: #4137
 func TestManualMatchPreviewShowsTheSavePathOfTheSingleAdd(t *testing.T) {
 	const name = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
 	tests := []struct {

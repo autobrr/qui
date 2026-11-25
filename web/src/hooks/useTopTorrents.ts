@@ -9,13 +9,11 @@ import { topTorrents, type StatisticsPeriod, type TopTorrent } from "@/lib/stati
 import type { TransferHistoryGrouping, TransferHistoryInstance } from "@/types"
 import { useCallback, useMemo } from "react"
 
-/** Returns the name of a torrent to show: a made-up name in incognito mode. */
 export function useTorrentName(): (torrent: TopTorrent) => string {
   const [incognitoMode] = useIncognitoMode()
   return useCallback((torrent: TopTorrent) => incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, [incognitoMode])
 }
 
-/** Reads the top torrents of the period over the instances, of one group when group is set. Undefined while they load. */
 export function useTopTorrents(instances: TransferHistoryInstance[], period: StatisticsPeriod, limit: number, group?: { grouping: TransferHistoryGrouping; name: string }) {
   const transfer = useTransferHistoryRows(instances, {
     from: period.from,

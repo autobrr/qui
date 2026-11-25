@@ -12,8 +12,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// newStringPoolTestDB opens an in-memory SQLite database with the string_pool
-// schema. AUTOINCREMENT is load-bearing for tests that read sqlite_sequence.
 func newStringPoolTestDB(tb testing.TB) *sql.DB {
 	tb.Helper()
 
@@ -323,12 +321,6 @@ func TestInternEmptyString(t *testing.T) {
 	}
 }
 
-// TestInternStringsDoesNotConsumeIDsForExistingValues guards the SELECT-first
-// interning order. Re-interning existing values must not attempt inserts:
-// conflicting inserts consume autoincrement/sequence values without adding
-// rows (on Postgres this exhausted the int4 string_pool_id_seq).
-// sqlite_sequence exhibits the same advance-on-conflict behavior, so it
-// serves as the burn detector here.
 func TestInternStringsDoesNotConsumeIDsForExistingValues(t *testing.T) {
 	db := newStringPoolTestDB(t)
 

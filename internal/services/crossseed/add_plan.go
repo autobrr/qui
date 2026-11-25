@@ -30,7 +30,6 @@ type crossSeedAddPlan struct {
 	sourceRoot       string
 	candidateRoot    string
 	contentLayout    string
-	// savePathOverride is an explicit save path that pins a rootless single file into the matched folder.
 	savePathOverride string
 	layoutRank       addPlanLayoutRank
 	hasRootFolder    bool
@@ -56,29 +55,15 @@ func buildCrossSeedAddPlan(
 	sourceHasRoot := sourceRoot != ""
 	candidateHasRoot := candidateRoot != ""
 
-	// isEpisodeInPack deliberately keeps contentLayout from becoming "Subfolder"
-	// when matchType is partial-in-pack, isTVEpisode(sourceRelease) is true, and
-	// isTVSeasonPack(candidateRelease) is true. In that sourceRoot == "" and
-	// candidateRoot != "" shape, the episode maps into the season-pack content path
-	// instead of a qBittorrent-created subfolder, so classifying it as Subfolder
-	// would misrepresent an episode-to-season-pack mapping.
 	isEpisodeInPack := (matchType == "partial-in-pack" || matchType == "size-partial-in-pack") &&
 		isTVEpisode(sourceRelease) &&
 		isTVSeasonPack(candidateRelease)
 
-	// Pick the content layout (and, for rootless single files going into a folder with a name
-	// mismatch, the explicit save path) that lands the cross-seed bytes where the matched torrent
-	// already stored them.
 	contentLayout := "Original"
 	savePathOverride := ""
 	switch {
 	case isEpisodeInPack:
-		// maps into the season-pack content path; leave as Original
 	case sourceRoot == "" && candidateRoot != "":
-		// Derive the matched content FOLDER (not the raw ContentPath): qBittorrent reports the full
-		// file path for single-file-in-folder candidates, so use resolveRootlessContentDir to recover
-		// the storage directory. If it can't be resolved, fall back to Subfolder to avoid orphaning a
-		// bare file inside a path that is actually a file.
 		matchedContentDir := resolveRootlessContentDir(&torrent, files)
 		if matchedContentDir != "" && rootlessSingleFileNeedsFolderInjection(sourceFiles, candidateRoot, torrent.ContentPath) {
 			contentLayout = "Original"
@@ -112,9 +97,6 @@ func buildCrossSeedAddPlan(
 	}
 }
 
-// rootlessSingleFileNeedsFolderInjection reports whether a rootless single-file source matched to
-// a folder candidate must be pinned into the matched content directory (because the folder
-// qBittorrent would auto-generate from the file name differs from the matched folder name).
 func rootlessSingleFileNeedsFolderInjection(sourceFiles qbt.TorrentFiles, candidateRoot, matchedContentPath string) bool {
 	if matchedContentPath == "" || candidateRoot == "" || len(sourceFiles) != 1 {
 		return false

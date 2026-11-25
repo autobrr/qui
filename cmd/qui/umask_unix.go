@@ -13,18 +13,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// applyUmask honors the UMASK environment variable (octal, e.g. "002") by
-// setting the process umask before qui creates any files or directories.
-//
-// Content directories (hardlink/reflink/cross-seed trees) are created with mode
-// 0o777 and rely on the umask to decide the final permissions (see discussion
-// #1704). The official Docker image runs as root with the default umask 022, so
-// this is the knob that lets operators get group-write (e.g. UMASK=002) without
-// switching to a third-party base image.
-//
-// When UMASK is unset, empty, or not valid octal, the inherited umask is left
-// unchanged, so the default behavior matches previous releases. No-op on Windows
-// (see umask_other.go).
 func applyUmask() {
 	v, ok := os.LookupEnv("UMASK")
 	if !ok || v == "" {

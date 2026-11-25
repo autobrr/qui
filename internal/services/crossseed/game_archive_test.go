@@ -66,6 +66,5 @@ func TestParseFileReleasePreservesTVStructure(t *testing.T) {
 		require.Equal(t, 3, parsed.Series, name)
 		require.Equal(t, 2, parsed.Episode, name)
 	}
-	// A torrent title ending in .S01 still names a season.
 	require.Equal(t, 1, service.matcher().parseReleaseName("Example.Show.S01").Series)
 }

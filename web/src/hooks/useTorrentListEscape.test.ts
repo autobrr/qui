@@ -25,7 +25,6 @@ afterEach(() => {
 })
 
 describe("useTorrentListEscape", () => {
-  // regression: #4260
   it("closes the details first, then clears the search on the next Escape", () => {
     const { rerender, clearSelection, clearSearch } = setup({ hasSelection: true, hasSearch: true })
 

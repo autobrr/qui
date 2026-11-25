@@ -6,8 +6,6 @@
 import { describe, expect, it } from "vitest"
 import { collectFileIndicesInRange } from "@/lib/file-selection"
 
-// Helpers mirroring the flat-row shape: file rows carry a node.file.index,
-// folder rows have no file.
 const fileRow = (index: number) => ({ node: { file: { index } } })
 const folderRow = () => ({ node: {} })
 

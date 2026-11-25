@@ -18,8 +18,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// collidingIDBackend reports one identity for every directory, the way a
-// remote host could when it lies or collapses case.
 type collidingIDBackend struct{ fsops.Backend }
 
 func (b collidingIDBackend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
@@ -31,10 +29,6 @@ func (b collidingIDBackend) Lstat(ctx context.Context, p string) (*fsops.LstatIn
 	return info, nil
 }
 
-// Identity from a peer host may narrow a scan but never widen a delete: a
-// remote instance whose identity says a metadata root is a scan root keeps
-// that root ignored, where a local instance's kernel-attested identity
-// takes it out of the ignore list.
 func TestMetadataIgnoreRootsNeedsTrustedIdentityToUnignore(t *testing.T) {
 	base := t.TempDir()
 	scanRoot := filepath.Join(base, "Incoming")
@@ -46,8 +40,6 @@ func TestMetadataIgnoreRootsNeedsTrustedIdentityToUnignore(t *testing.T) {
 	remote := &models.Instance{ID: 1, SSHHost: "box.example.invalid", SSHKeyEncrypted: "k", SSHHostKeyEncrypted: "hk", SSHTier: models.SSHTierExec}
 	localInst := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 
-	// The roots differ only by case, so they normalize alike and only the
-	// identity decides whether the metadata root is the scan root.
 	assert.Equal(t, []string{filepath.Clean(metadataRoot)},
 		metadataIgnoreRoots(t.Context(), []string{base, scanRoot}, []string{metadataRoot}, backend, remote),
 		"peer identity keeps the root ignored")

@@ -1,12 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Command notices writes THIRD_PARTY_NOTICES, the file that the release
-// archives and the Docker image ship. It holds the license of the community
-// themes, the notices of their sources, and the license files of the Go and npm
-// dependencies.
-//
-// Run it from the repo root, after the web build: go run ./scripts/notices
 package main
 
 import (
@@ -28,14 +22,9 @@ const (
 	communityLicense = "internal/themes/assets/premium/LICENSE"
 )
 
-// themeNotices holds the notices of the sources of the community themes. A theme
-// that uses a new source needs a new entry in this file.
-//
 //go:embed themes.txt
 var themeNotices string
 
-// The build targets in .goreleaser.release.yml. Windows and the others import
-// packages that Linux does not.
 var goosTargets = []string{"linux", "windows", "darwin", "freebsd"}
 
 var (
@@ -78,8 +67,6 @@ func writeSection(b *strings.Builder, title, text string) {
 	fmt.Fprintf(b, "\n%s\n%s\n%s\n\n%s\n", strings.Repeat("=", 78), title, strings.Repeat("=", 78), strings.TrimSpace(text))
 }
 
-// licenseFiles returns the license files in dir and in each parent of dir, up
-// to and including root. A module can hold a license for one folder only.
 func licenseFiles(dir, root string) ([]string, error) {
 	var files []string
 	for {
@@ -92,7 +79,6 @@ func licenseFiles(dir, root string) ([]string, error) {
 				continue
 			}
 			path := filepath.Join(dir, entry.Name())
-			// Stat follows a symlink, and a package can link its license file.
 			if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
 				files = append(files, path)
 			}
@@ -105,8 +91,6 @@ func licenseFiles(dir, root string) ([]string, error) {
 	}
 }
 
-// writeEntry writes the license files of one module or package. Without a file,
-// it writes fallback, and warns because a person must look at that dependency.
 func writeEntry(b *strings.Builder, title, root string, files []string, fallback string) error {
 	fmt.Fprintf(b, "%s\n%s\n\n", title, strings.Repeat("-", len(title)))
 	if len(files) == 0 {
@@ -201,10 +185,9 @@ func npmNotices() (string, error) {
 		return "", fmt.Errorf("pnpm licenses list: %w", err)
 	}
 	var byLicense map[string][]struct {
-		Name     string   `json:"name"`
-		Versions []string `json:"versions"`
-		Paths    []string `json:"paths"`
-		Author   string   `json:"author"`
+		Name   string   `json:"name"`
+		Paths  []string `json:"paths"`
+		Author string   `json:"author"`
 	}
 	if err := json.Unmarshal(out, &byLicense); err != nil {
 		return "", fmt.Errorf("read pnpm licenses list: %w", err)
@@ -214,8 +197,19 @@ func npmNotices() (string, error) {
 	pkgs := map[string]pkg{}
 	for license, list := range byLicense {
 		for _, p := range list {
-			for i, dir := range p.Paths {
-				title := p.Name + " " + p.Versions[i]
+			for _, dir := range p.Paths {
+				manifestPath := filepath.Join(dir, "package.json")
+				manifest, err := os.ReadFile(manifestPath)
+				if err != nil {
+					return "", err
+				}
+				var metadata struct {
+					Version string `json:"version"`
+				}
+				if err := json.Unmarshal(manifest, &metadata); err != nil {
+					return "", fmt.Errorf("read %s: %w", manifestPath, err)
+				}
+				title := p.Name + " " + metadata.Version
 				fallback := fmt.Sprintf("The package has no license file. It states the license %s.", license)
 				if p.Author != "" {
 					fallback += " Author: " + p.Author + "."

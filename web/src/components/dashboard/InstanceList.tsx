@@ -46,7 +46,6 @@ import { memo, useState, type KeyboardEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-/** The upload and the download of the last 24 hours of one instance, with its bytes for each hour. */
 export interface InstanceDay extends TransferHistoryBytes {
   hours: ChartLayer
 }
@@ -54,9 +53,7 @@ export interface InstanceDay extends TransferHistoryBytes {
 export interface InstanceListProps {
   statsData: DashboardInstanceStats[]
   layerOf: Map<number, number>
-  // Undefined when the page shows no history. An instance without history has no entry.
   days?: Map<number, InstanceDay>
-  // The upload of the last 24 hours of all instances.
   dayUploaded?: number
 }
 
@@ -65,7 +62,6 @@ function useIssueLabel() {
   return (issue: InstanceIssue) => t(`issues.${issue.kind}`, { count: issue.count })
 }
 
-/** Opens the torrent list of the instance with the filter for the issue. */
 export function IssueLink({ issue, className, children }: { issue: InstanceIssue; className?: string; children: ReactNode }) {
   return (
     <Link
@@ -87,7 +83,6 @@ export function IssueIcon({ issue, className }: { issue: InstanceIssue; classNam
   return <Icon className={cn("shrink-0", iconClass, className)} aria-hidden="true" />
 }
 
-/** Formats a count in the language of the app, as the captions of the chart do. */
 function useCount(): (value: number | undefined) => string {
   const { i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -116,7 +111,6 @@ function IssueCounts({ issues, links }: { issues: InstanceIssue[]; links: boolea
   )
 }
 
-/** The mark of the layer of an instance. data-pointed also marks the line that holds it. */
 function Swatch({ d, layer }: { d: DashboardInstanceStats; layer: number }) {
   const pointed = usePointedLayer() === layer
   const health = instanceHealth(d)
@@ -126,7 +120,6 @@ function Swatch({ d, layer }: { d: DashboardInstanceStats; layer: number }) {
   return <span data-pointed={mark} className="size-2.5 shrink-0 rounded-[3px]" style={{ background: pointed ? "var(--primary)" : layerColor(layer) }} />
 }
 
-/** A mark next to the name when the numbers of the instance are not live. */
 function DataStatus({ d }: { d: DashboardInstanceStats }) {
   const { t } = useTranslation("dashboard")
   const kind = resolveDashboardDataStatusKind({
@@ -165,7 +158,6 @@ function useOfflineText() {
       case "password":
         return t("offline.password")
       case "error":
-        // The error text can hold the host, its IP address, or a path, so incognito mode hides all of it.
         return incognito ? t("offline.hidden") : t("offline.cause", { cause: formatErrorMessage(cause.message) })
       default:
         return t("offline.noAnswer")
@@ -251,7 +243,6 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded }: InstanceListPr
   const point = usePointLayer()
   const columns = days ? 6 : 5
   const [openIds, setOpenIds] = useDashboardOpenInstances()
-  // The rows take no click until the saved rows are read, so the read does not replace a click.
   const settled = useClientSettingsSettled()
   const ids = statsData.map(d => d.instance.id)
   const allOpen = ids.length > 0 && ids.every(id => openIds.includes(id))
@@ -380,10 +371,6 @@ function OfflineDetails({ d, onClose }: { d: DashboardInstanceStats; onClose?: (
   )
 }
 
-/**
- * The details of an open row. A wide band shows the speeds, the chart and the facts in one line. A narrower band shows
- * the facts below the speeds and the chart.
- */
 function DetailBand({ d, layer, day, hasHistory }: { d: DashboardInstanceStats; layer: number; day?: InstanceDay; hasHistory: boolean }) {
   const { t } = useTranslation("dashboard")
   return (
@@ -412,7 +399,6 @@ function DetailBand({ d, layer, day, hasHistory }: { d: DashboardInstanceStats; 
   )
 }
 
-/** The upload, the download and the ratio of the last 24 hours, when the page shows history, and of all time. */
 function TransferTotals({ d, day, hasHistory }: { d: DashboardInstanceStats; day?: InstanceDay; hasHistory: boolean }) {
   const { t } = useTranslation("dashboard")
   const rows = [
@@ -534,7 +520,6 @@ function useAltSpeed({ instanceId, altSpeedEnabled }: AltSpeedProps) {
   const { t } = useTranslation("dashboard")
   const [incognito] = useIncognitoMode()
   const queryClient = useQueryClient()
-  // The stream brings the new value a moment after the answer of the toggle.
   const [answer, setAnswer] = useState<boolean>()
   if (answer !== undefined && answer === altSpeedEnabled) setAnswer(undefined)
   const enabled = answer ?? altSpeedEnabled
@@ -545,7 +530,6 @@ function useAltSpeed({ instanceId, altSpeedEnabled }: AltSpeedProps) {
       setAnswer(result.enabled)
       return queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
     },
-    // The error text can hold the host or its IP address, so incognito mode leaves it out.
     onError: (error: Error) => {
       setAnswer(undefined)
       toast.error(incognito ? t("common:errors.altSpeedToggleHidden") : t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) }))
@@ -554,10 +538,6 @@ function useAltSpeed({ instanceId, altSpeedEnabled }: AltSpeedProps) {
   return { enabled, isPending, toggle: () => mutate() }
 }
 
-/**
- * Turns the alternative speed limits of the instance on or off with one click.
- * The stream renders each row several times each second. The props are plain values, so memo skips the button until one changes.
- */
 const AltSpeedButton = memo(function AltSpeedButton(props: AltSpeedProps) {
   const { t } = useTranslation("dashboard")
   const { enabled, isPending, toggle } = useAltSpeed(props)

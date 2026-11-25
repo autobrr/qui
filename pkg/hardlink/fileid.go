@@ -15,15 +15,11 @@ const (
 	KindNone Kind = iota
 	KindUnix
 	KindWindows
-	KindRemote // reported by a remote host; peer-asserted, never kernel-attested
+	KindRemote
 )
 
 const fileIDRawLen = 24
 
-// FileID is an opaque, comparable file identity: one kind byte and 24 raw
-// bytes with the unused tail zeroed, so == and map keys stay well-defined.
-// An ID only means something on the filesystem that produced it; compare
-// IDs through fsops.SameFile or key maps by fsops.FileKey.
 type FileID struct {
 	kind Kind
 	raw  [fileIDRawLen]byte
@@ -43,9 +39,6 @@ func WindowsFileID(volumeSerial uint64, identifier [16]byte) FileID {
 	return f
 }
 
-// RemoteFileID wraps up to 24 bytes of identity a remote host reported.
-// Empty or longer input is no identity: cutting it would let two identities
-// that share their first 24 bytes compare equal.
 func RemoteFileID(raw []byte) FileID {
 	if len(raw) == 0 || len(raw) > fileIDRawLen {
 		return FileID{}
@@ -55,9 +48,6 @@ func RemoteFileID(raw []byte) FileID {
 	return f
 }
 
-// FileIDFromBytes is the inverse of Bytes. Any other length is no identity,
-// which is what a row written before the tagged form decodes to. Dir Scan appends
-// an endpoint tag to a remote identity before storing it and strips it before this.
 func FileIDFromBytes(b []byte) FileID {
 	if len(b) != 1+fileIDRawLen {
 		return FileID{}
@@ -75,7 +65,6 @@ func (f FileID) IsZero() bool {
 	return f.kind == KindNone
 }
 
-// Bytes returns the tagged form, kind byte first. This is what dirscan stores.
 func (f FileID) Bytes() []byte {
 	b := make([]byte, 1+fileIDRawLen)
 	b[0] = byte(f.kind)

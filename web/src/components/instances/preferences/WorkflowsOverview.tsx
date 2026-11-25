@@ -96,9 +96,6 @@ import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
 import { RunWorkflowNowDialog, type RunWorkflowNowTarget } from "./RunWorkflowNowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
-/**
- * Recursively checks if a condition tree uses a specific field.
- */
 function conditionUsesField(condition: RuleCondition | null | undefined, field: string): boolean {
   if (!condition) return false
   if (condition.field === field) return true
@@ -141,7 +138,6 @@ function computeActivityStats(events: AutomationActivity[]): ActivityStats {
   return { deletionsToday, failedToday, lastActivity }
 }
 
-/** Format share limit value for display: -2 = "Global", -1 = "Unlimited", >= 0 = number with optional precision */
 function formatShareLimit(value: number | undefined, isRatio: boolean): string | null {
   if (value === undefined) return null
   if (value === -2) return i18n.t("preferences.workflowsOverview.shareLimit.global", { ns: "instances" })
@@ -149,7 +145,6 @@ function formatShareLimit(value: number | undefined, isRatio: boolean): string |
   return isRatio ? value.toFixed(2) : String(value)
 }
 
-/** Format speed limit for compact badge display: 0 = "∞", > 0 = number */
 function formatSpeedLimitCompact(kiB: number): string {
   if (kiB === 0) return "∞"
   return String(kiB)
@@ -323,11 +318,8 @@ export function WorkflowsOverview() {
   const { instances } = useInstances()
   const queryClient = useQueryClient()
 
-  // Keep the shared SSE stream open so automation-activity events invalidate
-  // the matching react-query keys; this replaces the idle activity polling.
   useActivityStream()
 
-  // Warm the JSON editor chunk so the Import and Edit dialogs rarely show the textarea fallback.
   useEffect(() => {
     void preloadJsonEditor()
   }, [])
@@ -400,13 +392,11 @@ export function WorkflowsOverview() {
 
   const [jsonEdit, setJsonEdit] = useState<Automation | null>(null)
 
-  // Import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importInstanceId, setImportInstanceId] = useState<number | null>(null)
   const [importJSON, setImportJSON] = useState("")
   const [importError, setImportError] = useState<string | null>(null)
 
-  // Activity-related state
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [activityFilterMap, setActivityFilterMap] = useState<Record<number, "all" | "success" | "errors">>({})
   const [activitySearchMap, setActivitySearchMap] = useState<Record<number, string>>({})
@@ -414,7 +404,6 @@ export function WorkflowsOverview() {
   const [displayLimitMap, setDisplayLimitMap] = useState<Record<number, number>>({})
   const [activityRunDialog, setActivityRunDialog] = useState<{ instanceId: number; activity: AutomationActivity } | null>(null)
 
-  // Tracker customizations for display names and icons
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
 
@@ -516,12 +505,10 @@ export function WorkflowsOverview() {
         throw error
       }
     },
-    // A cancelled dialog does not cancel the request, so only apply a result to the rule it was started for.
     onSuccess: (preview, { instanceId, rule }) => {
       setEnableConfirm(prev => prev?.instanceId === instanceId && prev.rule.id === rule.id ? { ...prev, preview, isInitialLoading: false } : prev)
     },
     onError: (error, { instanceId, rule }) => {
-      // Keep the dialog open: the user can still enable the rule without a preview.
       const message = error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.previewFailed")
       setEnableConfirm(prev => prev?.instanceId === instanceId && prev.rule.id === rule.id ? { ...prev, isInitialLoading: false, error: message } : prev)
     },
@@ -568,7 +555,6 @@ export function WorkflowsOverview() {
     }
   }, [queryClient, t])
 
-  // Export workflow to clipboard
   const handleExport = useCallback(async (rule: Automation) => {
     const exportData = toExportFormat(rule)
     const json = toExportJSON(exportData)
@@ -580,7 +566,6 @@ export function WorkflowsOverview() {
     }
   }, [t])
 
-  // Duplicate workflow in the same instance
   const handleDuplicate = useCallback(async (instanceId: number, rule: Automation) => {
     const existingNames = await getExistingNames(instanceId)
     if (!existingNames) return
@@ -595,7 +580,6 @@ export function WorkflowsOverview() {
     )
   }, [getExistingNames, createWorkflow, t])
 
-  // Copy workflow to another instance
   const handleCopyToInstance = useCallback(async (sourceRule: Automation, targetInstanceId: number) => {
     const existingNames = await getExistingNames(targetInstanceId)
     if (!existingNames) return
@@ -614,7 +598,6 @@ export function WorkflowsOverview() {
     )
   }, [getExistingNames, createWorkflow, instances, t])
 
-  // Open import dialog
   const openImportDialog = (instanceId: number) => {
     setImportInstanceId(instanceId)
     setImportJSON("")
@@ -622,7 +605,6 @@ export function WorkflowsOverview() {
     setImportDialogOpen(true)
   }
 
-  // Handle import
   const handleImport = useCallback(async () => {
     if (!importInstanceId) return
 
@@ -652,7 +634,6 @@ export function WorkflowsOverview() {
     )
   }, [importInstanceId, importJSON, getExistingNames, createWorkflow, t])
 
-  // Check if a rule is a delete or category rule (both need previews)
   const isDeleteRule = (rule: Automation): boolean => {
     return rule.conditions?.delete?.enabled === true
   }
@@ -661,41 +642,33 @@ export function WorkflowsOverview() {
     return rule.conditions?.category?.enabled === true
   }
 
-  // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
   const isTagRule = (rule: Automation): boolean => {
     if (isDeleteRule(rule) || isCategoryRule(rule)) return false
     return getRuleTagActions(rule).some(action => action?.enabled)
   }
 
-  // The condition of the action that the preview runs, for its columns
   const previewCondition = (rule: Automation) => {
     if (isDeleteRule(rule)) return rule.conditions?.delete?.condition
     if (isCategoryRule(rule)) return rule.conditions?.category?.condition
     return getRuleTagActions(rule).find(action => action?.enabled && action?.condition)?.condition
   }
 
-  // Handle toggle - show preview when enabling delete, category, or tag rules
   const handleToggle = (instanceId: number, rule: Automation) => {
     if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule) || isTagRule(rule))) {
-      // Enabling a delete, category, or tag rule - show preview first
-      // Reset preview view to "needed" when starting a new preview
       setPreviewView("needed")
       setIsLoadingPreviewView(false)
       setEnableConfirm({ instanceId, rule, preview: null, isInitialLoading: true })
       previewRule.mutate({ instanceId, rule, view: "needed" })
     } else {
-      // Disabling or non-destructive rule - just toggle
       toggleEnabled.mutate({ instanceId, rule })
     }
   }
 
-  // Check if a delete rule uses FREE_SPACE field
   const ruleUsesFreeSpace = (rule: Automation): boolean => {
     if (!isDeleteRule(rule)) return false
     return conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE")
   }
 
-  // Handler for switching preview view - refetches with new view and resets pagination
   const handlePreviewViewChange = async (newView: PreviewView) => {
     if (!enableConfirm) return
     setPreviewView(newView)
@@ -716,7 +689,6 @@ export function WorkflowsOverview() {
     }
   }
 
-  // CSV columns for automation preview export
   const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
     { header: t("preferences.workflowDialog.csv.name"), accessor: item => item.name },
     { header: t("preferences.workflowDialog.csv.hash"), accessor: item => item.hash },
@@ -788,7 +760,6 @@ export function WorkflowsOverview() {
     [instances]
   )
 
-  // Fetch rules for all active instances
   const rulesQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["automations", instance.id],
@@ -797,7 +768,6 @@ export function WorkflowsOverview() {
     })),
   })
 
-  // Fetch activity for all active instances
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["automation-activity", instance.id],
@@ -907,7 +877,6 @@ export function WorkflowsOverview() {
             const sortedRules = [...rules].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
             const enabledRulesCount = rules.filter(r => r.enabled).length
 
-            // Activity data for this instance
             const activityQuery = activityQueries[index]
             const events = activityQuery?.data ?? []
             const activityStats = computeActivityStats(events)
@@ -915,7 +884,6 @@ export function WorkflowsOverview() {
             const activitySearchTerm = (activitySearchMap[instance.id] ?? "").toLowerCase().trim()
             const displayLimit = displayLimitMap[instance.id] ?? 50
 
-            // Filter events
             const allFilteredEvents = events.filter((e) => {
               if (activityFilter === "success" && e.outcome !== "success" && e.outcome !== "dry-run") return false
               if (activityFilter === "errors" && e.outcome !== "failed") return false
@@ -968,7 +936,6 @@ export function WorkflowsOverview() {
 
                 <AccordionContent className="px-6 pb-4">
                   <div className="space-y-4">
-                    {/* Rules list */}
                     {rulesQuery?.isError ? (
                       <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
                         <p className="text-sm text-destructive">{t("preferences.workflowsOverview.failedToLoadRules")}</p>
@@ -1070,9 +1037,7 @@ export function WorkflowsOverview() {
                       </div>
                     )}
 
-                    {/* Activity Section */}
                     <div className="space-y-3">
-                      {/* Activity filters */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
@@ -1167,7 +1132,6 @@ export function WorkflowsOverview() {
                         </div>
                       </div>
 
-                      {/* Search filter */}
                       <div className="relative">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -1182,7 +1146,6 @@ export function WorkflowsOverview() {
                         />
                       </div>
 
-                      {/* Activity list */}
                       {activityQuery?.isError ? (
                         <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
                           <p className="text-sm text-destructive">{t("preferences.workflowsOverview.failedToLoadActivity")}</p>
@@ -1303,7 +1266,7 @@ export function WorkflowsOverview() {
                                         <Badge
                                           variant="outline"
                                           className={cn(
-                                            "text-[10px] px-1.5 py-0 h-5 shrink-0",
+                                            "text-10 px-1.5 py-0 h-5 shrink-0",
                                             actionClasses[event.action]
                                           )}
                                         >
@@ -1313,7 +1276,7 @@ export function WorkflowsOverview() {
                                           <Badge
                                             variant="outline"
                                             className={cn(
-                                              "text-[10px] px-1.5 py-0 h-5 shrink-0",
+                                              "text-10 px-1.5 py-0 h-5 shrink-0",
                                               outcomeClasses[event.outcome]
                                             )}
                                           >
@@ -1400,7 +1363,7 @@ export function WorkflowsOverview() {
                                         {event.details?.filesKept !== undefined && (() => {
                                           const { filesKept, deleteMode } = event.details
                                           let label: string
-                                          const badgeClassName = "text-[10px] px-1.5 py-0 h-5"
+                                          const badgeClassName = "text-10 px-1.5 py-0 h-5"
 
                                           if (deleteMode === "delete") {
                                             label = t("preferences.workflowsOverview.torrentOnly")
@@ -1429,12 +1392,12 @@ export function WorkflowsOverview() {
                                           return (
                                             <div className="flex flex-wrap gap-1.5">
                                               {addedTags.map(([tag, count]) => (
-                                                <Badge key={`add-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                <Badge key={`add-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
                                                   +{tag} ({count})
                                                 </Badge>
                                               ))}
                                               {removedTags.map(([tag, count]) => (
-                                                <Badge key={`rm-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
+                                                <Badge key={`rm-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
                                                   -{tag} ({count})
                                                 </Badge>
                                               ))}
@@ -1447,7 +1410,7 @@ export function WorkflowsOverview() {
                                           return (
                                             <div className="flex flex-wrap gap-1.5">
                                               {categories.map(([category, count]) => (
-                                                <Badge key={category} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                <Badge key={category} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
                                                   {category} ({count})
                                                 </Badge>
                                               ))}
@@ -1462,12 +1425,11 @@ export function WorkflowsOverview() {
                                               {limits.map(([key, count]) => {
                                                 const [type, limitKiB] = key.split(":")
                                                 const numKiB = Number(limitKiB)
-                                                // 0 = Unlimited in qBittorrent per-torrent speed limits
                                                 const label = numKiB === 0
                                                   ? t("preferences.workflowsOverview.unlimited")
                                                   : formatSpeedWithUnit(numKiB * 1024, "bytes")
                                                 return (
-                                                  <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
+                                                  <Badge key={key} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
                                                     {type === "upload" ? "↑" : "↓"} {label} ({count})
                                                   </Badge>
                                                 )
@@ -1489,7 +1451,7 @@ export function WorkflowsOverview() {
                                                   parts.push(`${hours}h`)
                                                 }
                                                 return (
-                                                  <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-violet-500/10 text-violet-500 border-violet-500/20">
+                                                  <Badge key={key} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-violet-500/10 text-violet-500 border-violet-500/20">
                                                     {parts.join(" / ") || t("preferences.workflowsOverview.limit")} ({count})
                                                   </Badge>
                                                 )
@@ -1508,7 +1470,7 @@ export function WorkflowsOverview() {
                                           return (
                                             <div className="flex flex-wrap gap-1.5">
                                               {paths.map(([path, count]) => (
-                                                <Badge key={path} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-green-500/10 text-green-500 border-green-500/20">
+                                                <Badge key={path} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-green-500/10 text-green-500 border-green-500/20">
                                                   {path} ({count})
                                                 </Badge>
                                               ))}
@@ -1863,13 +1825,13 @@ function RulePreview({
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         {isAllTrackers ? (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 cursor-default">
             {t("preferences.workflows.allTrackers")}
           </Badge>
         ) : trackers.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-help">
+              <Badge variant="outline" className="text-10 px-1.5 h-5 cursor-help">
                 {t("preferences.workflowsOverview.trackers", { count: trackers.length })}
               </Badge>
             </TooltipTrigger>
@@ -1879,84 +1841,84 @@ function RulePreview({
           </Tooltip>
         )}
         {!hasAnyCondition && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 cursor-default">
             {t("preferences.workflowsOverview.allTorrents")}
           </Badge>
         )}
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.uploadKiB !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowUp className="h-3 w-3" />
             {formatSpeedLimitCompact(rule.conditions.speedLimits.uploadKiB)}
           </Badge>
         )}
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.downloadKiB !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowDown className="h-3 w-3" />
             {formatSpeedLimitCompact(rule.conditions.speedLimits.downloadKiB)}
           </Badge>
         )}
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.ratioLimit !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Scale className="h-3 w-3" />
             {formatShareLimit(rule.conditions.shareLimits.ratioLimit, true)}
           </Badge>
         )}
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.seedingTimeMinutes !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Clock className="h-3 w-3" />
             {formatShareLimit(rule.conditions.shareLimits.seedingTimeMinutes, false)}{rule.conditions.shareLimits.seedingTimeMinutes >= 0 ? t("preferences.workflows.minuteSuffix") : ""}
           </Badge>
         )}
         {rule.conditions?.pause?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Pause className="h-3 w-3" />
             {t("preferences.workflows.pause")}
           </Badge>
         )}
         {rule.conditions?.resume?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Play className="h-3 w-3" />
             {t("preferences.workflowsOverview.resume")}
           </Badge>
         )}
         {rule.conditions?.recheck?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <RefreshCcw className="h-3 w-3" />
             {t("preferences.workflows.recheck")}
           </Badge>
         )}
         {rule.conditions?.reannounce?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <RefreshCcw className="h-3 w-3" />
             {t("preferences.workflows.reannounce")}
           </Badge>
         )}
         {rule.conditions?.delete?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
             {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? t("preferences.workflowsOverview.xsSafe"): rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? t("preferences.workflowsOverview.plusXs"): rule.conditions.delete.mode === "deleteWithFiles"? t("preferences.workflowsOverview.plusFiles"): ""}
           </Badge>
         )}
         {tagActions.some((action) => action.enabled) && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Tag className="h-3 w-3" />
             {t("preferences.workflowsOverview.tagActions", { count: tagActions.length })}
           </Badge>
         )}
         {rule.conditions?.category?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-emerald-600 border-emerald-600/50">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default text-emerald-600 border-emerald-600/50">
             <Folder className="h-3 w-3" />
             {rule.conditions.category.category || t("preferences.workflowDialog.uncategorized")}
           </Badge>
         )}
         {rule.conditions?.move?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Move className="h-3 w-3" />
             {rule.conditions.move.path}
           </Badge>
         )}
         {rule.conditions?.externalProgram?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Terminal className="h-3 w-3" />
             {t("preferences.workflowsOverview.program")}
           </Badge>

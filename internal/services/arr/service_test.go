@@ -310,13 +310,6 @@ func newArrLookupTestService(t *testing.T, instanceType models.ArrInstanceType, 
 }
 
 func TestService_LookupSeasonEpisodeTotalReturnsSeasonTitles(t *testing.T) {
-	// Pins the wiring at the return site: season-pack alias matching consumes
-	// result.Titles, so dropping the titlesForSeason call would silently kill the
-	// feature while every other test stays green.
-	//
-	// The mock mirrors real Sonarr: /parse embeds the series WITHOUT alternateTitles
-	// (only SeriesController populates them), so the service must hydrate via
-	// /series/{id} to see aliases at all.
 	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v3/parse":
@@ -349,10 +342,6 @@ func TestService_LookupSeasonEpisodeTotalReturnsSeasonTitles(t *testing.T) {
 }
 
 func TestService_LookupSeasonEpisodeTotalKeepsTitlesWhenSeasonHasNoEpisodes(t *testing.T) {
-	// Anime is often stored in Sonarr as one absolute-numbered season, so the requested
-	// season has no episode rows. The aliases must survive as a partial result so the
-	// caller's metadata-total fallback can still alias-match; dropping them killed alias
-	// matching in exactly the degraded path it was built for.
 	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v3/parse":
@@ -403,10 +392,6 @@ func TestService_LookupSeasonEpisodeTotalSurvivesHydrationFailure(t *testing.T) 
 }
 
 func TestSeasonLookupTitles_SuppressesExpansionForOtherSeasonAliasPacks(t *testing.T) {
-	// A pack titled by an alias that Sonarr maps to a different season (e.g.
-	// "Show 2nd Season" labeled S01) numbers its episodes alias-locally. Expanding
-	// to the canonical title would bridge canonical wrong-season locals onto it, so
-	// alias expansion must be suppressed entirely for that lookup.
 	season := func(i int) *int { return &i }
 	series := &SonarrSeries{
 		Title: "Oshi no Ko",
@@ -414,16 +399,10 @@ func TestSeasonLookupTitles_SuppressesExpansionForOtherSeasonAliasPacks(t *testi
 			{Title: "Oshi no Ko Romaji"},
 			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2), SceneSeasonNumber: season(1)},
 			{Title: "Oshi no Ko Kai", SceneSeasonNumber: season(2)},
-			// XEM scene mappings often carry the bare canonical title per season. It
-			// prefixes every pack of the show, so treating it as an alias-titled pack
-			// would suppress alias expansion for all canonically-titled packs.
 			{Title: "Oshi no Ko", SceneSeasonNumber: season(1)},
 		},
 	}
 
-	// Alias-titled pack labeled S01, but the alias maps to Sonarr season 2: no expansion.
-	// SceneSeasonNumber is 1 here, so treating scene equality as alignment (matchesSeason)
-	// would wrongly let this pack through; this case pins that it must not.
 	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.2nd.Season.S01.1080p.WEB.x264-GRP", 1))
 
 	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.Kai.S01.1080p.WEB.x264-GRP", 1))
@@ -447,10 +426,6 @@ func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
 			{Title: "Oshi no Ko Wide", SeasonNumber: season(-1)},
 			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2)},
 			{Title: "Oshi no Ko Scene S3", SceneSeasonNumber: season(3)},
-			// The real Sonarr scene-mapping shape: SeasonNumber is the Sonarr season,
-			// SceneSeasonNumber the release-label season. Scene equality must NOT count
-			// as season alignment, or this season-2 alias bridges season-2 episodes
-			// onto every season-1 pack.
 			{Title: "Oshi no Ko Scene Mapped", SeasonNumber: season(2), SceneSeasonNumber: season(1)},
 		},
 	}
@@ -476,10 +451,6 @@ func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
 	require.Contains(t, all, "Oshi no Ko Scene S3")
 }
 
-// TestCacheWritesSurviveCallerCancellation catches a cache write bound to the
-// request context: an announce-path lookup that finishes near its deadline
-// would then succeed but fail to cache, so the apply-time repeat of the same
-// title pays the ARR round trips again.
 func TestCacheWritesSurviveCallerCancellation(t *testing.T) {
 	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.NotFoundHandler())
 
@@ -579,7 +550,6 @@ func TestService_LookupExternalIDsRefetchesPreMapRowOnce(t *testing.T) {
 	parseCalls := 0
 	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, solitudeMappedEpisode))
 
-	// A row written before the map columns existed: titles known, map flag unset.
 	require.NoError(t, cacheStore.SetWithTitles(ctx, titleHash, string(ContentTypeTV), nil, &models.ExternalIDs{TVDbID: 471000}, []string{"Solitude"}, nil, false, false, time.Hour))
 
 	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)

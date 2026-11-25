@@ -322,7 +322,6 @@ func TestReleasesMatch_SumMustMatch(t *testing.T) {
 func TestReleasesMatch_AnimeRealWorld(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
-	// These are parsed by rls from real torrent names
 	subsPlease := rls.Release{
 		Title:      "Kingdom",
 		Series:     6,
@@ -351,7 +350,6 @@ func TestReleasesMatch_AnimeRealWorld(t *testing.T) {
 		Site:       "AnoZu",
 	}
 
-	// A checksum on one name only is not enforced, in either direction
 	subsPleaseNoSum := rls.Release{
 		Title:      "Kingdom",
 		Series:     6,

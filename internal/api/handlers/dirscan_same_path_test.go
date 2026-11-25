@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -15,7 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -24,7 +22,7 @@ import (
 type webhookFixture struct {
 	service       *dirscan.Service
 	handler       *DirScanHandler
-	events        <-chan activity.Event
+	scan          *singleDirScanRun
 	remote, local *models.Instance
 }
 
@@ -42,10 +40,8 @@ func newWebhookFixture(t *testing.T, host *webhookHost) *webhookFixture {
 	require.NoError(t, err)
 
 	pool := fsops.NewPoolWithRemote(instances, localbackend.NewBackend(), func(*models.Instance) fsops.Backend { return host })
-	service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(db), nil, nil, nil, nil, nil, nil, pool, nil)
-	hub, events := newActivityHub(t)
-	service.SetActivityPublisher(hub)
-	return &webhookFixture{service: service, handler: NewDirScanHandler(service, instances), events: events, remote: remote, local: local}
+	service, scan := newSingleDirScanRun(db, pool)
+	return &webhookFixture{service: service, handler: NewDirScanHandler(service, instances), scan: scan, remote: remote, local: local}
 }
 
 func (f *webhookFixture) createDir(t *testing.T, path string, instance *models.Instance) (*models.DirScanDirectory, error) {
@@ -88,6 +84,7 @@ func TestWebhookTriggerScan_InstanceID(t *testing.T) {
 		{name: "instanceId picks the directory of that instance", instanceID: func(f *webhookFixture) string { return strconv.Itoa(f.remote.ID) }, wantCode: http.StatusAccepted},
 		{name: "an instance without a directory matches nothing", instanceID: func(*webhookFixture) string { return "9999" }, wantCode: http.StatusNotFound},
 		{name: "a malformed instanceId is rejected", instanceID: func(*webhookFixture) string { return "abc" }, wantCode: http.StatusBadRequest},
+		{name: "instanceId 0 is rejected", instanceID: func(*webhookFixture) string { return "0" }, wantCode: http.StatusBadRequest},
 		{name: "a test event checks the instance", instanceID: func(*webhookFixture) string { return "9999" }, eventType: testEvent, wantCode: http.StatusNotFound},
 		{name: "a test event passes for an instance with a directory", instanceID: func(f *webhookFixture) string { return strconv.Itoa(f.remote.ID) }, eventType: testEvent, wantCode: http.StatusNoContent},
 	} {
@@ -109,10 +106,7 @@ func TestWebhookTriggerScan_InstanceID(t *testing.T) {
 			require.Equal(t, tt.wantCode, rec.Code, rec.Body.String())
 			require.Contains(t, rec.Body.String(), tt.wantBody)
 			if tt.wantCode == http.StatusAccepted {
-				var resp dirScanTriggerResponse
-				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-				require.Equal(t, onRemote.ID, resp.DirectoryID)
-				waitDirScanIdle(t, f.service, f.events, resp.DirectoryID)
+				require.Equal(t, onRemote.ID, f.scan.response(t, rec).DirectoryID)
 			}
 		})
 	}

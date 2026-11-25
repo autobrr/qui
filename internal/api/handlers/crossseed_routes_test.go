@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,14 +34,12 @@ import (
 )
 
 type routeFixture struct {
-	t         *testing.T
-	instances *models.InstanceStore
-	routes    *crossseedroute.Service
-	torrents  *fakeRouteTorrents
-	router    *chi.Mux
-	// instancesHandler serves the instance routes that can break a route.
-	instancesHandler *InstancesHandler
-	// qbt answers as qBittorrent 5.0 (WebAPI 2.11.2); old answers as 4.6.
+	t                 *testing.T
+	instances         *models.InstanceStore
+	routes            *crossseedroute.Service
+	torrents          *fakeRouteTorrents
+	router            *chi.Mux
+	instancesHandler  *InstancesHandler
 	qbt, old, offline string
 }
 
@@ -49,7 +48,6 @@ func newRouteFixture(t *testing.T) *routeFixture {
 	return newRouteFixtureWithBackend(t, local.NewBackend())
 }
 
-// newRouteFixtureWithBackend uses backend as the backend of local instances.
 func newRouteFixtureWithBackend(t *testing.T, backend fsops.Backend) *routeFixture {
 	t.Helper()
 	db := testdb.NewMigratedSQLite(t, "cross-seed-routes")
@@ -60,7 +58,6 @@ func newRouteFixtureWithBackend(t *testing.T, backend fsops.Backend) *routeFixtu
 	t.Cleanup(func() { _ = clientPool.Close() })
 
 	routes := crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instances, clientPool, fsops.NewPoolWithRemote(instances, backend, func(*models.Instance) fsops.Backend {
-		// The route test refuses a remote instance before it uses the backend.
 		return nil
 	}))
 	torrents := &fakeRouteTorrents{torrents: map[int][]qbt.Torrent{}, files: map[string]qbt.TorrentFiles{}}
@@ -98,8 +95,6 @@ func newRouteFixtureWithBackend(t *testing.T, backend fsops.Backend) *routeFixtu
 	}
 }
 
-// fakeQBittorrent answers login and the WebAPI version, or 503 for everything
-// when version is empty.
 func fakeQBittorrent(t *testing.T, version string) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +127,6 @@ func (f *routeFixture) instance(name, host string, mode models.FilesystemMode) *
 	return instance
 }
 
-// source is a local instance in hardlink mode with the given base folders.
 func (f *routeFixture) source(name string, mode models.FilesystemMode, baseDirs ...string) *models.Instance {
 	f.t.Helper()
 	instance := f.instance(name, f.qbt, mode)
@@ -187,8 +181,7 @@ func TestCrossSeedRouteSaveRefusesBrokenRules(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		// setup returns the Source instance, the Cross-seed instance, and the rows to save.
+		name  string
 		setup func(f *routeFixture) (*models.Instance, *models.Instance, []models.CrossSeedRouteRow)
 		want  string
 	}{
@@ -340,12 +333,10 @@ func TestCrossSeedRouteSaveReadClearList(t *testing.T) {
 	f := newRouteFixture(t)
 	library := filepath.Join(t.TempDir(), "links")
 	other := filepath.Join(t.TempDir(), "links")
-	// A base folder listed twice is one row.
 	source := f.source("library", models.FilesystemModeLocal, library, other, library+string(filepath.Separator))
 	second := f.source("second", models.FilesystemModeLocal, library)
 	crossSeed := f.instance("seeds", f.qbt, models.FilesystemModeNone)
 
-	// The key is cleaned, and a base folder without a row keeps the same path.
 	rec := f.save(source, crossSeed, models.CrossSeedRouteRow{BaseDir: " " + other + string(filepath.Separator) + " ", MappedPath: " /seeds/links "})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	wantRows := []models.CrossSeedRouteRow{{BaseDir: library}, {BaseDir: other, MappedPath: "/seeds/links"}}
@@ -355,7 +346,6 @@ func TestCrossSeedRouteSaveReadClearList(t *testing.T) {
 	assert.Equal(t, wantRows, plainRows(got))
 	assert.Empty(t, got.BrokenRule)
 
-	// Several Source instances can route to one Cross-seed instance.
 	require.Equal(t, http.StatusOK, f.save(second, crossSeed).Code)
 	sources, err := f.routes.ListSources(t.Context(), crossSeed.ID)
 	require.NoError(t, err)
@@ -368,7 +358,6 @@ func TestCrossSeedRouteSaveReadClearList(t *testing.T) {
 	assert.Equal(t, source.ID, listed[0].SourceInstanceID)
 	assert.Equal(t, second.ID, listed[1].SourceInstanceID)
 
-	// The read keeps a saved route that no longer passes, and names the rule.
 	_, err = f.instances.SetActiveState(t.Context(), crossSeed.ID, false)
 	require.NoError(t, err)
 	got = decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
@@ -390,7 +379,6 @@ func TestCrossSeedRouteUnknownInstance(t *testing.T) {
 	rec := f.do(http.MethodPut, source.ID, crossSeedRouteRequest{CrossSeedInstanceID: 999})
 	assert.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 
-	// A save with no Cross-seed instance is a bad request, not an unknown instance.
 	rec = f.do(http.MethodPut, source.ID, crossSeedRouteRequest{})
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
@@ -411,7 +399,6 @@ func TestCrossSeedRouteDeletedWithEitherInstance(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []int{first.ID, second.ID}, sources)
 
-	// Deleting the Cross-seed instance clears the route on each Source instance.
 	require.Equal(t, http.StatusOK, f.request(http.MethodDelete, "/api/instances/"+strconv.Itoa(crossSeed.ID), nil).Code)
 	routes, err := f.routes.List(t.Context())
 	require.NoError(t, err)
@@ -439,31 +426,34 @@ func TestCrossSeedRouteAvailabilityChecksVersionOnlyForListing(t *testing.T) {
 	require.ErrorIs(t, f.routes.CheckAvailable(t.Context(), instance.ID, true), crossseedroute.ErrUnavailable)
 }
 
-// regression: #3651
 func TestCrossSeedRouteAvailabilityStopsALoginAtTheDeadline(t *testing.T) {
 	f := newRouteFixture(t)
-	// The server sees the client go away only after it reads the login body.
-	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	var arrived atomic.Bool
+	stalled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/auth/login" {
+			http.NotFound(w, r)
+			return
+		}
 		_, _ = io.Copy(io.Discard, r.Body)
+		arrived.Store(true)
 		<-r.Context().Done()
 	}))
 	t.Cleanup(stalled.Close)
 	instance := f.instance("seeds", stalled.URL, models.FilesystemModeNone)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	start := time.Now()
 	require.ErrorIs(t, f.routes.CheckAvailable(ctx, instance.ID, false), crossseedroute.ErrUnavailable)
 	assert.Less(t, time.Since(start), 30*time.Second, "the login must stop at the deadline of ctx, not after the 60-second pool default")
+	require.True(t, arrived.Load(), "the login did not reach qBittorrent")
 }
 
-// fakeRouteTorrents answers the torrent reads of the route loader per instance.
 type fakeRouteTorrents struct {
 	torrents map[int][]qbt.Torrent
 	files    map[string]qbt.TorrentFiles
 	err      error
-	// asked holds the hashes of each file read.
-	asked [][]string
+	asked    [][]string
 }
 
 func (f *fakeRouteTorrents) GetAllTorrentRefs(_ context.Context, instanceID int) ([]*qbt.Torrent, error) {
@@ -508,8 +498,6 @@ func routedCounts(route *crossSeedRouteResponse) []*int {
 	return counts
 }
 
-// routedSetup saves a route with a same-path row (library) and a mapped row
-// (other, seen as /seeds/links on the Cross-seed instance).
 func routedSetup(t *testing.T, f *routeFixture) (source, crossSeed *models.Instance, library, other string) {
 	t.Helper()
 	library = filepath.Join(t.TempDir(), "links")
@@ -530,20 +518,17 @@ func TestCrossSeedRouteReadCountsRoutedTorrents(t *testing.T) {
 		{Hash: "c", SavePath: `\seeds\links\movies\`},
 		{Hash: "d", SavePath: "/downloads"},
 	}
-	// The Source instance's own torrents never count.
 	f.torrents.torrents[source.ID] = []qbt.Torrent{{Hash: "e", SavePath: library}}
 
 	got := decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
 	assert.Equal(t, []*int{new(1), new(2)}, routedCounts(got))
 	assert.Empty(t, f.torrents.asked, "a count reads no file lists")
 
-	// A failed torrent read leaves every count unknown.
 	f.torrents.err = errors.New("connection refused")
 	got = decodeRoute(t, f.do(http.MethodGet, source.ID, nil))
 	assert.Equal(t, []*int{nil, nil}, routedCounts(got))
 	f.torrents.err = nil
 
-	// So does a Cross-seed instance that is turned off in qui.
 	_, err := f.instances.SetActiveState(t.Context(), crossSeed.ID, false)
 	require.NoError(t, err)
 	rec := f.do(http.MethodGet, source.ID, nil)
@@ -568,13 +553,11 @@ func TestCrossSeedRouteLoadMapsTorrentsBack(t *testing.T) {
 	assert.Equal(t, []qbt.Torrent{
 		{Hash: "mapped", SavePath: filepath.Join(other, "tv"), ContentPath: filepath.Join(other, "tv", "Show")},
 		{Hash: "same", SavePath: filepath.Join(library, "tv"), ContentPath: filepath.Join(library, "tv", "Show")},
-		// A content path under no row is dropped.
 		{Hash: "moved", SavePath: other},
 	}, routed.Torrents)
 	assert.Equal(t, map[string]qbt.TorrentFiles{"mapped": files, "same": files, "moved": files}, routed.Files)
 	assert.Equal(t, [][]string{{"mapped", "same", "moved"}}, f.torrents.asked, "no file list for a torrent under no row")
 
-	// The files of the mapped torrent land under the Source instance's base folder.
 	assert.Equal(t, filepath.Join(other, "tv", "Show", "e01.mkv"), filepath.Join(routed.Torrents[0].SavePath, filepath.FromSlash(routed.Files["mapped"][0].Name)))
 
 	f.torrents.err = errors.New("connection refused")
@@ -587,15 +570,12 @@ func TestCrossSeedRouteLoadMapsTorrentsBack(t *testing.T) {
 	_, err = f.routes.LoadRouted(t.Context(), f.torrents, source.ID)
 	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
 
-	// An instance without a route has nothing to load.
 	other2 := f.source("other", models.FilesystemModeLocal, filepath.Join(t.TempDir(), "links"))
 	routed, err = f.routes.LoadRouted(t.Context(), f.torrents, other2.ID)
 	require.NoError(t, err)
 	assert.Nil(t, routed)
 }
 
-// A base folder that the Source instance gains after the save acts as an
-// empty row: same path on both instances.
 func TestCrossSeedRouteNewBaseFolderKeepsTheSamePath(t *testing.T) {
 	f := newRouteFixture(t)
 	source, crossSeed, library, other := routedSetup(t, f)
@@ -618,8 +598,6 @@ func TestCrossSeedRouteNewBaseFolderKeepsTheSamePath(t *testing.T) {
 	assert.Equal(t, []qbt.Torrent{{Hash: "new", SavePath: filepath.Join(added, "tv")}}, routed.Torrents)
 }
 
-// A read that the deadline cuts off means that the Cross-seed instance did not
-// answer in time, so the route read shows null counts and not an error.
 func TestCrossSeedRouteCountAfterTheDeadlineIsUnavailable(t *testing.T) {
 	f := newRouteFixture(t)
 	source, _, _, _ := routedSetup(t, f)
@@ -632,8 +610,6 @@ func TestCrossSeedRouteCountAfterTheDeadlineIsUnavailable(t *testing.T) {
 	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
 }
 
-// The torrent reader leaves out a file list that it fails to read, so a
-// missing list means that the Cross-seed instance is unavailable.
 func TestCrossSeedRouteLoadNeedsEveryFileList(t *testing.T) {
 	f := newRouteFixture(t)
 	source, crossSeed, library, _ := routedSetup(t, f)
@@ -647,8 +623,6 @@ func TestCrossSeedRouteLoadNeedsEveryFileList(t *testing.T) {
 	require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
 }
 
-// A base folder added after the save can be the folder that a saved row maps
-// to. Its torrents then match two rows, so qui counts and loads none of them.
 func TestCrossSeedRouteNewBaseFolderOnAMappedPathBreaksTheRoute(t *testing.T) {
 	f := newRouteFixture(t)
 	library := filepath.Join(t.TempDir(), "links")
@@ -669,8 +643,6 @@ func TestCrossSeedRouteNewBaseFolderOnAMappedPathBreaksTheRoute(t *testing.T) {
 	assert.True(t, broken, "got %v", err)
 }
 
-// putInstance sends an instance update with the instance's own name, host,
-// and username, plus fields.
 func (f *routeFixture) putInstance(instance *models.Instance, fields map[string]any) *httptest.ResponseRecorder {
 	f.t.Helper()
 	body := map[string]any{"name": instance.Name, "host": instance.Host, "username": instance.Username}
@@ -678,8 +650,6 @@ func (f *routeFixture) putInstance(instance *models.Instance, fields map[string]
 	return f.request(http.MethodPut, "/api/instances/"+strconv.Itoa(instance.ID), body)
 }
 
-// withSSH gives instance SSH credentials for a closed local port, with a host
-// key pin when pin is set.
 func (f *routeFixture) withSSH(instance *models.Instance, pin bool) *models.Instance {
 	f.t.Helper()
 	ctx := f.t.Context()
@@ -706,8 +676,7 @@ func TestInstanceChangesThatBreakARouteAreRefused(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		// setup saves a route from "library" to "seeds" and returns the instance to change.
+		name   string
 		setup  func(f *routeFixture) *models.Instance
 		change func(f *routeFixture, instance *models.Instance) *httptest.ResponseRecorder
 		want   string
@@ -733,8 +702,6 @@ func TestInstanceChangesThatBreakARouteAreRefused(t *testing.T) {
 			want:   "This instance routes its cross-seeds to seeds. Clear the route before you turn off hardlink and reflink mode or remove all base folders",
 		},
 		{
-			// A remote instance has Write, so only the access mode tells that
-			// the Source instance leaves local mode.
 			name: "source leaves local mode",
 			setup: func(f *routeFixture) *models.Instance {
 				source := f.withSSH(f.source("library", models.FilesystemModeLocal, library), true)
@@ -745,8 +712,6 @@ func TestInstanceChangesThatBreakARouteAreRefused(t *testing.T) {
 			want:   "This instance routes its cross-seeds to seeds. Clear the route before you turn off Local Filesystem Access",
 		},
 		{
-			// The route already breaks the link-mode rule, and the change
-			// breaks another one.
 			name: "source with link mode off leaves local mode",
 			setup: func(f *routeFixture) *models.Instance {
 				source := f.withSSH(f.instance("library", f.qbt, models.FilesystemModeLocal), true)
@@ -779,8 +744,6 @@ func TestInstanceChangesThatBreakARouteAreRefused(t *testing.T) {
 			want:   "library routes its cross-seeds to this instance, so this instance cannot be a remote instance. Clear the route of library first",
 		},
 		{
-			// The route already breaks the moved-row rule, and the change
-			// breaks another one.
 			name: "cross-seed instance with a broken route becomes remote",
 			setup: func(f *routeFixture) *models.Instance {
 				crossSeed := f.withSSH(f.instance("seeds", f.qbt, models.FilesystemModeLocal), true)
@@ -793,8 +756,6 @@ func TestInstanceChangesThatBreakARouteAreRefused(t *testing.T) {
 			want:   "library routes its cross-seeds to this instance, so this instance cannot be a remote instance",
 		},
 		{
-			// Removing the credentials keeps the pin, so new credentials for
-			// the same endpoint make the instance remote with no host key confirm.
 			name: "cross-seed instance becomes remote through new credentials",
 			setup: func(f *routeFixture) *models.Instance {
 				crossSeed := f.withSSH(f.instance("seeds", f.qbt, models.FilesystemModeNone), true)
@@ -808,7 +769,6 @@ func TestInstanceChangesThatBreakARouteAreRefused(t *testing.T) {
 			want:   "library routes its cross-seeds to this instance, so this instance cannot be a remote instance",
 		},
 		{
-			// Nothing listens on the port, so a dial before the refusal answers 502.
 			name: "cross-seed instance becomes remote through a host key pin",
 			setup: func(f *routeFixture) *models.Instance {
 				crossSeed := f.withSSH(f.instance("seeds", f.qbt, models.FilesystemModeNone), false)
@@ -838,8 +798,6 @@ func TestInstanceChangesThatBreakARouteAreRefused(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newRouteFixture(t)
-			// The refusal comes before the orphan scan lock, so a running
-			// deletion does not turn it into a 409.
 			f.instancesHandler.orphanScan = &fakeOrphanScan{deleting: true}
 			instance := tc.setup(f)
 			routesBefore, err := f.routes.List(t.Context())
@@ -878,8 +836,6 @@ func TestInstanceUpdateDropsTheRowOfARemovedBaseFolder(t *testing.T) {
 	assert.Equal(t, []models.CrossSeedRouteRow{{BaseDir: library, MappedPath: "/seeds/a"}}, route.Rows)
 }
 
-// A change refuses only what it breaks, so a route that already breaks a rule
-// the same way does not block other edits to the instance.
 func TestInstanceUpdateAllowsAChangeToARouteThatAlreadyBreaksARule(t *testing.T) {
 	f := newRouteFixture(t)
 	source := f.instance("library", f.qbt, models.FilesystemModeLocal)

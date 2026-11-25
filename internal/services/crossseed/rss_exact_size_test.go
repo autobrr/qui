@@ -23,9 +23,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TestProcessAutomationCandidateBindsExactSize catches a fallback that
-// downloads the result but loses the source-specific authority required by the
-// later CrossSeed replay.
 func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 	const (
 		instanceID = 7
@@ -692,7 +689,6 @@ func TestProcessAutomationCandidateExactSizeBucketsOncePerCandidate(t *testing.T
 	}
 	unavailable := func(int, string) (*CrossSeedResponse, error) { return nil, errors.New("instance unavailable") }
 
-	// One feed item is one candidate, whatever the instance count.
 	tests := []struct {
 		name        string
 		first       func(int, string) (*CrossSeedResponse, error)
@@ -912,9 +908,6 @@ func TestMergeCrossSeedResponsesPreservesAggregateSuccess(t *testing.T) {
 	require.True(t, destination.titleRescueUsed)
 }
 
-// TestFindRSSAnnouncementMatchesARRAlternateTitles catches an RSS fallback that
-// ignores ARR alternate titles the webhook and autobrr paths already use, and
-// an eager lookup that touches ARR for feed items with no byte-size collision.
 func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 	t.Parallel()
 
@@ -971,8 +964,6 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 			}
 			if tt.wantMatch {
 				require.Len(t, matches, 1)
-				// The decision must carry the aliases so the apply-time
-				// revalidation inside CrossSeed accepts the same pair.
 				require.Equal(t, aliasResult.Titles, matches[0].decision.CandidateTitles)
 			} else {
 				require.Empty(t, matches)
@@ -981,7 +972,6 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 	}
 }
 
-// regression: #3626
 func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 	const (
 		instanceID = 9
@@ -989,13 +979,10 @@ func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 		name       = "Quiet.Harbor.2025.1080p.WEB-DL.H.264-LUMA"
 		size       = int64(4 << 20)
 	)
-	// The candidate lookup takes the same name. Only the exact-size fallback
-	// takes the other codec.
 	for _, feedName := range []string{name, "Quiet.Harbor.2025.1080p.WEB-DL.H.265-LUMA"} {
 		t.Run(feedName, func(t *testing.T) {
 			torrentBytes := createNamedFileTestTorrent(t, feedName, name+".mkv", size)
 			instance := &models.Instance{ID: instanceID, Name: "main"}
-			// qBittorrent reports the content path under the download path until the move ends.
 			source := qbt.Torrent{
 				Hash: sourceHash, Name: name, Size: size, TotalSize: size, Progress: 1, State: qbt.TorrentStateMoving,
 				SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + name + ".mkv",
@@ -1045,12 +1032,6 @@ func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 	}
 }
 
-// TestAutomationRunRetriesStrandedAddOnNextPoll runs two RSS polls. A stranded
-// add on the first bound source must fail the feed item, not let a later
-// source's "exists" mark it processed, so the run shows the failure. The next
-// poll reports "exists" and marks the item processed, so it is not retried
-// forever.
-// regression: #3824
 func TestAutomationRunRetriesStrandedAddOnNextPoll(t *testing.T) {
 	const (
 		instanceID = 21
@@ -1106,8 +1087,6 @@ func TestAutomationRunRetriesStrandedAddOnNextPoll(t *testing.T) {
 			{ID: indexerID, Name: "Indexer", Enabled: true, BaseURL: feed.URL, Backend: models.TorznabBackendNative},
 		}}, jackett.WithMinRequestInterval(time.Millisecond)),
 	}
-	// The first add leaves the torrent stranded in qBittorrent, so each later
-	// attempt finds it there.
 	added := false
 	service.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		if !added {

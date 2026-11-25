@@ -22,11 +22,6 @@ function isChromium(): boolean {
   return /(chrome|chromium|crios)/i.test(ua) && !/(edg|opr|opera)/i.test(ua)
 }
 
-/**
- * Check if the browser supports registerProtocolHandler and we're in a secure context.
- * Secure contexts include HTTPS and localhost (even over HTTP).
- * This complements PWA manifest protocol_handlers for browsers that don't support it.
- */
 export function canRegisterProtocolHandler(): boolean {
   return typeof navigator?.registerProtocolHandler === "function"
     && window.isSecureContext
@@ -48,15 +43,9 @@ export function getMagnetHandlerRegistrationGuidance(): string {
   return i18n.t("magnetHandler.guidance.default")
 }
 
-/**
- * Register qui as the handler for magnet: links.
- * Returns true if registration was requested, false if it failed.
- * The browser may prompt the user for confirmation.
- */
 export function registerMagnetHandler(): boolean {
   try {
     const handlerUrl = `${window.location.origin}${withBasePath("/add")}?url=%s`
-    // Some browsers support a third title argument but TypeScript only knows about the first two.
 
     // @ts-expect-error registerProtocolHandler accepts an optional title argument in practice
     navigator.registerProtocolHandler("magnet", handlerUrl, "qui")
@@ -67,9 +56,6 @@ export function registerMagnetHandler(): boolean {
   }
 }
 
-/**
- * Check if the user has dismissed the protocol handler banner.
- */
 export function isProtocolHandlerBannerDismissed(): boolean {
   try {
     return localStorage.getItem(DISMISSED_KEY) === "true"
@@ -78,9 +64,6 @@ export function isProtocolHandlerBannerDismissed(): boolean {
   }
 }
 
-/**
- * Dismiss the protocol handler banner permanently.
- */
 export function dismissProtocolHandlerBanner(): void {
   try {
     localStorage.setItem(DISMISSED_KEY, "true")

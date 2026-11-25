@@ -11,7 +11,6 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 )
 
-// regression: #4288
 func TestConfigSecretsTakeThePasswordFromTheDSN(t *testing.T) {
 	for _, dsn := range []string{
 		"postgres://qui:dsn-password-123@db.example.invalid:5432/qui?sslmode=disable",

@@ -16,10 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// TestTorrentViewJSONOmitsInternalFields pins the shadow fields on TorrentView:
-// fields used only by the backend must never serialize in list/SSE rows. Marshaling
-// the cross-instance view exercises TorrentView through its deepest embedding,
-// covering both row types in one pass.
 func TestTorrentViewJSONOmitsInternalFields(t *testing.T) {
 	t.Parallel()
 
@@ -52,9 +48,6 @@ func TestTorrentViewJSONOmitsInternalFields(t *testing.T) {
 	require.Equal(t, "Alpha", decoded["name"])
 }
 
-// Before Web API 2.10.0, qBittorrent leaves reannounce out of the torrent list, and
-// go-qbittorrent decodes the missing key as 0. A row must leave the key out then,
-// because 0 means "now" on an instance that sends it.
 func TestTorrentViewJSONReannounceFollowsInstance(t *testing.T) {
 	t.Parallel()
 
@@ -78,8 +71,6 @@ func TestTorrentViewJSONReannounceFollowsInstance(t *testing.T) {
 	}
 }
 
-// The SSE stream keeps page-sized copies of the rows. A pointer into the source
-// torrent would keep the whole library array alive behind each page.
 func TestRowBuilderCopiesReannounce(t *testing.T) {
 	t.Parallel()
 
@@ -90,7 +81,6 @@ func TestRowBuilderCopiesReannounce(t *testing.T) {
 	require.Equal(t, int64(840), *tv.Reannounce)
 }
 
-// rowJSON returns the JSON object of a torrent list row.
 func rowJSON(t *testing.T, row any) map[string]any {
 	t.Helper()
 	data, err := json.Marshal(row)
@@ -100,19 +90,13 @@ func rowJSON(t *testing.T, row any) map[string]any {
 	return decoded
 }
 
-// Before qBittorrent 5.0, the torrent list has no popularity and no private,
-// and go-qbittorrent decodes them as 0 and false. A magnet link without metadata
-// has no private value on 5.0 and later either. The row then leaves the key out,
-// so the page shows a dash and not "0.00" or "No". The single-instance list,
-// the Unified view and the stream all build rows the same way.
-// regression: #3761
 func TestTorrentListLeavesOutPopularityAndPrivateThatTheInstanceDoesNotSend(t *testing.T) {
 	t.Parallel()
 	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "qbittorrent-unknown-list-fields"), make([]byte, 32))
 	require.NoError(t, err)
 
 	type fields struct {
-		popularity, private any // nil: the key is missing
+		popularity, private any
 	}
 	want := map[string]map[string]fields{
 		"2.9.3":  {hashA: {}, hashB: {}},

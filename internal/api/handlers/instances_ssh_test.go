@@ -35,8 +35,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// sshFixture is a handler wired to a real store and dialer, plus an in-process
-// SSH server standing in for the instance's host.
 type sshFixture struct {
 	t         *testing.T
 	router    chi.Router
@@ -63,14 +61,11 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 	instance, err := store.Create(t.Context(), "remote", "http://127.0.0.1:1", "admin", "password", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	// The server is created before the pool so cleanup, which runs last in
-	// first out, closes the pool's connections before the server waits on them.
 	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
 	sshPool := sshpool.NewPool(sshpool.NewDialer(store))
 	t.Cleanup(sshPool.Close)
 	handler := NewInstancesHandler(store, nil, nil, clientPool, nil, nil, sshpool.NewDialer(store), sshPool)
 	t.Cleanup(handler.connectionTests.Wait)
-	// With no saved route, the route check changes no answer of these tests.
 	handler.SetCrossSeedRoutes(crossseedroute.NewService(models.NewCrossSeedRouteStore(db), store, clientPool, fsops.NewPool(store, local.NewBackend())))
 
 	router := chi.NewRouter()
@@ -108,7 +103,6 @@ func (f *sshFixture) do(method, path, body string) *httptest.ResponseRecorder {
 	return recorder
 }
 
-// putCredentials points the instance at the test SSH server.
 func (f *sshFixture) putCredentials() {
 	f.t.Helper()
 
@@ -135,8 +129,6 @@ func hostKeyBody(key ssh.PublicKey) string {
 	return fmt.Sprintf(`{"hostKey":%q}`, base64.StdEncoding.EncodeToString(key.Marshal()))
 }
 
-// splitAddr turns a host:port string into the host and numeric port the
-// credentials request wants.
 func splitAddr(t *testing.T, addr string) (string, int) {
 	t.Helper()
 
@@ -147,8 +139,6 @@ func splitAddr(t *testing.T, addr string) (string, int) {
 	return host, port
 }
 
-// endpoint returns the host and port the fixture's credentials point at, for
-// the tests that write a pin through the store directly.
 func (f *sshFixture) endpoint() (string, int) {
 	f.t.Helper()
 
@@ -177,7 +167,6 @@ func TestConfirmHostKeyPinsIt(t *testing.T) {
 	f := newSSHFixture(t, "ssh-confirm-pins")
 	f.putCredentials()
 
-	// Echo back exactly what the test reported, the way the UI will.
 	presented := f.sshTest().HostKey
 	confirm := f.do(http.MethodPost, "/ssh-host-key", fmt.Sprintf(`{"hostKey":%q}`, presented))
 	require.Equal(t, http.StatusNoContent, confirm.Code, confirm.Body.String())
@@ -211,8 +200,6 @@ func TestRotatedHostKeyMismatchesThenReplaces(t *testing.T) {
 	f := newSSHFixture(t, "ssh-rotated-key")
 	f.putCredentials()
 
-	// The state a re-keyed host leaves behind: the pin holds the old key while
-	// the host presents a new one.
 	stale := sshtest.NewSigner().PublicKey()
 	host, port := f.endpoint()
 	require.NoError(t, f.store.SetHostKeyPin(t.Context(), f.instance.ID, host, port, stale.Marshal()))
@@ -224,7 +211,6 @@ func TestRotatedHostKeyMismatchesThenReplaces(t *testing.T) {
 	assert.Equal(t, stale.Type(), mismatch.PinnedKeyType)
 	assert.Nil(t, mismatch.Capabilities, "a refused host key opens no session to probe")
 
-	// Confirming the mismatched key through the first-pin route must not work.
 	assert.Equal(t, http.StatusConflict, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
 	replace := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey))
@@ -238,7 +224,6 @@ func TestUnreadablePinIsReportedAndReplaceable(t *testing.T) {
 	f.putCredentials()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
-	// A database writer corrupts the pin ciphertext.
 	_, err := f.db.ExecContext(t.Context(), "UPDATE instances SET ssh_host_key_encrypted = ? WHERE id = ?", "qui2:not-a-ciphertext", f.instance.ID)
 	require.NoError(t, err)
 
@@ -247,7 +232,6 @@ func TestUnreadablePinIsReportedAndReplaceable(t *testing.T) {
 	assert.Equal(t, ssh.FingerprintSHA256(f.server.HostKey), unreadable.Fingerprint)
 	assert.Nil(t, unreadable.Capabilities, "an unverifiable pin opens no session to probe")
 
-	// The first-pin route still refuses: the column is not empty.
 	assert.Equal(t, http.StatusConflict, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
 	replace := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey))
@@ -260,8 +244,6 @@ func TestUnreadablePinOnUnreachableHostHasNoKey(t *testing.T) {
 	f.putCredentials()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
-	// Corrupt the pin and move the instance to a dead port in one raw update,
-	// bypassing the store's endpoint-change rule that would drop the pin.
 	_, deadPort := splitAddr(t, sshtest.DeadAddr(t))
 	_, err := f.db.ExecContext(t.Context(), "UPDATE instances SET ssh_host_key_encrypted = ?, ssh_port = ? WHERE id = ?", "qui2:not-a-ciphertext", deadPort, f.instance.ID)
 	require.NoError(t, err)
@@ -271,8 +253,6 @@ func TestUnreadablePinOnUnreachableHostHasNoKey(t *testing.T) {
 	assert.Empty(t, result.Fingerprint, "no host answered, so there is no key to show")
 	assert.Empty(t, result.HostKey)
 
-	// Clearing the credentials keeps the pin; the missing key is what the
-	// user has to fix first.
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
 	assert.Equal(t, http.StatusBadRequest, f.do(http.MethodPost, "/ssh-test", "").Code)
 }
@@ -292,8 +272,6 @@ func TestConfirmReportsUnreachableHostWithoutDetail(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "refused", "the transport's own text stays out of the body")
 }
 
-// A cipher fault in the stored key is qui's problem, not the host's: it is not
-// a 502 and its text is not the client's to read, as with the credentials route.
 func TestConfirmHidesStoredKeyFault(t *testing.T) {
 	f := newSSHFixture(t, "ssh-confirm-corrupt-key")
 	f.putCredentials()
@@ -305,8 +283,6 @@ func TestConfirmHidesStoredKeyFault(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
 	assert.NotContains(t, response.Body.String(), "authentication failed")
 
-	// The same fault next to an unreadable pin is still reported as itself,
-	// not as the pin: only an unreachable host cedes precedence.
 	_, err = f.db.ExecContext(t.Context(), "UPDATE instances SET ssh_host_key_encrypted = ? WHERE id = ?", "qui2:not-a-ciphertext", f.instance.ID)
 	require.NoError(t, err)
 	result := f.sshTest()
@@ -314,8 +290,6 @@ func TestConfirmHidesStoredKeyFault(t *testing.T) {
 	assert.Equal(t, "Failed to read SSH credentials", result.Error, "the cipher fault's text stays out of this body too")
 }
 
-// The routes that change what a connection depends on tell the pool, so a
-// session opened under the old credentials or pin does not outlive them.
 func TestSSHRoutesInvalidateThePool(t *testing.T) {
 	f := newSSHFixture(t, "ssh-routes-invalidate")
 	f.putCredentials()
@@ -353,9 +327,6 @@ func sftpClosed(client *sftp.Client) bool {
 	return err != nil
 }
 
-// Ticking local access takes the instance out of remote mode. A session opened
-// before the edit must end with it, and no new one may be dialed, or file
-// operations for a local instance would keep running on the SSH host.
 func TestUpdateInstanceEndsTheRemoteSession(t *testing.T) {
 	f := newSSHFixture(t, "ssh-update-leaves-remote")
 	f.putCredentials()
@@ -380,9 +351,6 @@ func TestUpdateInstanceEndsTheRemoteSession(t *testing.T) {
 	assert.Equal(t, accepts, f.server.Accepts(), "no new connection may be opened for a local instance")
 }
 
-// An edit that leaves the instance in remote mode must not touch its session.
-// Invalidate would cut every read in flight, and would hold the save behind a
-// dial that another caller has in progress.
 func TestUpdateInstanceKeepsTheRemoteSessionWhenTheModeStays(t *testing.T) {
 	f := newSSHFixture(t, "ssh-update-stays-remote")
 	f.putCredentials()
@@ -405,9 +373,6 @@ func TestUpdateInstanceKeepsTheRemoteSessionWhenTheModeStays(t *testing.T) {
 	assert.Equal(t, accepts, f.server.Accepts(), "no new connection is opened")
 }
 
-// An instance with credentials but no pin is not in remote mode, so the pool
-// refuses it without dialing or memoising anything. Confirming the pin must
-// then let the next caller through.
 func TestConfirmLetsTheNextCallerDial(t *testing.T) {
 	f := newSSHFixture(t, "ssh-confirm-lets-caller-dial")
 	f.putCredentials()
@@ -456,7 +421,6 @@ func TestDeleteCredentialsKeepsThePin(t *testing.T) {
 	assert.Empty(t, listed.SSHUsername)
 	assert.Empty(t, listed.SSHTier, "no credentials, no tier")
 	assert.Nil(t, listed.SSHHardlink, "no credentials, no probe answer")
-	// Without a key there is no usable remote, whatever the pin says.
 	assert.Equal(t, string(models.FilesystemModeNone), listed.FilesystemMode)
 }
 
@@ -471,7 +435,6 @@ func TestSSHTestReportsUnreachableHostAsResult(t *testing.T) {
 	f := newSSHFixture(t, "ssh-test-unreachable")
 	f.putCredentials()
 
-	// Point the instance at a port nothing listens on.
 	deadHost, deadPort := splitAddr(t, sshtest.DeadAddr(t))
 	body, err := json.Marshal(SSHCredentialsRequest{Host: deadHost, Port: deadPort, Username: "qui", PrivateKey: f.clientKey})
 	require.NoError(t, err)
@@ -505,8 +468,6 @@ func TestUpdateCredentialsRejectsBadInput(t *testing.T) {
 	}
 }
 
-// A cipher or database fault is not the submitter's fault, and its message is
-// not theirs to read either.
 func TestUpdateCredentialsReportsStoreFailureAsServerError(t *testing.T) {
 	f := newSSHFixture(t, "ssh-credentials-store-failure")
 	require.NoError(t, f.db.Close())
@@ -556,8 +517,6 @@ func TestInstanceResponsesCarryCapabilities(t *testing.T) {
 	assert.Equal(t, local, f.listInstance().Capabilities, "local, list response")
 }
 
-// The test route and the pin routes write the tier their probe found, up and
-// down, so the capabilities follow the key without waiting for a connect.
 func TestSSHRoutesWriteTheTier(t *testing.T) {
 	f := newSSHFixture(t, "ssh-tier")
 	f.putCredentials()
@@ -592,10 +551,6 @@ func TestSSHRoutesWriteTheTier(t *testing.T) {
 	assert.Equal(t, models.SSHTierSFTP, tier(), "replace, down")
 }
 
-// A pooled connection keeps the tier its probe found, and that probe may
-// have got no answer while the row kept its tier. A test ends the connection
-// whatever it finds, so the next operation runs on a connection whose tier
-// matches the row.
 func TestSSHTestRenewsTheConnection(t *testing.T) {
 	f := newSSHFixture(t, "ssh-test-tier-renews")
 	f.putCredentials()
@@ -638,9 +593,6 @@ func (f *sshFixture) listInstance() InstanceResponse {
 	return listed[0]
 }
 
-// A remote instance has Write (#2942) but no reflink: the remote backend
-// cannot clone files, so the reflink save must still refuse where hardlink
-// mode is accepted.
 func TestUpdateInstanceRefusesReflinkOnRemote(t *testing.T) {
 	f := newSSHFixture(t, "reflink-remote")
 	f.putCredentials()
@@ -653,9 +605,6 @@ func TestUpdateInstanceRefusesReflinkOnRemote(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 }
 
-// Turning off local access with a link mode on is refused by UpdateInstance;
-// removing the SSH credentials of a remote instance takes its Write away the
-// same way (#2942), so it is refused until the link mode is off.
 func TestDeleteSSHCredentialsRefusesWhileALinkModeIsOn(t *testing.T) {
 	f := newSSHFixture(t, "delete-credentials-link-mode")
 	f.putCredentials()
@@ -683,7 +632,6 @@ func TestUpdateSSHCredentialsRefusesANewEndpointWhileALinkModeIsOn(t *testing.T)
 	assert.Equal(t, http.StatusBadRequest, f.do(http.MethodPut, "/ssh-credentials", string(elsewhere)).Code,
 		"a new endpoint drops the pin, so a link mode would have no filesystem access")
 
-	// The same endpoint keeps the pin, so rotating the key stays allowed.
 	sameEndpoint, err := json.Marshal(SSHCredentialsRequest{Host: host, Port: port, Username: "qui2", PrivateKey: f.clientKey})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(sameEndpoint)).Code)
@@ -693,8 +641,6 @@ func TestUpdateSSHCredentialsRefusesANewEndpointWhileALinkModeIsOn(t *testing.T)
 	assert.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(elsewhere)).Code)
 }
 
-// fakeOrphanScan records the instances whose remote previews were failed.
-// afterChange, when set, runs where ChangeSSH still holds its lock.
 type fakeOrphanScan struct {
 	failed      []int
 	deleting    bool
@@ -715,10 +661,6 @@ func (f *fakeOrphanScan) ChangeSSH(_ context.Context, instanceID int, change fun
 	return nil
 }
 
-// A saved SSH change can point an old remote preview at another server with
-// the same user, host and port, so it fails the instance's remote previews. A
-// first pin follows a change that already did, and a refused save changes
-// nothing.
 func TestSSHChangesFailRemoteOrphanPreviews(t *testing.T) {
 	f := newSSHFixture(t, "ssh-fail-orphan-previews")
 	scans := &fakeOrphanScan{}
@@ -745,9 +687,6 @@ func TestSSHChangesFailRemoteOrphanPreviews(t *testing.T) {
 	require.Equal(t, []int{f.instance.ID, f.instance.ID, f.instance.ID}, scans.failed, "clearing the credentials")
 }
 
-// A running orphan scan deletion redials with the stored SSH settings, so a
-// credentials save, a pin replace or a credentials clear waits for it to
-// finish.
 func TestSSHChangesWaitForAnOrphanDeletion(t *testing.T) {
 	f := newSSHFixture(t, "ssh-wait-orphan-deletion")
 	f.putCredentials()
@@ -785,9 +724,6 @@ func TestSSHChangesWaitForAnOrphanDeletion(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
 }
 
-// A scan reads the instance under the orphan scan lock, so each SSH change
-// must drop the pooled connection before the lock is released. Otherwise a
-// scan could read the new settings and still get the old connection.
 func TestSSHChangesInvalidateThePoolUnderTheOrphanScanLock(t *testing.T) {
 	f := newSSHFixture(t, "ssh-invalidate-under-lock")
 	f.putCredentials()

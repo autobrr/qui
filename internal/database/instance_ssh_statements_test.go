@@ -21,11 +21,6 @@ const (
 	sshTestUser = "qui"
 )
 
-// The pin-drop CASE and the pin CAS are the two places the SSH store leans on
-// SQL rather than Go, and the models package runs them against a hand-written
-// schema. That schema is not the migrated table, so these run the same
-// lifecycle against a real migrated database instead — on both engines, since
-// nothing else ever executes these statements under Postgres.
 func TestInstanceSSHStatementsSQLite(t *testing.T) {
 	t.Parallel()
 

@@ -30,10 +30,7 @@ describe("usePersistedFilters", () => {
     const { result } = renderHook(() => usePersistedFilters(1))
     const [filters] = result.current
 
-    // expr defaults to "" which makeFilters does not set, so override it.
     expect(filters).toEqual(makeFilters({ expr: "" }))
-    // Pin the expr-default contract directly so a regression that stops
-    // defaulting expr is caught independently of the structural compare.
     expect(filters.expr).toBe("")
   })
 
@@ -80,13 +77,11 @@ describe("usePersistedFilters", () => {
       }))
     })
 
-    // Global key carries ONLY the cross-instance status fields.
     expect(readJSON(GLOBAL_KEY)).toEqual({
       status: ["seeding"],
       excludeStatus: ["errored"],
     })
 
-    // Returned state reflects the update.
     expect(result.current[0].status).toEqual(["seeding"])
     expect(result.current[0].excludeStatus).toEqual(["errored"])
   })
@@ -108,7 +103,6 @@ describe("usePersistedFilters", () => {
       }))
     })
 
-    // Instance key carries only the instance-scoped fields (no status fields).
     expect(readJSON(instanceKey(9))).toEqual({
       categories: ["iso"],
       excludeCategories: ["junk"],
@@ -119,14 +113,12 @@ describe("usePersistedFilters", () => {
       expr: "ratio < 1",
     })
 
-    // Global key holds empty status arrays, untouched by instance-scoped changes.
     expect(readJSON(GLOBAL_KEY)).toEqual({
       status: [],
       excludeStatus: [],
     })
   })
 
-  // REGRESSION (#2410): setFilters used to strip the sidebar's derived expandedCategories.
   it("keeps expandedCategories through setFilters and a storage round-trip", () => {
     const { result, unmount } = renderHook(() => usePersistedFilters(4))
 
@@ -143,7 +135,6 @@ describe("usePersistedFilters", () => {
     expect(result.current[0].expandedCategories).toEqual(["movies", "movies/4k"])
     expect(result.current[0].expandedExcludeCategories).toEqual([])
 
-    // A fresh mount reads them back from storage.
     unmount()
     const remounted = renderHook(() => usePersistedFilters(4))
     expect(remounted.result.current[0].expandedCategories).toEqual(["movies", "movies/4k"])
@@ -160,8 +151,6 @@ describe("usePersistedFilters", () => {
       }))
     })
 
-    // A second instance mounts and reads from storage. It inherits the shared
-    // global status but must NOT see instance 1's categories.
     hook1.unmount()
     const hook2 = renderHook(() => usePersistedFilters(2))
     const [filters2] = hook2.result.current
@@ -187,13 +176,10 @@ describe("usePersistedFilters", () => {
       rerender({ id: 2 })
     })
 
-    // The instanceId-keyed effect reloads from qui-filters-2 while global persists.
     expect(result.current[0].categories).toEqual(["two"])
     expect(result.current[0].status).toEqual(["downloading"])
   })
 
-  // ERROR PATH: corrupt per-instance JSON. useClientSetting catches the parse
-  // throw and falls back to the empty defaults instead of crashing the tree.
   it("falls back to defaults on corrupt per-instance JSON", () => {
     localStorage.setItem(instanceKey(5), "not-json")
 
@@ -202,8 +188,6 @@ describe("usePersistedFilters", () => {
     expect(result.current[0]).toEqual(makeFilters({ expr: "" }))
   })
 
-  // ERROR PATH: corrupt per-instance JSON reached via an instance switch. The
-  // clean instance's values load, the corrupt one degrades to defaults.
   it("falls back to defaults on corrupt per-instance JSON after an instance switch", () => {
     localStorage.setItem(instanceKey(1), JSON.stringify({ categories: ["clean"] }))
     localStorage.setItem(instanceKey(2), "not-json")
@@ -222,7 +206,6 @@ describe("usePersistedFilters", () => {
     expect(result.current[0].categories).toEqual([])
   })
 
-  // ERROR PATH: corrupt GLOBAL JSON degrades to defaults the same way.
   it("falls back to defaults on corrupt global JSON", () => {
     localStorage.setItem(GLOBAL_KEY, "not-json")
 
@@ -231,8 +214,6 @@ describe("usePersistedFilters", () => {
     expect(result.current[0]).toEqual(makeFilters({ expr: "" }))
   })
 
-  // ERROR PATH: write failure. writeRaw logs and drops the write; the hook
-  // must not throw. State follows storage, so the value stays unchanged.
   it("swallows localStorage write failures without throwing", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
 
@@ -253,12 +234,9 @@ describe("usePersistedFilters", () => {
 
     expect(setItemSpy).toHaveBeenCalled()
     expect(consoleError).toHaveBeenCalled()
-    // Storage-backed state keeps the previous value when the write fails.
     expect(result.current[0].status).toEqual([])
   })
 
-  // ERROR PATH: read failure. readRaw returns null on getItem throw, so the
-  // hook falls back to empty defaults without throwing.
   it("falls back to empty defaults when localStorage read throws", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("storage disabled")

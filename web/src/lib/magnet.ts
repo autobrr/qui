@@ -9,7 +9,6 @@ export function normalizeMagnetLink(input: unknown): string | null {
   let value = input.trim()
   if (!value) return null
 
-  // Some launch flows may double-encode the URL placeholder, so try decoding a couple times.
   for (let i = 0; i < 2; i++) {
     if (/^magnet:/i.test(value)) return value
     if (!/%[0-9a-f]{2}/i.test(value)) break

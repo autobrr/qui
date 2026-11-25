@@ -29,9 +29,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// Helper function to create a test torrent file. Only file names and sizes
-// end up in the metainfo, so the files are described in memory rather than
-// written to disk.
 func createTestTorrent(t *testing.T, name string, files []string, pieceLength int64) []byte {
 	t.Helper()
 
@@ -45,11 +42,9 @@ func createTestTorrent(t *testing.T, name string, files []string, pieceLength in
 	}
 
 	if len(files) == 1 {
-		// Single file torrent.
 		content := fmt.Appendf(nil, "test content for %s", files[0])
 		info.Length = int64(len(content))
 	} else {
-		// Multi-file torrent.
 		for _, f := range files {
 			content := fmt.Appendf(nil, "test content for %s", f)
 			info.Files = append(info.Files, metainfo.FileInfo{
@@ -69,17 +64,12 @@ func createTestTorrent(t *testing.T, name string, files []string, pieceLength in
 	return buf.Bytes()
 }
 
-// sortTorrentFiles orders files by full path, the shape every real
-// torrent-creation tool produces.
 func sortTorrentFiles(files []metainfo.FileInfo) {
 	slices.SortFunc(files, func(a, b metainfo.FileInfo) int {
 		return strings.Compare(strings.Join(a.Path, "/"), strings.Join(b.Path, "/"))
 	})
 }
 
-// TestParseTorrentMetadataWithInfo_SanitizesInvalidUTF8 verifies that non-UTF-8 bytes in
-// torrent name/file fields (e.g. "á" as Latin-1 0xe1) are replaced with U+FFFD at the
-// parse boundary, so downstream release parsing never feeds invalid UTF-8 into regexp.Compile.
 func TestParseTorrentMetadataWithInfo_SanitizesInvalidUTF8(t *testing.T) {
 	info := metainfo.Info{
 		Name:        "Movie.\xe1.2024.1080p-GROUP",
@@ -102,7 +92,6 @@ func TestParseTorrentMetadataWithInfo_SanitizesInvalidUTF8(t *testing.T) {
 	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/Movie.\uFFFD.2024.1080p-GROUP.mkv", meta.Files[0].Name)
 }
 
-// TestDecodeTorrentData tests base64 decoding with various formats
 func TestDecodeTorrentData(t *testing.T) {
 	s := &Service{}
 	testData := []byte("test torrent data")
@@ -157,10 +146,6 @@ func TestDecodeTorrentData(t *testing.T) {
 	}
 }
 
-// TestPartialInPackIntegration verifies the full chain from matching to save path
-// for the partial-in-pack scenario (e.g., episode matched against season pack).
-// This ensures that when we seed a season pack and find an individual episode,
-// the save path correctly uses the season pack's ContentPath.
 func TestPartialInPackIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -169,31 +154,25 @@ func TestPartialInPackIntegration(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	// Season pack we're seeding
 	seasonPackName := "The.Show.S01.1080p.BluRay.x264-GRP"
 	seasonPackFiles := qbt.TorrentFiles{
 		{Name: "The.Show.S01.1080p.BluRay.x264-GRP/The.Show.S01E01.1080p.BluRay.x264-GRP.mkv", Size: 2 << 30},
 		{Name: "The.Show.S01.1080p.BluRay.x264-GRP/The.Show.S01E02.1080p.BluRay.x264-GRP.mkv", Size: 2 << 30},
 		{Name: "The.Show.S01.1080p.BluRay.x264-GRP/The.Show.S01E03.1080p.BluRay.x264-GRP.mkv", Size: 2 << 30},
 	}
-	// New episode torrent we found in search
 	episodeName := "The.Show.S01E01.1080p.WEB-DL.x264-OTHER"
 	episodeFiles := qbt.TorrentFiles{
 		{Name: "The.Show.S01E01.1080p.WEB-DL.x264-OTHER.mkv", Size: 2 << 30},
 	}
 
-	// Parse releases
 	episodeRelease := svc.releaseCache.Parse(episodeName)
 	seasonPackRelease := svc.releaseCache.Parse(seasonPackName)
 
-	// Step 1: Verify matching produces partial-in-pack
-	// The new episode's files should be found inside the local season pack's files
 	matchType := svc.matcher().getMatchTypeWithReason(seasonPackRelease, episodeRelease, seasonPackFiles, episodeFiles, 0).MatchType
 	require.Equal(t, "partial-in-pack", matchType,
 		"episode matched against season pack should produce partial-in-pack match type")
 }
 
-// TestPartialInPackMovieCollectionIntegration verifies partial-in-pack for movie collections.
 func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -202,24 +181,19 @@ func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	// Movie collection we're seeding
 	collectionName := "Horror.Collection.2020.1080p.BluRay.x264-GRP"
 	collectionFiles := qbt.TorrentFiles{
 		{Name: "Horror.Collection.2020.1080p.BluRay.x264-GRP/Pulse.2001.1080p.BluRay.x264-GRP.mkv", Size: 4 << 30},
 		{Name: "Horror.Collection.2020.1080p.BluRay.x264-GRP/Ring.1998.1080p.BluRay.x264-GRP.mkv", Size: 4 << 30},
 	}
-	// New single movie torrent we found in search
 	movieName := "Pulse.2001.1080p.BluRay.x264-GRP"
 	movieFiles := qbt.TorrentFiles{
 		{Name: "Pulse.2001.1080p.BluRay.x264-GRP.mkv", Size: 4 << 30},
 	}
 
-	// Parse releases
 	movieRelease := svc.releaseCache.Parse(movieName)
 	collectionRelease := svc.releaseCache.Parse(collectionName)
 
-	// Step 1: Verify matching produces partial-in-pack
-	// The new movie's file should be found inside the local collection's files
 	matchType := svc.matcher().getMatchTypeWithReason(collectionRelease, movieRelease, collectionFiles, movieFiles, 0).MatchType
 	require.Equal(t, "partial-in-pack", matchType,
 		"movie matched against collection should produce partial-in-pack match type")
@@ -275,7 +249,6 @@ func TestFindBestCandidateMatch_SingleFileSourceVsPackWithSample(t *testing.T) {
 		"single-file source matched against pack with extras should produce partial-contains match")
 }
 
-// TestCrossSeed_CategoryAndTagPreservation tests category and tag handling
 func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 	defaultSettings := models.DefaultCrossSeedAutomationSettings()
 
@@ -517,7 +490,6 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := &Service{}
 
-			// Use tt.settings if provided, otherwise use defaultSettings
 			settings := tt.settings
 			if settings == nil {
 				settings = defaultSettings
@@ -537,7 +509,6 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 	}
 }
 
-// TestBase64EdgeCases tests that decodeTorrentData decodes binary data in every base64 encoding.
 func TestBase64EdgeCases(t *testing.T) {
 	s := &Service{}
 
@@ -575,7 +546,6 @@ func TestBase64EdgeCases(t *testing.T) {
 	}
 }
 
-// TestMakeReleaseKey_Matching tests release key matching logic
 func TestMakeReleaseKey_Matching(t *testing.T) {
 	cache := NewReleaseCache()
 
@@ -601,7 +571,7 @@ func TestMakeReleaseKey_Matching(t *testing.T) {
 			name:        "season pack vs episode",
 			release1:    "Show.S01.1080p",
 			release2:    "Show.S01E05.1080p",
-			shouldMatch: false, // Different structure
+			shouldMatch: false,
 		},
 		{
 			name:        "same movie different year",
@@ -625,7 +595,6 @@ func TestMakeReleaseKey_Matching(t *testing.T) {
 	}
 }
 
-// TestCheckWebhook_AutobrrPayload exercises the webhook handler end-to-end using faked dependencies.
 func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 	instance := &models.Instance{
 		ID:   1,
@@ -679,7 +648,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			request: &WebhookCheckRequest{
 				InstanceIDs: instanceIDs,
 				TorrentName: "That.Movie.2025.1080p.BluRay.x264-GROUP",
-				Size:        8589934592, // 8GB
+				Size:        8589934592,
 			},
 			existingTorrents: []qbt.Torrent{
 				{
@@ -1387,7 +1356,6 @@ func cloneFakeInstance(instance *models.Instance) *models.Instance {
 
 	clone := *instance
 	if !clone.IsActive {
-		// Test fixtures in this file usually omit IsActive; production defaults those instances to active.
 		clone.IsActive = true
 	}
 
@@ -1423,8 +1391,6 @@ func (f *fakeInstanceStore) List(_ context.Context) ([]*models.Instance, error) 
 	return result, nil
 }
 
-// testTorrentRefs returns references to copies of torrents, as a read of the
-// Sync snapshot returns references.
 func testTorrentRefs(torrents []qbt.Torrent) []*qbt.Torrent {
 	if torrents == nil {
 		return nil
@@ -1591,7 +1557,6 @@ func (f *fakeSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) 
 	return nil
 }
 
-// TestWebhookCheckRequest_Validation tests request validation
 func TestWebhookCheckRequest_Validation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1674,31 +1639,30 @@ func TestWrapCrossSeedSearchErrorDoesNotClassifyText(t *testing.T) {
 	}
 }
 
-// mockRecoverSyncManager simulates torrent state changes during recheck operations
 type mockRecoverSyncManager struct {
-	torrents                    map[string]*qbt.Torrent // hash -> torrent
-	calls                       []string                // track method calls for verification
-	recheckCompletes            bool                    // whether recheck should complete torrents
-	disappearAfterRecheck       bool                    // whether torrent disappears after recheck
-	bulkActionFails             bool                    // whether BulkAction should fail
-	keepInCheckingState         bool                    // whether to keep torrent in checking state
-	failGetTorrentsAfterRecheck bool                    // whether GetTorrentRefs should fail after recheck
-	setProgressToThreshold      bool                    // whether to set progress exactly at threshold
-	hasRechecked                bool                    // track if recheck has been called
-	secondRecheckCompletes      bool                    // whether second recheck should complete torrents
-	recheckCount                int                     // count of recheck calls
+	torrents                    map[string]*qbt.Torrent
+	calls                       []string
+	recheckCompletes            bool
+	disappearAfterRecheck       bool
+	bulkActionFails             bool
+	keepInCheckingState         bool
+	failGetTorrentsAfterRecheck bool
+	setProgressToThreshold      bool
+	hasRechecked                bool
+	secondRecheckCompletes      bool
+	recheckCount                int
 }
 
 func newMockRecoverSyncManager(initialTorrents []qbt.Torrent) *mockRecoverSyncManager {
 	torrents := make(map[string]*qbt.Torrent)
 	for _, t := range initialTorrents {
-		torrent := t // copy
+		torrent := t
 		torrents[t.Hash] = &torrent
 	}
 	return &mockRecoverSyncManager{
 		torrents:                    torrents,
 		calls:                       []string{},
-		recheckCompletes:            true, // default to completing
+		recheckCompletes:            true,
 		disappearAfterRecheck:       false,
 		bulkActionFails:             false,
 		keepInCheckingState:         false,
@@ -1714,7 +1678,6 @@ func (m *mockRecoverSyncManager) GetTorrentRefs(_ context.Context, instanceID in
 	m.calls = append(m.calls, "GetTorrentRefs")
 
 	if m.failGetTorrentsAfterRecheck && m.hasRechecked {
-		// Return empty list to simulate torrent disappearing
 		return testTorrentRefs([]qbt.Torrent{}), nil
 	}
 
@@ -1742,14 +1705,12 @@ func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, h
 
 	switch action {
 	case "pause":
-		// Pause torrents
 		for _, hash := range hashes {
 			if torrent, ok := m.torrents[hash]; ok {
 				torrent.State = qbt.TorrentStatePausedDl
 			}
 		}
 	case "resume":
-		// Resume torrents
 		for _, hash := range hashes {
 			if torrent, ok := m.torrents[hash]; ok {
 				torrent.State = qbt.TorrentStateDownloading
@@ -1769,11 +1730,10 @@ func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, h
 					torrent.Progress = 1.0
 				} else if m.setProgressToThreshold {
 					torrent.State = qbt.TorrentStatePausedDl
-					torrent.Progress = 0.95 // Exactly at threshold with 5% tolerance
+					torrent.Progress = 0.95
 				} else {
-					// Leave incomplete
 					torrent.State = qbt.TorrentStatePausedDl
-					torrent.Progress = 0.5 // incomplete
+					torrent.Progress = 0.5
 				}
 			}
 		}
@@ -1799,7 +1759,7 @@ func (m *mockRecoverSyncManager) GetTorrentProperties(context.Context, int, stri
 
 func (m *mockRecoverSyncManager) GetAppPreferences(context.Context, int) (qbt.AppPreferences, error) {
 	return qbt.AppPreferences{
-		DiskCacheTTL: 1, // 1 second for tests
+		DiskCacheTTL: 1,
 	}, nil
 }
 
@@ -1844,7 +1804,6 @@ func (m *mockRecoverSyncManager) CreateCategory(_ context.Context, _ int, _, _ s
 }
 
 func TestRecoverErroredTorrents_NoErroredTorrents(t *testing.T) {
-	// Test with no errored torrents
 	normalTorrent := qbt.Torrent{
 		Hash:     "normal123",
 		Name:     "normal.torrent",
@@ -1858,7 +1817,6 @@ func TestRecoverErroredTorrents_NoErroredTorrents(t *testing.T) {
 	err := svc.recoverErroredTorrents(context.Background(), 1, []*qbt.Torrent{&normalTorrent})
 	require.NoError(t, err)
 
-	// Should not have made any calls
 	assert.Empty(t, mockSync.calls)
 }
 
@@ -1880,7 +1838,6 @@ func TestRecoverErroredTorrents_ContextCancelled(t *testing.T) {
 	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent1, erroredTorrent2})
 	svc := &Service{syncManager: mockSync}
 
-	// Cancel context immediately
 	cancel()
 
 	err := svc.recoverErroredTorrents(ctx, 1, []*qbt.Torrent{&erroredTorrent1, &erroredTorrent2})
@@ -1920,7 +1877,6 @@ func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
 	err := svc.recoverErroredTorrents(context.Background(), 1, []*qbt.Torrent{&erroredTorrent, &missingFilesTorrent, &downloadingTorrent, &completedTorrent})
 	require.NoError(t, err)
 
-	// Should have batched pause, recheck, and resume only on errored and missing files torrents
 	var hasPauseBatch, hasRecheckBatch, hasResumeBatch bool
 	for _, call := range mockSync.calls {
 		if strings.HasPrefix(call, "BulkAction:pause:") && strings.Contains(call, "error123") && strings.Contains(call, "missing123") {
@@ -1936,7 +1892,6 @@ func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
 	assert.True(t, hasPauseBatch, "expected batched pause call with both errored hashes")
 	assert.True(t, hasRecheckBatch, "expected batched recheck call with both errored hashes")
 	assert.True(t, hasResumeBatch, "expected batched resume call with both errored hashes")
-	// Should not have touched downloading or completed torrents
 	for _, call := range mockSync.calls {
 		assert.NotContains(t, call, "download123", "downloading torrent should not be in any calls")
 		assert.NotContains(t, call, "complete123", "completed torrent should not be in any calls")
@@ -2014,12 +1969,11 @@ func TestExtractTorrentURLForCommentMatch(t *testing.T) {
 	}
 }
 
-// infohashTestSyncManager extends episodeSyncManager with configurable HasTorrentByAnyHash behavior
 type infohashTestSyncManager struct {
 	torrents    map[int][]qbt.Torrent
 	files       map[int]map[string]qbt.TorrentFiles
 	props       map[int]map[string]*qbt.TorrentProperties
-	hashResults map[int]*hashCheckResult // instanceID -> result
+	hashResults map[int]*hashCheckResult
 }
 
 type hashCheckResult struct {
@@ -2099,7 +2053,6 @@ func (f *infohashTestSyncManager) SetTags(context.Context, int, []string, string
 }
 
 func (f *infohashTestSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
-	// Build views from torrents
 	if list, ok := f.torrents[instanceID]; ok {
 		views := make([]internalqb.CrossInstanceTorrentView, len(list))
 		for i := range list {
@@ -2179,7 +2132,6 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 	}
 
 	sync := newInfohashTestSyncManager()
-	// Set up torrents for both instances
 	sync.torrents[instance1ID] = []qbt.Torrent{existingTorrent}
 	sync.torrents[instance2ID] = []qbt.Torrent{existingTorrent}
 	sync.files[instance1ID] = map[string]qbt.TorrentFiles{
@@ -2195,7 +2147,6 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 		strings.ToLower(testHash): {SavePath: "/downloads"},
 	}
 
-	// Configure HasTorrentByAnyHash to return existing torrent for both instances
 	sync.hashResults[instance1ID] = &hashCheckResult{
 		torrent: &existingTorrent,
 		exists:  true,
@@ -2271,7 +2222,7 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 
 	sync := newInfohashTestSyncManager()
 	sync.torrents[instance1ID] = []qbt.Torrent{existingTorrent}
-	sync.torrents[instance2ID] = []qbt.Torrent{existingTorrent} // Both have the torrent for candidate matching
+	sync.torrents[instance2ID] = []qbt.Torrent{existingTorrent}
 	sync.files[instance1ID] = map[string]qbt.TorrentFiles{
 		strings.ToLower(testHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
 	}
@@ -2285,7 +2236,6 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 		strings.ToLower(testHash): {SavePath: "/downloads"},
 	}
 
-	// Instance 1 has the torrent by hash, Instance 2 does not (simulating different torrent file)
 	sync.hashResults[instance1ID] = &hashCheckResult{
 		torrent: &existingTorrent,
 		exists:  true,
@@ -2314,7 +2264,6 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 		},
 	}
 
-	// Mock crossSeedInvoker to avoid nil panic
 	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{
 			Success: true,
@@ -2345,7 +2294,6 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 
 	require.NoError(t, err)
-	// Should proceed with download since not all instances have it
 	assert.True(t, downloadCalled, "should download torrent when not all instances have it")
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 }
@@ -2374,7 +2322,6 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 		strings.ToLower(testHash): {SavePath: "/downloads"},
 	}
 
-	// Configure HasTorrentByAnyHash to return an error
 	sync.hashResults[instance1ID] = &hashCheckResult{
 		torrent: nil,
 		exists:  false,
@@ -2397,7 +2344,6 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 		},
 	}
 
-	// Mock crossSeedInvoker
 	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{
 			Success: true,
@@ -2428,7 +2374,6 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 
 	require.NoError(t, err)
-	// Should proceed with download on error (graceful degradation)
 	assert.True(t, downloadCalled, "should download torrent when hash check fails")
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 }
@@ -2543,7 +2488,6 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 		strings.ToLower(testHash): {SavePath: "/downloads"},
 	}
 
-	// Configure HasTorrentByAnyHash to return context.Canceled error
 	sync.hashResults[instance1ID] = &hashCheckResult{
 		torrent: nil,
 		exists:  false,
@@ -2586,7 +2530,6 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 
 	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 
-	// Context cancellation should propagate as an error, not trigger fallback
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Contains(t, err.Error(), "hash check canceled")
@@ -2619,7 +2562,6 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 		strings.ToLower(testHash): {SavePath: "/downloads"},
 	}
 
-	// Configure HasTorrentByAnyHash to return context.DeadlineExceeded error
 	sync.hashResults[instance1ID] = &hashCheckResult{
 		torrent: nil,
 		exists:  false,
@@ -2662,7 +2604,6 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 
 	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 
-	// Context deadline exceeded should propagate as an error, not trigger fallback
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Contains(t, err.Error(), "hash check canceled")
@@ -2680,7 +2621,6 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	torrentName := "Show.S01.1080p.BluRay-GROUP"
 	torrentHash := "abc123def456abc123def456abc123def456abcd"
 
-	// Torrent with matching comment
 	existingTorrent := qbt.Torrent{
 		Hash:     torrentHash,
 		Name:     torrentName,
@@ -2697,9 +2637,6 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	sync.props[instance1ID] = map[string]*qbt.TorrentProperties{
 		strings.ToLower(torrentHash): {SavePath: "/downloads"},
 	}
-
-	// No hash results configured - will return nil, false, nil
-	// This forces the fallback to comment URL matching
 
 	downloadCalled := false
 	service := &Service{
@@ -2728,9 +2665,9 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 		IndexerID:            10,
 		Title:                torrentName,
 		DownloadURL:          "https://example.invalid/download.torrent",
-		GUID:                 commentURL, // UNIT3D style: GUID is the torrent details URL
+		GUID:                 commentURL,
 		Size:                 1024,
-		InfoHashV1:           "", // No infohash provided
+		InfoHashV1:           "",
 		DownloadVolumeFactor: 1.0,
 		UploadVolumeFactor:   1.0,
 	}
@@ -2776,7 +2713,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
 			},
 			wantCanCrossSeed:   true,
-			wantMatchCount:     1, // Only movies category torrent matches
+			wantMatchCount:     1,
 			wantRecommendation: "download",
 		},
 		{
@@ -2827,7 +2764,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				WebhookSourceCategories: []string{"movies"},
 			},
 			wantCanCrossSeed:   true,
-			wantMatchCount:     1, // Only movies category matches
+			wantMatchCount:     1,
 			wantRecommendation: "download",
 		},
 		{
@@ -2845,7 +2782,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				WebhookSourceExcludeCategories: []string{},
 			},
 			wantCanCrossSeed:   true,
-			wantMatchCount:     2, // Both match
+			wantMatchCount:     2,
 			wantRecommendation: "download",
 		},
 	}
@@ -2877,9 +2814,6 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 	}
 }
 
-// TestProcessAutomationCandidate_RespectsRSSSourceFilters verifies that RSS automation
-// passes RSS source filters through to the CrossSeedRequest. This is an integration test
-// that catches the bug where filters worked in isolation but weren't passed through the flow.
 func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 	t.Parallel()
 
@@ -2958,7 +2892,6 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Set up sync manager with a torrent that matches
 			sync := &rssFilterTestSyncManager{
 				torrents: map[int][]qbt.Torrent{
 					instanceID: {
@@ -3021,7 +2954,6 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
 
-			// Verify RSS source filters were passed through
 			assert.Equal(t, tt.expectCategories, captured.sourceFilter.categories, "categories mismatch")
 			assert.Equal(t, tt.expectTags, captured.sourceFilter.tags, "tags mismatch")
 			assert.Equal(t, tt.expectExcludeCategories, captured.sourceFilter.excludeCategories, "excludeCategories mismatch")
@@ -3030,7 +2962,6 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 	}
 }
 
-// rssFilterTestSyncManager implements qbittorrentSync for RSS filter tests
 type rssFilterTestSyncManager struct {
 	torrents map[int][]qbt.Torrent
 	files    map[int]map[string]qbt.TorrentFiles
@@ -3138,22 +3069,17 @@ func (m *rssFilterTestSyncManager) CreateCategory(context.Context, int, string, 
 	return nil
 }
 
-// TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters verifies that completion source
-// filters are passed through to the CrossSeedRequest. This tests the path from
-// executeCompletionSearch → executeCrossSeedSearchAttempt → CrossSeed where completion settings
-// filters should be propagated to FindCandidates.
 func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	instanceID := 1
 
-	// Create a minimal valid torrent file for encoding
 	createTorrentData := func() []byte {
 		info := metainfo.Info{
 			Name:        "Test.Movie.2025.1080p.BluRay-GROUP",
 			PieceLength: 262144,
-			Pieces:      make([]byte, 20), // Minimal piece hash
+			Pieces:      make([]byte, 20),
 			Length:      1024,
 		}
 		infoBytes, err := bencode.Marshal(info)
@@ -3279,7 +3205,6 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
 
-			// Verify completion source filters were passed through
 			assert.Equal(t, tt.expectCategories, captured.sourceFilter.categories, "categories mismatch")
 			assert.Equal(t, tt.expectTags, captured.sourceFilter.tags, "tags mismatch")
 			assert.Equal(t, tt.expectExcludeCategories, captured.sourceFilter.excludeCategories, "excludeCategories mismatch")
@@ -3288,7 +3213,6 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 	}
 }
 
-// regression: #3626
 func TestCheckWebhook_SettledSource(t *testing.T) {
 	t.Parallel()
 
@@ -3298,7 +3222,6 @@ func TestCheckWebhook_SettledSource(t *testing.T) {
 
 	torrentName := "Quiet.Harbor.2025.2160p.WEB-DL.DDP5.1.H.265-NTB"
 	torrentSize := int64(13 << 30)
-	// qBittorrent reports the content path under the download path until the move ends.
 	moving := qbt.Torrent{
 		Hash: "moving", Name: torrentName, Size: torrentSize, Progress: 1, State: qbt.TorrentStateMoving,
 		SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + torrentName + ".mkv",
@@ -3352,7 +3275,6 @@ func TestCheckWebhook_SettledSource(t *testing.T) {
 	}
 }
 
-// regression: #3626
 func TestFindCandidatesSkipsSourceThatIsNotSettled(t *testing.T) {
 	t.Parallel()
 

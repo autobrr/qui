@@ -15,17 +15,11 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// TestUnifiedSortMatchesSingleInstance holds view parity: for each sort
-// column, the Unified view gives each instance's rows in the order that
-// instance's own view gives them. Both fake instances serve the same library
-// with different tracker health. So outside the state sort, each row of one
-// instance has a twin on the other that compares equal.
 func TestUnifiedSortMatchesSingleInstance(t *testing.T) {
 	t.Parallel()
 
 	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "qbittorrent-sort-parity"), make([]byte, 32))
 	require.NoError(t, err)
-	// Created out of name order, so the instance ID and the name disagree.
 	clients := make(map[int]*Client, 2)
 	idByName := make(map[string]int, 2)
 	trackersByName := map[string]func(int) []qbt.TorrentTracker{
@@ -51,8 +45,6 @@ func TestUnifiedSortMatchesSingleInstance(t *testing.T) {
 				both, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true, InstanceIDs: ids, Sort: column, Order: order})
 				require.NoError(t, err)
 
-				// The single-instance view has no instance column. The rows of
-				// each instance keep their name order in each direction.
 				singleColumn, singleOrder := column, order
 				if column == "instance" {
 					singleColumn, singleOrder = "name", "asc"
@@ -101,7 +93,6 @@ func TestUnifiedSortMatchesSingleInstance(t *testing.T) {
 					require.Equal(t, want, got)
 					return
 				}
-				// Twins compare equal, so the instance breaks the tie as the instance column sorts it.
 				for i := 0; i < len(both.CrossInstanceTorrents); i += 2 {
 					first, second := both.CrossInstanceTorrents[i], both.CrossInstanceTorrents[i+1]
 					require.Equal(t, first.Hash, second.Hash, "row %d", i)

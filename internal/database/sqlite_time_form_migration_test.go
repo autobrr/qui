@@ -54,8 +54,6 @@ func TestSQLiteTimeFormMigrationRewritesGoTextForms(t *testing.T) {
 	}
 }
 
-// Each time column of every table gets a time with a local offset. The check
-// then also fails when an update trigger replaces updated_at.
 func TestSQLiteTimeFormMigrationCoversEveryTimeColumn(t *testing.T) {
 	t.Parallel()
 
@@ -95,8 +93,6 @@ func TestSQLiteTimeFormMigrationCoversEveryTimeColumn(t *testing.T) {
 	maps.DeleteFunc(tables, func(_ string, columns *tableColumns) bool { return len(columns.times) == 0 })
 	require.NotEmpty(t, tables)
 
-	// One row per table, without the parent rows and the valid values that the
-	// constraints ask for.
 	_, err = conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF; PRAGMA ignore_check_constraints = ON`)
 	require.NoError(t, err)
 	for table, columns := range tables {

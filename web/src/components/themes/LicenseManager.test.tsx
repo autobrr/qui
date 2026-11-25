@@ -133,7 +133,6 @@ describe("LicenseManager", () => {
     expect(screen.queryByText("themes.license.status.supporterTitle")).toBeNull()
   })
 
-  // regression: #4276
   it("explains a supporter key that is offline, and offers no purchase", () => {
     licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "offline", productName: "supporter" }]
     render(<LicenseManager />, { wrapper: TooltipProvider })

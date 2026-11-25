@@ -32,8 +32,6 @@ func TestDirScanFileIDMigrationClearsLegacyIDsPostgresIntegration(t *testing.T) 
 	checkDirScanFileIDMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations/106_reset_dir_scan_file_ids.sql", "BYTEA")
 }
 
-// Rows written in the old platform widths cannot be decoded as the tagged
-// form, so the migration clears every stored ID and the next scan refills it.
 func checkDirScanFileIDMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadFileFS, migration, blobType string) {
 	t.Helper()
 

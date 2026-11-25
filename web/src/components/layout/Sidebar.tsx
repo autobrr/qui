@@ -65,9 +65,7 @@ import {
 import { useCallback, useMemo, type MouseEvent, type ReactElement, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
-const rowClassName = "relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm font-medium short:py-1 short:text-[13px]/5"
-// The icon-only sidebar is as wide as the padding and the icon of a row. The row cuts off the rest there, so each icon
-// stays where it is at full width.
+const rowClassName = "relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm font-medium short:py-1 short:text-13/5"
 const iconOnlyRowClassName = "overflow-hidden whitespace-nowrap"
 const rowStateClassName = (isActive: boolean) => isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:transition-colors hover:duration-200 hover:ease-out"
 const footerButtonClassName = "h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
@@ -81,7 +79,6 @@ function IconOnlyLabel({ show, label, children }: { show: boolean; label: ReactN
   )
 }
 
-// For two marks that have the same place: one shrinks and fades while the other grows in its place, so the row always shows a mark.
 const morphClassName = (shown: boolean) => cn("transition-[opacity,scale] duration-200 ease-out motion-reduce:transition-none", !shown && "scale-50 opacity-0")
 
 interface SidebarMarkProps {
@@ -209,12 +206,9 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
     </span>
   )
 
-  // A label stays in the page for a screen reader, and fades while the sidebar changes width.
   const fadeClassName = "transition-opacity duration-200 motion-reduce:transition-none"
   const labelClassName = cn(fadeClassName, iconOnly && "opacity-0")
-  // The text of a row keeps the width that it has in the full sidebar, so that it does not move while it fades.
   const rowLabelClassName = (fullWidthClassName: string) => cn("flex min-w-0 flex-1 items-center gap-3 whitespace-nowrap", labelClassName, iconOnly && [fullWidthClassName, "shrink-0"])
-  // For two marks that have the same place: one goes before the other comes.
   const swapClassName = (shown: boolean) => cn("transition-opacity duration-100 motion-reduce:transition-none", shown ? "delay-100" : "opacity-0")
   const cornerDotClassName = cn("absolute left-[31px] top-1 h-1.5 w-1.5 rounded-full", fadeClassName, !iconOnly && "opacity-0")
   const languageItems = supportedLanguages.map((lng) => (
@@ -229,7 +223,6 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
   ))
   const iconOnlyToggleLabel = iconOnly ? t("sidebar.expandSidebar") : t("sidebar.collapseToIcons")
   const IconOnlyToggleIcon = iconOnly ? PanelLeftOpen : PanelLeftClose
-  // The top row has the height of the header, so the button is level with the title beside it.
   const { viewMode } = usePersistedCompactViewState("desktop")
 
   return (
@@ -328,7 +321,6 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
             {t("sidebar.instances")}
           </p>
         </div>
-        {/* A scrollbar that takes room would leave less than an icon of the icon-only width. */}
         <div className={cn("mt-1 space-y-0.5 overflow-y-auto short:space-y-px", iconOnly ? "[scrollbar-width:none]" : "pr-1", hasMultipleActiveInstances ? "min-h-24" : "shrink-0")}>
           {hasMultipleActiveInstances && (
             <>
@@ -452,10 +444,8 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
       <div className="flex-shrink-0 px-3 pt-1.5 pb-2">
         <Separator className="mb-1.5" />
 
-        {/* The row is the same in both modes, so nothing above it moves. */}
         <div className={cn("relative flex items-center justify-between pl-3", iconOnly && "w-58")}>
-          {/* A long dev version truncates, so the footer buttons stay inside the sidebar. */}
-          <div className={cn("flex min-w-0 flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none whitespace-nowrap", swapClassName(!iconOnly))}>
+          <div className={cn("flex min-w-0 flex-col gap-1 text-10 text-sidebar-foreground/40 select-none whitespace-nowrap", swapClassName(!iconOnly))}>
             <TruncatedText className="font-medium text-sidebar-foreground/50">{t("sidebar.version", { version: appVersion })}</TruncatedText>
             <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />

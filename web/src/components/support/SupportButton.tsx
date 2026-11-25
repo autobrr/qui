@@ -14,13 +14,8 @@ import { openSupport } from "./open"
 import { ReminderPill } from "./SupportReminder"
 import { useSupportReminder } from "./reminder"
 
-// From this width, the header has room for the word beside the heart of a supporter, and for the reminder pill.
 const WORD_QUERY = "(min-width: 1280px)"
 
-/**
- * The heart in the header. For a supporter it carries the word "Supporter", or a check where the header is narrow.
- * Where the header is wide, it grows into the yearly reminder while the reminder is due.
- */
 export function SupportButton() {
   const { t } = useTranslation("common")
   const { isSupporter } = useHasPremiumAccess()

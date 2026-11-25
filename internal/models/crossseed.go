@@ -20,108 +20,80 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 )
 
-// Category affix mode constants.
 const (
 	CategoryAffixModePrefix = "prefix"
 	CategoryAffixModeSuffix = "suffix"
 )
 
-// SeasonPackCategoryRule routes a season pack add to a category based on its
-// release quality. The first matching rule wins; otherwise the add falls back
-// to CrossSeedAutomationSettings.SeasonPackCategory ("Anything else").
 type SeasonPackCategoryRule struct {
-	Resolution string `json:"resolution"` // Canonical lowercase rls value, e.g. "1080p", "2160p"
-	Source     string `json:"source"`     // "" = any; else canonical uppercase: WEB, BLURAY, REMUX, HDTV
-	Category   string `json:"category"`   // qBittorrent category to file the add under
+	Resolution string `json:"resolution"`
+	Source     string `json:"source"`
+	Category   string `json:"category"`
 }
 
-// CategoryMappingRule forces the cross-seed search category for torrents in any
-// of a set of qBittorrent categories (discussion #1734). A category must match
-// exactly; a matching rule wins over both the name parse and the file-extension
-// signal.
 type CategoryMappingRule struct {
-	Categories  []string `json:"categories"`  // qBittorrent category names, exact match
-	ContentType string   `json:"contentType"` // movie, tv, music, audiobook, book, comic, game, app
+	Categories  []string `json:"categories"`
+	ContentType string   `json:"contentType"`
 }
 
-// CrossSeedAutomationSettings controls automatic cross-seed behaviour.
-// Contains both RSS Automation-specific settings and global cross-seed settings.
 type CrossSeedAutomationSettings struct {
-	// RSS Automation settings
-	Enabled            bool  `json:"enabled"`            // Enable/disable RSS automation
-	RunIntervalMinutes int   `json:"runIntervalMinutes"` // RSS: interval between RSS feed polls (min: 30 minutes, default: 120)
-	TargetInstanceIDs  []int `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
-	TargetIndexerIDs   []int `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
-	MaxResultsPerRun   int   `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
+	Enabled            bool  `json:"enabled"`
+	RunIntervalMinutes int   `json:"runIntervalMinutes"`
+	TargetInstanceIDs  []int `json:"targetInstanceIds"`
+	TargetIndexerIDs   []int `json:"targetIndexerIds"`
+	MaxResultsPerRun   int   `json:"maxResultsPerRun"` // Deprecated: automation processes full feeds; retained for backward compatibility
 
-	// RSS source filtering: filter which LOCAL torrents are considered when checking RSS feeds.
-	// Empty arrays mean "all" (no filtering).
-	RSSSourceCategories        []string `json:"rssSourceCategories"`        // Only match against torrents in these categories
-	RSSSourceTags              []string `json:"rssSourceTags"`              // Only match against torrents with these tags
-	RSSSourceExcludeCategories []string `json:"rssSourceExcludeCategories"` // Skip torrents in these categories
-	RSSSourceExcludeTags       []string `json:"rssSourceExcludeTags"`       // Skip torrents with these tags
+	RSSSourceCategories        []string `json:"rssSourceCategories"`
+	RSSSourceTags              []string `json:"rssSourceTags"`
+	RSSSourceExcludeCategories []string `json:"rssSourceExcludeCategories"`
+	RSSSourceExcludeTags       []string `json:"rssSourceExcludeTags"`
 
-	// Webhook source filtering: filter which LOCAL torrents are considered when checking webhook requests.
-	// Empty arrays mean "all" (no filtering).
-	WebhookSourceCategories        []string `json:"webhookSourceCategories"`        // Only match against torrents in these categories
-	WebhookSourceTags              []string `json:"webhookSourceTags"`              // Only match against torrents with these tags
-	WebhookSourceExcludeCategories []string `json:"webhookSourceExcludeCategories"` // Skip torrents in these categories
-	WebhookSourceExcludeTags       []string `json:"webhookSourceExcludeTags"`       // Skip torrents with these tags
+	WebhookSourceCategories        []string `json:"webhookSourceCategories"`
+	WebhookSourceTags              []string `json:"webhookSourceTags"`
+	WebhookSourceExcludeCategories []string `json:"webhookSourceExcludeCategories"`
+	WebhookSourceExcludeTags       []string `json:"webhookSourceExcludeTags"`
 
-	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
-	FindIndividualEpisodes         bool `json:"findIndividualEpisodes"`         // Match season packs with individual episodes
-	AutoResumeMaxDownloadMB        int  `json:"autoResumeMaxDownloadMb"`        // Max missing data (MiB) to still auto-resume a new cross-seed; 0 = only complete torrents (default: 50)
-	PooledPartialCompletionEnabled bool `json:"pooledPartialCompletionEnabled"` // Coordinate partial hardlink/reflink completion pools
-	UseCategoryFromIndexer         bool `json:"useCategoryFromIndexer"`         // Use indexer name as category for cross-seeds
-	RunExternalProgramID           *int `json:"runExternalProgramId"`           // Optional external program to run after successful cross-seed injection
+	FindIndividualEpisodes         bool `json:"findIndividualEpisodes"`
+	AutoResumeMaxDownloadMB        int  `json:"autoResumeMaxDownloadMb"`
+	PooledPartialCompletionEnabled bool `json:"pooledPartialCompletionEnabled"`
+	UseCategoryFromIndexer         bool `json:"useCategoryFromIndexer"`
+	RunExternalProgramID           *int `json:"runExternalProgramId"`
 
-	// Category mapping rules force the search category for torrents in a
-	// qBittorrent category; a matching rule wins over content type detection.
 	CategoryMappingRules []CategoryMappingRule `json:"categoryMappingRules"`
 
-	// Source-specific tagging: tags applied based on how the cross-seed was discovered.
-	// Each defaults to ["cross-seed"]. Users can add source-specific tags like "rss", "seeded-search", etc.
-	RSSAutomationTags    []string `json:"rssAutomationTags"`    // Tags for RSS automation results
-	SeededSearchTags     []string `json:"seededSearchTags"`     // Tags for seeded torrent search results
-	CompletionSearchTags []string `json:"completionSearchTags"` // Tags for completion-triggered search results
-	WebhookTags          []string `json:"webhookTags"`          // Tags for /apply webhook results
-	InheritSourceTags    bool     `json:"inheritSourceTags"`    // Also copy tags from the matched source torrent
+	RSSAutomationTags    []string `json:"rssAutomationTags"`
+	SeededSearchTags     []string `json:"seededSearchTags"`
+	CompletionSearchTags []string `json:"completionSearchTags"`
+	WebhookTags          []string `json:"webhookTags"`
+	InheritSourceTags    bool     `json:"inheritSourceTags"`
 
-	// Category affix: add prefix or suffix to the original category name
-	UseCrossCategoryAffix bool   `json:"useCrossCategoryAffix"` // Enable category affix
-	CategoryAffixMode     string `json:"categoryAffixMode"`     // "prefix" or "suffix"
-	CategoryAffix         string `json:"categoryAffix"`         // The affix value (default: ".cross")
-	// Custom category: use exact user-specified category without any suffixing
-	UseCustomCategory bool   `json:"useCustomCategory"` // Use custom category instead of affix or indexer name
-	CustomCategory    string `json:"customCategory"`    // Custom category name when UseCustomCategory is true
+	UseCrossCategoryAffix bool   `json:"useCrossCategoryAffix"`
+	CategoryAffixMode     string `json:"categoryAffixMode"`
+	CategoryAffix         string `json:"categoryAffix"`
+	UseCustomCategory     bool   `json:"useCustomCategory"`
+	CustomCategory        string `json:"customCategory"`
 
-	// Skip auto-resume settings per source mode.
-	// When enabled, torrents remain paused after hash check instead of auto-resuming.
-	SkipAutoResumeRSS            bool `json:"skipAutoResumeRss"`            // Skip auto-resume for RSS automation results
-	SkipAutoResumeSeededSearch   bool `json:"skipAutoResumeSeededSearch"`   // Skip auto-resume for seeded torrent search results
-	SkipAutoResumeCompletion     bool `json:"skipAutoResumeCompletion"`     // Skip auto-resume for completion-triggered search results
-	SkipAutoResumeWebhook        bool `json:"skipAutoResumeWebhook"`        // Skip auto-resume for /apply webhook results
-	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
-	RescueTitleMismatches        bool `json:"rescueTitleMismatches"`        // This setting tries exact-size results when only the title differs.
-	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
+	SkipAutoResumeRSS            bool `json:"skipAutoResumeRss"`
+	SkipAutoResumeSeededSearch   bool `json:"skipAutoResumeSeededSearch"`
+	SkipAutoResumeCompletion     bool `json:"skipAutoResumeCompletion"`
+	SkipAutoResumeWebhook        bool `json:"skipAutoResumeWebhook"`
+	SkipRecheck                  bool `json:"skipRecheck"`
+	RescueTitleMismatches        bool `json:"rescueTitleMismatches"`
+	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"`
 
-	// Season pack settings
 	SeasonPackSkipRepackCompare  bool                     `json:"seasonPackSkipRepackCompare"`
 	SeasonPackSimplifyHDRCompare bool                     `json:"seasonPackSimplifyHdrCompare"`
 	SeasonPackSimplifyWEBCompare bool                     `json:"seasonPackSimplifyWebCompare"`
 	SeasonPackSkipYearCompare    bool                     `json:"seasonPackSkipYearCompare"`
-	SeasonPackEnabled            bool                     `json:"seasonPackEnabled"`           // Enable season pack webhook flow
-	SeasonPackAutomationEnabled  bool                     `json:"seasonPackAutomationEnabled"` // Allow qui to assemble season packs on its own initiative (RSS/automation)
-	SeasonPackCoverageThreshold  float64                  `json:"seasonPackCoverageThreshold"` // Minimum episode coverage to trigger (0..1, default 0.75)
-	SeasonPackTags               []string                 `json:"seasonPackTags"`              // Tags for season pack results
-	SeasonPackCategory           string                   `json:"seasonPackCategory"`          // Fallback category for season pack adds ("Anything else")
-	SeasonPackCategoryRules      []SeasonPackCategoryRule `json:"seasonPackCategoryRules"`     // Per-quality routing rules; first match wins, else SeasonPackCategory
+	SeasonPackEnabled            bool                     `json:"seasonPackEnabled"`
+	SeasonPackAutomationEnabled  bool                     `json:"seasonPackAutomationEnabled"`
+	SeasonPackCoverageThreshold  float64                  `json:"seasonPackCoverageThreshold"`
+	SeasonPackTags               []string                 `json:"seasonPackTags"`
+	SeasonPackCategory           string                   `json:"seasonPackCategory"`
+	SeasonPackCategoryRules      []SeasonPackCategoryRule `json:"seasonPackCategoryRules"`
 	SeasonPackTVDBAPIKey         string                   `json:"seasonPackTvdbApiKey,omitempty"`
 	SeasonPackTVDBPIN            string                   `json:"seasonPackTvdbPin,omitempty"`
 
-	// Gazelle (OPS/RED) cross-seed settings.
-	// When enabled, qui uses the tracker JSON APIs to find matches for OPS/RED torrents
-	// instead of Torznab. Keys are stored encrypted and are redacted in API responses.
 	GazelleEnabled bool   `json:"gazelleEnabled"`
 	RedactedAPIKey string `json:"redactedApiKey,omitempty"`
 	OrpheusAPIKey  string `json:"orpheusApiKey,omitempty"`
@@ -130,102 +102,84 @@ type CrossSeedAutomationSettings struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// DefaultAutoResumeMaxDownloadMB is the default auto-resume budget for new
-// cross-seed additions: resume only when missing data is 50 MiB or less.
 const DefaultAutoResumeMaxDownloadMB = 50
 
-// DefaultCrossSeedAutomationSettings returns sensible defaults for RSS automation.
-// RSS automation is disabled by default with a 2-hour interval.
 func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 	return &CrossSeedAutomationSettings{
-		Enabled:            false, // RSS automation disabled by default
-		RunIntervalMinutes: 120,   // RSS: default 2 hours between polls
-		TargetInstanceIDs:  []int{},
-		TargetIndexerIDs:   []int{},
-		MaxResultsPerRun:   50,
-		// RSS source filtering defaults - empty means no filtering (all torrents)
-		RSSSourceCategories:        []string{},
-		RSSSourceTags:              []string{},
-		RSSSourceExcludeCategories: []string{},
-		RSSSourceExcludeTags:       []string{},
-		// Webhook source filtering defaults - empty means no filtering (all torrents)
+		Enabled:                        false,
+		RunIntervalMinutes:             120,
+		TargetInstanceIDs:              []int{},
+		TargetIndexerIDs:               []int{},
+		MaxResultsPerRun:               50,
+		RSSSourceCategories:            []string{},
+		RSSSourceTags:                  []string{},
+		RSSSourceExcludeCategories:     []string{},
+		RSSSourceExcludeTags:           []string{},
 		WebhookSourceCategories:        []string{},
 		WebhookSourceTags:              []string{},
 		WebhookSourceExcludeCategories: []string{},
 		WebhookSourceExcludeTags:       []string{},
-		FindIndividualEpisodes:         false, // Default to false - only find season packs when searching with season packs
+		FindIndividualEpisodes:         false,
 		AutoResumeMaxDownloadMB:        DefaultAutoResumeMaxDownloadMB,
 		PooledPartialCompletionEnabled: false,
-		UseCategoryFromIndexer:         false, // Default to false - don't override categories by default
-		RunExternalProgramID:           nil,   // No external program by default
+		UseCategoryFromIndexer:         false,
+		RunExternalProgramID:           nil,
 		CategoryMappingRules:           []CategoryMappingRule{},
-		// Source-specific tagging defaults - all sources default to ["cross-seed"]
-		RSSAutomationTags:    []string{"cross-seed"},
-		SeededSearchTags:     []string{"cross-seed"},
-		CompletionSearchTags: []string{"cross-seed"},
-		WebhookTags:          []string{"cross-seed"},
-		InheritSourceTags:    false, // Don't copy source torrent tags by default
-		// Category isolation - default to true with suffix mode and ".cross" for backwards compatibility
-		UseCrossCategoryAffix: true,
-		CategoryAffixMode:     CategoryAffixModeSuffix,
-		CategoryAffix:         ".cross",
-		// Custom category - default to false (use affix mode by default)
-		UseCustomCategory: false,
-		CustomCategory:    "",
-		// Skip auto-resume - default to false to preserve existing behavior
-		SkipAutoResumeRSS:            false,
-		SkipAutoResumeSeededSearch:   false,
-		SkipAutoResumeCompletion:     false,
-		SkipAutoResumeWebhook:        false,
-		SkipRecheck:                  false,
-		RescueTitleMismatches:        false,
-		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
-		// Season pack defaults
-		SeasonPackSkipRepackCompare:  true,
-		SeasonPackSimplifyHDRCompare: false,
-		SeasonPackSimplifyWEBCompare: false,
-		SeasonPackSkipYearCompare:    false,
-		SeasonPackEnabled:            false,
-		SeasonPackAutomationEnabled:  false,
-		SeasonPackCoverageThreshold:  0.75,
-		SeasonPackTags:               []string{"cross-seed"},
-		SeasonPackCategory:           "",
-		SeasonPackCategoryRules:      []SeasonPackCategoryRule{},
-		GazelleEnabled:               false,
-		RedactedAPIKey:               "",
-		OrpheusAPIKey:                "",
-		CreatedAt:                    time.Now().UTC(),
-		UpdatedAt:                    time.Now().UTC(),
+		RSSAutomationTags:              []string{"cross-seed"},
+		SeededSearchTags:               []string{"cross-seed"},
+		CompletionSearchTags:           []string{"cross-seed"},
+		WebhookTags:                    []string{"cross-seed"},
+		InheritSourceTags:              false,
+		UseCrossCategoryAffix:          true,
+		CategoryAffixMode:              CategoryAffixModeSuffix,
+		CategoryAffix:                  ".cross",
+		UseCustomCategory:              false,
+		CustomCategory:                 "",
+		SkipAutoResumeRSS:              false,
+		SkipAutoResumeSeededSearch:     false,
+		SkipAutoResumeCompletion:       false,
+		SkipAutoResumeWebhook:          false,
+		SkipRecheck:                    false,
+		RescueTitleMismatches:          false,
+		SkipPieceBoundarySafetyCheck:   true,
+		SeasonPackSkipRepackCompare:    true,
+		SeasonPackSimplifyHDRCompare:   false,
+		SeasonPackSimplifyWEBCompare:   false,
+		SeasonPackSkipYearCompare:      false,
+		SeasonPackEnabled:              false,
+		SeasonPackAutomationEnabled:    false,
+		SeasonPackCoverageThreshold:    0.75,
+		SeasonPackTags:                 []string{"cross-seed"},
+		SeasonPackCategory:             "",
+		SeasonPackCategoryRules:        []SeasonPackCategoryRule{},
+		GazelleEnabled:                 false,
+		RedactedAPIKey:                 "",
+		OrpheusAPIKey:                  "",
+		CreatedAt:                      time.Now().UTC(),
+		UpdatedAt:                      time.Now().UTC(),
 	}
 }
 
-// CrossSeedSearchSettings stores the saved Library settings: the fields of the
-// Library card, which scheduled runs use, and the Library Scan schedule.
 type CrossSeedSearchSettings struct {
-	InstanceID             *int     `json:"instanceId"`
-	Categories             []string `json:"categories"`
-	Tags                   []string `json:"tags"`
-	ExcludeCategories      []string `json:"excludeCategories"`
-	ExcludeTags            []string `json:"excludeTags"`
-	IndexerIDs             []int    `json:"indexerIds"`
-	IntervalSeconds        int      `json:"intervalSeconds"`
-	CooldownMinutes        int      `json:"cooldownMinutes"`
-	MaxAddedAgeDays        int      `json:"maxAddedAgeDays"`
-	SkipIndividualEpisodes bool     `json:"skipIndividualEpisodes"`
-	TorznabEnabled         bool     `json:"torznabEnabled"`
-	ScheduleEnabled        bool     `json:"scheduleEnabled"`
-	ScheduleIntervalHours  int      `json:"scheduleIntervalHours"`
-	// ScheduleMaxSearches caps the torrents that send a search in one
-	// scheduled run.
-	ScheduleMaxSearches int `json:"scheduleMaxSearches"`
-	// ScheduleMaxAgeDays limits a scheduled run to torrents added in the
-	// last this many days.
-	ScheduleMaxAgeDays int       `json:"scheduleMaxAgeDays"`
-	CreatedAt          time.Time `json:"createdAt"`
-	UpdatedAt          time.Time `json:"updatedAt"`
+	InstanceID             *int      `json:"instanceId"`
+	Categories             []string  `json:"categories"`
+	Tags                   []string  `json:"tags"`
+	ExcludeCategories      []string  `json:"excludeCategories"`
+	ExcludeTags            []string  `json:"excludeTags"`
+	IndexerIDs             []int     `json:"indexerIds"`
+	IntervalSeconds        int       `json:"intervalSeconds"`
+	CooldownMinutes        int       `json:"cooldownMinutes"`
+	MaxAddedAgeDays        int       `json:"maxAddedAgeDays"`
+	SkipIndividualEpisodes bool      `json:"skipIndividualEpisodes"`
+	TorznabEnabled         bool      `json:"torznabEnabled"`
+	ScheduleEnabled        bool      `json:"scheduleEnabled"`
+	ScheduleIntervalHours  int       `json:"scheduleIntervalHours"`
+	ScheduleMaxSearches    int       `json:"scheduleMaxSearches"`
+	ScheduleMaxAgeDays     int       `json:"scheduleMaxAgeDays"`
+	CreatedAt              time.Time `json:"createdAt"`
+	UpdatedAt              time.Time `json:"updatedAt"`
 }
 
-// DefaultCrossSeedSearchSettings returns defaults for seeded torrent searches.
 func DefaultCrossSeedSearchSettings() *CrossSeedSearchSettings {
 	now := time.Now().UTC()
 	return &CrossSeedSearchSettings{
@@ -246,7 +200,6 @@ func DefaultCrossSeedSearchSettings() *CrossSeedSearchSettings {
 	}
 }
 
-// CrossSeedRunStatus indicates the outcome of an automation run.
 type CrossSeedRunStatus string
 
 const (
@@ -257,7 +210,6 @@ const (
 	CrossSeedRunStatusFailed  CrossSeedRunStatus = "failed"
 )
 
-// CrossSeedRunMode indicates how the run was triggered.
 type CrossSeedRunMode string
 
 const (
@@ -265,23 +217,19 @@ const (
 	CrossSeedRunModeManual CrossSeedRunMode = "manual"
 )
 
-// CrossSeedRunResult summarises the outcome for a single instance.
 type CrossSeedRunResult struct {
-	InstanceID         int     `json:"instanceId"`
-	InstanceName       string  `json:"instanceName"`
-	IndexerName        string  `json:"indexerName,omitempty"`
-	Success            bool    `json:"success"`
-	Status             string  `json:"status"`
-	Message            string  `json:"message,omitempty"`
-	MatchedTorrentHash *string `json:"matchedTorrentHash,omitempty"`
-	MatchedTorrentName *string `json:"matchedTorrentName,omitempty"`
-	// CrossSeedInstanceID and CrossSeedInstanceName name the Cross-seed
-	// instance of a routed add. InstanceID stays the instance that holds the match.
-	CrossSeedInstanceID   int    `json:"crossSeedInstanceId,omitzero"`
-	CrossSeedInstanceName string `json:"crossSeedInstanceName,omitempty"`
+	InstanceID            int     `json:"instanceId"`
+	InstanceName          string  `json:"instanceName"`
+	IndexerName           string  `json:"indexerName,omitempty"`
+	Success               bool    `json:"success"`
+	Status                string  `json:"status"`
+	Message               string  `json:"message,omitempty"`
+	MatchedTorrentHash    *string `json:"matchedTorrentHash,omitempty"`
+	MatchedTorrentName    *string `json:"matchedTorrentName,omitempty"`
+	CrossSeedInstanceID   int     `json:"crossSeedInstanceId,omitzero"`
+	CrossSeedInstanceName string  `json:"crossSeedInstanceName,omitempty"`
 }
 
-// CrossSeedRun stores the persisted automation run metadata.
 type CrossSeedRun struct {
 	ID                int64                `json:"id"`
 	TriggeredBy       string               `json:"triggeredBy"`
@@ -300,7 +248,6 @@ type CrossSeedRun struct {
 	CreatedAt         time.Time            `json:"createdAt"`
 }
 
-// CrossSeedSearchRunStatus represents the lifecycle state of an automated search pass.
 type CrossSeedSearchRunStatus string
 
 const (
@@ -310,7 +257,6 @@ const (
 	CrossSeedSearchRunStatusCanceled CrossSeedSearchRunStatus = "canceled"
 )
 
-// CrossSeedSearchFilters capture how torrents are selected for automated search runs.
 type CrossSeedSearchFilters struct {
 	Categories        []string `json:"categories"`
 	Tags              []string `json:"tags"`
@@ -318,8 +264,6 @@ type CrossSeedSearchFilters struct {
 	ExcludeTags       []string `json:"excludeTags,omitempty"`
 }
 
-// CrossSeedSearchRunKind tells a run that the Library Scan schedule started
-// from a run that a user started.
 type CrossSeedSearchRunKind string
 
 const (
@@ -327,79 +271,61 @@ const (
 	CrossSeedSearchRunKindScheduled CrossSeedSearchRunKind = "scheduled"
 )
 
-// CrossSeedSearchResultStatus records the add outcome for one searched torrent.
 type CrossSeedSearchResultStatus string
 
 const (
-	// CrossSeedSearchResultStatusAdded means the match was added to qBittorrent.
-	CrossSeedSearchResultStatusAdded CrossSeedSearchResultStatus = "added"
-	// CrossSeedSearchResultStatusSkipped means the match did not require or permit an add.
+	CrossSeedSearchResultStatusAdded   CrossSeedSearchResultStatus = "added"
 	CrossSeedSearchResultStatusSkipped CrossSeedSearchResultStatus = "skipped"
-	// CrossSeedSearchResultStatusFailed means the match hit an add or preparation error.
-	CrossSeedSearchResultStatusFailed CrossSeedSearchResultStatus = "failed"
+	CrossSeedSearchResultStatusFailed  CrossSeedSearchResultStatus = "failed"
 )
 
-// CrossSeedSearchResult records the outcome of processing a single torrent during a search run.
 type CrossSeedSearchResult struct {
-	TorrentHash  string                      `json:"torrentHash"`
-	TorrentName  string                      `json:"torrentName"`
-	IndexerName  string                      `json:"indexerName"`
-	ReleaseTitle string                      `json:"releaseTitle"`
-	Status       CrossSeedSearchResultStatus `json:"status"`
-	Message      string                      `json:"message,omitempty"`
-	ProcessedAt  time.Time                   `json:"processedAt"`
-	// CrossSeedInstanceID and CrossSeedInstanceName name the Cross-seed
-	// instance of a routed add.
-	CrossSeedInstanceID   int    `json:"crossSeedInstanceId,omitzero"`
-	CrossSeedInstanceName string `json:"crossSeedInstanceName,omitempty"`
+	TorrentHash           string                      `json:"torrentHash"`
+	TorrentName           string                      `json:"torrentName"`
+	IndexerName           string                      `json:"indexerName"`
+	ReleaseTitle          string                      `json:"releaseTitle"`
+	Status                CrossSeedSearchResultStatus `json:"status"`
+	Message               string                      `json:"message,omitempty"`
+	ProcessedAt           time.Time                   `json:"processedAt"`
+	CrossSeedInstanceID   int                         `json:"crossSeedInstanceId,omitzero"`
+	CrossSeedInstanceName string                      `json:"crossSeedInstanceName,omitempty"`
 }
 
-// CrossSeedSearchRun stores metadata for library search automation runs.
 type CrossSeedSearchRun struct {
-	ID                     int64                    `json:"id"`
-	InstanceID             int                      `json:"instanceId"`
-	Kind                   CrossSeedSearchRunKind   `json:"kind"`
-	Status                 CrossSeedSearchRunStatus `json:"status"`
-	StartedAt              time.Time                `json:"startedAt"`
-	CompletedAt            *time.Time               `json:"completedAt,omitempty"`
-	TotalTorrents          int                      `json:"totalTorrents"`
-	Processed              int                      `json:"processed"`
-	TorrentsWithCrossSeeds int                      `json:"torrentsWithCrossSeeds"`
-	CrossSeedsAdded        int                      `json:"crossSeedsAdded"`
-	TorrentsFailed         int                      `json:"torrentsFailed"`
-	TorrentsSkipped        int                      `json:"torrentsSkipped"`
-	Message                *string                  `json:"message,omitempty"`
-	ErrorMessage           *string                  `json:"errorMessage,omitempty"`
-	Filters                CrossSeedSearchFilters   `json:"filters"`
-	IndexerIDs             []int                    `json:"indexerIds"`
-	IntervalSeconds        int                      `json:"intervalSeconds"`
-	CooldownMinutes        int                      `json:"cooldownMinutes"`
-	Results                []CrossSeedSearchResult  `json:"results"`
-	// GazelleSummary counts the RED/OPS lookups of the run, one entry for
-	// each site that the run decided on.
-	GazelleSummary []CrossSeedGazelleSiteSummary `json:"gazelleSummary,omitempty"`
-	// SearchLimit is the cap of a scheduled run. WaitingTorrents counts the
-	// torrents that were still due when the run stopped at the cap.
-	SearchLimit     int       `json:"searchLimit,omitzero"`
-	WaitingTorrents int       `json:"waitingTorrents,omitzero"`
-	CreatedAt       time.Time `json:"createdAt"`
+	ID                     int64                         `json:"id"`
+	InstanceID             int                           `json:"instanceId"`
+	Kind                   CrossSeedSearchRunKind        `json:"kind"`
+	Status                 CrossSeedSearchRunStatus      `json:"status"`
+	StartedAt              time.Time                     `json:"startedAt"`
+	CompletedAt            *time.Time                    `json:"completedAt,omitempty"`
+	TotalTorrents          int                           `json:"totalTorrents"`
+	Processed              int                           `json:"processed"`
+	TorrentsWithCrossSeeds int                           `json:"torrentsWithCrossSeeds"`
+	CrossSeedsAdded        int                           `json:"crossSeedsAdded"`
+	TorrentsFailed         int                           `json:"torrentsFailed"`
+	TorrentsSkipped        int                           `json:"torrentsSkipped"`
+	Message                *string                       `json:"message,omitempty"`
+	ErrorMessage           *string                       `json:"errorMessage,omitempty"`
+	Filters                CrossSeedSearchFilters        `json:"filters"`
+	IndexerIDs             []int                         `json:"indexerIds"`
+	IntervalSeconds        int                           `json:"intervalSeconds"`
+	CooldownMinutes        int                           `json:"cooldownMinutes"`
+	Results                []CrossSeedSearchResult       `json:"results"`
+	GazelleSummary         []CrossSeedGazelleSiteSummary `json:"gazelleSummary,omitempty"`
+	SearchLimit            int                           `json:"searchLimit,omitzero"`
+	WaitingTorrents        int                           `json:"waitingTorrents,omitzero"`
+	CreatedAt              time.Time                     `json:"createdAt"`
 }
 
-// CrossSeedGazelleSiteSummary counts the RED/OPS lookups of one site in one
-// Library Scan run.
 type CrossSeedGazelleSiteSummary struct {
-	// Site is the API host of the site.
-	Site    string `json:"site"`
-	Name    string `json:"name"`
-	Asked   int    `json:"asked"`
-	Matched int    `json:"matched"`
-	Failed  int    `json:"failed"`
-	// NotAsked counts the torrents that the run did not ask the site about,
-	// for each reason.
+	Site     string         `json:"site"`
+	Name     string         `json:"name"`
+	Asked    int            `json:"asked"`
+	Matched  int            `json:"matched"`
+	Failed   int            `json:"failed"`
 	NotAsked map[string]int `json:"notAsked,omitempty"`
 }
 
-// CrossSeedFeedItemStatus tracks processing state for feed items.
 type CrossSeedFeedItemStatus string
 
 const (
@@ -409,7 +335,6 @@ const (
 	CrossSeedFeedItemStatusFailed    CrossSeedFeedItemStatus = "failed"
 )
 
-// CrossSeedFeedItem tracks GUIDs pulled from indexers to avoid duplicates.
 type CrossSeedFeedItem struct {
 	GUID        string                  `json:"guid"`
 	IndexerID   int                     `json:"indexerId"`
@@ -420,14 +345,11 @@ type CrossSeedFeedItem struct {
 	InfoHash    *string                 `json:"infoHash,omitempty"`
 }
 
-// CrossSeedStore persists automation settings, runs, and feed items.
 type CrossSeedStore struct {
-	db dbinterface.Querier
-	// Seals the API keys stored in cross_seed_settings.
+	db     dbinterface.Querier
 	cipher *CredentialCipher
 }
 
-// NewCrossSeedStore constructs a new automation store.
 func NewCrossSeedStore(db dbinterface.Querier, encryptionKey []byte, opts ...CredentialCipherOption) (*CrossSeedStore, error) {
 	credentialCipher, err := NewCredentialCipher(encryptionKey, opts...)
 	if err != nil {
@@ -445,8 +367,6 @@ func (s *CrossSeedStore) decrypt(ciphertext string) (string, error) {
 	return s.cipher.Decrypt(ciphertext, nil)
 }
 
-// RewriteLegacyCredentials re-encrypts stored cross-seed credentials that still
-// carry the pre-HKDF format and reports how many rows it rewrote.
 func (s *CrossSeedStore) RewriteLegacyCredentials(ctx context.Context) (int, error) {
 	return s.cipher.rewriteLegacyRows(ctx, s.db, legacyCredentialTable{
 		table: "cross_seed_settings",
@@ -459,8 +379,6 @@ func (s *CrossSeedStore) RewriteLegacyCredentials(ctx context.Context) (int, err
 	})
 }
 
-// apiKeyRedacted reports a stored secret as set only when qui can decrypt it.
-// The code that uses the secret reports the decrypt failure, so this path stays quiet.
 func (s *CrossSeedStore) apiKeyRedacted(encrypted string) string {
 	if strings.TrimSpace(encrypted) == "" {
 		return ""
@@ -471,7 +389,6 @@ func (s *CrossSeedStore) apiKeyRedacted(encrypted string) string {
 	return domain.RedactedStr
 }
 
-// GetSettings returns the current automation settings or defaults.
 func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationSettings, error) {
 	query := `
 		SELECT enabled, run_interval_minutes,
@@ -603,7 +520,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		return nil, fmt.Errorf("decode target indexers: %w", err)
 	}
 
-	// Decode RSS source filters
 	if err := decodeStringSlice(rssSourceCategories, &settings.RSSSourceCategories); err != nil {
 		return nil, fmt.Errorf("decode rss source categories: %w", err)
 	}
@@ -617,7 +533,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		return nil, fmt.Errorf("decode rss source exclude tags: %w", err)
 	}
 
-	// Decode webhook source filters
 	if err := decodeStringSlice(webhookSourceCategories, &settings.WebhookSourceCategories); err != nil {
 		return nil, fmt.Errorf("decode webhook source categories: %w", err)
 	}
@@ -631,7 +546,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		return nil, fmt.Errorf("decode webhook source exclude tags: %w", err)
 	}
 
-	// Decode source-specific tags with defaults
 	defaults := DefaultCrossSeedAutomationSettings()
 	if err := decodeStringSliceWithDefault(rssAutomationTags, &settings.RSSAutomationTags, defaults.RSSAutomationTags); err != nil {
 		return nil, fmt.Errorf("decode rss automation tags: %w", err)
@@ -657,9 +571,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	if err := decodeJSONSlice(categoryMappingRules, &settings.CategoryMappingRules); err != nil {
 		return nil, fmt.Errorf("decode category mapping rules: %w", err)
 	}
-	// A rule written before a rule could carry several categories decodes with
-	// none. It can never match, and its nil list would reach the API as a null
-	// where the schema promises an array, so drop it on read.
 	settings.CategoryMappingRules = slices.DeleteFunc(settings.CategoryMappingRules, func(rule CategoryMappingRule) bool {
 		return len(rule.Categories) == 0
 	})
@@ -708,14 +619,11 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	return &settings, nil
 }
 
-// Names of the RED/OPS API keys in the settings.
 const (
 	GazelleKeyRedacted = "redacted"
 	GazelleKeyOrpheus  = "orpheus"
 )
 
-// GazelleAPIKey returns the key with the settings name name, as the settings
-// hold it.
 func (s *CrossSeedAutomationSettings) GazelleAPIKey(name string) string {
 	switch name {
 	case GazelleKeyRedacted:
@@ -727,24 +635,16 @@ func (s *CrossSeedAutomationSettings) GazelleAPIKey(name string) string {
 	}
 }
 
-// GazelleAPIKeys holds the stored RED/OPS settings, with the keys decrypted.
 type GazelleAPIKeys struct {
 	Enabled bool
-	// Keys maps the name of each stored key to its plain text.
-	Keys map[string]string
-	// Errs maps the name of each stored key that qui could not decrypt to the
-	// error.
-	Errs map[string]error
+	Keys    map[string]string
+	Errs    map[string]error
 }
 
-// GetDecryptedGazelleAPIKeys returns the RED/OPS switch and, when it is on,
-// the stored RED and OPS keys by name.
 func (s *CrossSeedStore) GetDecryptedGazelleAPIKeys(ctx context.Context) (GazelleAPIKeys, error) {
 	return s.gazelleAPIKeys(ctx, false)
 }
 
-// GetStoredGazelleAPIKeys returns the RED/OPS switch and the stored RED and
-// OPS keys by name, also while the switch is off.
 func (s *CrossSeedStore) GetStoredGazelleAPIKeys(ctx context.Context) (GazelleAPIKeys, error) {
 	return s.gazelleAPIKeys(ctx, true)
 }
@@ -778,12 +678,8 @@ func (s *CrossSeedStore) gazelleAPIKeys(ctx context.Context, evenWhenOff bool) (
 	return keys, nil
 }
 
-// ErrUndecryptableCredential reports a stored credential that does not
-// decrypt, most likely because sessionSecret changed.
 var ErrUndecryptableCredential = errors.New("stored credential does not decrypt")
 
-// GetDecryptedSeasonPackTVDBCredentials returns the decrypted TVDB API key and PIN
-// for season pack metadata resolution.
 func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Context) (apiKey, pin string, err error) {
 	var keyEnc, pinEnc sql.NullString
 	err = s.db.QueryRowContext(ctx, `
@@ -803,7 +699,6 @@ func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Conte
 		}
 	}
 	if pinEnc.Valid && strings.TrimSpace(pinEnc.String) != "" {
-		// The UI cannot clear a PIN it shows as unset, so a stale PIN must not block a new key.
 		if pin, err = s.decrypt(pinEnc.String); err != nil {
 			log.Warn().Err(err).Msg("Ignoring the stored TVDB PIN: it does not decrypt, most likely because sessionSecret changed")
 			pin = ""
@@ -812,8 +707,6 @@ func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Conte
 	return apiKey, pin, nil
 }
 
-// GetSeasonPackTVDBCredentialsUpdatedAt returns the row revision used to avoid
-// decrypting unchanged TVDB credentials on every metadata lookup.
 func (s *CrossSeedStore) GetSeasonPackTVDBCredentialsUpdatedAt(ctx context.Context) (time.Time, error) {
 	var updatedAt time.Time
 	err := s.db.QueryRowContext(ctx, `
@@ -830,7 +723,51 @@ func (s *CrossSeedStore) GetSeasonPackTVDBCredentialsUpdatedAt(ctx context.Conte
 	return updatedAt, nil
 }
 
-// UpsertSettings saves automation settings and returns the updated value.
+type crossSeedSettingsSecrets struct {
+	redactedAPIKey string
+	orpheusAPIKey  string
+	tvdbAPIKey     string
+	tvdbPIN        string
+}
+
+func (s *CrossSeedStore) loadExistingSettingsSecrets(ctx context.Context, settings *CrossSeedAutomationSettings) (crossSeedSettingsSecrets, error) {
+	var red, ops, tvdbKey, tvdbPin sql.NullString
+	queryErr := s.db.QueryRowContext(ctx, `
+			SELECT redacted_api_key_encrypted, orpheus_api_key_encrypted,
+			       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted
+			FROM cross_seed_settings
+			WHERE id = 1
+		`).Scan(&red, &ops, &tvdbKey, &tvdbPin)
+	if queryErr != nil && !errors.Is(queryErr, sql.ErrNoRows) {
+		if strings.TrimSpace(settings.RedactedAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.OrpheusAPIKey) == domain.RedactedStr ||
+			strings.TrimSpace(settings.SeasonPackTVDBAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.SeasonPackTVDBPIN) == domain.RedactedStr {
+			return crossSeedSettingsSecrets{}, fmt.Errorf("load existing encrypted keys: %w", queryErr)
+		}
+	}
+	return crossSeedSettingsSecrets{
+		redactedAPIKey: red.String,
+		orpheusAPIKey:  ops.String,
+		tvdbAPIKey:     tvdbKey.String,
+		tvdbPIN:        tvdbPin.String,
+	}, nil
+}
+
+func (s *CrossSeedStore) resolveSettingsSecret(raw, existingEncrypted, label string) (string, error) {
+	v := strings.TrimSpace(raw)
+	switch v {
+	case "":
+		return "", nil
+	case domain.RedactedStr:
+		return existingEncrypted, nil
+	default:
+		enc, err := s.encrypt(v)
+		if err != nil {
+			return "", fmt.Errorf("encrypt %s: %w", label, err)
+		}
+		return enc, nil
+	}
+}
+
 func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeedAutomationSettings) (*CrossSeedAutomationSettings, error) {
 	if settings == nil {
 		return nil, errors.New("settings cannot be nil")
@@ -845,7 +782,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		return nil, fmt.Errorf("encode target indexers: %w", err)
 	}
 
-	// Encode RSS source filters
 	rssSourceCategoriesJSON, err := encodeStringSlice(settings.RSSSourceCategories)
 	if err != nil {
 		return nil, fmt.Errorf("encode rss source categories: %w", err)
@@ -863,7 +799,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		return nil, fmt.Errorf("encode rss source exclude tags: %w", err)
 	}
 
-	// Encode webhook source filters
 	webhookSourceCategoriesJSON, err := encodeStringSlice(settings.WebhookSourceCategories)
 	if err != nil {
 		return nil, fmt.Errorf("encode webhook source categories: %w", err)
@@ -881,7 +816,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		return nil, fmt.Errorf("encode webhook source exclude tags: %w", err)
 	}
 
-	// Encode source-specific tags
 	rssAutomationTags, err := encodeStringSlice(settings.RSSAutomationTags)
 	if err != nil {
 		return nil, fmt.Errorf("encode rss automation tags: %w", err)
@@ -911,102 +845,26 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		return nil, fmt.Errorf("encode category mapping rules: %w", err)
 	}
 
-	var existingRedactedEncrypted string
-	var existingOrpheusEncrypted string
-	var existingTVDBAPIKeyEncrypted string
-	var existingTVDBPINEncrypted string
-	{
-		var red, ops, tvdbKey, tvdbPin sql.NullString
-		queryErr := s.db.QueryRowContext(ctx, `
-				SELECT redacted_api_key_encrypted, orpheus_api_key_encrypted,
-				       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted
-				FROM cross_seed_settings
-				WHERE id = 1
-			`).Scan(&red, &ops, &tvdbKey, &tvdbPin)
-		// Only required when the caller is explicitly requesting "preserve" behavior.
-		// If we can't read the existing encrypted values, fail the update rather than silently clearing secrets.
-		if queryErr != nil && !errors.Is(queryErr, sql.ErrNoRows) {
-			if strings.TrimSpace(settings.RedactedAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.OrpheusAPIKey) == domain.RedactedStr ||
-				strings.TrimSpace(settings.SeasonPackTVDBAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.SeasonPackTVDBPIN) == domain.RedactedStr {
-				return nil, fmt.Errorf("load existing encrypted keys: %w", queryErr)
-			}
-		}
-		if red.Valid {
-			existingRedactedEncrypted = red.String
-		}
-		if ops.Valid {
-			existingOrpheusEncrypted = ops.String
-		}
-		if tvdbKey.Valid {
-			existingTVDBAPIKeyEncrypted = tvdbKey.String
-		}
-		if tvdbPin.Valid {
-			existingTVDBPINEncrypted = tvdbPin.String
-		}
+	existing, err := s.loadExistingSettingsSecrets(ctx, settings)
+	if err != nil {
+		return nil, err
 	}
 
-	redactedAPIKeyEncrypted := ""
-	v := strings.TrimSpace(settings.RedactedAPIKey)
-	switch v {
-	case "":
-		// Clear
-	case domain.RedactedStr:
-		// Preserve existing value
-		redactedAPIKeyEncrypted = existingRedactedEncrypted
-	default:
-		enc, encErr := s.encrypt(v)
-		if encErr != nil {
-			return nil, fmt.Errorf("encrypt redacted api key: %w", encErr)
-		}
-		redactedAPIKeyEncrypted = enc
+	redactedAPIKeyEncrypted, err := s.resolveSettingsSecret(settings.RedactedAPIKey, existing.redactedAPIKey, "redacted api key")
+	if err != nil {
+		return nil, err
 	}
-
-	orpheusAPIKeyEncrypted := ""
-	v = strings.TrimSpace(settings.OrpheusAPIKey)
-	switch v {
-	case "":
-		// Clear
-	case domain.RedactedStr:
-		// Preserve existing value
-		orpheusAPIKeyEncrypted = existingOrpheusEncrypted
-	default:
-		enc, encErr := s.encrypt(v)
-		if encErr != nil {
-			return nil, fmt.Errorf("encrypt orpheus api key: %w", encErr)
-		}
-		orpheusAPIKeyEncrypted = enc
+	orpheusAPIKeyEncrypted, err := s.resolveSettingsSecret(settings.OrpheusAPIKey, existing.orpheusAPIKey, "orpheus api key")
+	if err != nil {
+		return nil, err
 	}
-
-	seasonPackTVDBAPIKeyEncrypted := ""
-	v = strings.TrimSpace(settings.SeasonPackTVDBAPIKey)
-	switch v {
-	case "":
-		// Clear
-	case domain.RedactedStr:
-		// Preserve existing value
-		seasonPackTVDBAPIKeyEncrypted = existingTVDBAPIKeyEncrypted
-	default:
-		enc, encErr := s.encrypt(v)
-		if encErr != nil {
-			return nil, fmt.Errorf("encrypt tvdb api key: %w", encErr)
-		}
-		seasonPackTVDBAPIKeyEncrypted = enc
+	seasonPackTVDBAPIKeyEncrypted, err := s.resolveSettingsSecret(settings.SeasonPackTVDBAPIKey, existing.tvdbAPIKey, "tvdb api key")
+	if err != nil {
+		return nil, err
 	}
-
-	seasonPackTVDBPINEncrypted := ""
-	v = strings.TrimSpace(settings.SeasonPackTVDBPIN)
-	switch v {
-	case "":
-		// Clear
-	case domain.RedactedStr:
-		// Preserve existing value
-		seasonPackTVDBPINEncrypted = existingTVDBPINEncrypted
-	default:
-		enc, encErr := s.encrypt(v)
-		if encErr != nil {
-			return nil, fmt.Errorf("encrypt tvdb pin: %w", encErr)
-		}
-		seasonPackTVDBPINEncrypted = enc
+	seasonPackTVDBPINEncrypted, err := s.resolveSettingsSecret(settings.SeasonPackTVDBPIN, existing.tvdbPIN, "tvdb pin")
+	if err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -1093,7 +951,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			orpheus_api_key_encrypted = excluded.orpheus_api_key_encrypted
 	`
 
-	// Convert *int to any for proper SQL handling
 	var runExternalProgramID any
 	if settings.RunExternalProgramID != nil {
 		runExternalProgramID = *settings.RunExternalProgramID
@@ -1160,7 +1017,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	return s.GetSettings(ctx)
 }
 
-// GetSearchSettings returns the stored seeded search defaults, or defaults when unset.
 func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearchSettings, error) {
 	query := `
 		SELECT instance_id, categories, tags, exclude_categories, exclude_tags, indexer_ids,
@@ -1239,7 +1095,6 @@ func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearc
 	return &settings, nil
 }
 
-// UpsertSearchSettings saves seeded search defaults.
 func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *CrossSeedSearchSettings) (*CrossSeedSearchSettings, error) {
 	if settings == nil {
 		return nil, errors.New("settings cannot be nil")
@@ -1321,8 +1176,6 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 	return s.GetSearchSettings(ctx)
 }
 
-// LastScheduledSearchRun returns the start of the last scheduled Library Scan
-// run, and false when no scheduled run started yet.
 func (s *CrossSeedStore) LastScheduledSearchRun(ctx context.Context) (time.Time, bool, error) {
 	var last sql.NullTime
 	err := s.db.QueryRowContext(ctx, `SELECT last_scheduled_run_at FROM cross_seed_search_settings WHERE id = 1`).Scan(&last)
@@ -1335,8 +1188,6 @@ func (s *CrossSeedStore) LastScheduledSearchRun(ctx context.Context) (time.Time,
 	return last.Time, last.Valid, nil
 }
 
-// SetLastScheduledSearchRun saves the start of the last scheduled Library
-// Scan run. It keeps the other saved Library settings.
 func (s *CrossSeedStore) SetLastScheduledSearchRun(ctx context.Context, startedAt time.Time) error {
 	const query = `
 		INSERT INTO cross_seed_search_settings (id, last_scheduled_run_at) VALUES (1, ?)
@@ -1348,8 +1199,6 @@ func (s *CrossSeedStore) SetLastScheduledSearchRun(ctx context.Context, startedA
 	return nil
 }
 
-// ClearLastScheduledSearchRun forgets the start of the last scheduled Library
-// Scan run, so the next scheduled run is due at once.
 func (s *CrossSeedStore) ClearLastScheduledSearchRun(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE cross_seed_search_settings SET last_scheduled_run_at = NULL WHERE id = 1`); err != nil {
 		return fmt.Errorf("clear last scheduled search run: %w", err)
@@ -1357,7 +1206,6 @@ func (s *CrossSeedStore) ClearLastScheduledSearchRun(ctx context.Context) error 
 	return nil
 }
 
-// CreateRun inserts a new automation run record.
 func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*CrossSeedRun, error) {
 	if run == nil {
 		return nil, errors.New("run cannot be nil")
@@ -1401,7 +1249,6 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 		return nil, fmt.Errorf("insert run: %w", err)
 	}
 
-	// Prune old runs, keeping only the 10 most recent
 	const pruneQuery = `
 		DELETE FROM cross_seed_runs
 		WHERE id NOT IN (
@@ -1417,7 +1264,6 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 	return s.GetRun(ctx, runID)
 }
 
-// UpdateRun updates an existing run with final statistics.
 func (s *CrossSeedStore) UpdateRun(ctx context.Context, run *CrossSeedRun) (*CrossSeedRun, error) {
 	if run == nil {
 		return nil, errors.New("run cannot be nil")
@@ -1459,7 +1305,6 @@ func (s *CrossSeedStore) UpdateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 	return s.GetRun(ctx, run.ID)
 }
 
-// GetRun fetches a single run by ID.
 func (s *CrossSeedStore) GetRun(ctx context.Context, id int64) (*CrossSeedRun, error) {
 	query := `
 		SELECT id, triggered_by, mode, status, started_at, completed_at,
@@ -1478,7 +1323,6 @@ func (s *CrossSeedStore) GetRun(ctx context.Context, id int64) (*CrossSeedRun, e
 	return run, err
 }
 
-// GetLatestRun returns the most recent automation run.
 func (s *CrossSeedStore) GetLatestRun(ctx context.Context) (*CrossSeedRun, error) {
 	query := `
 		SELECT id, triggered_by, mode, status, started_at, completed_at,
@@ -1498,7 +1342,6 @@ func (s *CrossSeedStore) GetLatestRun(ctx context.Context) (*CrossSeedRun, error
 	return run, err
 }
 
-// ListRuns returns automation run history.
 func (s *CrossSeedStore) ListRuns(ctx context.Context, limit, offset int) ([]*CrossSeedRun, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -1538,7 +1381,6 @@ func (s *CrossSeedStore) ListRuns(ctx context.Context, limit, offset int) ([]*Cr
 	return runs, nil
 }
 
-// CreateSearchRun inserts a new record for a search automation run.
 func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSearchRun) (*CrossSeedSearchRun, error) {
 	if run == nil {
 		return nil, errors.New("run cannot be nil")
@@ -1607,7 +1449,6 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 		return nil, fmt.Errorf("insert search run: %w", err)
 	}
 
-	// Prune old runs for this instance, keeping only the 10 most recent
 	const pruneQuery = `
 		DELETE FROM cross_seed_search_runs
 		WHERE instance_id = ? AND id NOT IN (
@@ -1624,8 +1465,6 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 	return s.GetSearchRun(ctx, insertedID)
 }
 
-// UpdateSearchRun persists the full row of a search run, results blob included.
-// UpdateSearchRunProgress is the cheap per-candidate write.
 func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSearchRun) error {
 	if run == nil {
 		return errors.New("run cannot be nil")
@@ -1706,9 +1545,6 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 	return nil
 }
 
-// UpdateSearchRunProgress writes the live counters of a search run and leaves
-// results_json alone. The hot per-candidate path uses it so the bytes written
-// per candidate stay constant; UpdateSearchRun persists the full row.
 func (s *CrossSeedStore) UpdateSearchRunProgress(ctx context.Context, run *CrossSeedSearchRun) error {
 	gazelleJSON, err := encodeGazelleSummary(run.GazelleSummary)
 	if err != nil {
@@ -1745,7 +1581,6 @@ func (s *CrossSeedStore) UpdateSearchRunProgress(ctx context.Context, run *Cross
 	return nil
 }
 
-// GetSearchRun loads a specific search run by ID.
 func (s *CrossSeedStore) GetSearchRun(ctx context.Context, id int64) (*CrossSeedSearchRun, error) {
 	const query = `
 		SELECT id, instance_id, kind, status, started_at, completed_at,
@@ -1761,7 +1596,6 @@ func (s *CrossSeedStore) GetSearchRun(ctx context.Context, id int64) (*CrossSeed
 	return scanCrossSeedSearchRun(row)
 }
 
-// ListSearchRuns returns search automation history for an instance.
 func (s *CrossSeedStore) ListSearchRuns(ctx context.Context, instanceID, limit, offset int) ([]*CrossSeedSearchRun, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -1803,7 +1637,6 @@ func (s *CrossSeedStore) ListSearchRuns(ctx context.Context, instanceID, limit, 
 	return runs, nil
 }
 
-// UpsertSearchHistory updates the last searched timestamp for a torrent on an instance.
 func (s *CrossSeedStore) UpsertSearchHistory(ctx context.Context, instanceID int, torrentHash string, searchedAt time.Time) error {
 	if instanceID <= 0 || strings.TrimSpace(torrentHash) == "" {
 		return errors.New("invalid search history parameters")
@@ -1822,7 +1655,6 @@ func (s *CrossSeedStore) UpsertSearchHistory(ctx context.Context, instanceID int
 	return nil
 }
 
-// GetSearchHistory returns the last time a torrent was searched.
 func (s *CrossSeedStore) GetSearchHistory(ctx context.Context, instanceID int, torrentHash string) (time.Time, bool, error) {
 	const query = `
 		SELECT last_searched_at
@@ -1842,9 +1674,6 @@ func (s *CrossSeedStore) GetSearchHistory(ctx context.Context, instanceID int, t
 	return last, true, nil
 }
 
-// GetLatestSearchHistory returns the most recent search timestamp for a key
-// across all instances. Used for pseudo-keys whose verdict is global, like
-// season-pack diversion failures.
 func (s *CrossSeedStore) GetLatestSearchHistory(ctx context.Context, torrentHash string) (time.Time, bool, error) {
 	const query = `
 		SELECT last_searched_at
@@ -1866,7 +1695,6 @@ func (s *CrossSeedStore) GetLatestSearchHistory(ctx context.Context, torrentHash
 	return last, true, nil
 }
 
-// UpsertIndexerSearchHistory stamps a search on each covered indexer for a torrent.
 func (s *CrossSeedStore) UpsertIndexerSearchHistory(ctx context.Context, instanceID int, torrentHash string, indexerIDs []int, searchedAt time.Time) error {
 	if instanceID <= 0 || strings.TrimSpace(torrentHash) == "" {
 		return errors.New("invalid search history parameters")
@@ -1874,8 +1702,6 @@ func (s *CrossSeedStore) UpsertIndexerSearchHistory(ctx context.Context, instanc
 	if len(indexerIDs) == 0 {
 		return nil
 	}
-	// Postgres rejects a multi-row ON CONFLICT DO UPDATE that hits the same
-	// conflict target twice ("cannot affect row a second time").
 	indexerIDs = slices.Compact(slices.Sorted(slices.Values(indexerIDs)))
 
 	var query strings.Builder
@@ -1901,8 +1727,6 @@ func (s *CrossSeedStore) UpsertIndexerSearchHistory(ctx context.Context, instanc
 	return nil
 }
 
-// GetIndexerSearchHistory returns the last search time per indexer for a torrent.
-// Indexers with no row have never searched this torrent.
 func (s *CrossSeedStore) GetIndexerSearchHistory(ctx context.Context, instanceID int, torrentHash string) (map[int]time.Time, error) {
 	const query = `
 		SELECT indexer_id, last_searched_at
@@ -1931,7 +1755,6 @@ func (s *CrossSeedStore) GetIndexerSearchHistory(ctx context.Context, instanceID
 	return history, nil
 }
 
-// HasProcessedFeedItem reports whether a GUID/indexer pair has been handled.
 func (s *CrossSeedStore) HasProcessedFeedItem(ctx context.Context, guid string, indexerID int) (bool, CrossSeedFeedItemStatus, error) {
 	query := `
 		SELECT last_status
@@ -1951,7 +1774,6 @@ func (s *CrossSeedStore) HasProcessedFeedItem(ctx context.Context, guid string, 
 	return true, CrossSeedFeedItemStatus(status), nil
 }
 
-// MarkFeedItem updates the state of a feed item.
 func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedItem) error {
 	if item == nil {
 		return errors.New("item cannot be nil")
@@ -1968,11 +1790,6 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 		item.LastSeenAt = now
 	}
 
-	// Truncate to day precision so repeated polls on the same day write an
-	// identical last_seen_at value. PruneFeedItems only needs day-level
-	// precision for its 30-day cutoff, and writing the same value each poll
-	// lets Postgres treat the update as HOT-eligible instead of rewriting the
-	// last_seen_at index on every single feed poll.
 	lastSeenAt := item.LastSeenAt.Truncate(24 * time.Hour)
 
 	query := `
@@ -2003,10 +1820,6 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 	return nil
 }
 
-// TouchFeedItem advances last_seen_at to seenAt's UTC day so PruneFeedItems
-// keeps an item that is still in the feed. Unlike an ON CONFLICT upsert, a
-// plain UPDATE whose WHERE fails takes no row lock, so same-day polls write no
-// WAL.
 func (s *CrossSeedStore) TouchFeedItem(ctx context.Context, guid string, indexerID int, seenAt time.Time) error {
 	day := seenAt.UTC().Truncate(24 * time.Hour)
 	query := `
@@ -2022,7 +1835,6 @@ func (s *CrossSeedStore) TouchFeedItem(ctx context.Context, guid string, indexer
 	return nil
 }
 
-// PruneFeedItems removes processed feed items older than the provided cutoff.
 func (s *CrossSeedStore) PruneFeedItems(ctx context.Context, olderThan time.Time) (int64, error) {
 	query := `
 		DELETE FROM cross_seed_feed_items
@@ -2042,8 +1854,6 @@ func (s *CrossSeedStore) PruneFeedItems(ctx context.Context, olderThan time.Time
 	return rows, nil
 }
 
-// MarkInterruptedSearchRuns marks any search runs still in 'running' status as failed.
-// This should be called at startup to reconcile runs interrupted by a crash/restart.
 func (s *CrossSeedStore) MarkInterruptedSearchRuns(ctx context.Context, completedAt time.Time, message string) (int64, error) {
 	query := `
 		UPDATE cross_seed_search_runs
@@ -2064,8 +1874,6 @@ func (s *CrossSeedStore) MarkInterruptedSearchRuns(ctx context.Context, complete
 	return rows, nil
 }
 
-// MarkInterruptedAutomationRuns marks any automation runs still in 'running' status as failed.
-// This should be called at startup to reconcile runs interrupted by a crash/restart.
 func (s *CrossSeedStore) MarkInterruptedAutomationRuns(ctx context.Context, completedAt time.Time, message string) (int64, error) {
 	query := `
 		UPDATE cross_seed_runs
@@ -2204,7 +2012,6 @@ func withoutRetiredGazelleReasons(summary []CrossSeedGazelleSiteSummary) []Cross
 	return kept
 }
 
-// encodeGazelleSummary returns NULL for a run that decided on no RED/OPS site.
 func encodeGazelleSummary(summary []CrossSeedGazelleSiteSummary) (any, error) {
 	if len(summary) == 0 {
 		return nil, nil
@@ -2251,7 +2058,6 @@ func decodeStringSlice(src sql.NullString, dest *[]string) error {
 	return nil
 }
 
-// decodeStringSliceWithDefault decodes a JSON string slice, using defaultVal if the source is null/empty.
 func decodeStringSliceWithDefault(src sql.NullString, dest *[]string, defaultVal []string) error {
 	if !src.Valid || src.String == "" {
 		*dest = defaultVal

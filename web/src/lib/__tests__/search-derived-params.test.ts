@@ -12,12 +12,8 @@ import {
 } from "@/lib/search-derived-params"
 import { describe, expect, it } from "vitest"
 
-// Label helpers now resolve through i18n; bind a fixed English translator
-// scoped to the search namespace so assertions stay deterministic.
 const t = i18n.getFixedT("en", "search")
 
-// Intent: SearchType -> Torznab category IDs. Returns a NEW array so callers
-// can mutate safely without corrupting the module-level map.
 describe("getCategoriesForSearchType", () => {
   it.each<[Parameters<typeof getCategoriesForSearchType>[0], number]>([
     ["movies", 2000],
@@ -41,10 +37,6 @@ describe("getCategoriesForSearchType", () => {
   })
 })
 
-// Intent: collapse a category-id list back into a SearchType when every
-// category falls under the same parent family. Returning null whenever
-// families mix protects against silently mislabeling a mixed-category
-// search (e.g. user manually selected one Movies + one TV id).
 describe("inferSearchTypeFromCategories", () => {
   it("returns null for empty / missing categories", () => {
     expect(inferSearchTypeFromCategories(undefined)).toBeNull()
@@ -62,7 +54,6 @@ describe("inferSearchTypeFromCategories", () => {
   })
 })
 
-// Intent: human-readable label for the SearchType dropdown.
 describe("getSearchTypeLabel", () => {
   it.each([
     ["movies", "Movies"],
@@ -77,9 +68,6 @@ describe("getSearchTypeLabel", () => {
 
 })
 
-// Intent: each option in the dropdown must be a known SearchType so the
-// types stay in sync with the data shape. Catches anyone who adds an
-// option label without adding the corresponding type entry.
 describe("getSearchTypeOptions", () => {
   it("does not offer automatic category detection", () => {
     expect(getSearchTypeOptions(t).map(o => o.value).sort()).toEqual(

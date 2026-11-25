@@ -180,7 +180,6 @@ describe("ShareDialog", () => {
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Create" }).disabled).toBe(true)
   })
 
-  // regression: #4242
   it("shows the error of a request that qui cannot read, and stays on the form", async () => {
     server.use(http.post("*/api/shares", () => HttpResponse.json({ error: "Invalid request body" }, { status: 400 })))
     renderDialog()
@@ -190,7 +189,6 @@ describe("ShareDialog", () => {
     expect(screen.getByRole("button", { name: "Create" })).not.toBeNull()
   })
 
-  // regression: #4242
   it("asks for a whole number of days, and creates the Share only with one", async () => {
     renderDialog()
     const days = await screen.findByLabelText("Days until a Share ends")
@@ -230,7 +228,6 @@ describe("ShareDialog", () => {
     expect(within(refused).getByText(/Example\.Show\.S01\.1080p\.WEB-DL-GRP/).textContent).toContain("Torrents with skipped files are unsupported")
   })
 
-  // regression: #4242
   it("shows made-up names, hides the tracker address, and hides the reasons of a refusal in incognito mode", async () => {
     incognito.on = true
     const other = { hash: "bbbb2222", name: "Example.Show.S01.1080p.WEB-DL-GRP" }
@@ -257,7 +254,6 @@ describe("ShareDialog", () => {
     expect(text).not.toContain("Example.Show")
   })
 
-  // regression: #4242
   it("names one torrent with a made-up name in incognito mode", async () => {
     incognito.on = true
     renderDialog()
@@ -266,7 +262,6 @@ describe("ShareDialog", () => {
     expect(dialog.textContent).not.toContain("Example.Movie")
   })
 
-  // regression: #4242
   it("copies the message with the real name in incognito mode, because the friend gets the real .torrent", async () => {
     incognito.on = true
     renderDialog()

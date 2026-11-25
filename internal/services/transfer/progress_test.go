@@ -12,10 +12,6 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// regression: #4242
-// A running copy shows the bytes it passed of all its bytes, and its speed
-// over the last ten seconds: a copy that passed no byte in that time shows
-// no speed. The progress ends with the Transfer.
 func TestProgressCountsTheCopiedBytes(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -24,8 +20,6 @@ func TestProgressCountsTheCopiedBytes(t *testing.T) {
 	ready := make(chan struct{})
 	var seen []transfer.Progress
 	var stalled transfer.Progress
-	// The clock moves one second on at each write, and 11 more after the
-	// third.
 	at := clock
 	r.disk.onWrite = func(string) {
 		<-ready

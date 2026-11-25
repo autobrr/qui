@@ -11,7 +11,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -29,10 +28,9 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
 )
 
-// fakeRequirer hands out one backend and instance row, whatever the row's
-// capabilities, so a test can model a remote instance that can write.
 type fakeRequirer struct {
 	backend  fsops.Backend
 	instance models.Instance
@@ -56,15 +54,9 @@ type fakeView struct {
 	foldersErr  error
 	refreshes   atomic.Int32
 	folderReads atomic.Int32
-	// synced is when the last hinted sync landed, fakeSyncDelay after the
-	// hint, as the sync manager's debounce does.
-	synced time.Time
-	// onSync, when set, is what qBittorrent holds but the cache does not
-	// show yet: a hinted sync replaces torrents with it.
-	onSync []qbt.Torrent
-	// syncFails makes a hinted sync fail, so synced does not move.
-	syncFails bool
-	// lastSyncErr fails lastSync alone.
+	synced      time.Time
+	onSync      []qbt.Torrent
+	syncFails   bool
 	lastSyncErr error
 }
 
@@ -130,8 +122,6 @@ func (v *fakeView) lastSync(context.Context, int) (time.Time, error) {
 	return v.synced, v.liveErr
 }
 
-// setTorrentsOnSync changes qBittorrent's torrents without the cache seeing
-// it until the next hinted sync.
 func (v *fakeView) setTorrentsOnSync(torrents ...qbt.Torrent) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -144,8 +134,6 @@ func (v *fakeView) setTorrents(torrents ...qbt.Torrent) {
 	v.torrents = torrents
 }
 
-// fakeIgnores matches with orphan scan's rule: the path is ignored, is under an
-// ignored path, or holds one.
 type fakeIgnores struct {
 	paths []string
 	err   error
@@ -167,7 +155,6 @@ func (f *fakeIgnores) IgnoredPathMatcher(_ context.Context, _ int, d fsops.PathD
 	}, nil
 }
 
-// treeFS is a backend a test can lay files out on.
 type treeFS interface {
 	fsops.Backend
 	mkdir(p string)
@@ -192,7 +179,7 @@ func (l localTree) symlink(p string) {
 	target := filepath.Join(l.t.TempDir(), "target")
 	require.NoError(l.t, os.MkdirAll(target, 0o755))
 	l.mkdir(filepath.Dir(p))
-	require.NoError(l.t, os.Symlink(target, p))
+	testutil.SymlinkOrSkip(l.t, target, p)
 }
 
 func (l localTree) remove(p string) { require.NoError(l.t, os.RemoveAll(p)) }
@@ -201,19 +188,14 @@ func (l localTree) exists(p string) bool {
 	return err == nil
 }
 
-// memTree is a slash-dialect filesystem in memory: the shape of a remote unix
-// host on any OS. A symlink is an entry that reports itself as one and holds
-// whatever the test puts below its path.
 type memTree struct {
 	fsops.Backend
 	mu        sync.Mutex
 	kinds     map[string]memKind
 	removeErr map[string]error
-	// readErr, when set, fails a ReadDir of p with the error it returns, and
-	// lstatErr an Lstat.
-	readErr  func(p string) error
-	lstatErr func(p string) error
-	calls    atomic.Int32
+	readErr   func(p string) error
+	lstatErr  func(p string) error
+	calls     atomic.Int32
 }
 
 type memKind uint8
@@ -222,8 +204,6 @@ const (
 	memDir memKind = iota
 	memFile
 	memLink
-	// memJunction is a Windows directory junction as Go reports it since
-	// 1.23: neither a folder nor a symlink, with ModeIrregular.
 	memJunction
 )
 
@@ -371,16 +351,6 @@ func (m *memTree) Remove(_ context.Context, p string, opts fsops.RemoveOptions) 
 	return nil
 }
 
-// cleanupEnv is the TRaSH Guides layout under root, on one backend:
-//
-//	torrents/              default save path
-//	torrents/incomplete/   download path
-//	torrents/movies/       category "movies"
-//	torrents/movies hd/    category "movies:hd"
-//	torrents/tv/           category "tv"
-//	torrents/tv/anime/     subcategory "tv/anime"
-//	torrents/qui-links/    hardlink base dir
-//	media/                 library
 type cleanupEnv struct {
 	t       *testing.T
 	fs      treeFS
@@ -400,8 +370,6 @@ func (e *cleanupEnv) p(rel string) string {
 	return e.d.Join(e.root, e.d.FromSlash(rel))
 }
 
-// tree lays out paths relative to root: a trailing slash is a folder, anything
-// else a file.
 func (e *cleanupEnv) tree(rels ...string) {
 	for _, rel := range rels {
 		if before, ok := strings.CutSuffix(rel, "/"); ok {
@@ -448,19 +416,15 @@ func (e *cleanupEnv) noRoot(save string, files ...string) folderSnapshot {
 		Layout: layoutNoRootFolder, Files: files, ContentExisted: true}
 }
 
-// moved marks snap as taken before a move rather than a delete.
 func moved(snap folderSnapshot) folderSnapshot {
 	snap.Move = true
 	return snap
 }
 
-// row is snap's own cached row, the state the sync cache still shows right
-// after qBittorrent accepted the request.
 func row(snap folderSnapshot) qbt.Torrent {
 	return qbt.Torrent{Hash: snap.Hash, SavePath: snap.SavePath, ContentPath: snap.ContentPath, DownloadPath: snap.DownloadPath}
 }
 
-// tick lets the worker run n ticks on the bubble's fake clock.
 func (e *cleanupEnv) tick(n int) {
 	for range n {
 		time.Sleep(e.fc.tick)
@@ -476,15 +440,11 @@ func (e *cleanupEnv) run(snaps ...folderSnapshot) {
 type backendKind string
 
 const (
-	localBackend backendKind = "local"
-	slashBackend backendKind = "slash"
-	// remoteBackend is the slash fake behind a remote instance row that can
-	// write, checked every tick so the module tests run unchanged.
+	localBackend  backendKind = "local"
+	slashBackend  backendKind = "slash"
 	remoteBackend backendKind = "remote"
 )
 
-// newStoppedCleanupEnv is newCleanupEnv before start, for a test that sets
-// the worker's timing.
 func newStoppedCleanupEnv(t *testing.T, kind backendKind) *cleanupEnv {
 	e := &cleanupEnv{t: t, ignores: &fakeIgnores{}}
 	switch kind {
@@ -497,7 +457,6 @@ func newStoppedCleanupEnv(t *testing.T, kind backendKind) *cleanupEnv {
 	}
 	e.d = e.fs.Paths()
 	e.tree("torrents/incomplete/", "torrents/movies/", "torrents/movies hd/", "torrents/tv/anime/", "torrents/qui-links/", "media/")
-	// Categories movies, movies:hd, tv and tv/anime inherit their folders.
 	e.view = &fakeView{folders: InstanceFolders{
 		DefaultSavePath:     e.p("torrents"),
 		DownloadPath:        e.p("torrents/incomplete"),
@@ -528,28 +487,21 @@ func (e *cleanupEnv) start() {
 	e.t.Cleanup(e.fc.Stop)
 }
 
-// eachBackend runs body on the real local backend, on the slash-dialect fake,
-// and on that fake behind a remote instance, each inside a synctest bubble so
-// the ticker and deadline run on fake time.
 func eachBackend(t *testing.T, body func(t *testing.T, e *cleanupEnv)) {
 	for _, kind := range []backendKind{localBackend, slashBackend, remoteBackend} {
 		t.Run(string(kind), func(t *testing.T) {
+			var skipped bool
 			synctest.Test(t, func(t *testing.T) {
+				defer func() { skipped = t.Skipped() }()
 				body(t, newCleanupEnv(t, kind))
 			})
+			if skipped {
+				t.Skip("fixture unavailable inside synctest")
+			}
 		})
 	}
 }
 
-func skipSymlinksOnWindows(t *testing.T, e *cleanupEnv) {
-	if runtime.GOOS == "windows" && e.d == fsops.HostPaths {
-		t.Skip("creating a symlink needs a privilege on Windows")
-	}
-}
-
-// captureLogFields records, for each message logged at level or above while it
-// is installed, the message and the string value of field, or the values of a
-// list field joined by commas.
 func captureLogFields(t *testing.T, level zerolog.Level, field string) func() [][2]string {
 	var mu sync.Mutex
 	var buf strings.Builder
@@ -591,8 +543,6 @@ func (l lockedWriter) Write(p []byte) (int, error) {
 	return l.w.Write(p)
 }
 
-// captureLogs records the messages logged at level or above while it is
-// installed. Tests that use it must not run in parallel.
 func captureLogs(t *testing.T, level zerolog.Level) func() []string {
 	var mu sync.Mutex
 	var msgs []string

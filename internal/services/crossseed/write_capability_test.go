@@ -13,8 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// A remote instance has Write (#2942), so the link-tree seams admit it the
-// way they admit a local one; an instance with no filesystem access is refused.
 func TestLinkTreeSeamsAdmitRemoteInstance(t *testing.T) {
 	remote := &models.Instance{
 		ID: 1, UseHardlinks: true, HardlinkBaseDir: "/links",
@@ -45,8 +43,6 @@ func TestLinkTreeSeamsAdmitRemoteInstance(t *testing.T) {
 	}
 }
 
-// Partial pool runs host file calls, so a remote stays out even when a remote
-// has Write.
 func TestPartialPoolRefusesRemoteInstance(t *testing.T) {
 	remote := &models.Instance{
 		ID: 1, UseHardlinks: true, HardlinkBaseDir: "/links",

@@ -26,7 +26,6 @@ func insertTestInstance(t *testing.T, db *database.DB, name string) int {
 
 	ctx := context.Background()
 
-	// Insert string values into string_pool
 	_, err := db.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", name)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", "http://localhost:8080")
@@ -65,7 +64,6 @@ func TestInstanceCrossSeedCompletionStore_GetReturnsDefaults(t *testing.T) {
 	store := models.NewInstanceCrossSeedCompletionStore(db)
 	ctx := context.Background()
 
-	// Get settings for non-existent instance returns defaults
 	settings, err := store.Get(ctx, 999)
 	require.NoError(t, err)
 
@@ -87,7 +85,6 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 
 	instanceID := insertTestInstance(t, db, "Test Instance")
 
-	// Upsert new settings
 	saved, err := store.Upsert(ctx, &models.InstanceCrossSeedCompletionSettings{
 		InstanceID:         instanceID,
 		Enabled:            true,
@@ -111,7 +108,6 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 	assert.ElementsMatch(t, []string{"skip"}, saved.ExcludeTags)
 	assert.ElementsMatch(t, []int{3, 9}, saved.IndexerIDs)
 
-	// Get persisted settings
 	retrieved, err := store.Get(ctx, instanceID)
 	require.NoError(t, err)
 
@@ -163,7 +159,6 @@ func TestInstanceCrossSeedCompletionStore_UpsertUpdatesExisting(t *testing.T) {
 
 	instanceID := insertTestInstance(t, db, "Update Test")
 
-	// Initial insert
 	_, err := store.Upsert(ctx, &models.InstanceCrossSeedCompletionSettings{
 		InstanceID: instanceID,
 		Enabled:    true,
@@ -171,7 +166,6 @@ func TestInstanceCrossSeedCompletionStore_UpsertUpdatesExisting(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Update existing
 	updated, err := store.Upsert(ctx, &models.InstanceCrossSeedCompletionSettings{
 		InstanceID: instanceID,
 		Enabled:    false,
@@ -194,7 +188,6 @@ func TestInstanceCrossSeedCompletionStore_UpsertSanitizesInput(t *testing.T) {
 
 	instanceID := insertTestInstance(t, db, "Sanitize Test")
 
-	// Input with whitespace and duplicates
 	saved, err := store.Upsert(ctx, &models.InstanceCrossSeedCompletionSettings{
 		InstanceID:        instanceID,
 		Enabled:           true,
@@ -206,7 +199,6 @@ func TestInstanceCrossSeedCompletionStore_UpsertSanitizesInput(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Should be trimmed and deduplicated (case-insensitive)
 	assert.ElementsMatch(t, []string{"Movies", "TV"}, saved.Categories)
 	assert.ElementsMatch(t, []string{"tag1", "tag2"}, saved.Tags)
 	assert.Empty(t, saved.ExcludeCategories)
@@ -229,12 +221,10 @@ func TestInstanceCrossSeedCompletionStore_List(t *testing.T) {
 	store := models.NewInstanceCrossSeedCompletionStore(db)
 	ctx := context.Background()
 
-	// List returns empty when no settings exist
 	list, err := store.List(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, list)
 
-	// Add settings for two instances
 	id1 := insertTestInstance(t, db, "Instance 1")
 	id2 := insertTestInstance(t, db, "Instance 2")
 
@@ -252,12 +242,10 @@ func TestInstanceCrossSeedCompletionStore_List(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// List should return both
 	list, err = store.List(ctx)
 	require.NoError(t, err)
 	assert.Len(t, list, 2)
 
-	// Verify content
 	ids := make([]int, len(list))
 	for i, s := range list {
 		ids[i] = s.InstanceID

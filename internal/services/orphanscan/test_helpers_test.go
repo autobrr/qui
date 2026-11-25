@@ -16,9 +16,6 @@ func newTestBackend() fsops.Backend {
 	return local.NewBackend()
 }
 
-// fakeWalkBackend serves canned WalkDir entries so tests can simulate the same
-// file appearing at two paths with nlink=1 (a bind-mount/mergerfs alias),
-// which cannot be constructed on a real test filesystem.
 type fakeWalkBackend struct {
 	fsops.Backend
 	entries []fsops.WalkEntry
@@ -33,8 +30,6 @@ func (b *fakeWalkBackend) WalkDir(_ context.Context, _ string, _ fsops.WalkOptio
 	return ch, nil
 }
 
-// newTestProtected builds the Protected path module of one phase and fails the
-// test on an ignore path that is not valid.
 func newTestProtected(t testing.TB, d fsops.PathDialect, ignorePaths []string, tfm *TorrentFileMap) *protectedPaths {
 	t.Helper()
 	protected, err := newProtectedPaths(d, ignorePaths, tfm)
@@ -44,8 +39,6 @@ func newTestProtected(t testing.TB, d fsops.PathDialect, ignorePaths []string, t
 	return protected
 }
 
-// aliasWalkBackend gives the listed paths of a real tree one shared nlink=1
-// FileID, the way a bind mount presents one file twice.
 type aliasWalkBackend struct {
 	fsops.Backend
 	ids map[string]hardlink.FileID

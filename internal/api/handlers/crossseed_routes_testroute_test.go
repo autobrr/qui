@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,9 +27,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
 
-// listingQBittorrent answers as qBittorrent 5.0, and answers each directory
-// listing with the status and the entries that list returns. Status 0 drops
-// the connection.
 func listingQBittorrent(t *testing.T, list func(dirPath, mode string) (int, []string)) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,9 +57,6 @@ func listingQBittorrent(t *testing.T, list func(dirPath, mode string) (int, []st
 	return srv.URL
 }
 
-// diskListing lists the folders of a real folder as qBittorrent does, with
-// each entry as a full path, and 404 for a missing folder. views maps a path
-// that the Cross-seed instance sees to the real folder.
 func diskListing(views map[string]string) func(string, string) (int, []string) {
 	return func(dirPath, mode string) (int, []string) {
 		folder, ok := views[dirPath]
@@ -95,7 +90,6 @@ func decodeRouteTest(t *testing.T, rec *httptest.ResponseRecorder) *crossseedrou
 	return result
 }
 
-// assertOnlyFolders fails when dir holds anything other than the folders in want.
 func assertOnlyFolders(t *testing.T, dir string, want ...string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -109,14 +103,11 @@ func assertOnlyFolders(t *testing.T, dir string, want ...string) {
 
 func TestCrossSeedRouteTestReportsEachFolder(t *testing.T) {
 	f := newRouteFixture(t)
-	// same keeps its path and does not exist yet, so qui creates it.
 	same := filepath.Join(t.TempDir(), "links")
 	mapped := filepath.Join(t.TempDir(), "links")
-	// stale is seen at a folder that is not the base folder.
 	stale := filepath.Join(t.TempDir(), "links")
 	staleView := t.TempDir()
 	hidden := filepath.Join(t.TempDir(), "links")
-	// A file where a parent folder must be, so qui cannot create the base folder.
 	blocker := filepath.Join(t.TempDir(), "file")
 	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
 	unwritable := filepath.Join(blocker, "links")
@@ -164,9 +155,8 @@ func TestCrossSeedRouteTestReportsEachFolder(t *testing.T) {
 
 func TestCrossSeedRouteTestReportsAnUnavailableCrossSeedInstanceOnce(t *testing.T) {
 	cases := []struct {
-		name string
-		host func(f *routeFixture) string
-		// created is true when qui reaches the base folders before it finds out.
+		name    string
+		host    func(f *routeFixture) string
 		created bool
 		off     bool
 	}{
@@ -174,8 +164,6 @@ func TestCrossSeedRouteTestReportsAnUnavailableCrossSeedInstanceOnce(t *testing.
 		{name: "older than qBittorrent 5.0", host: func(f *routeFixture) string { return f.old }},
 		{name: "turned off in qui", host: func(f *routeFixture) string { return f.qbt }, off: true},
 		{
-			// go-qbittorrent turns a 5xx answer into an error of its own, not
-			// an unexpected status, so it is no path problem.
 			name: "listing fails",
 			host: func(f *routeFixture) string {
 				return listingQBittorrent(f.t, func(string, string) (int, []string) { return http.StatusInternalServerError, nil })
@@ -280,21 +268,21 @@ func TestCrossSeedRouteListingCheck(t *testing.T) {
 
 	t.Run("transport error", func(t *testing.T) {
 		f := newRouteFixture(t)
-		// The listing drops the connection without an answer.
+		var arrived atomic.Bool
 		crossSeed := f.instance("seeds", listingQBittorrent(t, func(string, string) (int, []string) {
+			arrived.Store(true)
 			return 0, nil
 		}), models.FilesystemModeNone)
-		// go-qbittorrent waits seconds before it tries again, so stop it there.
-		ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+		require.NoError(t, f.routes.CheckAvailable(t.Context(), crossSeed.ID, true))
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 		defer cancel()
 		_, err := f.routes.Lists(ctx, crossSeed.ID, "/seeds/links", "Plain", qbt.DirectoryContentAll)
 		require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
 		require.NotErrorIs(t, err, crossseedroute.ErrCannotSeeFolder)
+		require.True(t, arrived.Load(), "the directory listing did not reach qBittorrent")
 	})
 }
 
-// cancelOnSecondMkdirAll cancels the test before the second base folder, as a
-// request deadline that runs out between two folders does.
 type cancelOnSecondMkdirAll struct {
 	fsops.Backend
 	cancel context.CancelFunc

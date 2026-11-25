@@ -5,7 +5,6 @@
 
 import { Fragment } from "react"
 
-// Joins the pairs in code so no translation can change the separator, and keeps each pair with its "·" on one line.
 export function SettingsSummary({ parts }: { parts: string[] }) {
   return parts.map((part, i) => (
     <Fragment key={i}>

@@ -23,14 +23,11 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
-// The public peer addresses of the two stubs of a rig.
 var (
 	sourcePeer = netip.MustParseAddrPort("198.51.100.1:6881")
 	targetPeer = netip.MustParseAddrPort("198.51.100.2:6881")
 )
 
-// connect lets the two stubs of the rig reach each other as BitTorrent
-// peers, and gives the target free space that its qBittorrent reports.
 func (r *rig) connect() {
 	swarm := qbtstub.NewSwarm()
 	swarm.Join(r.src, sourcePeer)
@@ -38,8 +35,6 @@ func (r *rig) connect() {
 	r.dst.FreeSpace = 1 << 30
 }
 
-// requireNoHelpers fails when a Transfer torrent of the Transfer is still in
-// a client.
 func (r *rig) requireNoHelpers(record *transfer.Record) {
 	r.t.Helper()
 	helpers, err := r.store.HelpersOf(r.t.Context(), transfer.OwnerTransfer, record.ID)
@@ -50,9 +45,6 @@ func (r *rig) requireNoHelpers(record *transfer.Record) {
 	}
 }
 
-// requireHelperTag fails unless qui added each helper torrent of the
-// Transfer with the tag qui-transfer, the tag that lets a script of
-// qBittorrent skip it.
 func (r *rig) requireHelperTag(record *transfer.Record) {
 	r.t.Helper()
 	helpers, err := r.store.HelpersOf(r.t.Context(), transfer.OwnerTransfer, record.ID)
@@ -67,9 +59,6 @@ func (r *rig) requireHelperTag(record *transfer.Record) {
 	}
 }
 
-// A Transfer to a target without file access passes the files by a Transfer
-// torrent. When no byte arrives on the target from the source, qui asks the
-// source to connect to the target.
 func TestTransferTorrentConnectsTheOtherWay(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()
@@ -91,9 +80,6 @@ func TestTransferTorrentConnectsTheOtherWay(t *testing.T) {
 	r.requireNoHelpers(record)
 }
 
-// A wait for a Transfer torrent asks qBittorrent only in its first polls.
-// After them it reads the Sync snapshot, which a browser tab on the instance
-// keeps new, so a wait with 40 more polls sends no more syncs.
 func TestTransferTorrentWaitReadsTheSyncSnapshot(t *testing.T) {
 	syncs := func(checkPolls int) int {
 		r := newRigOn(t, overSFTP, noAccess, func(c *transfer.Config) { c.CheckPolls, c.SnapshotAge = checkPolls, time.Hour })
@@ -114,9 +100,6 @@ func TestTransferTorrentWaitReadsTheSyncSnapshot(t *testing.T) {
 	require.Less(t, long-short, 10, "a poll that asked qBittorrent each time would send 80 more syncs")
 }
 
-// The last poll of a wait asks qBittorrent again, so a wait does not give up
-// on an old Sync snapshot. Here the check ends after the first polls, and no
-// other reader syncs the target.
 func TestTransferTorrentWaitEndsOnAFreshSync(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess, func(c *transfer.Config) { c.SnapshotAge = time.Hour })
 	r.connect()
@@ -130,8 +113,6 @@ func TestTransferTorrentWaitEndsOnAFreshSync(t *testing.T) {
 	require.Equal(t, transfer.WayBitTorrent, record.Way)
 }
 
-// When the clients do not connect either way, a Transfer between two SFTP
-// sides copies the files over SFTP instead.
 func TestTransferTorrentFallsBackToSFTP(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -159,9 +140,6 @@ func TestTransferTorrentFallsBackToSFTP(t *testing.T) {
 	}
 }
 
-// Without a copy over SFTP to fall back to, a Transfer torrent whose clients
-// do not connect fails for a retry. qui removes the Transfer torrent from
-// both clients, and the torrent seeds on the source as before.
 func TestTransferTorrentFailsWithoutAWayBack(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
@@ -194,9 +172,6 @@ func TestTransferTorrentFailsWithoutAWayBack(t *testing.T) {
 	}
 }
 
-// A forced Transfer torrent to a target with file access downloads into
-// the temporary names of the copy, which qui renames into place. The source
-// seeds the Transfer torrent under the names of its own files.
 func TestTransferTorrentWritesTheTemporaryNamesOfTheCopy(t *testing.T) {
 	r := newRigOn(t, overSFTP, onDisk)
 	r.connect()
@@ -216,7 +191,6 @@ func TestTransferTorrentWritesTheTemporaryNamesOfTheCopy(t *testing.T) {
 	r.requireNoHelpers(record)
 }
 
-// regression: #4348
 func TestTransferTorrentConnectsAfterTheCheckOnTheSource(t *testing.T) {
 	r := newRigOn(t, overSFTP, onDisk)
 	r.connect()
@@ -233,7 +207,6 @@ func TestTransferTorrentConnectsAfterTheCheckOnTheSource(t *testing.T) {
 	require.Zero(t, r.src.Calls("torrents/addPeers"), "the target reached the source at its first try")
 }
 
-// regression: #4348
 func TestTransferTorrentWaitsForACheckOnTheSourceLongerThanAWait(t *testing.T) {
 	r := newRigOn(t, overSFTP, onDisk, func(c *transfer.Config) { c.CheckPolls = 100 })
 	r.connect()
@@ -249,16 +222,11 @@ func TestTransferTorrentWaitsForACheckOnTheSourceLongerThanAWait(t *testing.T) {
 	require.Equal(t, transfer.WayBitTorrent, record.Way)
 }
 
-// A file on the source at a name of the Transfer torrent there stops the
-// Transfer before the source renames anything: qBittorrent would move that
-// file over the file of the source.
-// regression: #4231
 func TestTransferTorrentStopsAtAFileInTheWayOnTheSource(t *testing.T) {
 	r := newRigOn(t, overSFTP, onDisk)
 	r.connect()
 	s := newShow(t, showName)
 	r.seed(s)
-	// The first Transfer of a rig has the ID 1.
 	theirs := filepath.Join(r.srcDir, showName, "Show.S01E01.mkv.qui-transfer-1")
 	require.NoError(t, os.WriteFile(theirs, []byte("theirs"), 0o600))
 	req := r.request(s)
@@ -278,8 +246,6 @@ func TestTransferTorrentStopsAtAFileInTheWayOnTheSource(t *testing.T) {
 	r.requireNoHelpers(record)
 }
 
-// qui picks a copy through qui when it reaches the files of a side on its
-// own disk, and else a Transfer torrent. A forced way wins.
 func TestTransferPicksTheWay(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
@@ -309,12 +275,10 @@ func TestTransferPicksTheWay(t *testing.T) {
 	}
 }
 
-// A Transfer torrent records a hint for each client that uses qBittorrent's
-// default "TCP and μTP", and none for a client on "TCP only".
 func TestTransferTorrentHintsAtTCPOnly(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()
-	r.src.BittorrentProtocol = 1 // TCP only
+	r.src.BittorrentProtocol = 1
 	s := newShow(t, showName)
 	r.seed(s)
 
@@ -336,41 +300,29 @@ func TestTransferTorrentHintsAtTCPOnly(t *testing.T) {
 	require.Zero(t, r.src.Writes("app/setPreferences"))
 }
 
-// On a target without file access, qBittorrent reads the free space: from
-// 5.3 at the save path, and before 5.3 only at its default save path. The
-// form of the save path gives its path rules, whatever the host of qui.
 func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 	const (
-		full = "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"
-		// The stub writes at the save path of an add, so it refuses an add
-		// at a save path on another host. qui reads the free space before.
+		full  = "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"
 		noAdd = "homelab did not take the Transfer torrent: could not add torrent | conflicts detected: torrent(s) failed to be added"
 	)
 	for _, tc := range []struct {
-		name      string
-		webAPI    string
-		free      int64
-		elsewhere bool
-		// savePath is a save path on another host, which qui never reaches.
-		// defaultSavePath is the default save path of the target there.
+		name                      string
+		webAPI                    string
+		free                      int64
+		elsewhere                 bool
 		savePath, defaultSavePath string
-		// placed is the save path of the record.
-		placed string
-		reason string
-		log    string
+		placed                    string
+		reason                    string
+		log                       string
 	}{
 		{name: "5.3 refuses a full disk", webAPI: "2.15.2", free: 69, reason: full},
 		{name: "5.3 at another save path", webAPI: "2.15.2", free: 70, elsewhere: true},
 		{name: "5.1 elsewhere", free: 69, elsewhere: true,
 			log: "Free space unknown on homelab: before qBittorrent 5.3, qBittorrent reports it only at its default save path."},
-		// regression: #4231
 		{name: "5.3 at a Windows save path", webAPI: "2.15.2", free: 69, savePath: "C:/Downloads", placed: `C:\Downloads`, reason: noAdd},
-		// regression: #4231
 		{name: "5.3 at a UNC save path", webAPI: "2.15.2", free: 69, savePath: `\\nas\media\Downloads`,
 			placed: `\\nas\media\Downloads`, reason: noAdd},
-		// regression: #4231
 		{name: "5.1 at a Windows default save path", free: 69, defaultSavePath: "C:/Downloads", placed: `C:\Downloads`, reason: noAdd},
-		// regression: #4231
 		{name: "5.3 at a slash save path", webAPI: "2.15.2", free: 69, savePath: "/srv/downloads", placed: "/srv/downloads", reason: noAdd},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -391,8 +343,6 @@ func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 				r.dst.SetDefaultSavePath(tc.defaultSavePath)
 			}
 			if tc.placed != "" {
-				// The stub writes at the save path of an add, which is
-				// not on this host.
 				r.dst.OnWrite = func(endpoint string) {
 					if endpoint == "torrents/add" {
 						r.dst.Reject = http.StatusConflict
@@ -427,20 +377,15 @@ func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 	}
 }
 
-// On a target without file access, a Transfer torrent that downloaded less
-// than the whole torrent found files there before the Transfer. The target
-// may read them on the source, so qui keeps the files of the source.
 func TestTransferTorrentKeepsTheFilesThatTheTargetHad(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		place func(t *testing.T, r *rig, s show)
-		// seeds is how many Transfer torrents the source seeds.
+		name   string
+		place  func(t *testing.T, r *rig, s show)
 		seeds  int
 		reason string
 	}{
 		{name: "every file", place: func(t *testing.T, r *rig, s show) { write(t, filepath.Join(r.dstDir, showName), s.files) },
 			reason: "homelab had the files before the Transfer"},
-		// regression: #4231
 		{name: "a link to a file of the source", place: func(t *testing.T, r *rig, _ show) {
 			require.NoError(t, os.MkdirAll(filepath.Join(r.dstDir, showName), 0o755))
 			err := os.Symlink(filepath.Join(r.srcDir, showName, "Show.S01E01.mkv"), filepath.Join(r.dstDir, showName, "Show.S01E01.mkv"))
@@ -469,9 +414,6 @@ func TestTransferTorrentKeepsTheFilesThatTheTargetHad(t *testing.T) {
 	}
 }
 
-// On a source without file access, qBittorrent removes the files with the
-// torrent, unless the target had some of them: qui cannot remove only the
-// files that it copied.
 func TestTransferTorrentFromASourceWithoutFileAccess(t *testing.T) {
 	t.Run("removes the files", func(t *testing.T) {
 		r := newRigOn(t, noAccess, onDisk)
@@ -490,8 +432,6 @@ func TestTransferTorrentFromASourceWithoutFileAccess(t *testing.T) {
 	t.Run("keeps them after a head start", func(t *testing.T) {
 		r := newRigOn(t, noAccess, onDisk)
 		r.connect()
-		// The first episode fills pieces 0 and 1, so the check proves it
-		// without a byte of the source.
 		s := packOf(t, qbtstub.ContentFile{Path: episode1, Data: numbered("E01", 32)}, qbtstub.ContentFile{Path: episode2, Data: numbered("E02", 30)})
 		r.seed(s)
 		before := r.placeOnTarget(map[string][]byte{episode1: s.files[episode1]})
@@ -506,9 +446,6 @@ func TestTransferTorrentFromASourceWithoutFileAccess(t *testing.T) {
 	})
 }
 
-// A Transfer torrent downloads only the files that the target misses. The
-// check of the files on the target runs first, and a file that fails it
-// stops the Transfer before the clients connect.
 func TestTransferTorrentStartsAfterTheHeadStart(t *testing.T) {
 	t.Run("passes the check", func(t *testing.T) {
 		r := newRigOn(t, overSFTP, overSFTP)
@@ -545,25 +482,14 @@ func TestTransferTorrentStartsAfterTheHeadStart(t *testing.T) {
 	})
 }
 
-// A file on the target passes the check before the Transfer torrent with
-// the pieces that lie fully inside it. The Transfer torrent downloads a piece
-// that the file shares with a missing file through the link to the file, so
-// qui compares the bytes of the file in that piece with the source first. A
-// file that differs there, or that qui cannot compare, is a conflict, and
-// the Transfer torrent never writes into it.
-// regression: #4231
 func TestTransferTorrentNeverWritesIntoAFileOnTheTarget(t *testing.T) {
 	const nfo = "Show.S01.nfo"
-	// Piece 3 lies fully inside the second episode and passes. Pieces 2 and
-	// 4 hold its edges and bytes of the missing episodes.
 	edges := numbered("E02", 36)
 	copy(edges[:8], "XXXXXXXX")
 	copy(edges[24:], "YYYYYYYYYYYY")
 	for _, tc := range []struct {
 		name   string
 		source side
-		// middle lies between two missing episodes, and theirs is the file
-		// at its path on the target.
 		middle qbtstub.ContentFile
 		theirs []byte
 		reason string
@@ -597,26 +523,15 @@ func TestTransferTorrentNeverWritesIntoAFileOnTheTarget(t *testing.T) {
 	}
 }
 
-// A Transfer torrent that failed for a retry runs again from the start: qui
-// removed its Transfer torrents, and adds new ones. A retry that downloads
-// every byte removes the files of the source. On a target without file access,
-// the retry reserves the free space that the target still needs after the
-// check of the Transfer torrent, and a target that had part of the files keeps
-// the files of the source.
 func TestTransferTorrentRetries(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		before func(r *rig, s show)
 		source func(s show) map[string]string
 	}{
-		// regression: #4231
-		// regression: #4242
 		{name: "nothing on the target", before: func(*rig, show) {},
 			source: func(show) map[string]string { return map[string]string{} }},
-		// regression: #4231
 		{name: "a download that stopped", before: func(r *rig, s show) {
-			// The target has the first episode. Pieces 0 and 1 pass, so 38 of
-			// the 70 bytes are left.
 			write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode1: s.files[episode1]})
 			r.dst.FreeSpace = 38
 		}, source: func(s show) map[string]string { return contents(s, showName) }},
@@ -624,7 +539,7 @@ func TestTransferTorrentRetries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, overSFTP, noAccess)
 			r.connect()
-			r.dst.WebAPIVersion = "2.15.2" // qBittorrent 5.3 reads the free space at the save path
+			r.dst.WebAPIVersion = "2.15.2"
 			r.src.Unreachable, r.dst.Unreachable = true, true
 			s := newShow(t, showName)
 			r.seed(s)
@@ -650,9 +565,6 @@ func TestTransferTorrentRetries(t *testing.T) {
 	}
 }
 
-// A Transfer torrent makes no hardlinks on the target. The picked torrent
-// moves alone, a cross-seed that reads its files through hardlinks stays on
-// the source with the files, and the log says how to move it too.
 func TestTransferTorrentLeavesAHardlinkedCrossSeed(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -670,7 +582,6 @@ func TestTransferTorrentLeavesAHardlinkedCrossSeed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, onDisk, tc.target)
 			r.connect()
-			// Room for one copy, not for a copy of each path.
 			r.dst.FreeSpace = 70
 			s := newShow(t, showName)
 			r.seed(s)
@@ -700,15 +611,11 @@ func TestTransferTorrentLeavesAHardlinkedCrossSeed(t *testing.T) {
 	}
 }
 
-// regression: #4231
-// A Transfer torrent places each torrent of a group below a Windows save
-// path, which qui never reaches, and reads the free space at that path.
 func TestTransferTorrentPlacesAGroupBelowAWindowsSavePath(t *testing.T) {
 	r := newRigOn(t, onDisk, noAccess)
 	r.connect()
 	r.dst.FreeSpace = 140
 	r.dst.WebAPIVersion = "2.15.2"
-	// The stub writes at the save path of an add, which is not on this host.
 	r.dst.OnWrite = func(endpoint string) {
 		if endpoint == "torrents/add" {
 			r.dst.Reject = http.StatusConflict

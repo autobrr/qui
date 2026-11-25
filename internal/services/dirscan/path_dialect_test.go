@@ -19,9 +19,6 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 )
 
-// recordingBackend answers with a canned walk, in the slash dialect unless d
-// names another, and records every path it is asked to stat, alone or in a
-// batch, so a test can see the exact bytes the caller built.
 type recordingBackend struct {
 	fsops.Backend
 	d       fsops.PathDialect
@@ -79,8 +76,6 @@ func slashEntry(p, rel string, mode fs.FileMode) fsops.WalkEntry {
 	}
 }
 
-// On any host, a scan of a remote root groups the walk and builds paths in
-// the backend's dialect, and reads every root-level link in one batch.
 func TestScanDirectoryUsesBackendDialect(t *testing.T) {
 	t.Parallel()
 
@@ -125,13 +120,11 @@ func TestFileIDIndexUsesBackendDialect(t *testing.T) {
 				{savePath},
 				{dialectPath(tt.d, "/data/torrents/Show.S01/episode.mkv"), dialectPath(tt.d, "/data/torrents/Show.S01/sample/s.mkv")},
 			}, b.batches)
-			// The fake reports no identity, so nothing is indexed. The paths are the point.
 			require.Empty(t, index.byKey)
 		})
 	}
 }
 
-// backslashPaths is Windows grammar on any GOOS, so a host filepath left on a backend path fails on Linux too.
 type backslashPaths struct{}
 
 func (backslashPaths) FromSlash(p string) string { return strings.ReplaceAll(p, "/", `\`) }
@@ -139,7 +132,6 @@ func (backslashPaths) ToSlash(p string) string   { return strings.ReplaceAll(p, 
 func (backslashPaths) Separator() string         { return `\` }
 func (backslashPaths) IsAbs(p string) bool       { return len(p) > 2 && p[1] == ':' }
 
-// Join leaves a slash in name alone, so a caller that skipped FromSlash shows up.
 func (backslashPaths) Join(base, name string) string {
 	return strings.TrimRight(base, `\`) + `\` + name
 }
@@ -162,7 +154,6 @@ func dialects() []struct {
 	}{{"slash", fsops.SlashPaths}, {"backslash", backslashPaths{}}}
 }
 
-// dialectPath is a slash-written path in the grammar of d.
 func dialectPath(d fsops.PathDialect, slashPath string) string {
 	if _, ok := d.(backslashPaths); ok {
 		return `D:` + d.FromSlash(slashPath)
@@ -211,7 +202,6 @@ func TestIsInGroupDirUsesBackendDialect(t *testing.T) {
 	}
 }
 
-// One folder of two episodes yields a season search over both and an episode search naming the folder.
 func TestBuildSearcheeWorkItemsUsesBackendDialect(t *testing.T) {
 	t.Parallel()
 
@@ -290,7 +280,6 @@ func TestBuildSearcheeMetadataUsesBackendDialect(t *testing.T) {
 	}
 }
 
-// dialectDirBackend reads every path as a directory, in dialect d.
 type dialectDirBackend struct {
 	fsops.Backend
 	d fsops.PathDialect
@@ -302,7 +291,6 @@ func (b dialectDirBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, 
 	return &fsops.LstatInfo{Path: p, IsDir: true, Mode: fs.ModeDir}, nil
 }
 
-// regression: #2919
 func TestCalculateSavePathUsesBackendDialect(t *testing.T) {
 	t.Parallel()
 

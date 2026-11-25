@@ -12,8 +12,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// A metadata tag rejects a pair only when both releases carry it and the values
-// differ. A tag on one side only is unknown on the other, so the pair matches.
 func TestCompareMetadataFlags_TagRejectsOnlyWhenBothSidesDiffer(t *testing.T) {
 	m := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 

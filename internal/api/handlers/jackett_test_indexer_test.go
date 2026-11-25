@@ -17,9 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// TestTestIndexerReportsSearchOutcome pins #2388: SearchGeneric returns as soon
-// as the search is scheduled, so an indexer failure only shows up on the
-// completion callback, and the endpoint must wait for it.
 func TestTestIndexerReportsSearchOutcome(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -64,7 +61,6 @@ func TestTestIndexerReportsSearchOutcome(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 			if tt.closed {
-				// Closed listener: the search fails with connection refused.
 				server.Close()
 			}
 

@@ -6,22 +6,26 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -99,14 +103,69 @@ func TestNormalizeAllowedDownloadClients(t *testing.T) {
 	)
 }
 
-// waitDirScanIdle waits until the directory has no queued or running scan.
-func waitDirScanIdle(t *testing.T, service *dirscan.Service, events <-chan activity.Event, directoryID int) {
+type singleDirScanRun struct {
+	*database.DB
+	terminal               chan notifications.Event
+	latestPruneReadStarted chan struct{}
+}
+
+func newSingleDirScanRun(db *database.DB, pool *fsops.Pool) (*dirscan.Service, *singleDirScanRun) {
+	run := &singleDirScanRun{
+		DB:                     db,
+		terminal:               make(chan notifications.Event, 1),
+		latestPruneReadStarted: make(chan struct{}, 1),
+	}
+	service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(run),
+		nil, nil, nil, nil, nil, run, pool, nil)
+	return service, run
+}
+
+func (r *singleDirScanRun) Notify(_ context.Context, event notifications.Event) {
+	if event.Type == notifications.EventDirScanCompleted || event.Type == notifications.EventDirScanFailed {
+		r.terminal <- event
+	}
+}
+
+func (r *singleDirScanRun) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if strings.Contains(query, "FROM dir_scan_files") && strings.Contains(query, "last_processed_at >=") &&
+		len(args) == 4 && args[3] == 0 {
+		row := r.Conn().QueryRowContext(ctx, query, args...)
+		r.latestPruneReadStarted <- struct{}{}
+		return row
+	}
+	return r.DB.QueryRowContext(ctx, query, args...)
+}
+
+func (r *singleDirScanRun) response(t *testing.T, rec *httptest.ResponseRecorder) dirScanTriggerResponse {
 	t.Helper()
-	waitForActivity(t, events, func() bool {
-		run, err := service.GetActiveRun(t.Context(), directoryID)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	var event notifications.Event
+	select {
+	case <-ctx.Done():
+		t.Fatal("Dir Scan did not finish notifying")
+	case event = <-r.terminal:
+	}
+	if event.Type == notifications.EventDirScanCompleted {
+		store := models.NewDirScanStore(r.DB)
+		run, err := store.GetRun(ctx, event.DirScanRunID)
 		require.NoError(t, err)
-		return run == nil
-	})
+		directory, err := store.GetDirectory(ctx, run.DirectoryID)
+		require.NoError(t, err)
+		if run.ScanRoot == "" || run.ScanRoot == directory.Path {
+			select {
+			case <-ctx.Done():
+				t.Fatal("Dir Scan did not reach its final prune read")
+			case <-r.latestPruneReadStarted:
+			}
+			require.NoError(t, r.Conn().PingContext(ctx), "the prune query must release the single writer connection")
+		}
+	}
+
+	var response dirScanTriggerResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, event.DirScanRunID, response.RunID)
+	return response
 }
 
 func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
@@ -120,20 +179,7 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 	createdInstance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
 	require.NoError(t, err)
 
-	service := dirscan.NewService(
-		dirscan.DefaultConfig(),
-		models.NewDirScanStore(db),
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		fsops.NewPool(instanceStore, localbackend.NewBackend()),
-		nil,
-	)
-	hub, events := newActivityHub(t)
-	service.SetActivityPublisher(hub)
+	service, scan := newSingleDirScanRun(db, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	handler := NewDirScanHandler(service, instanceStore)
 
 	dirPath := t.TempDir()
@@ -155,14 +201,11 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 
 	require.Equal(t, http.StatusAccepted, rec.Code)
 
-	var resp dirScanTriggerResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	resp := scan.response(t, rec)
 	require.Positive(t, resp.RunID)
 	require.Equal(t, created.ID, resp.DirectoryID)
 	require.Equal(t, dirPath, resp.DirectoryPath)
 	require.Equal(t, dirPath, resp.ScanRoot)
-
-	waitDirScanIdle(t, service, events, created.ID)
 }
 
 func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T) {
@@ -271,20 +314,7 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
 	require.NoError(t, err)
 
-	service := dirscan.NewService(
-		dirscan.DefaultConfig(),
-		models.NewDirScanStore(db),
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		fsops.NewPool(instanceStore, localbackend.NewBackend()),
-		nil,
-	)
-	hub, events := newActivityHub(t)
-	service.SetActivityPublisher(hub)
+	service, scan := newSingleDirScanRun(db, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	handler := NewDirScanHandler(service, instanceStore)
 
 	root := t.TempDir()
@@ -318,14 +348,11 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 
 	require.Equal(t, http.StatusAccepted, rec.Code)
 
-	var resp dirScanTriggerResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	resp := scan.response(t, rec)
 	require.Positive(t, resp.RunID)
 	require.Equal(t, created.ID, resp.DirectoryID)
 	require.Equal(t, root, resp.DirectoryPath)
 	require.Equal(t, first, resp.ScanRoot)
-
-	waitDirScanIdle(t, service, events, created.ID)
 
 	run, err := models.NewDirScanStore(db).GetRun(ctx, resp.RunID)
 	require.NoError(t, err)
@@ -467,20 +494,7 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
 	require.NoError(t, err)
 
-	service := dirscan.NewService(
-		dirscan.DefaultConfig(),
-		models.NewDirScanStore(db),
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		fsops.NewPool(instanceStore, localbackend.NewBackend()),
-		nil,
-	)
-	hub, events := newActivityHub(t)
-	service.SetActivityPublisher(hub)
+	service, scan := newSingleDirScanRun(db, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	handler := NewDirScanHandler(service, instanceStore)
 
 	root := t.TempDir()
@@ -515,11 +529,8 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 
 	require.Equal(t, http.StatusAccepted, rec.Code)
 
-	var resp dirScanTriggerResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	resp := scan.response(t, rec)
 	require.Equal(t, created.ID, resp.DirectoryID)
-
-	waitDirScanIdle(t, service, events, created.ID)
 }
 
 func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T) {
@@ -533,20 +544,7 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
 	require.NoError(t, err)
 
-	service := dirscan.NewService(
-		dirscan.DefaultConfig(),
-		models.NewDirScanStore(db),
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		fsops.NewPool(instanceStore, localbackend.NewBackend()),
-		nil,
-	)
-	hub, events := newActivityHub(t)
-	service.SetActivityPublisher(hub)
+	service, scan := newSingleDirScanRun(db, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	handler := NewDirScanHandler(service, instanceStore)
 
 	root := t.TempDir()
@@ -578,9 +576,6 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 
 	require.Equal(t, http.StatusAccepted, rec.Code)
 
-	var resp dirScanTriggerResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	resp := scan.response(t, rec)
 	require.Equal(t, created.ID, resp.DirectoryID)
-
-	waitDirScanIdle(t, service, events, created.ID)
 }

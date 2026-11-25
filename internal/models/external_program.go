@@ -16,13 +16,11 @@ import (
 
 var ErrExternalProgramNotFound = errors.New("external program not found")
 
-// PathMapping represents a path mapping from remote to local
 type PathMapping struct {
-	From string `json:"from"` // Remote path prefix
-	To   string `json:"to"`   // Local path prefix
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
-// ExternalProgram represents a configured external program that can be executed from the torrent context menu
 type ExternalProgram struct {
 	ID           int           `json:"id"`
 	Name         string        `json:"name"`
@@ -35,7 +33,6 @@ type ExternalProgram struct {
 	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
-// ExternalProgramCreate represents the data needed to create a new external program
 type ExternalProgramCreate struct {
 	Name         string        `json:"name"`
 	Path         string        `json:"path"`
@@ -45,7 +42,6 @@ type ExternalProgramCreate struct {
 	PathMappings []PathMapping `json:"path_mappings"`
 }
 
-// ExternalProgramUpdate represents the data needed to update an external program
 type ExternalProgramUpdate struct {
 	Name         string        `json:"name"`
 	Path         string        `json:"path"`
@@ -55,7 +51,6 @@ type ExternalProgramUpdate struct {
 	PathMappings []PathMapping `json:"path_mappings"`
 }
 
-// ExternalProgramExecute represents a request to execute an external program with torrent data
 type ExternalProgramExecute struct {
 	ProgramID  int      `json:"program_id"`
 	InstanceID int      `json:"instance_id"`
@@ -104,7 +99,6 @@ func (s *ExternalProgramStore) List(ctx context.Context) ([]*ExternalProgram, er
 		program.Enabled = enabled == 1
 		program.UseTerminal = useTerminal == 1
 
-		// Unmarshal path mappings
 		if pathMappingsJSON != "" && pathMappingsJSON != "[]" {
 			if err := json.Unmarshal([]byte(pathMappingsJSON), &program.PathMappings); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal path mappings: %w", err)
@@ -155,7 +149,6 @@ func (s *ExternalProgramStore) ListEnabled(ctx context.Context) ([]*ExternalProg
 		program.Enabled = enabled == 1
 		program.UseTerminal = useTerminal == 1
 
-		// Unmarshal path mappings
 		if pathMappingsJSON != "" && pathMappingsJSON != "[]" {
 			if err := json.Unmarshal([]byte(pathMappingsJSON), &program.PathMappings); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal path mappings: %w", err)
@@ -203,7 +196,6 @@ func (s *ExternalProgramStore) GetByID(ctx context.Context, id int) (*ExternalPr
 	program.Enabled = enabled == 1
 	program.UseTerminal = useTerminal == 1
 
-	// Unmarshal path mappings
 	if pathMappingsJSON != "" && pathMappingsJSON != "[]" {
 		if err := json.Unmarshal([]byte(pathMappingsJSON), &program.PathMappings); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal path mappings: %w", err)
@@ -214,7 +206,6 @@ func (s *ExternalProgramStore) GetByID(ctx context.Context, id int) (*ExternalPr
 }
 
 func (s *ExternalProgramStore) Create(ctx context.Context, create *ExternalProgramCreate) (*ExternalProgram, error) {
-	// Marshal path mappings to JSON
 	pathMappingsJSON, err := json.Marshal(create.PathMappings)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal path mappings: %w", err)
@@ -256,7 +247,6 @@ func (s *ExternalProgramStore) Create(ctx context.Context, create *ExternalProgr
 	program.Enabled = enabled == 1
 	program.UseTerminal = useTerminal == 1
 
-	// Unmarshal path mappings
 	if pathMappingsJSONStr != "" && pathMappingsJSONStr != "[]" {
 		if err := json.Unmarshal([]byte(pathMappingsJSONStr), &program.PathMappings); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal path mappings: %w", err)
@@ -267,7 +257,6 @@ func (s *ExternalProgramStore) Create(ctx context.Context, create *ExternalProgr
 }
 
 func (s *ExternalProgramStore) Update(ctx context.Context, id int, update *ExternalProgramUpdate) (*ExternalProgram, error) {
-	// Marshal path mappings to JSON
 	pathMappingsJSON, err := json.Marshal(update.PathMappings)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal path mappings: %w", err)

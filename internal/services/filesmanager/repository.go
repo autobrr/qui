@@ -24,7 +24,6 @@ type Repository struct {
 
 const maxBatchItems = 800
 
-// Use a conservative batch size for file inserts to stay under SQLite parameter limits (999 default).
 const fileBatchSize = 80
 
 type fileRow struct {
@@ -41,7 +40,6 @@ type fileRow struct {
 	availability    float64
 }
 
-// CROSS JOIN keeps string_pool as the outer loop in SQLite; Postgres rejects CROSS JOIN ... ON.
 const filesBatchQuery = `
 	SELECT tfc.id, tfc.instance_id, sp_hash.value, tfc.file_index, sp_name.value, tfc.size, tfc.progress,
 	       tfc.priority, tfc.is_seed, tfc.piece_range_start, tfc.piece_range_end, tfc.availability, tfc.cached_at
@@ -59,8 +57,6 @@ const syncInfoBatchQuery = `
 	WHERE tfs.instance_id = ? AND sp_hash.value IN (%s) AND tfs.torrent_hash_id = sp_hash.id
 `
 
-// A print counts only when print_synced_at equals last_synced_at: a write by an
-// image that does not know the print moves last_synced_at alone.
 const entriesBatchQuery = `
 	SELECT sp_hash.value, tfs.last_synced_at,
 	       CASE WHEN tfs.print_synced_at = tfs.last_synced_at THEN tfs.maindata_print END,
@@ -145,9 +141,6 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 	return results, nil
 }
 
-// getEntriesBatch reads the sync row and the file rows of each hash in one
-// statement, so on Postgres both come from one snapshot. A hash with no sync
-// row or no file rows is left out.
 func (r *Repository) getEntriesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]*cacheEntryRows, error) {
 	cleaned := dedupeHashes(hashes)
 	results := make(map[string]*cacheEntryRows, len(cleaned))
@@ -263,9 +256,6 @@ func (r *Repository) UpsertCache(ctx context.Context, files []CachedFile, infos 
 	return nil
 }
 
-// lockInstances takes the first lock of a cache writer on Postgres. SQLite has
-// one writer and needs none. The lock conflicts with the one that
-// InstanceStore.Delete takes before its cascade reaches the cache tables.
 func (r *Repository) lockInstances(ctx context.Context, tx dbinterface.TxQuerier, instanceIDs []int) error {
 	if dbinterface.DialectOf(r.db) != "postgres" {
 		return nil
@@ -302,15 +292,10 @@ func upsertFiles(ctx context.Context, tx dbinterface.TxQuerier, files []CachedFi
 		})
 	}
 
-	// Postgres row-locks each conflicting row; concurrent callers must lock in one order or they deadlock.
 	slices.SortFunc(allRows, func(a, b fileRow) int {
 		return cmp.Or(cmp.Compare(a.instanceID, b.instanceID), cmp.Compare(a.hashID, b.hashID), cmp.Compare(a.fileIndex, b.fileIndex))
 	})
 
-	// Most torrents are complete and seeding, so most rows arrive unchanged (discussion
-	// #2374). The upsert guard alone would skip them too, but Postgres still locks every
-	// conflicting row, and each lock writes WAL plus a hint-bit full-page image.
-	// The filter keeps the sorted lock order.
 	allRows, err := dropUnchangedRows(ctx, tx, allRows)
 	if err != nil {
 		return fmt.Errorf("failed to read cached files: %w", err)
@@ -320,12 +305,6 @@ func upsertFiles(ctx context.Context, tx dbinterface.TxQuerier, files []CachedFi
 }
 
 func upsertFileRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fileRow) error {
-	// Pre-build the full query for full batches.
-	//
-	// On Postgres the guard on DO UPDATE still skips a row that a concurrent writer
-	// brought to these values after dropUnchangedRows read it. cached_at is outside the
-	// guard and nothing reads it; freshness comes from torrent_files_sync.last_synced_at,
-	// which cacheIsFresh reads.
 	queryTemplate := `
 			INSERT INTO torrent_files_cache
 			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority,
@@ -402,7 +381,6 @@ func dropUnchangedRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fil
 		fileIndex int
 	}
 
-	// A hash cached on several instances has rows for each; read only the synced instance's.
 	hashIDsByInstance := make(map[int][]int64)
 	seen := make(map[torrentKey]struct{})
 	for _, row := range rows {
@@ -561,21 +539,16 @@ func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashe
 	return results, nil
 }
 
-// upsertSyncRows writes sync rows in hash order. print_synced_at takes the
-// value of last_synced_at, so a later write that sets only last_synced_at marks
-// the print as unset.
 func upsertSyncRows(ctx context.Context, tx dbinterface.TxQuerier, infos []SyncInfo, valueToID map[string]int64) error {
 	if len(infos) == 0 {
 		return nil
 	}
 
-	// Lock rows in one order across concurrent callers, as for the file rows.
 	sorted := slices.Clone(infos)
 	slices.SortFunc(sorted, func(a, b SyncInfo) int {
 		return cmp.Or(cmp.Compare(a.InstanceID, b.InstanceID), cmp.Compare(valueToID[a.TorrentHash], valueToID[b.TorrentHash]))
 	})
 
-	// 7 placeholders per row, kept under SQLite's 999 limit.
 	const syncBatchSize = 128
 
 	queryTemplate := `
@@ -661,7 +634,6 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 		return nil
 	}
 
-	// Sync rows before file rows: the lock order of UpsertCache.
 	for batch := range slices.Chunk(validHashIDs, maxBatchItems) {
 		args := make([]any, 0, len(batch)+1)
 		args = append(args, instanceID)
@@ -697,7 +669,6 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 
 func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instanceID int, currentHashes []string) (int, error) {
 	if len(currentHashes) == 0 {
-		// If no current hashes provided, don't delete anything to be safe
 		return 0, nil
 	}
 
@@ -722,7 +693,7 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 	}
 
 	queryTemplate := `INSERT INTO current_hashes (hash) VALUES %s ON CONFLICT(hash) DO NOTHING`
-	const hashBatchSize = 900 // Keep under SQLite's 999 variable limit
+	const hashBatchSize = 900
 	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 1, hashBatchSize)
 
 	args := make([]any, 0, hashBatchSize)
@@ -749,8 +720,6 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 		}
 	}
 
-	// Lock the sync rows in hash order, then delete them before the file rows:
-	// the lock order of UpsertCache.
 	if dbinterface.DialectOf(r.db) == "postgres" {
 		_, err = tx.ExecContext(ctx, `
 			SELECT torrent_hash_id FROM torrent_files_sync

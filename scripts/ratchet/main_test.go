@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// regression: #3726
 func TestParseLintPaths(t *testing.T) {
 	raw := []byte(`{"Issues": [
 		{"FromLinter": "gocognit", "Pos": {"Filename": "internal\\api\\handlers\\auth.go"}},
@@ -89,7 +88,6 @@ func TestLowerAllowlist(t *testing.T) {
 	}, compare(got, written, nil))
 }
 
-// regression: #4404
 func TestLowerAllowlistKeepsTheFileWhenCodeDoesNotCompile(t *testing.T) {
 	t.Chdir(t.TempDir())
 	require.NoError(t, os.MkdirAll(filepath.Dir(allowlistPath), 0o750))
@@ -103,8 +101,6 @@ func TestLowerAllowlistKeepsTheFileWhenCodeDoesNotCompile(t *testing.T) {
 	assert.Equal(t, counts{"gocognit": {"a.go": 2}}, allow)
 }
 
-// Each case matches what golangci-lint v2.14.0 does with the comment above a
-// function that breaks gocognit.
 func TestHidesGocognit(t *testing.T) {
 	tests := []struct {
 		comment string
@@ -162,29 +158,29 @@ func TestSuppressionProblems(t *testing.T) {
 		require.NoError(t, err)
 		return got
 	}
-	rules := []string{"qui/no-comments", "qui/no-direct-effect"}
-	was := parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}, "qui/no-direct-effect": {"count": 1}}}`)
-	assert.Empty(t, suppressionProblems(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 1}, "qui/no-direct-effect": {"count": 1}}}`), was, rules))
-	assert.Empty(t, suppressionProblems(parse(`{"src/b.tsx": {"qui/no-comments": {"count": 1}}, "src/c.tsx": {"qui/no-comments": {"count": 1}, "qui/no-direct-effect": {"count": 1}}}`), was, rules), "a move keeps the total level")
-	assert.Empty(t, suppressionProblems(was, parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}}}`), rules), "a rule that the base does not hold starts with its counts")
+	rules := []string{"qui/layer-order", "qui/no-direct-effect"}
+	was := parse(`{"src/a.tsx": {"qui/layer-order": {"count": 2}, "qui/no-direct-effect": {"count": 1}}}`)
+	assert.Empty(t, suppressionProblems(parse(`{"src/a.tsx": {"qui/layer-order": {"count": 1}, "qui/no-direct-effect": {"count": 1}}}`), was, rules))
+	assert.Empty(t, suppressionProblems(parse(`{"src/b.tsx": {"qui/layer-order": {"count": 1}}, "src/c.tsx": {"qui/layer-order": {"count": 1}, "qui/no-direct-effect": {"count": 1}}}`), was, rules), "a move keeps the total level")
+	assert.Empty(t, suppressionProblems(was, parse(`{"src/a.tsx": {"qui/layer-order": {"count": 2}}}`), rules), "a rule that the base does not hold starts with its counts")
 	assert.Equal(t, []string{
-		"web/eslint-suppressions.json: the total of qui/no-comments grew from 2 to 3. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report as its ESLint message says.",
+		"web/eslint-suppressions.json: the total of qui/layer-order grew from 2 to 3. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report as its ESLint message says.",
 		"web/eslint-suppressions.json: the total of qui/no-direct-effect grew from 1 to 2. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report as its ESLint message says.",
-	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}, "qui/no-direct-effect": {"count": 1}}, "src/b.tsx": {"qui/no-comments": {"count": 1}, "qui/no-direct-effect": {"count": 1}}}`), was, rules))
+	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/layer-order": {"count": 2}, "qui/no-direct-effect": {"count": 1}}, "src/b.tsx": {"qui/layer-order": {"count": 1}, "qui/no-direct-effect": {"count": 1}}}`), was, rules))
 	assert.Equal(t, []string{
-		"web/eslint-suppressions.json: holds 20 reports of no-undef. Only these rules may have entries there: qui/no-comments, qui/no-direct-effect. Fix each report as its ESLint message says, and delete the entries.",
-	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}, "qui/no-direct-effect": {"count": 1}, "no-undef": {"count": 20}}}`), was, rules))
+		"web/eslint-suppressions.json: holds 20 reports of no-undef. Only these rules may have entries there: qui/layer-order, qui/no-direct-effect. Fix each report as its ESLint message says, and delete the entries.",
+	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/layer-order": {"count": 2}, "qui/no-direct-effect": {"count": 1}, "no-undef": {"count": 20}}}`), was, rules))
 	assert.Equal(t, []string{
 		"web/eslint-suppressions.json: has no entry left for qui/no-direct-effect. Delete it from suppressedRules in scripts/ratchet/comments.go, so that its reports cannot come back without a change there.",
-	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/no-comments": {"count": 2}}}`), was, rules), "a rule whose last entry goes leaves suppressedRules")
+	}, suppressionProblems(parse(`{"src/a.tsx": {"qui/layer-order": {"count": 2}}}`), was, rules), "a rule whose last entry goes leaves suppressedRules")
 }
 
 func TestGrowthNamesOnlyTheLinterThatGrew(t *testing.T) {
-	base := counts{commentsLinter: {"a.go": 3, "b.go": 1}, "gocognit": {"a.go": 1}}
-	assert.Empty(t, growth(counts{commentsLinter: {"c.go": 4}, "gocognit": {"b.go": 1}}, base))
+	base := counts{mapAnyLinter: {"a.go": 3, "b.go": 1}, "gocognit": {"a.go": 1}}
+	assert.Empty(t, growth(counts{mapAnyLinter: {"c.go": 4}, "gocognit": {"b.go": 1}}, base))
 	assert.Equal(t, []string{
-		"comments: the total grew from 4 to 6. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report. These entries grew: a.go from 3 to 5.",
-	}, growth(counts{commentsLinter: {"a.go": 5, "b.go": 1}, "gocognit": {"b.go": 1}}, base))
+		"mapany: the total grew from 4 to 6. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report. These entries grew: a.go from 3 to 5.",
+	}, growth(counts{mapAnyLinter: {"a.go": 5, "b.go": 1}, "gocognit": {"b.go": 1}}, base))
 }
 
 func TestOffLogProblems(t *testing.T) {

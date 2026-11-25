@@ -18,9 +18,6 @@ import {
 import { makeTorrent } from "@/test/mockTorrent"
 import { describe, expect, it } from "vitest"
 
-// Intent: trimmed string input, "" for any null/undefined/blank. Catches
-// callers that previously passed unsanitized values into expression builders
-// and tracked-identity comparisons.
 describe("normalizeTorrentHash", () => {
   it.each([
     [undefined, ""],
@@ -34,12 +31,6 @@ describe("normalizeTorrentHash", () => {
   })
 })
 
-// Intent: cross-seed and hybrid v1/v2 torrents must resolve consistently
-// across primary/fallback sources. qBittorrent stores the v1 hash in `hash`
-// for legacy torrents, but a pure-v2 torrent puts the v2 digest there —
-// derivation must NOT treat that as the v1 hash. The canonical-hash priority
-// (v1 → v2 → primary.hash → fallback.hash) defines what we use as a stable
-// identity for the torrent across instances.
 describe("resolveTorrentHashes", () => {
   it("prefers primary v1, then fallback v1, then derives from primary hash", () => {
     expect(resolveTorrentHashes({ infohash_v1: "v1-primary" }, { infohash_v1: "v1-fallback" })).toEqual({
@@ -54,7 +45,6 @@ describe("resolveTorrentHashes", () => {
       canonicalHash: "v1-fallback",
     })
 
-    // Legacy: hash holds the v1 digest, no explicit infohash_v1 field.
     expect(resolveTorrentHashes({ hash: "legacy-hash" })).toEqual({
       infohashV1: "legacy-hash",
       infohashV2: "",
@@ -68,9 +58,6 @@ describe("resolveTorrentHashes", () => {
   })
 
   it("does NOT derive v1 from `hash` when hash equals the v2 digest (pure-v2 torrent)", () => {
-    // On a pure-v2 torrent, qBittorrent puts the v2 hash in both `hash` and
-    // `infohash_v2`. We must not return the v2 hash as v1 — that would lie
-    // about the torrent's protocol.
     expect(
       resolveTorrentHashes({ hash: "v2-digest", infohash_v2: "v2-digest" })
     ).toEqual({
@@ -87,7 +74,6 @@ describe("resolveTorrentHashes", () => {
   })
 
   it("falls back through the canonical priority chain", () => {
-    // A legacy `hash` that differs from the v2 digest still counts as v1 and wins
     expect(resolveTorrentHashes({ hash: "legacy", infohash_v2: "v2" })).toEqual({
       infohashV1: "legacy",
       infohashV2: "v2",
@@ -106,8 +92,6 @@ describe("resolveTorrentHashes", () => {
   })
 })
 
-// Intent: thin wrapper used by display code when it only needs one
-// identifier. Re-runs resolveTorrentHashes so behavior stays in sync.
 describe("getTorrentDisplayHash", () => {
   it("returns the canonical hash from resolveTorrentHashes", () => {
     expect(getTorrentDisplayHash({ infohash_v1: "v1" })).toBe("v1")
@@ -116,9 +100,6 @@ describe("getTorrentDisplayHash", () => {
   })
 })
 
-// Intent: turn the comma-separated tags string into a clean array. Used
-// everywhere we need to reason about individual tags (intersection, has-tag
-// checks). Catches anyone who removes the trim or empty-string filter.
 describe("parseTorrentTags", () => {
   it.each<[string | null | undefined, string[]]>([
     [undefined, []],
@@ -134,9 +115,6 @@ describe("parseTorrentTags", () => {
   })
 })
 
-// Intent: per-torrent tag membership. The bulk-tag dialog drives off this
-// to pre-select tags that exist on the focused torrent. Catches anyone who
-// removes the trim or accepts empty-string tag queries.
 describe("torrentHasTag", () => {
   it("returns true when the tag is present (after trimming)", () => {
     const t = makeTorrent({ tags: "linux,iso" })
@@ -156,9 +134,6 @@ describe("torrentHasTag", () => {
   })
 })
 
-// Intent: "does any of these torrents have this tag" — drives the cross-seed
-// warning, blocklist, and other "any" affordances. Empty list short-circuits
-// to false so callers don't need to guard.
 describe("anyTorrentHasTag", () => {
   it("returns false for empty list", () => {
     expect(anyTorrentHasTag([], "linux")).toBe(false)
@@ -175,9 +150,6 @@ describe("anyTorrentHasTag", () => {
   })
 })
 
-// Intent: collect the hashes that have a given tag — used to scope bulk
-// operations (e.g. block-cross-seed) to the subset that actually carries
-// the cross-seed marker.
 describe("getTorrentHashesWithTag", () => {
   it("returns empty for empty list", () => {
     expect(getTorrentHashesWithTag([], "linux")).toEqual([])
@@ -193,9 +165,6 @@ describe("getTorrentHashesWithTag", () => {
   })
 })
 
-// Intent: common-category check for the bulk "Set category" dialog. Returns
-// "" the moment we find any disagreement so the UI shows a neutral input
-// instead of pre-filling with one torrent's category.
 describe("getCommonCategory", () => {
   it("returns empty for empty list", () => {
     expect(getCommonCategory([])).toBe("")
@@ -226,8 +195,6 @@ describe("getCommonCategory", () => {
   })
 })
 
-// Intent: same pattern as getCommonCategory but for save_path. Drives the
-// pre-fill of the bulk "Set location" dialog.
 describe("getCommonSavePath", () => {
   it("returns empty for empty list", () => {
     expect(getCommonSavePath([])).toBe("")
@@ -256,9 +223,6 @@ describe("getCommonSavePath", () => {
   })
 })
 
-// Intent: aggregate selection size for the bulk-action UI ("Delete 12
-// torrents (4.5 GiB)"). Treats missing/zero sizes as zero so it can't
-// throw on partial data.
 describe("getTotalSize", () => {
   it("returns 0 for empty list", () => {
     expect(getTotalSize([])).toBe(0)

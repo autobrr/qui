@@ -21,13 +21,12 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
 const aliasStatus = "skipped: a torrent now uses this file through another path"
 
-// addTorrentAfterScan makes the fake client report a second torrent, late,
-// from now on.
 func addTorrentAfterScan(svc *Service, ownedSavePath string, late qbt.Torrent, names ...string) {
 	late.Hash, late.State = "late", qbt.TorrentStatePausedUp
 	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
@@ -46,7 +45,6 @@ func torrentFiles(names ...string) qbt.TorrentFiles {
 	return files
 }
 
-// fileStatuses maps each listed path of the run to "status: message".
 func fileStatuses(t *testing.T, store *models.OrphanScanStore, runID int64) map[string]string {
 	t.Helper()
 
@@ -66,9 +64,6 @@ func symlinkOrSkip(t *testing.T, target, link string) {
 	}
 }
 
-// A torrent added after the scan reaches a listed file through a symlinked
-// folder, so the delete keeps it, as the scan would have.
-// regression: #3596
 func TestExecuteDeletion_KeepsFileATorrentReachesThroughAnAliasSinceTheScan(t *testing.T) {
 	var orphan, aliasDir string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-alias-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -86,9 +81,6 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughAnAliasSinceTheScan(t *t
 	require.Equal(t, aliasStatus, fileStatuses(t, f.store, f.runID)[orphan])
 }
 
-// A hardlink of a listed file made since the scan is its own directory entry,
-// so the delete removes the listed one and the torrent keeps its file.
-// regression: #3908
 func TestExecuteDeletion_DeletesHardlinkOfATorrentFileMadeSinceTheScan(t *testing.T) {
 	var orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-hardlink-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -108,13 +100,9 @@ func TestExecuteDeletion_DeletesHardlinkOfATorrentFileMadeSinceTheScan(t *testin
 	require.Equal(t, "deleted: ", fileStatuses(t, f.store, f.runID)[orphan])
 }
 
-// Each row reaches the listed file through a path only one step of the
-// identity read covers, so dropping that step deletes the file.
-// regression: #3596
 func TestExecuteDeletion_KeepsFileATorrentReachesThroughEachKindOfPath(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		// late makes the fake client report what reaches orphan since the scan.
 		late func(t *testing.T, f *orphanOnlyFixture, orphan, base string)
 	}{
 		{"a peer instance's torrent through a symlinked folder", func(t *testing.T, f *orphanOnlyFixture, orphan, base string) {
@@ -149,8 +137,6 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughEachKindOfPath(t *testin
 			symlinkOrSkip(t, orphan, filepath.Join(late, "movie.mkv"))
 			addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: late}, "movie.mkv")
 		}},
-		// Paths that differ only in case are two files here, so the read must
-		// not fold them into one.
 		{"a second spelling of a path that differs only in case", func(t *testing.T, f *orphanOnlyFixture, orphan, base string) {
 			late := filepath.Join(base, "late")
 			writeFile(t, filepath.Join(late, "Alias", "movie.mkv"))
@@ -160,7 +146,6 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughEachKindOfPath(t *testin
 			addTorrentAfterScan(f.svc, f.torrentSavePath, qbt.Torrent{SavePath: late}, "Alias/movie.mkv", "alias/movie.mkv")
 		}},
 	} {
-		// A second link outside the roots must not turn the path into a hardlink of its own.
 		for _, linked := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/linked=%t", tc.name, linked), func(t *testing.T) {
 				var orphan string
@@ -184,9 +169,6 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughEachKindOfPath(t *testin
 	}
 }
 
-// A torrent file that is not on disk, or whose parent is a file, protects
-// nothing, and the run goes on.
-// regression: #3596
 func TestExecuteDeletion_MissingTorrentFileDoesNotStopTheRun(t *testing.T) {
 	var orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-missing-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -200,11 +182,6 @@ func TestExecuteDeletion_MissingTorrentFileDoesNotStopTheRun(t *testing.T) {
 	require.NoFileExists(t, orphan)
 }
 
-// A torrent file whose path runs into a symlink loop protects nothing, since
-// qBittorrent cannot read it either, and the run goes on. A remote instance
-// reads such a path as missing, because OpenSSH's sftp-server answers ELOOP as
-// no such file.
-// regression: #3596
 func TestExecuteDeletion_TorrentFileBehindASymlinkLoopDoesNotStopTheRun(t *testing.T) {
 	var orphan, loopDir string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-loop-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -225,9 +202,6 @@ func TestExecuteDeletion_TorrentFileBehindASymlinkLoopDoesNotStopTheRun(t *testi
 	require.Equal(t, "completed", run.Status, "run error: %s", run.ErrorMessage)
 }
 
-// A disc unit is listed as one directory, and a torrent that reaches a file
-// inside it through an alias keeps the whole unit.
-// regression: #3596
 func TestExecuteDeletion_KeepsDiscUnitHoldingAFileATorrentReachesThroughAnAlias(t *testing.T) {
 	var unit, stream, aliasDir string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-disc-alias-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -246,10 +220,6 @@ func TestExecuteDeletion_KeepsDiscUnitHoldingAFileATorrentReachesThroughAnAlias(
 	require.Equal(t, "skipped: a torrent now uses a file in this folder through another path", fileStatuses(t, f.store, f.runID)[unit])
 }
 
-// A disc unit can hold a symlink to a file elsewhere. A torrent that reaches
-// that link through an alias since the scan keeps the unit, because removing
-// the unit would remove the link the torrent uses.
-// regression: #3596
 func TestExecuteDeletion_KeepsDiscUnitHoldingASymlinkATorrentReachesThroughAnAlias(t *testing.T) {
 	var unit, link, aliasDir string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-disc-symlink-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -272,15 +242,9 @@ func TestExecuteDeletion_KeepsDiscUnitHoldingASymlinkATorrentReachesThroughAnAli
 	require.Equal(t, "skipped: a torrent now uses a file in this folder through another path", fileStatuses(t, f.store, f.runID)[unit])
 }
 
-// A symlink in a disc unit that leads to no file, dangling or in a loop,
-// cannot be a torrent's path, so the unit is deleted while the run holds
-// torrent identities. A link qui cannot follow could be one, so its unit
-// stays and says why.
-// regression: #3596
 func TestExecuteDeletion_DiscUnitHoldingASymlinkToNoFile(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		// link makes the symlink at link and returns what to run after the scan.
+		name       string
 		link       func(t *testing.T, link, base string) func()
 		wantFailed string
 	}{
@@ -335,8 +299,6 @@ func TestExecuteDeletion_DiscUnitHoldingASymlinkToNoFile(t *testing.T) {
 	}
 }
 
-// noWalkIdentityBackend walks root without the identity of its files, as the
-// sftp walk does.
 type noWalkIdentityBackend struct {
 	fsops.Backend
 	root string
@@ -360,9 +322,6 @@ func (b noWalkIdentityBackend) WalkDir(ctx context.Context, root string, opts fs
 	return out, nil
 }
 
-// A disc unit whose files carry no identity cannot be checked, so it stays and
-// its entry says why.
-// regression: #3596
 func TestExecuteDeletion_DiscUnitWithoutFileIdentitiesFails(t *testing.T) {
 	var unit, stream string
 	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, defaultSavePath string) fsops.Backend {
@@ -381,9 +340,6 @@ func TestExecuteDeletion_DiscUnitWithoutFileIdentitiesFails(t *testing.T) {
 	require.Contains(t, fileStatuses(t, f.store, f.runID)[unit], "failed: check directory contents: cannot read the identity of the files in this folder")
 }
 
-// A torrent file qui may not look up is skipped, as the scan skips a denied
-// subtree, and the run goes on.
-// regression: #3596
 func TestExecuteDeletion_TorrentFileWithoutReadPermissionIsSkipped(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission-based stat failure is not reproducible via chmod on Windows")
@@ -411,7 +367,6 @@ func TestExecuteDeletion_TorrentFileWithoutReadPermissionIsSkipped(t *testing.T)
 	require.Equal(t, "completed", run.Status, "run error: %s", run.ErrorMessage)
 }
 
-// eioStatBackend fails Stat of one path with an I/O error.
 type eioStatBackend struct {
 	fsops.Backend
 	path string
@@ -424,9 +379,6 @@ func (b eioStatBackend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, e
 	return b.Backend.Stat(ctx, p)
 }
 
-// A torrent file that cannot be read for any reason but permission could be a
-// listed file under another path, so the run stops before it deletes anything.
-// regression: #3596
 func TestExecuteDeletion_UnreadableTorrentFileStopsTheRunBeforeAnyDelete(t *testing.T) {
 	var orphan, broken string
 	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
@@ -451,8 +403,6 @@ func TestExecuteDeletion_UnreadableTorrentFileStopsTheRunBeforeAnyDelete(t *test
 	require.Contains(t, run.ErrorMessage, "Fix access to that path or remove the torrent, then run a new scan.")
 }
 
-// deniedIdentityStatBackend reports one path through Stat, but without its
-// identity, as Windows does for a file whose ACL denies reading its attributes.
 type deniedIdentityStatBackend struct {
 	fsops.Backend
 	path string
@@ -466,10 +416,6 @@ func (b deniedIdentityStatBackend) Stat(ctx context.Context, p string) (*fsops.L
 	return info, err
 }
 
-// A torrent file that qui can look up but whose identity it may not read could
-// be a listed file under another path, so the run stops before it deletes
-// anything. Only a denied lookup is skipped.
-// regression: #3596
 func TestExecuteDeletion_TorrentFileWithoutReadableIdentityStopsTheRunBeforeAnyDelete(t *testing.T) {
 	var orphan, opaque string
 	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
@@ -493,7 +439,6 @@ func TestExecuteDeletion_TorrentFileWithoutReadableIdentityStopsTheRunBeforeAnyD
 	require.Contains(t, run.ErrorMessage, opaque)
 }
 
-// noTargetIdentityBackend reports one path without its identity.
 type noTargetIdentityBackend struct {
 	fsops.Backend
 	path string
@@ -507,8 +452,6 @@ func (b noTargetIdentityBackend) Lstat(ctx context.Context, p string) (*fsops.Ls
 	return info, err
 }
 
-// A target whose own identity cannot be read fails alone, and the run goes on.
-// regression: #3596
 func TestExecuteDeletion_TargetWithoutIdentityFailsOnlyThatTarget(t *testing.T) {
 	var opaque, plain string
 	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, defaultSavePath string) fsops.Backend {
@@ -528,9 +471,6 @@ func TestExecuteDeletion_TargetWithoutIdentityFailsOnlyThatTarget(t *testing.T) 
 	require.Contains(t, fileStatuses(t, f.store, f.runID)[opaque], "failed: file identity")
 }
 
-// The exec tier reads identities over SSH, so a late alias on the remote host
-// is kept too.
-// regression: #3596
 func TestExecuteDeletion_RemoteExecTierKeepsFileATorrentReachesThroughAnAlias(t *testing.T) {
 	t.Parallel()
 
@@ -549,9 +489,6 @@ func TestExecuteDeletion_RemoteExecTierKeepsFileATorrentReachesThroughAnAlias(t 
 	require.Equal(t, aliasStatus, fileStatuses(t, f.store, run.ID)[sftpPath(f.orphan)])
 }
 
-// The exec tier walks without following links and follows the one it meets
-// over SSH, so a disc unit's symlink is compared by its target there too.
-// regression: #3596
 func TestExecuteDeletion_RemoteExecTierKeepsDiscUnitHoldingASymlinkATorrentReachesThroughAnAlias(t *testing.T) {
 	t.Parallel()
 
@@ -576,9 +513,6 @@ func TestExecuteDeletion_RemoteExecTierKeepsDiscUnitHoldingASymlinkATorrentReach
 	require.Equal(t, "skipped: a torrent now uses a file in this folder through another path", fileStatuses(t, f.store, run.ID)[sftpPath(unit)])
 }
 
-// On the exec tier the find batch reports a denied torrent file per path, so
-// the delete skips it and goes on, as it does locally.
-// regression: #3596
 func TestExecuteDeletion_RemoteExecTierSkipsTorrentFileWithoutReadPermission(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
@@ -604,8 +538,6 @@ func TestExecuteDeletion_RemoteExecTierSkipsTorrentFileWithoutReadPermission(t *
 	require.FileExists(t, f.owned)
 }
 
-// connectionLostStatBackend fails every Stat as a dropped link once armed,
-// after running onStat. err, when set, is the error the link reports.
 type connectionLostStatBackend struct {
 	fsops.Backend
 	armed  *atomic.Bool
@@ -625,11 +557,6 @@ func (b connectionLostStatBackend) Stat(ctx context.Context, p string) (*fsops.L
 	return nil, &fs.PathError{Op: "stat", Path: p, Err: err}
 }
 
-// A connection that drops while the identities are read stops the run before
-// any delete, in words that fit a remote instance. When the SSH settings
-// changed meanwhile, the run says that instead, since the redial went to the
-// new endpoint.
-// regression: #3596
 func TestExecuteDeletion_RemoteConnectionLostWhileReadingIdentitiesDeletesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -641,7 +568,6 @@ func TestExecuteDeletion_RemoteConnectionLostWhileReadingIdentitiesDeletesNothin
 	}{
 		{"connection lost", func(*models.Instance) {}, nil, "the connection to the remote instance was lost"},
 		{"endpoint moved", func(inst *models.Instance) { inst.SSHUsername = "someone-else" }, nil, FilesystemModeChangedMessage},
-		// A dropped link that also reads as denied is not a denied file.
 		{"connection lost reported as denied", func(*models.Instance) {}, errors.Join(fsops.ErrConnectionLost, fs.ErrPermission), "the connection to the remote instance was lost"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -676,10 +602,6 @@ func TestExecuteDeletion_RemoteConnectionLostWhileReadingIdentitiesDeletesNothin
 	}
 }
 
-// A case-insensitive volume opens a torrent's file under any case or Unicode
-// form of its name, so the name qBittorrent reports and the name on disk are
-// one entry when the torrent file map would match them.
-// regression: #3908
 func TestSameEntry_ComparesNamesLikeTheTorrentFileMap(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
 	dirIDs := readDirIDs(t.Context(), local.NewBackend(), nil, []string{a, b})
@@ -703,9 +625,6 @@ func TestSameEntry_ComparesNamesLikeTheTorrentFileMap(t *testing.T) {
 	}
 }
 
-// A folder qui cannot identify could be the torrent file's own folder, so a
-// hardlink in it with a matching name stays.
-// regression: #3908
 func TestReadDirIDs_LeavesOutAFolderItCannotReadSoTheHardlinkStays(t *testing.T) {
 	a := t.TempDir()
 	missing := filepath.Join(t.TempDir(), "gone")
@@ -715,9 +634,6 @@ func TestReadDirIDs_LeavesOutAFolderItCannotReadSoTheHardlinkStays(t *testing.T)
 	require.True(t, sameEntry(fsops.HostPaths, dirIDs, filepath.Join(missing, "movie.mkv"), filepath.Join(a, "movie.mkv")))
 }
 
-// A torrent moved during the delete leaves a hardlink at a path no torrent
-// uses, so the delete goes ahead instead of failing the file.
-// regression: #3908
 func TestHolds_TorrentPathGoneSinceTheCollectDoesNotFailTheTarget(t *testing.T) {
 	root := t.TempDir()
 	torrentFile := filepath.Join(root, "a", "movie.mkv")
@@ -740,9 +656,6 @@ func TestHolds_TorrentPathGoneSinceTheCollectDoesNotFailTheTarget(t *testing.T) 
 	require.False(t, held)
 }
 
-// linkAfterStat is the local backend, and it hardlinks from to to right after
-// the Stat of from, as if someone made the link while qui read the
-// torrent paths.
 type linkAfterStat struct {
 	fsops.Backend
 	t        *testing.T
@@ -757,9 +670,6 @@ func (b linkAfterStat) Stat(ctx context.Context, p string) (*fsops.LstatInfo, er
 	return info, err
 }
 
-// A hardlink made while qui reads the torrent paths must not leave the first
-// torrent path out of the entry check, or an alias of it is deleted.
-// regression: #3908
 func TestHolds_KeepsAliasOfATorrentFileHardlinkedWhileThePathsAreRead(t *testing.T) {
 	root := t.TempDir()
 	first := filepath.Join(root, "a", "movie.mkv")
@@ -768,7 +678,7 @@ func TestHolds_KeepsAliasOfATorrentFileHardlinkedWhileThePathsAreRead(t *testing
 	require.NoError(t, os.MkdirAll(filepath.Dir(second), 0o755))
 	require.NoError(t, os.WriteFile(first, []byte("x"), 0o600))
 	alias := filepath.Join(root, "alias")
-	require.NoError(t, os.Symlink(filepath.Dir(first), alias))
+	testutil.SymlinkOrSkip(t, filepath.Dir(first), alias)
 
 	backend := linkAfterStat{Backend: local.NewBackend(), t: t, from: first, to: second}
 	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{first, second}, false)
@@ -781,11 +691,6 @@ func TestHolds_KeepsAliasOfATorrentFileHardlinkedWhileThePathsAreRead(t *testing
 	require.True(t, held, "the alias is the first torrent's own entry")
 }
 
-// A torrent path the walk met with a different link count than another one
-// had its link count changed during the walk. The entry check has only the
-// paths met with more than one link, so every path to the file stays, as
-// when no torrent path had more than one.
-// regression: #3908
 func TestLinkedAliases_KeepsAliasOfATorrentFileWhoseLinkCountChangedDuringTheWalk(t *testing.T) {
 	type visit struct {
 		path   string
@@ -827,9 +732,6 @@ func TestLinkedAliases_KeepsAliasOfATorrentFileWhoseLinkCountChangedDuringTheWal
 	}
 }
 
-// A torrent file read with one link protects a target hardlinked to it since,
-// because the read kept no path to compare the target's entry with.
-// regression: #3908
 func TestHolds_KeepsAHardlinkOfATorrentFileReadWithOneLink(t *testing.T) {
 	root := t.TempDir()
 	torrentPath := filepath.Join(root, "a", "movie.mkv")
@@ -862,9 +764,6 @@ func (b lstatFails) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, erro
 	return b.Backend.Lstat(ctx, p)
 }
 
-// A torrent path qui cannot read again could be the target's own entry, so the
-// delete of the target fails.
-// regression: #3908
 func TestHolds_FailsWhenATorrentPathCannotBeReadAgain(t *testing.T) {
 	root := t.TempDir()
 	readable := filepath.Join(root, "a", "movie.mkv")

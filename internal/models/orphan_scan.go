@@ -17,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// OrphanScanSettings represents orphan scan settings for an instance.
 type OrphanScanSettings struct {
 	ID                  int64     `json:"id"`
 	InstanceID          int       `json:"instanceId"`
@@ -36,33 +35,27 @@ type OrphanScanSettings struct {
 	UpdatedAt           time.Time `json:"updatedAt"`
 }
 
-// OrphanScanRun represents an orphan scan run.
 type OrphanScanRun struct {
-	ID             int64      `json:"id"`
-	InstanceID     int        `json:"instanceId"`
-	Status         string     `json:"status"` // pending, scanning, preview_ready, deleting, completed, failed, canceled
-	TriggeredBy    string     `json:"triggeredBy"`
-	ScanPaths      []string   `json:"scanPaths,omitzero"`
-	ScanPathCount  int        `json:"scanPathCount"`
-	FilesFound     int        `json:"filesFound"`
-	FilesDeleted   int        `json:"filesDeleted"`
-	FoldersDeleted int        `json:"foldersDeleted"`
-	BytesReclaimed int64      `json:"bytesReclaimed"`
-	Truncated      bool       `json:"truncated"`
-	Partial        bool       `json:"partial,omitzero"`
-	ErrorMessage   string     `json:"errorMessage,omitempty"`
-	StartedAt      time.Time  `json:"startedAt"`
-	CompletedAt    *time.Time `json:"completedAt,omitempty"`
-	// FilesystemMode is the mode the preview was walked under, not the instance's current one.
-	FilesystemMode FilesystemMode `json:"filesystemMode"`
-	// IdentityComplete is whether the walk read a file identity for every regular file it met.
-	IdentityComplete bool `json:"identityComplete"`
-	// FilesystemEndpoint is the SSH user@host:port a remote run was walked over, with digests of
-	// the host-key pin and the private key, and empty otherwise.
-	FilesystemEndpoint string `json:"-"`
+	ID                 int64          `json:"id"`
+	InstanceID         int            `json:"instanceId"`
+	Status             string         `json:"status"`
+	TriggeredBy        string         `json:"triggeredBy"`
+	ScanPaths          []string       `json:"scanPaths,omitzero"`
+	ScanPathCount      int            `json:"scanPathCount"`
+	FilesFound         int            `json:"filesFound"`
+	FilesDeleted       int            `json:"filesDeleted"`
+	FoldersDeleted     int            `json:"foldersDeleted"`
+	BytesReclaimed     int64          `json:"bytesReclaimed"`
+	Truncated          bool           `json:"truncated"`
+	Partial            bool           `json:"partial,omitzero"`
+	ErrorMessage       string         `json:"errorMessage,omitempty"`
+	StartedAt          time.Time      `json:"startedAt"`
+	CompletedAt        *time.Time     `json:"completedAt,omitempty"`
+	FilesystemMode     FilesystemMode `json:"filesystemMode"`
+	IdentityComplete   bool           `json:"identityComplete"`
+	FilesystemEndpoint string         `json:"-"`
 }
 
-// OrphanScanFile represents an orphan file found in a scan.
 type OrphanScanFile struct {
 	ID             int64      `json:"id"`
 	RunID          int64      `json:"runId"`
@@ -70,22 +63,18 @@ type OrphanScanFile struct {
 	FileSize       int64      `json:"fileSize"`
 	IsAbandonedDir bool       `json:"isAbandonedDir"`
 	ModifiedAt     *time.Time `json:"modifiedAt,omitempty"`
-	Status         string     `json:"status"` // pending, deleted, skipped, failed
+	Status         string     `json:"status"`
 	ErrorMessage   string     `json:"errorMessage,omitempty"`
 }
 
-// OrphanScanStore handles database operations for orphan scan.
 type OrphanScanStore struct {
 	db dbinterface.Querier
 }
 
-// NewOrphanScanStore creates a new OrphanScanStore.
 func NewOrphanScanStore(db dbinterface.Querier) *OrphanScanStore {
 	return &OrphanScanStore{db: db}
 }
 
-// GetSettings retrieves orphan scan settings for an instance.
-// Returns nil if no settings exist.
 func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*OrphanScanSettings, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, enabled, grace_period_minutes, ignore_paths,
@@ -141,7 +130,6 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 	return &settings, nil
 }
 
-// UpsertSettings creates or updates orphan scan settings for an instance.
 func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanScanSettings) (*OrphanScanSettings, error) {
 	if settings == nil {
 		return nil, errors.New("settings is nil")
@@ -182,13 +170,8 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 	return s.GetSettings(ctx, settings.InstanceID)
 }
 
-// ErrRunAlreadyActive is returned when attempting to create a run while one is already active.
 var ErrRunAlreadyActive = errors.New("an active run already exists for this instance")
 
-// CreateRunIfNoActive creates a pending run unless one is already active for the instance.
-// Concurrent calls for one instance can both insert on Postgres, so the orphan scan service serializes them.
-// A remote preview whose walk missed a file's identity can never be confirmed, so the new run cancels it
-// instead of being blocked by it.
 func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -196,8 +179,6 @@ func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID in
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// The cancel runs first so a concurrent trigger on Postgres waits on its row lock and then
-	// sees this run as active. A refused insert rolls the cancel back.
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET status = 'canceled'
 		WHERE instance_id = ? AND status = 'preview_ready' AND files_found > 0
@@ -230,7 +211,6 @@ func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID in
 	return id, nil
 }
 
-// GetRun retrieves an orphan scan run by ID.
 func (s *OrphanScanStore) GetRun(ctx context.Context, runID int64) (*OrphanScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
@@ -244,7 +224,6 @@ func (s *OrphanScanStore) GetRun(ctx context.Context, runID int64) (*OrphanScanR
 	return s.scanRun(row)
 }
 
-// GetRunByInstance retrieves a specific run for an instance.
 func (s *OrphanScanStore) GetRunByInstance(ctx context.Context, instanceID int, runID int64) (*OrphanScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
@@ -354,7 +333,6 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 	return runs, nil
 }
 
-// ListRuns lists recent runs for an instance.
 func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID, limit int) ([]*OrphanScanRun, error) {
 	if limit <= 0 {
 		limit = 10
@@ -392,7 +370,6 @@ func (s *OrphanScanStore) listRunsActive(ctx context.Context, instanceID int) ([
 }
 
 func (s *OrphanScanStore) listRunsSelect() string {
-	// UpdateRunScanPaths writes "null" for a nil slice, which Postgres cannot take the length of.
 	scanPathCount := `COALESCE(json_array_length(NULLIF(scan_paths, '')), 0)`
 	if dbinterface.DialectOf(s.db) == "postgres" {
 		scanPathCount = `CASE WHEN json_typeof(NULLIF(scan_paths, '')::json) = 'array'
@@ -467,7 +444,6 @@ func limitNonActive(runs []*OrphanScanRun, activeIDs map[int64]struct{}, limit i
 	return out
 }
 
-// GetLastCompletedRun returns the last completed run for an instance.
 func (s *OrphanScanStore) GetLastCompletedRun(ctx context.Context, instanceID int) (*OrphanScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
@@ -483,10 +459,6 @@ func (s *OrphanScanStore) GetLastCompletedRun(ctx context.Context, instanceID in
 	return s.scanRun(row)
 }
 
-// GetLastFinishedScan returns the newest completed run or preview still awaiting
-// review, the runs whose walk finished. A preview that cannot be confirmed never
-// completes, so a schedule paced by completed runs alone would rescan it on every tick.
-// A preview has no completed_at, so it is ordered by when it started.
 func (s *OrphanScanStore) GetLastFinishedScan(ctx context.Context, instanceID int) (*OrphanScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
@@ -502,7 +474,6 @@ func (s *OrphanScanStore) GetLastFinishedScan(ctx context.Context, instanceID in
 	return s.scanRun(row)
 }
 
-// GetMostRecentActiveRun returns the most recent run that blocks CreateRunIfNoActive.
 func (s *OrphanScanStore) GetMostRecentActiveRun(ctx context.Context, instanceID int) (*OrphanScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
@@ -521,7 +492,6 @@ func (s *OrphanScanStore) GetMostRecentActiveRun(ctx context.Context, instanceID
 	return s.scanRun(row)
 }
 
-// UpdateRunStatus updates the status of a run.
 func (s *OrphanScanStore) UpdateRunStatus(ctx context.Context, runID int64, status string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET status = ? WHERE id = ?
@@ -529,7 +499,6 @@ func (s *OrphanScanStore) UpdateRunStatus(ctx context.Context, runID int64, stat
 	return err
 }
 
-// UpdateRunFilesystemMode records the filesystem mode and SSH endpoint a run is walked under.
 func (s *OrphanScanStore) UpdateRunFilesystemMode(ctx context.Context, runID int64, mode FilesystemMode, endpoint string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET filesystem_mode = ?, filesystem_endpoint = ? WHERE id = ?
@@ -537,7 +506,6 @@ func (s *OrphanScanStore) UpdateRunFilesystemMode(ctx context.Context, runID int
 	return err
 }
 
-// UpdateRunIdentityComplete records whether a run's walk read every file's identity.
 func (s *OrphanScanStore) UpdateRunIdentityComplete(ctx context.Context, runID int64, complete bool) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET identity_complete = ? WHERE id = ?
@@ -545,7 +513,6 @@ func (s *OrphanScanStore) UpdateRunIdentityComplete(ctx context.Context, runID i
 	return err
 }
 
-// UpdateRunScanPaths updates the scan paths for a run.
 func (s *OrphanScanStore) UpdateRunScanPaths(ctx context.Context, runID int64, scanPaths []string) error {
 	pathsJSON, err := json.Marshal(scanPaths)
 	if err != nil {
@@ -557,8 +524,6 @@ func (s *OrphanScanStore) UpdateRunScanPaths(ctx context.Context, runID int64, s
 	return err
 }
 
-// UpdateRunFoundStats updates the files found count, truncated flag, and preview bytes.
-// bytesFound should represent the total size of orphan files found during the scan.
 func (s *OrphanScanStore) UpdateRunFoundStats(ctx context.Context, runID int64, filesFound int, truncated bool, bytesFound int64) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
@@ -568,7 +533,6 @@ func (s *OrphanScanStore) UpdateRunFoundStats(ctx context.Context, runID int64, 
 	return err
 }
 
-// UpdateRunCompleted saves completion, stats, and the warning in one update.
 func (s *OrphanScanStore) UpdateRunCompleted(ctx context.Context, runID int64, filesDeleted, foldersDeleted int, bytesReclaimed int64, warningMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
@@ -578,7 +542,6 @@ func (s *OrphanScanStore) UpdateRunCompleted(ctx context.Context, runID int64, f
 	return err
 }
 
-// UpdateRunFailed marks a run as failed with an error message.
 func (s *OrphanScanStore) UpdateRunFailed(ctx context.Context, runID int64, errorMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
@@ -588,8 +551,6 @@ func (s *OrphanScanStore) UpdateRunFailed(ctx context.Context, runID int64, erro
 	return err
 }
 
-// FailPreviewReadyRun marks a run failed only while it is still preview_ready,
-// and reports whether it did.
 func (s *OrphanScanStore) FailPreviewReadyRun(ctx context.Context, runID int64, errorMessage string) (bool, error) {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
@@ -606,7 +567,6 @@ func (s *OrphanScanStore) FailPreviewReadyRun(ctx context.Context, runID int64, 
 	return rows > 0, nil
 }
 
-// RemotePreviewRunIDs returns the instance's preview_ready runs walked over SSH.
 func (s *OrphanScanStore) RemotePreviewRunIDs(ctx context.Context, instanceID int) ([]int64, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id FROM orphan_scan_runs
@@ -628,7 +588,6 @@ func (s *OrphanScanStore) RemotePreviewRunIDs(ctx context.Context, instanceID in
 	return ids, rows.Err()
 }
 
-// HasDeletingRun reports whether the instance has a run in deleting status.
 func (s *OrphanScanStore) HasDeletingRun(ctx context.Context, instanceID int) (bool, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `
@@ -637,8 +596,6 @@ func (s *OrphanScanStore) HasDeletingRun(ctx context.Context, instanceID int) (b
 	return n > 0, err
 }
 
-// StartRunDeletion moves a run from preview_ready to deleting, and reports
-// whether it did.
 func (s *OrphanScanStore) StartRunDeletion(ctx context.Context, runID int64) (bool, error) {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET status = 'deleting' WHERE id = ? AND status = 'preview_ready'
@@ -653,7 +610,6 @@ func (s *OrphanScanStore) StartRunDeletion(ctx context.Context, runID int64) (bo
 	return rows > 0, nil
 }
 
-// UpdateRunPartial records incomplete scan coverage and its warning.
 func (s *OrphanScanStore) UpdateRunPartial(ctx context.Context, runID int64, warningMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET partial = 1, error_message = ? WHERE id = ?
@@ -661,7 +617,6 @@ func (s *OrphanScanStore) UpdateRunPartial(ctx context.Context, runID int64, war
 	return err
 }
 
-// UpdateRunWarning sets a warning message on a run without changing its status.
 func (s *OrphanScanStore) UpdateRunWarning(ctx context.Context, runID int64, warningMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET error_message = ? WHERE id = ?
@@ -669,9 +624,6 @@ func (s *OrphanScanStore) UpdateRunWarning(ctx context.Context, runID int64, war
 	return err
 }
 
-// MarkDeletingRunsFailed marks any runs currently in "deleting" as failed.
-// This is intended to run at service startup so interrupted deletions don't
-// remain stuck in a non-terminal state after a restart.
 func (s *OrphanScanStore) MarkDeletingRunsFailed(ctx context.Context, errorMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
@@ -681,9 +633,6 @@ func (s *OrphanScanStore) MarkDeletingRunsFailed(ctx context.Context, errorMessa
 	return err
 }
 
-// MarkInterruptedScansFailed marks every pending and scanning run as failed with
-// errorMessage, whatever its age. It is intended to run at service startup,
-// because no scan survives a restart.
 func (s *OrphanScanStore) MarkInterruptedScansFailed(ctx context.Context, errorMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
@@ -693,13 +642,11 @@ func (s *OrphanScanStore) MarkInterruptedScansFailed(ctx context.Context, errorM
 	return err
 }
 
-// InsertFiles inserts orphan files for a run in batches.
 func (s *OrphanScanStore) InsertFiles(ctx context.Context, runID int64, files []OrphanScanFile) error {
 	if len(files) == 0 {
 		return nil
 	}
 
-	// Insert in batches of 100
 	const batchSize = 100
 	for i := 0; i < len(files); i += batchSize {
 		end := min(i+batchSize, len(files))
@@ -728,9 +675,6 @@ func (s *OrphanScanStore) InsertFiles(ctx context.Context, runID int64, files []
 	return nil
 }
 
-// ListFiles lists orphan files for a run with pagination.
-
-// scanOrphanScanFile scans a single row into an OrphanScanFile struct.
 func scanOrphanScanFile(rows *sql.Rows) (*OrphanScanFile, error) {
 	var f OrphanScanFile
 	var modifiedAt sql.NullTime
@@ -750,7 +694,6 @@ func scanOrphanScanFile(rows *sql.Rows) (*OrphanScanFile, error) {
 	return &f, nil
 }
 
-// collectOrphanScanFiles reads all rows into a slice using the shared scanner.
 func collectOrphanScanFiles(rows *sql.Rows) ([]*OrphanScanFile, error) {
 	var files []*OrphanScanFile
 	for rows.Next() {
@@ -766,7 +709,6 @@ func collectOrphanScanFiles(rows *sql.Rows) ([]*OrphanScanFile, error) {
 	return files, nil
 }
 
-// listFilesDirectorySorted loads all files and sorts by directory then size (in-memory).
 func (s *OrphanScanStore) listFilesDirectorySorted(ctx context.Context, runID int64, limit, offset int) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_abandoned_dir
@@ -809,7 +751,6 @@ func (s *OrphanScanStore) listFilesDirectorySorted(ctx context.Context, runID in
 	return all[offset:end], nil
 }
 
-// listFilesSizeSorted uses SQL ordering for efficiency.
 func (s *OrphanScanStore) listFilesSizeSorted(ctx context.Context, runID int64, limit, offset int) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_abandoned_dir
@@ -839,9 +780,6 @@ func (s *OrphanScanStore) ListFiles(ctx context.Context, runID int64, limit, off
 	}
 }
 
-// GetFilesForDeletion returns all pending files for a run.
-// Note: loads all files into memory. If memory usage becomes a concern with very
-// large orphan sets, consider adding batched retrieval here.
 func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_abandoned_dir
@@ -888,7 +826,6 @@ func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) 
 	return files, rows.Err()
 }
 
-// UpdateFileStatus updates the status of a single file.
 func (s *OrphanScanStore) UpdateFileStatus(ctx context.Context, fileID int64, status string, errorMessage string) error {
 	var errMsg any
 	if errorMessage != "" {

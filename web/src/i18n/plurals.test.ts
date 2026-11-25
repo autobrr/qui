@@ -6,8 +6,6 @@
 import i18next, { type ResourceKey, type ResourceLanguage, type i18n } from "i18next"
 import { describe, expect, it } from "vitest"
 
-// Asks i18next, not a CLDR table, whether each locale can answer each count: i18next
-// never falls back between plural categories, and an unsuffixed base key answers all.
 const COUNTS = [0, 1, 2, 3, 4, 5, 11, 21, 101]
 
 const modules = import.meta.glob("./locales/**/*.json", { eager: true, import: "default" }) as Record<string, ResourceKey>
@@ -28,9 +26,6 @@ function flatten(value: ResourceKey, prefix = ""): string[] {
   return Object.entries(value).flatMap(([key, nested]) => flatten(nested as ResourceKey, prefix ? `${prefix}.${key}` : key))
 }
 
-// Every English key carrying a CLDR suffix, reduced to the base the app passes to t().
-// Bases whose only English forms are unsuffixed + _other count too: they are the shape
-// most likely to lose a locale's plural without any key looking missing.
 function pluralKeysOf(english: ResourceLanguage): string[] {
   return Object.keys(english).flatMap((ns) => {
     const bases = new Set<string>()
@@ -42,9 +37,6 @@ function pluralKeysOf(english: ResourceLanguage): string[] {
   })
 }
 
-// Holds one locale and nothing else, so t() and exists() answer from that locale alone.
-// The app's own instance bundles English and falls back to it, which is the behaviour
-// under test and the reason this one must not have it.
 async function localeOnlyInstance(lng: string, translated: ResourceLanguage): Promise<i18n> {
   const instance = i18next.createInstance()
   await instance.init({
@@ -58,10 +50,6 @@ async function localeOnlyInstance(lng: string, translated: ResourceLanguage): Pr
   return instance
 }
 
-// A count leaks when the locale itself cannot answer it: the app bundles English and
-// falls back to it, so whatever the locale cannot resolve is served from English. Asking
-// what the locale *has*, never what it says, is what keeps a translation that happens to
-// read like English out of the report.
 async function findLeaks(locale: string, english: ResourceLanguage, translated: ResourceLanguage): Promise<string[]> {
   const inLanguage = await localeOnlyInstance(locale, translated)
 

@@ -27,6 +27,8 @@ Before you post or apply a review suggestion that changes or removes a code bran
 
 CI runs `go test ./...` in `release.yml` on pull requests, and with `-race` on pushes to `main`, `develop`, and tags. A change that touches only paths in the `paths-ignore` list of `release.yml` skips it. `lint.yml` runs `go vet ./...` on Windows for every PR, which compiles each package and its tests. No PR runs the tests on Windows: `windows-tests.yml` runs the native Windows `go test -count=1 ./...` once a night on `develop` (ADR 0088). For a PR that changes Windows-only code, a maintainer can run it on the branch with `gh workflow run windows-tests.yml --ref <branch>`. `test.yml` runs the Postgres tests, the migration parity check, the automations docs JSON examples test, and the generated JSON reference test, also on a PR that changes only `documentation/`.
 
+When fixing a Windows CI failure, rerun the affected test on native Windows. When a change affects Windows runtime behavior, run a focused native check before merge. This includes shared code whose behavior depends on Windows paths, file locking, cleanup, or subprocess startup. Record the tested revision, Windows environment, command, and result, or link the native run.
+
 ## Screenshots
 
 To show screenshots or recordings in a pull request:

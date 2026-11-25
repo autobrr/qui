@@ -18,8 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// legacyEncrypt reproduces the pre-HKDF format, base64 of nonce and ciphertext
-// with no prefix and no additional data.
 func legacyEncrypt(t *testing.T, key []byte, plaintext string) string {
 	t.Helper()
 
@@ -115,8 +113,6 @@ func TestCredentialCipherDecryptRejects(t *testing.T) {
 	sealed, err := cipherUnderTest.Encrypt("secret", []byte("bound"))
 	require.NoError(t, err)
 
-	// Flip a byte of the sealed payload itself, not of its base64 text. The case
-	// then reaches the GCM tag check rather than failing in the decoder.
 	payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(sealed, "qui2:"))
 	require.NoError(t, err)
 	payload[len(payload)-1] ^= 0x01
@@ -165,8 +161,6 @@ func TestCredentialCipherReadsLegacyValues(t *testing.T) {
 		assert.Equal(t, "old password", reopened)
 	})
 
-	// Falling back to the current key here would report a forgotten legacy key
-	// as an authentication failure, which is the changed-secret signature.
 	t.Run("no_legacy_key_is_an_explicit_error", func(t *testing.T) {
 		cipherUnderTest, err := models.NewCredentialCipher(currentKey)
 		require.NoError(t, err)

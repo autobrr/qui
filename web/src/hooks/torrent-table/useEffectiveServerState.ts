@@ -11,12 +11,6 @@ export interface UseEffectiveServerStateParams {
   serverState: ServerState | null | undefined
 }
 
-/**
- * Ref-caches the most recent server state per instance so transient gaps in the
- * data stream don't blank out the footer/status displays. When `serverState` is
- * missing for the current instance, the last known value is returned; switching
- * instances clears the cache to null.
- */
 export function useEffectiveServerState({ instanceId, serverState }: UseEffectiveServerStateParams): ServerState | null {
   const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
     instanceId,

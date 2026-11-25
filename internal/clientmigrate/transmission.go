@@ -50,8 +50,6 @@ func (i *TransmissionImport) Migrate() error {
 	for _, match := range matches {
 		positionNum++
 
-		// keep the exact source basename: resume files share it, and legacy
-		// Transmission <=2.9x names are "<Name>.<16hex>" with original casing
 		baseName := strings.TrimSuffix(filepath.Base(match), filepath.Ext(match))
 
 		file, err := metainfo.LoadFromFile(match)
@@ -68,16 +66,12 @@ func (i *TransmissionImport) Migrate() error {
 			continue
 		}
 
-		// v2 and hybrid torrents cannot round-trip through this format: the
-		// v1 infohash naming is wrong for v2-only, and the block bitfield
-		// covers the padded v1 stream while UpvertedFiles is the v2 tree view
 		if metaInfo.MetaVersion == 2 {
 			log.Warn().Msgf("(%d/%d) %s is a BitTorrent v2 torrent, not supported by this importer, skipping", positionNum, totalJobs, metaInfo.BestName())
 			skipped++
 			continue
 		}
 
-		// qBittorrent requires BT_backup files named by infohash
 		torrentID := file.HashInfoBytes().HexString()
 
 		torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
@@ -97,8 +91,6 @@ func (i *TransmissionImport) Migrate() error {
 			continue
 		}
 
-		// complete means every block of every wanted (non-dnd) file is
-		// downloaded; deselected files may legitimately be missing
 		pieces, complete := transmissionPieces(resumeFile, &metaInfo)
 		if !complete {
 			log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.Name, match)
@@ -108,9 +100,6 @@ func (i *TransmissionImport) Migrate() error {
 
 		resumeFile.Destination = replacePath(resumeFile.Destination, i.opts.PathReplaces)
 
-		// a corrupt entry with an unusable download dir would import a torrent
-		// qBittorrent resolves against its own default download dir; a
-		// download dir from another OS needs --replace-path
 		if !filepath.IsAbs(filepath.Clean(resumeFile.Destination)) {
 			log.Warn().Msgf("(%d/%d) %s has an unusable download dir %q, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.Name, resumeFile.Destination)
 			skipped++
@@ -172,17 +161,11 @@ func (i *TransmissionImport) prepareDirs(torrentsDir string) error {
 }
 
 func transmissionFastresume(resumeFile *TransmissionResumeFile, file *metainfo.MetaInfo, metaInfo *metainfo.Info, pieces string) Fastresume {
-	// completed-torrent timestamps: done-date is legitimately 0 for
-	// torrents Transmission adopted from existing data, fall back to
-	// added-date like Transmission 4.x itself does
 	completedTime := resumeFile.DoneDate
 	if completedTime == 0 {
 		completedTime = resumeFile.AddedDate
 	}
 
-	// auto-managed keeps qBittorrent's queueing and share limits in
-	// charge; a paused torrent must stay out of auto-management or
-	// qBittorrent would resume it
 	paused := boolToInt(resumeFile.Paused)
 
 	newFastResume := Fastresume{
@@ -235,8 +218,6 @@ func transmissionFastresume(resumeFile *TransmissionResumeFile, file *metainfo.M
 		URLList:                   file.UrlList,
 	}
 
-	// destination is the parent directory in every Transmission version:
-	// file subpaths already start with the torrent name
 	if metaInfo.IsDir() {
 		newFastResume.QbtHasRootFolder = 1
 	} else {
@@ -245,13 +226,10 @@ func transmissionFastresume(resumeFile *TransmissionResumeFile, file *metainfo.M
 
 	newFastResume.Trackers = file.UpvertedAnnounceList()
 
-	// renames live only in the resume file; the .torrent keeps the
-	// original names, so the data on disk needs mapped_files
 	newFastResume.MappedFiles = transmissionMappedFiles(resumeFile, metaInfo)
 
 	newFastResume.FilePriority = transmissionFilePriorities(resumeFile, len(metaInfo.UpvertedFiles()))
 
-	// pieces overlapping only deselected files stay unset
 	newFastResume.Pieces = pieces
 
 	newFastResume.InfoHash = file.HashInfoBytes().Bytes()
@@ -259,10 +237,6 @@ func transmissionFastresume(resumeFile *TransmissionResumeFile, file *metainfo.M
 	return newFastResume
 }
 
-// transmissionPieces expands the resume file's block bitfield into a qBittorrent
-// piece bitfield (one byte per piece) and reports whether every block of every
-// wanted (non-dnd) file is present. Blocks are 16 KiB (or the piece length when
-// smaller), MSB-first in the raw bitfield; "all"/"none" are literal strings
 func transmissionPieces(resume *TransmissionResumeFile, info *metainfo.Info) (string, bool) {
 	numPieces := info.NumPieces()
 	if numPieces == 0 || info.PieceLength <= 0 {
@@ -319,8 +293,6 @@ func transmissionPieces(resume *TransmissionResumeFile, info *metainfo.Info) (st
 		}
 	}
 
-	// map pieces to blocks by byte range: blocks are laid out over the whole
-	// torrent stream and need not align to piece boundaries
 	pieces := make([]byte, numPieces)
 	for p := range numPieces {
 		startByte := int64(p) * info.PieceLength
@@ -371,11 +343,6 @@ func transmissionName(resume *TransmissionResumeFile, info *metainfo.Info) strin
 	return resume.Name
 }
 
-// transmissionMappedFiles maps the resume file's per-file paths to libtorrent
-// mapped_files, or nil when no file differs from the metainfo path.
-// Transmission <=3.x writes "" for files it did not rename, 4.x writes every
-// path; both are relative to the download dir and start with the torrent name
-// for multi-file torrents
 func transmissionMappedFiles(resume *TransmissionResumeFile, info *metainfo.Info) []string {
 	files := info.UpvertedFiles()
 	if len(resume.Files) != len(files) {
@@ -409,9 +376,6 @@ func boolToInt(b bool) int64 {
 	return 0
 }
 
-// transmissionSpeedLimit maps a per-torrent transmission speed limit to the
-// qBittorrent rate limit field: bytes/sec when a torrent-specific limit is
-// enabled, -1 (no limit) otherwise
 func transmissionSpeedLimit(limit TransmissionResumeFileSpeedLimit) int64 {
 	if limit.UseSpeedLimit == 1 && limit.UseGlobalSpeedLimit == 0 && limit.SpeedBPS > 0 {
 		return limit.SpeedBPS
@@ -419,9 +383,6 @@ func transmissionSpeedLimit(limit TransmissionResumeFileSpeedLimit) int64 {
 	return -1
 }
 
-// transmissionRatioLimit maps transmission's ratio-limit dict to the
-// qBt-ratioLimit convention: -2000 = use global, -1000 = unlimited,
-// otherwise ratio * 1000
 func transmissionRatioLimit(limit TransmissionResumeFileRatioLimit) int64 {
 	switch limit.RatioMode {
 	case 1:

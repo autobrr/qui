@@ -20,7 +20,6 @@ export function useBucketFormat() {
         case "hour":
           return date.toLocaleString(locale, { weekday: "short", hour: "2-digit", minute: "2-digit", hour12 })
         case "week":
-          // The first and the last week of a period can be partial, so the label names the Monday, not a range.
           return t("statistics:chart.weekOf", { date: formatCalendarDay(date, preferences) })
         case "month":
           return date.toLocaleDateString(locale, { month: "long", year: "numeric" })

@@ -27,11 +27,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// A torrent added paused, with skip checking off, stays at progress 0 until the
-// target is asked to recheck. Without that recheck, verification times out.
-// After the recheck the target first reports the stale stopped state, then
-// checks, then reports the torrent complete; nothing starts or resumes it.
-// regression: #3015
 func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
 	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsPayload})
 
@@ -45,9 +40,6 @@ func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
 	require.Equal(t, []string{"stoppedDL", "checkingDL", "stoppedUP"}, result.statesAfterRecheck[:3])
 }
 
-// A failed recheck request fails the export and removes the torrent from the
-// target, keeping its files, so it does not block the next export.
-// regression: #3015
 func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
 	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusInternalServerError, afterRecheck: recheckFindsPayload})
 
@@ -62,10 +54,6 @@ func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
 	require.Zero(t, result.starts.Load())
 }
 
-// When the target has no data for the torrent, the recheck leaves it stopped at
-// progress 0. The recheck alone is not a success: the export fails and the
-// torrent is removed from the target with its files kept.
-// regression: #3015
 func TestExecuteExportToInstance_PausedRecheckPayloadMissing(t *testing.T) {
 	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsNoPayload})
 
@@ -77,9 +65,6 @@ func TestExecuteExportToInstance_PausedRecheckPayloadMissing(t *testing.T) {
 	require.Equal(t, []string{"false"}, result.deleteFiles)
 }
 
-// A large torrent can still be checking when verification ends. That counts as
-// success: the torrent stays on the target and nothing deletes it.
-// regression: #3015
 func TestExecuteExportToInstance_PausedRecheckStillChecking(t *testing.T) {
 	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckKeepsChecking})
 
@@ -91,8 +76,6 @@ func TestExecuteExportToInstance_PausedRecheckStillChecking(t *testing.T) {
 	require.Empty(t, result.deleteFiles)
 }
 
-// Only a paused add with skip checking off needs the recheck; every other
-// combination exports without asking the target to recheck.
 func TestExecuteExportToInstance_RecheckOnlyWhenPausedAndChecking(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -117,8 +100,6 @@ func TestExecuteExportToInstance_RecheckOnlyWhenPausedAndChecking(t *testing.T) 
 	}
 }
 
-// exportOnTransfers wires the Transfer module into svc, as start-up does. The
-// Export runs poll the target 6 times, 30 ms apart.
 func exportOnTransfers(t *testing.T, svc *Service, db dbinterface.Querier) {
 	t.Helper()
 	store, err := transfer.NewStore(t.Context(), db)
@@ -129,7 +110,6 @@ func exportOnTransfers(t *testing.T, svc *Service, db dbinterface.Querier) {
 	svc.SetExportRunner(transfers)
 }
 
-// deleteNotes records each delete that the sync manager sends.
 type deleteNotes struct {
 	mu      sync.Mutex
 	deletes []recordedDelete
@@ -147,16 +127,11 @@ func (n *deleteNotes) recorded() []recordedDelete {
 	return slices.Clone(n.deletes)
 }
 
-// recheckOutcome is what the stub target reports once it accepts a recheck.
 type recheckOutcome int
 
 const (
-	// recheckFindsPayload: one stale stoppedDL poll at progress 0, one
-	// checkingDL poll, then stoppedUP at progress 1.
 	recheckFindsPayload recheckOutcome = iota
-	// recheckFindsNoPayload: stoppedDL at progress 0 on every poll.
 	recheckFindsNoPayload
-	// recheckKeepsChecking: checkingDL on every poll.
 	recheckKeepsChecking
 )
 
@@ -177,13 +152,6 @@ type exportResult struct {
 	statesAfterRecheck []string
 }
 
-// runExport exports one torrent with the given settings to a stub target.
-// The target lists the torrent only from the second poll after the add, and it
-// ignores a recheck for any other hash or one it does not list yet, as qBittorrent does. It
-// reports the torrent complete once listed, except for a paused add with skip
-// checking off, which stays stopped at progress 0 until a recheck is accepted
-// and then follows tc.afterRecheck. Start, resume and force start requests are
-// counted. The Transfer module runs the export.
 func runExport(t *testing.T, tc exportCase) *exportResult {
 	t.Helper()
 	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -210,8 +178,6 @@ func runExport(t *testing.T, tc exportCase) *exportResult {
 	}))
 	t.Cleanup(source.Close)
 
-	// targetState returns the state and progress the target lists the torrent
-	// with on this poll. The caller holds mu.
 	targetState := func() (string, string) {
 		if !tc.paused || tc.skipChecking {
 			return "stoppedUP", "1"
@@ -219,8 +185,6 @@ func runExport(t *testing.T, tc exportCase) *exportResult {
 		if !rechecked {
 			return "stoppedDL", "0"
 		}
-		// Verification polls right after the recheck and every 30ms; SyncManager's own
-		// post-action sync waits 200ms. So verification is the one that sees the stale poll.
 		poll := postRecheckPolls
 		postRecheckPolls++
 		state, progress := "stoppedDL", "0"
@@ -325,7 +289,7 @@ func runExport(t *testing.T, tc exportCase) *exportResult {
 	for activity := range ch {
 		result.activities = append(result.activities, activity)
 	}
-	target.Close() // waits for in-flight handlers, so the counters are final
+	target.Close()
 	result.deletes = deletes.recorded()
 	return result
 }

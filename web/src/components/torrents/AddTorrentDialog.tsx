@@ -60,7 +60,6 @@ import { CategoryPicker, TagPicker } from "./AddTorrentPickers"
 import { DestinationFreeSpace } from "./DestinationFreeSpace"
 import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
 
-// Extract info hash from magnet link
 function extractHashFromMagnet(magnetUrl: string): string | null {
   const btihMatch = magnetUrl.match(/[?&]xt=urn:btih:([a-f0-9]{40}|[a-z2-7]{32})/i)
   if (btihMatch) {
@@ -73,7 +72,6 @@ function extractHashFromMagnet(magnetUrl: string): string | null {
   }
 
   const multihash = btmhMatch[1].toLowerCase()
-  // Multihash format: <code><digest-length><digest>. For v2 torrents qBittorrent expects SHA2-256 (0x12) with 32 byte digest.
   if (!multihash.startsWith("1220")) {
     return null
   }
@@ -82,12 +80,9 @@ function extractHashFromMagnet(magnetUrl: string): string | null {
   return /^[a-f0-9]{64}$/.test(digest) ? digest : null
 }
 
-// Parse torrent file and extract info hash
 async function parseTorrentFile(file: File): Promise<string | null> {
   try {
     const arrayBuffer = await file.arrayBuffer()
-    // Only reached when the user actually hands us a .torrent file, so keep the
-    // parser (and its node polyfills) off the boot path.
     const { default: parseTorrent } = await import("parse-torrent")
     const parsed = await parseTorrent(new Uint8Array(arrayBuffer))
     const parsedTorrent = parsed as ParsedTorrent & { infoHashV2?: string }
@@ -179,16 +174,12 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const duplicateCheckIndicatorTimeoutRef = useRef<number | null>(null)
   const queryClient = useQueryClient()
 
-  // Use controlled state if provided, otherwise use internal state
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setOpen = onOpenChange || setInternalOpen
 
   const { data: metadata } = useInstanceMetadata(instanceId)
   const categories = metadata?.categories
   const availableTags = metadata?.tags
-  // The dialog seeds the preference defaults twice: once as form defaults, and again
-  // when the preferences arrive after a cold mount.
-  // Fetched again on each open, so that a default changed outside qui shows.
   const addTorrentPreferences = useAddTorrentPreferences(instanceId, { enabled: open })
   const preferenceDefaults = addTorrentPreferences.defaults
 
@@ -196,8 +187,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const supportsTorrentTmpPath = capabilities?.supportsTorrentTmpPath ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const subcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, false, { enabled: open })
-  // qBittorrent saves a category without a path under its parent's folder since 5.0 (Web API 2.11.2, the
-  // torrent creation capability), and before 5.2 only while subcategories are on.
   const parentCategoryPaths = (capabilities?.supportsTorrentCreation ?? true) && subcategoriesEnabled
 
   if (open !== wasOpen) {
@@ -225,7 +214,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     }
   }, [])
 
-  // Check for duplicate torrents when files or URLs are loaded
   const checkForDuplicates = useCallback(async (files: File[] | null, urls: string) => {
     duplicateCheckRequestRef.current += 1
     const requestId = duplicateCheckRequestRef.current
@@ -499,11 +487,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const showDuplicateCheckIndicator = duplicateCheckStatus === "visible"
 
   const mutation = useMutation({
-    retry: false, // Don't retry - could cause duplicate torrent additions
+    retry: false,
     mutationFn: async (data: FormData) => {
-      // Use the user's explicit TMM choice
       const autoTMM = data.autoTMM
-      // When autoTMM is enabled, temp path settings aren't visible/relevant
       const tempPathChanged =
         !autoTMM && (data.tempPathEnabled !== preferenceDefaults.tempPathEnabled ||
         (data.tempPathEnabled && data.tempPath !== preferenceDefaults.tempPath))
@@ -548,23 +534,19 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       })
     },
     onSuccess: (response: AddTorrentResponse) => {
-      // Add small delay to allow qBittorrent to process the new torrent
       setTimeout(() => {
-        // Use refetch instead of invalidate to avoid loading state
         queryClient.refetchQueries({
           queryKey: ["torrents-list", instanceId],
           exact: false,
           type: "active",
         })
-        // Also refetch the metadata (categories, tags, counts)
         queryClient.refetchQueries({
           queryKey: ["instance-metadata", instanceId],
           exact: false,
           type: "active",
         })
-      }, 500) // Give qBittorrent time to process
+      }, 500)
 
-      // Show appropriate toast based on results
       if (response.failed === 0) {
         toast.success(
           response.added === 1
@@ -572,7 +554,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             : t("addTorrentDialog.toast.addedMany", { count: response.added })
         )
       } else if (response.added === 0) {
-        // All failed
         const failedDetails = [
           ...(response.failedURLs?.map(f => `${f.url}: ${f.error}`) ?? []),
           ...(response.failedFiles?.map(f => `${f.filename}: ${f.error}`) ?? []),
@@ -582,7 +563,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           duration: 5000,
         })
       } else {
-        // Partial success
         const failedDetails = [
           ...(response.failedURLs?.map(f => `${f.url}: ${f.error}`) ?? []),
           ...(response.failedFiles?.map(f => `${f.filename}: ${f.error}`) ?? []),
@@ -620,14 +600,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     },
   })
 
-  // The dialog can mount before instance metadata resolves (magnet handler route),
-  // where defaultValues fall back to the hardcoded values, and each open fetches the
-  // preferences again. Seed the preference-derived fields each time preferences land,
-  // skipping anything the user already changed.
   useEffect(() => {
     if (!addTorrentPreferences.loaded) return
 
-    // Seeding is not a user edit, so leave the field meta pristine.
     const pristine = (field: keyof typeof preferenceDefaults) => !form.getFieldMeta(field)?.isDirty
     const opts = { dontUpdateMeta: true }
 
@@ -670,7 +645,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   } = usePathAutocomplete(setTempPath, instanceId);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    // Filter to .torrent files only (iOS Safari may bypass accept attribute filtering)
     const torrentFiles = acceptedFiles.filter(f => f.name.toLowerCase().endsWith(".torrent"))
     const rejectedCount = acceptedFiles.length - torrentFiles.length
 
@@ -690,7 +664,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     const allFiles = [...existingFiles, ...torrentFiles]
     form.setFieldValue("torrentFiles", allFiles.length > 0 ? allFiles : null)
 
-    // Check for duplicates when files are dropped
     if (allFiles.length > 0) {
       checkForDuplicates(allFiles, form.getFieldValue("urls"))
     }
@@ -699,10 +672,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      // Multiple MIME types for better iOS compatibility
-      // iOS Safari has bugs with accept attribute filtering
       "application/x-bittorrent": [".torrent"],
-      "application/octet-stream": [".torrent"],  // Fallback for browsers that report torrent as generic binary
+      "application/octet-stream": [".torrent"],
     },
     multiple: true,
     noClick: false,
@@ -779,7 +750,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
-      // Check for duplicates when files are dropped
       checkForDuplicates(files, "")
     } else if (dropPayload.type === "url") {
       const urls = dropPayload.urls.map((url) => url.trim()).filter(Boolean)
@@ -790,7 +760,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
-      // Check for duplicates when URLs are dropped
       checkForDuplicates(null, urls.join("\n"))
     }
 
@@ -1521,8 +1490,6 @@ function OptionSwitch({ id, label, help, status, checked, onCheckedChange }: {
       className="flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2.5"
       onClick={(e) => {
         const target = e.target as HTMLElement
-        // The label, the switch, its hidden form input, and the help button handle their own clicks.
-        // The help tooltip renders in a portal, so React bubbles its clicks here although they land outside the row.
         if (e.currentTarget.contains(target) && !target.closest("button, label, input")) onCheckedChange(!checked)
       }}
     >

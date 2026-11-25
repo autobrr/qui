@@ -18,7 +18,6 @@ import type { CrossSeedRoute, CrossSeedRouteStatus, CrossSeedRouteTestResult, Fi
 
 const mocks = vi.hoisted(() => ({
   instances: { instances: [] as unknown[] },
-  // Echoes the key and each interpolation value, so a test can assert both.
   translation: { t: (key: string, values?: Record<string, unknown>) => values ? [key, ...Object.values(values)].join("|") : key },
 }))
 
@@ -29,7 +28,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => mocks.instances }))
 vi.mock("@/components/ui/field-help", () => ({ FieldHelp: () => null }))
-// jsdom cannot open the Radix Select, so a native select stands in for it.
 vi.mock("@/components/ui/select", () => ({
   Select: ({ value, onValueChange, disabled, children }: { value: string; onValueChange: (value: string) => void; disabled?: boolean; children: ReactNode }) => (
     <select aria-label="picker" value={value} disabled={disabled} onChange={(e: ChangeEvent<HTMLSelectElement>) => onValueChange(e.target.value)}>
@@ -79,8 +77,6 @@ function makeInstance(id: number, name: string, overrides: Partial<Instance> = {
 const source = makeInstance(1, "library")
 const crossSeed = makeInstance(2, "seedbox", { useHardlinks: false, hardlinkBaseDir: "" })
 
-// Serves the route list, each route read, and the capabilities of each instance.
-// Instances in old answer with a qBittorrent older than 5.0.
 function serve({ routes = [] as CrossSeedRoute[], read = null as CrossSeedRouteStatus | null, old = [] as number[] } = {}) {
   server.use(
     http.get("*/api/cross-seed/routes", () => HttpResponse.json(routes)),
@@ -118,13 +114,11 @@ describe("CrossSeedRouteForm picker", () => {
       reason: "automations:queryBuilder.capabilityReasons.localFilesystemAccess",
     },
     {
-      // A remote instance has Write and can use hardlink mode, but cannot route.
       name: "a remote instance in hardlink mode",
       instance: makeInstance(1, "library", { hasLocalFilesystemAccess: false, filesystemMode: "remote", capabilities: { ...noCapabilities, read: true, write: true } }),
       reason: "automations:queryBuilder.capabilityReasons.remoteInstance",
     },
     {
-      // A Cross-seed instance needs no filesystem access, so this reason wins.
       name: "an instance without filesystem access that receives cross-seeds",
       instance: makeInstance(1, "library", { hasLocalFilesystemAccess: false, filesystemMode: "none", capabilities: noCapabilities, useHardlinks: false }),
       routes: [{ sourceInstanceId: 3, crossSeedInstanceId: 1, rows: [] }],
@@ -165,7 +159,6 @@ describe("CrossSeedRouteForm picker", () => {
       makeInstance(4, "remote", { filesystemMode: "remote" }),
       makeInstance(5, "off", { isActive: false }),
       makeInstance(6, "routed"),
-      // Several Source instances can share one Cross-seed instance.
       makeInstance(7, "shared"),
     ]
     serve({ routes: [{ sourceInstanceId: 6, crossSeedInstanceId: 7, rows: [] }], old: [3] })
@@ -287,7 +280,6 @@ describe("CrossSeedRouteForm rows", () => {
     server.use(
       http.get("*/api/cross-seed/routes/:id", async () => {
         reads++
-        // The first read loads the form, the second is the check of Save, the third is the refresh.
         if (reads > 2) await refreshed
         return HttpResponse.json(before)
       }),
@@ -390,7 +382,6 @@ describe("CrossSeedRouteForm Test route", () => {
     expect(screen.getByText("permission denied")).toBeTruthy()
     expect(tests).toEqual([{ crossSeedInstanceId: 2, rows: [{ baseDir: "/data/a", mappedPath: "/mnt/a" }, { baseDir: "/data/b", mappedPath: "" }] }])
 
-    // An edit makes the result stale, so the form drops it.
     fireEvent.change(screen.getByLabelText("/data/b"), { target: { value: "/mnt/b" } })
     expect(screen.queryByText("routeForm.markerHint")).toBeNull()
   })
@@ -406,7 +397,6 @@ describe("CrossSeedRouteForm Test route", () => {
 describe("CrossSeedRouteForm confirm", () => {
   const otherCrossSeed = makeInstance(3, "seedbox2", { useHardlinks: false, hardlinkBaseDir: "" })
 
-  // A saved route to seedbox: 3 routed torrents under /data/a, 4 under /data/b.
   function serveSaved(routedA: number | null = 3) {
     mocks.instances.instances = [source, crossSeed, otherCrossSeed]
     const writes: string[] = []
@@ -553,7 +543,6 @@ describe("CrossSeedRouteForm confirm", () => {
   })
 
   it("asks first when the user maps a base folder added after the save", async () => {
-    // The route read gives the new base folder an empty row, and the orphan scan protects the torrents under it.
     const instance = makeInstance(1, "library", { hardlinkBaseDir: "/data/a, /data/new" })
     mocks.instances.instances = [instance, crossSeed]
     const writes: string[] = []
@@ -634,7 +623,6 @@ describe("CrossSeedRouteForm confirm", () => {
     await screen.findByLabelText("/data/a")
     server.use(http.get("*/api/cross-seed/routes/:id", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
     await act(() => queryClient.refetchQueries({ queryKey: [...crossSeedRoutesKey, 1] }))
-    // The cached rows can be old: another tab can have changed the route.
     await waitFor(() => expect(screen.getByRole<HTMLButtonElement>("button", { name: "routeForm.saveRoute" }).disabled).toBe(true))
     fireEvent.click(screen.getByRole("button", { name: "routeForm.clearRoute" }))
 

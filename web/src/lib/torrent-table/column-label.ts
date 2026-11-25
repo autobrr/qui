@@ -5,7 +5,6 @@
 
 import type { TorrentTableColumn } from "@/components/torrents/tanstackTableFeatures"
 
-/** Display label for a column: its headerString meta, a string header, or the id. */
 export function columnLabel(column: TorrentTableColumn): string {
   const meta = column.columnDef.meta as { headerString?: string } | undefined
   if (meta?.headerString) return meta.headerString

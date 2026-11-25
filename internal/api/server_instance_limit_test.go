@@ -53,9 +53,7 @@ func (rig *instanceLimitRig) addInstance(t *testing.T, name string) int {
 
 func (rig *instanceLimitRig) limitedKey(t *testing.T, instanceIDs ...int) string {
 	t.Helper()
-	raw, _, err := rig.deps.AuthService.CreateAPIKey(t.Context(), "limited", models.AllPermissions(), instanceIDs)
-	require.NoError(t, err)
-	return raw
+	return newUsedAPIKey(t, rig.authDB, "limited", models.AllPermissions(), instanceIDs)
 }
 
 func (rig *instanceLimitRig) listedInstances(t *testing.T, key string) []int {
@@ -171,10 +169,8 @@ func TestInstanceLimit(t *testing.T) {
 	})
 }
 
-// ADR 0040.
 func TestRoutesThatSpanInstancesRefuseInstanceLimit(t *testing.T) {
 	rig := newInstanceLimitRig(t)
-	// walkAPIRoutes puts 1 in each path parameter.
 	require.Equal(t, 1, rig.addInstance(t, "first"))
 	key := rig.limitedKey(t, 1)
 
@@ -204,6 +200,5 @@ func TestRoutesThatSpanInstancesRefuseInstanceLimit(t *testing.T) {
 		}
 		require.False(t, isInstanceLimitRefusal(body), "%s %s: %d %q", route.Method, route.Path, status, body)
 	})
-	// The cross-seed and Dir Scan areas have about 60 routes.
 	require.GreaterOrEqual(t, refused, 50)
 }

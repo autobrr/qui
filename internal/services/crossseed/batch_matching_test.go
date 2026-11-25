@@ -71,9 +71,6 @@ func newTestService() *Service {
 	}
 }
 
-// BuildCrossMatchSets asks one CrossMatchSession for the whole library. A
-// snapshot that cannot be read is in Err. Only tests ask for the whole
-// library, so it is not in the production code.
 func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult {
 	session, err := s.OpenCrossMatchSession(ctx, currentInstanceID, needs)
 	if err != nil {
@@ -97,8 +94,6 @@ func makeView(hash, name, contentPath, savePath string, progress float64, state 
 	}
 }
 
-// crossMatchFixture is one torrent in a BuildCrossMatchSets test: its view on
-// an instance and its file list.
 type crossMatchFixture struct {
 	view  qbittorrent.CrossInstanceTorrentView
 	files qbt.TorrentFiles
@@ -110,14 +105,11 @@ func crossMatchTorrent(instanceID int, hash, name, savePath, contentPath string,
 	return crossMatchFixture{view: view, files: files}
 }
 
-// withTotalSize sets the total size that qBittorrent reports from the files.
 func withTotalSize(torrent crossMatchFixture) crossMatchFixture {
 	torrent.view.Size = sourceFilesTotalSize(torrent.files)
 	return torrent
 }
 
-// buildCrossMatch runs BuildCrossMatchSets for instance 1 over the fixtures,
-// which can sit on instances 1 and 2.
 func buildCrossMatch(t *testing.T, needs CrossMatchNeeds, torrents ...crossMatchFixture) *CrossMatchResult {
 	t.Helper()
 	sm := &tierSyncManager{
@@ -365,9 +357,6 @@ func TestBuildCrossMatchSets_OtherInstance(t *testing.T) {
 	})
 }
 
-// The size group selects a copy whose name shares no Title key or episode
-// with the source.
-// regression: #3587
 func TestBuildCrossMatchSets_SizeGroup(t *testing.T) {
 	const (
 		retitledSource = "Quiet.Coast.2020.1080p.BluRay.x264-GRP"
@@ -422,7 +411,6 @@ func TestBuildCrossMatchSets_ReleaseMetadataTraceLogsRejection(t *testing.T) {
 	require.Contains(t, logOutput, `"reason":"group mismatch"`)
 }
 
-// regression: #4331
 func TestBuildCrossMatchSets_ReleaseMetadataTraceLimit(t *testing.T) {
 	const rounds = releaseRejectTraceLimit + 6
 	tests := []struct {
@@ -464,9 +452,6 @@ func TestBuildCrossMatchSets_ReleaseMetadataTraceLimit(t *testing.T) {
 	}
 }
 
-// The episodes of a daily show share a Title key and episode 0. Only a pair
-// with the same date, or a pair where one side has no full date, meets the
-// matcher, so a large daily archive does not compare every date.
 func TestBuildCrossMatchSets_DailyShowMeetsOnlyItsDate(t *testing.T) {
 	previousLogger := log.Logger
 	previousLevel := zerolog.GlobalLevel()
@@ -509,9 +494,6 @@ func TestBuildCrossMatchSets_DailyShowMeetsOnlyItsDate(t *testing.T) {
 	require.True(t, met[[2]string{undated, jan16}], "an undated source meets every dated candidate")
 }
 
-// A hardlinked cross-seed with an extra file that search does not ignore fails
-// the size pairing, but its inode makes it a cross-seed, as in the
-// Cross-Seed tab. An independent copy with the same extra file stays out.
 func TestBuildCrossMatchSets_HardlinkWithExtraFile(t *testing.T) {
 	for _, linked := range []bool{true, false} {
 		t.Run(map[bool]string{true: "hardlink", false: "independent copy"}[linked], func(t *testing.T) {
@@ -613,7 +595,6 @@ func TestBuildCrossMatchSets_InstanceListFailureIsUnknown(t *testing.T) {
 	}
 }
 
-// failingPeerSyncManager fails the torrent snapshot of one instance.
 type failingPeerSyncManager struct {
 	*tierSyncManager
 	failInstanceID int

@@ -23,8 +23,6 @@ export type CrossSeedInstanceStateResult = {
 }
 
 export function useCrossSeedInstanceState(): CrossSeedInstanceStateResult {
-  // Keep the shared SSE connection open app-wide (this hook backs the Sidebar badge).
-  // Events invalidate ["cross-seed","status"] and ["cross-seed","search-status"].
   useActivityStream()
 
   const settingsQuery = useQuery({
@@ -44,7 +42,6 @@ export function useCrossSeedInstanceState(): CrossSeedInstanceStateResult {
     enabled: rssEnabled,
   })
 
-  // Poll frequently only while a search is actively running for smooth progress; rely on events otherwise
   const searchStatusQuery = useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),

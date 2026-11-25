@@ -21,13 +21,8 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
-// These tests turn local access off between the snapshot a scan or an
-// injection was admitted on and the backend it reads through. The pool then
-// routes to the SSH host, which must see none of the reads.
-
 var remoteRow = &models.Instance{ID: 1, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
 
-// remoteSpy stands in for the SSH host and counts the reads that reached it.
 type remoteSpy struct {
 	fsops.Backend
 	calls atomic.Int32
@@ -58,7 +53,6 @@ func (s *remoteSpy) SameFilesystem(_ context.Context, p, _ string) (bool, error)
 	return false, s.notExist("samefilesystem", p)
 }
 
-// remotePool answers every instance read with the remote row.
 func remotePool() (*fsops.Pool, *remoteSpy) {
 	spy := &remoteSpy{}
 	return fsops.NewPoolWithRemote(&fakeInstanceStore{instance: remoteRow}, local.NewBackend(),
@@ -107,7 +101,6 @@ func TestValidateDirectoryAdmitsARemoteInstance(t *testing.T) {
 	require.Zero(t, spy.calls.Load(), "admitting the instance reads nothing yet")
 }
 
-// failingInstanceStore cannot read any instance.
 type failingInstanceStore struct{}
 
 func (failingInstanceStore) Get(context.Context, int) (*models.Instance, error) {
@@ -156,7 +149,6 @@ func TestValidateDirectoryFailsTheRun(t *testing.T) {
 	}
 }
 
-// flippingStore answers local on the first read and remote after, like local access turned off mid-run.
 type flippingStore struct{ reads atomic.Int32 }
 
 func (s *flippingStore) Get(context.Context, int) (*models.Instance, error) {
@@ -166,7 +158,6 @@ func (s *flippingStore) Get(context.Context, int) (*models.Instance, error) {
 	return remoteRow, nil
 }
 
-// A run keeps the backend of the read that admitted it, so a later flip cannot walk the SSH host.
 func TestScanWalksTheBackendOfTheReadThatAdmittedIt(t *testing.T) {
 	t.Parallel()
 

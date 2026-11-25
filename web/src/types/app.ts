@@ -10,7 +10,6 @@ export interface ApplicationDatabaseInfo {
   target: string
 }
 
-/** The names of the Experimental features that qui knows. Mirrors `known` in internal/experimental/experimental.go. */
 export type ExperimentalFeature = "problemReports" | "heldTitles"
 
 export interface ApplicationInfo {
@@ -50,21 +49,18 @@ export interface VersionInfo {
 export interface SystemNotice {
   kind: string
   severity: "error" | "warning"
-  /** Selects the fix that the notice shows. */
   reason?: string
   cause: string
   openedAt: string
 }
 
 export interface DatabaseShrinkStatus {
-  /** False on Postgres, which has no file to shrink. */
   available: boolean
   fileBytes: number
   freeBytes: number
   needBytes: number
   restartAvailable: boolean
   pending: boolean
-  /** The outcome of the shrink at the last start, until the web UI dismisses it. */
   result?: { beforeBytes: number; afterBytes: number }
 }
 
@@ -74,7 +70,6 @@ export interface SelfUpdateResult {
   backupError: string
 }
 
-// One preference of the catalog view that GET /instances/{id}/preferences returns.
 export interface PreferenceField {
   key: string
   value: unknown
@@ -90,8 +85,6 @@ export interface PreferenceField {
   reason?: string
 }
 
-// One network interface that qBittorrent can bind to. The value "" is "Any interface".
-// available is false for a saved interface or address that qBittorrent does not list.
 export interface NetworkBindingInterface {
   name: string
   value: string
@@ -112,14 +105,14 @@ export interface AppPreferences {
   max_active_checking_torrents: number
 
   listen_port: number
-  random_port: boolean // Deprecated in qBittorrent but functional
+  random_port: boolean
   upnp: boolean
   upnp_lease_duration: number
 
   bittorrent_protocol: number
   utp_tcp_mixed_mode: number
 
-  current_network_interface: string // Shows current interface (empty = auto-detect)
+  current_network_interface: string
   current_interface_address: string
 
   announce_ip: string
@@ -156,8 +149,6 @@ export interface AppPreferences {
   auto_tmm_enabled: boolean
   save_resume_data_interval: number
 
-  // Startup behavior
-  // qBittorrent 5.0 renamed start_paused_enabled to add_stopped_enabled. Each version sends one of the two.
   start_paused_enabled?: boolean
   add_stopped_enabled?: boolean
 
@@ -167,7 +158,7 @@ export interface AppPreferences {
   encryption: number
   anonymous_mode: boolean
 
-  proxy_type: number | string // Note: number (pre-4.5.x), string (post-4.6.x)
+  proxy_type: number | string
   proxy_ip: string
   proxy_port: number
   proxy_username: string
@@ -215,7 +206,6 @@ export interface AppPreferences {
   schedule_to_min: number
   scheduler_days: number
 
-  // Web UI (read-only reference)
   web_ui_port: number
   web_ui_username: string
   use_https: boolean
@@ -302,7 +292,6 @@ export interface AppPreferences {
   mail_notification_ssl_enabled: boolean
   mail_notification_username: string
 
-  // Scan directories (structured as empty object in go-qbittorrent)
   scan_dirs: Record<string, unknown>
 
   [key: string]: unknown

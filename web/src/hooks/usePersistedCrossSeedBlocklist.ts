@@ -12,8 +12,6 @@ export function usePersistedCrossSeedBlocklist(instanceId: number, defaultValue:
     defaultValue,
     parse: parseJsonBoolean,
   })
-  // Non-positive ids (the all-instances view passes -1) never persisted this
-  // choice; keep it session-local there.
   const local = useState<boolean>(defaultValue)
   const blockCrossSeeds = instanceId > 0 ? persisted[0] : local[0]
   const setBlockCrossSeeds: Dispatch<SetStateAction<boolean>> = instanceId > 0 ? persisted[1] : local[1]

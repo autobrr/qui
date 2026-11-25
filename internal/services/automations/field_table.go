@@ -16,18 +16,16 @@ import (
 	"github.com/autobrr/qui/pkg/releases"
 )
 
-// ValueType is the kind of value that a condition field compares. Each value is a JSON string in the rule.
 type ValueType string
 
 const (
 	ValueString  ValueType = "string"
-	ValueEnum    ValueType = "enum"    // one of FieldSpec.Values
-	ValueBoolean ValueType = "boolean" // "true" or "false"
+	ValueEnum    ValueType = "enum"
+	ValueBoolean ValueType = "boolean"
 	ValueInteger ValueType = "integer"
-	ValueNumber  ValueType = "number" // a decimal number
+	ValueNumber  ValueType = "number"
 )
 
-// Unit is the unit of a numeric condition value.
 type Unit string
 
 const (
@@ -35,17 +33,12 @@ const (
 	UnitBytes          Unit = "bytes"
 	UnitBytesPerSecond Unit = "bytesPerSecond"
 	UnitSeconds        Unit = "seconds"
-	UnitFraction       Unit = "fraction" // 0 to 1; a value above 1 is read as a percentage
+	UnitFraction       Unit = "fraction"
 )
 
-// Requirement is what an instance must have before a field has data. The zero value means nothing.
 type Requirement struct {
-	// Key names the requirement in the rule builder: a field of the instance capabilities
-	// response for a version requirement, or an instance capability for an access requirement.
-	Key string
-	// Label is what the docs show.
-	Label string
-	// Capability is the version table entry of a version requirement, and nil for an access requirement.
+	Key        string
+	Label      string
 	Capability *qbittorrent.Capability
 }
 
@@ -58,34 +51,24 @@ var (
 	RequiresFilesystemAccess = Requirement{Key: "read", Label: "filesystem access"}
 )
 
-// FieldSpec describes one condition field.
 type FieldSpec struct {
 	Type      ValueType
 	Unit      Unit
 	Operators []ConditionOperator
-	// Values lists the values that EQUAL and NOT_EQUAL accept without regex. Empty means any value.
-	Values   []string
-	Requires Requirement
-	// Legacy marks a field that the rule builder no longer offers. Stored rules still use it.
-	Legacy bool
-	// Sort is what a workflow sorts or scores torrents by. A field without it cannot sort.
-	Sort SortValue
-	// NoValue reports that one torrent has no value for the field on an instance that sends the
-	// field. Nil means that each torrent has a value. The Rule scope and the condition evaluation
-	// read it (ADR 0039).
-	NoValue func(t qbt.Torrent) bool
+	Values    []string
+	Requires  Requirement
+	Legacy    bool
+	Sort      SortValue
+	NoValue   func(t qbt.Torrent) bool
 }
 
-// SortValue reads the Sort value of a field, a number or lowercase text. At most one reader is set.
 type SortValue struct {
 	Number func(t qbt.Torrent, ctx *EvalContext) float64
 	Text   func(t qbt.Torrent) string
 }
 
-// Sortable reports whether a workflow can sort by the field.
 func (s FieldSpec) Sortable() bool { return s.Sort.Number != nil || s.Sort.Text != nil }
 
-// Scorable reports whether a score rule can multiply the field.
 func (s FieldSpec) Scorable() bool { return s.Sort.Number != nil }
 
 func (s FieldSpec) requires(r Requirement) FieldSpec {
@@ -103,40 +86,29 @@ func (s FieldSpec) sortNumber(read func(t qbt.Torrent, ctx *EvalContext) float64
 	return s
 }
 
-// sortText sets a reader that returns lowercase text, so that the sort ignores case.
 func (s FieldSpec) sortText(read func(t qbt.Torrent) string) FieldSpec {
 	s.Sort.Text = read
 	return s
 }
 
-// sortAge reads the Sort value of a legacy age field: the seconds since its timestamp.
 func sortAge(field ConditionField) func(qbt.Torrent, *EvalContext) float64 {
 	return func(t qbt.Torrent, ctx *EvalContext) float64 { return getAgeFieldValue(ctx, field, t) }
 }
 
-// positive returns v, or 0 when qBittorrent reports no value.
 func positive(v int64) float64 { return float64(max(v, 0)) }
 
-// ContentLayouts are the values of exportToInstance.contentLayout. An empty value keeps the target's default.
 var ContentLayouts = []string{"Original", "Subfolder", "NoSubfolder"}
 
-// TransferAfters are the values of transferToInstance.after. An empty value means 'removeWithFiles'.
 var TransferAfters = []string{string(transfer.AfterRemoveWithFiles), string(transfer.AfterKeepFiles), string(transfer.AfterKeepSeeding)}
 
-// TransferWays are the values of transferToInstance.way, the keys of
-// transfer.ForcedWays. An empty value means 'auto'.
 var TransferWays = []string{"auto", "copy", "bittorrent"}
 
-// TagModes are the values of tags[].mode.
 var TagModes = []string{models.TagModeFull, models.TagModeAdd, models.TagModeRemove}
 
-// DeleteModes are the values of delete.mode. An empty value means 'delete'.
 var DeleteModes = []string{models.DeleteModeKeepFiles, models.DeleteModeWithFiles, models.DeleteModeWithFilesPreserveCrossSeeds, models.DeleteModeWithFilesIncludeCrossSeeds}
 
-// ShareLimitActions are the values of shareLimits.shareLimitAction. An empty value or 'Default' uses the global setting.
 var ShareLimitActions = []string{qbt.ShareLimitActionStop, qbt.ShareLimitActionRemove, qbt.ShareLimitActionRemoveWithContent, qbt.ShareLimitActionEnableSuperSeeding}
 
-// ShareLimitsModes are the values of shareLimits.shareLimitsMode. An empty value or 'Default' uses the global setting.
 var ShareLimitsModes = []string{qbt.ShareLimitsModeMatchAny, qbt.ShareLimitsModeMatchAll}
 
 var (
@@ -180,7 +152,6 @@ func booleanField() FieldSpec {
 	return FieldSpec{Type: ValueBoolean, Operators: equalOperators, Values: booleanValues}
 }
 
-// ConditionFields describes every condition field. The rule check reads it.
 var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldName: FieldSpec{
 		Type:      ValueString,
@@ -222,7 +193,6 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldUploaded:          numberField(ValueInteger, UnitBytes).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.Uploaded) }),
 	models.FieldUploadedSession:   numberField(ValueInteger, UnitBytes),
 	models.FieldAmountLeft:        numberField(ValueInteger, UnitBytes).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.AmountLeft) }),
-	// The sort reads the free space at the start of the run. A Condition reads the Projected free space.
 	models.FieldFreeSpace: numberField(ValueInteger, UnitBytes).sortNumber(func(_ qbt.Torrent, ctx *EvalContext) float64 {
 		if ctx == nil || ctx.activeFreeSpace == nil {
 			return 0
@@ -230,13 +200,10 @@ var ConditionFields = map[ConditionField]FieldSpec{
 		return positive(ctx.activeFreeSpace.startFreeSpace())
 	}),
 
-	// The sort reads the timestamp. A Condition compares the age.
 	models.FieldAddedOn: numberField(ValueInteger, UnitSeconds).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return positive(t.AddedOn) }),
-	// The sort reads the timestamp. A Condition compares the age.
 	models.FieldCompletionOn: numberField(ValueInteger, UnitSeconds).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 {
 		return float64(qbittorrent.NormalizeCompletionTimestamp(t.CompletionOn))
 	}),
-	// The sort reads the timestamp. A Condition compares the age.
 	models.FieldLastActivity:             numberField(ValueInteger, UnitSeconds).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return positive(t.LastActivity) }),
 	models.FieldSeenComplete:             numberField(ValueInteger, UnitSeconds),
 	models.FieldETA:                      numberField(ValueInteger, UnitSeconds),
@@ -256,10 +223,9 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldRatioLimit:       numberField(ValueNumber, UnitNone),
 	models.FieldMaxRatio:         numberField(ValueNumber, UnitNone),
 	models.FieldUploadedOverSize: numberField(ValueNumber, UnitNone),
-	// The sort and the score read 0 to 100. A Condition compares 0 to 1.
-	models.FieldProgress:     numberField(ValueNumber, UnitFraction).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return t.Progress * 100 }),
-	models.FieldAvailability: numberField(ValueNumber, UnitNone).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return t.Availability }),
-	models.FieldPopularity:   numberField(ValueNumber, UnitNone).requires(RequiresListFieldsV5),
+	models.FieldProgress:         numberField(ValueNumber, UnitFraction).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return t.Progress * 100 }),
+	models.FieldAvailability:     numberField(ValueNumber, UnitNone).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return t.Availability }),
+	models.FieldPopularity:       numberField(ValueNumber, UnitNone).requires(RequiresListFieldsV5),
 
 	models.FieldDlSpeed: numberField(ValueInteger, UnitBytesPerSecond).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.DlSpeed) }),
 	models.FieldUpSpeed: numberField(ValueInteger, UnitBytesPerSecond).sortNumber(func(t qbt.Torrent, _ *EvalContext) float64 { return float64(t.UpSpeed) }),
@@ -274,7 +240,6 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldPriority:      numberField(ValueInteger, UnitNone),
 	models.FieldGroupSize:     numberField(ValueInteger, UnitNone),
 
-	// A magnet link has no private value until its metadata arrives.
 	models.FieldPrivate:                booleanField().requires(RequiresListFieldsV5).noValue(func(t qbt.Torrent) bool { return qbittorrent.PrivateUnknown(&t) }),
 	models.FieldAutoManaged:            booleanField(),
 	models.FieldFirstLastPiecePrio:     booleanField(),
@@ -305,14 +270,11 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldHardlinkScopeCross: {Type: ValueEnum, Operators: equalOperators, Values: hardlinkScopes, Requires: RequiresLocalAccess},
 }
 
-// noValueField is a field whose row has a NoValue test.
 type noValueField struct {
 	field   ConditionField
 	noValue func(t qbt.Torrent) bool
 }
 
-// noValueFields holds the rows with a NoValue test. The condition evaluation reads it for each
-// leaf of each torrent, so it is a short list and not a lookup in ConditionFields.
 var noValueFields = func() []noValueField {
 	var fields []noValueField
 	for _, field := range slices.Sorted(maps.Keys(ConditionFields)) {
@@ -323,7 +285,6 @@ var noValueFields = func() []noValueField {
 	return fields
 }()
 
-// fieldHasNoValue reports whether the torrent has no value for the field.
 func fieldHasNoValue(field ConditionField, t *qbt.Torrent) bool {
 	for _, f := range noValueFields {
 		if f.field == field {

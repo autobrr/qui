@@ -5,7 +5,6 @@
 
 import { THEME_AREAS } from "@/lib/theme-areas"
 
-// The design token table of documentation/docs/features/custom-themes.md.
 export const THEME_TOKEN_GROUPS: ReadonlyArray<{ group: string; tokens: readonly string[] }> = [
   { group: "Surfaces", tokens: ["--background", "--foreground", "--card", "--card-foreground", "--popover", "--popover-foreground"] },
   {
@@ -39,7 +38,6 @@ export const COMMON_DATA_SLOTS = [
   "table-head", "table-cell", "tabs-list", "tabs-trigger", "switch", "checkbox", "separator", "scroll-area",
 ] as const
 
-/** The English text that tells an AI assistant how to write a qui theme. */
 export function buildThemePrompt(): string {
   const tokens = THEME_TOKEN_GROUPS.map(({ group, tokens }) => `- ${group}: ${tokens.join(", ")}`).join("\n")
   const areas = THEME_AREAS.map(({ name, purpose }) => `- [data-qui-area="${name}"]: ${purpose}`).join("\n")

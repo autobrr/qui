@@ -28,9 +28,7 @@ func normalizeLower(value string) string {
 }
 
 func normalizePathInner(p string) string {
-	// qBittorrent cleans the path it stores, so compare cleaned paths or a move repeats every run.
 	p = pathcmp.NormalizePath(p)
-	// pathcmp keeps a UNC share as //server/share, but a POSIX qBittorrent reports //x as /x.
 	if strings.HasPrefix(p, "//") {
 		p = p[1:]
 	}

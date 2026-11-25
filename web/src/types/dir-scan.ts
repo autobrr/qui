@@ -113,8 +113,6 @@ export interface DirScanRun {
   completedAt?: string
 }
 
-// The queued and running runs of a directory, or its most recent run when
-// none is active. A full scan and a webhook scan can run at the same time.
 export interface DirScanStatus {
   runs: DirScanRun[]
 }

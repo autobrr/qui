@@ -255,7 +255,7 @@ func newSecretsRig(t *testing.T) *secretsRig {
 	t.Helper()
 	ctx := t.Context()
 	deps, db := newTestDependenciesWithDB(t)
-	rig := &secretsRig{permissionRig: &permissionRig{deps: deps}, downloads: make(chan string, 8)}
+	rig := &secretsRig{permissionRig: &permissionRig{deps: deps, authDB: db}, downloads: make(chan string, 8)}
 
 	var err error
 	deps.Config, err = config.New(t.TempDir(), "test")
@@ -344,7 +344,7 @@ func newSecretsRig(t *testing.T) *secretsRig {
 	require.NoError(t, err)
 	rig.planted = append(rig.planted, plantedSecret{name: "another API key", value: otherKey})
 
-	router, err := NewServer(deps).Handler()
+	router, err := newServerCheckingHandlerPanics(t, deps).Handler()
 	require.NoError(t, err)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)

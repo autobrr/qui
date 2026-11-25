@@ -347,8 +347,6 @@ func TestBuildTorrentData_SpecialCharacters(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			data := buildTorrentData(tt.torrent, nil)
 
-			// Verify the data is stored as-is (not executed or interpreted)
-			// The actual shell escaping happens in shellJoin when building commands
 			assert.NotEmpty(t, data[tt.checkKey])
 
 			if tt.checkKey == "name" {
@@ -934,7 +932,6 @@ func TestBuildCommand_Windows(t *testing.T) {
 		cmd, _ := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
 		assertWindowsCmdPath(t, cmd.Path)
-		// start would make cmd.exe parse the arguments a second time.
 		assert.Equal(t, []string{"cmd.exe", "/d", "/e:on", "/v:off", "/s", "/k", program.Path, "arg1", "arg2"}, cmd.Args)
 		assert.Contains(t, cmd.Env, "QUI_EXTERNAL_PROGRAM_PATH="+program.Path)
 	})

@@ -17,20 +17,12 @@ export interface FieldControlProps {
 
 interface FieldProps {
   label: ReactNode
-  /** Field help, in a tooltip after the label. */
   help?: ReactNode
-  /** Text under the control that the user reads before a choice, or a computed preview. */
   description?: ReactNode
-  /** A validation message. It shows under the control, in place of the description. */
   error?: ReactNode
-  /**
-   * The control. An element gets the id and the descriptions of the field. A function gets them as props, for a
-   * control whose root takes no id, such as a Select: pass them to its SelectTrigger.
-   */
   children: ReactNode | ((control: FieldControlProps) => ReactNode)
 }
 
-/** One labelled control in a form or a section: the label above, the control, then the description or the error. */
 export function Field({ label, help, description, error, children }: FieldProps) {
   const id = useId()
   const noteId = useId()

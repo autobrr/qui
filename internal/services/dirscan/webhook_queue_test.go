@@ -35,7 +35,6 @@ func TestMergeWebhookScanRoots(t *testing.T) {
 	))
 }
 
-// regression: #2919
 func TestMergeWebhookScanRootsKeepsABackslashInASlashName(t *testing.T) {
 	t.Parallel()
 
@@ -46,7 +45,6 @@ func TestMergeWebhookScanRootsKeepsABackslashInASlashName(t *testing.T) {
 	require.Equal(t, dir, mergeWebhookScanRoots(fsops.SlashPaths, dir, target, "/data/lib/other"))
 }
 
-// regression: #2919
 func TestMergeWebhookScanRootsStaysInsideAnEditedDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -126,7 +124,6 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond)
 }
 
-// On Windows only the slash grammar keeps these roots as the remote host writes them. Linux reads both the same.
 func TestStartWebhookScan_MergesInTheDirectorysOwnGrammar(t *testing.T) {
 	ctx := t.Context()
 	service, store, created := newDirScanTestService(t)
@@ -166,8 +163,6 @@ func TestWebhookScanRootWithoutABackendPool(t *testing.T) {
 	require.Equal(t, path, (&Service{}).WebhookScanRoot(t.Context(), &models.DirScanDirectory{TargetInstanceID: 1}, path))
 }
 
-// waitForRunFailed waits until the run fails and returns it. The test service
-// has no filesystem backend, so each run that starts fails at validation.
 func waitForRunFailed(t *testing.T, store *models.DirScanStore, runID int64) *models.DirScanRun {
 	t.Helper()
 	var run *models.DirScanRun

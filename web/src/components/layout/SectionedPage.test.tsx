@@ -21,7 +21,6 @@ type Section = "a" | "b"
 
 type Width = "phone" | "sideways" | "desktop"
 
-/** Returns a resize to another width, which tells the media queries that listen. */
 function stubWidth(initial: Width) {
   let kind = initial
   const listeners = new Set<() => void>()
@@ -86,11 +85,9 @@ describe("SectionedPage", () => {
     expect(onSectionChange).toHaveBeenCalledTimes(1)
   })
 
-  // regression: #4233
   it("returns to the menu in place when a link opened the section, also after a tap on another section", () => {
     stubWidth("phone")
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
-    // A link, for example from the command palette, opens Beta with no tap in the menu.
     const { onSectionChange, rerender } = renderPage("b")
     fireEvent.click(screen.getByRole("button", { name: "Settings" }))
 
@@ -100,7 +97,6 @@ describe("SectionedPage", () => {
     rerender(undefined)
     fireEvent.click(screen.getByRole("button", { name: "Beta" }))
     rerender("b")
-    // A link in Beta opens Alpha with a new history entry, so the entry before Alpha is Beta, not the menu.
     rerender("a")
     fireEvent.click(screen.getByRole("button", { name: "Settings" }))
 
@@ -108,14 +104,12 @@ describe("SectionedPage", () => {
     expect(onSectionChange).toHaveBeenLastCalledWith(undefined, { replace: true })
   })
 
-  // regression: #4233
   it("goes back to the menu in place when links left the section that the menu opened and then opened it again", () => {
     stubWidth("phone")
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
     const { onSectionChange, rerender } = renderPage(undefined)
     fireEvent.click(screen.getByRole("button", { name: "Beta" }))
     rerender("b")
-    // Links, for example in the bottom nav of a phone, open Alpha and then Beta, each with a new history entry.
     rerender("a")
     rerender("b")
     fireEvent.click(screen.getByRole("button", { name: "Settings" }))
@@ -124,7 +118,6 @@ describe("SectionedPage", () => {
     expect(onSectionChange).toHaveBeenLastCalledWith(undefined, { replace: true })
   })
 
-  // regression: #4233
   it("keeps what the user typed in a section when the window narrows to a phone and widens again", () => {
     const resize = stubWidth("desktop")
     renderPage("b", vi.fn(), () => <Draft />)
@@ -140,7 +133,6 @@ describe("SectionedPage", () => {
     expect(key().value).toBe("draft")
   })
 
-  // regression: #4233
   it("shows the menu first on a phone turned sideways", () => {
     stubWidth("sideways")
     renderPage(undefined)
@@ -159,7 +151,6 @@ describe("SectionedPage", () => {
     rerender("b")
     expect(main.scrollTop).toBe(0)
     main.scrollTop = 900
-    // The back gesture of the phone pops the history entry, and the route shows the menu again.
     rerender(undefined)
 
     expect(main.scrollTop).toBe(300)

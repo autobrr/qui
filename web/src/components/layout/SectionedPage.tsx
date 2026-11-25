@@ -10,52 +10,32 @@ import { cn } from "@/lib/utils"
 import { ChevronRight } from "lucide-react"
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
-/** A group without a label shows its sections without a heading. Labels arrive translated. */
 export interface SectionNavGroup<S extends string> {
   label?: string
   sections: readonly { value: S; label: string }[]
 }
 
 interface SectionedPageProps<S extends string> {
-  /** The title of the page. It is also the name of the menu and the label of the link back to the menu. */
   title: string
   description?: ReactNode
-  /** A short status beside the title of the page, see Page. A phone shows it only with the menu. */
   badge?: ReactNode
-  /** Content above the menu and the section on each screen, for example a warning that applies to all sections. */
   notice?: ReactNode
   groups: readonly SectionNavGroup<S>[]
-  /** The section in the URL. Without one, a wide screen shows defaultSection, and a phone shows the menu. */
   section: S | undefined
   defaultSection: S
-  /**
-   * Shows a section, or the menu of a phone for undefined. With replace false, add a history entry, so that the back
-   * gesture of the phone returns to the menu. With replace true, replace the current entry.
-   */
   onSectionChange: (section: S | undefined, options: { replace: boolean }) => void
-  /** The content of the section that shows. A phone does not call it while it shows the menu. */
   children: (section: S) => ReactNode
 }
 
-/**
- * A page with sections, for example Settings. A wide screen shows a side menu next to the section. A phone shows the
- * menu as a list first, then the section that the user taps, with a link back to the list. The side menu needs 768 px,
- * more than the 640 px where the kit changes its cards and editors, so a small tablet gets the list with wide cards.
- */
 export function SectionedPage<S extends string>({ title, description, badge, notice, groups, section, defaultSection, onSectionChange, children }: SectionedPageProps<S>) {
   const rootRef = useRef<HTMLDivElement>(null)
   const sideways = useMediaQuery(SIDEWAYS_PHONE_QUERY)
   const phone = useIsMobile() || sideways
   const showMenu = phone && section === undefined
-  // tapped: the section that a tap in the menu of a phone opened. While it shows, the history entry before it is the menu.
-  // A link or the command palette can then open another section, and that one has no menu entry before it, also when a
-  // later link opens the tapped section again. seen: the section of the last render, to notice that change.
   const [menuTap, setMenuTap] = useState<{ tapped: S | undefined; seen: S | undefined }>({ tapped: undefined, seen: section })
   if (menuTap.seen !== section) setMenuTap({ tapped: section === menuTap.tapped ? section : undefined, seen: section })
-  // Where the menu of a phone was scrolled to, so that a return to it, also with the back gesture, lands there again.
   const menuScrollTop = useRef(0)
 
-  // The router resets only the window scroll, and the page scrolls inside <main>.
   const scroller = () => rootRef.current?.closest("main")
 
   useLayoutEffect(() => {
@@ -96,7 +76,6 @@ export function SectionedPage<S extends string>({ title, description, badge, not
   const sectionLabel = groups.flatMap((group) => group.sections).find((entry) => entry.value === shown)?.label ?? title
   const header = phone ? { title: sectionLabel, back: { label: title, onClick: backToMenu } } : { title, description, badge }
 
-  // One tree for both widths, so that a resize across the width of a phone keeps the section and what the user typed.
   return (
     <Page {...header}>
       {notice}

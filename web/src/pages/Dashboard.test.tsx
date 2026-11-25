@@ -69,7 +69,6 @@ describe("useAllInstanceStats fallback poll", () => {
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     )
     const { unmount } = renderHook(() => useAllInstanceStats(instances, { enabled: true }), { wrapper })
-    // The stream state reaches the poll on the next 2 s flush.
     await act(async () => { await vi.advanceTimersByTimeAsync(2500) })
     mocks.getTorrents.mockClear()
 
@@ -100,7 +99,6 @@ describe("useAllInstanceStats fallback poll", () => {
 })
 
 describe("useAllInstanceStats disk", () => {
-  // regression: #4305
   it("drops the measured disk when the instance loses its file access", async () => {
     mocks.state = healthy
     mocks.getTorrents.mockResolvedValue({ torrents: [], total: 0 })

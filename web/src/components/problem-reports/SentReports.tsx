@@ -21,15 +21,10 @@ import { parseJsonNumber, readClientSetting, useClientSetting, writeClientSettin
 import { cn } from "@/lib/utils"
 import type { ListedProblemReport } from "@/types"
 
-/**
- * The newest status change, in milliseconds since the epoch, that the user saw in Sent reports. It is a time of qui's
- * server, so the clock of the browser does not move the count.
- */
 const SEEN_AT_KEY = "qui-problem-reports-seen-at"
 const SEEN_AT = { defaultValue: null as number | null, parse: parseJsonNumber }
 const TITLE_LENGTH = 80
 
-/** The number of reports whose status changed after the send and after seenAt. */
 function changedCount(reports: ListedProblemReport[], seenAt: number | null): number {
   return reports.filter((report) => {
     const changedAt = Date.parse(report.statusChangedAt)
@@ -37,7 +32,6 @@ function changedCount(reports: ListedProblemReport[], seenAt: number | null): nu
   }).length
 }
 
-/** The footer button of the report form that opens Sent reports. Renders nothing until a report exists. */
 export function SentReportsEntry({ reports }: { reports: ListedProblemReport[] | undefined }) {
   const { t } = useTranslation("common")
   const [seenAt] = useClientSetting(SEEN_AT_KEY, SEEN_AT)
@@ -55,7 +49,7 @@ export function SentReportsEntry({ reports }: { reports: ListedProblemReport[] |
       {t("problemReports.sentReports.title")}
       {changed > 0 && (
         <>
-          <span aria-hidden className="rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 tabular-nums text-primary-foreground">{changed}</span>
+          <span aria-hidden className="rounded-full bg-primary px-1.5 text-10 font-semibold leading-4 tabular-nums text-primary-foreground">{changed}</span>
           {" "}
           <span className="sr-only">{t("problemReports.sentReports.changed", { count: changed })}</span>
         </>
@@ -64,7 +58,6 @@ export function SentReportsEntry({ reports }: { reports: ListedProblemReport[] |
   )
 }
 
-/** The Sent reports view of the dialog. Opening it marks every Report status as seen. */
 export function SentReportsView() {
   const { t } = useTranslation("common")
   const { data } = useSentReports()
@@ -79,7 +72,6 @@ export function SentReportsView() {
   useEffect(() => {
     if (!data || data.length === 0) return
     const newest = Math.max(...data.map((report) => Date.parse(report.statusChangedAt)))
-    // Another browser can have seen newer statuses than this list holds.
     if (newest > (readClientSetting(SEEN_AT_KEY, SEEN_AT) ?? -Infinity)) writeClientSetting(SEEN_AT_KEY, newest)
   }, [data])
 
@@ -116,7 +108,7 @@ function NotSentRow({ text }: { text: string }) {
   return (
     <li className="flex items-start gap-3 rounded-md px-2 py-1.5 hover:bg-accent/60">
       <span className="mt-1.5 flex h-2 w-4 items-center justify-center">
-        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-yellow-500 ring-[3px] ring-yellow-500/20" />
+        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-yellow-500 ring-3 ring-yellow-500/20" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block break-words text-sm font-medium">{draftTitle(text)}</span>
@@ -157,10 +149,8 @@ function SentReportRow({ report }: { report: ListedProblemReport }) {
   const { t } = useTranslation("common")
   const { formatDateOnly } = useDateTimeFormatters()
   const queryClient = useQueryClient()
-  // One mutation for each row, so that a second Delete does not free the button of the first.
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteProblemReport(report.id),
-    // A list that is still loading, also one asked for during the Delete, would bring the row back.
     onSuccess: async () => {
       await queryClient.cancelQueries({ queryKey: SENT_REPORTS_KEY })
       queryClient.setQueryData<ListedProblemReport[]>(SENT_REPORTS_KEY, (rows) => rows?.filter((row) => row.id !== report.id))
@@ -208,7 +198,6 @@ function ReportStatus({ report }: { report: ListedProblemReport }) {
   )
 }
 
-/** A dot with one look for each Report status. */
 function StatusDot({ report }: { report: ListedProblemReport }) {
   const open = report.status === "issue" && report.issue?.closed !== true
   const received = report.status === "received"
@@ -216,8 +205,8 @@ function StatusDot({ report }: { report: ListedProblemReport }) {
     <span
       className={cn(
         "inline-flex h-2 w-2 shrink-0 rounded-full",
-        received && "bg-muted-foreground ring-[3px] ring-muted-foreground/20",
-        open && "bg-green-500 ring-[3px] ring-green-500/20",
+        received && "bg-muted-foreground ring-3 ring-muted-foreground/20",
+        open && "bg-green-500 ring-3 ring-green-500/20",
         !received && !open && "border border-muted-foreground/60"
       )}
     />

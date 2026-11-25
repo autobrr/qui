@@ -18,8 +18,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// The bytes that one cross-seed webhook check allocates on a library of
-// biglib.Size torrents (ADR 0051).
 func TestMemoryBudget_WebhookCheck(t *testing.T) {
 	const budget = 10 * biglib.MB
 
@@ -57,6 +55,5 @@ func TestMemoryBudget_WebhookCheck(t *testing.T) {
 	})
 	t.Logf("one webhook check allocates %.1f MB", float64(allocated)/biglib.MB)
 	require.LessOrEqual(t, allocated, uint64(budget))
-	// The seal makes this sync panic with the hash of a torrent that a check changed.
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 }

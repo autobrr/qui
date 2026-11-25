@@ -18,12 +18,9 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// renameOnlySyncManager extends the reflink fallback mock with rename bookkeeping:
-// RenameTorrentFile mutates the files map so renameFileWithVerification can verify
-// the new path via GetTorrentFilesBatch, and BulkAction records actions.
 type renameOnlySyncManager struct {
 	*reflinkFallbackSafetySyncManager
-	bulkActions []string // "action:hash"
+	bulkActions []string
 }
 
 func (m *renameOnlySyncManager) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
@@ -45,9 +42,6 @@ func (m *renameOnlySyncManager) RenameTorrentFile(_ context.Context, _ int, hash
 	return nil
 }
 
-// Synthetic names per repo rule; only the DoVi/DV token differs, which survives
-// normalizeFileKey as distinct keys, so only the size-only sole-candidate
-// fallback can pair them (issue #2272).
 const (
 	renameOnlySourceFile    = "Example.Film.2024.2160p.WEB-DL.DDP5.1.Atmos.DoVi.HDR10.H.265-EXGRP.mkv"
 	renameOnlyCandidateFile = "Example.Film.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-EXGRP.mkv"
@@ -125,9 +119,6 @@ func TestProcessCrossSeedCandidate_RenameOnlySingleFileSkipsRecheckSkip(t *testi
 func TestProcessCrossSeedCandidate_RenameOnlyLinkFallbackSkipsRecheckSkip(t *testing.T) {
 	t.Parallel()
 
-	// Reflink mode with an empty base dir forces the link-mode bail-out into the
-	// regular-mode fallback (reflink_fallback_safety_test.go pattern); the
-	// rename-only pair must clear the fallback's full-recheck demand.
 	instance := &models.Instance{
 		ID:                       1,
 		UseReflinks:              true,
@@ -173,8 +164,6 @@ func TestProcessCrossSeedCandidate_ExactLinkFullRecheckFallback(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// The matched files do not exist on disk, so no base dir passes the
-			// same-filesystem probe: the full-recheck fallback, not the soft one.
 			instance := &models.Instance{
 				ID:                       1,
 				UseReflinks:              true,
@@ -209,8 +198,6 @@ func TestProcessCrossSeedCandidate_ExactLinkFullRecheckFallback(t *testing.T) {
 func TestProcessCrossSeedCandidate_RenameOnlyStillRechecksWithoutSkipRecheck(t *testing.T) {
 	t.Parallel()
 
-	// SkipRecheck OFF is the default config: a rename-only pair must keep the
-	// post-alignment recheck — the bypass is scoped strictly to SkipRecheck ON.
 	instance := &models.Instance{ID: 1}
 	sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
 	candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
@@ -238,9 +225,6 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 		wantStatus     string
 	}{
 		{
-			// Episode into season pack: alignment deliberately skips file renames
-			// (shouldAlignFilesWithCandidate false), so the bypass must not apply
-			// even though the episode pairs with a same-size pack file.
 			name:        "episode into season pack still skips",
 			sourceFiles: qbt.TorrentFiles{{Name: "Example.Show.S01E01.2160p.WEB-DL.DDP5.1.DV.H.265-EXGRP.mkv", Size: renameOnlySize}},
 			candidateFiles: qbt.TorrentFiles{
@@ -251,7 +235,6 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 			wantStatus:  "skipped_recheck",
 		},
 		{
-			// The nfo has no candidate counterpart: genuinely missing content.
 			name: "genuine extra file still skips",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: renameOnlySourceFile, Size: renameOnlySize},
@@ -261,8 +244,6 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 			wantStatus:     "skipped_recheck",
 		},
 		{
-			// Two same-size candidates: the size-only fallback must refuse the
-			// ambiguous bucket, so the renamed files stay unmatched.
 			name: "same-size ambiguity still skips",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Example.Show.S01/Example.Show.S01E01.2160p.DV.WEB-DL-EXGRP.mkv", Size: renameOnlySize},
@@ -306,8 +287,6 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 	}
 }
 
-// failingRecheckSyncManager fails the recheck while recheckErr is set, the way a
-// stalled qBittorrent fails the post-add readiness wait (issue #2821).
 type failingRecheckSyncManager struct {
 	qbittorrentSync
 	recheckErr error
@@ -345,8 +324,6 @@ func TestProcessCrossSeedCandidate_FailedRecheckIsQueued(t *testing.T) {
 
 				require.True(t, result.Success, "message: %s", result.Message)
 				require.NotContains(t, result.Message, "manual intervention required")
-				// skip_checking reports 100% before any recheck, so each poll sends
-				// the recheck again and never resumes.
 				actions, _ := script.wait()
 				require.Equal(t, []string{"recheck:" + newHash, "recheck:" + newHash, "recheck:" + newHash}, actions)
 			})

@@ -25,7 +25,6 @@ func cloneAppPreferences(prefs *qbt.AppPreferences) *qbt.AppPreferences {
 	return &clone
 }
 
-// GetAppPreferences returns cached qBittorrent app preferences, refreshing them when stale.
 func (c *Client) GetAppPreferences(ctx context.Context) (*qbt.AppPreferences, error) {
 	if c == nil || c.Client == nil {
 		return nil, errors.New("qbittorrent client unavailable")
@@ -46,9 +45,6 @@ func (c *Client) GetAppPreferences(ctx context.Context) (*qbt.AppPreferences, er
 
 	prefs, err := c.refreshAppPreferences(ctx)
 	if err != nil {
-		// Mirror GetAppInfo: a saturated qBittorrent WebUI times out even cheap
-		// calls, so serve the last known preferences instead of failing the
-		// caller; only surface the error when nothing is cached.
 		if cached != nil {
 			log.Debug().
 				Err(err).
@@ -81,7 +77,6 @@ func (c *Client) refreshAppPreferences(ctx context.Context) (*qbt.AppPreferences
 	return cloneAppPreferences(cloned), nil
 }
 
-// GetCachedAppPreferences returns the last cached app preferences without triggering a refresh.
 func (c *Client) GetCachedAppPreferences() *qbt.AppPreferences {
 	c.preferencesMu.RLock()
 	defer c.preferencesMu.RUnlock()
@@ -89,9 +84,6 @@ func (c *Client) GetCachedAppPreferences() *qbt.AppPreferences {
 	return cloneAppPreferences(c.preferencesCache)
 }
 
-// GetLastAppPreferences returns the app preferences that qui read last, of
-// any age. It asks qBittorrent only while qui has read none yet. Use it where
-// an old value is good enough and the caller must not wait for qBittorrent.
 func (c *Client) GetLastAppPreferences(ctx context.Context) (*qbt.AppPreferences, error) {
 	if cached := c.GetCachedAppPreferences(); cached != nil {
 		return cached, nil
@@ -99,7 +91,6 @@ func (c *Client) GetLastAppPreferences(ctx context.Context) (*qbt.AppPreferences
 	return c.GetAppPreferences(ctx)
 }
 
-// InvalidateAppPreferencesCache clears the cached preferences to force a refresh on next access.
 func (c *Client) InvalidateAppPreferencesCache() {
 	c.preferencesMu.Lock()
 	c.preferencesCache = nil

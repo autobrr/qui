@@ -14,12 +14,8 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// cacheMaintenanceTimeout bounds the detached touch write. It outlives the
-// read that triggered it, so without a deadline a stalled write would hold a
-// connection for as long as the process runs.
 const cacheMaintenanceTimeout = 5 * time.Second
 
-// TorznabTorrentCacheEntry represents a cached torrent payload downloaded from an indexer.
 type TorznabTorrentCacheEntry struct {
 	IndexerID   int
 	CacheKey    string
@@ -31,19 +27,15 @@ type TorznabTorrentCacheEntry struct {
 	TorrentData []byte
 }
 
-// TorznabTorrentCacheStore manages cached Torznab torrent files.
 type TorznabTorrentCacheStore struct {
 	db      dbinterface.Querier
 	touches sync.WaitGroup
 }
 
-// NewTorznabTorrentCacheStore constructs a new cache store.
 func NewTorznabTorrentCacheStore(db dbinterface.Querier) *TorznabTorrentCacheStore {
 	return &TorznabTorrentCacheStore{db: db}
 }
 
-// Fetch returns cached torrent data when available and not expired.
-// maxAge <= 0 disables expiration checks.
 func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cacheKey string, maxAge time.Duration) ([]byte, bool, error) {
 	if indexerID <= 0 || cacheKey == "" {
 		return nil, false, errors.New("invalid cache lookup parameters")
@@ -70,12 +62,9 @@ func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cac
 	}
 
 	if maxAge > 0 && time.Since(cachedAt) > maxAge {
-		// Report a miss and leave the row. Cleanup owns reclamation: a delete
-		// of this id here could run after Store rewrites it.
 		return nil, false, nil
 	}
 
-	// Update last_used timestamp, ignoring failures so we don't block serving cached data
 	s.touches.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cacheMaintenanceTimeout)
 		defer cancel()
@@ -85,13 +74,10 @@ func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cac
 	return data, true, nil
 }
 
-// WaitTouches waits for the last_used touches that Fetch started. A test calls
-// it before it closes the database.
 func (s *TorznabTorrentCacheStore) WaitTouches() {
 	s.touches.Wait()
 }
 
-// Store inserts or updates a cached torrent payload.
 func (s *TorznabTorrentCacheStore) Store(ctx context.Context, entry *TorznabTorrentCacheEntry) error {
 	if entry == nil {
 		return errors.New("entry cannot be nil")
@@ -137,7 +123,6 @@ func (s *TorznabTorrentCacheStore) Store(ctx context.Context, entry *TorznabTorr
 	return nil
 }
 
-// Cleanup removes entries older than the provided age, returning the number of deleted rows.
 func (s *TorznabTorrentCacheStore) Cleanup(ctx context.Context, olderThan time.Duration) (int64, error) {
 	if olderThan <= 0 {
 		return 0, nil

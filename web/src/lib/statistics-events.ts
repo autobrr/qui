@@ -12,13 +12,8 @@ export const EVENTS = ["added", "completed", "deleted"] as const
 
 export type EventKind = (typeof EVENTS)[number]
 
-/** The events of one UTC day. start is the local midnight of the date of that day, so that its label shows the stored date. */
 export type EventDay = { start: number } & Record<EventKind, number>
 
-/**
- * Adds the library rows of the instances into one day for each UTC day that the period overlaps, because qui counts the
- * events for each UTC day. A period with no start begins at the first recording.
- */
 export function buildEventDays(rowsByInstance: TransferHistoryLibraryRow[][], period: { from?: Date; to: Date }, since: Date | undefined): EventDay[] | undefined {
   const start = period.from ?? since
   if (!start) {

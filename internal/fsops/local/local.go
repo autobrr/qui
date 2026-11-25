@@ -88,13 +88,6 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		walkErr := filepath.WalkDir(walked, func(path string, d fs.DirEntry, walkErr error) error {
 			return visitWalkEntry(ctx, ch, root, walked, opts, path, d, walkErr)
 		})
-		// Surface a walk abort as a final entry so the caller knows the walk
-		// did not complete. Per-entry enumeration errors (unreadable
-		// subdirectory, permission denied on a child) are emitted inline
-		// above and do NOT abort the walk, so this fires only when the walk
-		// itself returned an error — in practice the root-stat TOCTOU case,
-		// where the callback propagates walkErr. Context cancellation is not
-		// an error — the caller initiated it.
 		if walkErr != nil && ctx.Err() == nil {
 			entry := fsops.WalkEntry{Err: walkErr,
 				Path: root}
@@ -107,8 +100,6 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	return ch, nil
 }
 
-// filepath.WalkDir does not descend a root that is a symlink, so a followed
-// root walks its target and reports each entry under root.
 func walkTarget(root string, followRoot bool) (string, error) {
 	if !followRoot {
 		return root, nil
@@ -124,8 +115,6 @@ func visitWalkEntry(ctx context.Context, ch chan<- fsops.WalkEntry, root, walked
 		return fs.SkipAll
 	}
 
-	// d is nil when filepath.WalkDir cannot stat the root (TOCTOU
-	// between our pre-check and the walk's internal stat).
 	if d == nil {
 		return walkErr
 	}
@@ -174,13 +163,6 @@ func newWalkEntry(root, path string, d fs.DirEntry, walkErr error, opts fsops.Wa
 
 	fi, err := d.Info()
 	if err != nil {
-		// An entry that vanished or can't be stat'd is skipped by
-		// default, not surfaced: consumers (orphanscan, dirscan)
-		// skipped such files pre-migration, and emitting it as Err
-		// would read as a walk failure and abort whole scans. Err
-		// stays reserved for enumeration-level failures. Delete
-		// preflights opt in via EmitStatErrors so they can fail
-		// closed instead.
 		if !opts.EmitStatErrors {
 			return entry, false
 		}
@@ -197,9 +179,6 @@ func newWalkEntry(root, path string, d fs.DirEntry, walkErr error, opts fsops.Wa
 	if opts.WantFileID && entry.Mode.IsRegular() {
 		fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
 		if fidErr != nil {
-			// Identity failure must not read as an unreadable
-			// entry — that would abort whole scans over one odd
-			// file. Callers that need identity check FileIDErr.
 			entry.FileIDErr = fidErr
 		} else {
 			entry.FileID = fid
@@ -301,10 +280,6 @@ func osFileInfoToFsops(fi os.FileInfo, path string, follow bool) *fsops.FileInfo
 	}
 }
 
-// osFileInfoToLstat converts host metadata, following tags only for Stat results.
-// Identity failure degrades to FileIDErr rather than failing the conversion:
-// callers that only want size/mtime keep working, callers that need identity
-// check FileIDErr.
 func osFileInfoToLstat(fi os.FileInfo, path string, follow bool) *fsops.LstatInfo {
 	info := &fsops.LstatInfo{
 		FileInfo: *osFileInfoToFsops(fi, path, follow),

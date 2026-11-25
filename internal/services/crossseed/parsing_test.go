@@ -16,10 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Discussion #2262: torrents in the wild encode announce-list as a bencode
-// string instead of a list of tiers. The parse entry points must tolerate
-// this; the leniency lives in autobrr/go-torrent, so this pins the contract
-// across dependency bumps.
 func TestParseTorrentTolerantOfMalformedAnnounceList(t *testing.T) {
 	info := "d6:lengthi1e4:name8:Test.Rel12:piece lengthi16384e6:pieces20:" + strings.Repeat("a", 20) + "e"
 	tests := []struct {
@@ -27,8 +23,6 @@ func TestParseTorrentTolerantOfMalformedAnnounceList(t *testing.T) {
 		announceList string
 		wantDomain   string
 	}{
-		// An empty-string announce-list is dropped, so the domain falls back
-		// to announce; a bare URL string is salvaged as a single tier.
 		{name: "empty string", announceList: "0:", wantDomain: "tracker.example.org"},
 		{name: "url string", announceList: "29:https://other.example.net/ann", wantDomain: "other.example.net"},
 	}
@@ -39,8 +33,6 @@ func TestParseTorrentTolerantOfMalformedAnnounceList(t *testing.T) {
 			meta, err := ParseTorrentMetadataWithInfo(data)
 			require.NoError(t, err)
 			assert.Equal(t, "Test.Rel", meta.Name)
-			// SHA-1 of the raw info substring: the hash must come from the
-			// bytes as served, not a re-encoded form.
 			assert.Equal(t, "1698fdcc4e79d4af9ed4406b72639ccdeec12c61", meta.HashV1)
 
 			assert.Equal(t, tt.wantDomain, ParseTorrentAnnounceDomain(data))
@@ -48,8 +40,6 @@ func TestParseTorrentTolerantOfMalformedAnnounceList(t *testing.T) {
 	}
 }
 
-// TestDetermineContentType tests the unified content type detection including
-// expanded JAV/RIAJ/date/xxx corner cases.
 func TestDetermineContentType(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -327,9 +317,6 @@ func TestDetermineContentType(t *testing.T) {
 	}
 }
 
-// TestDetermineContentTypeWithFiles covers discussion #1734: file extensions
-// are ground truth for the audio/video split, so a byte-weighted extension
-// signal overrides the name-based type when the two disagree.
 func TestDetermineContentTypeWithFiles(t *testing.T) {
 	audioFiles := qbt.TorrentFiles{
 		{Name: "Artist - Album (2019) [FLAC]/01 - Track.flac", Size: 40_000_000},
@@ -369,9 +356,6 @@ func TestDetermineContentTypeWithFiles(t *testing.T) {
 			wantIsMusic: true,
 		},
 		{
-			// The music-to-video name rescue must not undo the file signal:
-			// a music parse with a video-looking token stays music when the
-			// bytes are audio.
 			name:        "audio files beat video tokens in the name",
 			release:     rls.Release{Type: rls.Music, Title: "Test Album", Resolution: "1080p"},
 			files:       audioFiles,
@@ -424,8 +408,6 @@ func TestDetermineContentTypeWithFiles(t *testing.T) {
 			wantIsMusic: false,
 		},
 		{
-			// Booklet scans outweigh individual tracks in many lossy releases;
-			// the signal weighs total bytes per class, not the largest file.
 			name:    "audio bytes dominate an album with booklet scans",
 			release: rls.Release{Type: rls.Unknown, Title: "Test Album"},
 			files: qbt.TorrentFiles{
@@ -437,7 +419,6 @@ func TestDetermineContentTypeWithFiles(t *testing.T) {
 			wantIsMusic: true,
 		},
 		{
-			// Ties go to the content class, mirroring the RED/OPS gate.
 			name:    "audio wins an exact byte tie",
 			release: rls.Release{Type: rls.Unknown, Title: "Test Album"},
 			files: qbt.TorrentFiles{
@@ -472,8 +453,6 @@ func TestDetermineContentTypeWithFiles(t *testing.T) {
 			wantIsMusic: false,
 		},
 		{
-			// #2336: the file names of a disc rip say nothing, and the folder of
-			// this one has no year or resolution, so only the layout is left.
 			name:    "a disc layout classifies as a movie when the name gives nothing",
 			release: rls.Release{Type: rls.Unknown, Title: "Some Feature DVDR"},
 			files: qbt.TorrentFiles{
@@ -484,7 +463,6 @@ func TestDetermineContentTypeWithFiles(t *testing.T) {
 			wantIsMusic: false,
 		},
 		{
-			// The layout must not overrule structure the name does supply.
 			name:    "a disc layout keeps the tv structure of the name",
 			release: rls.Release{Type: rls.Unknown, Title: "Some Show", Series: 2},
 			files: qbt.TorrentFiles{
@@ -524,9 +502,6 @@ func TestDetermineContentTypeWithFiles(t *testing.T) {
 	}
 }
 
-// TestRuleContentTypeInfo covers the category mapping rules from discussion
-// #1734: a rule names a content type as a string, and the classification must
-// come out identical to a release that parsed as that type.
 func TestRuleContentTypeInfo(t *testing.T) {
 	tests := []struct {
 		contentType string
@@ -562,7 +537,6 @@ func TestRuleContentTypeInfo(t *testing.T) {
 	}
 }
 
-// regression: #4211
 func TestParseTorrentMetadata_DirectionalControls(t *testing.T) {
 	const controls = "\u200e\u200f\u202a\u202b\u202c\u202d\u202e"
 	for _, multi := range []bool{false, true} {
@@ -617,9 +591,6 @@ func TestParseTorrentMetadata_DirectionalControls(t *testing.T) {
 }
 
 func TestBuildTorrentFilesFromInfo_EmptyPathComponents(t *testing.T) {
-	// libtorrent maps an empty path component to "_" instead of dropping it, so the
-	// hardlink/reflink tree has to be built at that same path or qBittorrent reports
-	// the injected torrent as missing data.
 	info := metainfo.Info{
 		Name:        "Release",
 		PieceLength: 262144,
@@ -637,8 +608,6 @@ func TestBuildTorrentFilesFromInfo_EmptyPathComponents(t *testing.T) {
 	assert.Equal(t, "Release/sub/_/other.mkv", files[1].Name)
 }
 
-// The cached parser turns an episode range into a pack. A music name with an
-// episode token must still read as music, or the music query loses its artist.
 func TestParseMusicReleaseFromTorrentName_EpisodeRangeKeepsArtist(t *testing.T) {
 	m := matcher{releaseCache: NewReleaseCache()}
 	release := m.parseMusicReleaseFromTorrentName(&rls.Release{Type: rls.Music}, "Some.Band-Podcast.Series.E05.E06-FLAC-2021-GRP")

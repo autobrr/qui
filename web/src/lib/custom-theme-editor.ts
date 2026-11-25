@@ -7,7 +7,6 @@ import { THEME_NAME_PATTERN } from "@/utils/themeParser"
 
 const MAX_THEME_ID_LENGTH = 64
 
-/** The file id of a new theme: the name in lowercase, each run of other characters as one "-". */
 export function themeIdFromName(name: string): string {
   return name
     .toLowerCase()
@@ -21,7 +20,6 @@ export function readThemeName(css: string): string | null {
   return css.match(THEME_NAME_PATTERN)?.[1].trim() ?? null
 }
 
-/** Sets the `@name` line of css to name, or adds a header with one. */
 export function writeThemeName(css: string, name: string): string {
   const safeName = name.replace(/\*\/|\/\*|[\r\n]/g, " ").replace(/\s+/g, " ").trim()
   const match = css.match(THEME_NAME_PATTERN)

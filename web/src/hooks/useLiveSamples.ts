@@ -7,7 +7,6 @@ import { api } from "@/lib/api"
 import { LIVE_SLOT_MS } from "@/lib/dashboard-overview"
 import { useQuery } from "@tanstack/react-query"
 
-/** Reads the Live samples of the server while enabled, again each 2 seconds while the page is visible, and at once when the page shows again. */
 export function useLiveSamples(enabled: boolean) {
   return useQuery({
     queryKey: ["live-samples"],

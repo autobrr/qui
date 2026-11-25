@@ -17,8 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// newStubClient returns a client of a qbtstub that reports version, with the
-// version read once.
 func newStubClient(t *testing.T, version string) (*Client, *qbtstub.Server) {
 	t.Helper()
 	stub := qbtstub.New(t, "/data")
@@ -28,7 +26,6 @@ func newStubClient(t *testing.T, version string) (*Client, *qbtstub.Server) {
 	return client, stub
 }
 
-// Each row has the highest version below the cut-off and the lowest at it.
 func TestClientSupports(t *testing.T) {
 	t.Parallel()
 
@@ -46,7 +43,6 @@ func TestClientSupports(t *testing.T) {
 		{CapTorrentExport, []string{"2.8.10"}, []string{"2.8.11"}},
 		{CapSubcategories, []string{"2.8.19"}, []string{"2.9.0"}},
 		{CapSetRSSFeedURL, []string{"2.9.0"}, []string{"2.9.1"}},
-		// qBittorrent 4.6.x exports .torrent files without their trackers.
 		{CapExportOmitsTrackers, []string{"2.9.0", "2.9.4", "2.11.4"}, []string{"2.9.1", "2.9.3"}},
 		{CapCategorySavePathNesting, []string{"2.9.3"}, []string{"2.10.0"}},
 		{CapLiveReannounce, []string{"2.9.3"}, []string{"2.10.0"}},
@@ -54,7 +50,6 @@ func TestClientSupports(t *testing.T) {
 		{CapTorrentCreation, []string{"2.11.1"}, []string{"2.11.2"}},
 		{CapPathAutocomplete, []string{"2.11.1"}, []string{"2.11.2"}},
 		{CapTestEmail, []string{"2.11.1"}, []string{"2.11.2"}},
-		// qBittorrent 5.0 is 2.11.2, and 5.1 is the first to report last_external_address_v4.
 		{CapTransferAndShare, []string{"2.11.2"}, []string{"2.11.3"}},
 		{CapSetTags, []string{"2.11.3"}, []string{"2.11.4"}},
 		{CapTrackerHealth, []string{"2.11.3"}, []string{"2.11.4"}},
@@ -85,9 +80,6 @@ func TestClientSupports(t *testing.T) {
 	}
 }
 
-// A saturated WebUI times out and is still the same qBittorrent, and a
-// request that the caller stops says nothing about the instance.
-// regression: #3765
 func TestClientKeepsTheVersionWhenAReadTimesOutOrIsCancelled(t *testing.T) {
 	t.Parallel()
 
@@ -114,7 +106,6 @@ func TestClientKeepsTheVersionWhenAReadTimesOutOrIsCancelled(t *testing.T) {
 	}
 }
 
-// A proxy can answer the version request with its login page.
 func TestClientSupportsNothingWhileTheVersionIsUnknown(t *testing.T) {
 	t.Parallel()
 
@@ -143,8 +134,6 @@ func TestClientSupportsNothingWhileTheVersionIsUnknown(t *testing.T) {
 	}
 }
 
-// forgetVersion makes the version unknown on a client that stays healthy, as a
-// failed read outside the health check does.
 func forgetVersion(t *testing.T, client *Client, stub *qbtstub.Server) {
 	t.Helper()
 	good := stub.WebAPIVersion
@@ -154,9 +143,6 @@ func forgetVersion(t *testing.T, client *Client, stub *qbtstub.Server) {
 	stub.WebAPIVersion = good
 }
 
-// A share-limit edit with an unknown version reads it again, and does not
-// drop the action and still report success.
-// regression: #3765
 func TestShareLimitEditReadsAnUnknownVersion(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -179,9 +165,6 @@ func TestShareLimitEditReadsAnUnknownVersion(t *testing.T) {
 		"an edit that cannot read the version fails, not sends without the action")
 }
 
-// A backup of qBittorrent 4.6 with an unknown version reads it again, so it
-// still patches the trackers into the exported files.
-// regression: #3765
 func TestOmitsTrackersOnExportReadsAnUnknownVersion(t *testing.T) {
 	t.Parallel()
 	client, stub := newStubClient(t, "2.9.2")
@@ -199,9 +182,6 @@ func TestOmitsTrackersOnExportReadsAnUnknownVersion(t *testing.T) {
 	require.Error(t, err)
 }
 
-// versionSink records, for each sync update, whether the client had the
-// flags of the new version when the stream and automations got the update,
-// and each sync error.
 type versionSink struct {
 	client         *Client
 	liveReannounce []bool
@@ -214,8 +194,6 @@ func (s *versionSink) HandleSyncUpdate(int, qbt.SyncUpdate) {
 func (*versionSink) HandleTrackerHealthUpdated(int)     {}
 func (s *versionSink) HandleSyncError(_ int, err error) { s.errs = append(s.errs, err) }
 
-// newSyncedStubClient returns a pooled client of a qbtstub with one torrent,
-// a sync manager over it, and a sink that records each update.
 func newSyncedStubClient(t *testing.T, version string) (*Client, *qbtstub.Server, *SyncManager, *versionSink) {
 	t.Helper()
 	root := t.TempDir()
@@ -230,10 +208,6 @@ func newSyncedStubClient(t *testing.T, version string) (*Client, *qbtstub.Server
 	return client, stub, NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil), sink
 }
 
-// A restarted qBittorrent sends a full update. qui reads the version before
-// the stream, automations or the torrent list read the new list, so an
-// upgrade or a downgrade takes effect without a qui restart.
-// regression: #3760
 func TestFullSyncUpdateReadsTheVersionFirst(t *testing.T) {
 	t.Parallel()
 
@@ -257,9 +231,6 @@ func TestFullSyncUpdateReadsTheVersionFirst(t *testing.T) {
 	}
 }
 
-// A failed version read on a full update leaves the version unknown, and the
-// sync still succeeds.
-// regression: #3760
 func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.T) {
 	t.Parallel()
 	client, stub, sm, sink := newSyncedStubClient(t, "2.15.1")
@@ -275,25 +246,20 @@ func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.
 	require.Equal(t, map[int]string{1: ""}, resp.WebAPIVersions)
 }
 
-// A version read that times out on a full update also leaves the version
-// unknown. A health check keeps the old version on a timeout, but a full update
-// can come from a restarted qBittorrent with another version.
-// regression: #3760
 func TestFullSyncUpdateWithATimedOutVersionReadLeavesTheVersionUnknown(t *testing.T) {
 	t.Parallel()
 	client, stub := newStubClient(t, "2.15.1")
 
-	// go-qbittorrent calls this hook before a full update enters the cache.
+	before := stub.VersionReads()
 	stub.HangWebAPIVersion = true
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	require.NoError(t, client.refreshCapabilitiesBeforeFullUpdate(ctx, nil))
+	require.Greater(t, stub.VersionReads(), before, "the version request must reach qBittorrent")
 	require.Empty(t, client.GetWebAPIVersion())
 	require.False(t, client.Supports(CapLiveReannounce))
 }
 
-// A partial update sends no version request: only a restart can change the
-// version, and qBittorrent sends a full update after each one.
 func TestPartialSyncUpdateSendsNoVersionRequest(t *testing.T) {
 	t.Parallel()
 	client, stub, _, _ := newSyncedStubClient(t, "2.15.1")
@@ -306,8 +272,6 @@ func TestPartialSyncUpdateSendsNoVersionRequest(t *testing.T) {
 	require.Equal(t, reads, stub.VersionReads())
 }
 
-// The Unified view carries the version of each instance, so the page can ask
-// the one that changed for its capabilities again.
 func TestUnifiedViewCarriesTheVersionOfEachInstance(t *testing.T) {
 	t.Parallel()
 	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "qbittorrent-unified-versions"), make([]byte, 32))

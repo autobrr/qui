@@ -52,7 +52,6 @@ describe("ThemeLayoutSettings", () => {
     await waitFor(() => expect(split.hasAttribute("disabled")).toBe(false))
     await act(async () => split.click())
 
-    // Without the default slot, turning the split off again leaves no theme to pull.
     expect(mockApi.updateThemeSettings.mock.calls).toEqual([
       [{ themeId: "nord", mode: "dark" }, "default"],
       [{ themeId: "nord", mode: "dark" }, "mobile"],

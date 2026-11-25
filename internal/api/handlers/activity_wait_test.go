@@ -10,8 +10,6 @@ import (
 	"github.com/autobrr/qui/internal/services/activity"
 )
 
-// newActivityHub returns a hub to set as the activity publisher of a service,
-// and the channel of the events that the service publishes.
 func newActivityHub(t *testing.T) (*activity.Hub, <-chan activity.Event) {
 	t.Helper()
 	hub := activity.NewHub()
@@ -21,8 +19,6 @@ func newActivityHub(t *testing.T) (*activity.Hub, <-chan activity.Event) {
 	return hub, events
 }
 
-// waitForActivity checks done again after each activity event, until done
-// returns true. A service publishes an event after each run change.
 func waitForActivity(t *testing.T, events <-chan activity.Event, done func() bool) {
 	t.Helper()
 	for !done() {

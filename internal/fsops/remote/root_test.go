@@ -74,8 +74,6 @@ func TestRoot_RenameNeverReplaces(t *testing.T) {
 	}
 }
 
-// A new file and its folders keep the group able to write them, whatever
-// the umask of the server, so that qBittorrent there can delete them later.
 func TestRoot_CreatesFilesTheGroupCanWrite(t *testing.T) {
 	t.Parallel()
 
@@ -122,8 +120,6 @@ func TestRoot_CreateNeverOpensAnExistingFile(t *testing.T) {
 	assert.Equal(t, "theirs", string(got))
 }
 
-// Over SFTP there is no openat: each name passes the path rules, and no
-// folder of it below the root may be a symlink.
 func TestRoot_StaysInsideItsFolder(t *testing.T) {
 	t.Parallel()
 

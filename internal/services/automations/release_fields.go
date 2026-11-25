@@ -30,12 +30,9 @@ func torrentContentType(t qbt.Torrent, ctx *EvalContext) string {
 	return string(info.ContentType)
 }
 
-// torrentEffectiveName returns a stable-ish "item" identifier derived from the parsed title
-// (not including tracker-specific garbage). Used for grouping and filtering.
 func torrentEffectiveName(t qbt.Torrent, ctx *EvalContext) string {
 	r := parsedTorrentRelease(t, ctx)
 
-	// Prefer parsed title, fall back to normalized raw name.
 	title := strings.TrimSpace(r.Title)
 	if title == "" {
 		return stringutils.NormalizeForMatching(t.Name)
@@ -46,13 +43,10 @@ func torrentEffectiveName(t qbt.Torrent, ctx *EvalContext) string {
 		base = strings.ToLower(title)
 	}
 
-	// Episode == 0 means "season pack" in rls conventions.
 	if r.Series > 0 {
 		if r.Episode > 0 {
 			return fmt.Sprintf("%s|s%02de%02d", base, r.Series, r.Episode)
 		}
-		// A multi-episode range ("S01E05E06") also parses with Episode 0, but it
-		// is its own item: it must not share the season pack's group.
 		if releases.IsEpisodeRange(r) {
 			eps := make([]int, 0, 4)
 			for _, se := range r.SeriesEpisodes() {
@@ -113,8 +107,6 @@ func torrentRlsGroup(t qbt.Torrent, ctx *EvalContext) string {
 	return strings.ToUpper(strings.TrimSpace(r.Group))
 }
 
-// torrentRlsYear returns the release year parsed from the torrent name.
-// Returns 0 when no year could be parsed; the evaluator treats 0 as unknown (no match).
 func torrentRlsYear(t qbt.Torrent, ctx *EvalContext) int64 {
 	return int64(parsedTorrentRelease(t, ctx).Year)
 }

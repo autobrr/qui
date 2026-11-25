@@ -7,7 +7,6 @@ import { z } from "zod"
 
 // i18n-namespace: crossseed
 
-/** Nav sections in display order. A group without a label renders its tabs without a heading. */
 export const CROSS_SEED_NAV_GROUPS = [
   { labelKey: "nav.sources", tabs: ["rss", "webhook", "completion", "library", "directories"] },
   { labelKey: "nav.matching", tabs: ["season-packs", "matching"] },
@@ -17,12 +16,10 @@ export const CROSS_SEED_NAV_GROUPS = [
 
 export type CrossSeedTab = (typeof CROSS_SEED_NAV_GROUPS)[number]["tabs"][number]
 
-/** Tab values as they appear in the URL search parameter. The cast gives z.enum the tuple it needs. */
 export const CROSS_SEED_TABS = CROSS_SEED_NAV_GROUPS.flatMap(group => group.tabs) as [CrossSeedTab, ...CrossSeedTab[]]
 
 export const DEFAULT_CROSS_SEED_TAB: CrossSeedTab = "rss"
 
-/** An unknown or retired tab value drops to undefined, as with no tab: a wide screen shows the default tab, and a phone shows the menu. */
 export const crossSeedSearchSchema = z.object({
   tab: z.enum(CROSS_SEED_TABS).optional().catch(undefined),
 })

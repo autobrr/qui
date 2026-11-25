@@ -27,23 +27,18 @@ import { useInstanceName } from "./use-instance-name"
 interface TransferDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** The Transfer of this dialog started. The list clears its selection, as it does after a delete. */
   onStarted: () => void
   sourceInstanceId: number
   hash: string
   name: string
 }
 
-/** Below Tailwind's lg width, the summary sits below the form, out of view, so its figures sit next to Start. */
 const STACKED_QUERY = "(max-width: 1023px)"
 
-/** Below Tailwind's sm width, the footer is a column, and each line of it takes a line from the form. */
 const PHONE_QUERY = "(max-width: 639px)"
 
-/** The fade at the lower edge of a scroll area that has more below. */
 const fadeBelow = "[mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]"
 
-/** The Transfer dialog: the fields of the Transfer, and the summary of what Start does. */
 export function TransferDialog({ open, onOpenChange, onStarted, sourceInstanceId, hash, name }: TransferDialogProps) {
   const { t } = useTranslation("transfers")
   const display = useIncognitoDisplay()
@@ -59,7 +54,6 @@ export function TransferDialog({ open, onOpenChange, onStarted, sourceInstanceId
 
   const summary = useQuery({
     queryKey: ["transfers", "summary", debounced],
-    // The request stays with its summary: the summary of the last form shows while the next one loads.
     queryFn: async () => ({ request: debounced!, summary: await transfersApi.summary(debounced!) }),
     enabled: open && debounced !== null,
     retry: false,
@@ -75,16 +69,12 @@ export function TransferDialog({ open, onOpenChange, onStarted, sourceInstanceId
     onError: (error: Error) => toast.error(t("actions.failed", { message: display.text(error.message) })),
   })
 
-  // The answer of a start closes only the dialog that sent it. A dialog that the user closed before the answer is
-  // gone, and the close would hit the dialog that the user opened next.
   const closeAfterStart = () => {
     onStarted()
     onOpenChange(false)
     setValue(emptyTransferForm)
   }
 
-  // Start sends the request that the summary shows, once that summary is in, also while the browser is offline and
-  // the next summary waits.
   const settled = request !== null && JSON.stringify(request) === JSON.stringify(debounced)
   const current = settled && summary.isSuccess && !summary.isFetching && !summary.isPlaceholderData
   const canStart = current && !start.isPending
@@ -99,7 +89,6 @@ export function TransferDialog({ open, onOpenChange, onStarted, sourceInstanceId
   if (state.kind === "summary") {
     const { free, freeKnown, bytes, noFileAccess, stayOnSource } = state.summary
     const names = { source: instanceName(sourceInstanceId), target: instanceName(state.targetInstanceId) }
-    // At a target with file access, cross-seeds stay only when the user chose the way "Transfer torrent".
     if (stayOnSource > 0) warnings.push(t(noFileAccess ? "summary.crossSeedsStay" : "summary.crossSeedsStayForced", { count: stayOnSource, ...names }))
     if (freeKnown && free < bytes) warnings.push(t("summary.notEnoughSpace"))
     if (noFileAccess) warnings.push(t("summary.noFileAccess", { instance: names.target }))
@@ -107,7 +96,6 @@ export function TransferDialog({ open, onOpenChange, onStarted, sourceInstanceId
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* The frame of the Add torrent dialog: the top stays in place, so a phone keyboard does not push the title off. */}
       <DialogContent className="flex max-h-[90dvh] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:max-h-[85dvh] sm:max-w-2xl lg:max-w-5xl">
         <DialogHeader className="flex-shrink-0 border-b px-5 pt-5 pb-3 pr-12 text-left sm:px-6">
           <DialogTitle className="flex items-center gap-2">{t("dialog.title")}<BetaBadge /></DialogTitle>
@@ -152,7 +140,6 @@ export function TransferDialog({ open, onOpenChange, onStarted, sourceInstanceId
   )
 }
 
-/** The scroll area of the dialog. On a phone the form is longer than the dialog, so a fade shows that a field sits below. */
 function ScrollBody({ children }: { children: ReactNode }) {
   const body = useRef<HTMLDivElement>(null)
   const more = useMoreBelow(body, null)
@@ -163,17 +150,14 @@ type SummaryState =
   | { kind: "pickTarget" }
   | { kind: "loading" }
   | { kind: "refused"; message: string }
-  /** `current` is false while the summary of an older form shows and the next one loads. */
   | { kind: "summary"; summary: TransferSummary; current: boolean; targetInstanceId: number }
 
 interface FigureItem {
   label: string
-  /** Undefined before a summary exists. */
   text?: string
   tone?: "warning"
 }
 
-/** The figures of the summary. Every state has the same four labels, so the figures keep their place. */
 function useFigures(state: SummaryState): FigureItem[] {
   const { t } = useTranslation("transfers")
   const shown = state.kind === "summary" ? state.summary : null
@@ -194,7 +178,6 @@ const loadingOf = (state: SummaryState) => state.kind === "loading" || (state.ki
 const dimOf = (state: SummaryState) => state.kind === "summary" && !state.current && "opacity-50"
 const warningTone = "text-amber-600 dark:text-amber-400"
 
-/** What Start would start, beside the form. A fade shows when more torrents sit below. */
 function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: string; className?: string }) {
   const { t } = useTranslation("transfers")
   const figures = useFigures(state)
@@ -250,21 +233,17 @@ function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: s
   )
 }
 
-/** The figures next to Start, in two rows at every width, so the footer keeps its height while they load. */
 function SummaryLine({ state }: { state: SummaryState }) {
   const { t } = useTranslation("transfers")
-  // The toggle below the form counts the torrents, so the line leaves them out.
   const [, way, size, free] = useFigures(state)
   const loading = loadingOf(state)
 
   if (state.kind === "pickTarget") return <p className="min-h-[2.125rem] text-xs text-muted-foreground">{t("summary.pickTarget")}</p>
   if (state.kind === "refused") {
-    // The reason shows in full: it says why Start does not work.
     return <p role="alert" className="min-h-[2.125rem] text-xs text-destructive [overflow-wrap:anywhere]">{t("summary.refused", { message: state.message })}</p>
   }
   return (
     <section aria-label={t("summary.title")} aria-busy={loading} className="flex min-h-[2.125rem] items-start gap-2">
-      {/* Size and free space take fixed halves, and the spinner has its own place, so no value moves when the summary loads. */}
       <dl className={cn("grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-0.5 text-xs leading-4 transition-opacity", dimOf(state))}>
         {[size, free].map(({ label, text, tone }) => (
           <div key={label} className="flex min-w-0 items-baseline gap-1">
@@ -286,10 +265,6 @@ function SummaryLine({ state }: { state: SummaryState }) {
   )
 }
 
-/**
- * The notes and the torrents of the summary below the form, on a narrow screen. The torrents open on a tap, so the
- * dialog keeps its height while the summary loads.
- */
 function SummaryTorrents({ state, hash }: { state: SummaryState; hash: string }) {
   const { t } = useTranslation("transfers")
   const [open, setOpen] = useState(false)
@@ -335,7 +310,6 @@ function SummaryNotes({ state, className }: { state: SummaryState; className?: s
   )
 }
 
-/** The torrents of the summary. A cross-seed of another target goes to its Cross-seed instance. */
 function MemberList({ summary, hash, targetInstanceId }: { summary: TransferSummary; hash: string; targetInstanceId: number }) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
@@ -380,7 +354,6 @@ function useMoreBelow(ref: RefObject<HTMLElement | null>, content: unknown): boo
     measure()
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure)
     observer?.observe(element)
-    // The content can grow while the element keeps its size.
     if (element.firstElementChild) observer?.observe(element.firstElementChild)
     element.addEventListener("scroll", measure, { passive: true })
     return () => {
@@ -391,10 +364,6 @@ function useMoreBelow(ref: RefObject<HTMLElement | null>, content: unknown): boo
   return more
 }
 
-/**
- * The warnings next to Start. On a phone each warning takes one line until a tap opens them, so the footer leaves
- * the form its room.
- */
 function Warnings({ warnings }: { warnings: string[] }) {
   const { t } = useTranslation("transfers")
   const phone = useMediaQuery(PHONE_QUERY)
@@ -405,7 +374,6 @@ function Warnings({ warnings }: { warnings: string[] }) {
   return (
     <div className="relative flex items-start gap-2">
       <div id={listId} className="min-w-0 flex-1 space-y-1">{notes}</div>
-      {/* The button covers the warnings, so a tap on a warning opens them too. */}
       <button
         type="button"
         aria-expanded={open}

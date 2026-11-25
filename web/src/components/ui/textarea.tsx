@@ -8,7 +8,6 @@ import * as React from "react"
 import { passwordManagerAttributes } from "@/lib/password-manager"
 import { cn } from "@/lib/utils"
 
-/** Password managers leave the field alone. */
 function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return (
     <textarea

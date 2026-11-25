@@ -58,7 +58,6 @@ func FromCrossSeed(d fsops.PathDialect, rows []models.CrossSeedRouteRow, p strin
 			return row.BaseDir, i
 		}
 		if reported != raw {
-			// NFC keeps each "/", so the last parts of raw hold rest as reported.
 			head := raw
 			for range strings.Count(rest, "/") + 1 {
 				head, _, _ = strings.CutLast(head, "/")
@@ -70,14 +69,10 @@ func FromCrossSeed(d fsops.PathDialect, rows []models.CrossSeedRouteRow, p strin
 	return "", -1
 }
 
-// crossSeedPath returns p from pathcmp.NormalizePath in NFC, the form of the
-// base folder keys, so that a decomposed name matches its composed form.
 func crossSeedPath(p string) string {
 	return nfc(pathcmp.NormalizePath(p))
 }
 
-// nfc returns p in NFC. An ASCII path is already NFC, and the check of norm
-// allocates.
 func nfc(p string) string {
 	for i := range len(p) {
 		if p[i] >= utf8.RuneSelf {
@@ -90,8 +85,6 @@ func nfc(p string) string {
 	return p
 }
 
-// under returns the part of p after dir, both from crossSeedPath. The
-// Cross-seed instance has no dialect, so only a drive-letter dir ignores case.
 func under(dir, p string) (string, bool) {
 	equal := func(a, b string) bool { return a == b }
 	if pathcmp.IsWindowsDriveAbs(dir) {
@@ -110,30 +103,18 @@ func under(dir, p string) (string, bool) {
 	return "", false
 }
 
-// TorrentReader reads an instance's torrents and their file lists, fresh or
-// cached as the caller needs. The torrents are those of the Sync snapshot:
-// never change one.
 type TorrentReader interface {
 	GetAllTorrentRefs(ctx context.Context, instanceID int) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 }
 
 type RoutedTorrents struct {
-	// Torrents are private copies with SavePath and ContentPath mapped back.
-	// ContentPath is empty when it is under no row.
 	Torrents []qbt.Torrent
-	// Files holds the file lists by hash. The names stay relative to the save
-	// path, as qBittorrent reports them. ListRouted leaves it nil.
-	Files map[string]qbt.TorrentFiles
+	Files    map[string]qbt.TorrentFiles
 
 	crossSeedInstanceID int
 }
 
-// LoadRouted returns the torrents of sourceID's Cross-seed instance that are
-// under a row of the route, or nil when sourceID has no route. When the
-// Cross-seed instance is unavailable or a read fails, the error matches
-// ErrUnavailable. When two rows map to the same or nested folders on the
-// Cross-seed instance, the error is a *RuleError.
 func (s *Service) LoadRouted(ctx context.Context, read TorrentReader, sourceID int) (*RoutedTorrents, error) {
 	routed, err := s.ListRouted(ctx, read, sourceID)
 	if err != nil || routed == nil {
@@ -177,7 +158,6 @@ func (r *RoutedTorrents) LoadFiles(ctx context.Context, read TorrentReader) erro
 	if err != nil {
 		return fmt.Errorf("%w: read the file lists of the Cross-seed instance: %w", ErrUnavailable, err)
 	}
-	// The reader leaves out a file list that it fails to read.
 	for _, hash := range hashes {
 		if _, ok := files[hash]; !ok {
 			return fmt.Errorf("%w: read the file list of torrent %s on the Cross-seed instance", ErrUnavailable, hash)
@@ -203,14 +183,10 @@ func (s *Service) CountRouted(ctx context.Context, read TorrentReader, route *mo
 
 func (s *Service) readCrossSeed(ctx context.Context, read TorrentReader, route *models.CrossSeedRoute) (_ fsops.PathDialect, _ []*qbt.Torrent, err error) {
 	defer func() {
-		// A read that the deadline of ctx cut off means that the Cross-seed
-		// instance did not answer in time.
 		if err != nil && ctx.Err() != nil && !errors.Is(err, ErrUnavailable) {
 			err = fmt.Errorf("%w: %w", ErrUnavailable, err)
 		}
 	}()
-	// A base folder added after the save can map to the folder of a saved
-	// row, and a torrent under it must not count for the wrong row.
 	if err := checkMappedPaths(route.Rows, false); err != nil {
 		return nil, nil, err
 	}

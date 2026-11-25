@@ -25,7 +25,6 @@ function parseFlagDescriptionsMap(flagsDescription?: string): Record<string, str
 
     if (!flag) return acc
 
-    // Use the first character as the flag symbol (matches qBittorrent output)
     const symbol = flag[0]
     if (!symbol) return acc
 

@@ -27,15 +27,12 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// The table from issue #2947, on the TRaSH Guides layout. Each row lays out
-// the torrent, deletes or moves what qBittorrent would, and checks what
-// folder cleanup leaves.
 func TestFolderCleanupSpecTable(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		layout  []string
 		snap    func(e *cleanupEnv) folderSnapshot
-		qbt     func(e *cleanupEnv, snap folderSnapshot) // what qBittorrent and libtorrent do
+		qbt     func(e *cleanupEnv, snap folderSnapshot)
 		present []string
 		absent  []string
 	}{
@@ -106,7 +103,6 @@ func TestFolderCleanupSpecTable(t *testing.T) {
 			layout: []string{"mnt/disk2/stuff/Foo/Bar/Sub/e1.mkv", "mnt/disk2/stuff/Foo/empty-sibling/"},
 			snap:   func(e *cleanupEnv) folderSnapshot { return e.rootFolder("mnt/disk2/stuff/Foo", "Bar") },
 			qbt: func(e *cleanupEnv, _ folderSnapshot) {
-				// qBittorrent before 5.2.2 can leave the root folder's empty subfolders.
 				e.rm("mnt/disk2/stuff/Foo/Bar/Sub/e1.mkv")
 			},
 			present: []string{"mnt/disk2/stuff/Foo", "mnt/disk2/stuff/Foo/empty-sibling"},
@@ -122,7 +118,6 @@ func TestFolderCleanupSpecTable(t *testing.T) {
 			present: []string{"mnt/disk2/stuff/Foo"},
 		},
 		{
-			// A download path above the save path must not lift the climb.
 			name:   "custom save path below the torrent's download path",
 			layout: []string{"mnt/disk2/stuff/Foo/Bar/e1.mkv"},
 			snap: func(e *cleanupEnv) folderSnapshot {
@@ -162,7 +157,6 @@ func TestFolderCleanupSpecTable(t *testing.T) {
 	}
 }
 
-// The cases the managed-delete cleanup covered under the hardlink base dir.
 func TestFolderCleanupHardlinkTree(t *testing.T) {
 	t.Run("single file in a release folder up to the base dir", func(t *testing.T) {
 		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
@@ -195,10 +189,9 @@ func TestFolderCleanupHardlinkTree(t *testing.T) {
 
 func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		stop string
-		edit func(e *cleanupEnv)
-		// removed lists folders between the release and the stop folder.
+		name    string
+		stop    string
+		edit    func(e *cleanupEnv)
 		removed []string
 	}{
 		{name: "default save path", stop: "torrents"},
@@ -271,10 +264,6 @@ func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 	}
 }
 
-// A monitored folder and its custom save path are kept but do not bound the
-// climb. qBittorrent's recursive watch saves a torrent found in <watch>/<sub>
-// to <save path>/<sub>, so with no stop folder above it the climb must end at
-// that save path, as it does with no monitored folder at all.
 func TestFolderCleanupMonitoredFoldersDoNotBoundTheClimb(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -308,8 +297,6 @@ func TestFolderCleanupMonitoredFoldersDoNotBoundTheClimb(t *testing.T) {
 			kept:      []string{"media/manual/tv"},
 		},
 		{
-			// scan_dirs does not say whether a watch is recursive, so a watch
-			// subfolder below a stop folder climbs to the stop folder.
 			name:      "watch subfolder below the default save path",
 			monitored: func(e *cleanupEnv) []string { return []string{e.p("torrents/watch")} },
 			save:      "torrents/watch/tv",
@@ -330,8 +317,6 @@ func TestFolderCleanupMonitoredFoldersDoNotBoundTheClimb(t *testing.T) {
 	}
 }
 
-// A torrent's own folders can carry a stop folder's name: the walk down and the
-// climb keep it all the same.
 func TestFolderCleanupKeepsAStopFolderInsideTheTorrent(t *testing.T) {
 	t.Run("no root folder in the default save path", func(t *testing.T) {
 		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
@@ -430,7 +415,6 @@ func TestFolderCleanupKeepsProtectedFolders(t *testing.T) {
 			absent:  []string{"torrents/tv/Show/Season 1"},
 		},
 		{
-			// The walk down reaches a live save path the snapshot never named.
 			name:   "live save path inside the deleted torrent's root folder",
 			layout: []string{"torrents/tv/Pack/a.mkv", "torrents/tv/Pack/Extras/", "torrents/tv/Pack/Empty/"},
 			snap: func(e *cleanupEnv) folderSnapshot {
@@ -454,8 +438,6 @@ func TestFolderCleanupKeepsProtectedFolders(t *testing.T) {
 			present: []string{"torrents/tv/Pack/Live/Sub"},
 		},
 		{
-			// What lies below a live content path is not the torrent's, even
-			// when the torrent's own file list names it.
 			name:   "folder of a torrent without a root folder inside a live content path",
 			layout: []string{"torrents/tv/Rel/A/B/x.mkv"},
 			snap: func(e *cleanupEnv) folderSnapshot {
@@ -477,8 +459,6 @@ func TestFolderCleanupKeepsProtectedFolders(t *testing.T) {
 			present: []string{"torrents/tv/Pack/Keep/Deep"},
 		},
 		{
-			// Folding keeps more: on a case-sensitive filesystem Show and show
-			// differ, and Show is kept all the same.
 			name:   "save path of a live torrent that differs only in case",
 			layout: []string{"torrents/tv/Show/Rel-GRP/a.mkv"},
 			snap: func(e *cleanupEnv) folderSnapshot {
@@ -502,8 +482,6 @@ func TestFolderCleanupKeepsProtectedFolders(t *testing.T) {
 	}
 }
 
-// A stop folder sets the climb limit only when it is a real ancestor: on a
-// case-sensitive filesystem TORRENTS is not the default save path torrents.
 func TestFolderCleanupMatchesStopFoldersExactly(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 		e.tree("TORRENTS/foo/Rel-GRP/a.mkv")
@@ -514,12 +492,6 @@ func TestFolderCleanupMatchesStopFoldersExactly(t *testing.T) {
 	})
 }
 
-// A torrent the cache still shows where the snapshot left it may not have been
-// deleted or moved at all: a WebAPI request with a hash qBittorrent does not
-// accept answers 200 and changes nothing, and mayMove admits torrents that do
-// not move, such as turning ATM on for one already in its category folder.
-// Such a torrent's row protects its folders like any live torrent's, even when
-// its content reads as gone, until the deadline.
 func TestFolderCleanupWaitsForItsRow(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -609,10 +581,6 @@ func TestFolderCleanupWaitsForItsRow(t *testing.T) {
 		})
 	})
 
-	// qBittorrent sets an ATM torrent's save path at once and its content path
-	// only once the files have moved, so a sync in between shows the new save
-	// path with the old content path. Only the content path, compared without
-	// regard to case, says the move happened.
 	t.Run("an ATM move waits for its content path", func(t *testing.T) {
 		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 			e.tree("torrents/tv/Show/Rel-GRP/a.mkv")
@@ -632,9 +600,6 @@ func TestFolderCleanupWaitsForItsRow(t *testing.T) {
 	})
 }
 
-// A torrent's own row decides that it waits, so a check that finds every
-// item waiting builds no scope: no full read of the cached torrents and no
-// preferences or categories request. It still asks for a sync.
 func TestFolderCleanupWaitingBuildsNoScope(t *testing.T) {
 	for _, move := range []bool{false, true} {
 		t.Run(fmt.Sprint("move=", move), func(t *testing.T) {
@@ -659,10 +624,8 @@ func TestFolderCleanupWaitingBuildsNoScope(t *testing.T) {
 	}
 }
 
-// A symlink found while walking down is never entered, and keeps its folder.
 func TestFolderCleanupWalkDownSkipsSymlinks(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.tree("torrents/tv/Pack/a.mkv")
 		e.fs.symlink(e.p("torrents/tv/Pack/Link"))
 		e.tree("torrents/tv/Pack/Link/Empty/")
@@ -673,11 +636,8 @@ func TestFolderCleanupWalkDownSkipsSymlinks(t *testing.T) {
 	})
 }
 
-// A root folder that is a symlink stays until the deadline, since it reads as
-// content left. The clean then must not walk into the folder it points to.
 func TestFolderCleanupWalkDownSkipsASymlinkedRoot(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.fs.symlink(e.p("torrents/tv/Pack"))
 		e.tree("torrents/tv/Pack/Empty/")
 		e.run(e.rootFolder("torrents/tv", "Pack"))
@@ -687,11 +647,8 @@ func TestFolderCleanupWalkDownSkipsASymlinkedRoot(t *testing.T) {
 	})
 }
 
-// A torrent's subfolder that is now a symlink also reads as content left until
-// the deadline, and the folders below it are in the folder it points to.
 func TestFolderCleanupSkipsFoldersBelowASymlink(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.tree("torrents/tv/Show/Sub/Deeper/a.mkv", "torrents/tv/Show/Sub/Other/c.mkv", "torrents/tv/Show/Plain/b.mkv")
 		snap := e.noRoot("torrents/tv/Show", "Sub/Deeper/a.mkv", "Sub/Other/c.mkv", "Plain/b.mkv")
 		e.rm("torrents/tv/Show/Sub", "torrents/tv/Show/Plain/b.mkv")
@@ -705,11 +662,8 @@ func TestFolderCleanupSkipsFoldersBelowASymlink(t *testing.T) {
 	})
 }
 
-// The climb from a single file's folder does not remove a folder below a
-// symlink either.
 func TestFolderCleanupClimbSkipsFoldersBelowASymlink(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.tree("torrents/tv/A/B/f.mkv")
 		snap := e.singleFile("torrents/tv", "A/B/f.mkv")
 		e.rm("torrents/tv/A")
@@ -720,11 +674,8 @@ func TestFolderCleanupClimbSkipsFoldersBelowASymlink(t *testing.T) {
 	})
 }
 
-// A root folder below a symlink is in the folder the symlink points to, so
-// the walk down does not start.
 func TestFolderCleanupWalkDownSkipsARootFolderBelowASymlink(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.tree("torrents/tv/A/Pack/a.mkv")
 		snap := e.rootFolder("torrents/tv", "A/Pack")
 		e.rm("torrents/tv/A")
@@ -735,9 +686,6 @@ func TestFolderCleanupWalkDownSkipsARootFolderBelowASymlink(t *testing.T) {
 	})
 }
 
-// The check for a symlink above each folder reads every folder once, so a
-// deeper torrent costs no more Lstats of its top folder, and more folders
-// below a symlink cost no more Lstats of the symlink.
 func TestFolderCleanupReadsEachFolderAboveOnce(t *testing.T) {
 	topLstats := func(depth int) int32 {
 		var n atomic.Int32
@@ -795,8 +743,6 @@ func TestFolderCleanupReadsEachFolderAboveOnce(t *testing.T) {
 	require.Equal(t, linkLstats(2), linkLstats(6))
 }
 
-// A folder in between whose Lstat fails keeps the folders below it. The
-// content check lists Mid but never Lstats it, so the clean runs.
 func TestFolderCleanupKeepsFoldersBelowAnUnreadableFolder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newCleanupEnv(t, slashBackend)
@@ -815,8 +761,6 @@ func TestFolderCleanupKeepsFoldersBelowAnUnreadableFolder(t *testing.T) {
 	})
 }
 
-// A folder that is already gone does not stop the climb, which goes on to the
-// stop folder.
 func TestFolderCleanupClimbPassesAGoneFolder(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 		e.tree("torrents/x/A/B/f.mkv")
@@ -827,11 +771,8 @@ func TestFolderCleanupClimbPassesAGoneFolder(t *testing.T) {
 	})
 }
 
-// A save path that is a symlink is the user's setting, and the torrent's
-// folders below it are still cleaned.
 func TestFolderCleanupCleansBelowASymlinkedSavePath(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.fs.symlink(e.p("torrents/linked"))
 		e.tree("torrents/linked/Show/Sub/a.mkv")
 		snap := e.noRoot("torrents/linked", "Show/Sub/a.mkv")
@@ -841,8 +782,6 @@ func TestFolderCleanupCleansBelowASymlinkedSavePath(t *testing.T) {
 	})
 }
 
-// One bulk action across instances queues snapshots from each; every
-// instance is checked and cleaned in the same tick.
 func TestFolderCleanupAcrossInstances(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 		e.tree("torrents/tv/One-GRP/", "torrents/movies/Two-GRP/")
@@ -872,7 +811,6 @@ func TestFolderCleanupJunkFiles(t *testing.T) {
 			for _, name := range junk {
 				e.tree("torrents/tv/Rel-GRP/" + name)
 			}
-			// A live torrent without a root folder saved in the category.
 			e.view.setTorrents(qbt.Torrent{Hash: "live", SavePath: e.p("torrents/tv"), ContentPath: e.p("torrents/tv")})
 			e.run(e.noRoot("torrents/tv/Rel-GRP", "a.mkv"))
 			e.requireTree([]string{"torrents/tv/Rel-GRP/Thumbs.db", "torrents/tv/Rel-GRP/notes.txt~"}, nil)
@@ -881,15 +819,12 @@ func TestFolderCleanupJunkFiles(t *testing.T) {
 
 	t.Run("a symlink named like junk keeps the folder", func(t *testing.T) {
 		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-			skipSymlinksOnWindows(t, e)
 			e.fs.symlink(e.p("torrents/tv/Rel-GRP/Thumbs.db"))
 			e.run(e.noRoot("torrents/tv/Rel-GRP", "a.mkv"))
 			e.requireTree([]string{"torrents/tv/Rel-GRP/Thumbs.db"}, nil)
 		})
 	})
 
-	// The junction is checked once as the torrent's content (holdsFiles) and
-	// once in a folder the climb reaches (remove).
 	for junction, removed := range map[string][]string{
 		"torrents/tv/Show/Rel-GRP/desktop.ini": nil,
 		"torrents/tv/Show/desktop.ini":         {"torrents/tv/Show/Rel-GRP"},
@@ -923,8 +858,6 @@ func TestFolderCleanupKeepsUserFiles(t *testing.T) {
 	}
 }
 
-// qBittorrent before 5.2.2 leaves the subfolders of a torrent without a root
-// folder.
 func TestFolderCleanupWalksDownWithoutRootFolder(t *testing.T) {
 	files := []string{"a/b/c.mkv", "a/d.mkv", "e.mkv"}
 
@@ -999,11 +932,6 @@ func TestFolderCleanupWaitsForSlowDeletes(t *testing.T) {
 	})
 }
 
-// A file the user added in one of the torrent's folders stays for good, and
-// holdsFiles finds it at any depth, so the item waits to the deadline. Then
-// it is judged anyway: the clean removes the torrent's folders that are empty
-// and keeps the rest. qBittorrent before 5.2.2 leaves those folders after a
-// delete, and every version after a move.
 func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 	files := []string{"Extras/a.mkv", "Sub/a.srt"}
 	userFile := "torrents/tv/Rel-GRP/Sub/user.nfo"
@@ -1047,8 +975,6 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 			})
 		})
 
-		// A torrent qBittorrent did not delete or move keeps its row where
-		// the snapshot left it, which protects even an empty folder.
 		t.Run(name+": a row still in place keeps every folder", func(t *testing.T) {
 			eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 				logs := captureLogs(t, zerolog.DebugLevel)
@@ -1065,10 +991,6 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 		})
 	}
 
-	// Nothing reads the item's row while its content is there, so the cache
-	// can be minutes old at the deadline. A torrent added at these folders
-	// meanwhile shows only after a sync, which the item asks for one tick
-	// ahead of its deadline, and the clean then keeps its folders and junk.
 	for _, readded := range []string{"the same torrent", "another torrent"} {
 		t.Run(readded+" added since keeps the folders", func(t *testing.T) {
 			eachBackend(t, func(t *testing.T, e *cleanupEnv) {
@@ -1080,7 +1002,6 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 				if readded == "another torrent" {
 					hash = e.nextHash()
 				}
-				// The add comes late, so a sync asked for early cannot see it.
 				time.Sleep(e.fc.deadline / 2)
 				synctest.Wait()
 				e.view.setTorrentsOnSync(qbt.Torrent{Hash: hash, SavePath: e.p("torrents/tv/Rel-GRP"), ContentPath: e.p("torrents/tv/Rel-GRP")})
@@ -1091,14 +1012,12 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 		})
 	}
 
-	// A sync that fails leaves the cache as old as it was, so the item is
-	// dropped without a clean.
 	t.Run("no fresh sync, no clean", func(t *testing.T) {
 		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 			layout := []string{"torrents/tv/Rel-GRP/Extras/Thumbs.db", "torrents/tv/Rel-GRP/Sub/", userFile}
 			e.tree(layout...)
 			e.view.mu.Lock()
-			e.view.synced = time.Now() // the last sync before the delete
+			e.view.synced = time.Now()
 			e.view.syncFails = true
 			e.view.mu.Unlock()
 			snap := e.noRoot("torrents/tv/Rel-GRP", files...)
@@ -1111,10 +1030,6 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 		})
 	})
 
-	// The request goes out as soon as the items are sorted, not after the
-	// rest of the check. Here another torrent's clean, on the same tick,
-	// spends most of a tick in a slow read, which a hint sent at the end
-	// would wait out, so its sync would land after the deadline tick.
 	t.Run("the sync request does not wait for other cleans", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			e := newCleanupEnv(t, slashBackend)
@@ -1127,7 +1042,6 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 				return nil
 			}
 			e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Rel-GRP", files...)}, 0)
-			// Slow-GRP is ready on Rel-GRP's last tick before its deadline.
 			time.Sleep(e.fc.deadline - e.fc.tick - e.fc.tick/2)
 			synctest.Wait()
 			e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Slow-GRP", "a.mkv")}, 0)
@@ -1137,16 +1051,11 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 		})
 	})
 
-	// The request ahead of the deadline can land before the reads that find
-	// another torrent's row still in place, so that row still asks for its
-	// own sync on the same tick.
 	t.Run("a row still in place asks after the request", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			e := newCleanupEnv(t, slashBackend)
 			e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Rel-GRP/Sub/", userFile, "torrents/tv/Held-GRP/")
 			e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Rel-GRP", files...)}, 0)
-			// Held-GRP is first checked on Rel-GRP's last tick before its
-			// deadline.
 			time.Sleep(e.fc.deadline - e.fc.tick - e.fc.tick/2)
 			synctest.Wait()
 			held := e.rootFolder("torrents/tv", "Held-GRP")
@@ -1160,8 +1069,6 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 		})
 	})
 
-	// A sync time that cannot be read leaves the folders unjudged, and the
-	// deadline says so.
 	t.Run("an unreadable sync time warns at the deadline", func(t *testing.T) {
 		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 			warnings := captureLogs(t, zerolog.WarnLevel)
@@ -1177,8 +1084,6 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 		})
 	})
 
-	// The deadline judges against the same scope, so another torrent's path
-	// keeps an empty folder.
 	t.Run("a live torrent's save path stays", func(t *testing.T) {
 		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 			e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Rel-GRP/Sub/", userFile)
@@ -1190,8 +1095,6 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 		})
 	})
 
-	// A path that could not be read keeps waiting, and the deadline warns
-	// about it rather than cleaning around it.
 	t.Run("an unreadable entry is not cleaned around", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			e := newCleanupEnv(t, slashBackend)
@@ -1214,7 +1117,7 @@ func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
 func TestFolderCleanupQueueOverflowWarnsOnce(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 		warnings := captureLogs(t, zerolog.WarnLevel)
-		e.fc.capacity = 6 // three torrents: each holds its folder and one top-level entry
+		e.fc.capacity = 6
 		snaps := make([]folderSnapshot, 0, 5)
 		for i := range 5 {
 			save := fmt.Sprintf("torrents/tv/Rel%d-GRP", i)
@@ -1229,8 +1132,6 @@ func TestFolderCleanupQueueOverflowWarnsOnce(t *testing.T) {
 	})
 }
 
-// enqueue reports whether it queued anything, which the proxy uses to skip a
-// sync for a write that leaves nothing to clean.
 func TestFolderCleanupEnqueueReportsWhetherItQueued(t *testing.T) {
 	snap := func(existed bool) folderSnapshot {
 		return folderSnapshot{InstanceID: 1, Hash: hashA, SavePath: "/data", ContentPath: "/data/Rel-GRP",
@@ -1250,7 +1151,6 @@ func TestFolderCleanupEnqueueReportsWhetherItQueued(t *testing.T) {
 	require.False(t, fc.enqueue([]folderSnapshot{snap(true)}, 0), "stopped")
 }
 
-// gatedTree holds the worker in its first Lstat until gate closes.
 type gatedTree struct {
 	*memTree
 	gate chan struct{}
@@ -1262,9 +1162,6 @@ func (g *gatedTree) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, erro
 	return g.memTree.Lstat(ctx, p)
 }
 
-// The batch a tick works on stays counted while it works unlocked, so work
-// handed over meanwhile cannot push the queue past its capacity, which would
-// make the next operation drop every torrent.
 func TestFolderCleanupCountsTheBatchInFlight(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newCleanupEnv(t, slashBackend)
@@ -1306,9 +1203,6 @@ func TestFolderCleanupStopDropsPendingWork(t *testing.T) {
 	})
 }
 
-// Over SSH a check costs round trips per torrent, so a remote instance's items
-// wait remoteTick between checks, here counted from the one enqueue. The last
-// check before the deadline asks for the sync that the deadline check needs.
 func TestFolderCleanupChecksRemoteInstancesEveryRemoteTick(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newStoppedCleanupEnv(t, remoteBackend)
@@ -1335,9 +1229,6 @@ func TestFolderCleanupChecksRemoteInstancesEveryRemoteTick(t *testing.T) {
 	})
 }
 
-// A remote check can land a tick later than remoteTick after the last one. A
-// remoteTick of 29 s puts the checks at 30, 60 and 90 s and the next one on the
-// deadline, so the check at 90 s must already ask for the sync.
 func TestFolderCleanupRemoteAsksForTheSyncATickEarly(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newStoppedCleanupEnv(t, remoteBackend)
@@ -1353,17 +1244,11 @@ func TestFolderCleanupRemoteAsksForTheSyncATickEarly(t *testing.T) {
 	})
 }
 
-// The last remote check comes about remoteTick before the deadline, and its
-// sync lands right after. A torrent added at these folders after that sync
-// must still keep them, so the deadline needs a sync asked for one tick ahead.
 func TestFolderCleanupRemoteAsksForTheSyncAgainATickBeforeTheDeadline(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		addedAt time.Duration
-		// behind queues the item this long after another, so it is checked
-		// on the other's schedule and its last full check, at 120 s, is
-		// also its last tick.
-		behind time.Duration
+		behind  time.Duration
 	}{
 		{"added at 100s", 100 * time.Second, 0},
 		{"added at 115s", 115 * time.Second, 0},
@@ -1393,9 +1278,6 @@ func TestFolderCleanupRemoteAsksForTheSyncAgainATickBeforeTheDeadline(t *testing
 	}
 }
 
-// Batches queued a few seconds apart reach their deadlines a few seconds
-// apart. Between two remote ticks the deadline check reads only the item at
-// its deadline, not the items that wait for the next remote tick.
 func TestFolderCleanupRemoteDeadlineChecksOnlyExpiredItems(t *testing.T) {
 	t.Parallel()
 	e := newStoppedCleanupEnv(t, remoteBackend)
@@ -1454,9 +1336,6 @@ func TestFolderCleanupFailsClosed(t *testing.T) {
 	}
 }
 
-// A check that fails until the deadline, such as for an ignore path the host
-// cannot read, leaves the folders to orphan scan, so the drop is a warning,
-// once for the batch. A torrent whose content never left is dropped at Debug.
 func TestFolderCleanupWarnsWhenItCannotJudgeByTheDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newCleanupEnv(t, slashBackend)
@@ -1473,8 +1352,6 @@ func TestFolderCleanupWarnsWhenItCannotJudgeByTheDeadline(t *testing.T) {
 	})
 }
 
-// A backend that stays unavailable to the deadline also leaves the folders to
-// orphan scan, so it warns like a scope that cannot be built.
 func TestFolderCleanupWarnsWhenTheBackendStaysUnavailable(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newCleanupEnv(t, slashBackend)
@@ -1491,8 +1368,6 @@ func TestFolderCleanupWarnsWhenTheBackendStaysUnavailable(t *testing.T) {
 	})
 }
 
-// Each check records its own failure, so the deadline warning cannot quote
-// one an earlier check saw.
 func TestFolderCleanupCheckReplacesAnEarlierFailure(t *testing.T) {
 	t.Parallel()
 	unavailable := errors.New("backend unavailable")
@@ -1505,7 +1380,6 @@ func TestFolderCleanupCheckReplacesAnEarlierFailure(t *testing.T) {
 
 func TestFolderCleanupNeverRemovesASymlink(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.fs.symlink(e.p("torrents/tv/Link"))
 		e.tree("torrents/tv/Link/Rel-GRP/")
 		e.run(e.noRoot("torrents/tv/Link/Rel-GRP", "a.mkv"))
@@ -1525,9 +1399,6 @@ func TestFolderCleanupWarnsWhenARemoveFails(t *testing.T) {
 	})
 }
 
-// qBittorrent before 5.2.2 leaves the subfolders of a torrent without a root
-// folder. One qui cannot read keeps the torrent waiting, so the drop at the
-// deadline names it, in one warning for every torrent dropped on that tick.
 func TestFolderCleanupWarnsAboutAFolderItCannotRead(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newCleanupEnv(t, slashBackend)
@@ -1552,9 +1423,6 @@ func TestFolderCleanupWarnsAboutAFolderItCannotRead(t *testing.T) {
 	})
 }
 
-// A junk-named file qui can list but not Lstat, such as in a folder with read
-// but no execute permission, keeps the torrent waiting like an unreadable
-// folder, so the drop at the deadline names it too.
 func TestFolderCleanupWarnsAboutAFileItCannotRead(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newCleanupEnv(t, slashBackend)
@@ -1576,8 +1444,6 @@ func TestFolderCleanupWarnsAboutAFileItCannotRead(t *testing.T) {
 	})
 }
 
-// A folder that turns unreadable between the content check and the walk down
-// is warned about by the remove that follows.
 func TestFolderCleanupWalkDownWarnsAboutAFolderItCannotRead(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newCleanupEnv(t, slashBackend)
@@ -1621,8 +1487,6 @@ func TestFolderCleanupStopLeavesNoGoroutine(t *testing.T) {
 	})
 }
 
-// hungLstat is a mount where every Lstat blocks until release is closed,
-// whatever its context, as os.Lstat does on a hung NFS mount.
 type hungLstat struct {
 	*memTree
 	entered chan struct{}
@@ -1638,13 +1502,10 @@ func (h *hungLstat) Lstat(_ context.Context, _ string) (*fsops.LstatInfo, error)
 	return nil, fs.ErrNotExist
 }
 
-// A worker stuck in a hung Lstat must not hold shutdown, so Stop returns
-// after stopWait and leaves the worker to its call.
 func TestFolderCleanupStopReturnsPastAHungLstat(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		backend := &hungLstat{memTree: newMemTree(), entered: make(chan struct{}, 1), release: make(chan struct{})}
-		// The bubble ends only once the worker leaves its call.
 		defer close(backend.release)
 		fc := NewFolderCleanup(&fakeRequirer{backend: backend, instance: models.Instance{HasLocalFilesystemAccess: true}}, &fakeView{}, &fakeIgnores{})
 		fc.Start(t.Context())
@@ -1658,8 +1519,6 @@ func TestFolderCleanupStopReturnsPastAHungLstat(t *testing.T) {
 	})
 }
 
-// Run once with -race: the worker ticks while many callers hand over work.
-// Each caller wakes on a tick, so it runs alongside the worker.
 func TestFolderCleanupConcurrentEnqueue(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		root := t.TempDir()
@@ -1716,8 +1575,6 @@ func TestFolderCleanupRefusesUnsafeFileNames(t *testing.T) {
 	})
 }
 
-// Windows paths nest under drive letters and UNC shares. Linux CI cannot run
-// this; it runs under Wine.
 func TestFolderCleanupWindowsPaths(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("host dialect is Windows only on Windows")
@@ -1727,12 +1584,10 @@ func TestFolderCleanupWindowsPaths(t *testing.T) {
 		ignored: func(string) bool { return false }}
 	require.Equal(t, `C:\Data\Torrents\TV`, scope.stopFor(`C:\Data\Torrents\TV\Show`))
 	require.Equal(t, `\\nas\share\torrents`, scope.stopFor(`\\nas\share\torrents\x`))
-	// The climb limit compares exactly; a case variant is only protected.
 	require.Empty(t, scope.stopFor(`c:\data\torrents\tv\Show`))
 	require.Empty(t, scope.stopFor(`D:\elsewhere`))
 	require.True(t, pathUnder(d, fsops.NormalizePath(d, `C:\x`), fsops.NormalizePath(d, `C:\`)))
 	require.False(t, pathUnder(d, fsops.NormalizePath(d, `C:\Data\TorrentsX`), fsops.NormalizePath(d, `C:\Data\Torrents`)))
-	// Clean leaves a share root bare, and Dir below it adds the separator back.
 	share := d.Clean(`\\nas\share`)
 	require.Equal(t, share+`\`, d.Dir(share+`\Show`))
 	require.False(t, pathUnder(d, share+`\`, share))

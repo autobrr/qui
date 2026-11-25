@@ -51,7 +51,6 @@ func setupTestBackupDB(t *testing.T) *database.DB {
 
 	db := testdb.NewMigratedSQLite(t, "backups-service")
 
-	// Allow multiple connections for tests that need concurrent access
 	db.Conn().SetMaxOpenConns(5)
 	db.Conn().SetMaxIdleConns(2)
 
@@ -156,7 +155,6 @@ func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
 	select {
 	case <-started:
 	case <-timer.C:
-		// Drain the queue to let Start finish before failing the test.
 		drained := make(chan struct{})
 		go func() {
 			defer close(drained)
@@ -296,7 +294,6 @@ func TestShouldSkipLiveExportForBackup(t *testing.T) {
 	}
 }
 
-// regression: #3765
 func TestExecuteBackupFailsWhenTheVersionIsUnknown(t *testing.T) {
 	t.Parallel()
 
@@ -762,7 +759,6 @@ func TestCheckMissedBackupsFirstRun(t *testing.T) {
 	require.Equal(t, string(models.BackupRunKindHourly), kind)
 }
 
-// regression: #3875
 func TestSchedulerSkipsDisabledInstanceUntilEnabled(t *testing.T) {
 	db := setupTestBackupDB(t)
 
@@ -776,7 +772,7 @@ func TestSchedulerSkipsDisabledInstanceUntilEnabled(t *testing.T) {
 		InstanceID:    instanceID,
 		Enabled:       true,
 		HourlyEnabled: true,
-		KeepHourly:    0, // needs normalizing
+		KeepHourly:    0,
 	}))
 
 	_, err := db.ExecContext(ctx, "UPDATE instances SET is_active = 0 WHERE id = ?", instanceID)
@@ -1220,8 +1216,6 @@ func TestCleanupTorrentBlobsDefersWhileRunActive(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
 	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
 
-	// A run in flight has not committed its item rows yet, so its blob reuse
-	// is invisible to the reference count.
 	now := time.Unix(0, 0).UTC()
 	active := &models.BackupRun{
 		InstanceID:  instanceID,
@@ -1249,8 +1243,6 @@ func TestCleanupTorrentBlobsKeepsBlobWhenCountsUnavailable(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
 	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
 
-	// A closed database makes every reference count fail; unknown counts must
-	// keep the blob, not delete it.
 	require.NoError(t, db.Close())
 	svc.cleanupTorrentBlobs(context.Background(), []string{blobRelPath})
 
@@ -1325,10 +1317,6 @@ func TestDeleteRunKeepsBlobsWhileARunReferencesThemPostgresIntegration(t *testin
 	checkDeleteRunKeepsBlobsWhileARunReferencesThem(t, testdb.NewMigratedPostgres(t, "backups-blob-refs"))
 }
 
-// Item rows cover ranges of runs, so a blob must survive while any remaining
-// run's range reaches its row, and go once none does. The three torrents give
-// the three row shapes: open from the first run, closed after one run, and
-// closed after being shared by two runs.
 func checkDeleteRunKeepsBlobsWhileARunReferencesThem(t *testing.T, db *database.DB) {
 	ctx := t.Context()
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -1396,9 +1384,6 @@ func TestApplyRetentionRemovesFilesOnlyDeletedRunsUsedPostgresIntegration(t *tes
 	checkApplyRetentionRemovesFilesOnlyDeletedRunsUsed(t, testdb.NewMigratedPostgres(t, "backups-retention-files"))
 }
 
-// One pass deletes three of four runs. Torrent "b" gets a new blob in each
-// run, so the deleted runs leave blobs that no remaining run uses, and "a" and
-// "d" keep a blob that the remaining run still uses.
 func checkApplyRetentionRemovesFilesOnlyDeletedRunsUsed(t *testing.T, db *database.DB) {
 	ctx := t.Context()
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -1508,10 +1493,6 @@ func TestCleanupOrphanedBlobs(t *testing.T) {
 	_, err = os.Stat(freshOrphanAbs)
 	require.NoError(t, err, "fresh files stay inside the age guard")
 
-	// Cancellation observed mid-walk stops the cleanup before it removes
-	// anything. A plain canceled context would already fail the store query,
-	// so walkCanceledCtx lets the query through and only reports the
-	// cancellation to the walk's ctx.Err() polls.
 	lateOrphanAbs := filepath.Join(cacheDir, "late-orphan.torrent")
 	require.NoError(t, os.WriteFile(lateOrphanAbs, []byte("blob"), 0o600))
 	require.NoError(t, os.Chtimes(lateOrphanAbs, old, old))

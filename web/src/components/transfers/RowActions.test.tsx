@@ -35,7 +35,6 @@ describe("RowActions", () => {
     expect(screen.getByRole("link", { name: ".torrent" }).getAttribute("href")).toBe("/api/shares/41/torrent")
   })
 
-  // regression: #4242
   it.each([
     ["a wide screen", { pending: true }, false],
     ["a wide screen", { disabled: true }, false],

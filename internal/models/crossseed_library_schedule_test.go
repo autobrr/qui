@@ -32,7 +32,6 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 	instance, err := instances.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	// No saved row: the schedule is off, and no scheduled run started yet.
 	defaults, err := store.GetSearchSettings(ctx)
 	require.NoError(t, err)
 	require.False(t, defaults.ScheduleEnabled)
@@ -41,7 +40,6 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 	require.NoError(t, err)
 	require.False(t, found)
 
-	// A start saved before the first settings save survives that save.
 	started := time.Date(2026, 11, 17, 8, 30, 0, 0, time.UTC)
 	require.NoError(t, store.SetLastScheduledSearchRun(ctx, started))
 
@@ -77,8 +75,6 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 	require.NoError(t, err)
 	require.False(t, found)
 
-	// The run keeps its kind, its exclude filters, its cap, and the torrents
-	// that still wait.
 	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
 		InstanceID:  instance.ID,
 		Kind:        models.CrossSeedSearchRunKindScheduled,

@@ -5,8 +5,6 @@
 
 import type { ColumnOrderState, ColumnVisibilityState } from "@tanstack/react-table"
 
-// The torrent table's default layout: a fresh user's column order and visibility. The order
-// also decides where a column missing from a saved order is added (see usePersistedColumnOrder).
 const DEFAULT_COLUMNS: ReadonlyArray<{ id: string; visible: boolean }> = [
   { id: "select", visible: true },
   { id: "priority", visible: true },
@@ -51,7 +49,6 @@ const DEFAULT_COLUMNS: ReadonlyArray<{ id: string; visible: boolean }> = [
   { id: "private", visible: false },
 ]
 
-// Only the unified view has the instance column.
 export const DEFAULT_UNIFIED_COLUMN_ORDER: ColumnOrderState = DEFAULT_COLUMNS.map(col => col.id)
 export const DEFAULT_COLUMN_ORDER: ColumnOrderState = DEFAULT_UNIFIED_COLUMN_ORDER.filter(id => id !== "instance")
 

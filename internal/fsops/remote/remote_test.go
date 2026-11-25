@@ -48,9 +48,6 @@ func (f fakeCreds) Get(context.Context, int) (*models.Instance, error) {
 func (f fakeCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return f.key, nil }
 func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return f.pin, nil }
 
-// newBackend starts an in-process SSH/SFTP server and returns a backend wired
-// to it through a real connection pool. The server's sftp subsystem is rooted
-// at the host filesystem, so t.TempDir() paths work as remote paths.
 func newBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	t.Helper()
 
@@ -142,8 +139,6 @@ func TestStat(t *testing.T) {
 			}
 			assert.False(t, info.ModTime.IsZero())
 
-			// sftp attrs carry no inode, so identity is always the documented
-			// degradation: zero FileID plus FileIDErr.
 			assert.True(t, info.FileID.IsZero())
 			assert.Zero(t, info.Nlinks)
 			if tt.identity {
@@ -158,8 +153,6 @@ func TestStat(t *testing.T) {
 func TestPortableNotExistErrors(t *testing.T) {
 	t.Parallel()
 
-	// The Backend contract promises errors.Is(err, fs.ErrNotExist) for a
-	// missing path from every read method, and that the path survives.
 	b, _ := newBackend(t)
 	ctx := t.Context()
 	missing := remotePath(t.TempDir(), "nope", "missing.mkv")
@@ -258,8 +251,6 @@ func TestWalkDir_Basic(t *testing.T) {
 	assert.True(t, byRel["sub"].IsDir)
 	assert.Equal(t, path.Join("sub", "b.txt"), byRel[path.Join("sub", "b.txt")].RelPath)
 
-	// WantFileID cannot be honoured over sftp, so regular files carry the
-	// reason and directories are left alone, exactly as local does.
 	require.ErrorIs(t, byRel["a.txt"].FileIDErr, errNoIdentity)
 	require.NoError(t, byRel["sub"].FileIDErr)
 }
@@ -295,7 +286,6 @@ func TestWalkDir_SkipsAndIgnores(t *testing.T) {
 	assert.NotContains(t, relPaths, ".hidden")
 	assert.NotContains(t, relPaths, path.Join(".hiddendir", "inside.txt"))
 	assert.NotContains(t, relPaths, path.Join("node_modules", "pkg.js"))
-	// Matching is case-insensitive: metadata dir case varies on disk.
 	assert.NotContains(t, relPaths, path.Join("$recycle.bin", "old.mkv"))
 	assert.NotContains(t, relPaths, path.Join(".trash-1000", "deleted.mkv"))
 	assert.NotContains(t, relPaths, "ignored.txt")
@@ -311,9 +301,6 @@ func TestWalkDir_SkipsAndIgnores(t *testing.T) {
 	}))
 }
 
-// Each walk filter on its own, so a mutation of one is not hidden by another:
-// a prefix rule without SkipHidden, a name rule that must not drop a file of
-// that name, and identity only when the caller asked for it.
 func TestWalkDir_FiltersOnTheirOwn(t *testing.T) {
 	t.Parallel()
 
@@ -373,12 +360,6 @@ func TestWalkDir_FilteredRootNamesAreWalked(t *testing.T) {
 	}
 }
 
-// writeCutTree lays out a tree for the connection-lost walks: "a" holds more
-// files than the walk channel buffers, so its worker is parked inside it when
-// the test cuts the connection, and "a/sub" is listed only after that. The
-// workers list "a" and "m" concurrently, so the cut may land on either of
-// them, or on "a/sub"; whichever it is, the Err entry names a directory and
-// nothing follows it.
 func writeCutTree(t *testing.T, dir string) {
 	t.Helper()
 	for i := range 100 {
@@ -423,17 +404,11 @@ func TestWalkDir_PoolFailureEndsTheWalkWithConnectionLost(t *testing.T) {
 	assert.Contains(t, []string{"a", "a/sub", "m"}, cut.RelPath)
 }
 
-// A connection that drops while a directory read is in flight ends the walk
-// the same way, not with a refusal the walk would step over. The message keeps
-// the cause, which depends on where the cut lands: pkg/sftp's connection-lost
-// status for a request that waits for a reply, or a send error for a request
-// written after the cut.
 func TestWalkDir_DropDuringReadDirEndsTheWalkWithConnectionLost(t *testing.T) {
 	t.Parallel()
 
 	b, server := newBackend(t)
 	dir := t.TempDir()
-	// The next request after the trap is armed is a listing in the cut tree.
 	writeCutTree(t, dir)
 
 	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
@@ -468,8 +443,6 @@ func TestLostConnection(t *testing.T) {
 	require.NotErrorIs(t, readDirError("/data", fs.ErrPermission), fsops.ErrConnectionLost)
 }
 
-// A server that answers a stat with SSH_FX_EOF has answered. Reading that as a
-// lost connection would end a walk or a scan over one odd reply.
 func TestStatAnsweredWithEOFIsNotALostConnection(t *testing.T) {
 	t.Parallel()
 
@@ -500,9 +473,6 @@ func readCalls(b *Backend, p string) map[string]func(context.Context) error {
 	}
 }
 
-// A pool error is a lost connection from every read, and its cause is text
-// only. A cause that matches fs.ErrPermission would read as a denied path to a
-// consumer that steps over those.
 func TestReadsReportAPoolErrorAsConnectionLost(t *testing.T) {
 	t.Parallel()
 
@@ -542,8 +512,6 @@ func TestReadsReportAnInstanceThatLeftRemoteModeAsConnectionLost(t *testing.T) {
 	}
 }
 
-// Every pool refusal is a lost connection, and the pool's own sentinel stays
-// in the chain so a caller can still tell a changed host key from a down host.
 func TestReadsKeepThePoolsOwnErrors(t *testing.T) {
 	t.Parallel()
 
@@ -590,8 +558,6 @@ func TestReadsKeepThePoolsOwnErrors(t *testing.T) {
 	}
 }
 
-// A dial refused with EPERM carries an errno that matches fs.ErrPermission.
-// Keeping ErrConnect must not pull that errno into the chain with it.
 func TestLostKeepsATransportCauseAsText(t *testing.T) {
 	t.Parallel()
 
@@ -700,7 +666,6 @@ func TestWalkDir_FollowRootWalksASymlinkedRootUnderItsOwnPath(t *testing.T) {
 				for entry := range ch {
 					require.NoError(t, entry.Err)
 					paths = append(paths, entry.Path)
-					// Only the exec tier has identities, so this fails if find -H fell back to sftp.
 					if name == "exec" && entry.Mode.IsRegular() {
 						require.False(t, entry.FileID.IsZero(), entry.Path)
 					}
@@ -756,8 +721,6 @@ func TestWalkDir_ContextCancellation(t *testing.T) {
 
 	b, server := newBackend(t)
 	dir := t.TempDir()
-	// More files than the walk channel buffers (64), so the walk cannot
-	// complete before the first receive and cancellation must cut it short.
 	const total = 150
 	for i := range total {
 		writeFile(t, remotePath(dir, fmt.Sprintf("f%03d.txt", i)), "x")
@@ -781,23 +744,16 @@ func TestWalkDir_ContextCancellation(t *testing.T) {
 	}
 	assert.Less(t, count, 100, "a cancelled walk must not run the tree out")
 
-	// The connection is shared, so one caller giving up must leave it usable:
-	// the next call succeeds without a redial.
 	_, err = b.Stat(t.Context(), remotePath(dir))
 	require.NoError(t, err)
 	assert.Equal(t, 1, server.Accepts(), "a cancelled call must not drop the shared connection")
 }
 
-// A walk that is mid-tree when the connection drops finishes on the redialled
-// connection, because walk takes the client per directory (com6056, #2739).
 func TestWalkDir_SurvivesDroppedConnection(t *testing.T) {
 	t.Parallel()
 
 	b, server := newBackend(t)
 	dir := t.TempDir()
-	// "a" holds more files than the walk channel buffers, so the walk is parked
-	// inside it when the connection drops, with no listing in flight, and
-	// "a/sub" (lexically after the files) is still to be read.
 	for i := range 100 {
 		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
 	}
@@ -845,9 +801,6 @@ func TestStatfs(t *testing.T) {
 	assert.LessOrEqual(t, result.BytesAvailable, result.BytesTotal)
 }
 
-// Available is what this user may fill (Bavail), never the free figure that
-// includes the root reserve; a free-space gate must agree with the local
-// backend on the same volume.
 func TestStatfsResultUsesBavail(t *testing.T) {
 	t.Parallel()
 
@@ -859,9 +812,6 @@ func TestStatfsResultUsesBavail(t *testing.T) {
 }
 
 func TestStatfsWithoutStatvfsExtension(t *testing.T) {
-	// SetSFTPExtensions mutates a package global, so this test cannot run in
-	// parallel with the ones that need statvfs advertised.
-	// Restore whatever pkg/sftp advertised before, not a copy of today's list.
 	advertised := extensionNames(t)
 	require.NoError(t, sftp.SetSFTPExtensions("hardlink@openssh.com", "posix-rename@openssh.com"))
 	t.Cleanup(func() {
@@ -896,7 +846,6 @@ func TestSameFilesystem(t *testing.T) {
 
 	same, err := b.SameFilesystem(t.Context(), first, second)
 	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
-		// pkg/sftp's Linux statvfs server sends no fsid (OpenSSH's does).
 		require.ErrorIs(t, err, fsops.ErrUnsupported)
 		return
 	}
@@ -995,8 +944,6 @@ func TestReconnectsAfterServerDropsConnection(t *testing.T) {
 
 	server.DropConnections()
 
-	// The pool's watcher clears the dead entry asynchronously, so the redial
-	// is what is being waited for here, not the drop.
 	require.Eventually(t, func() bool {
 		_, err := b.Stat(t.Context(), dir)
 		return err == nil
@@ -1004,8 +951,6 @@ func TestReconnectsAfterServerDropsConnection(t *testing.T) {
 	assert.Equal(t, 2, server.Accepts())
 }
 
-// extensionNames reads the extensions the in-process server currently
-// advertises, through a client, since pkg/sftp exposes no getter for its list.
 func extensionNames(t *testing.T) []string {
 	t.Helper()
 

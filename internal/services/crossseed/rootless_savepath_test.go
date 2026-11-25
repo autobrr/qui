@@ -118,7 +118,6 @@ func (*rootlessSavePathSyncManager) CreateCategory(context.Context, int, string,
 	return nil
 }
 
-// rootlessSavePathInstanceStore is a mock instance provider for tests
 type rootlessSavePathInstanceStore struct {
 	instances map[int]*models.Instance
 }
@@ -127,7 +126,6 @@ func (m *rootlessSavePathInstanceStore) Get(_ context.Context, id int) (*models.
 	if inst, ok := m.instances[id]; ok {
 		return inst, nil
 	}
-	// Return instance with hardlinks disabled by default
 	return &models.Instance{
 		ID:           id,
 		UseHardlinks: false,
@@ -306,9 +304,6 @@ func TestProcessCrossSeedCandidate_SavePathOverridePinsRootlessFileIntoMatchedFo
 	matchedName := "Movie.2015.LIMITED.1080p.BluRay.x264-GROUP"
 	sourceName := "Movie.2015.1080p.BluRay.x264-GROUP.mkv"
 
-	// CASE B: rootless single-file source matched to a single-file-in-folder candidate with a
-	// name mismatch. qBittorrent reports the full FILE path as ContentPath, so the override must
-	// resolve to the storage FOLDER, not the raw content path.
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "Movie.2015.LIMITED.1080p.BluRay.x264-GROUP/Movie.2015.LIMITED.1080p.BluRay.x264-GROUP.mkv", Size: 4096},
 	}
@@ -365,10 +360,6 @@ func TestProcessCrossSeedCandidate_SavePathOverridePinsRootlessFileIntoMatchedFo
 		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
-	// CASE B inherently renames the bare file to the candidate name; the stub sync manager does
-	// not reflect renames, so post-add alignment will not "succeed" here. We assert the load-bearing
-	// AddTorrent wiring, which is captured before alignment runs: savepath pins to the matched
-	// FOLDER (not the raw single-file ContentPath), autoTMM is forced off, and the layout is Original.
 	withAdder(service)
 	service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
 
@@ -388,8 +379,6 @@ func TestProcessCrossSeedCandidate_RootlessFileNameMatchUsesSubfolderNoOverride(
 	matchedName := "Movie.2015.1080p.BluRay.x264-GROUP"
 	sourceName := "Movie.2015.1080p.BluRay.x264-GROUP.mkv"
 
-	// CASE A: rootless single-file source matched to a single-file-in-folder candidate whose folder
-	// name matches the auto-generated subfolder. No override; qBittorrent wraps the file via Subfolder.
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "Movie.2015.1080p.BluRay.x264-GROUP/Movie.2015.1080p.BluRay.x264-GROUP.mkv", Size: 4096},
 	}
@@ -455,7 +444,6 @@ func TestProcessCrossSeedCandidate_RootlessFileNameMatchUsesSubfolderNoOverride(
 	require.Equal(t, "true", sync.addedOptions["autoTMM"])
 	require.Equal(t, "Subfolder", sync.addedOptions["contentLayout"])
 	_, hasSavePath := sync.addedOptions["savepath"]
-	// CASE A applies no override; the save path comes from the standard autoTMM/save-path block.
 	if hasSavePath {
 		require.Equal(t, "/data/Movies", sync.addedOptions["savepath"])
 	}

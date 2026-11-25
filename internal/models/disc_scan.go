@@ -13,7 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// Disc scan statuses.
 const (
 	DiscScanStatusPending   = "pending"
 	DiscScanStatusScanning  = "scanning"
@@ -22,8 +21,6 @@ const (
 	DiscScanStatusCanceled  = "canceled"
 )
 
-// DiscScanRun is one queued or running BDInfo job on one Disc, and after
-// completion its cached Disc report.
 type DiscScanRun struct {
 	ID             int64      `json:"id"`
 	InstanceID     int        `json:"instanceId"`
@@ -43,23 +40,18 @@ type DiscScanRun struct {
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
 }
 
-// Active reports whether the run is still queued or running.
 func (r *DiscScanRun) Active() bool {
 	return r.Status == DiscScanStatusPending || r.Status == DiscScanStatusScanning
 }
 
-// DiscScanStore handles database operations for Disc scans.
 type DiscScanStore struct {
 	db dbinterface.Querier
 }
 
-// NewDiscScanStore creates a new DiscScanStore.
 func NewDiscScanStore(db dbinterface.Querier) *DiscScanStore {
 	return &DiscScanStore{db: db}
 }
 
-// discScanColumns is the shared projection. queue_position counts the pending
-// rows at or before this one, so a queued run knows where it stands.
 const discScanColumns = `
 	id, instance_id, torrent_hash, disc_path, resolved_path, status, error_message,
 	processed_bytes, total_bytes,
@@ -68,7 +60,6 @@ const discScanColumns = `
 	     ELSE 0 END,
 	report, quick_summary, forums_block, created_at, started_at, completed_at`
 
-// Create inserts a pending run and returns its id.
 func (s *DiscScanStore) Create(ctx context.Context, instanceID int, torrentHash, discPath, resolvedPath string) (int64, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx, `
@@ -82,12 +73,10 @@ func (s *DiscScanStore) Create(ctx context.Context, instanceID int, torrentHash,
 	return id, nil
 }
 
-// GetByInstance returns one run scoped to an instance, or nil.
 func (s *DiscScanStore) GetByInstance(ctx context.Context, instanceID int, runID int64) (*DiscScanRun, error) {
 	return s.one(ctx, `SELECT `+discScanColumns+` FROM disc_scan_runs d WHERE id = ? AND instance_id = ?`, runID, instanceID)
 }
 
-// Latest returns the newest run for the cache key (instance, resolved path), or nil.
 func (s *DiscScanStore) Latest(ctx context.Context, instanceID int, resolvedPath string) (*DiscScanRun, error) {
 	return s.one(ctx, `
 		SELECT `+discScanColumns+` FROM disc_scan_runs d
@@ -96,7 +85,6 @@ func (s *DiscScanStore) Latest(ctx context.Context, instanceID int, resolvedPath
 	`, instanceID, resolvedPath)
 }
 
-// NextPending returns the oldest pending run, or nil when the queue is empty.
 func (s *DiscScanStore) NextPending(ctx context.Context) (*DiscScanRun, error) {
 	return s.one(ctx, `
 		SELECT `+discScanColumns+` FROM disc_scan_runs d
@@ -105,7 +93,6 @@ func (s *DiscScanStore) NextPending(ctx context.Context) (*DiscScanRun, error) {
 	`)
 }
 
-// ListNewestForTorrent returns the newest run per Disc path for one torrent.
 func (s *DiscScanStore) ListNewestForTorrent(ctx context.Context, instanceID int, torrentHash string) ([]*DiscScanRun, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+discScanColumns+` FROM disc_scan_runs d
@@ -132,8 +119,6 @@ func (s *DiscScanStore) ListNewestForTorrent(ctx context.Context, instanceID int
 	return runs, rows.Err()
 }
 
-// MarkScanning moves a pending run to scanning. Returns false when the run
-// was no longer pending, for example because it was canceled meanwhile.
 func (s *DiscScanStore) MarkScanning(ctx context.Context, runID int64) (bool, error) {
 	return s.transition(ctx, `
 		UPDATE disc_scan_runs
@@ -142,7 +127,6 @@ func (s *DiscScanStore) MarkScanning(ctx context.Context, runID int64) (bool, er
 	`, runID)
 }
 
-// UpdateProgress stores the byte counters of a running scan.
 func (s *DiscScanStore) UpdateProgress(ctx context.Context, runID int64, processed, total int64) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE disc_scan_runs SET processed_bytes = ?, total_bytes = ?
@@ -151,7 +135,6 @@ func (s *DiscScanStore) UpdateProgress(ctx context.Context, runID int64, process
 	return err
 }
 
-// MarkCompleted stores the report on a scanning run.
 func (s *DiscScanStore) MarkCompleted(ctx context.Context, runID int64, report, quickSummary, forumsBlock string) (bool, error) {
 	return s.transition(ctx, `
 		UPDATE disc_scan_runs
@@ -161,7 +144,6 @@ func (s *DiscScanStore) MarkCompleted(ctx context.Context, runID int64, report, 
 	`, report, quickSummary, forumsBlock, runID)
 }
 
-// MarkFailed fails a scanning run with a message.
 func (s *DiscScanStore) MarkFailed(ctx context.Context, runID int64, errorMessage string) (bool, error) {
 	return s.transition(ctx, `
 		UPDATE disc_scan_runs
@@ -170,8 +152,6 @@ func (s *DiscScanStore) MarkFailed(ctx context.Context, runID int64, errorMessag
 	`, errorMessage, runID)
 }
 
-// MarkCanceled cancels a pending or scanning run. Returns false when the run
-// had already finished.
 func (s *DiscScanStore) MarkCanceled(ctx context.Context, runID int64) (bool, error) {
 	return s.transition(ctx, `
 		UPDATE disc_scan_runs
@@ -180,8 +160,6 @@ func (s *DiscScanStore) MarkCanceled(ctx context.Context, runID int64) (bool, er
 	`, runID)
 }
 
-// MarkInterrupted fails every scanning run. Called once at startup, because a
-// scan does not survive a process restart.
 func (s *DiscScanStore) MarkInterrupted(ctx context.Context, errorMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE disc_scan_runs

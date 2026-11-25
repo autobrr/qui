@@ -19,8 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// fakeTransfers is the Transfer store: the helper torrents, and the folders
-// of the running Transfers, of every instance.
 type fakeTransfers struct {
 	helpers map[string]bool
 	folders []string
@@ -35,8 +33,7 @@ func (f fakeTransfers) HelperCheck(int) func(hash string) bool {
 
 func (f fakeTransfers) RunningFolders(context.Context, int) ([]string, error) { return f.folders, nil }
 
-// seedingFiles serves completed torrents that each seed one file in one folder.
-type seedingFiles map[string]string // hash -> file path
+type seedingFiles map[string]string
 
 func (f seedingFiles) SeedingReady(context.Context, int) error { return nil }
 
@@ -57,9 +54,6 @@ func (f seedingFiles) GetTorrentFilesBatch(context.Context, int, []string) (map[
 	return files, nil
 }
 
-// A file that only a helper torrent seeds is not seeding, and the walk leaves
-// the folder of a running Transfer alone. A torrent of the user with the
-// helper tag and no registry row seeds as any torrent does.
 func TestScanSkipsHelperTorrentsAndRunningTransfers(t *testing.T) {
 	t.Parallel()
 

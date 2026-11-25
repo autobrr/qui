@@ -117,7 +117,6 @@ func quotedEnd(query string, start int, quote byte) int {
 		if query[i] != quote {
 			continue
 		}
-		// A doubled quote is an escaped quote in SQL.
 		if i+1 < len(query) && query[i+1] == quote {
 			i++
 			continue

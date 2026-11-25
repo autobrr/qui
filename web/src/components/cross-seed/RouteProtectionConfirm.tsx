@@ -19,7 +19,6 @@ import type { CrossSeedRouteStatus } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
-/** The routed torrents under the rows, or null when one count is unknown (the Cross-seed instance is unavailable). */
 export function countRoutedTorrents(rows: CrossSeedRouteStatus["rows"]): number | null {
   let total = 0
   for (const row of rows) {
@@ -32,13 +31,10 @@ export function countRoutedTorrents(rows: CrossSeedRouteStatus["rows"]): number 
 interface RouteProtectionNoticeProps {
   sourceName: string
   crossSeedName: string
-  /** Undefined while the count loads, null when it is unknown. */
   routedTorrents: number | null | undefined
-  /** A route clear: the Cross-seed instance keeps the routed torrents. */
   clear?: boolean
 }
 
-/** Says how many routed torrents lose the Source instance's orphan scan protection (#3269). */
 export function RouteProtectionNotice({ sourceName, crossSeedName, routedTorrents, clear }: RouteProtectionNoticeProps) {
   const { t } = useTranslation("crossseed")
   const names = { source: sourceName, crossSeed: crossSeedName }
@@ -53,7 +49,6 @@ export function RouteProtectionNotice({ sourceName, crossSeedName, routedTorrent
   )
 }
 
-/** Confirm before a change that stops the Source instance's orphan scan from protecting routed files. */
 export function RouteProtectionConfirmDialog({
   open,
   onOpenChange,
@@ -72,7 +67,6 @@ export function RouteProtectionConfirmDialog({
         </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>{t("routeConfirm.cancel")}</AlertDialogCancel>
-          {/* The user sees the count before they confirm. A failed read makes it unknown, not stuck. */}
           <AlertDialogAction onClick={onConfirm} disabled={notice.routedTorrents === undefined}>{t("routeConfirm.confirm")}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -80,15 +74,7 @@ export function RouteProtectionConfirmDialog({
   )
 }
 
-/**
- * For an instance delete dialog: each Source instance that routes to the
- * instance and will add cross-seeds to itself again, with its route read.
- * pending holds until every read ends, so Delete waits for the notice.
- */
 export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
-  // Each dialog reads both lists again: another tab can have saved a route to the
-  // instance, also from a Source instance that this tab does not know yet.
-  // Each read here sets staleTime 0, because App.tsx keeps a read fresh for 5 seconds.
   const instanceList = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), enabled, staleTime: 0 })
   const instances = instanceList.data
   const list = useCrossSeedRoutes(enabled, 0)
@@ -105,20 +91,17 @@ export function useCrossSeedDeleteCheck(instanceId: number, enabled: boolean) {
       staleTime: 0,
     })),
   })
-  // A refetch keeps the old cached data, so a failed one also leaves the routes unknown.
   const routesUnknown = list.isError || instanceList.isError
   const pending = enabled && !routesUnknown && (list.data === undefined || list.isFetching || instanceList.isFetching || reads.some(read => read.isPending || read.isFetching))
   return { crossSeedName, sources, reads, routesUnknown, pending }
 }
 
-/** The notice of a delete dialog. Renders nothing when the instance is not a Cross-seed instance. */
 export function CrossSeedDeleteNotice({ check }: { check: ReturnType<typeof useCrossSeedDeleteCheck> }) {
   const { t } = useTranslation("crossseed")
   const { crossSeedName, sources, reads, routesUnknown } = check
   if (routesUnknown) return <p className="text-sm text-muted-foreground">{t("routeConfirm.routesUnknown")}</p>
   if (!sources.length) return null
   return (
-    // Many Source instances scroll here, so the Delete button stays on screen.
     <div className="max-h-[40vh] space-y-3 overflow-y-auto">
       {sources.map((source, i) => {
         const read = reads[i]

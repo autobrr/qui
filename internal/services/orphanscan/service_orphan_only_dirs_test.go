@@ -34,32 +34,21 @@ type orphanOnlyFixture struct {
 }
 
 type orphanOnlyOptions struct {
-	gracePeriodMinutes int
-	maxFilesPerRun     int
-	categoryFolders    func(defaultSavePath string) []string
-	monitoredFolders   func(defaultSavePath string) []string
-	// torrentFileName is the seeded torrent's file, slash-delimited the way
-	// qBittorrent reports it.
-	torrentFileName string
-	// scheduled triggers the run the way the scheduler does, which is the only
-	// path that can auto-clean; autoCleanupMaxFiles turns auto-cleanup on.
+	gracePeriodMinutes  int
+	maxFilesPerRun      int
+	categoryFolders     func(defaultSavePath string) []string
+	monitoredFolders    func(defaultSavePath string) []string
+	torrentFileName     string
 	scheduled           bool
 	autoCleanupMaxFiles int
 	scanCategoryPaths   bool
 	wrapBackend         func(b fsops.Backend, defaultSavePath string) fsops.Backend
-	// savePath is the seeded torrent's save path, mydata/ below defaultSavePath
-	// when nil.
-	savePath    func(defaultSavePath string) string
-	ignorePaths func(defaultSavePath string) []string
-	// events, when set, gets the notifications of the service.
-	events chan notifications.Event
-	// beforeScan runs once the service is wired, before the scan, so a test
-	// can make the fake client report more torrents.
-	beforeScan func(svc *Service, torrentSavePath string)
+	savePath            func(defaultSavePath string) string
+	ignorePaths         func(defaultSavePath string) []string
+	events              chan notifications.Event
+	beforeScan          func(svc *Service, torrentSavePath string)
 }
 
-// newOrphanOnlyFixture lays out defaultSavePath with one seeded torrent under
-// mydata/, runs build over the tree, and scans it.
 func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, build func(defaultSavePath string)) *orphanOnlyFixture {
 	t.Helper()
 
@@ -156,7 +145,6 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 
 	run, err := store.GetRun(t.Context(), runID)
 	require.NoError(t, err)
-	// A scheduled run within the auto-cleanup threshold moves on by itself.
 	require.Contains(t, []string{"preview_ready", "deleting", "completed"}, run.Status, "run error: %s", run.ErrorMessage)
 
 	return &orphanOnlyFixture{
@@ -170,7 +158,6 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	}
 }
 
-// previewedDirs returns the directories the preview offers to remove.
 func (f *orphanOnlyFixture) previewedDirs(t *testing.T) []string {
 	t.Helper()
 
@@ -186,7 +173,6 @@ func (f *orphanOnlyFixture) previewedDirs(t *testing.T) []string {
 	return dirs
 }
 
-// backdate moves a path's mtime out of the grace period.
 func backdate(t *testing.T, path string) {
 	t.Helper()
 
@@ -194,9 +180,6 @@ func backdate(t *testing.T, path string) {
 	require.NoError(t, os.Chtimes(path, old, old))
 }
 
-// TestExecuteScan_PreviewsDirectoryHoldingOnlyOrphans covers the generalised
-// rule: every file below the directory is an orphan this run deletes, so the run
-// empties it and has to say so up front.
 func TestExecuteScan_PreviewsDirectoryHoldingOnlyOrphans(t *testing.T) {
 	var leftover, orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-dir", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -233,9 +216,6 @@ func TestExecuteScan_PreviewsParentOfDiscWithMetadata(t *testing.T) {
 	require.Equal(t, 1, run.FoldersDeleted)
 }
 
-// qBittorrent stops watching a monitored folder that is removed, until it
-// restarts. An empty monitored folder, the folder that holds it, and an empty
-// custom save path of a monitored folder all stay.
 func TestExecuteScan_KeepsTheMonitoredFolders(t *testing.T) {
 	var watchParent, watch, watchSaves, leftover string
 	opts := orphanOnlyOptions{
@@ -262,10 +242,6 @@ func TestExecuteScan_KeepsTheMonitoredFolders(t *testing.T) {
 	require.DirExists(t, watchSaves)
 }
 
-// A category folder no torrent uses yet is a scan root of its own inside the
-// default save path. The outer walk must not take it as a disc unit, whose
-// delete is refused: its disc and loose orphans are listed and removed, and
-// the folder stays.
 func TestExecuteScan_DeletesTheDiscInsideANestedScanRoot(t *testing.T) {
 	var movies, disc, loose string
 	opts := orphanOnlyOptions{
@@ -309,10 +285,6 @@ func TestExecuteScan_DirectoryBeyondExactFileCapMarksRunTruncated(t *testing.T) 
 	require.True(t, run.Truncated)
 }
 
-// TestExecuteScan_PreviewsTheWholeCascade covers the case that proved the two
-// removal paths disagreed: an orphan in a/ beside an empty a/b/. The old
-// abandoned-directory pass previewed a/b only, then the follow-up cleanup removed
-// a/ too, so the run removed a directory nobody had seen.
 func TestExecuteScan_PreviewsTheWholeCascade(t *testing.T) {
 	var dirA, dirB, orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-cascade", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -336,7 +308,6 @@ func TestExecuteScan_PreviewsTheWholeCascade(t *testing.T) {
 	require.Equal(t, len(previewed), run.FoldersDeleted, "the run must remove exactly the directories it previewed")
 }
 
-// A fresh file keeps its parent and ancestors, even when their timestamps are old.
 func TestExecuteScan_KeepsDirectoryHoldingAFileHeldByTheGracePeriod(t *testing.T) {
 	var mixed, orphan, fresh string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-grace", orphanOnlyOptions{gracePeriodMinutes: 60}, func(defaultSavePath string) {
@@ -348,8 +319,6 @@ func TestExecuteScan_KeepsDirectoryHoldingAFileHeldByTheGracePeriod(t *testing.T
 		require.NoError(t, os.WriteFile(fresh, []byte("new"), 0o600))
 		backdate(t, orphan)
 		backdate(t, filepath.Dir(fresh))
-		// Last, so writing the files does not leave the directory itself inside
-		// the grace period and pass the test for the wrong reason.
 		backdate(t, mixed)
 	})
 
@@ -362,9 +331,6 @@ func TestExecuteScan_KeepsDirectoryHoldingAFileHeldByTheGracePeriod(t *testing.T
 	require.DirExists(t, mixed)
 }
 
-// TestExecuteScan_KeepsDirectoryHoldingATorrentOwnedFile covers the same shape
-// with a live torrent. The payload sits below the save path, so the directory
-// under test is an ordinary one rather than a scan root protected anyway.
 func TestExecuteScan_KeepsDirectoryHoldingATorrentOwnedFile(t *testing.T) {
 	var payloadDir, orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-owned", orphanOnlyOptions{
@@ -384,10 +350,6 @@ func TestExecuteScan_KeepsDirectoryHoldingATorrentOwnedFile(t *testing.T) {
 	require.DirExists(t, payloadDir)
 }
 
-// TestExecuteScan_KeepsDirectoryWhoseOrphansTheCapDropped covers the cap's
-// interaction with the generalised rule. truncationLess ranks files ahead of
-// directories, so a run that drops a file keeps no directory either, and a
-// directory whose orphan is still on disk is never offered.
 func TestExecuteScan_KeepsDirectoryWhoseOrphansTheCapDropped(t *testing.T) {
 	var capped, big, small, elsewhere string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-cap", orphanOnlyOptions{maxFilesPerRun: 1}, func(defaultSavePath string) {
@@ -417,9 +379,6 @@ func TestExecuteScan_KeepsDirectoryWhoseOrphansTheCapDropped(t *testing.T) {
 	require.DirExists(t, elsewhere)
 }
 
-// TestExecuteScan_NeverPreviewsCategoryDestinationsOrScanRoots covers the
-// protections the generalised rule must not weaken: a category folder holding
-// nothing but orphans now reaches the directory pass for the first time.
 func TestExecuteScan_NeverPreviewsCategoryDestinationsOrScanRoots(t *testing.T) {
 	var orphanInCategory string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-categories", orphanOnlyOptions{
@@ -448,11 +407,6 @@ func TestExecuteScan_NeverPreviewsCategoryDestinationsOrScanRoots(t *testing.T) 
 	require.DirExists(t, f.torrentSavePath)
 }
 
-// TestExecuteDeletion_DirectoryWhoseFileWasKeptIsSkippedNotFailed covers a
-// previewed directory whose only file the run ends up keeping: here an ignore
-// path added between preview and confirmation. Nothing went wrong, so the
-// directory is reported skipped and the run completes, instead of the
-// directory failing on rmdir and, with nothing else deleted, failing the run.
 func TestExecuteDeletion_DirectoryWhoseFileWasKeptIsSkippedNotFailed(t *testing.T) {
 	var leftover, orphan string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-kept-at-deletion", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -493,10 +447,6 @@ func TestExecuteDeletion_DirectoryWhoseFileWasKeptIsSkippedNotFailed(t *testing.
 	}
 }
 
-// TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories covers the
-// scheduled-scan threshold. Every orphan now tends to bring its parent chain
-// into the preview, and counting those entries would push a small cleanup over
-// a threshold the settings describe as a file count.
 func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T) {
 	var orphans, dirs []string
 	events := make(chan notifications.Event, 1)
@@ -512,7 +462,6 @@ func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T)
 			writeFile(t, orphans[len(orphans)-1])
 		}
 	})
-	// A preview sends no notification, so the first one is the cleanup's.
 	select {
 	case event := <-events:
 		require.Equal(t, notifications.EventOrphanScanCompleted, event.Type, "run error: %s", event.ErrorMessage)
@@ -520,7 +469,6 @@ func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T)
 		t.Fatal("two orphan files are within a threshold of two, whatever their directories add")
 	}
 
-	// Two files and two directories: four entries, two of them files.
 	entries, err := f.store.ListFiles(t.Context(), f.runID, 100, 0, "size_desc")
 	require.NoError(t, err)
 	require.Len(t, entries, 4)
@@ -533,8 +481,6 @@ func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T)
 	}
 }
 
-// vanishDuringWalkBackend removes gone when the walk of root emits its first
-// entry below root, as a folder deleted during the scan does.
 type vanishDuringWalkBackend struct {
 	fsops.Backend
 	root, gone string
@@ -560,10 +506,6 @@ func (b vanishDuringWalkBackend) WalkDir(ctx context.Context, root string, opts 
 	return out, nil
 }
 
-// A folder can vanish while the scan walks its root, for example when a
-// torrent is removed with its files. The walk goes on: the root's other
-// orphans are listed, and the torrent's file that the walk reaches later still
-// protects its alias in another root.
 func TestExecuteScan_FolderVanishedDuringWalk(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
@@ -580,8 +522,6 @@ func TestExecuteScan_FolderVanishedDuringWalk(t *testing.T) {
 				},
 			}
 			f := newOrphanOnlyFixture(t, "orphanscan-vanished-folder-"+category, opts, func(defaultSavePath string) {
-				// More files than the walk buffers, so the walk is still in
-				// aa-fill when ab-gone is removed.
 				for i := range 128 {
 					path := filepath.Join(defaultSavePath, "aa-fill", fmt.Sprintf("%03d.mkv", i))
 					writeFile(t, path)

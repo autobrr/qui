@@ -30,9 +30,6 @@ const (
 	routedHash       = "2222222222222222222222222222222222222222"
 )
 
-// routedRig is a Source instance with one torrent whose file a routed torrent
-// on its Cross-seed instance hardlinks (ADR 0035). The Cross-seed instance is a
-// fake qBittorrent that the test can take offline.
 type routedRig struct {
 	t         *testing.T
 	service   *Service
@@ -43,13 +40,9 @@ type routedRig struct {
 	sourceID  int
 	crossID   int
 	dir       string
-	// source is the Source instance torrent with the hardlinked file.
-	source qbt.Torrent
+	source    qbt.Torrent
 }
 
-// newRoutedRig builds the rig. With crossSeedLocal, the Cross-seed instance
-// has Local Filesystem Access, so its row keeps the same path. Without it, the
-// Cross-seed instance sees the link folder at /cs/links.
 func newRoutedRig(t *testing.T, crossSeedLocal bool) *routedRig {
 	t.Helper()
 	ctx := t.Context()
@@ -131,7 +124,6 @@ func newRoutedRig(t *testing.T, crossSeedLocal bool) *routedRig {
 	}
 }
 
-// index returns the hardlink index of the Source instance with its cross-instance scope.
 func (r *routedRig) index(t *testing.T, torrents ...qbt.Torrent) *HardlinkIndex {
 	t.Helper()
 	index := r.service.GetHardlinkIndex(t.Context(), r.sourceID, torrentRefs(torrents))
@@ -144,12 +136,9 @@ func (r *routedRig) index(t *testing.T, torrents ...qbt.Torrent) *HardlinkIndex 
 	return index
 }
 
-// routedFilesReader answers for both instances. Each torrent holds one file,
-// movie.mkv, in its save path.
 type routedFilesReader struct {
 	crossSeedID int
-	// routed is the torrent of the Cross-seed instance, as it reports it.
-	routed qbt.Torrent
+	routed      qbt.Torrent
 }
 
 func (r *routedFilesReader) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -178,8 +167,6 @@ func (r *routedFilesReader) GetCachedInstanceTorrents(_ context.Context, instanc
 
 func TestHardlinkIndexCountsRoutedLinksAsOtherTorrents(t *testing.T) {
 	rig := newRoutedRig(t, false)
-	// A second Source instance torrent holds the same file. Without the routed
-	// link, the two would form a delete group.
 	copyDir := filepath.Join(rig.dir, "copy")
 	require.NoError(t, os.MkdirAll(copyDir, 0o700))
 	require.NoError(t, os.Link(filepath.Join(rig.dir, "data", "movie.mkv"), filepath.Join(copyDir, "movie.mkv")))
@@ -189,8 +176,6 @@ func TestHardlinkIndexCountsRoutedLinksAsOtherTorrents(t *testing.T) {
 
 	require.Equal(t, HardlinkScopeTorrentsOnly, index.ScopeByHash[routedSourceHash])
 	require.Equal(t, HardlinkScopeTorrentsOnly, index.CrossScopeByHash[routedSourceHash])
-	// Deleting both Source torrents frees nothing while the routed torrent
-	// holds the file, so neither takes the other along.
 	require.Nil(t, index.GetHardlinkCopies(routedSourceHash))
 	require.Nil(t, index.GetHardlinkCopies(sourceCopy.Hash))
 	require.NotContains(t, index.SignatureByHash, routedHash)
@@ -199,7 +184,6 @@ func TestHardlinkIndexCountsRoutedLinksAsOtherTorrents(t *testing.T) {
 
 func TestHardlinkIndexUpdateKeepsRoutedLinks(t *testing.T) {
 	rig := newRoutedRig(t, false)
-	// Unlinked torrents keep one new torrent inside the incremental budget.
 	torrents := make([]qbt.Torrent, 1, 5)
 	torrents[0] = rig.source
 	for _, hash := range []string{"aa", "bb", "cc"} {
@@ -226,7 +210,6 @@ func TestHardlinkIndexUpdateAfterARemovalKeepsRoutedLinksInside(t *testing.T) {
 	copyFile := filepath.Join(copyDir, "movie.mkv")
 	require.NoError(t, os.Link(filepath.Join(rig.dir, "data", "movie.mkv"), copyFile))
 	sourceCopy := qbt.Torrent{Hash: "3333333333333333333333333333333333333333", SavePath: copyDir}
-	// Unlinked torrents keep the removal inside the incremental budget.
 	torrents := make([]qbt.Torrent, 1, 5)
 	torrents[0] = rig.source
 	for _, hash := range []string{"aa", "bb", "cc"} {
@@ -236,8 +219,6 @@ func TestHardlinkIndexUpdateAfterARemovalKeepsRoutedLinksInside(t *testing.T) {
 	built := rig.index(t, append(torrents, sourceCopy)...)
 	require.Equal(t, HardlinkScopeTorrentsOnly, built.ScopeByHash[routedSourceHash])
 
-	// The copy leaves with its files: the file now has two links, the Source
-	// path and the routed path.
 	require.NoError(t, os.Remove(copyFile))
 	updated := rig.index(t, torrents...)
 
@@ -250,7 +231,6 @@ func TestHardlinkIndexRebuildsWhenRoutedTorrentsChange(t *testing.T) {
 	rig := newRoutedRig(t, false)
 	require.Equal(t, HardlinkScopeTorrentsOnly, rig.index(t, rig.source).ScopeByHash[routedSourceHash])
 
-	// The routed torrent moves out of the link folder, so its link no longer counts.
 	rig.reader.routed.SavePath = "/cs/elsewhere"
 
 	require.Equal(t, HardlinkScopeOutsideQBitTorrent, rig.index(t, rig.source).ScopeByHash[routedSourceHash])
@@ -280,9 +260,6 @@ func TestDeleteRecheckCountsRoutedLinks(t *testing.T) {
 	}
 }
 
-// A Cross-seed instance with Local Filesystem Access reports the routed file
-// at the Source instance path, and the cross-instance step reads it there. A
-// library link stays outside: a second count of the routed path would hide it.
 func TestCrossScopeCountsARoutedLinkOnce(t *testing.T) {
 	rig := newRoutedRig(t, true)
 	library := filepath.Join(rig.dir, "library", "movie.mkv")
@@ -303,7 +280,7 @@ func TestHardlinkScopeIsUnknownWhileTheCrossSeedInstanceIsUnavailable(t *testing
 			down: func(r *routedRig) { r.up.Store(false) },
 			back: func(r *routedRig) {
 				r.up.Store(true)
-				r.clients.ResetFailureTracking(r.crossID) // the retry wait after the failed login is over
+				r.clients.ResetFailureTracking(r.crossID)
 			},
 		},
 		"turned off in qui": {
@@ -342,8 +319,6 @@ func (r *routedRig) setActive(active bool) {
 	require.NoError(r.t, err)
 }
 
-// Without a saved route, the index reads as before: the other link is outside
-// qBittorrent, and the index is cached.
 func TestHardlinkIndexWithoutARouteIsUnchanged(t *testing.T) {
 	rig := newRoutedRig(t, false)
 	require.NoError(t, rig.service.crossSeedRoutes.Delete(t.Context(), rig.sourceID))
@@ -355,8 +330,6 @@ func TestHardlinkIndexWithoutARouteIsUnchanged(t *testing.T) {
 	require.Same(t, index, cachedHardlinkIndex(rig.sourceID))
 }
 
-// The routed lists of a rebuild come from the files cache under the build's
-// mode, with the print of the Cross-seed instance's maindata.
 func TestHardlinkIndexRoutedListsUseTheCrossSeedPrint(t *testing.T) {
 	ctx := t.Context()
 	dir := t.TempDir()
@@ -417,8 +390,6 @@ func TestHardlinkIndexRoutedListsUseTheCrossSeedPrint(t *testing.T) {
 	require.Equal(t, HardlinkScopeTorrentsOnly, index.ScopeByHash[routedSourceHash])
 	require.Equal(t, int32(1), crossRequests.Load())
 
-	// The Source instance has no maindata entry for the routed torrent, so a
-	// print read there would leave the 2 h old row with no print, and stale.
 	expireHardlinkIndex(t, sourceInstance.ID)
 	ageFilesCache(t, db, 2*time.Hour)
 

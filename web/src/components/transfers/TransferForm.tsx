@@ -17,31 +17,26 @@ import type { TransferFormValue } from "./transfer-form-value"
 
 const afterOptions: readonly TransferAfter[] = ["removeWithFiles", "keepFiles", "keepSeeding"]
 const wayOptions: readonly TransferWayChoice[] = ["auto", "copy", "bittorrent"]
-// Each category option carries a prefix, so that no category name equals the value of "No category".
 const noCategory = "none"
 const categoryPrefix = "category:"
 
 interface TransferFormProps {
   value: TransferFormValue
   onChange: (value: TransferFormValue) => void
-  /** The instances that can be the target: every instance but the source. Undefined while they load. */
   targets: InstanceResponse[] | undefined
 }
 
-/** The fields of a Transfer. The Transfer dialog and the Transfer action of a rule show it. */
 export function TransferForm({ value, onChange, targets }: TransferFormProps) {
   const { t } = useTranslation("transfers")
   const id = useId()
   const { data: metadata } = useInstanceMetadata(value.targetInstanceId ?? 0)
   const categories = useMemo(() => {
     const names = Object.keys(metadata?.categories ?? {})
-    // A category that the target does not have yet stays selectable.
     if (value.category && !names.includes(value.category)) names.push(value.category)
     return names.sort()
   }, [metadata, value.category])
   const set = (patch: Partial<TransferFormValue>) => onChange({ ...value, ...patch })
 
-  // A container query, not a viewport one: the form also sits in the narrower Transfer action of a rule.
   return (
     <div className="@container">
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @lg:grid-cols-2">
@@ -131,7 +126,6 @@ export function TransferForm({ value, onChange, targets }: TransferFormProps) {
             <FieldHelp>{t("form.afterHelp")}</FieldHelp>
           </Label>
           <Select value={value.after} onValueChange={after => set({ after: after as TransferAfter })}>
-            {/* The values are long, so the field wraps its value on a phone in place of a cut. */}
             <SelectTrigger id={`${id}-after`} className="w-full whitespace-normal text-left data-[size=default]:h-auto data-[size=default]:min-h-9 *:data-[slot=select-value]:line-clamp-none">
               <SelectValue />
             </SelectTrigger>

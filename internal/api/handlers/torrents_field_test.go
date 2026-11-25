@@ -120,7 +120,6 @@ func TestGetTorrentField_MagnetURIReturnsSelectedLinks(t *testing.T) {
 	}, response.Values)
 }
 
-// TestGetTorrentField_FullPathReturnsContentPath covers a renamed torrent (issue #3179).
 func TestGetTorrentField_FullPathReturnsContentPath(t *testing.T) {
 	t.Parallel()
 
@@ -151,9 +150,6 @@ func TestGetTorrentField_FullPathReturnsContentPath(t *testing.T) {
 	}
 }
 
-// TestGetTorrentField_MagnetURIExplicitHashes pins magnet values through the
-// explicit-hash field path. List payloads no longer carry magnet_uri (issue
-// #2328), so this endpoint is the only source for the copy-magnet action.
 func TestGetTorrentField_MagnetURIExplicitHashes(t *testing.T) {
 	t.Parallel()
 
@@ -184,9 +180,6 @@ func TestGetTorrentField_MagnetURIExplicitHashes(t *testing.T) {
 	}, response.Values)
 }
 
-// TestGetTorrentField_MagnetURICrossInstanceFilterScope pins magnet values
-// through the cross-instance filter-scope field path, the third MagnetURI
-// read site (issue #2328).
 func TestGetTorrentField_MagnetURICrossInstanceFilterScope(t *testing.T) {
 	t.Parallel()
 
@@ -219,9 +212,6 @@ func TestGetTorrentField_MagnetURICrossInstanceFilterScope(t *testing.T) {
 	}, response.Values)
 }
 
-// TestGetTorrentField_CrossInstancePartialResultsRejected pins the filter-scope
-// partial guard for non-tags fields: a truncated magnet list behind a 200 would
-// read as complete, so a failed instance must fail the whole request.
 func TestGetTorrentField_CrossInstancePartialResultsRejected(t *testing.T) {
 	t.Parallel()
 
@@ -231,8 +221,6 @@ func TestGetTorrentField_CrossInstancePartialResultsRejected(t *testing.T) {
 		},
 	})
 
-	// A second instance with no pool client and an unreachable address: its
-	// per-instance fetch errors, which marks the cross-instance aggregate partial.
 	broken, err := instanceStore.Create(context.Background(), "beta", "http://127.0.0.1:1", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
@@ -248,10 +236,6 @@ func TestGetTorrentField_CrossInstancePartialResultsRejected(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 }
 
-// TestGetTorrentField_SingleInstanceFormatsLikeUnified pins the single-instance
-// route to the unified formatters: an uppercase hash and a trimmed name, so a
-// copied value matches whichever view it came from. The exclude by v1 hash
-// covers the hybrid case on this route.
 func TestGetTorrentField_SingleInstanceFormatsLikeUnified(t *testing.T) {
 	t.Parallel()
 
@@ -283,7 +267,6 @@ func TestGetTorrentField_SingleInstanceFormatsLikeUnified(t *testing.T) {
 	}
 }
 
-// regression: #3558
 func TestListCrossInstanceTorrentsSyncsInstanceWithDataInBackground(t *testing.T) {
 	h := newUnifiedPollHarness(t)
 	h.makeWarmDataStale(t)
@@ -302,7 +285,6 @@ func TestListCrossInstanceTorrentsSyncsInstanceWithDataInBackground(t *testing.T
 	require.Contains(t, h.warm.requestsFromTest(), false, "the poll started no background sync")
 }
 
-// regression: #3558
 func TestListCrossInstanceTorrentsDoesNotWaitForInstanceWithoutData(t *testing.T) {
 	h := newUnifiedPollHarness(t)
 	h.makeWarmDataStale(t)
@@ -315,7 +297,6 @@ func TestListCrossInstanceTorrentsDoesNotWaitForInstanceWithoutData(t *testing.T
 	require.Len(t, response.CrossInstanceTorrents, 1)
 	require.Equal(t, h.warmID, response.CrossInstanceTorrents[0].InstanceID)
 
-	// The poll started the first sync, so the next poll shows the rows.
 	select {
 	case <-h.cold.requested:
 	case <-time.After(10 * time.Second):
@@ -323,12 +304,10 @@ func TestListCrossInstanceTorrentsDoesNotWaitForInstanceWithoutData(t *testing.T
 	}
 }
 
-// regression: #3558
 func TestCrossInstanceStreamReadStartsNoSync(t *testing.T) {
 	h := newUnifiedPollHarness(t)
 	h.makeWarmDataStale(t)
 
-	// The stream reads the Unified view through the same function, with CacheOnly.
 	response, err := h.syncManager.ListTorrents(t.Context(), quiqbt.TorrentListView{Unified: true, InstanceIDs: []int{h.warmID}, CacheOnly: true})
 	require.NoError(t, err)
 	require.Len(t, response.CrossInstanceTorrents, 1)
@@ -444,8 +423,6 @@ func createStaleCrossInstanceReadHarness(t *testing.T) (*TorrentsHandler, func()
 	return NewTorrentsHandler(quiqbt.NewSyncManager(clientPool, nil), nil, instanceStore, nil), release
 }
 
-// unifiedPollHarness serves a Unified view over two instances. The warm
-// instance has one cached torrent, and the cold instance has no data yet.
 type unifiedPollHarness struct {
 	handler     *TorrentsHandler
 	syncManager *quiqbt.SyncManager
@@ -482,8 +459,6 @@ func newUnifiedPollHarness(t *testing.T) *unifiedPollHarness {
 	return h
 }
 
-// makeWarmDataStale dates the last sync of the warm instance one hour back,
-// so the next checked read finds its data stale.
 func (h *unifiedPollHarness) makeWarmDataStale(t *testing.T) {
 	t.Helper()
 	ageLastSync(t, h.warm.client.SyncOwner(), time.Hour)
@@ -508,22 +483,15 @@ func (h *unifiedPollHarness) list(t *testing.T, instanceIDs ...int) (quiqbt.Torr
 
 type syncFromTestKey struct{}
 
-// maindataStub is the in-process qBittorrent of one instance. Each
-// sync/maindata request returns the torrents that the stub started with.
 type maindataStub struct {
-	client *quiqbt.Client
-	// requested gets a value for each sync/maindata request.
+	client    *quiqbt.Client
 	requested chan struct{}
-	// gate, when set, holds each sync/maindata request until it closes.
-	gate chan struct{}
+	gate      chan struct{}
 
 	mu       sync.Mutex
 	fromTest []bool
 }
 
-// newMaindataStub returns a stub with a healthy client and a dynamic sync
-// manager. The stub syncs the torrents one time before it records requests. A
-// nil torrents slice leaves the cache empty, as before a first sync.
 func newMaindataStub(t *testing.T, torrents []qbt.Torrent) *maindataStub {
 	t.Helper()
 
@@ -572,8 +540,6 @@ func newMaindataStub(t *testing.T, torrents []qbt.Torrent) *maindataStub {
 	return s
 }
 
-// hold holds each sync/maindata request until the returned func or the test
-// cleanup runs.
 func (s *maindataStub) hold(t *testing.T) func() {
 	t.Helper()
 	s.gate = make(chan struct{})
@@ -582,16 +548,11 @@ func (s *maindataStub) hold(t *testing.T) func() {
 	return release
 }
 
-// syncFromTest runs a sync that the stub records as sent by the test. If a
-// read started a sync that is still in flight, this sync joins it and sends
-// no request of its own.
 func (s *maindataStub) syncFromTest(t *testing.T) {
 	t.Helper()
 	require.NoError(t, s.client.SyncOwner().Sync(context.WithValue(t.Context(), syncFromTestKey{}, true)))
 }
 
-// requestsFromTest reports, for each sync/maindata request in order, whether
-// syncFromTest sent it.
 func (s *maindataStub) requestsFromTest() []bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -636,9 +597,6 @@ func newStaleCachedClient(t *testing.T, host string, torrents []qbt.Torrent) *qu
 	return client
 }
 
-// maindataOnce answers the first sync/maindata request with a full update that
-// holds torrents, and sends each other request to next. A nil next answers
-// each other request with 404.
 func maindataOnce(t *testing.T, torrents []qbt.Torrent, next http.RoundTripper) http.RoundTripper {
 	t.Helper()
 
@@ -665,9 +623,6 @@ func maindataOnce(t *testing.T, torrents []qbt.Torrent, next http.RoundTripper) 
 	})
 }
 
-// ageLastSync dates the last sync of owner back by age, so that the next
-// checked read finds the data stale. go-qbittorrent has no API that sets the
-// time of a sync, so this writes its private sync clock.
 func ageLastSync(t *testing.T, owner *syncowner.Owner, age time.Duration) {
 	t.Helper()
 

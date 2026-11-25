@@ -16,10 +16,10 @@ func TestAlternateTitleQuery(t *testing.T) {
 		primaryQuery string
 		releaseName  string
 		arrTitles    []string
-		season       int // season read from the files, which the name lacks
-		numeral      int // season inferred from the Season numeral of a seasonless pack
+		season       int
+		numeral      int
 		wantTitle    string
-		wantSeason   int // the season that the retry searches in place of the season of the primary query
+		wantSeason   int
 		wantOK       bool
 	}{
 		{
@@ -31,9 +31,6 @@ func TestAlternateTitleQuery(t *testing.T) {
 			wantOK:       true,
 		},
 		{
-			// The retry must never repeat the query that already returned
-			// nothing: an arr title that only differs in casing normalizes
-			// to the primary query and is skipped.
 			name:         "arr title equal to primary after normalization is skipped",
 			primaryQuery: "Attack on Titan",
 			arrTitles:    []string{"ATTACK ON TITAN", "L'Attaque des Titans"},
@@ -48,7 +45,6 @@ func TestAlternateTitleQuery(t *testing.T) {
 			wantOK:       true,
 		},
 		{
-			// regression: #3823
 			name:         "title with three AKA names retries with the second name",
 			primaryQuery: "Der Film",
 			releaseName:  "Der.Film.AKA.The.Movie.AKA.La.Pelicula.2020.1080p.WEB.h264-GRP",
@@ -108,8 +104,6 @@ func TestAlternateTitleQuery(t *testing.T) {
 			wantOK:       true,
 		},
 		{
-			// An arc subtitle names the pack better than the bare title, and the
-			// retry sends no season, as before #3022.
 			name:         "seasonless numeral pack with a subtitle retries with the subtitle",
 			primaryQuery: "Kaiju Squad 100 II",
 			releaseName:  "Kaiju.Squad.100.II.2011.Harbor.Arc.1080p.BluRay.x265-GRP",
@@ -187,7 +181,6 @@ func TestAlternateTitleQuery(t *testing.T) {
 				release.Series = tt.season
 			}
 			if tt.numeral > 0 {
-				// The files read the name as a seasonless pack.
 				release.Type = rls.Series
 			}
 			side := namedRelease{release: &release, rawName: tt.releaseName, seasonNumeral: tt.numeral}
@@ -201,15 +194,11 @@ func TestAlternateTitleQuery(t *testing.T) {
 	}
 }
 
-// TestSubtitleTitleQuery pins the guard boundary: a numbered season or
-// episode is skipped, a seasonless pack (Type flipped to Series by file
-// inspection, Series still 0) keeps its subtitle. Widening the guard to
-// isTVRelease must fail here.
 func TestSubtitleTitleQuery(t *testing.T) {
 	tests := []struct {
 		name        string
 		releaseName string
-		packFlip    bool // simulate deriveSourceReleaseForSearch: Type=Series, Episode=0
+		packFlip    bool
 		want        string
 	}{
 		{

@@ -14,7 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// planMoveTriggers evaluates the rule and plans the moves of the triggers in the given order.
 func planMoveTriggers(t *testing.T, svc *Service, torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext, order []string) plannedAction[string] {
 	t.Helper()
 	crossSeeds := buildCrossSeedGroups(torrentRefs(torrents), evalCtx)
@@ -43,7 +42,6 @@ func planMoveTriggers(t *testing.T, svc *Service, torrents []qbt.Torrent, rule *
 	return svc.expandMoves(t.Context(), m, triggers)
 }
 
-// triggerOrders returns every order of the hashes.
 func triggerOrders(hashes ...string) [][]string {
 	if len(hashes) <= 1 {
 		return [][]string{hashes}
@@ -57,7 +55,6 @@ func triggerOrders(hashes ...string) [][]string {
 	return orders
 }
 
-// groupTriggers returns three triggers on the rule's tracker in one content path group.
 func groupTriggers(savePath, contentPath string) []qbt.Torrent {
 	triggers := make([]qbt.Torrent, 0, 3)
 	for _, hash := range []string{"t1", "t2", "t3"} {
@@ -68,8 +65,6 @@ func groupTriggers(savePath, contentPath string) []qbt.Torrent {
 	return triggers
 }
 
-// A group that fails a check for the group moves nothing, in each order of the triggers.
-// A group that passes moves with its first trigger.
 func TestPlanMoves_GroupCheckIsOrderIndependent(t *testing.T) {
 	moveRule := func(cond *models.RuleCondition, grouping *models.GroupingConfig, groupID string) *models.Automation {
 		return groupTestRule(11, &models.ActionConditions{
@@ -77,7 +72,6 @@ func TestPlanMoves_GroupCheckIsOrderIndependent(t *testing.T) {
 			Move:     &models.MoveAction{Enabled: true, Path: "/new", GroupID: groupID, Condition: cond},
 		})
 	}
-	// The pause action reads Private, so a member without a private value drops out of the rule.
 	readsPrivate := moveRule(tagsContain("x"), nil, GroupCrossSeedContentPath)
 	readsPrivate.Conditions.Pause = &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{
 		Field: models.FieldPrivate, Operator: models.OperatorEqual, Value: "true",
@@ -137,8 +131,6 @@ func TestPlanMoves_GroupCheckIsOrderIndependent(t *testing.T) {
 	}
 }
 
-// A group that fails a cheap check reads no file list for the overlap check, also for the
-// first trigger.
 func TestPlanMoves_GroupThatFailsTheConditionReadsNoFiles(t *testing.T) {
 	files := qbt.TorrentFiles{{Name: "show.mkv", Size: 100}}
 	torrents := append(groupTriggers("/old", "/old"),
@@ -153,8 +145,6 @@ func TestPlanMoves_GroupThatFailsTheConditionReadsNoFiles(t *testing.T) {
 	require.Empty(t, reader.asked)
 }
 
-// The overlap check compares the files of the trigger with each other member, so a group
-// that fails it for one trigger still moves for another trigger.
 func TestPlanMoves_OverlapFailureDoesNotBlockTheNextTrigger(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "a", Tracker: groupTestTracker, Tags: "x", SavePath: "/old", ContentPath: "/old"},
@@ -164,7 +154,6 @@ func TestPlanMoves_OverlapFailureDoesNotBlockTheNextTrigger(t *testing.T) {
 	rule := groupTestRule(13, &models.ActionConditions{Move: &models.MoveAction{
 		Enabled: true, Path: "/new", GroupID: GroupCrossSeedContentPath, Condition: tagsContain("x"),
 	}})
-	// a and c share no file, and b holds the files of both.
 	reader := planFilesReader{
 		"a": {{Name: "show.mkv", Size: 100}},
 		"b": {{Name: "show.mkv", Size: 100}, {Name: "film.mkv", Size: 100}},
@@ -177,8 +166,6 @@ func TestPlanMoves_OverlapFailureDoesNotBlockTheNextTrigger(t *testing.T) {
 	require.Equal(t, map[string]ruleRef{"a": ref, "b": ref, "c": ref}, planned.rules)
 }
 
-// A trigger without a group key is a group of its own, so the failure of one such trigger
-// does not keep another one in place.
 func TestPlanMoves_TriggersWithoutGroupKeyArePlannedApart(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "blocked", Tracker: groupTestTracker, Tags: "x", SavePath: "/old", ContentPath: "/old/show"},

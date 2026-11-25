@@ -19,20 +19,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 )
 
 const (
 	needsPermissionPrefix = "API key needs "
-	// The logger middleware answers with this body after it recovers a handler panic.
-	handlerPanicBody = "Internal Server Error\n"
+	handlerPanicBody      = "Internal Server Error\n"
 )
 
-// Routes that a key without any Permission reaches. Every other /api route
-// must refuse it.
 var openToEveryKey = map[routeKey]struct{}{
-	// No authentication.
 	{http.MethodPost, "/api/auth/setup"}:      {},
 	{http.MethodPost, "/api/auth/login"}:      {},
 	{http.MethodGet, "/api/auth/check-setup"}: {},
@@ -48,26 +45,24 @@ var openToEveryKey = map[routeKey]struct{}{
 	{http.MethodGet, "/api/themes/custom"}:            {},
 	{http.MethodGet, "/api/version"}:                  {},
 	{http.MethodGet, "/api/version/latest"}:           {},
-	// The event-only stream. Torrent streams check "Torrents: read" inside.
-	{http.MethodGet, "/api/stream"}:                {},
-	{http.MethodPost, "/api/stream/subscriptions"}: {},
+	{http.MethodGet, "/api/stream"}:                   {},
+	{http.MethodPost, "/api/stream/subscriptions"}:    {},
 }
 
 var routeParam = regexp.MustCompile(`\{[^}]+\}`)
 
 type permissionRig struct {
-	deps *Dependencies
-	url  string
+	deps   *Dependencies
+	authDB *database.DB
+	url    string
 }
 
 func newPermissionRig(t *testing.T, setup ...func(*Dependencies)) *permissionRig {
 	t.Helper()
-	deps := newTestDependencies(t)
-	// The walk reaches the log handlers, which need a config that can persist.
+	deps, db := newTestDependenciesWithDB(t)
 	var err error
 	deps.Config, err = config.New(t.TempDir(), "test")
 	require.NoError(t, err)
-	// The walk covers the routes of every Experimental feature.
 	deps.Experimental = experimental.New([]string{string(experimental.ProblemReports)})
 	for _, f := range setup {
 		f(deps)
@@ -76,7 +71,7 @@ func newPermissionRig(t *testing.T, setup ...func(*Dependencies)) *permissionRig
 	require.NoError(t, err)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
-	return &permissionRig{deps: deps, url: srv.URL}
+	return &permissionRig{deps: deps, authDB: db, url: srv.URL}
 }
 
 func (rig *permissionRig) key(t *testing.T, perms ...models.Permission) string {
@@ -84,13 +79,9 @@ func (rig *permissionRig) key(t *testing.T, perms ...models.Permission) string {
 	if perms == nil {
 		perms = []models.Permission{}
 	}
-	raw, _, err := rig.deps.AuthService.CreateAPIKey(t.Context(), "script", perms, nil)
-	require.NoError(t, err)
-	return raw
+	return newUsedAPIKey(t, rig.authDB, "script", perms, nil)
 }
 
-// send returns the status and body. A request that is still running after a
-// second returns status 0: the handler passed every check and holds the request.
 func (rig *permissionRig) send(t *testing.T, method, path, key string, cookie *http.Cookie) (int, string) {
 	t.Helper()
 	return rig.sendBody(t, method, path, key, cookie, "{}")
@@ -155,7 +146,6 @@ func walkAPIRoutes(t *testing.T, rig *permissionRig, visit func(route routeKey, 
 	router, err := NewServer(rig.deps).Handler()
 	require.NoError(t, err)
 	routes := apiRoutes(t, router)
-	// The router has about 260 /api routes. A broken walk must not pass with none.
 	require.GreaterOrEqual(t, len(routes), 260)
 	for _, route := range routes {
 		visit(route, routeParam.ReplaceAllString(route.Path, "1"))
@@ -178,8 +168,6 @@ func TestRoutesRefuseKeyWithoutPermission(t *testing.T) {
 	})
 }
 
-// Existing keys got every Permission on upgrade, so they must keep every route
-// except the Browser-only routes.
 func TestEveryPermissionReachesEveryRouteExceptBrowserOnly(t *testing.T) {
 	rig := newPermissionRig(t)
 	key := rig.key(t, models.AllPermissions()...)
@@ -188,7 +176,6 @@ func TestEveryPermissionReachesEveryRouteExceptBrowserOnly(t *testing.T) {
 		status, body := rig.send(t, route.Method, path, key, nil)
 		require.False(t, strings.HasPrefix(body, needsPermissionPrefix), "%s %s: %d %q", route.Method, route.Path, status, body)
 		require.False(t, isInstanceLimitRefusal(body), "%s %s: a key with no Instance limit reaches every instance: %d %q", route.Method, route.Path, status, body)
-		// regression: #4055
 		require.NotEqual(t, handlerPanicBody, body, "%s %s: the handler panicked", route.Method, route.Path)
 	})
 }
@@ -308,7 +295,6 @@ func TestStreamsNeedPermissions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			path := tc.path
 			if tc.method == http.MethodPost {
-				// The add list holds a torrent stream; the body replaces the default "{}".
 				status, body := rig.sendBody(t, tc.method, path, tc.key, nil, `{"connectionId":"x","add":[{"key":"a","instanceId":1}]}`)
 				require.Equal(t, http.StatusForbidden, status)
 				require.Equal(t, tc.want, body)

@@ -11,9 +11,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// A verdict without sizes stops the compare at the first group of rules that
-// differs. A missing group that the policy allows, or a CRC tag on one name,
-// must not hide a difference in a later group.
 func TestMatchVerdict_AllowedMissingTagWithoutSizes(t *testing.T) {
 	m := matcher{stringNormalizer: stringutils.NewDefaultNormalizer(), releaseCache: NewReleaseCache()}
 	for _, tt := range []struct {

@@ -76,7 +76,6 @@ func TestPlainFreeSpaceProjection_SelectedFileUnion(t *testing.T) {
 	}
 }
 
-// A checking torrent frees no space, so the rule picks the next torrent to reach the target.
 func TestPlainFreeSpaceProjection_SkipsCheckingTorrent(t *testing.T) {
 	torrents, evalCtx, rule := selectedFilesFixture(t)
 	torrents[0].State = qbt.TorrentStateCheckingUp
@@ -147,10 +146,8 @@ func TestPlainFreeSpaceProjection_LoadsFileListsOnlyForFreeSpaceDeletes(t *testi
 	require.False(t, ruleNeedsCrossSeedFiles(rule))
 }
 
-// regression: #2953
 func TestPreviewFreeSpaceRule_FailsWhenTheInstanceDoesNotLoad(t *testing.T) {
 	svc, instanceID := newDryRunParityService(t, defaultParityFixture())
-	// qBittorrent still answers, but the instance row does not load.
 	emptyStore, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, t.Name()+"-empty"), make([]byte, 32))
 	require.NoError(t, err)
 	svc.instanceStore = emptyStore
@@ -169,7 +166,6 @@ func TestPreviewFreeSpaceRule_FailsWhenTheInstanceDoesNotLoad(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	// A rule that does not read FREE_SPACE previews without the instance.
 	result, err = svc.PreviewDeleteRule(t.Context(), instanceID, parityDeleteRule(DeleteModeWithFiles, parityDeleteTag), 10, 0, "needed")
 	require.NoError(t, err)
 	require.NotNil(t, result)

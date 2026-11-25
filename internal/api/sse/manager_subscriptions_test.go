@@ -23,7 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// changeStream is an open stream that also takes subscription changes.
 type changeStream struct {
 	*sseReader
 	connectionID string
@@ -31,15 +30,11 @@ type changeStream struct {
 	close        func()
 }
 
-// openChangeStream serves the manager inside the bubble, opens one stream, and
-// reads its connection event. go-sse can still be writing the inits of the
-// stream and has not subscribed the session yet.
 func openChangeStream(t *testing.T, manager *StreamManager, payload []map[string]any) *changeStream {
 	t.Helper()
 	return openChangeStreamAs(t, manager, nil, payload)
 }
 
-// withAPIKey makes the request look authenticated by the key. A nil key is a session.
 func withAPIKey(r *http.Request, key *models.APIKey) *http.Request {
 	if key == nil {
 		return r
@@ -70,9 +65,6 @@ func openChangeStreamAs(t *testing.T, manager *StreamManager, key *models.APIKey
 	resp, err := transport.RoundTrip(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	// Cancel only. After resp.Body.Close, the transport can keep the connection open
-	// to drain the body until a timer fires, and the fake clock of the bubble does not
-	// move during synctest.Wait. The server then does not see the disconnect.
 	t.Cleanup(cancel)
 
 	reader := newSSEReader(resp.Body)
@@ -84,7 +76,6 @@ func openChangeStreamAs(t *testing.T, manager *StreamManager, key *models.APIKey
 	return &changeStream{sseReader: reader, connectionID: id, transport: transport, close: cancel}
 }
 
-// change sends a subscription change and returns the status code.
 func (s *changeStream) change(t *testing.T, body map[string]any) int {
 	t.Helper()
 	status, err := s.post(t.Context(), body)
@@ -92,7 +83,6 @@ func (s *changeStream) change(t *testing.T, body map[string]any) int {
 	return status
 }
 
-// post sends a subscription change. It makes no assertions, so a goroutine can call it.
 func (s *changeStream) post(ctx context.Context, body map[string]any) (int, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -110,8 +100,6 @@ func (s *changeStream) post(ctx context.Context, body map[string]any) (int, erro
 	return resp.StatusCode, nil
 }
 
-// dataFrames reads the stream for d and returns the event types of the data
-// frames for each stream key, in the order they came.
 func (s *changeStream) dataFrames(t *testing.T, d time.Duration) map[string][]string {
 	t.Helper()
 	frames := make(map[string][]string)
@@ -148,7 +136,6 @@ func TestSubscriptionChangeOnOpenStream(t *testing.T) {
 		stream := openChangeStream(t, manager, streamPayload(instanceID, "main"))
 		stream.waitForEvent(t, streamEventInit, time.Second)
 
-		// A tick that races the change must not reach the new subscription first.
 		require.Equal(t, http.StatusNoContent, stream.change(t, map[string]any{
 			"connectionId": stream.connectionID,
 			"add":          []map[string]any{detailsStream(instanceID, "details-a", "aaa")},
@@ -158,7 +145,6 @@ func TestSubscriptionChangeOnOpenStream(t *testing.T) {
 		require.Equal(t, streamEventInit, frames["details-a"][0], "the init comes first")
 		require.NotContains(t, frames["main"], streamEventInit)
 
-		// A switch from one torrent to another is one change.
 		require.Equal(t, http.StatusNoContent, stream.change(t, map[string]any{
 			"connectionId": stream.connectionID,
 			"remove":       []string{"details-a"},
@@ -177,7 +163,6 @@ func TestSubscriptionChangeOnOpenStream(t *testing.T) {
 	})
 }
 
-// regression: #3845
 func TestSubscriptionChangeOnlyFromTheOpener(t *testing.T) {
 	logsRead := &models.APIKey{ID: 7, Permissions: []models.Permission{{Area: models.AreaLogs, Level: models.LevelRead}}}
 	torrentsRead := &models.APIKey{ID: 8, Permissions: []models.Permission{{Area: models.AreaTorrents, Level: models.LevelRead}}}
@@ -269,7 +254,6 @@ func TestRemovedSubscriptionGetsNoFrameFromBuildInFlight(t *testing.T) {
 		}))
 		stream.dataFrames(t, time.Second)
 
-		// The tick of the details view is in its build when the view leaves.
 		release := provider.gateTorrentBuilds()
 		manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 		synctest.Wait()
@@ -291,8 +275,6 @@ func TestSubscriptionChangeBeforeSessionSubscribes(t *testing.T) {
 		manager := newIdleTestManager(t, provider)
 		instanceID := 1
 
-		// Hold the init build of the main view, so go-sse does not subscribe the
-		// session while the change runs. Later builds do not wait.
 		builds := provider.signalBuilds()
 		gate := make(chan struct{})
 		provider.mu.Lock()

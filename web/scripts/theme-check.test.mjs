@@ -76,7 +76,6 @@ test("reports a color that sRGB cannot show", () => {
   assert.deepEqual(result.outsideSrgb, ["light --primary: oklch(0.82 0.18 100)", "dark --primary: oklch(0.82 0.18 100)"])
 })
 
-// These colors were outside sRGB before the check came. Do not add a line. Move the color into sRGB.
 const KNOWN_OUTSIDE_SRGB = {
   "dragon.css": ["light --variation-pink: oklch(0.6931 0.1971 22.11)"],
   "minimal.css": [
@@ -102,7 +101,6 @@ test("each built-in theme keeps its colors inside sRGB", () => {
   }
 })
 
-// regression: #4230
 test("each community theme keeps its ratio colors readable on the plain and the striped row", () => {
   const files = builtInThemeFiles().filter(file => path.basename(path.dirname(file)) === "premium")
   assert.ok(files.length > 0)

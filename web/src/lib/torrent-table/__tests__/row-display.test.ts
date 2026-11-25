@@ -63,7 +63,6 @@ describe("getStatusBadgeProps", () => {
     const props = getStatusBadgeProps(torrent, false, t)
     expect(props.variant).toBe("default")
     expect(props.className).toBe("")
-    // Label comes from getStateLabel's English fallback (not a tracker-health override).
     expect(props.label).toBe("Downloading")
   })
 

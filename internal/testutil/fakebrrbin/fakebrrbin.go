@@ -1,10 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package fakebrrbin is a fake of the brrbin report contract (#4247) for
-// tests and live runs. It records each request and can refuse a report the
-// way brrbin does. Check its answers against internal/server/report.go in
-// autobrr/brrbin.
 package fakebrrbin
 
 import (
@@ -16,26 +12,21 @@ import (
 	"sync"
 )
 
-// Request is one request that the fake received.
 type Request struct {
-	Method string      `json:"method"`
-	Path   string      `json:"path"`
-	Header http.Header `json:"header"`
-	// Report is the report JSON part of a POST /api/reports.
+	Method string          `json:"method"`
+	Path   string          `json:"path"`
+	Header http.Header     `json:"header"`
 	Report json.RawMessage `json:"report,omitempty"`
-	// Image is the image part of a POST /api/reports.
-	Image []byte `json:"image,omitempty"`
-	Body  []byte `json:"body,omitempty"`
+	Image  []byte          `json:"image,omitempty"`
+	Body   []byte          `json:"body,omitempty"`
 }
 
-// Status is the Report status that brrbin answers for a report.
 type Status struct {
 	Status string `json:"status"`
 	Issue  *Issue `json:"issue,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
 
-// Issue is the GitHub issue or discussion that a report became.
 type Issue struct {
 	Number int    `json:"number"`
 	URL    string `json:"url"`
@@ -67,12 +58,6 @@ type signIn struct {
 	token      string
 }
 
-// Fake answers POST /api/reports with 201 and a report id, also for a
-// repeated submissionId. GET /api/install/reports answers the Report status
-// of each listed report of the install, and DELETE /api/reports/{id} deletes
-// one. For a live run, GET /fake/requests lists the recorded requests,
-// POST /fake/refuse sets a refusal, POST /fake/status sets a Report status and
-// POST /fake/forget drops a report.
 type Fake struct {
 	mu           sync.Mutex
 	requests     []Request
@@ -138,8 +123,6 @@ func (f *Fake) SignInPolls() <-chan string {
 	return f.polls
 }
 
-// Refuse makes each later report get status and {"error": reason}. A status
-// of 0 makes the fake take reports again.
 func (f *Fake) Refuse(status int, reason string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -149,15 +132,12 @@ func (f *Fake) Refuse(status int, reason string) {
 	}
 }
 
-// Unavailable makes each later request to the brrbin API answer 503 while on
-// is true, as a brrbin that is down.
 func (f *Fake) Unavailable(on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.unavailable = on
 }
 
-// SetStatus sets the Report status that the fake answers for the report id.
 func (f *Fake) SetStatus(id string, status Status) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -166,16 +146,12 @@ func (f *Fake) SetStatus(id string, status Status) {
 	}
 }
 
-// Forget drops the report id, as brrbin does at the end of its retention.
 func (f *Fake) Forget(id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.reports, id)
 }
 
-// Hold makes each later report wait, after the fake recorded it, until
-// release runs or its request ends. received gets a value for each held
-// report.
 func (f *Fake) Hold() (received <-chan struct{}, release func()) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -208,7 +184,6 @@ func awaitRelease(r *http.Request, hold, held chan struct{}) bool {
 	}
 }
 
-// Requests returns the recorded requests to the brrbin API, oldest first.
 func (f *Fake) Requests() []Request {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -304,8 +279,6 @@ func (f *Fake) isUnavailable() bool {
 	return f.unavailable
 }
 
-// statuses answers the Report status of each listed report that the install
-// sent and the fake still has.
 func (f *Fake) statuses(w http.ResponseWriter, r *http.Request) {
 	f.record(Request{Method: r.Method, Path: r.URL.RequestURI(), Header: r.Header.Clone()})
 	installKey := r.Header.Get("X-Install-Key")
@@ -332,7 +305,6 @@ func (f *Fake) delete(w http.ResponseWriter, r *http.Request, id string) {
 	f.record(Request{Method: r.Method, Path: r.URL.RequestURI(), Header: r.Header.Clone()})
 	f.mu.Lock()
 	stored, ok := f.reports[id]
-	// brrbin answers a report of another install as one that it does not have.
 	ok = ok && stored.installKey == r.Header.Get("X-Install-Key")
 	if ok {
 		delete(f.reports, id)

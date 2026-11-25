@@ -21,7 +21,6 @@ import (
 func TestRespondJSON_NoContent(t *testing.T) {
 	rr := httptest.NewRecorder()
 
-	// Pass a payload that would normally be encoded
 	RespondJSON(rr, http.StatusNoContent, map[string]string{"ignored": "value"})
 
 	assert.Equal(t, http.StatusNoContent, rr.Code)
@@ -59,7 +58,6 @@ func TestRespondJSON_NilData(t *testing.T) {
 	assert.Empty(t, rr.Body.String())
 }
 
-// failingWriter is a response writer whose body writes always fail with err.
 type failingWriter struct {
 	header http.Header
 	status int
@@ -93,7 +91,6 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// regression: #2713
 func TestRespondJSON_ClientDisconnectLogsDebug(t *testing.T) {
 	logs := captureLogs(t)
 	w := &failingWriter{err: &net.OpError{Op: "write", Net: "tcp", Err: os.NewSyscallError("write", syscall.EPIPE)}}
@@ -139,7 +136,6 @@ func TestRespondJSON_UnrelatedWriterErrorLogsError(t *testing.T) {
 	assert.Contains(t, logs.String(), "Failed to encode JSON response")
 }
 
-// failingMarshaler fails to serialize with err, which looks like a disconnect.
 type failingMarshaler struct{ err error }
 
 func (m failingMarshaler) MarshalJSON() ([]byte, error) { return nil, m.err }

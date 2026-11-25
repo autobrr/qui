@@ -17,11 +17,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
-// This helps map tracker domains (from existing torrents) to indexer domains (from Jackett/Prowlarr)
-// for better indexer matching when tracker has no correlation with indexer name/domain.
-//
-// Format: tracker_domain -> []indexer_domains
 func initializeDomainMappings() map[string][]string {
 	mappings := map[string][]string{
 		"landof.tv": {"broadcasthe.net"},
@@ -34,24 +29,11 @@ func initializeDomainMappings() map[string][]string {
 	return mappings
 }
 
-// filterIndexersByExistingContent removes indexers for which we already have matching content
-// with the same tracker domains. This reduces redundant cross-seed searches by avoiding indexers
-// we already have from the same tracker sources.
-//
-// The filtering works by:
-// 1. Getting the source torrent being searched for and parsing its release info
-// 2. Retrieving cached torrents from the source instance (no additional qBittorrent calls)
-// 3. For each indexer, checking if existing torrents from matching tracker domains contain similar content
-// 4. Removing indexers where we already have matching content from associated tracker domains
-//
-// This is similar to how indexers are filtered for tracker capability mismatches,
-// but focuses on content duplication rather than technical capabilities.
 func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceID int, hash string, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) ([]int, map[int]string, []string, map[string]contentPrefilterRejectedTorrent, error) {
 	if len(indexerIDs) == 0 {
 		return indexerIDs, nil, nil, nil, nil
 	}
 
-	// If indexer info not provided, fetch it ourselves
 	if indexerInfo == nil && s.jackettService != nil {
 		var err error
 		indexerInfo, err = s.jackettService.GetEnabledIndexersInfo(ctx)
@@ -70,7 +52,6 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		Int("indexerCount", len(indexerIDs)).
 		Msg("filtering indexers by existing content")
 
-	// Get the source torrent being searched for
 	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
 	if err != nil {
 		return indexerIDs, nil, nil, nil, err
@@ -80,10 +61,8 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 	}
 	sourceTorrent := torrents[0]
 
-	// Parse the source torrent to understand what content we're looking for
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 
-	// Get cached torrents from the active instance only
 	instanceTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
 		return indexerIDs, nil, nil, nil, fmt.Errorf("failed to get cached instance torrents: %w", err)
@@ -95,22 +74,19 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 	}
 	rejectedContent := s.scopeContentPrefilterRejectionsByIndexer(rejectedContentByHash, indexerIDs, indexerInfo)
 
-	// Check each indexer to see if we already have content that matches what it would provide
 	var filteredIndexerIDs []int
-	excludedIndexers := make(map[int]string) // Track why indexers were excluded
+	excludedIndexers := make(map[int]string)
 
 	for _, indexerID := range indexerIDs {
 		shouldIncludeIndexer := true
 		exclusionReason := ""
 
-		// Get indexer information
 		indexerName := jackett.GetIndexerNameFromInfo(indexerInfo, indexerID)
 		indexerDomain := jackett.GetIndexerDomainFromInfo(indexerInfo, indexerID)
 		if indexerDomain == "" {
 			indexerDomain = s.getCachedIndexerDomain(indexerName)
 		}
 		if indexerName == "" {
-			// If we can't get indexer info, include it to be safe
 			log.Debug().
 				Str("torrentHash", hash).
 				Int("instanceID", instanceID).
@@ -128,7 +104,6 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 			Str("indexerDomain", indexerDomain).
 			Msg("crossseed: evaluating indexer for existing content")
 
-		// Skip searching indexers that already provided the source torrent
 		if sourceTorrent != nil {
 			if matched, trackerDomain := s.torrentMatchesIndexerDomain(sourceTorrent, indexerName, indexerDomain); matched {
 				log.Trace().
@@ -146,7 +121,6 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 			}
 		}
 
-		// Check if we already have content that this indexer would likely provide
 		if shouldIncludeIndexer && len(matchedContent) > 0 {
 			for _, match := range matchedContent {
 				if matched, trackerDomain := s.trackerDomainsMatchIndexerWithDomain(match.trackerDomains, indexerName, indexerDomain); matched {
@@ -253,16 +227,13 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 		return false
 	}
 
-	// Check hardcoded domain mappings first
 	for _, trackerDomain := range trackerDomains {
 		normalizedTrackerDomain := normalizeLowerTrim(trackerDomain)
 
-		// Check if this tracker domain maps to the indexer domain
 		if mappedDomains, exists := s.domainMappings[normalizedTrackerDomain]; exists {
 			for _, mappedDomain := range mappedDomains {
 				normalizedMappedDomain := normalizeLowerTrim(mappedDomain)
 
-				// Check if mapped domain matches indexer name or specific indexer domain
 				if normalizedMappedDomain == normalizedIndexerName ||
 					(specificIndexerDomain != "" && strings.EqualFold(normalizedMappedDomain, specificIndexerDomain)) {
 					return true
@@ -271,26 +242,21 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 		}
 	}
 
-	// Check if any tracker domain matches or contains the indexer name
 	for _, domain := range trackerDomains {
 		normalizedDomain := normalizeLowerTrim(domain)
 
-		// 1. Direct match: normalized indexer name matches domain
 		if normalizedIndexerName != "" && normalizedIndexerName == normalizedDomain {
 			return true
 		}
 
-		// 2. Check if torrent domain matches the specific indexer's domain
 		if specificIndexerDomain != "" {
 			normalizedSpecificDomain := normalizeLowerTrim(specificIndexerDomain)
 
-			// Direct domain match
 			if normalizedDomain == normalizedSpecificDomain {
 				return true
 			}
 		}
 
-		// 3. Partial match: domain contains normalized indexer name or vice versa
 		if normalizedIndexerName != "" && strings.Contains(normalizedDomain, normalizedIndexerName) {
 			return true
 		}
@@ -298,18 +264,16 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 			return true
 		}
 
-		// 4. Check partial matches against the specific indexer domain
 		if specificIndexerDomain != "" {
 			normalizedSpecificDomain := normalizeLowerTrim(specificIndexerDomain)
 
-			// Check if torrent domain contains indexer domain or vice versa
 			if strings.Contains(normalizedDomain, normalizedSpecificDomain) {
 				return true
 			}
 			if strings.Contains(normalizedSpecificDomain, normalizedDomain) {
 				return true
 			}
-		} // Handle TLD variations and domain normalization
+		}
 		domainWithoutTLD := normalizedDomain
 		for _, suffix := range []string{".cc", ".org", ".net", ".com", ".to", ".me", ".tv", ".xyz"} {
 			if before, ok := strings.CutSuffix(domainWithoutTLD, suffix); ok {
@@ -318,15 +282,12 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 			}
 		}
 
-		// Normalize the domain name for comparison (remove hyphens, dots, etc.)
 		normalizedDomainName := s.normalizeDomainName(domainWithoutTLD)
 
-		// Direct match after normalization
 		if normalizedIndexerName != "" && normalizedIndexerName == normalizedDomainName {
 			return true
 		}
 
-		// Partial match after normalization
 		if normalizedIndexerName != "" && strings.Contains(normalizedDomainName, normalizedIndexerName) {
 			return true
 		}
@@ -334,11 +295,9 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 			return true
 		}
 
-		// 5. Check normalized matches against the specific indexer domain with TLD normalization
 		if specificIndexerDomain != "" {
 			normalizedSpecificDomain := normalizeLowerTrim(specificIndexerDomain)
 
-			// Remove TLD from indexer domain for comparison
 			indexerDomainWithoutTLD := normalizedSpecificDomain
 			for _, suffix := range []string{".cc", ".org", ".net", ".com", ".to", ".me", ".tv", ".xyz"} {
 				if before, ok := strings.CutSuffix(indexerDomainWithoutTLD, suffix); ok {
@@ -347,15 +306,12 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 				}
 			}
 
-			// Normalize indexer domain name
 			normalizedIndexerDomainName := s.normalizeDomainName(indexerDomainWithoutTLD)
 
-			// Compare normalized torrent domain with normalized indexer domain
 			if normalizedDomainName == normalizedIndexerDomainName {
 				return true
 			}
 
-			// Partial matches with normalized indexer domains
 			if strings.Contains(normalizedDomainName, normalizedIndexerDomainName) {
 				return true
 			}
@@ -363,11 +319,10 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 				return true
 			}
 
-			// Check TLD-stripped match against specific indexer domain
 			if domainWithoutTLD == indexerDomainWithoutTLD {
 				return true
 			}
-		} // Check original TLD-stripped match for backward compatibility
+		}
 		if normalizedIndexerName != "" && normalizedIndexerName == domainWithoutTLD {
 			return true
 		}
@@ -376,7 +331,6 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 	return false
 }
 
-// getCachedIndexerDomain returns a cached specific domain for the given indexer when available.
 func (s *Service) getCachedIndexerDomain(indexerName string) string {
 	if s.jackettService == nil || indexerName == "" {
 		return ""
@@ -400,11 +354,9 @@ func (s *Service) getCachedIndexerDomain(indexerName string) string {
 	return domain
 }
 
-// normalizeIndexerName normalizes indexer names for comparison
 func (s *Service) normalizeIndexerName(indexerName string) string {
 	normalized := stringutils.DefaultNormalizer.Normalize(indexerName)
 
-	// Remove common suffixes from indexer names
 	suffixes := []string{
 		" (api)", "(api)",
 		" api", "api",
@@ -425,12 +377,10 @@ func (s *Service) normalizeIndexerName(indexerName string) string {
 	return s.normalizeDomainName(normalized)
 }
 
-// normalizeDomainName normalizes domain names for comparison by removing common separators
 func (s *Service) normalizeDomainName(domainName string) string {
 	return normalizeDomainNameValue(domainName)
 }
 
-// extractTrackerDomainsFromTorrent extracts unique tracker domains from a torrent
 func (s *Service) extractTrackerDomainsFromTorrent(torrent *qbt.Torrent) []string {
 	if torrent == nil {
 		return nil
@@ -438,14 +388,12 @@ func (s *Service) extractTrackerDomainsFromTorrent(torrent *qbt.Torrent) []strin
 
 	domains := make(map[string]struct{})
 
-	// Add primary tracker domain
 	if torrent.Tracker != "" && s.syncManager != nil {
 		if domain := s.syncManager.ExtractDomainFromURL(torrent.Tracker); domain != "" && domain != "Unknown" {
 			domains[domain] = struct{}{}
 		}
 	}
 
-	// Add domains from all trackers
 	for _, tracker := range torrent.Trackers {
 		if tracker.Url != "" && s.syncManager != nil {
 			if domain := s.syncManager.ExtractDomainFromURL(tracker.Url); domain != "" && domain != "Unknown" {
@@ -454,7 +402,6 @@ func (s *Service) extractTrackerDomainsFromTorrent(torrent *qbt.Torrent) []strin
 		}
 	}
 
-	// Convert to slice
 	var result []string
 	for domain := range domains {
 		result = append(result, domain)

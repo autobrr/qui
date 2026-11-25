@@ -1,9 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package linktree builds the Link tree of a link mode add: it picks the Link
-// base directory, applies the Directory preset, and creates and removes the
-// tree. Each add keeps its own fallback rule (ADR 0059).
 package linktree
 
 import (
@@ -34,8 +31,7 @@ type Request struct {
 type Torrent struct {
 	InfoHash string
 	Name     string
-	// Files holds the slash paths of every file in the torrent, linked or not.
-	Files []string
+	Files    []string
 }
 
 type Link struct {
@@ -44,9 +40,6 @@ type Link struct {
 }
 
 type TreePlan struct {
-	// BaseDir, PresetDir, and SavePath are the expected Link base directory,
-	// Preset directory, and save path. Create can pick others after a taken
-	// name or a cross-device error; the Tree reports where the tree went.
 	BaseDir      string
 	PresetDir    string
 	SavePath     string
@@ -69,8 +62,6 @@ type Tree struct {
 	created *fsops.TreeCreateResult
 }
 
-// LinkedFile is one file of a Tree. Created is false for a link that existed
-// as the same file before this add.
 type LinkedFile struct {
 	TorrentPath string
 	LinkPath    string
@@ -134,8 +125,6 @@ func Plan(ctx context.Context, req Request) (*TreePlan, error) {
 	return p, nil
 }
 
-// sourceChecks is how many source folders sourceProbe checks at a time. On a
-// remote instance each check is a round trip.
 const sourceChecks = 8
 
 func (p *TreePlan) sourceProbe(ctx context.Context) (string, error) {
@@ -180,8 +169,6 @@ func (p *TreePlan) sourceProbe(ctx context.Context) (string, error) {
 	return probe, nil
 }
 
-// onSourceFilesystem reports whether dir is on the filesystem of probe. A dir
-// that does not exist yet is judged by its nearest existing parent.
 func (p *TreePlan) onSourceFilesystem(ctx context.Context, probe, dir string) (bool, error) {
 	b := p.req.Backend
 	d := b.Paths()
@@ -220,9 +207,6 @@ func (p *TreePlan) presetDir(baseDir string) string {
 	}
 }
 
-// topFolder is the folder that the tree adds to presetDir. A torrent with a
-// root folder brings its own. A rootless torrent gets an Isolation folder,
-// and the tree goes into it.
 func (p *TreePlan) topFolder(presetDir string) string {
 	d := p.req.Backend.Paths()
 	if p.root != "" {
@@ -246,11 +230,6 @@ func (p *TreePlan) linkPlan(rootDir string) (*hardlinktree.TreePlan, error) {
 	return hardlinktree.BuildLinkPlan(p.req.Backend.Paths(), rootDir, files)
 }
 
-// Create makes the Link tree in the first Link base directory of the plan
-// that takes it. It skips a directory it cannot make, and one that gives a
-// cross-device error once its partial tree is removed. The error is a
-// *Error; a lost connection in any directory, also while Plan judged it,
-// wins over other kinds.
 func (p *TreePlan) Create(ctx context.Context) (*Tree, error) {
 	lost := p.planLost
 	var crossDevice, lastFailure *Error
@@ -382,8 +361,6 @@ func (p *TreePlan) tree(baseDir, presetDir, savePath string, plan *hardlinktree.
 	}
 }
 
-// Rollback removes the files and folders that this add created, and nothing
-// that an earlier add made. It runs to the end when ctx is cancelled.
 func (t *Tree) Rollback(ctx context.Context) error {
 	return t.backend.RemoveTree(context.WithoutCancel(ctx), t.created)
 }
@@ -400,9 +377,6 @@ func commonRoot(files []string) string {
 	return root
 }
 
-// rankBaseDirs orders dirs by the number of leading path components they share
-// with source, so the dir on the source's own disk comes first. Ties keep the
-// configured order.
 func rankBaseDirs(d fsops.PathDialect, dirs []string, source string) []string {
 	ranked := slices.Clone(dirs)
 	slices.SortStableFunc(ranked, func(a, b string) int {

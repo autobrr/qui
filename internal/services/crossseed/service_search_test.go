@@ -148,9 +148,6 @@ func TestLookupARRExternalIDsSkipsTypedNilARRService(t *testing.T) {
 }
 
 func TestLookupARRExternalIDsNoInstancesIsNotDegraded(t *testing.T) {
-	// A (nil, nil) lookup result means no enabled ARR instance covers the
-	// content type — installs without ARR must not see a degradation banner
-	// on every search.
 	spy := &spyARRLookupService{}
 	svc := &Service{arrService: spy}
 
@@ -314,7 +311,6 @@ func TestGazelleTorznabIndexers_DoesNotMatchGenericRedName(t *testing.T) {
 func TestBuildGazelleClientSet_LoadsSettingsOnce(t *testing.T) {
 	ctx := context.Background()
 
-	// Store is required for buildGazelleClientSet, but keys can be missing for this test.
 	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-client-cache")
 
 	key := make([]byte, 32)
@@ -480,7 +476,6 @@ func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T)
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	// Minimal torrent bytes; "source" flag hashing is based on info dict.
 	torrentDict := map[string]any{
 		"announce": "https://flacsfor.me/abc/announce",
 		"info": map[string]any{
@@ -491,7 +486,6 @@ func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T)
 	torrentBytes, err := bencode.Marshal(torrentDict)
 	require.NoError(t, err)
 
-	// The seeded OPS copy is an Apollo-era upload, so it carries the APL flag.
 	hashes, err := mustGazelleSite(t, "orpheus.network").TargetHashes(torrentBytes)
 	require.NoError(t, err)
 	require.Len(t, hashes, 2)
@@ -537,8 +531,6 @@ func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T)
 	})
 	require.NoError(t, err)
 
-	// Without a client for the target the Gazelle leg is never due, and the
-	// skip would come from that rather than from the seeded hash.
 	state := &searchRunState{
 		run: run,
 		opts: SearchRunOptions{
@@ -613,8 +605,6 @@ func TestStartSearchRun_AllowsGazelleOnlyWhenTorznabUnavailable(t *testing.T) {
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	// Seeded Torrent Search should be able to start even with no Torznab indexers configured,
-	// as long as Gazelle matching is enabled.
 	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
 		GazelleEnabled: true,
 		RedactedAPIKey: "red-key",
@@ -1278,8 +1268,6 @@ func TestSearchTorrentMatches_GazelleConfiguredWithoutTargetLookupReturnsNoBacke
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	// Only RED key configured: RED-sourced torrents need OPS as the target, so Gazelle
-	// is globally configured but not usable for this source.
 	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
 		GazelleEnabled: true,
 		RedactedAPIKey: "red-key",
@@ -1312,7 +1300,6 @@ func TestSearchTorrentMatches_GazelleConfiguredWithoutTargetLookupReturnsNoBacke
 		},
 	}
 
-	// A key for another RED/OPS site makes a missing target key a skip, not an error.
 	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
 	require.NoError(t, err)
 	require.Empty(t, resp.Results)
@@ -1338,7 +1325,6 @@ func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorzna
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	// Enable Gazelle and set OPS key (needed when source is RED and target is OPS).
 	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
 		GazelleEnabled: true,
 		OrpheusAPIKey:  "ops-key",
@@ -1346,7 +1332,6 @@ func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorzna
 	})
 	require.NoError(t, err)
 
-	// Minimal torrent bytes; "source" flag hashing is based on info dict.
 	torrentDict := map[string]any{
 		"announce": "https://flacsfor.me/abc/announce",
 		"info": map[string]any{
@@ -1365,7 +1350,6 @@ func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorzna
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
 	sourceHashNorm := strings.ToLower(sourceHash)
 
-	// Stub keeps a broken skip from reaching the live tracker.
 	stubGazelleMatchLookup(t)
 
 	svc := &Service{
@@ -1399,8 +1383,6 @@ func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorzna
 	require.Empty(t, resp.Results)
 }
 
-// The per-torrent search has the same skip: a seeded copy under any of the
-// target's hashes means no remote lookup.
 func TestSearchGazelleMatches_SkipsWhenLegacyTargetHashExistsLocally(t *testing.T) {
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
 	sourceTorrent := &qbt.Torrent{
@@ -1457,8 +1439,6 @@ func TestSearchGazelleMatches_SkipsWhenLegacyTargetHashExistsLocally(t *testing.
 	require.Equal(t, 0, callCount)
 }
 
-// A lookup that failed made a remote request (so the run still paces) but did
-// not complete (so the torrent's Gazelle cooldown is not stamped).
 func TestSearchGazelleMatches_FailedLookupDoesNotComplete(t *testing.T) {
 	stubGazelleMatchLookupError(t, errors.New("API error: rate limit exceeded"))
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
@@ -1493,8 +1473,6 @@ func TestSearchGazelleMatches_FailedLookupDoesNotComplete(t *testing.T) {
 	require.False(t, cooldownDue)
 }
 
-// A non-OPS/RED source with both keys looks up both sites. One site
-// answering does not make the torrent done while the other site failed.
 func TestSearchGazelleMatches_OneFailedTargetIsNotCompleted(t *testing.T) {
 	sourceTorrent := &qbt.Torrent{
 		Hash: "223759985c562a644428312c8cd3585d04686847",
@@ -1557,7 +1535,6 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 		Tracker:  "https://orpheus.network/announce",
 	}
 
-	// Minimal torrent bytes for hash extraction path.
 	torrentDict := map[string]any{
 		"announce": "https://flacsfor.me/abc/announce",
 		"info": map[string]any{
@@ -1611,7 +1588,6 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 	require.Equal(t, 0, callCount)
 }
 
-// regression: #4320
 func TestSearchGazelleMatches_AsksSiteWhenLocalContentHoldsPartOfSource(t *testing.T) {
 	const album = "Lumen Harbor - Quiet Tides (2024) [FLAC]"
 	sourceTorrent := &qbt.Torrent{
@@ -1729,7 +1705,6 @@ func TestSearchTorrentMatches_DisableTorznabAllowsGazellePrefilterOnlySkip(t *te
 		Tracker:  "https://orpheus.network/announce",
 	}
 
-	// Stub keeps a broken skip from reaching the live tracker.
 	stubGazelleMatchLookup(t)
 
 	svc := &Service{
@@ -1907,7 +1882,6 @@ func TestSearchRunLoop_GazelleOnly_DoesNotSleepWhenLookupSkippedByLocalPrefilter
 		Results:         []models.CrossSeedSearchResult{},
 	})
 	require.NoError(t, err)
-	// A 60 s interval outlasts the 5 s guard, so a wrong sleep fails the test.
 	state := &searchRunState{
 		run:  run,
 		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true, IntervalSeconds: 60},
@@ -2355,15 +2329,10 @@ func TestSearchRunLoop_FilteredIndexersDoesNotSleepWithoutRemoteRequest(t *testi
 	require.False(t, found)
 }
 
-// gazelleTestServer stands in for the real Gazelle APIs so tests never send
-// requests to the live trackers.
 var gazelleTestServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "unexpected gazelle API call: "+r.URL.Path, http.StatusNotImplemented)
 }))
 
-// stubGazelleMatchLookup keeps a test off the real tracker APIs when it builds a
-// client through buildGazelleClientSet, which always points at the live hosts.
-// Callers must not be parallel: findGazelleMatch is a package variable.
 func stubGazelleMatchLookup(t *testing.T) {
 	t.Helper()
 	stubGazelleMatchLookupError(t, nil)
@@ -2380,8 +2349,6 @@ func stubGazelleMatchLookupError(t *testing.T, lookupErr error) {
 	})
 }
 
-// lookupGazelleForTest decides the Search scope of torrent with Torznab off and
-// runs its RED/OPS lookup, the way a trigger does.
 func lookupGazelleForTest(t *testing.T, svc *Service, torrent *qbt.Torrent, files qbt.TorrentFiles, clients *gazelleClientSet) []GazelleLookup {
 	t.Helper()
 	lookups, _ := lookupGazelleCooldownForTest(t, svc, torrent, files, clients)
@@ -2414,8 +2381,6 @@ func mustGazelleSite(t *testing.T, host string) gazellemusic.Site {
 	return site
 }
 
-// gazelleClientsForTest returns a client set keyed by the real OPS host, because
-// host matching uses that key, but the client itself talks to the test server.
 func gazelleClientsForTest() (*gazelleClientSet, error) {
 	client, err := gazellemusic.NewClient("orpheus.network", gazelleTestServer.URL, "ops-key")
 	if err != nil {

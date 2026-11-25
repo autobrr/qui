@@ -13,7 +13,6 @@ import type { TorrentTable } from "@/components/torrents/tanstackTableFeatures"
 
 export interface UseCompactViewSortParams {
   table: TorrentTable
-  // Included so the derived options/label recompute when columns change.
   columnVisibility: ColumnVisibilityState
   columnOrder: ColumnOrderState
   activeSortField: string
@@ -21,10 +20,6 @@ export interface UseCompactViewSortParams {
   setSorting: (sorting: Array<{ id: string; desc: boolean }>) => void
 }
 
-/**
- * Owns the compact-view sort dropdown: the available options, the current label,
- * and the field/order change handlers.
- */
 export function useCompactViewSort({
   table,
   columnVisibility,
@@ -33,8 +28,6 @@ export function useCompactViewSort({
   activeSortOrder,
   setSorting,
 }: UseCompactViewSortParams) {
-  // v9's useTable returns a new table object every render; read it through a
-  // latest-ref so the memos and callbacks below keep stable identities.
   const tableRef = useRef(table)
   tableRef.current = table
   const { t } = useTranslation("torrents")
@@ -52,7 +45,6 @@ export function useCompactViewSort({
     }
 
     return field
-    // Reads the table at call time through tableRef, so it needs no deps.
   }, [])
 
   const compactSortOptions = useMemo(() => {

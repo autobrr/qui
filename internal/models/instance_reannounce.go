@@ -24,7 +24,6 @@ const (
 	maxMaxRetries                 = 50
 )
 
-// InstanceReannounceSettings stores per-instance tracker reannounce configuration.
 type InstanceReannounceSettings struct {
 	InstanceID                int       `json:"instanceId"`
 	Enabled                   bool      `json:"enabled"`
@@ -43,9 +42,6 @@ type InstanceReannounceSettings struct {
 	UpdatedAt                 time.Time `json:"updatedAt"`
 }
 
-// CanMatchTorrents reports whether any torrent can match these settings: the
-// feature is on, and the scope is either MonitorAll or at least one inclusion
-// list. A scope that matches nothing lets callers skip the client fetch.
 func (s *InstanceReannounceSettings) CanMatchTorrents() bool {
 	if s == nil || !s.Enabled {
 		return false
@@ -58,17 +54,14 @@ func (s *InstanceReannounceSettings) CanMatchTorrents() bool {
 		(len(s.Trackers) > 0 && !s.ExcludeTrackers)
 }
 
-// InstanceReannounceStore manages persistence for InstanceReannounceSettings.
 type InstanceReannounceStore struct {
 	db dbinterface.Querier
 }
 
-// NewInstanceReannounceStore creates a new store.
 func NewInstanceReannounceStore(db dbinterface.Querier) *InstanceReannounceStore {
 	return &InstanceReannounceStore{db: db}
 }
 
-// DefaultInstanceReannounceSettings returns default values for a new instance.
 func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettings {
 	return &InstanceReannounceSettings{
 		InstanceID:                instanceID,
@@ -88,7 +81,6 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 	}
 }
 
-// Get returns settings for an instance, falling back to defaults if missing.
 func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
 		max_age_seconds, max_retries, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
@@ -106,7 +98,6 @@ func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*Ins
 	return settings, nil
 }
 
-// List returns settings for all instances that have overrides. Instances without overrides are omitted.
 func (s *InstanceReannounceStore) List(ctx context.Context) ([]*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
 		max_age_seconds, max_retries, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
@@ -135,7 +126,6 @@ func (s *InstanceReannounceStore) List(ctx context.Context) ([]*InstanceReannoun
 	return result, nil
 }
 
-// Upsert saves settings for an instance, creating or updating as needed.
 func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *InstanceReannounceSettings) (*InstanceReannounceSettings, error) {
 	if settings == nil {
 		return nil, errors.New("settings cannot be nil")

@@ -11,12 +11,6 @@ interface UseIndexerTrackerDomainsOptions {
   staleTimeMs?: number
 }
 
-/**
- * Fetches tracker domains derived from qui's configured (enabled) indexers.
- * These are global (not instance-scoped) and let users select trackers that have
- * no active torrents. Errors resolve to an empty list so the caller degrades
- * gracefully when indexers aren't configured.
- */
 export function useIndexerTrackerDomains(options: UseIndexerTrackerDomainsOptions = {}) {
   const { enabled = true, staleTimeMs = 1000 * 60 * 5 } = options
 

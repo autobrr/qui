@@ -5,13 +5,6 @@
 
 import type { ServerState } from "@/types"
 
-/**
- * Build a ServerState object with sensible zero-ish defaults for unit tests.
- *
- * Only override the fields your test actually exercises — the rest carry
- * harmless placeholders so the test file isn't littered with irrelevant
- * boilerplate.
- */
 export function makeServerState(overrides: Partial<ServerState> = {}): ServerState {
   return {
     connection_status: "connected",

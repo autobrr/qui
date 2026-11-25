@@ -21,13 +21,10 @@ func NewSystemNoticeHandler(notices *systemnotice.Module) *SystemNoticeHandler {
 	return &SystemNoticeHandler{notices: notices}
 }
 
-// List handles GET /api/system-notices.
 func (h *SystemNoticeHandler) List(w http.ResponseWriter, _ *http.Request) {
 	RespondJSON(w, http.StatusOK, h.notices.List())
 }
 
-// Dismiss closes a notice that the user can dismiss.
-// DELETE /api/system-notices/{kind}
 func (h *SystemNoticeHandler) Dismiss(w http.ResponseWriter, r *http.Request) {
 	err := h.notices.Dismiss(r.Context(), systemnotice.Kind(chi.URLParam(r, "kind")))
 	switch {

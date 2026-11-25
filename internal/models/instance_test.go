@@ -12,11 +12,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// testInstanceSchema is the shared test schema for instance store tests.
-// Keeping it in one place avoids updating 7 inline schemas when columns change.
-// It must stay column-for-column with the migrated instances table: the columns
-// it invents are exactly the ones a statement can reference and still pass here
-// while failing against a real database.
 const testInstanceSchema = `
 	CREATE TABLE IF NOT EXISTS string_pool (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,7 +91,6 @@ func TestHostValidation(t *testing.T) {
 		expected string
 		wantErr  bool
 	}{
-		// Valid cases
 		{
 			name:     "HTTP URL with port",
 			input:    "http://localhost:8080",
@@ -137,7 +131,6 @@ func TestHostValidation(t *testing.T) {
 			input:    "localhost",
 			expected: "http://localhost",
 		},
-		// Invalid cases
 		{
 			name:    "Invalid URL scheme",
 			input:   "ftp://localhost:8080",
@@ -181,35 +174,29 @@ func TestHostValidation(t *testing.T) {
 func TestInstanceStoreWithHost(t *testing.T) {
 	ctx := t.Context()
 
-	// Create in-memory database for testing
 	sqlDB, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err, "Failed to open test database")
 	defer sqlDB.Close()
 
-	// Create test encryption key
 	encryptionKey := make([]byte, 32)
 	for i := range encryptionKey {
 		encryptionKey[i] = byte(i)
 	}
 
-	// Wrap with mock that implements Querier
 	db := newMockQuerier(sqlDB)
 
-	// Create instance store
 	store, err := NewInstanceStore(db, encryptionKey)
 	require.NoError(t, err, "Failed to create instance store")
 
 	_, err = db.ExecContext(ctx, testInstanceSchema)
 	require.NoError(t, err, "Failed to create test schema")
 
-	// Test creating an instance with host
 	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil)
 	require.NoError(t, err, "Failed to create instance")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
 	assert.False(t, instance.TLSSkipVerify)
 	assert.Equal(t, 0, instance.SortOrder)
 
-	// Test retrieving the instance
 	retrieved, err := store.Get(ctx, instance.ID)
 	require.NoError(t, err, "Failed to get instance")
 	assert.Equal(t, "http://localhost:8080", retrieved.Host, "retrieved host should match")
@@ -217,14 +204,12 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	assert.True(t, retrieved.IsActive)
 	assert.False(t, retrieved.HasLocalFilesystemAccess)
 
-	// Test updating the instance
 	newTLSSetting := true
 	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil, &InstanceUpdateParams{TLSSkipVerify: &newTLSSetting})
 	require.NoError(t, err, "Failed to update instance")
 	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.Host, "updated host should match")
 	assert.True(t, updated.TLSSkipVerify)
 
-	// Test toggling activation flag
 	disabled, err := store.SetActiveState(ctx, instance.ID, false)
 	require.NoError(t, err, "Failed to disable instance")
 	assert.False(t, disabled.IsActive)
@@ -237,32 +222,26 @@ func TestInstanceStoreWithHost(t *testing.T) {
 func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 	ctx := t.Context()
 
-	// Create in-memory database for testing
 	sqlDB, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err, "Failed to open test database")
 	defer sqlDB.Close()
 
-	// Create test encryption key
 	encryptionKey := make([]byte, 32)
 	for i := range encryptionKey {
 		encryptionKey[i] = byte(i)
 	}
 
-	// Wrap with mock that implements Querier
 	db := newMockQuerier(sqlDB)
 
-	// Create instance store
 	store, err := NewInstanceStore(db, encryptionKey)
 	require.NoError(t, err, "Failed to create instance store")
 
 	_, err = db.ExecContext(ctx, testInstanceSchema)
 	require.NoError(t, err, "Failed to create test schema")
 
-	// Insert empty string into string_pool (as migration does)
 	_, err = db.ExecContext(ctx, `INSERT INTO string_pool (value) VALUES ('')`)
 	require.NoError(t, err, "Failed to insert empty string")
 
-	// Test creating an instance with empty username (localhost bypass)
 	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "", "", nil, nil, false, nil)
 	require.NoError(t, err, "Failed to create instance with empty username")
 	assert.Empty(t, instance.Username, "username should be empty")
@@ -271,23 +250,17 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 	require.NoError(t, err, "Failed to decrypt instance password")
 	assert.Empty(t, password, "password should be empty for bypass auth instances")
 
-	// Test retrieving the instance
 	retrieved, err := store.Get(ctx, instance.ID)
 	require.NoError(t, err, "Failed to get instance")
 	assert.Empty(t, retrieved.Username, "retrieved username should be empty")
 	assert.Equal(t, "http://localhost:8080", retrieved.Host, "retrieved host should match")
 
-	// Test updating the instance with empty username
 	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "http://localhost:9091", "", "", nil, nil, nil)
 	require.NoError(t, err, "Failed to update instance with empty username")
 	assert.Empty(t, updated.Username, "updated username should be empty")
 	assert.Equal(t, "http://localhost:9091", updated.Host, "updated host should match")
 }
 
-// TestInstanceStoreEmptyUsernameSelfHealing verifies that creating an instance with
-// empty username works even when the empty string doesn't exist in string_pool.
-// This tests the fix for the bug where cleanup could delete the empty string,
-// causing bypass auth instance creation to fail.
 func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 	ctx := t.Context()
 
@@ -304,11 +277,9 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 	store, err := NewInstanceStore(db, encryptionKey)
 	require.NoError(t, err, "Failed to create instance store")
 
-	// NOTE: Intentionally NOT inserting empty string - this is the bug scenario
 	_, err = db.ExecContext(ctx, testInstanceSchema)
 	require.NoError(t, err, "Failed to create test schema")
 
-	// This should work even without pre-inserted empty string (self-healing)
 	instance, err := store.Create(ctx, "Bypass Auth Instance", "http://localhost:8080", "", "", nil, nil, false, nil)
 	require.NoError(t, err, "Create with empty username should work even when empty string not pre-inserted")
 	assert.Empty(t, instance.Username, "username should be empty")
@@ -316,16 +287,12 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 	require.NoError(t, err, "Failed to decrypt instance password")
 	assert.Empty(t, password, "password should be empty for bypass auth instances")
 
-	// Verify the empty string was created in string_pool
 	var count int
 	err = sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool WHERE value = ''").Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count, "empty string should have been created in string_pool")
 }
 
-// TestInstanceStoreUpdateEmptyUsernameSelfHealing verifies that updating an instance to use
-// empty username works even when the empty string doesn't exist in string_pool.
-// This tests the Update() path of the fix for the cleanup bug.
 func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 	ctx := t.Context()
 
@@ -342,16 +309,13 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 	store, err := NewInstanceStore(db, encryptionKey)
 	require.NoError(t, err, "Failed to create instance store")
 
-	// NOTE: Intentionally NOT inserting empty string - this is the bug scenario
 	_, err = db.ExecContext(ctx, testInstanceSchema)
 	require.NoError(t, err, "Failed to create test schema")
 
-	// First create an instance with non-empty username (this works without empty string)
 	instance, err := store.Create(ctx, "Regular Instance", "http://localhost:8080", "admin", "pass", nil, nil, false, nil)
 	require.NoError(t, err, "Create with non-empty username should work")
 	assert.Equal(t, "admin", instance.Username, "username should be admin")
 
-	// Now update to empty username (bypass auth) - this should work via self-healing
 	updated, err := store.Update(ctx, instance.ID, "Bypass Auth Instance", "http://localhost:8080", "", "", nil, nil, nil)
 	require.NoError(t, err, "Update to empty username should work even when empty string not pre-inserted")
 	assert.Empty(t, updated.Username, "username should be empty after update")
@@ -359,7 +323,6 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 	require.NoError(t, err, "Failed to decrypt instance password")
 	assert.Empty(t, password, "password should be cleared when enabling bypass auth")
 
-	// Verify the empty string was created in string_pool
 	var count int
 	err = sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool WHERE value = ''").Scan(&count)
 	require.NoError(t, err)

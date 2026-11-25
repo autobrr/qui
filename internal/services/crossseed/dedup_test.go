@@ -88,8 +88,6 @@ func TestService_deduplicateSourceTorrents_PrefersRootFolders(t *testing.T) {
 	require.Equal(t, "hash-root", deduped[0].Hash, "prefer torrent with root folder")
 }
 
-// countingFilesSyncManager records which hashes the deduplication pass asks
-// file lists for.
 type countingFilesSyncManager struct {
 	fakeSyncManager
 	requested []string
@@ -100,11 +98,6 @@ func (c *countingFilesSyncManager) GetTorrentFilesBatch(ctx context.Context, ins
 	return c.fakeSyncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 }
 
-// Regression: deduplication used to fetch a file list for every torrent in the
-// library before a search run logged anything. Only the members of a group that
-// holds more than one torrent need one, so unique content costs no file request
-// at all. Discord report: cross-seed scans take an absurd amount of time to
-// start, with nothing in the log until the enumeration finishes.
 func TestService_deduplicateSourceTorrents_FetchesFilesForGroupMembersOnly(t *testing.T) {
 	files := map[string]qbt.TorrentFiles{
 		"hash-flat":  {{Name: "Show.S01E01.mkv", Size: 1 << 20}},

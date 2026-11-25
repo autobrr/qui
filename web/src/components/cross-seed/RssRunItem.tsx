@@ -18,9 +18,7 @@ interface RSSRunItemProps {
 
 export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
   const { t } = useTranslation("crossseed")
-  // A routed result names the instance that held the match and the Cross-seed instance.
   const instanceLabel = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? crossSeedRouteText(t, result.instanceName, result.crossSeedInstanceName, result.success) : result.instanceName
-  // A routed label is long, so it shrinks on a narrow screen and leaves room for the release name.
   const instanceBadgeSize = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? "shrink min-w-0 max-w-64" : "shrink-0 w-20"
   const hasResults = run.results && run.results.length > 0
   const successResults = run.results?.filter(r => r.success) ?? []
@@ -58,9 +56,9 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
           <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
             {successResults.map((result, i) => (
               <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                <Badge variant="default" className={`text-[10px] ${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                <Badge variant="default" className={`text-10 ${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
                 {result.indexerName && (
-                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
+                  <Badge variant="secondary" className="text-10 shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
                 )}
                 <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
               </div>
@@ -70,15 +68,15 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
             )}
             {failedResults.length > 0 && (
               <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-                <span className="text-[10px] text-muted-foreground font-medium">{t("scan.failed")}</span>
+                <span className="text-10 text-muted-foreground font-medium">{t("scan.failed")}</span>
                 {failedResults.map((result, i) => {
                   const routeStatusKey = crossSeedRouteStatusKeys[result.status]
                   return (
                     <div key={`failed-${result.instanceId}-${i}`} className="flex flex-col gap-0.5 text-xs">
                       <div className="flex items-center gap-2">
-                        <Badge variant="destructive" className={`text-[10px] ${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                        <Badge variant="destructive" className={`text-10 ${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
                         {result.indexerName && (
-                          <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
+                          <Badge variant="secondary" className="text-10 shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
                         )}
                       </div>
                       {routeStatusKey && <span className="font-medium pl-1">{t(routeStatusKey)}</span>}

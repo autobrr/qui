@@ -30,11 +30,9 @@ interface InstancesManagerProps {
   onSearchChange: (search: SettingsSearch) => void
 }
 
-/** The Instances tab: the qBittorrent instances, the add form that `?modal=add-instance` opens, and the speeds in the browser tab. */
 export function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
   const { t } = useTranslation("settings")
   const { t: tCommon } = useTranslation("common")
-  // The same query as useInstances, which the list and the forms use for their changes.
   const instancesQuery = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances() })
   const instances = instancesQuery.data ?? []
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -55,7 +53,6 @@ export function InstancesManager({ search, onSearchChange }: InstancesManagerPro
   const openMarkEditor = (target: MarkTarget) => setMarkEditing({ target, open: true })
 
   const addOpen = search.tab === "instances" && search.modal === "add-instance"
-  // Each open of the add form starts from empty fields. The form keeps its key while it closes, so it can fade out.
   const [addSession, setAddSession] = useState(0)
   const [wasAddOpen, setWasAddOpen] = useState(addOpen)
   if (addOpen !== wasAddOpen) {
@@ -160,7 +157,6 @@ function InstanceIconsSection({ targets, onOpen }: InstanceIconsSectionProps) {
 function TitleBarSpeedsSection() {
   const { t } = useTranslation("settings")
   const [enabled, setEnabled] = usePersistedTitleBarSpeeds(false)
-  // Until the server answers, the switch shows the default, and a change would be lost.
   const settled = useClientSettingsSettled()
 
   return (

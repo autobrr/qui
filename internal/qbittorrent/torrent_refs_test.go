@@ -13,14 +13,12 @@ func torrentRefs(torrents []qbt.Torrent) []*qbt.Torrent {
 	return refs
 }
 
-// sortTorrentValues sorts torrents in place with sortTorrents.
 func sortTorrentValues(sm *SyncManager, torrents []qbt.Torrent, column string, desc, trackerHealthSupported bool, health *TrackerHealthSnapshot) {
 	refs := torrentRefs(torrents)
 	sm.sortTorrents(refs, column, desc, trackerHealthSupported, health)
 	copy(torrents, torrentValues(refs))
 }
 
-// torrentValues returns a copy of each torrent.
 func torrentValues(refs []*qbt.Torrent) []qbt.Torrent {
 	torrents := make([]qbt.Torrent, len(refs))
 	for i, t := range refs {

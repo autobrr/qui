@@ -24,7 +24,7 @@ The workflow installs the frontend packages with `--ignore-scripts`, so no insta
 
 - Two agent runs each day spend from the $120 monthly limit that the bot shares with triage (ADR 0017). Each run stops at $5.
 - A maintainer reviews up to two bot pull requests each day. A removed effect can change when a component renders, so a `web` pull request needs a closer look than a Go lint fix.
-- The `web` lane takes only `qui/no-direct-effect`. Each other held rule, such as the 28 imports against the folder order (ADR 0074), needs its name in the pick step and a prompt of its own. The comments stay with `/delete-comment`.
+- The `web` lane takes only `qui/no-direct-effect`. Each other held rule, such as the 28 imports against the folder order (ADR 0074), needs its name in the pick step and a prompt of its own.
 - The `ratchet-web` label must exist in the repository. Without it, the run pushes the branch and then fails to open the pull request.
 - A manual run takes the lane as an input. With no input, it runs the `go` lane.
 

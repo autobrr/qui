@@ -16,15 +16,9 @@ interface DestinationFreeSpaceProps {
   path: string
 }
 
-/**
- * Shows the free space qBittorrent reports for the selected destination. The query
- * key carries the path, so a late answer for an earlier destination lands in its own
- * cache entry instead of overwriting the current one.
- */
 export function DestinationFreeSpace({ instanceId, path }: DestinationFreeSpaceProps) {
   const { t } = useTranslation("torrents")
   const { data: capabilities } = useInstanceCapabilities(instanceId)
-  // Undefined while the capabilities query is in flight, which is not the same as unsupported.
   const supported = capabilities?.supportsFreeSpaceAtPath
   const debouncedPath = useDebounce(path.trim(), 400)
 
@@ -36,7 +30,6 @@ export function DestinationFreeSpace({ instanceId, path }: DestinationFreeSpaceP
     retry: false,
   })
 
-  // Older instances have no path endpoint, so they keep the default-path display only.
   if (supported === false) {
     return null
   }

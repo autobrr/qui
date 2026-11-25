@@ -31,10 +31,6 @@ export function usePersistedAccordion() {
     serialize: parseRawString,
   })
 
-  // Existing users have a stored array predating "views", so the new section
-  // would ship collapsed. Expand it in-memory until the seed marker is set;
-  // the marker is written on the user's first toggle, after which their own
-  // choice wins.
   const expandedItems = useMemo(() => {
     if (viewsSeeded || storedItems.includes("views")) return storedItems
     return ["views", ...storedItems]

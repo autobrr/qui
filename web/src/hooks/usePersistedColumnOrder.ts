@@ -17,8 +17,6 @@ function mergeWithDefaults(order: unknown, defaultOrder: ColumnOrderState): Colu
 
   const result = [...order]
 
-  // A missing column goes right after its nearest default-order predecessor, so several
-  // missing columns keep their default order and a column with no predecessor goes first.
   defaultOrder.forEach((columnId, defaultIndex) => {
     if (result.includes(columnId)) return
 

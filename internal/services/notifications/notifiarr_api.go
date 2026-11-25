@@ -384,8 +384,6 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 		return o
 	}()
 
-	// Prefer a single stable shape for templates: always emit error_messages (a list).
-	// error_message intentionally omitted; use error_messages only.
 	errors := normalizeErrorMessages(event.ErrorMessages)
 	if msg := strings.TrimSpace(event.ErrorMessage); msg != "" {
 		if len(errors) == 0 {

@@ -23,7 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/themes"
 )
 
-// stubPremium controls the premium-access result for the themes handler tests.
 type stubPremium struct {
 	ok  bool
 	err error
@@ -33,7 +32,6 @@ func (s stubPremium) HasPremiumAccess(context.Context) (bool, error) {
 	return s.ok, s.err
 }
 
-// stubThemesDir points the handler at a fixed directory (usually t.TempDir()).
 type stubThemesDir struct {
 	dir string
 	err error
@@ -73,7 +71,6 @@ func TestThemesHandler_EmptyDirReturnsEmptyArray(t *testing.T) {
 	rec := doListCustomThemes(t, h)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	// Must serialize as [] not null so the frontend can map over it safely.
 	require.Contains(t, rec.Body.String(), `"themes":[]`)
 
 	var resp CustomThemesResponse
@@ -89,8 +86,6 @@ func TestThemesHandler_ListsOnlyRegularCSSFiles(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "subdir"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "subdir", "nested.css"), []byte(":root{}"), 0o600))
 
-	// Symlink to a .css outside the directory; must NOT be followed. Best-effort,
-	// since symlink creation needs privileges on some platforms.
 	outside := filepath.Join(t.TempDir(), "evil.css")
 	require.NoError(t, os.WriteFile(outside, []byte(":root{--primary:red}"), 0o600))
 	_ = os.Symlink(outside, filepath.Join(dir, "linked.css"))
@@ -146,7 +141,6 @@ func TestThemesHandler_EnsureDirErrorReturnsEmpty(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"themes":[]`)
 }
 
-// failingThemeSettings is a themeSettingsStore whose every call fails.
 type failingThemeSettings struct{}
 
 func (failingThemeSettings) GetAll(context.Context) (models.ThemeSlots, error) {
@@ -189,7 +183,6 @@ func getThemeSlots(t *testing.T, h *ThemesHandler) string {
 	return strings.TrimSpace(rec.Body.String())
 }
 
-// recordingPublisher records published activity events.
 type recordingPublisher struct {
 	events []activity.Event
 }
@@ -345,28 +338,22 @@ func TestListThemes_FreeAlwaysHaveCSS(t *testing.T) {
 	}
 }
 
-// TestBuildBuiltinThemeList uses synthetic themes because the premium CSS
-// files are not in the public repo: gating tests against the real registry
-// would silently assert nothing in CI.
 func TestBuildBuiltinThemeList(t *testing.T) {
 	list := []themes.Theme{
 		{ID: "free", Name: "Free", CSS: "free-css", Preview: themes.Preview{Light: map[string]string{"--primary": "red"}}},
 		{ID: "paid", Name: "Paid", Premium: true, CSS: "paid-css", Preview: themes.Preview{Light: map[string]string{"--primary": "gold"}}},
 	}
 
-	// Unlicensed: no premium CSS regardless of auth or selection.
 	unlicensed := buildBuiltinThemeList(list, false, true, "paid")
 	require.Equal(t, "free-css", unlicensed[0].CSS)
 	require.Nil(t, unlicensed[0].Preview)
 	require.Empty(t, unlicensed[1].CSS, "premium CSS leaked without a license")
 	require.Equal(t, "gold", unlicensed[1].Preview.Light["--primary"])
 
-	// Licensed and authenticated: full premium CSS.
 	authed := buildBuiltinThemeList(list, true, true, "")
 	require.Equal(t, "paid-css", authed[1].CSS)
 	require.Nil(t, authed[1].Preview)
 
-	// Licensed but anonymous: premium CSS only for the selected theme.
 	anonSelected := buildBuiltinThemeList(list, true, false, "paid")
 	require.Equal(t, "paid-css", anonSelected[1].CSS, "the selected premium theme must paint the login page")
 

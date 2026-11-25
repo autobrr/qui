@@ -17,26 +17,19 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
-// settleFake is qBittorrent for the settle module that the injector calls.
-// Each worker poll lists the next torrent of polls; after the last one the
-// torrent is gone.
 type settleFake struct {
-	mu      sync.Mutex
-	polls   []*qbt.Torrent
-	next    int
-	current *qbt.Torrent
-	// qbitHash, when set, is the only hash the file and piece reads accept,
-	// like qBittorrent's exact-ID lookup for a hybrid torrent.
-	qbitHash string
-	files    qbt.TorrentFiles
-	pieces   []qbt.PieceState
-	// The first pieceFailures piece state reads fail.
+	mu              sync.Mutex
+	polls           []*qbt.Torrent
+	next            int
+	current         *qbt.Torrent
+	qbitHash        string
+	files           qbt.TorrentFiles
+	pieces          []qbt.PieceState
 	pieceFailures   int
 	pieceReads      int
 	recheckFailures int
-	// recheckCtxErr is the context error the first recheck call saw.
-	recheckCtxErr error
-	actions       []string
+	recheckCtxErr   error
+	actions         []string
 }
 
 func (f *settleFake) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
@@ -94,7 +87,6 @@ func (f *settleFake) GetTorrentPieceStates(_ context.Context, _ int, hash string
 	return f.pieces, nil
 }
 
-// calls returns the actions the settle module sent, without the hashes.
 func (f *settleFake) calls() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -105,7 +97,6 @@ func (f *settleFake) calls() []string {
 	return names
 }
 
-// hashedCalls returns the actions the settle module sent, as "action:hash".
 func (f *settleFake) hashedCalls() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -118,13 +109,10 @@ func (f *settleFake) reads() int {
 	return f.pieceReads
 }
 
-// idle returns a settle module with no worker, for a test that does not
-// watch the settle.
 func (f *settleFake) idle() *crossseed.Settler {
 	return crossseed.NewSettler(f, nil)
 }
 
-// start returns a running settle module. Call it inside a synctest bubble.
 func (f *settleFake) start(t *testing.T) *crossseed.Settler {
 	t.Helper()
 	settler := crossseed.NewSettler(f, nil)

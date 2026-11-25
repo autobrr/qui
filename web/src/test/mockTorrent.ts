@@ -5,13 +5,6 @@
 
 import type { Torrent } from "@/types"
 
-/**
- * Build a Torrent object with sensible zero-ish defaults for unit tests.
- *
- * Only override the fields your test actually exercises — the rest carry
- * harmless placeholders so the test file isn't littered with irrelevant
- * boilerplate.
- */
 export function makeTorrent(overrides: Partial<Torrent> = {}): Torrent {
   return {
     added_on: 0,

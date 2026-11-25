@@ -24,7 +24,6 @@ const (
 	ProductNameSupporter = "supporter"
 )
 
-// The Dodo products of the yearly support: the two live products, then the two of test mode.
 var supporterProductIDs = []string{
 	"pdt_0NsEXpOuhHMsJwbdagrM9",
 	"pdt_0NsEXpSFgcjPNVB6CI98V",
@@ -251,7 +250,6 @@ func (s *Service) IsSupporter(ctx context.Context) (bool, error) {
 	return s.licenseRepo.IsSupporter(ctx)
 }
 
-// ServerSetupTime returns when this server first ran. The time does not change, so one read of the database serves each later call.
 func (s *Service) ServerSetupTime(ctx context.Context) (time.Time, error) {
 	if setupAt := s.setupAt.Load(); setupAt != nil {
 		return *setupAt, nil
@@ -288,7 +286,6 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			continue
 		}
 
-		// Going offline also sets last_validated, so skip only active licenses.
 		if license.Status == models.LicenseStatusActive && time.Since(license.LastValidated) < time.Hour {
 			continue
 		}
@@ -359,9 +356,6 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	return refreshErr
 }
 
-// revalidates reports whether the background check and the manual refresh validate a license.
-// An invalid license needs an explicit re-activation by the user, so they skip it.
-// An invalid supporter key is valid again after a failed payment is fixed, so they keep it.
 func revalidates(license *models.ProductLicense) bool {
 	return license.Status == models.LicenseStatusActive || license.Status == models.LicenseStatusOffline ||
 		license.ProductName == ProductNameSupporter
@@ -488,8 +482,6 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		}
 	}
 
-	// Invalid state has priority over transient backend failures: report
-	// deterministic invalid result and suppress soft-fail errors.
 	if !allValid && transientErr != nil {
 		return allValid, nil //nolint:nilerr // an invalid license has priority over a transient error
 	}

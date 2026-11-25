@@ -25,7 +25,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// The exec tier deletes over the real SSH path, end to end (#3236).
 func TestConfirmDeletion_RemoteExecTierDeletesOverSSH(t *testing.T) {
 	t.Parallel()
 
@@ -42,8 +41,6 @@ func TestConfirmDeletion_RemoteExecTierDeletesOverSSH(t *testing.T) {
 	require.Equal(t, "completed", f.run(t, run.ID).Status)
 }
 
-// A row on the exec tier whose walk fell back to sftp missed identities, so
-// its preview is kept and nothing is deleted.
 func TestConfirmDeletion_RemoteRunWithIncompleteIdentityIsRefused(t *testing.T) {
 	t.Parallel()
 
@@ -78,8 +75,6 @@ func TestConfirmDeletion_RemoteRunWithIncompleteIdentityIsRefused(t *testing.T) 
 		f.requireNothingDeleted(t)
 	})
 
-	// The torrent files below the cut were never keyed, so a second path to
-	// one of them in another root would be listed.
 	t.Run("root walk cut by a lost connection", func(t *testing.T) {
 		t.Parallel()
 
@@ -110,8 +105,6 @@ func TestConfirmDeletion_RemoteRunWithIncompleteIdentityIsRefused(t *testing.T) 
 	})
 }
 
-// The in-use walk of an ignored symlinked save path is cut, so its files were
-// never keyed and their twins at the target would be listed.
 func TestConfirmDeletion_RemoteRunWithACutIgnoredLinkIsRefused(t *testing.T) {
 	t.Parallel()
 
@@ -149,8 +142,6 @@ func TestConfirmDeletion_RemoteRunWithACutIgnoredLinkIsRefused(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// cutWalkBackend ends the walk of root with a lost connection, after the
-// entries it did hand out.
 type cutWalkBackend struct {
 	fsops.Backend
 	root string
@@ -172,8 +163,6 @@ func (b cutWalkBackend) WalkDir(ctx context.Context, root string, opts fsops.Wal
 	return out, nil
 }
 
-// The run is bound to the SSH user, host, port and pin it walked. A change
-// between the scan and the confirm, or after the confirm, fails the run.
 func TestDeletion_RemoteEndpointChangedFailsTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -194,7 +183,6 @@ func TestDeletion_RemoteEndpointChangedFailsTheRun(t *testing.T) {
 			run := f.scan(t, "manual")
 			require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 
-			// Saving SSH credentials also resets the tier until the next probe.
 			f.instance.mu.Lock()
 			tc.change(&f.instance.inst)
 			f.instance.inst.SSHTier = models.SSHTierSFTP
@@ -228,8 +216,6 @@ func TestDeletion_RemoteEndpointChangedFailsTheRun(t *testing.T) {
 	}
 }
 
-// Automatic cleanup runs on a remote instance under the same gates as local
-// ones, plus a walk that read every file's identity.
 func TestMaybeAutoCleanup_RemoteExecTierRunCleansUp(t *testing.T) {
 	t.Parallel()
 
@@ -243,8 +229,6 @@ func TestMaybeAutoCleanup_RemoteExecTierRunCleansUp(t *testing.T) {
 	require.FileExists(t, f.owned)
 }
 
-// Skipping cleanup adds a short notice after the scan's own warning, which says
-// what the server did wrong and what to do.
 func TestMaybeAutoCleanup_RemoteRunWithIncompleteIdentityKeepsBothWarnings(t *testing.T) {
 	t.Parallel()
 
@@ -257,7 +241,6 @@ func TestMaybeAutoCleanup_RemoteRunWithIncompleteIdentityKeepsBothWarnings(t *te
 	f.requireNoFailureEvent(t)
 }
 
-// failingRemoveBackend fails Remove for the paths fail names with err.
 type failingRemoveBackend struct {
 	fsops.Backend
 	fail func(path string) bool
@@ -271,9 +254,6 @@ func (b failingRemoveBackend) Remove(ctx context.Context, path string, opts fsop
 	return b.Backend.Remove(ctx, path, opts)
 }
 
-// A failed delete on a remote instance is reported in words that fit it, from
-// the file loop and the directory loop alike, and the loop goes on so the
-// entries after a dropped connection are still tried.
 func TestExecuteDeletion_RemoteFailureText(t *testing.T) {
 	t.Parallel()
 
@@ -291,7 +271,6 @@ func TestExecuteDeletion_RemoteFailureText(t *testing.T) {
 		{"connection lost in the file loop", false, fsops.ErrConnectionLost, lost, nil},
 		{"connection lost in the directory loop", true, fsops.ErrConnectionLost, lost, nil},
 		{"permission denied", false, fs.ErrPermission, permission, []string{"qui process"}},
-		// sftp sends EROFS as a generic failure, so a read-only text would only mislead.
 		{"read-only text stays local", false, syscall.EROFS, "Check the details for specific errors", []string{":ro"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -364,7 +343,6 @@ func TestRunCanDelete(t *testing.T) {
 		{"remote with identity on the exec tier", remote(true, "qui@box:22"), exec, true},
 		{"remote with identity on the sftp tier", remote(true, "qui@box:22"), sftp, false},
 		{"remote walk that missed an identity", remote(false, "qui@box:22"), exec, false},
-		// A local file with no ID, such as one on a network share, deletes as it always has.
 		{"local without complete identity", &models.OrphanScanRun{FilesystemMode: models.FilesystemModeLocal}, exec, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -374,8 +352,6 @@ func TestRunCanDelete(t *testing.T) {
 	}
 }
 
-// A remote run from before the endpoint and identity were recorded keeps its
-// preview, and the next scan replaces it.
 func TestConfirmDeletion_RemoteRunFromBeforeTheColumnsKeepsItsPreview(t *testing.T) {
 	t.Parallel()
 
@@ -403,9 +379,6 @@ func (p *recordingPublisher) Publish(ev activity.Event) {
 	p.events = append(p.events, ev)
 }
 
-// A host key replaced at the same address leaves the endpoint as it was, so
-// the SSH change fails the remote preview itself. A local preview of the same
-// instance walked no SSH server and keeps its review.
 func TestChangeSSH_FailsOnlyRemotePreviews(t *testing.T) {
 	t.Parallel()
 
@@ -430,8 +403,6 @@ func TestChangeSSH_FailsOnlyRemotePreviews(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// pausingRemoveBackend holds its first Remove until resume closes, so the run
-// stays deleting while an SSH change checks it.
 type pausingRemoveBackend struct {
 	fsops.Backend
 	once   *sync.Once
@@ -443,9 +414,6 @@ func (b pausingRemoveBackend) Remove(ctx context.Context, path string, opts fsop
 	return b.Backend.Remove(ctx, path, opts)
 }
 
-// sshLockHeld reports whether anyone holds the SSH lock of instance 1. A test
-// asks it at a moment when only the code under test can hold the lock, so a
-// lock that is missing shows at once, without a wait for a race to happen.
 func sshLockHeld(svc *Service) bool {
 	mu := svc.getInstanceMutex(svc.sshMu, 1)
 	if mu.TryLock() {
@@ -455,9 +423,6 @@ func sshLockHeld(svc *Service) bool {
 	return true
 }
 
-// An SSH change that passed its deletion check before the deletion started
-// is stored and fails the preview before the run can start, so nothing is
-// deleted through the new pin.
 func TestChangeSSH_DeletionStartWaitsForAPendingChange(t *testing.T) {
 	t.Parallel()
 
@@ -466,8 +431,6 @@ func TestChangeSSH_DeletionStartWaitsForAPendingChange(t *testing.T) {
 	run := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 
-	// The hook runs only once ChangeSSH has returned, so the change no longer
-	// holds the lock, and the lock is held only if the deletion took it.
 	changeReturned := make(chan struct{})
 	var heldAtStart bool
 	f.svc.beforeDeletionStart = func() {
@@ -478,7 +441,6 @@ func TestChangeSSH_DeletionStartWaitsForAPendingChange(t *testing.T) {
 	deleted := make(chan struct{})
 	require.NoError(t, f.svc.ChangeSSH(t.Context(), 1, func() error {
 		heldInChange = sshLockHeld(f.svc)
-		// The deletion starts after the change passed its deletion check.
 		go func() {
 			f.svc.executeDeletion(t.Context(), 1, run.ID)
 			close(deleted)
@@ -503,8 +465,6 @@ func TestChangeSSH_DeletionStartWaitsForAPendingChange(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// A deletion holds the SSH lock until its run is deleting, so a change that
-// arrives while the deletion starts waits for it and then stores nothing.
 func TestChangeSSH_WaitsForAStartingDeletion(t *testing.T) {
 	t.Parallel()
 
@@ -522,8 +482,6 @@ func TestChangeSSH_WaitsForAStartingDeletion(t *testing.T) {
 	start := make(chan struct{})
 	var heldAtStart bool
 	f.svc.beforeDeletionStart = func() {
-		// Nothing else runs yet, so the lock is held only if the deletion
-		// took it.
 		heldAtStart = sshLockHeld(f.svc)
 		close(starting)
 		<-start
@@ -544,8 +502,6 @@ func TestChangeSSH_WaitsForAStartingDeletion(t *testing.T) {
 			return nil
 		})
 	}()
-	// The deletion holds the lock, so the change takes it only after the run
-	// is deleting, wherever it is when the deletion goes on.
 	close(start)
 
 	require.True(t, heldAtStart, "the deletion must start under the SSH lock")
@@ -558,7 +514,6 @@ func TestChangeSSH_WaitsForAStartingDeletion(t *testing.T) {
 	require.Equal(t, "completed", f.run(t, run.ID).Status)
 }
 
-// A change that fails stores nothing, so the remote preview keeps its review.
 func TestChangeSSH_FailedChangeKeepsThePreview(t *testing.T) {
 	t.Parallel()
 
@@ -572,8 +527,6 @@ func TestChangeSSH_FailedChangeKeepsThePreview(t *testing.T) {
 	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
 }
 
-// ignoredTorrentDirFixture adds keep/kept.mkv to the fixture's torrent and
-// ignores keep/, so the scan walk never enters the folder that holds it.
 func ignoredTorrentDirFixture(t *testing.T, f *modeFixture, savePath func(string) string, extra ...qbt.Torrent) (keep string) {
 	t.Helper()
 
@@ -596,12 +549,6 @@ func ignoredTorrentDirFixture(t *testing.T, f *modeFixture, savePath func(string
 	return keep
 }
 
-// A symlinked folder stands in for a bind mount alias here, since a test
-// server cannot mount. The torrent's file has a second link outside the roots,
-// so only its folder and name tell the alias from a hardlink. The alias of a
-// torrent's file at or below an ignore path in another root is kept, and the
-// confirmed delete leaves it. A hardlink of it in the same root is listed and
-// deleted.
 func TestExecuteScan_RemoteKeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
 	t.Parallel()
 
@@ -672,9 +619,6 @@ func TestExecuteScan_RemoteKeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
 	}
 }
 
-// The remote walk of an ignore path that holds a torrent's files can be cut.
-// Its files were never keyed, so the run cannot be deleted. One that is not
-// on disk has no files to key and changes nothing.
 func TestExecuteScan_RemoteIgnoredTorrentDirWalk(t *testing.T) {
 	t.Parallel()
 
@@ -701,8 +645,6 @@ func TestExecuteScan_RemoteIgnoredTorrentDirWalk(t *testing.T) {
 	}
 }
 
-// changeAfterRemoveBackend changes the instance after its first Remove, as an
-// SSH change made around ChangeSSH would.
 type changeAfterRemoveBackend struct {
 	fsops.Backend
 	once   *sync.Once
@@ -715,17 +657,13 @@ func (b changeAfterRemoveBackend) Remove(ctx context.Context, path string, opts 
 	return err
 }
 
-// The remote backend redials with the instance's current row, so a change to
-// the SSH endpoint or the pin during a deletion stops it before the next
-// entry, in the file loop and in the directory loop.
 func TestExecuteDeletion_RemoteSSHChangeStopsTheLoop(t *testing.T) {
 	t.Parallel()
 
 	user := func(inst *models.Instance) { inst.SSHUsername = "someone-else" }
 	for _, tc := range []struct {
-		name   string
-		change func(*models.Instance)
-		// lastFile leaves one file to delete, so the change lands before the directories.
+		name     string
+		change   func(*models.Instance)
 		lastFile bool
 	}{
 		{"endpoint", user, false},
@@ -783,9 +721,6 @@ func TestExecuteDeletion_RemoteSSHChangeStopsTheLoop(t *testing.T) {
 	}
 }
 
-// replacePin stores a new pin at the same user, host and port and fails the
-// remote previews as ChangeSSH does, but without its deletion check, as a
-// change made around it would.
 func replacePin(t *testing.T, f *modeFixture) {
 	f.instance.mu.Lock()
 	f.instance.inst.SSHHostKeyEncrypted = "enc-v2"
@@ -795,9 +730,6 @@ func replacePin(t *testing.T, f *modeFixture) {
 	}
 }
 
-// replacePinOnFileMap replaces the pin the next time a scan or a deletion
-// builds its file map. That is after the backend is built and, in a deletion,
-// before its first entry.
 func replacePinOnFileMap(t *testing.T, f *modeFixture) {
 	files := stubSync(f.svc).getTorrentFilesBatch
 	var once sync.Once
@@ -807,10 +739,6 @@ func replacePinOnFileMap(t *testing.T, f *modeFixture) {
 	}
 }
 
-// A pin replaced while a remote scan runs leaves the mode and the address as
-// they were, and failing the previews finds none yet. The scan compares
-// the pin at its end, so a preview walked on the old server never becomes one
-// a confirm or automatic cleanup could delete on the new one.
 func TestExecuteScan_RemotePinReplacedDuringTheScanFailsTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -825,9 +753,6 @@ func TestExecuteScan_RemotePinReplacedDuringTheScanFailsTheRun(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// saveNewKey stores a new private key through ChangeSSH, as the credentials
-// route does. The user, host, port and pin stay as they were, so the endpoint
-// a scan compares at its end does not change.
 func saveNewKey(t *testing.T, f *modeFixture) {
 	err := f.svc.ChangeSSH(t.Context(), 1, func() error {
 		f.instance.mu.Lock()
@@ -840,9 +765,6 @@ func saveNewKey(t *testing.T, f *modeFixture) {
 	}
 }
 
-// A new private key can see other files through the same server and account.
-// Saved while a remote scan walks, it finds no preview to fail yet, so the
-// scan must not publish the preview it walked with the old key.
 func TestExecuteScan_RemoteKeySavedDuringTheWalkFailsTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -862,9 +784,6 @@ func TestExecuteScan_RemoteKeySavedDuringTheWalkFailsTheRun(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// A new private key saved after the scan reloaded the instance passes its
-// endpoint compare and still finds the run scanning. The preview is published
-// under the SSH lock only if no change was stored since the walk began.
 func TestExecuteScan_RemoteKeySavedBeforeThePreviewIsPublishedFailsTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -879,9 +798,6 @@ func TestExecuteScan_RemoteKeySavedBeforeThePreviewIsPublishedFailsTheRun(t *tes
 	f.requireNothingDeleted(t)
 }
 
-// A new private key saved while failing the previews hits a database error
-// leaves a ready preview walked with the old key. The key is part of the
-// endpoint, so confirm still refuses that preview and deletes nothing.
 func TestConfirmDeletion_RemoteKeySavedWhenFailingThePreviewsErrsIsRefused(t *testing.T) {
 	t.Parallel()
 
@@ -906,9 +822,6 @@ func TestConfirmDeletion_RemoteKeySavedWhenFailingThePreviewsErrsIsRefused(t *te
 	f.requireNothingDeleted(t)
 }
 
-// serverBackend records the server each walk reaches and holds the first
-// walk until resume closes. The pool serves its cached connection until an
-// SSH change drops it, and only that moves connected to the new server.
 type serverBackend struct {
 	fsops.Backend
 	connected *atomic.Value
@@ -930,10 +843,6 @@ func (b serverBackend) WalkDir(ctx context.Context, root string, opts fsops.Walk
 	return b.Backend.WalkDir(ctx, root, opts)
 }
 
-// An SSH change stores the new pin and then drops the pooled connection. A
-// scan that read the row between the two would walk the old server under the
-// new pin, and the change would find no preview to fail yet. The scan reads
-// the row under the change's lock, so it walks the new server.
 func TestExecuteScan_RemoteScanWaitsForAPendingSSHChange(t *testing.T) {
 	t.Parallel()
 
@@ -955,9 +864,6 @@ func TestExecuteScan_RemoteScanWaitsForAPendingSSHChange(t *testing.T) {
 	runID, err := f.store.CreateRunIfNoActive(t.Context(), 1, "manual")
 	require.NoError(t, err)
 
-	// The scan reads the row first in Require. The hook goes on only once
-	// ChangeSSH has returned, so the change no longer holds the lock, and the
-	// lock is held only if the scan took it.
 	changeReturned := make(chan struct{})
 	var heldAtRead bool
 	var readOnce sync.Once
@@ -999,9 +905,6 @@ func TestExecuteScan_RemoteScanWaitsForAPendingSSHChange(t *testing.T) {
 	require.Equal(t, []string{"new"}, walked)
 }
 
-// ChangeSSH refuses a pin once the run is deleting, but one stored around it
-// finds no preview to fail. The deletion compares the pin the run was walked
-// with, so such a pin still stops it before any delete.
 func TestExecuteDeletion_RemotePinReplacedAfterTheStartDeletesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -1027,8 +930,6 @@ func TestExecuteDeletion_RemotePinReplacedAfterTheStartDeletesNothing(t *testing
 	f.requireNothingDeleted(t)
 }
 
-// An SSH change between the deletion's start check and its first entry stops
-// the run before any delete, and a run that deleted nothing ends failed.
 func TestExecuteDeletion_RemoteSSHChangeBeforeTheFirstEntryFailsTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -1052,8 +953,6 @@ func TestExecuteDeletion_RemoteSSHChangeBeforeTheFirstEntryFailsTheRun(t *testin
 	}
 }
 
-// A deletion that cannot reload the instance cannot tell whether the SSH
-// settings changed, so it stops before the next entry.
 func TestExecuteDeletion_RemoteInstanceReloadErrorStopsTheLoop(t *testing.T) {
 	t.Parallel()
 

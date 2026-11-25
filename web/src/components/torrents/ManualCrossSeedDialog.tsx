@@ -58,7 +58,6 @@ export function ManualCrossSeedDialog({
   const [selectedHashes, setSelectedHashes] = useState<string[] | null>(null)
   const [pickedTargets, setPickedTargets] = useState<{ hash: string; name: string }[]>([])
   const [pinnedHash, setPinnedHash] = useState<string | null>(null)
-  // null = not edited for the current selection; prefill wins until then.
   const [categoryEdit, setCategoryEdit] = useState<string | null>(null)
   const [tagsEdit, setTagsEdit] = useState<string[] | null>(null)
   const [newTag, setNewTag] = useState("")
@@ -67,7 +66,6 @@ export function ManualCrossSeedDialog({
 
   const activeFile = file ?? initialFile
 
-  // FileReader is an external system: derive the base64 payload when the file changes.
   useEffect(() => {
     if (!open || !activeFile) {
       setTorrentData(null)
@@ -96,8 +94,6 @@ export function ManualCrossSeedDialog({
     enabled: open && Boolean(torrentData),
     staleTime: 60_000,
     retry: false,
-    // Keep proposals visible while a picker pin refetches, but blank on a
-    // file swap so the list never shows another torrent's proposals.
     placeholderData: (previousData, previousQuery) =>
       previousQuery?.queryKey[2] === fileKey ? previousData : undefined,
   })
@@ -156,8 +152,6 @@ export function ManualCrossSeedDialog({
     queryFn: ({ signal }) => api.getTorrents(instanceId, { search: debouncedPickerSearch, limit: 20, preferCached: true }, signal),
     enabled: open && showPicker && debouncedPickerSearch.trim().length > 0,
     staleTime: 30_000,
-    // Keep the old list while the next term loads so the picker never
-    // flickers empty between searches.
     placeholderData: keepPreviousData,
   })
 
@@ -188,12 +182,7 @@ export function ManualCrossSeedDialog({
         } else {
           toast.success(t("manualCrossSeed.applySuccess"))
         }
-        // A routed add lands on the Cross-seed instance, and the result names it.
-        // An assembly reply does not name the instance that got the add, so every
-        // torrent list refreshes.
         const queryKey = firstResult ? ["torrents-list", firstResult.crossSeedInstanceId ?? instanceId] : ["torrents-list"]
-        // Same post-add delay as AddTorrentDialog: give qBittorrent a beat to
-        // register the torrent before the list refetch.
         setTimeout(() => {
           void queryClient.invalidateQueries({ queryKey })
         }, 500)
@@ -247,8 +236,6 @@ export function ManualCrossSeedDialog({
     handleSelectTarget(hash)
   }
 
-  // Only complete torrents can serve as Manual match targets; the apply rejects
-  // incomplete ones, so the picker does not offer them.
   const completePickerTorrents = (pickerQuery.data?.torrents ?? []).filter(torrent => torrent.progress >= 1)
 
   const zeroOverlap = selectedProposal !== undefined && selectedProposal.overlapBytes === 0
@@ -265,8 +252,6 @@ export function ManualCrossSeedDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      {/* Top-pinned with dvh so the footer stays reachable when the iOS
-          keyboard opens (same mitigation as AddTorrentDialog). */}
       <DialogContent className="sm:max-w-2xl max-h-[90dvh] sm:max-h-[85dvh] flex flex-col !translate-y-0 !top-[5vh] sm:!top-[7.5vh]">
         <DialogHeader>
           <DialogTitle>{t("manualCrossSeed.title")}</DialogTitle>

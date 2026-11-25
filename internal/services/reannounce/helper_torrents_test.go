@@ -78,8 +78,6 @@ func TestReannounceSkipsHelperTorrents(t *testing.T) {
 			svc.scanInstance(t.Context(), instanceID, svc.getSettings(t.Context(), instanceID))
 			require.ElementsMatch(t, tc.want, *jobs, "scan")
 
-			// RequestReannounce reads through lookupTorrents. It passes upper-case
-			// hashes, which the snapshot does not find, so the test calls the read.
 			svc, instanceID, _ = newService()
 			requested := slices.Collect(maps.Keys(svc.lookupTorrents(t.Context(), instanceID, []string{helper, own})))
 			require.ElementsMatch(t, tc.want, requested, "request")

@@ -17,8 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// TransferHistoryStore holds the tables of the Transfer history. Only the
-// Transfer history module in internal/services/transferhistory calls it.
 type TransferHistoryStore struct {
 	db dbinterface.Querier
 }
@@ -27,59 +25,41 @@ func NewTransferHistoryStore(db dbinterface.Querier) *TransferHistoryStore {
 	return &TransferHistoryStore{db: db}
 }
 
-// TransferHistoryInstance is an instance that has history. Name is the name
-// of the instance at the last write, and stays when the user removes it.
 type TransferHistoryInstance struct {
-	InstanceID      int
-	Name            string
-	FirstRecordedAt time.Time
-	LastReadingAt   time.Time
-	// Writes is the number of writes that stored the instance.
-	Writes int64
-	// CompleteReadingAt is the time of the last reading that a write stored
-	// with all its parts, or nil while the first write lacks parts.
+	InstanceID        int
+	Name              string
+	FirstRecordedAt   time.Time
+	LastReadingAt     time.Time
+	Writes            int64
 	CompleteReadingAt *time.Time
 }
 
-// TransferHistoryRecord is the stored record of one torrent. ID is 0 until a
-// write stores the record.
 type TransferHistoryRecord struct {
-	ID                  int64
-	Hash                string
-	Name                string
-	TrackerDomain       string
-	Category            string
-	Private             *bool
-	Size                int64
-	ReleaseGroup        string
-	Resolution          string
-	Source              string
-	ContentType         string
-	StatisticsCrossSeed *bool
-	LastUploaded        int64
-	LastDownloaded      int64
-	UploadFirst24h      *int64
-	BaselineUploaded    int64
-	BaselineDownloaded  int64
-	// BaselineTrackerDomain and BaselineCategory are the values at the first
-	// sight of the torrent. Only the insert of a record stores them, so
-	// LoadInstance leaves them empty.
-	BaselineTrackerDomain string
-	BaselineCategory      string
-	// BaselineStatisticsCrossSeed is the Statistics cross-seed flag of the
-	// Baseline. It is nil while the Baseline follows StatisticsCrossSeed.
+	ID                          int64
+	Hash                        string
+	Name                        string
+	TrackerDomain               string
+	Category                    string
+	Private                     *bool
+	Size                        int64
+	ReleaseGroup                string
+	Resolution                  string
+	Source                      string
+	ContentType                 string
+	StatisticsCrossSeed         *bool
+	LastUploaded                int64
+	LastDownloaded              int64
+	UploadFirst24h              *int64
+	BaselineUploaded            int64
+	BaselineDownloaded          int64
+	BaselineTrackerDomain       string
+	BaselineCategory            string
 	BaselineStatisticsCrossSeed *bool
-	// Deleted is set while the torrent is not in qBittorrent.
-	Deleted bool
-	// Completed is set when the torrent completed since the user added it last.
-	Completed bool
-	// Final holds the values of the last reading that held the torrent. No
-	// column stores it, so LoadInstance leaves it nil.
-	Final *TransferHistoryFinal
+	Deleted                     bool
+	Completed                   bool
+	Final                       *TransferHistoryFinal
 }
 
-// TransferHistoryFinal is what a delete event keeps of a torrent, apart from
-// its last counters.
 type TransferHistoryFinal struct {
 	Ratio          float64
 	SeedingSeconds int64
@@ -93,8 +73,6 @@ const (
 	TransferHistoryEventDelete     TransferHistoryEventKind = "delete"
 )
 
-// TransferHistoryEvent is one add, completion, or delete of a torrent.
-// Delete is set on a delete event only.
 type TransferHistoryEvent struct {
 	Record *TransferHistoryRecord
 	Kind   TransferHistoryEventKind
@@ -102,9 +80,6 @@ type TransferHistoryEvent struct {
 	Delete *TransferHistoryDelete
 }
 
-// TransferHistoryDelete is what a delete event holds. Ratio and
-// SeedingSeconds are nil when no reading held the torrent since qui started.
-// CauseName is the name of the automation rule or of the Client Proxy API key.
 type TransferHistoryDelete struct {
 	Uploaded       int64
 	Downloaded     int64
@@ -119,7 +94,6 @@ type TransferHistoryHashChange struct {
 	To   string
 }
 
-// TransferHistoryDeleteRow is a stored delete event with its torrent.
 type TransferHistoryDeleteRow struct {
 	Time          time.Time
 	Hash          string
@@ -129,16 +103,12 @@ type TransferHistoryDeleteRow struct {
 	TransferHistoryDelete
 }
 
-// TransferHistoryEventCount is the number of events of one kind on one UTC
-// day. Day counts days since 1970-01-01.
 type TransferHistoryEventCount struct {
 	Day   int64
 	Kind  TransferHistoryEventKind
 	Count int64
 }
 
-// TransferHistoryTorrentDay is the transfer of one torrent on one UTC day.
-// Day counts days since 1970-01-01.
 type TransferHistoryTorrentDay struct {
 	Record     *TransferHistoryRecord
 	Day        int64
@@ -146,8 +116,6 @@ type TransferHistoryTorrentDay struct {
 	Downloaded int64
 }
 
-// TransferHistoryTotal is the transfer of one key in one bucket. Bucket is an
-// hour or a day, counted since 1970-01-01 UTC, or 0 for one bucket.
 type TransferHistoryTotal struct {
 	Bucket              int64
 	TrackerDomain       string
@@ -158,15 +126,11 @@ type TransferHistoryTotal struct {
 	Downloaded          int64
 }
 
-// TransferHistoryGap is the length of the Recording gaps that ended in one hour.
 type TransferHistoryGap struct {
 	Hour    int64
 	Seconds int64
 }
 
-// TransferHistoryLibraryDay is the library of an instance on one UTC day.
-// Day counts days since 1970-01-01. UniqueSize is nil for a day without a
-// completed Copy groups build.
 type TransferHistoryLibraryDay struct {
 	Day        int64
 	Torrents   int64
@@ -174,11 +138,6 @@ type TransferHistoryLibraryDay struct {
 	UniqueSize *int64
 }
 
-// TransferHistoryInstanceHour is the state of an instance in one UTC hour.
-// Hour counts hours since 1970-01-01. States holds the torrent count of each
-// qBittorrent state. The speeds are the highest of the readings of the hour,
-// in bytes per second. A reading holds the highest speed since the reading
-// before it, so up to one minute before the hour can count toward it.
 type TransferHistoryInstanceHour struct {
 	Hour             int64
 	States           map[string]int64
@@ -187,22 +146,11 @@ type TransferHistoryInstanceHour struct {
 	MaxDownloadSpeed int64
 }
 
-// TransferHistoryWrite is one write of one instance. Records holds each
-// record with ID 0 and each record that changed in more than its last
-// counters. Counters holds each record whose last counters changed.
-// TorrentDays, TrackerHours, CategoryDays, and Gaps add to the stored rows.
-// LibraryDays and InstanceHours replace the stored rows of their day or hour,
-// except that a stored Unique size stays when the write has none, and the
-// speeds keep the highest value.
 type TransferHistoryWrite struct {
-	InstanceID      int
-	FirstRecordedAt time.Time
-	LastReadingAt   time.Time
-	// Number is the number of this write of the instance: one more than the
-	// stored writes.
-	Number int64
-	// CompleteReadingAt is the stored CompleteReadingAt of the instance after
-	// this write.
+	InstanceID        int
+	FirstRecordedAt   time.Time
+	LastReadingAt     time.Time
+	Number            int64
 	CompleteReadingAt *time.Time
 	Records           []*TransferHistoryRecord
 	Counters          []*TransferHistoryRecord
@@ -216,7 +164,6 @@ type TransferHistoryWrite struct {
 	InstanceHours     []TransferHistoryInstanceHour
 }
 
-// TransferHistoryBaseline is the Baseline of the torrents that share a key.
 type TransferHistoryBaseline struct {
 	TrackerDomain       string
 	Private             *bool
@@ -228,17 +175,10 @@ type TransferHistoryBaseline struct {
 
 const transferHistoryChunk = 200
 
-// ErrTransferHistoryCommitUnknown is the error of a write whose commit
-// returned an error. The database can hold the write or not.
 var ErrTransferHistoryCommitUnknown = errors.New("transfer history commit outcome unknown")
 
-// ErrTransferHistoryWriteNumber is the error of a write whose Number is not
-// one more than the stored writes of the instance, as when the database
-// already holds a write with that number. The write stores nothing.
 var ErrTransferHistoryWriteNumber = errors.New("transfer history write number does not follow the stored writes")
 
-// LoadInstance returns the instance row, or nil when the instance has no
-// history, and its records.
 func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int) (*TransferHistoryInstance, []*TransferHistoryRecord, error) {
 	inst := TransferHistoryInstance{InstanceID: instanceID}
 	var complete sql.NullTime
@@ -299,10 +239,6 @@ func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int)
 	return &inst, records, nil
 }
 
-// Write stores w in one transaction and returns the id of each record in
-// Records, by hash. After an error, the stored rows stay as they were, unless
-// the error is ErrTransferHistoryCommitUnknown. It returns
-// ErrTransferHistoryWriteNumber when w.Number does not follow the stored writes.
 func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrite) (map[string]int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -329,7 +265,6 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 		return nil, ErrTransferHistoryWriteNumber
 	}
 
-	// A record that no write stored yet has no row to change.
 	for _, change := range w.HashChanges {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE transfer_history_torrents SET hash = ? WHERE instance_id = ? AND hash = ?`,
@@ -348,7 +283,6 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 		}
 		return ids[r.Hash]
 	}
-	// Rows in the order of the primary key change fewer pages of a large table.
 	slices.SortFunc(w.Counters, func(a, b *TransferHistoryRecord) int { return cmp.Compare(idOf(a), idOf(b)) })
 	slices.SortFunc(w.TorrentDays, func(a, b TransferHistoryTorrentDay) int {
 		return cmp.Or(cmp.Compare(a.Day, b.Day), cmp.Compare(idOf(a.Record), idOf(b.Record)))
@@ -468,8 +402,6 @@ func writeTransferHistoryLibrary(ctx context.Context, tx dbinterface.TxQuerier, 
 		return fmt.Errorf("write transfer history instance hours: %w", err)
 	}
 
-	// The state counts of an hour are those of its last reading, so they
-	// replace the stored counts of the hour.
 	type stateCount struct {
 		hour     int64
 		state    string
@@ -496,8 +428,6 @@ func writeTransferHistoryLibrary(ctx context.Context, tx dbinterface.TxQuerier, 
 	return nil
 }
 
-// Writes returns the number of writes that stored an instance, or 0 when the
-// instance has no history.
 func (s *TransferHistoryStore) Writes(ctx context.Context, instanceID int) (int64, error) {
 	var writes int64
 	err := s.db.QueryRowContext(ctx, `
@@ -511,8 +441,6 @@ func (s *TransferHistoryStore) Writes(ctx context.Context, instanceID int) (int6
 	return writes, nil
 }
 
-// upsertTransferHistoryRecords writes the records and returns the id of each
-// hash. An existing record keeps its Baseline, with its tracker domain and category.
 func upsertTransferHistoryRecords(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, records []*TransferHistoryRecord) (map[string]int64, error) {
 	ids := make(map[string]int64, len(records))
 	for chunk := range transferHistoryChunks(records) {
@@ -595,9 +523,6 @@ func transferHistoryChunks[T any](items []T) func(func([]T) bool) {
 	}
 }
 
-// transferHistoryBucket returns the SQL bucket of a column that counts units, for
-// buckets of width units, and the GROUP BY term that starts with it. Width 0
-// is one bucket.
 func transferHistoryBucket(column string, width int64) (bucket, groupBy string) {
 	switch width {
 	case 0:
@@ -610,18 +535,11 @@ func transferHistoryBucket(column string, width int64) (bucket, groupBy string) 
 	}
 }
 
-// TransferHistoryOffset is the offset of a time zone from UTC, in minutes,
-// from the hour FromHour on.
 type TransferHistoryOffset struct {
 	FromHour int64
 	Minutes  int64
 }
 
-// TransferHistoryBuckets groups the hours of a query: in buckets of Width
-// hours, where Width 0 is one bucket, or by local day when Offsets is set. A
-// local day is the number of days since 1970-01-01 in the time zone of
-// Offsets, and an hour counts toward the local day of its start. Offsets is
-// in hour order, and its first entry covers each hour before the second.
 type TransferHistoryBuckets struct {
 	Width   int64
 	Offsets []TransferHistoryOffset
@@ -631,8 +549,6 @@ func (b TransferHistoryBuckets) sql() (bucket, groupBy string) {
 	if len(b.Offsets) == 0 {
 		return transferHistoryBucket("hour", b.Width)
 	}
-	// The newest offset comes first, because most rows are recent. The sum is in
-	// minutes, because the hour column is a 32-bit integer on Postgres.
 	day := func(minutes int64) string { return fmt.Sprintf("(hour * 60 + (%d)) / 1440", minutes) }
 	bucket = day(b.Offsets[0].Minutes)
 	if last := len(b.Offsets) - 1; last > 0 {
@@ -647,8 +563,6 @@ func (b TransferHistoryBuckets) sql() (bucket, groupBy string) {
 	return bucket, bucket + ", "
 }
 
-// TrackerTotals returns the hourly totals of hours [fromHour, toHour), by
-// tracker domain, in buckets.
 func (s *TransferHistoryStore) TrackerTotals(ctx context.Context, instanceID int, fromHour, toHour int64, buckets TransferHistoryBuckets) ([]TransferHistoryTotal, error) {
 	bucket, groupBy := buckets.sql()
 	rows, err := s.db.QueryContext(ctx, `
@@ -676,8 +590,6 @@ func (s *TransferHistoryStore) TrackerTotals(ctx context.Context, instanceID int
 	return totals, nil
 }
 
-// CategoryTotals returns the daily totals of days [fromDay, toDay), by
-// category, for each day, or as one bucket when total is set.
 func (s *TransferHistoryStore) CategoryTotals(ctx context.Context, instanceID int, fromDay, toDay int64, total bool) ([]TransferHistoryTotal, error) {
 	width := int64(1)
 	if total {
@@ -709,8 +621,6 @@ func (s *TransferHistoryStore) CategoryTotals(ctx context.Context, instanceID in
 	return totals, nil
 }
 
-// GapSeconds returns the length of the Recording gaps in hours
-// [fromHour, toHour), by bucket.
 func (s *TransferHistoryStore) GapSeconds(ctx context.Context, instanceID int, fromHour, toHour int64, buckets TransferHistoryBuckets) (map[int64]int64, error) {
 	bucket, groupBy := buckets.sql()
 	query := `
@@ -740,9 +650,6 @@ func (s *TransferHistoryStore) GapSeconds(ctx context.Context, instanceID int, f
 	return gaps, nil
 }
 
-// Baselines returns the Baseline of the records of an instance, by the
-// tracker domain and category at the first sight of each record, by its
-// private flag now, and by the Statistics cross-seed flag of its first life.
 func (s *TransferHistoryStore) Baselines(ctx context.Context, instanceID int) ([]TransferHistoryBaseline, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT baseline_tracker_domain, private, baseline_category,
@@ -775,7 +682,6 @@ func (s *TransferHistoryStore) Baselines(ctx context.Context, instanceID int) ([
 	return baselines, nil
 }
 
-// Instances returns the instances that have history, by instance id.
 func (s *TransferHistoryStore) Instances(ctx context.Context) ([]TransferHistoryInstance, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT instance_id, name, first_recorded_at, last_reading_at
@@ -799,8 +705,6 @@ func (s *TransferHistoryStore) Instances(ctx context.Context) ([]TransferHistory
 	return instances, nil
 }
 
-// EventCounts returns the number of events of each kind on each UTC day of
-// days [fromDay, toDay).
 func (s *TransferHistoryStore) EventCounts(ctx context.Context, instanceID int, fromDay, toDay int64) ([]TransferHistoryEventCount, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT second / 86400, kind, COUNT(*)
@@ -827,8 +731,6 @@ func (s *TransferHistoryStore) EventCounts(ctx context.Context, instanceID int, 
 	return counts, nil
 }
 
-// LibraryDays returns the stored library of each UTC day of days [fromDay,
-// toDay), with the oldest day first.
 func (s *TransferHistoryStore) LibraryDays(ctx context.Context, instanceID int, fromDay, toDay int64) ([]TransferHistoryLibraryDay, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT day, torrents, total_size, unique_size
@@ -857,9 +759,6 @@ func (s *TransferHistoryStore) LibraryDays(ctx context.Context, instanceID int, 
 	return days, nil
 }
 
-// transferHistoryDeletes is the WHERE clause of the delete events of seconds
-// [fromSecond, toSecond). causeKinds limits them to those kinds of cause when
-// it is not empty.
 func transferHistoryDeletes(instanceID int, fromSecond, toSecond int64, causeKinds []string) (where string, args []any) {
 	where = "e.instance_id = ? AND e.kind = ? AND e.second >= ? AND e.second < ?"
 	args = []any{instanceID, TransferHistoryEventDelete, fromSecond, toSecond}
@@ -872,9 +771,6 @@ func transferHistoryDeletes(instanceID int, fromSecond, toSecond int64, causeKin
 	return where, args
 }
 
-// Deletes returns a page of the delete events of seconds
-// [fromSecond, toSecond), with the newest first. causeKinds limits them to
-// those kinds of cause when it is not empty.
 func (s *TransferHistoryStore) Deletes(ctx context.Context, instanceID int, fromSecond, toSecond int64, causeKinds []string, limit, offset int) ([]TransferHistoryDeleteRow, error) {
 	where, args := transferHistoryDeletes(instanceID, fromSecond, toSecond, causeKinds)
 	rows, err := s.db.QueryContext(ctx, `
@@ -918,8 +814,6 @@ func (s *TransferHistoryStore) Deletes(ctx context.Context, instanceID int, from
 	return deletes, nil
 }
 
-// DeleteCauseCounts returns the number of delete events of seconds
-// [fromSecond, toSecond), by kind of cause.
 func (s *TransferHistoryStore) DeleteCauseCounts(ctx context.Context, instanceID int, fromSecond, toSecond int64) (map[string]int64, error) {
 	where, args := transferHistoryDeletes(instanceID, fromSecond, toSecond, nil)
 	rows, err := s.db.QueryContext(ctx, `
@@ -946,14 +840,11 @@ func (s *TransferHistoryStore) DeleteCauseCounts(ctx context.Context, instanceID
 	return counts, nil
 }
 
-// TransferHistoryDeleteKey names a delete event by the hash of its torrent
-// and its time in whole seconds since 1970-01-01 UTC.
 type TransferHistoryDeleteKey struct {
 	Hash   string
 	Second int64
 }
 
-// DeleteEventsSince returns the delete events of an instance from fromSecond on.
 func (s *TransferHistoryStore) DeleteEventsSince(ctx context.Context, instanceID int, fromSecond int64) (map[TransferHistoryDeleteKey]struct{}, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT t.hash, e.second
@@ -979,29 +870,19 @@ func (s *TransferHistoryStore) DeleteEventsSince(ctx context.Context, instanceID
 	return events, nil
 }
 
-// TransferHistorySettings are the Statistics settings. DetailRetentionDays is
-// 0 when qui keeps the detail forever.
 type TransferHistorySettings struct {
 	Recording           bool
 	DetailRetentionDays int
 }
 
-// DefaultTransferHistorySettings are the settings until the user saves others.
 var DefaultTransferHistorySettings = TransferHistorySettings{Recording: true, DetailRetentionDays: 400}
 
 const (
-	// foldHourDays is the number of days of hourly totals that one delete of
-	// a fold removes.
-	foldHourDays = 7
-	// foldTorrents is the number of torrents whose daily bytes one write of a
-	// fold moves into yearly rows.
-	foldTorrents = 50
-	// recentMoveRows is the number of rows that one write of
-	// MoveRecentTorrentDays moves.
+	foldHourDays   = 7
+	foldTorrents   = 50
 	recentMoveRows = 500
 )
 
-// Settings returns the stored Statistics settings, or the defaults.
 func (s *TransferHistoryStore) Settings(ctx context.Context) (TransferHistorySettings, error) {
 	var settings TransferHistorySettings
 	err := s.db.QueryRowContext(ctx, `
@@ -1029,8 +910,6 @@ func (s *TransferHistoryStore) SaveSettings(ctx context.Context, settings Transf
 	return nil
 }
 
-// Size returns the bytes that the tables of the Transfer history and their
-// indexes take in the database.
 func (s *TransferHistoryStore) Size(ctx context.Context) (int64, error) {
 	if dbinterface.DialectOf(s.db) == "postgres" {
 		var size int64
@@ -1065,7 +944,6 @@ func (s *TransferHistoryStore) Size(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("read transfer history tables: %w", err)
 	}
 
-	// With a name, dbstat reads the pages of that table only.
 	var size int64
 	for _, name := range names {
 		var pages int64
@@ -1078,9 +956,6 @@ func (s *TransferHistoryStore) Size(ctx context.Context) (int64, error) {
 	return size, nil
 }
 
-// HourlyDetailStart returns the first UTC day that has hourly totals of an
-// instance. ok is false when the instance has none. A fold deletes whole days
-// from the oldest on, so each day before it holds daily totals only.
 func (s *TransferHistoryStore) HourlyDetailStart(ctx context.Context, instanceID int) (day int64, ok bool, err error) {
 	var hour sql.NullInt64
 	if err := s.db.QueryRowContext(ctx, `
@@ -1093,8 +968,6 @@ func (s *TransferHistoryStore) HourlyDetailStart(ctx context.Context, instanceID
 	return hour.Int64 / 24, true, nil
 }
 
-// TrackerDayTotals returns the daily totals of days [fromDay, toDay), by
-// tracker domain, for each day, or as one bucket when total is set.
 func (s *TransferHistoryStore) TrackerDayTotals(ctx context.Context, instanceID int, fromDay, toDay int64, total bool) ([]TransferHistoryTotal, error) {
 	width := int64(1)
 	if total {
@@ -1126,9 +999,6 @@ func (s *TransferHistoryStore) TrackerDayTotals(ctx context.Context, instanceID 
 	return totals, nil
 }
 
-// TransferHistoryTorrentFacts is the record of one torrent as a query reads
-// it. BaselineStatisticsCrossSeed is the Statistics cross-seed flag of its
-// Baseline.
 type TransferHistoryTorrentFacts struct {
 	ID                          int64
 	Hash                        string
@@ -1149,8 +1019,6 @@ type TransferHistoryTorrentFacts struct {
 	BaselineStatisticsCrossSeed bool
 }
 
-// TorrentFacts returns the records of the torrents of an instance, or the
-// record of the torrent with hash when hash is set.
 func (s *TransferHistoryStore) TorrentFacts(ctx context.Context, instanceID int, hash string) ([]TransferHistoryTorrentFacts, error) {
 	where, args := "instance_id = ?", []any{instanceID}
 	if hash != "" {
@@ -1159,7 +1027,6 @@ func (s *TransferHistoryStore) TorrentFacts(ctx context.Context, instanceID int,
 	return s.torrentFacts(ctx, where, args)
 }
 
-// TorrentFactsOf returns the records of the torrents with ids.
 func (s *TransferHistoryStore) TorrentFactsOf(ctx context.Context, ids []int64) ([]TransferHistoryTorrentFacts, error) {
 	var facts []TransferHistoryTorrentFacts
 	for chunk := range slices.Chunk(ids, torrentTransferChunk) {
@@ -1208,7 +1075,6 @@ func (s *TransferHistoryStore) torrentFacts(ctx context.Context, where string, a
 	return facts, nil
 }
 
-// TransferHistoryTorrentBaseline is the Baseline of one torrent.
 type TransferHistoryTorrentBaseline struct {
 	TorrentID           int64
 	Uploaded            int64
@@ -1216,8 +1082,6 @@ type TransferHistoryTorrentBaseline struct {
 	StatisticsCrossSeed bool
 }
 
-// TorrentBaselines returns the Baseline of each torrent of an instance that
-// has one.
 func (s *TransferHistoryStore) TorrentBaselines(ctx context.Context, instanceID int) ([]TransferHistoryTorrentBaseline, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, baseline_uploaded, baseline_downloaded,
@@ -1242,9 +1106,6 @@ func (s *TransferHistoryStore) TorrentBaselines(ctx context.Context, instanceID 
 	return baselines, nil
 }
 
-// TorrentDaysFoldedBefore returns the latest UTC day before which a fold moved
-// the days of the torrents into years, or 0 before the first fold. Only the
-// days before it can be in a yearly row.
 func (s *TransferHistoryStore) TorrentDaysFoldedBefore(ctx context.Context) (int64, error) {
 	var day int64
 	err := s.db.QueryRowContext(ctx, `SELECT torrent_days_before FROM transfer_history_folds WHERE id = 1`).Scan(&day)
@@ -1257,9 +1118,6 @@ func (s *TransferHistoryStore) TorrentDaysFoldedBefore(ctx context.Context) (int
 	return day, nil
 }
 
-// TransferHistoryTorrentBytes is the transfer of one torrent in one bucket.
-// Bucket is a day counted since 1970-01-01 UTC, or a year when Year is set,
-// or 0 for the days of the whole period.
 type TransferHistoryTorrentBytes struct {
 	TorrentID  int64
 	Year       bool
@@ -1268,19 +1126,8 @@ type TransferHistoryTorrentBytes struct {
 	Downloaded int64
 }
 
-// torrentTransferChunk is the number of torrent ids in one statement of
-// TorrentTransfer.
 const torrentTransferChunk = 500
 
-// TorrentTransfer returns the daily bytes of the torrents of an instance in
-// UTC days [fromDay, toDay), and the yearly rows of a fold for each year that
-// overlaps that period. It gives one or two rows for each torrent and day, or
-// for the days of each torrent when total is set, and the caller adds them up.
-// It gives one row for each torrent and year. A non-nil torrentIDs limits the
-// rows to those torrents. Each statement reads the days and the years of its
-// torrents together, and a fold or a move of the recent days moves each byte
-// in one transaction, so a fold at the same time moves no byte into the
-// answer twice.
 func (s *TransferHistoryStore) TorrentTransfer(ctx context.Context, instanceID int, torrentIDs []int64, fromDay, toDay int64, total bool) ([]TransferHistoryTorrentBytes, error) {
 	if torrentIDs == nil {
 		return s.torrentTransfer(ctx, instanceID, nil, fromDay, toDay, total)
@@ -1319,16 +1166,11 @@ func (s *TransferHistoryStore) torrentTransfer(ctx context.Context, instanceID i
 	return out, nil
 }
 
-// torrentTransferQuery returns the statement of torrentTransfer for dialect.
 func torrentTransferQuery(dialect string, instanceID int, torrentIDs []int64, fromDay, toDay int64, total bool) (string, []any) {
 	day, groupBy := "0", ""
 	if !total {
 		day, groupBy = "r.day", ", r.day"
 	}
-	// A join, not an IN list, saves SQLite a temporary index of the ids. The
-	// unary plus keeps SQLite off the index of the instance, which sorts the
-	// groups, and a grouping by r.torrent_id makes SQLite skip-scan the days.
-	// Postgres plans the join without the plus as a merge join.
 	instance := "+t.instance_id = ?"
 	if dialect == "postgres" {
 		instance = "t.instance_id = ?"
@@ -1341,8 +1183,6 @@ func torrentTransferQuery(dialect string, instanceID int, torrentIDs []int64, fr
 		recentWhere = where
 		ids = int64Args(torrentIDs)
 	}
-	// A year row holds only days before the fold day, so the years count only
-	// when a fold reaches past fromDay.
 	query := `
 		SELECT 0, ` + id + `, ` + day + `, CAST(SUM(r.uploaded) AS BIGINT), CAST(SUM(r.downloaded) AS BIGINT)
 		FROM ` + fmt.Sprintf(join, "transfer_history_torrent_days") + `
@@ -1366,9 +1206,6 @@ func torrentTransferQuery(dialect string, instanceID int, torrentIDs []int64, fr
 	return query, args
 }
 
-// FoldHours deletes the hourly totals and the hourly state of an instance
-// before beforeDay, a few whole days in each delete. The daily totals hold the
-// same bytes. No daily row holds the state.
 func (s *TransferHistoryStore) FoldHours(ctx context.Context, instanceID int, beforeDay int64) error {
 	if err := s.deleteInstanceHours(ctx, instanceID, beforeDay); err != nil {
 		return err
@@ -1389,8 +1226,6 @@ func (s *TransferHistoryStore) FoldHours(ctx context.Context, instanceID int, be
 	}
 }
 
-// deleteInstanceHours deletes the state of an instance in the hours before
-// beforeDay, a few whole days in each transaction.
 func (s *TransferHistoryStore) deleteInstanceHours(ctx context.Context, instanceID int, beforeDay int64) error {
 	for {
 		var first sql.NullInt64
@@ -1425,11 +1260,6 @@ func (s *TransferHistoryStore) deleteInstanceHoursBefore(ctx context.Context, in
 	return nil
 }
 
-// MoveRecentTorrentDays moves the daily bytes of the torrents on the UTC days
-// before beforeDay to the place that holds the older days, a few rows in each
-// write. A reader sees each byte once, and a write at the same time loses no
-// byte: it adds to a row before the move of that row, or after it to a new row
-// that the next move takes.
 func (s *TransferHistoryStore) MoveRecentTorrentDays(ctx context.Context, beforeDay int64) error {
 	for {
 		var first sql.NullInt64
@@ -1457,8 +1287,6 @@ func (s *TransferHistoryStore) moveRecentTorrentDays(ctx context.Context, before
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Postgres deletes the rows in the order of its join plan. Locking them
-	// first in key order, the order of Write, keeps the two from deadlocking.
 	lockRows := ""
 	if dbinterface.DialectOf(s.db) == "postgres" {
 		lockRows = "FOR UPDATE"
@@ -1506,9 +1334,6 @@ func (s *TransferHistoryStore) moveRecentTorrentDays(ctx context.Context, before
 	return nil
 }
 
-// FoldTorrentDays moves the daily bytes of each torrent before beforeDay into
-// one row for each torrent and UTC year. Each write moves the days of a few
-// torrents, so a reader sees each byte once.
 func (s *TransferHistoryStore) FoldTorrentDays(ctx context.Context, beforeDay int64) error {
 	var after int64
 	for {
@@ -1526,8 +1351,6 @@ func (s *TransferHistoryStore) FoldTorrentDays(ctx context.Context, beforeDay in
 	}
 }
 
-// torrentsWithDaysBefore returns the ids after after, in order, of a few
-// torrents with daily bytes before beforeDay.
 func (s *TransferHistoryStore) torrentsWithDaysBefore(ctx context.Context, after, beforeDay int64) ([]int64, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT t.id FROM transfer_history_torrents t
@@ -1637,21 +1460,12 @@ func (s *TransferHistoryStore) foldTorrentDays(ctx context.Context, ids []int64,
 }
 
 const (
-	// torrentDeleteBatch is the number of torrents whose rows one write of a
-	// delete of history removes, and eventDeleteBatch the number of events.
 	torrentDeleteBatch = 50
 	eventDeleteBatch   = 1000
-	// noEndDay is the day before which a delete of everything deletes. It
-	// keeps hours inside the INTEGER columns of Postgres.
-	noEndDay = math.MaxInt32 / 24
+	noEndDay           = math.MaxInt32 / 24
 )
 
-// DeleteInstanceHistory deletes the history of an instance in a series of
-// short writes. The instance row goes last: after an error, LoadInstance reads
-// what is left.
 func (s *TransferHistoryStore) DeleteInstanceHistory(ctx context.Context, instanceID int) error {
-	// Each batch starts after the last one, so that it does not read the
-	// deleted rows of the batches before it, which Postgres keeps until a vacuum.
 	for after := ""; ; {
 		ids, last, err := s.torrentsAfter(ctx, instanceID, after)
 		if err != nil {
@@ -1660,7 +1474,6 @@ func (s *TransferHistoryStore) DeleteInstanceHistory(ctx context.Context, instan
 		if len(ids) == 0 {
 			break
 		}
-		// The rows of a torrent go with it.
 		if _, err := s.db.ExecContext(ctx, `
 			DELETE FROM transfer_history_torrents WHERE id IN (`+placeholders(len(ids))+`)`, int64Args(ids)...); err != nil {
 			return fmt.Errorf("delete transfer history torrents: %w", err)
@@ -1677,8 +1490,6 @@ func (s *TransferHistoryStore) DeleteInstanceHistory(ctx context.Context, instan
 	return nil
 }
 
-// DeleteAllHistory deletes the history of each instance. On Postgres, the
-// tables give their space back at once.
 func (s *TransferHistoryStore) DeleteAllHistory(ctx context.Context) error {
 	if dbinterface.DialectOf(s.db) == "postgres" {
 		return s.truncateHistory(ctx)
@@ -1695,12 +1506,6 @@ func (s *TransferHistoryStore) DeleteAllHistory(ctx context.Context) error {
 	return nil
 }
 
-// DeleteHistoryBefore deletes the history of an instance on the UTC days
-// before beforeDay, in a series of short writes. It also deletes the Baseline
-// when beforeDay starts after the first recording, and the record of each
-// torrent that was gone before beforeDay. The first recording moves to the
-// start of beforeDay. A yearly row of a torrent goes when its year ends
-// before beforeDay.
 func (s *TransferHistoryStore) DeleteHistoryBefore(ctx context.Context, instanceID int, beforeDay int64) error {
 	inst, err := s.instanceRow(ctx, instanceID)
 	if err != nil || inst == nil {
@@ -1736,8 +1541,6 @@ func (s *TransferHistoryStore) DeleteHistoryBefore(ctx context.Context, instance
 	return nil
 }
 
-// truncateHistory empties each table of the history on Postgres, the
-// settings apart. It finds the tables as Size does.
 func (s *TransferHistoryStore) truncateHistory(ctx context.Context) error {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.relname FROM pg_class c
@@ -1776,7 +1579,6 @@ func int64Args(ids []int64) []any {
 	return args
 }
 
-// RemovedInstances returns the ids in ids of instances that qui no longer has.
 func (s *TransferHistoryStore) RemovedInstances(ctx context.Context, ids []int) ([]int, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -1824,9 +1626,6 @@ func (s *TransferHistoryStore) instanceRow(ctx context.Context, instanceID int) 
 	return &inst, nil
 }
 
-// deleteEventsBefore deletes the events of an instance before the second
-// before, a few events of one kind in each write. Each batch starts at the
-// last second of the batch before it.
 func (s *TransferHistoryStore) deleteEventsBefore(ctx context.Context, instanceID int, before int64) error {
 	for _, kind := range []TransferHistoryEventKind{TransferHistoryEventAdd, TransferHistoryEventCompletion, TransferHistoryEventDelete} {
 		for from := int64(math.MinInt64); ; {
@@ -1847,8 +1646,6 @@ func (s *TransferHistoryStore) deleteEventsBefore(ctx context.Context, instanceI
 	return nil
 }
 
-// eventsFrom returns the ids of a few events of one kind of an instance in
-// the seconds [from, before), the oldest first, and the last second.
 func (s *TransferHistoryStore) eventsFrom(ctx context.Context, instanceID int, kind TransferHistoryEventKind, from, before int64) (ids []int64, last int64, err error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, second FROM transfer_history_events
@@ -1872,8 +1669,6 @@ func (s *TransferHistoryStore) eventsFrom(ctx context.Context, instanceID int, k
 	return ids, last, nil
 }
 
-// torrentsAfter returns the ids of a few torrents of an instance whose hash
-// sorts after after, and the last hash.
 func (s *TransferHistoryStore) torrentsAfter(ctx context.Context, instanceID int, after string) (ids []int64, last string, err error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, hash FROM transfer_history_torrents
@@ -1897,10 +1692,6 @@ func (s *TransferHistoryStore) torrentsAfter(ctx context.Context, instanceID int
 	return ids, last, nil
 }
 
-// deleteTorrentDaysBefore deletes, in one write, the days of the torrents
-// before beforeDay and their years before beforeYear. It deletes their
-// Baseline when dropBaseline is set, and the record of each torrent that is
-// gone and has no bytes and no events left.
 func (s *TransferHistoryStore) deleteTorrentDaysBefore(ctx context.Context, ids []int64, beforeDay int64, beforeYear int, dropBaseline bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1945,8 +1736,6 @@ func (s *TransferHistoryStore) deleteTorrentDaysBefore(ctx context.Context, ids 
 	return nil
 }
 
-// deleteTotalsBefore deletes the hourly totals, the daily totals, and the
-// Recording gaps of an instance before beforeDay, a few days in each write.
 func (s *TransferHistoryStore) deleteTotalsBefore(ctx context.Context, instanceID int, beforeDay int64) error {
 	for _, t := range []struct {
 		table, column string
