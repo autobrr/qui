@@ -43,6 +43,7 @@ type CrossSeedResponse struct {
 	Results         []InstanceCrossSeedResult `json:"results"`
 	TorrentInfo     *TorrentInfo              `json:"torrent_info,omitempty"`
 	titleRescueUsed bool
+	seasonPackTried bool
 }
 
 type InstanceCrossSeedResult struct {

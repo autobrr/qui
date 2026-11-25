@@ -22,6 +22,14 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
+func renamedEndpointEpisodes(count int) []string {
+	episodes := make([]string, count)
+	for i := range episodes {
+		episodes[i] = fmt.Sprintf("Hafensignal.S01E%02d.1080p.WEB-DL.H.264-LUMA", i+1)
+	}
+	return episodes
+}
+
 func TestWebhookApplyAssemblesThePackThatTheCheckMatched(t *testing.T) {
 	var absolute []string
 	for n := 25; n < 29; n++ {
@@ -31,10 +39,7 @@ func TestWebhookApplyAssemblesThePackThatTheCheckMatched(t *testing.T) {
 	for i, name := range absolute {
 		absoluteFiles[i] = name + ".mkv"
 	}
-	renamed := make([]string, 4)
-	for i := range renamed {
-		renamed[i] = fmt.Sprintf("Hafensignal.S01E%02d.1080p.WEB-DL.H.264-LUMA", i+1)
-	}
+	renamed := renamedEndpointEpisodes(4)
 	const absolutePack = "Harbor.Signal.S03.1080p.WEB-DL.H.264-LUMA"
 	for _, tc := range []struct {
 		name    string
@@ -150,6 +155,7 @@ func TestWebhookApplyWithoutANameAssemblesThePackThatTheCheckMatched(t *testing.
 		state     heldTitlesState
 		webhook   bool
 		automatic bool
+		alternate bool
 		held      []string
 		want      []string
 		runs      int
@@ -158,6 +164,7 @@ func TestWebhookApplyWithoutANameAssemblesThePackThatTheCheckMatched(t *testing.
 		{name: "webhook setting", state: heldTitlesReady, webhook: true, held: endpointEpisodes(4), want: []string{"added"}, runs: 1, totals: 1},
 		{name: "automatic setting", state: heldTitlesReady, automatic: true, held: endpointEpisodes(4), want: []string{"added"}, runs: 1, totals: 1},
 		{name: "both settings", state: heldTitlesReady, webhook: true, automatic: true, held: endpointEpisodes(4), want: []string{"added"}, runs: 1, totals: 1},
+		{name: "both settings, held under an alternate title", state: heldTitlesReady, webhook: true, automatic: true, alternate: true, want: []string{"added"}, runs: 1, totals: 1},
 		{name: "both settings, below the threshold", state: heldTitlesReady, webhook: true, automatic: true, held: endpointEpisodes(2), want: []string{"no_match"}, runs: 1, totals: 1},
 		{name: "no setting", state: heldTitlesReady, held: endpointEpisodes(4), want: []string{"no_match"}},
 		{name: "Held titles off", webhook: true, held: endpointEpisodes(4), want: []string{"no_match"}},
@@ -166,9 +173,14 @@ func TestWebhookApplyWithoutANameAssemblesThePackThatTheCheckMatched(t *testing.
 		{name: "below the threshold", state: heldTitlesReady, webhook: true, held: endpointEpisodes(2), want: []string{"below_threshold"}, runs: 1, totals: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: tc.held, total: 4, setup: func(r *seasonPackEndpointRig) {
+			endpointCase := &seasonPackEndpointCase{held: tc.held, total: 4, setup: func(r *seasonPackEndpointRig) {
 				r.settings.SeasonPackEnabled, r.settings.SeasonPackAutomationEnabled = tc.webhook, tc.automatic
-			}}, tc.state)
+			}}
+			if tc.alternate {
+				endpointCase.held, endpointCase.total = renamedEndpointEpisodes(4), 0
+				endpointCase.alternates = seasonPackAlternateTitles{"Hafensignal": {"Harbor Signal"}}
+			}
+			rig := newSeasonPackEndpointRig(t, endpointCase, tc.state)
 			applied := rig.webhookApply("", endpointPackTorrent(t, 1, 4))
 			var statuses []string
 			for _, result := range applied.Results {

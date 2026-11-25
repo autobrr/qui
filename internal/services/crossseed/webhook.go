@@ -59,7 +59,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 	var resp *CrossSeedResponse
 	if req.TorrentName == "" {
 		resp, err = s.invokeCrossSeed(ctx, crossReq)
-		if err == nil && !settings.SeasonPackAutomationEnabled && foundNoDirectMatch(resp) {
+		if err == nil && !resp.seasonPackTried && foundNoDirectMatch(resp) {
 			err = s.applyNamelessSeasonPack(ctx, crossReq, settings, resp)
 		}
 	} else {

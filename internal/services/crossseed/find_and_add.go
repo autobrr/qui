@@ -573,6 +573,7 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 		return
 	}
 
+	response.seasonPackTried = true
 	resp, err := s.invokeSeasonPackApply(ctx, seasonPackRequest{
 		name:        torrentName,
 		torrentData: req.TorrentData,
