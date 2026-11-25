@@ -88,6 +88,9 @@ func TestCheckNeedsApproval(t *testing.T) {
 		{"a comment in a benchmark", func(r testRepo, _, _ string) {
 			r.write("list/list_test.go", replace(listBench, "const size", "// size\nconst size"))
 		}, ""},
+		{"a comment on its own line in a benchmark", func(r testRepo, _, _ string) {
+			r.write("list/list_test.go", replace(listBench, "\tfor b.Loop", "\n\t// loop\n\tfor b.Loop"))
+		}, ""},
 		{"a helper that no benchmark calls", func(r testRepo, _, _ string) {
 			r.write("testutil/lib/lib.go", replace(library, "Unused() {}", "Unused() { panic(1) }"))
 		}, ""},

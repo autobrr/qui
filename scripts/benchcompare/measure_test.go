@@ -160,3 +160,35 @@ func TestPartOfABenchmarkThatAlwaysFailsIsNotLost(t *testing.T) {
 		assert.Equal(t, map[string]label{"BenchmarkPartly/fine": ok, "BenchmarkPartly": cantTell}, labelsByName(results))
 	})
 }
+
+func TestReasonsOfAnUnfinishedBenchmark(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		flaky := bench{"a", "BenchmarkFlaky"}
+		fails := fakeRunner{flaky: {took: time.Minute, err: errors.New("too slow"), value: steady("Flaky/part", time.Second, time.Second)}}
+		ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
+		defer cancel()
+		reasons := map[string]string{}
+		for _, row := range tableLimits().judge(fails.meter().measure(ctx, []bench{flaky})[0]) {
+			reasons[row.name] = row.reason
+		}
+		assert.Equal(t, map[string]string{"BenchmarkFlaky/part": "stopped after 7 of 10 runs", "BenchmarkFlaky": "it fails on the starting point: too slow"}, reasons)
+	})
+}
+
+func TestLaterProblemIsTheReason(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		flaky := bench{"a", "BenchmarkFlaky"}
+		m := fakeRunner{}.meter()
+		calls := 0
+		m.run = func(context.Context, side, bench, string) (samples, error) {
+			if calls++; calls == 5 {
+				return samples{}, errors.New("one run takes too long")
+			}
+			got, _ := readSamples([]byte("BenchmarkFlaky/part 1 5 ns/op\n"), 1)
+			return got, errors.New("too slow")
+		}
+		rows := tableLimits().judge(m.measure(t.Context(), []bench{flaky})[0])
+		assert.Len(t, rows, 1)
+		assert.Contains(t, rows[0].reason, "one run takes too long")
+	})
+}

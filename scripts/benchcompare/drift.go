@@ -123,7 +123,9 @@ func (d *drifting) report(ctx context.Context) driftReport {
 	return report
 }
 
-func (r *result) broken() bool { return r.problem != "" || r.failed[head] && !r.failed[base] }
+func (r *result) broken() bool {
+	return r.problem != "" || 2*r.failed[head] > r.rounds && 2*r.failed[base] <= r.rounds
+}
 
 func losses(rows []row) []row {
 	return slices.DeleteFunc(slices.Clone(rows), func(r row) bool { return r.label != look })

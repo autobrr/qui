@@ -39,6 +39,8 @@ func TestSelectionFollowsTheChangedCode(t *testing.T) {
 		{"a deleted line", replace("\tif n < 0 {\n\t\tn = -n\n\t}\n", ""), []string{"sum.BenchmarkAdd", "use.BenchmarkUse"}, nil},
 		{"a constant", replace("Step = 1", "Step = 2"), []string{"sum.BenchmarkAdd", "sum.BenchmarkOther", "use.BenchmarkUse"}, nil},
 		{"a comment", replace("func Add", "// Add adds.\nfunc Add"), nil, nil},
+		{"a comment on its own line in a function", replace("\treturn n + Step", "\n\t// Step up.\n\treturn n + Step"), nil, nil},
+		{"a call over more lines", replace("func Other(n int) int { return n }", "func Other(\n\tn int,\n) int {\n\treturn n\n}"), nil, nil},
 		{"a new function", func(r testRepo) { r.write("sum/new.go", "package sum\n\nfunc New() int {\n\treturn 1\n}\n") }, nil, []string{"sum/new.go: New (4-5)"}},
 		{"a package without a benchmark", func(r testRepo) { r.write("lone/lone.go", "package lone\n\nfunc Lone() int { return 1 }\n") }, nil, []string{"lone/lone.go: Lone (3)"}},
 		{"a file that is not Go", func(r testRepo) { r.write("readme.md", "hi\n") }, nil, nil},

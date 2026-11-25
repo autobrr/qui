@@ -81,12 +81,13 @@ func (r *result) round(ctx context.Context, run runFunc, pattern string) {
 			return
 		}
 		if err != nil {
-			r.failed[s] = true
-			r.failure = cmp.Or(r.failure, fmt.Sprintf("it fails on %s: %v", s, err))
-		}
-		if err != nil && len(out.names) == 0 {
-			r.problem = r.failure
-			return
+			r.failed[s]++
+			failure := fmt.Sprintf("it fails on %s: %v", s, err)
+			if len(out.names) == 0 {
+				r.problem = failure
+				return
+			}
+			r.failure = cmp.Or(r.failure, failure)
 		}
 		got[s] = out
 	}

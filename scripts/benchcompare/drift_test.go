@@ -171,6 +171,7 @@ func TestDriftFailsWhenABenchmarkFailsOnlyNow(t *testing.T) {
 	r := driftRepo(t)
 	start := r.commit("add the benchmarks")
 	r.edit("list/list.go")
+	once := 0
 	for _, tt := range []struct {
 		name   string
 		broken bool
@@ -180,6 +181,12 @@ func TestDriftFailsWhenABenchmarkFailsOnlyNow(t *testing.T) {
 		{"no result at all", true, func(string) bool { return true }, ""},
 		{"a part that fails on both sides", false, func(string) bool { return true }, "BenchmarkList/fine 1 5 ns/op\n"},
 		{"a part that fails only now", true, func(commit string) bool { return commit != start }, "BenchmarkList/fine 1 5 ns/op\n"},
+		{"one failure that does not come back", false, func(commit string) bool {
+			if commit != start {
+				once++
+			}
+			return commit != start && once == 3
+		}, "BenchmarkList/fine 1 5 ns/op\n"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			report := driftOf(t, r, func(ctx context.Context, commit string, one bench, pattern string) (samples, error) {

@@ -5,8 +5,8 @@ package main
 
 import (
 	"go/ast"
-	"go/format"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"path"
 	"regexp"
@@ -47,10 +47,7 @@ func parseDecls(files map[string][]byte, keep func(file string) bool) (decls, er
 		imports := importNames(file)
 		index.addFileWide(name, files[name], file, imports)
 		for _, node := range file.Decls {
-			text, err := printed(fset, node)
-			if err != nil {
-				return nil, err
-			}
+			text := tokensOf(files[name][fset.Position(node.Pos()).Offset:fset.Position(node.End()).Offset])
 			d := decl{text: text + usedImports(node, imports), file: name, node: node, imports: imports, from: fset.Position(node.Pos()).Line, to: fset.Position(node.End()).Line}
 			index.add(d)
 		}
@@ -96,10 +93,31 @@ func usedImports(node ast.Node, imports map[string]string) string {
 	return b.String()
 }
 
-func printed(fset *token.FileSet, node ast.Node) (string, error) {
+func tokensOf(source []byte) string {
+	fset := token.NewFileSet()
+	var lexer scanner.Scanner
+	lexer.Init(fset.AddFile("", -1, len(source)), source, nil, 0)
 	var b strings.Builder
-	err := format.Node(&b, fset, node)
-	return b.String(), err
+	held := ""
+	for {
+		_, kind, text := lexer.Scan()
+		if kind == token.EOF {
+			return b.String()
+		}
+		closes := kind == token.RPAREN || kind == token.RBRACE || kind == token.RBRACK
+		if !closes {
+			b.WriteString(held)
+		}
+		held = ""
+		switch {
+		case kind == token.SEMICOLON || kind == token.COMMA:
+			held = kind.String() + " "
+		case kind.IsLiteral():
+			b.WriteString(text + " ")
+		default:
+			b.WriteString(kind.String() + " ")
+		}
+	}
 }
 
 func (index decls) add(d decl) {

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 
@@ -46,7 +47,7 @@ type result struct {
 	before, after samples
 	problem       string
 	failure       string
-	failed        [2]bool
+	failed        [2]int
 }
 
 func (c config) judge(r *result) []row {
@@ -75,8 +76,8 @@ func (c config) judge(r *result) []row {
 			}
 			judged := c.limitFor(r.bench, name, unit).judge(before, after, r.want)
 			judged.bench, judged.name, judged.unit = r.bench, name, unit
-			if judged.state == unmeasured && r.failure != "" {
-				judged.reason = r.failure
+			if len(before) < r.rounds || len(after) < r.rounds {
+				judged.reason = cmp.Or(r.failure, judged.reason)
 			}
 			rows = append(rows, judged)
 		}
@@ -93,9 +94,9 @@ func (l limit) judge(before, after []float64, want int) row {
 	}
 	was, now := benchmath.NewSample(before, &benchmath.DefaultThresholds), benchmath.NewSample(after, &benchmath.DefaultThresholds)
 	wasMid, nowMid := benchmath.AssumeNothing.Summary(was, confidence), benchmath.AssumeNothing.Summary(now, confidence)
-	cmp := benchmath.AssumeNothing.Compare(was, now)
-	delta, differs := nowMid.Center-wasMid.Center, cmp.P <= cmp.Alpha
-	r := row{label: ok, state: measured, before: wasMid.Center, after: nowMid.Center, stats: cmp.String()}
+	test := benchmath.AssumeNothing.Compare(was, now)
+	delta, differs := nowMid.Center-wasMid.Center, test.P <= test.Alpha
+	r := row{label: ok, state: measured, before: wasMid.Center, after: nowMid.Center, stats: test.String()}
 	blur := (wasMid.Hi - wasMid.Lo + nowMid.Hi - nowMid.Lo) / 2
 	sees := max(l.Any, wasMid.Center/100)
 	switch {
