@@ -230,7 +230,7 @@ func TestOneFailedRunWithoutResultIsCountedAndTheRunsGoOn(t *testing.T) {
 		calls := 0
 		m.run = func(context.Context, side, bench, string) (samples, error) {
 			if calls++; calls == 3 {
-				return samples{}, runFailed("plain_test.go:9: a check takes 11ms, want under 10ms")
+				return samples{}, runError("plain_test.go:9: a check takes 11ms, want under 10ms")
 			}
 			return readSamples([]byte("BenchmarkPlain 1 5 ns/op\n"), 1)
 		}
@@ -251,7 +251,7 @@ func TestRunsThatAlwaysFailWithoutResultTurnTheWeeklyJobRed(t *testing.T) {
 				m := fakeRunner{}.meter()
 				m.run = func(_ context.Context, s side, _ bench, _ string) (samples, error) {
 					if fails(s) {
-						return samples{}, runFailed("plain_test.go:9: no rows")
+						return samples{}, runError("plain_test.go:9: no rows")
 					}
 					return readSamples([]byte("BenchmarkPlain 1 5 ns/op\n"), 1)
 				}

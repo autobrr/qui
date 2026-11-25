@@ -86,7 +86,7 @@ func (r *result) round(ctx context.Context, run runFunc, pattern string, whole b
 		}
 		if err != nil {
 			failure := fmt.Sprintf("it fails on %s: %v", s, err)
-			if _, ran := errors.AsType[runFailed](err); len(out.names) == 0 && !ran {
+			if _, ran := errors.AsType[runError](err); len(out.names) == 0 && !ran {
 				r.problem = failure
 				return
 			}
