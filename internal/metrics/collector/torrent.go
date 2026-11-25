@@ -234,7 +234,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			continue
 		}
 
-		response, err := c.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{InstanceID: instance.ID, NoRows: true, SidebarCounts: true})
+		response, err := c.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{InstanceID: instance.ID, NoRows: true, SidebarCounts: true, WithHelperTorrents: true})
 		if err != nil {
 			log.Warn().
 				Err(err).

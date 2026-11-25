@@ -58,7 +58,7 @@ func TestATaggedTorrentWithoutARegistryRowIsNoHelper(t *testing.T) {
 	t.Parallel()
 	sm, _, root := newHelperRig(t)
 
-	resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1})
+	resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1, WithHelperTorrents: true})
 	require.NoError(t, err)
 	badges := map[string]string{}
 	for _, row := range resp.Torrents {
@@ -73,7 +73,7 @@ func TestATaggedTorrentWithoutARegistryRowIsNoHelper(t *testing.T) {
 	for _, view := range views {
 		badges[view.Hash] = view.QuiHelper
 	}
-	require.Equal(t, map[string]string{hashA: "transfer", hashB: ""}, badges)
+	require.Equal(t, map[string]string{hashB: ""}, badges)
 
 	require.NoError(t, sm.DeleteTorrents(t.Context(), 1, []string{hashB}, true, DeleteActor{Kind: DeleteActorUser}))
 	require.NoFileExists(t, filepath.Join(root, hashB, "Show.S01E01.mkv"))

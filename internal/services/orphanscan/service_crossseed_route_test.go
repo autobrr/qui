@@ -143,6 +143,23 @@ func TestBuildFileMap_ProtectsRoutedFilesAtSourcePaths(t *testing.T) {
 	require.Equal(t, []string{filepath.Join(f.root, "library")}, result.scanRoots, "the route adds no scan roots")
 }
 
+func TestBuildFileMap_ProtectsRoutedHelperTorrentFiles(t *testing.T) {
+	t.Parallel()
+
+	f := newRouteFixture(t, false)
+	f.torrents = []qbt.Torrent{
+		{Hash: "helper", SavePath: "/seeds/links/tracker", ContentPath: "/seeds/links/tracker/Show", State: qbt.TorrentStateDownloading},
+	}
+	f.files["helper"] = qbt.TorrentFiles{{Name: "Show/e01.mkv", Size: 1}}
+	stubSync(f.svc).helpers = map[string]bool{"helper": true}
+
+	result, err := f.svc.buildFileMap(t.Context(), f.source, newTestBackend(), scanScope{TorrentPaths: true})
+	require.NoError(t, err)
+
+	file := filepath.Join(f.baseDir, "tracker", "Show", "e01.mkv")
+	require.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(file), "a routed Helper torrent keeps its files")
+}
+
 func TestBuildFileMap_FailsWhenCrossSeedInstanceUnavailable(t *testing.T) {
 	t.Parallel()
 

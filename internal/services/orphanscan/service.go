@@ -2170,7 +2170,7 @@ func (s *Service) mergeRouted(ctx context.Context, instanceID int, d fsops.PathD
 type freshTorrents struct{ sync syncReader }
 
 func (r freshTorrents) GetAllTorrentRefs(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
-	return r.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{})
+	return r.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{WithHelperTorrents: true})
 }
 
 func (r freshTorrents) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
