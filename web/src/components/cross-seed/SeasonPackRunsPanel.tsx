@@ -141,7 +141,7 @@ export function SeasonPackRunsPanel({
             <History className="h-4 w-4 text-muted-foreground shrink-0" />
             <span className="text-sm font-medium">{t("seasonPackRuns.title")}</span>
             {runs.length > 0 ? (
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary">
                 {t("seasonPackRuns.runsCount", { count: runs.length })}
                 {statusCounts.applied > 0 && ` • ${t("seasonPackRuns.appliedCount", { count: statusCounts.applied })}`}
                 {statusCounts.failed > 0 && ` • ${t("seasonPackRuns.failedCount", { count: statusCounts.failed })}`}

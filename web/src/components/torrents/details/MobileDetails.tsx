@@ -93,7 +93,7 @@ export function MobileDetailsHeader({ name, status, progress, size, ratio, onBac
       <div className="min-w-0 flex-1">
         <h2 className="line-clamp-2 break-words text-sm font-semibold leading-tight">{breakableName(name)}</h2>
         <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
-          <Badge variant={status.variant} className={cn("h-5 shrink-0 px-1.5 text-xs", status.className)}>{status.label}</Badge>
+          <Badge variant={status.variant} className={cn("h-5 shrink-0 px-1.5", status.className)}>{status.label}</Badge>
           <span className="truncate">
             {percent}% · {size} · {t("generalTab.ratio")} {ratio < 0 ? "∞" : ratio.toFixed(2)}
           </span>
@@ -109,12 +109,12 @@ export function MobileCategoryTagsRow({ category, tags }: { category: string; ta
   return (
     <div className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-b px-4 py-2.5">
       {category && (
-        <Badge variant="secondary" className="gap-1 text-xs">
+        <Badge variant="secondary" className="gap-1">
           <Folder className="size-3" />{category}
         </Badge>
       )}
       {tagList.map(tag => (
-        <Badge key={tag} variant="outline" className="gap-1 text-xs">
+        <Badge key={tag} variant="outline" className="gap-1">
           <Tag className="size-3" />{tag}
         </Badge>
       ))}

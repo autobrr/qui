@@ -284,6 +284,11 @@ func (f failingHeldSync) InstanceSnapshot(context.Context, int) *qbt.SyncSnapsho
 	return nil
 }
 
+func (f failingHeldSync) ListSnapshot(int, *qbt.SyncSnapshot) []*qbt.Torrent {
+	f.t.Error("Held titles lists a snapshot while the feature is off")
+	return nil
+}
+
 func (f failingHeldSync) CopyGroups() *qbittorrent.CopyGroups {
 	f.t.Error("Held titles reads the Copy groups while the feature is off")
 	return nil

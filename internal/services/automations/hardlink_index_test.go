@@ -313,6 +313,10 @@ func (fakeFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbitto
 	return nil, nil
 }
 
+func (fakeFilesReader) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	return nil, nil
+}
+
 type stubInstanceGetter struct{}
 
 func (stubInstanceGetter) Get(_ context.Context, id int) (*models.Instance, error) {

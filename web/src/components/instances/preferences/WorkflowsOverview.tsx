@@ -905,20 +905,17 @@ export function WorkflowsOverview() {
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="font-medium truncate">{instance.name}</span>
                       {rules.length > 0 && (
-                        <Badge variant="outline" className={cn(
-                          "text-xs",
-                          enabledRulesCount > 0 && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                        )}>
+                        <Badge variant="outline" className={cn(enabledRulesCount > 0 && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20")}>
                           {t("preferences.workflowsOverview.activeCount", { enabled: enabledRulesCount, total: rules.length })}
                         </Badge>
                       )}
                       {activityStats.deletionsToday > 0 && (
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
+                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
                           {t("preferences.workflowsOverview.today", { count: activityStats.deletionsToday })}
                         </Badge>
                       )}
                       {activityStats.failedToday > 0 && (
-                        <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                        <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
                           {t("preferences.workflowsOverview.failed", { count: activityStats.failedToday })}
                         </Badge>
                       )}
@@ -1551,7 +1548,7 @@ export function WorkflowsOverview() {
                   setDeleteConfirm(null)
                 }
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("preferences.workflowsOverview.deleteDialog.delete")}
             </AlertDialogAction>

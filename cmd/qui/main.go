@@ -1204,7 +1204,7 @@ type torrentHashAdapter struct {
 }
 
 func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error) {
-	torrents, err := a.syncManager.GetAllTorrentRefs(ctx, instanceID)
+	torrents, err := a.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{WithHelperTorrents: true})
 	if err != nil {
 		return nil, fmt.Errorf("get torrents: %w", err)
 	}

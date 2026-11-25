@@ -294,7 +294,8 @@ export function WorkflowPreviewDialog({
     )
   }, [condition, dynamicColumns])
 
-  const confirmClassName = destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
+  const confirmVariant = destructive ? "destructive" : "default"
+  const confirmClassName = !destructive && warning ? "bg-amber-600 text-white hover:bg-amber-700" : undefined
 
   const dryRunToggle = onDryRunChange && <DryRunToggle checked={dryRun} onCheckedChange={onDryRunChange} />
 
@@ -310,7 +311,7 @@ export function WorkflowPreviewDialog({
           {dryRunToggle}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} variant={confirmVariant} className={confirmClassName}>
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {t("preferences.workflowPreview.saveWithoutPreview")}
             </AlertDialogAction>
@@ -503,7 +504,7 @@ export function WorkflowPreviewDialog({
           </div>
           <div className="flex gap-2">
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} variant={confirmVariant} className={confirmClassName}>
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {confirmLabel}
             </AlertDialogAction>

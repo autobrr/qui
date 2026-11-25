@@ -242,7 +242,7 @@ export function FilterViewsSection({
             <AlertDialogAction
               onClick={() => deleteTarget && deleteView.mutate(deleteTarget.id)}
               disabled={deleteView.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("filterSidebar.views.delete")}
             </AlertDialogAction>

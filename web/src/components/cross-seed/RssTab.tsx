@@ -222,7 +222,7 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
       <CardContent className="space-y-5">
 
         <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="automation-enabled" className="font-medium">{t("automation.enableSwitch")}</Label>
+          <Label htmlFor="automation-enabled">{t("automation.enableSwitch")}</Label>
           <Switch
             id="automation-enabled"
             checked={form.enabled}
@@ -349,7 +349,7 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
                 <History className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">{t("automation.recentRssRuns")}</span>
                 {runs && runs.length > 0 ? (
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="secondary">
                     {runSummaryStats.totalFailed > 0? t("automation.runSummaryWithFailures", { runs: runSummaryStats.totalRuns, added: runSummaryStats.totalAdded, failed: runSummaryStats.totalFailed }): t("automation.runSummary", { runs: runSummaryStats.totalRuns, added: runSummaryStats.totalAdded })}
                   </Badge>
                 ) : (

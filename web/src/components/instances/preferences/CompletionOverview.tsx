@@ -407,7 +407,7 @@ export function CompletionOverview() {
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("preferences.completionOverview.includeFilters")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.categories")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.categories}
@@ -421,7 +421,7 @@ export function CompletionOverview() {
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.tags")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.tags}
@@ -435,7 +435,7 @@ export function CompletionOverview() {
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.indexers")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.indexers")}</Label>
                               <MultiSelect
                                 options={indexerOptions}
                                 selected={form.indexerIds.map(String)}
@@ -452,7 +452,7 @@ export function CompletionOverview() {
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("preferences.completionOverview.excludeFilters")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.categories")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.excludeCategories}
@@ -464,7 +464,7 @@ export function CompletionOverview() {
                               <p className="text-xs text-muted-foreground">{t("preferences.completionOverview.skipCategoriesDescription")}</p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.tags")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.excludeTags}

@@ -531,7 +531,7 @@ function SwipeableCard({
                 </span>
               </span>
             </div>
-            <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0 ml-auto", statusBadgeClass)}>
+            <Badge variant={statusBadgeVariant} className={cn("flex-shrink-0 ml-auto", statusBadgeClass)}>
               {statusBadgeLabel}
             </Badge>
           </div>
@@ -597,7 +597,7 @@ function SwipeableCard({
               )}
             </div>
 
-            <Badge variant={statusBadgeVariant} className={cn("text-xs", statusBadgeClass)}>
+            <Badge variant={statusBadgeVariant} className={statusBadgeClass}>
               {statusBadgeLabel}
             </Badge>
           </div>

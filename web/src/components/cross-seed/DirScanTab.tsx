@@ -377,7 +377,7 @@ function DirectoryCard({
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm truncate">{directory.path}</span>
             {!directory.enabled && (
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary">
                 {t("dirScan.disabled")}
               </Badge>
             )}
@@ -1587,7 +1587,7 @@ function DeleteDirectoryDialog({ directoryId, onOpenChange }: DeleteDirectoryDia
           <AlertDialogCancel>{t("dirScan.deleteDialog.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            variant="destructive"
           >
             {deleteDirectory.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
             {t("dirScan.deleteDialog.delete")}

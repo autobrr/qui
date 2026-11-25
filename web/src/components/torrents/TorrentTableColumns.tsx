@@ -331,7 +331,7 @@ export const createColumns = ({
       const instanceName = (row.original as CrossInstanceTorrent).instanceName ?? ""
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm font-medium">
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline">
             {instanceName}
           </Badge>
         </div>
@@ -399,7 +399,7 @@ export const createColumns = ({
           const badgeVariant = state === "queuedDL" ? "secondary" : "outline"
           return (
             <div className="flex items-center justify-center gap-1">
-              <Badge variant={badgeVariant} className="text-xs px-1 py-0">
+              <Badge variant={badgeVariant} className="px-1 py-0">
                 Q{priority || "?"}
               </Badge>
               <span className="text-xs text-muted-foreground">{queueType}</span>
@@ -422,7 +422,7 @@ export const createColumns = ({
             {helper && (
               <Tooltip>
                 <TooltipTrigger asChild openOnTap="only">
-                  <Badge variant="outline" className={cn("text-xs mr-1.5", badgePadding)}>
+                  <Badge variant="outline" className={cn("mr-1.5", badgePadding)}>
                     {helper === "share" ? helperShareLabel : helperTransferLabel}
                   </Badge>
                 </TooltipTrigger>
@@ -517,7 +517,7 @@ export const createColumns = ({
         if (isQueued && priority > 0) {
           return (
             <div className="flex items-center gap-1">
-              <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
+              <Badge variant={badgeVariant} className={cn(badgePadding, badgeClass)}>
                 {displayLabel}
               </Badge>
               <span className="text-xs text-muted-foreground">#{priority}</span>
@@ -526,7 +526,7 @@ export const createColumns = ({
         }
 
         return (
-          <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
+          <Badge variant={badgeVariant} className={cn(badgePadding, badgeClass)}>
             {displayLabel}
           </Badge>
         )
