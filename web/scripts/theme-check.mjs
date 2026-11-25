@@ -6,6 +6,8 @@ import { converter, formatHex, inGamut, parse, wcagContrast } from "culori"
 const scriptPath = fs.realpathSync(import.meta.filename)
 const freeThemesDir = path.resolve(path.dirname(scriptPath), "..", "..", "internal", "themes", "assets")
 const licensedThemesDir = path.join(freeThemesDir, "premium")
+const appCss = fs.readFileSync(path.resolve(path.dirname(scriptPath), "..", "src", "index.css"), "utf8")
+const STATUS = ["success", "warning", "info"]
 
 const MODES = [["light", ":root"], ["dark", ".dark"]]
 const TEXT = 4.5
@@ -56,6 +58,13 @@ function pairGroups(color, mode) {
   ]
   const rowText = ["foreground", "muted-foreground", "primary", "destructive", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5"]
   const menuTint = mode === "dark" ? 0.2 : 0.1
+  const statusPairs = name => [
+    [`${name} text on background`, color(name), page, TEXT],
+    [`${name} text on card`, color(name), card, TEXT],
+    [`${name} text on popover`, color(name), popover, TEXT],
+    [`${name} text on ${name} 10% on background`, color(name), surface(name, 0.1), TEXT],
+    ...rows.map(([row, background]) => [`${name} text on ${row}`, color(name), background, TEXT]),
+  ]
 
   return [
     {
@@ -95,6 +104,10 @@ function pairGroups(color, mode) {
       ),
     },
     {
+      source: "web/src (text-success, text-warning, text-info, and their 10% tints)",
+      pairs: STATUS.flatMap(statusPairs),
+    },
+    {
       source: "web/src/components/ui/ (progress, checkbox, focus border)",
       pairs: [
         ["primary fill on muted (progress bar)", color("primary"), surface("muted"), GRAPHIC],
@@ -128,6 +141,8 @@ export function checkTheme(css) {
 
   for (const [mode, selector] of MODES) {
     const base = declarations(css, selector)
+    const app = declarations(appCss, selector)
+    const defaults = Object.fromEntries(STATUS.map(name => [`--${name}`, app[`--${name}`]]))
 
     for (const [name, value] of Object.entries(base)) {
       const literal = parse(value)
@@ -136,7 +151,7 @@ export function checkTheme(css) {
 
     const names = variations(css)
     for (const variation of names.length > 0 ? names : [null]) {
-      const vars = variation ? { ...base, "--variation-color": `var(--variation-${variation})` } : base
+      const vars = { ...defaults, ...base, ...(variation && { "--variation-color": `var(--variation-${variation})` }) }
       const color = name => {
         const value = resolve(vars, `--${name}`)
         const parsed = parse(value)

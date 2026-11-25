@@ -24,6 +24,7 @@ export const THEME_TOKEN_GROUPS: ReadonlyArray<{ group: string; tokens: readonly
   },
   { group: "Charts", tokens: ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"] },
   { group: "Ratio colors", tokens: ["--ratio-bad", "--ratio-almost", "--ratio-good", "--ratio-best"] },
+  { group: "Status colors", tokens: ["--success", "--warning", "--info"] },
   { group: "Typography", tokens: ["--font-sans", "--font-serif", "--font-mono"] },
   { group: "Shape and spacing", tokens: ["--radius", "--spacing", "--tracking-normal"] },
   {
@@ -72,6 +73,7 @@ Rules:
 - Keep the file at 1 MiB or less.
 - Do not change the height of a torrent row, its padding, its border width, or its font size. qui computes the position of each row from a fixed height.
 - Keep the text readable: each foreground token must have enough contrast with its background token, in light mode and in dark mode.
+- The status colors have no foreground token. Text on a solid status fill uses --background, so each status color must have enough contrast with --background.
 - If you set a font token, use a font that the browser has, or embed the font with @font-face and a data: address.
 
 qui refuses to save a theme that breaks one of the rules about files, and it names the line.`
