@@ -723,6 +723,51 @@ func (s *CrossSeedStore) GetSeasonPackTVDBCredentialsUpdatedAt(ctx context.Conte
 	return updatedAt, nil
 }
 
+type crossSeedSettingsSecrets struct {
+	redactedAPIKey string
+	orpheusAPIKey  string
+	tvdbAPIKey     string
+	tvdbPIN        string
+}
+
+func (s *CrossSeedStore) loadExistingSettingsSecrets(ctx context.Context, settings *CrossSeedAutomationSettings) (crossSeedSettingsSecrets, error) {
+	var red, ops, tvdbKey, tvdbPin sql.NullString
+	queryErr := s.db.QueryRowContext(ctx, `
+			SELECT redacted_api_key_encrypted, orpheus_api_key_encrypted,
+			       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted
+			FROM cross_seed_settings
+			WHERE id = 1
+		`).Scan(&red, &ops, &tvdbKey, &tvdbPin)
+	if queryErr != nil && !errors.Is(queryErr, sql.ErrNoRows) {
+		if strings.TrimSpace(settings.RedactedAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.OrpheusAPIKey) == domain.RedactedStr ||
+			strings.TrimSpace(settings.SeasonPackTVDBAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.SeasonPackTVDBPIN) == domain.RedactedStr {
+			return crossSeedSettingsSecrets{}, fmt.Errorf("load existing encrypted keys: %w", queryErr)
+		}
+	}
+	return crossSeedSettingsSecrets{
+		redactedAPIKey: red.String,
+		orpheusAPIKey:  ops.String,
+		tvdbAPIKey:     tvdbKey.String,
+		tvdbPIN:        tvdbPin.String,
+	}, nil
+}
+
+func (s *CrossSeedStore) resolveSettingsSecret(raw, existingEncrypted, label string) (string, error) {
+	v := strings.TrimSpace(raw)
+	switch v {
+	case "":
+		return "", nil
+	case domain.RedactedStr:
+		return existingEncrypted, nil
+	default:
+		enc, err := s.encrypt(v)
+		if err != nil {
+			return "", fmt.Errorf("encrypt %s: %w", label, err)
+		}
+		return enc, nil
+	}
+}
+
 func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeedAutomationSettings) (*CrossSeedAutomationSettings, error) {
 	if settings == nil {
 		return nil, errors.New("settings cannot be nil")
@@ -800,92 +845,26 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		return nil, fmt.Errorf("encode category mapping rules: %w", err)
 	}
 
-	var existingRedactedEncrypted string
-	var existingOrpheusEncrypted string
-	var existingTVDBAPIKeyEncrypted string
-	var existingTVDBPINEncrypted string
-	{
-		var red, ops, tvdbKey, tvdbPin sql.NullString
-		queryErr := s.db.QueryRowContext(ctx, `
-				SELECT redacted_api_key_encrypted, orpheus_api_key_encrypted,
-				       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted
-				FROM cross_seed_settings
-				WHERE id = 1
-			`).Scan(&red, &ops, &tvdbKey, &tvdbPin)
-		if queryErr != nil && !errors.Is(queryErr, sql.ErrNoRows) {
-			if strings.TrimSpace(settings.RedactedAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.OrpheusAPIKey) == domain.RedactedStr ||
-				strings.TrimSpace(settings.SeasonPackTVDBAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.SeasonPackTVDBPIN) == domain.RedactedStr {
-				return nil, fmt.Errorf("load existing encrypted keys: %w", queryErr)
-			}
-		}
-		if red.Valid {
-			existingRedactedEncrypted = red.String
-		}
-		if ops.Valid {
-			existingOrpheusEncrypted = ops.String
-		}
-		if tvdbKey.Valid {
-			existingTVDBAPIKeyEncrypted = tvdbKey.String
-		}
-		if tvdbPin.Valid {
-			existingTVDBPINEncrypted = tvdbPin.String
-		}
+	existing, err := s.loadExistingSettingsSecrets(ctx, settings)
+	if err != nil {
+		return nil, err
 	}
 
-	redactedAPIKeyEncrypted := ""
-	v := strings.TrimSpace(settings.RedactedAPIKey)
-	switch v {
-	case "":
-	case domain.RedactedStr:
-		redactedAPIKeyEncrypted = existingRedactedEncrypted
-	default:
-		enc, encErr := s.encrypt(v)
-		if encErr != nil {
-			return nil, fmt.Errorf("encrypt redacted api key: %w", encErr)
-		}
-		redactedAPIKeyEncrypted = enc
+	redactedAPIKeyEncrypted, err := s.resolveSettingsSecret(settings.RedactedAPIKey, existing.redactedAPIKey, "redacted api key")
+	if err != nil {
+		return nil, err
 	}
-
-	orpheusAPIKeyEncrypted := ""
-	v = strings.TrimSpace(settings.OrpheusAPIKey)
-	switch v {
-	case "":
-	case domain.RedactedStr:
-		orpheusAPIKeyEncrypted = existingOrpheusEncrypted
-	default:
-		enc, encErr := s.encrypt(v)
-		if encErr != nil {
-			return nil, fmt.Errorf("encrypt orpheus api key: %w", encErr)
-		}
-		orpheusAPIKeyEncrypted = enc
+	orpheusAPIKeyEncrypted, err := s.resolveSettingsSecret(settings.OrpheusAPIKey, existing.orpheusAPIKey, "orpheus api key")
+	if err != nil {
+		return nil, err
 	}
-
-	seasonPackTVDBAPIKeyEncrypted := ""
-	v = strings.TrimSpace(settings.SeasonPackTVDBAPIKey)
-	switch v {
-	case "":
-	case domain.RedactedStr:
-		seasonPackTVDBAPIKeyEncrypted = existingTVDBAPIKeyEncrypted
-	default:
-		enc, encErr := s.encrypt(v)
-		if encErr != nil {
-			return nil, fmt.Errorf("encrypt tvdb api key: %w", encErr)
-		}
-		seasonPackTVDBAPIKeyEncrypted = enc
+	seasonPackTVDBAPIKeyEncrypted, err := s.resolveSettingsSecret(settings.SeasonPackTVDBAPIKey, existing.tvdbAPIKey, "tvdb api key")
+	if err != nil {
+		return nil, err
 	}
-
-	seasonPackTVDBPINEncrypted := ""
-	v = strings.TrimSpace(settings.SeasonPackTVDBPIN)
-	switch v {
-	case "":
-	case domain.RedactedStr:
-		seasonPackTVDBPINEncrypted = existingTVDBPINEncrypted
-	default:
-		enc, encErr := s.encrypt(v)
-		if encErr != nil {
-			return nil, fmt.Errorf("encrypt tvdb pin: %w", encErr)
-		}
-		seasonPackTVDBPINEncrypted = enc
+	seasonPackTVDBPINEncrypted, err := s.resolveSettingsSecret(settings.SeasonPackTVDBPIN, existing.tvdbPIN, "tvdb pin")
+	if err != nil {
+		return nil, err
 	}
 
 	query := `
