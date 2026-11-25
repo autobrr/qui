@@ -336,13 +336,16 @@ func (s *stream) task(ctx context.Context, t task) error {
 		}
 		for piece := from; piece < to; piece++ {
 			at := int64(piece)*info.PieceLength - start
-			if err := s.piece(ctx, t.p, piece, data[at:min(at+info.PieceLength, end-start)]); err != nil {
+			if err := s.checkPiece(t.p, piece, data[at:min(at+info.PieceLength, end-start)]); err != nil {
 				return err
 			}
-			if s.written >= s.c.j.svc.deps.Config.FlushBytes || piece == t.to-1 {
-				if err := s.checkpoint(ctx); err != nil {
-					return err
-				}
+		}
+		if err := s.writeWindow(ctx, t.p, from, to, data); err != nil {
+			return err
+		}
+		if s.written >= s.c.j.svc.deps.Config.FlushBytes || to == t.to {
+			if err := s.checkpoint(ctx); err != nil {
+				return err
 			}
 		}
 	}
@@ -413,20 +416,25 @@ func (s *stream) readFile(ctx context.Context, f file, name string, r *reading, 
 	return r, nil
 }
 
-func (s *stream) piece(ctx context.Context, p *part, piece int, data []byte) error {
-	info := p.src.info
+func (s *stream) checkPiece(p *part, piece int, data []byte) error {
 	sum := sha1.Sum(data) //nolint:gosec // BitTorrent v1 pieces are SHA-1
-	if !bytes.Equal(sum[:], info.Pieces[piece*sha1.Size:(piece+1)*sha1.Size]) {
+	if !bytes.Equal(sum[:], p.src.info.Pieces[piece*sha1.Size:(piece+1)*sha1.Size]) {
 		return permanent("Piece %d on %s does not match the .torrent. qBittorrent can find the damage with a recheck.", piece, s.c.source)
 	}
-	for _, seg := range p.segments(int64(piece)*info.PieceLength, int64(len(data))) {
+	return nil
+}
+
+func (s *stream) writeWindow(ctx context.Context, p *part, from, to int, data []byte) error {
+	for _, seg := range p.segments(int64(from)*p.src.info.PieceLength, int64(len(data))) {
 		if s.c.j.writes(p, seg) {
 			if err := s.write(ctx, p, seg, data[seg.at:seg.at+seg.n]); err != nil {
 				return err
 			}
 		}
 	}
-	s.pending = append(s.pending, copied{part: p, piece: piece})
+	for i := range to - from {
+		s.pending = append(s.pending, copied{part: p, piece: from + i})
+	}
 	s.written += int64(len(data))
 	s.c.j.meter.add(int64(len(data)))
 	return nil

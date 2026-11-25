@@ -44,7 +44,7 @@ func newSFTPClient(client *ssh.Client, calls *sftpCalls) (*sftp.Client, error) {
 		return nil, err
 	}
 	go func() { _, _ = io.Copy(io.Discard, stderr) }()
-	return sftp.NewClientPipe(&answerReader{Reader: stdout, calls: calls}, &requestWriter{WriteCloser: stdin, calls: calls})
+	return sftp.NewClientPipe(&answerReader{Reader: stdout, calls: calls}, &requestWriter{WriteCloser: stdin, calls: calls}, sftp.UseConcurrentWrites(true))
 }
 
 type requestWriter struct {
