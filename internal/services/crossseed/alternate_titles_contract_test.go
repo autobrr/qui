@@ -149,10 +149,6 @@ func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/v3/movie/8":
 		_ = json.MarshalWrite(w, movie{ID: 8, Title: "Copper Fjord", TMDbID: 80, AlternateTitles: []alternateTitle{{Title: "Kupferfjord"}}})
 	case "/api/v3/series/lookup", "/api/v3/movie/lookup":
-		if f.lookupFails {
-			http.Error(w, "lookup failed", http.StatusServiceUnavailable)
-			return
-		}
 		_ = json.MarshalWrite(w, []series{})
 	default:
 		http.NotFound(w, r)
@@ -339,7 +335,11 @@ func TestAlternateTitlesFetchLogBudget(t *testing.T) {
 		fake.down = true
 		return service
 	}
-	for name, prepare := range map[string]func(*fakeArrServer, *arr.Service) *arr.Service{"answering": answering, "down": down} {
+	lookupFails := func(fake *fakeArrServer, service *arr.Service) *arr.Service {
+		fake.lookupDown = true
+		return service
+	}
+	for name, prepare := range map[string]func(*fakeArrServer, *arr.Service) *arr.Service{"answering": answering, "down": down, "lookup fails": lookupFails} {
 		t.Run(name, func(t *testing.T) {
 			small, large := logbudget.Count(t, fetch(t, 10, prepare)), logbudget.Count(t, fetch(t, 200, prepare))
 			require.Equal(t, 1, large[logbudget.Line{Level: "debug", Message: "crossseed: alternate titles fetched for Held titles"}])

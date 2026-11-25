@@ -220,7 +220,6 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	lookupTerm := strings.TrimSpace(parsedRelease.Title)
 	lookupYear := parsedRelease.Year
 	var asked []askedInstance
-	anyParseAnswered := false
 	incomplete := false
 	for _, instance := range instances {
 		client := s.clientForInstance(instance)
@@ -236,8 +235,6 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 				Str("title", title).
 				Msg("[ARR-LOOKUP] Parse request failed")
 			result = nil
-		} else {
-			anyParseAnswered = true
 		}
 
 		incomplete = incomplete || (result != nil && result.Incomplete)
@@ -253,7 +250,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			lookupResult, lookupErr := a.client.LookupByTerm(ctx, lookupTerm, lookupYear)
 			if lookupErr != nil {
 				incomplete = true
-				log.Debug().Err(lookupErr).
+				log.Trace().Err(lookupErr).
 					Int("instanceId", a.instance.ID).
 					Str("instanceName", a.instance.Name).
 					Str("term", lookupTerm).

@@ -436,7 +436,6 @@ func TestAlternateTitlesDoNotPauseOnPerTitleFailure(t *testing.T) {
 		require.Zero(t, pauses[logbudget.Line{Level: "trace", Message: "crossseed: Held titles pauses an Alternate-title source that fails"}])
 
 		asked, askedAt := source.askedTitles(), source.askTimes()
-		// 3 initial failures + 1 Copper Fjord + 3 retries after alternateTitleRetry.
 		require.Len(t, asked, 7)
 		require.Equal(t, "Copper Fjord", asked[3])
 		require.Equal(t, alternateTitleRetry, askedAt[4].Sub(started))
