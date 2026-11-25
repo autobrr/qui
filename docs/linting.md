@@ -60,7 +60,7 @@ Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of 
 `docs/standards/simplicity.md` bans comments (ADR 0070). No allowlist holds one:
 
 - **Go:** the ratchet command reads each tracked Go file itself, with `scripts/gocomments`, and fails on each comment. It skips generated files.
-- **TypeScript:** ESLint reports each comment as `qui/no-comments`. The rule has no fix, so that `make fmt`, which runs `eslint --fix`, deletes no comment.
+- **TypeScript:** ESLint reports each comment as `qui/no-comments`. The rule has no fix, so that `make fmt`, which runs `eslint --fix`, deletes no comment. It is off in `src/**/*.generated.ts`.
 
 `scripts/gocomments` and `web/scripts/no-comments-rule.mjs` list the markers that are not comments for this rule.
 

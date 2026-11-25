@@ -9,7 +9,7 @@ Go and TypeScript code in qui carries no prose comments. A name, a type, or a te
 
 A comment that excuses a shortcut lets the shortcut stay, and an agent that reads the file copies the pattern into the next change. A comment that repeats the code costs a line, and no check fails when it goes stale. The first audit of 4,424 comment blocks found 2,661 that repeated the code and 59 that were stale.
 
-The markers that a tool or a standard reads are not prose and stay: the license header, compiler and linter directives, and `// i18n-namespace:`.
+The markers that a tool or a standard reads are not prose and stay: the license header, compiler and linter directives, and `// i18n-namespace:`. A generated file keeps the comments that its generator writes.
 
 About 39,000 comments were in the code when the ban started. On 2026-11-25 one change deleted every comment that was left, without sorting them, and with them the counts that held them. Commit `9fcce7861` still has the text. `scripts/ratchet` fails on each comment in a Go file, and ESLint fails on each comment in a web file. No allowlist holds one.
 
