@@ -5266,11 +5266,22 @@ paths:
         Accepts a plain `path` payload or native Sonarr, Radarr, Lidarr, or Readarr webhook payloads.
         qui accepts `eventType: test` payloads as a no-op health check. For real events,
         it extracts the path, matches it against enabled scan directories using longest-prefix matching,
-        and starts a scan rooted at the provided path subtree.
+        and starts a scan rooted at the provided path subtree. Two instances can have a directory with
+        the same path. `instanceId` picks the instance.
       security:
         - ApiKeyAuth: []
         - SessionAuth: []
         - ApiKeyQuery: []
+      parameters:
+        - in: query
+          name: instanceId
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: |
+            Match only the scan directories of this instance. A test payload with `instanceId`
+            passes only when the instance has an enabled scan directory.
       requestBody:
         required: true
         content:
@@ -5381,11 +5392,11 @@ paths:
         '204':
           description: Test webhook accepted; no scan started
         '400':
-          description: Invalid request body or no supported path found in payload
+          description: Invalid request body, no supported path found in payload, or `instanceId` is not a positive integer
         '404':
-          description: No enabled directory matched the provided path
+          description: No enabled directory matched the provided path, or the instance of `instanceId` has no such directory
         '409':
-          description: More than one enabled directory matches the path
+          description: More than one enabled directory matches the path. When they belong to different instances, the message lists the instance IDs, and `instanceId` picks one
         '500':
           description: Failed to start scan
 

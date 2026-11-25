@@ -2946,6 +2946,9 @@ func (s *Service) ListDirectories(ctx context.Context) ([]*models.DirScanDirecto
 
 // CreateDirectory creates a new scan directory.
 func (s *Service) CreateDirectory(ctx context.Context, dir *models.DirScanDirectory) (*models.DirScanDirectory, error) {
+	if err := s.ensureUniqueDirectoryPath(ctx, dir); err != nil {
+		return nil, fmt.Errorf("create directory: %w", err)
+	}
 	created, err := s.store.CreateDirectory(ctx, dir)
 	if err != nil {
 		return nil, fmt.Errorf("create directory: %w", err)
@@ -2964,6 +2967,22 @@ func (s *Service) GetDirectory(ctx context.Context, id int) (*models.DirScanDire
 
 // UpdateDirectory updates a scan directory.
 func (s *Service) UpdateDirectory(ctx context.Context, id int, params *models.DirScanDirectoryUpdateParams) (*models.DirScanDirectory, error) {
+	if params != nil && (params.Path != nil || params.TargetInstanceID != nil) {
+		existing, err := s.store.GetDirectory(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("get directory: %w", err)
+		}
+		candidate := &models.DirScanDirectory{ID: id, Path: existing.Path, TargetInstanceID: existing.TargetInstanceID}
+		if params.Path != nil {
+			candidate.Path = *params.Path
+		}
+		if params.TargetInstanceID != nil {
+			candidate.TargetInstanceID = *params.TargetInstanceID
+		}
+		if err := s.ensureUniqueDirectoryPath(ctx, candidate); err != nil {
+			return nil, fmt.Errorf("update directory: %w", err)
+		}
+	}
 	updated, err := s.store.UpdateDirectory(ctx, id, params)
 	if err != nil {
 		return nil, fmt.Errorf("update directory: %w", err)
