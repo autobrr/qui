@@ -119,6 +119,12 @@ func seasonPackApplyCases(t *testing.T) []seasonPackEndpointCase {
 		seasonPackEndpointCase{name: "applied on the second instance", held: endpointEpisodes(1), heldElsewhere: held, total: 4, torrent: pack},
 		seasonPackEndpointCase{name: "applied through a route", held: held, total: 4, torrent: pack, setup: routed},
 		seasonPackEndpointCase{name: "applied, recheck queued", held: endpointEpisodes(3), total: 4, torrent: pack},
+		seasonPackEndpointCase{name: "applied, recheck fails", held: endpointEpisodes(3), total: 4, torrent: pack, fail: func(r *seasonPackEndpointRig) { r.sync.recheckErr = errors.New("recheck rejected") }},
+		seasonPackEndpointCase{name: "applied, resume queue full", held: endpointEpisodes(3), total: 4, torrent: pack, fail: (*seasonPackEndpointRig).fillResumeQueue},
+		seasonPackEndpointCase{name: "applied, recheck fails and resume queue full", held: endpointEpisodes(3), total: 4, torrent: pack, fail: func(r *seasonPackEndpointRig) {
+			r.fillResumeQueue()
+			r.sync.recheckErr = errors.New("recheck rejected")
+		}},
 		seasonPackEndpointCase{name: "no torrent", held: held, total: 4},
 		seasonPackEndpointCase{name: "already exists", held: held, total: 4, torrent: pack, setup: func(r *seasonPackEndpointRig) {
 			r.servers[1].Add(qbtstub.Torrent{Hash: endpointHash(t, pack), Name: endpointPack, SavePath: filepath.Join(r.root, "lib"), Layout: qbtstub.RootFolder, Files: []string{"a.mkv"}})

@@ -162,6 +162,9 @@ linters:
         - pattern: ^crossseed\.(Service\.(CheckSeasonPackWebhook|ApplySeasonPackWebhook)|SeasonPack(CheckRequest|CheckMatch|CheckResponse|ApplyRequest|ApplyResponse))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0090)
+        - pattern: ^\(?\*?handlers\.CrossSeedHandler\)?\.(SeasonPackCheck|SeasonPackApply)$
+          pkg: ^github\.com/autobrr/qui/internal/api/handlers$
+          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0090)
         - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: only the Transfer history module in internal/services/transferhistory calls the history store
@@ -358,7 +361,7 @@ linters:
         linters:
           - forbidigo
         text: season pack endpoints are a frozen adapter
-      - path: internal/services/crossseed/(log_budget|path_dialect|seasonpack|seasonpack_(blocklist|regression|route|held|held_apply|held_budget|held_freshness|held_rig))_test\.go$|internal/api/handlers/crossseed_apply_handler_test\.go$
+      - path: internal/services/crossseed/(log_budget|path_dialect|seasonpack|seasonpack_(blocklist|regression|route|held|held_apply|held_budget|held_freshness|held_rig))_test\.go$|internal/api/handlers/crossseed_(apply_handler|seasonpack)_test\.go$
         linters:
           - forbidigo
         text: season pack endpoints are a frozen adapter

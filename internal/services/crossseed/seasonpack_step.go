@@ -9,8 +9,6 @@ type seasonPackRequest struct {
 	instanceIDs []int
 	indexer     string
 	autonomous  bool
-	heldOnly    bool
-	wait        *heldWait
 }
 
 type seasonPackCoverage struct {
@@ -40,5 +38,3 @@ type seasonPackApplyResult struct {
 	coverage        float64
 	linkMode        string
 }
-
-const seasonPackNotInHeldTitles = "not_in_held_titles"

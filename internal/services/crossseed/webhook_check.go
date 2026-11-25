@@ -103,21 +103,10 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Str("sourceRelease", incomingRelease.Source).
 		Msg("Webhook check: parsed incoming release")
 
-	input := webhookCheckInput{
-		instances: instances,
-		announced: namedRelease{release: incomingRelease, rawName: req.TorrentName},
-		size:      req.Size,
-		settings:  settings,
-		policy: announcementMatchPolicy{
-			findIndividualEpisodes: findIndividualEpisodes,
-			rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
-			allowUnknownSize:       req.Size == 0,
-			skipRecheck:            settings.SkipRecheck,
-		},
-	}
+	announced := namedRelease{release: incomingRelease, rawName: req.TorrentName}
+	input := newWebhookCheckInput(announced, req.Size, findIndividualEpisodes, settings, instances)
 	var answer webhookCheckAnswer
-	query := heldTitlesQuery{announced: input.announced, size: int64(input.size)}
-	if lookup := s.heldTitles.lookup(ctx, query, instances); lookup != nil {
+	if lookup := s.webhookHeldLookup(ctx, input); lookup != nil {
 		for instanceID, err := range lookup.readErrors {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents from instance")
 		}
@@ -167,6 +156,10 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Recommendation: recommendation,
 		SeasonPack:     answer.seasonPack,
 	}, nil
+}
+
+func (s *Service) webhookHeldLookup(ctx context.Context, input webhookCheckInput) *heldLookup {
+	return s.heldTitles.lookup(ctx, heldTitlesQuery{announced: input.announced, size: int64(input.size)}, input.instances)
 }
 
 func (s *Service) webhookMatchHeldTitles(ctx context.Context, input webhookCheckInput, contentType string, lookup *heldLookup) (webhookCheckAnswer, error) {

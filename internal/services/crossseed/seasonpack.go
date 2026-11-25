@@ -127,18 +127,20 @@ func seasonPackMatchOptionsFromSettings(settings *models.CrossSeedAutomationSett
 }
 
 type seasonPackPrep struct {
-	manual        bool
-	rejected      map[string]string
-	settings      *models.CrossSeedAutomationSettings
-	packName      string
-	packRelease   *rls.Release
-	meta          TorrentMetadata
-	torrentBytes  []byte
-	packEpisodes  map[episodeIdentity]packEpisodeOrigin
-	totalEpisodes int
-	eligible      []*models.Instance
-	threshold     float64
-	aliasTitles   []string
+	manual         bool
+	heldOnly       bool
+	skipAutoResume bool
+	rejected       map[string]string
+	settings       *models.CrossSeedAutomationSettings
+	packName       string
+	packRelease    *rls.Release
+	meta           TorrentMetadata
+	torrentBytes   []byte
+	packEpisodes   map[episodeIdentity]packEpisodeOrigin
+	totalEpisodes  int
+	eligible       []*models.Instance
+	threshold      float64
+	aliasTitles    []string
 }
 
 const seasonPackNoEligibleInstances = "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)"
@@ -162,18 +164,9 @@ func (s *Service) prepareSeasonPackLocally(ctx context.Context, torrentName, tor
 		return nil, "invalid_payload", "torrentName is required", nil
 	}
 
-	packRelease := s.matcher().parseSeasonPackName(torrentName)
-	if !isTVSeasonPack(packRelease) {
+	prep := s.newSeasonPackPrep(torrentName, settings)
+	if prep == nil {
 		return nil, "not_season_pack", fmt.Sprintf("release %q is not a season pack", torrentName), nil
-	}
-	prep := &seasonPackPrep{
-		settings:    settings,
-		packName:    torrentName,
-		packRelease: packRelease,
-		threshold:   settings.SeasonPackCoverageThreshold,
-	}
-	if prep.threshold <= 0 {
-		prep.threshold = 0.75
 	}
 	if needsTorrent {
 		if message := s.readSeasonPackTorrent(prep, torrentData); message != "" {
@@ -191,6 +184,23 @@ func (s *Service) prepareSeasonPackLocally(ctx context.Context, torrentName, tor
 		return nil, "no_eligible_instances", seasonPackNoEligibleInstances, nil
 	}
 	return prep, "", "", nil
+}
+
+func (s *Service) newSeasonPackPrep(name string, settings *models.CrossSeedAutomationSettings) *seasonPackPrep {
+	packRelease := s.matcher().parseSeasonPackName(name)
+	if !isTVSeasonPack(packRelease) {
+		return nil
+	}
+	prep := &seasonPackPrep{
+		settings:    settings,
+		packName:    name,
+		packRelease: packRelease,
+		threshold:   settings.SeasonPackCoverageThreshold,
+	}
+	if prep.threshold <= 0 {
+		prep.threshold = 0.75
+	}
+	return prep
 }
 
 func (s *Service) readSeasonPackTorrent(prep *seasonPackPrep, torrentData string) (problem string) {
@@ -237,15 +247,15 @@ func (s *Service) checkSeasonPack(ctx context.Context, req seasonPackRequest) (*
 	}
 
 	lookup := s.seasonPackLookup(ctx, prep, prep.eligible)
-	if lookup == nil && req.heldOnly {
-		return &seasonPackCheckResult{reason: seasonPackNotInHeldTitles}, nil
-	}
 	defer lookup.refreshStale()
-	lookup.shareWait(req.wait)
 	if seasonPackNotHeld(ctx, lookup) {
 		log.Trace().Str("torrentName", req.name).Msg("season pack: check found no held episode")
 		return buildCheckResponse(nil, nil, 0, prep.threshold), nil
 	}
+	return s.checkPreparedSeasonPack(ctx, prep, lookup)
+}
+
+func (s *Service) checkPreparedSeasonPack(ctx context.Context, prep *seasonPackPrep, lookup *heldLookup) (*seasonPackCheckResult, error) {
 	s.lookUpSeason(ctx, prep)
 	lookup.addTitles(prep.aliasTitles)
 
@@ -258,11 +268,11 @@ func (s *Service) checkSeasonPack(ctx context.Context, req seasonPackRequest) (*
 	}
 
 	if prep.totalEpisodes == -1 {
-		return s.checkSeasonPackNoThreshold(ctx, req.name, matches), nil
+		return s.checkSeasonPackNoThreshold(ctx, prep.packName, matches), nil
 	}
 	passing := prep.passing(matches)
 	resp := buildCheckResponse(passing, matches, prep.totalEpisodes, prep.threshold)
-	s.recordCheckRun(ctx, req.name, resp, prep.totalEpisodes)
+	s.recordCheckRun(ctx, prep.packName, resp, prep.totalEpisodes)
 	return resp, nil
 }
 
@@ -318,19 +328,21 @@ func (s *Service) applySeasonPack(ctx context.Context, req seasonPackRequest) (*
 	}
 
 	lookup := s.seasonPackLookup(ctx, prep, prep.eligible)
-	if req.heldOnly && (lookup == nil || lookup.holdsNothing(ctx)) {
-		return &seasonPackApplyResult{reason: seasonPackNotInHeldTitles}, nil
-	}
 	defer lookup.refreshStale()
+	return s.applyPreparedSeasonPack(ctx, prep, lookup, req.indexer)
+}
+
+func (s *Service) applyPreparedSeasonPack(ctx context.Context, prep *seasonPackPrep, lookup *heldLookup, indexer string) (*seasonPackApplyResult, error) {
+	hashes := collectHashes(prep.meta)
+	pack, release := s.seasonPackApplies.claim(hashes[0])
+	defer release()
 	s.lookUpSeason(ctx, prep)
 	lookup.addTitles(prep.aliasTitles)
-
-	hashes := collectHashes(prep.meta)
-	pack, leave, err := s.seasonPackApplies.enter(ctx, hashes[0])
+	giveUp, err := pack.takeTurn(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer leave()
+	defer giveUp()
 
 	checks := make(map[int]PreAddCheck, len(prep.eligible))
 	routes := make(map[int]*candidateRoute)
@@ -341,8 +353,8 @@ func (s *Service) applySeasonPack(ctx context.Context, req seasonPackRequest) (*
 		if routeErr != nil {
 			status, message := routeFailure(routeErr)
 			reason := seasonPackRouteReason(status)
-			s.recordApplyRun(ctx, req.name, reason, message, inst.ID, route.receiverOf(0), 0, prep.totalEpisodes, 0, "")
-			return &seasonPackApplyResult{reason: reason, message: message}, nil
+			s.recordApplyRun(ctx, prep.packName, reason, message, inst.ID, route.receiverOf(0), 0, prep.totalEpisodes, 0, "")
+			return &seasonPackApplyResult{reason: reason, message: message, instanceID: inst.ID}, nil
 		}
 		receiverID := route.receiverOf(inst.ID)
 		routes[inst.ID] = route
@@ -361,23 +373,24 @@ func (s *Service) applySeasonPack(ctx context.Context, req seasonPackRequest) (*
 			if refusal.Message != existsInThisInstance {
 				message = refusal.Message
 			}
-			s.recordApplyRun(ctx, req.name, "already_exists", "", inst.ID, receiverID, 0, prep.totalEpisodes, 0, "")
-			return &seasonPackApplyResult{reason: "already_exists", message: message}, nil
+			s.recordApplyRun(ctx, prep.packName, "already_exists", "", inst.ID, receiverID, 0, prep.totalEpisodes, 0, "")
+			return &seasonPackApplyResult{reason: "already_exists", message: message, instanceID: inst.ID}, nil
 		default:
 			reason, message := "existing_check_failed", fmt.Sprintf("failed to check existing torrents on instance %d: %v", receiverID, refusal.Err)
 			if strings.HasPrefix(refusal.Message, blocklistCheckFailed) {
 				reason, message = "blocklist_check_failed", fmt.Sprintf("failed to check cross-seed blocklist on instance %d: %v", receiverID, refusal.Err)
 			}
-			s.recordApplyRun(ctx, req.name, reason, message, inst.ID, receiverID, 0, prep.totalEpisodes, 0, "")
-			return &seasonPackApplyResult{reason: reason, message: message}, nil
+			s.recordApplyRun(ctx, prep.packName, reason, message, inst.ID, receiverID, 0, prep.totalEpisodes, 0, "")
+			return &seasonPackApplyResult{reason: reason, message: message, instanceID: inst.ID}, nil
 		}
 	}
 	if len(unblocked) == 0 {
 		blockedOn := routes[blockedID].receiverOf(blockedID)
-		s.recordApplyRun(ctx, req.name, "blocked", "", blockedID, blockedOn, 0, prep.totalEpisodes, 0, "")
+		s.recordApplyRun(ctx, prep.packName, "blocked", "", blockedID, blockedOn, 0, prep.totalEpisodes, 0, "")
 		return &seasonPackApplyResult{
-			reason:  "blocked",
-			message: fmt.Sprintf("torrent is on the cross-seed blocklist for instance %d", blockedOn),
+			reason:     "blocked",
+			message:    fmt.Sprintf("torrent is on the cross-seed blocklist for instance %d", blockedOn),
+			instanceID: blockedID,
 		}, nil
 	}
 	prep.eligible = unblocked
@@ -385,7 +398,7 @@ func (s *Service) applySeasonPack(ctx context.Context, req seasonPackRequest) (*
 	matches, matchedTitles, err := s.computeCoverage(ctx, prep, lookup)
 	if err != nil {
 		message := err.Error()
-		s.recordApplyRun(ctx, req.name, "coverage_check_failed", message, 0, 0, 0, prep.totalEpisodes, 0, "")
+		s.recordApplyRun(ctx, prep.packName, "coverage_check_failed", message, 0, 0, 0, prep.totalEpisodes, 0, "")
 		return &seasonPackApplyResult{
 			reason:  "coverage_check_failed",
 			message: message,
@@ -399,10 +412,11 @@ func (s *Service) applySeasonPack(ctx context.Context, req seasonPackRequest) (*
 		if best != nil {
 			bestInstance, bestMatched, bestCoverage = best.instanceID, best.matched, best.coverage
 		}
-		s.recordApplyRun(ctx, req.name, "drifted", "no instance meets coverage threshold at apply time", bestInstance, routes[bestInstance].receiverOf(bestInstance), bestMatched, prep.totalEpisodes, bestCoverage, "")
+		s.recordApplyRun(ctx, prep.packName, "drifted", "no instance meets coverage threshold at apply time", bestInstance, routes[bestInstance].receiverOf(bestInstance), bestMatched, prep.totalEpisodes, bestCoverage, "")
 		return &seasonPackApplyResult{
-			reason:  "drifted",
-			message: "coverage no longer meets threshold",
+			reason:     "drifted",
+			message:    "coverage no longer meets threshold",
+			instanceID: bestInstance,
 		}, nil
 	}
 
@@ -412,20 +426,20 @@ func (s *Service) applySeasonPack(ctx context.Context, req seasonPackRequest) (*
 	if route != nil {
 		if status, message := s.loadSource(ctx, route, winner.instanceID); status != "" {
 			reason := seasonPackRouteReason(status)
-			s.recordApplyRun(ctx, req.name, reason, message, winner.instanceID, route.crossSeed.ID, winner.matched, prep.totalEpisodes, winner.coverage, "")
-			return &seasonPackApplyResult{reason: reason, message: message}, nil
+			s.recordApplyRun(ctx, prep.packName, reason, message, winner.instanceID, route.crossSeed.ID, winner.matched, prep.totalEpisodes, winner.coverage, "")
+			return &seasonPackApplyResult{reason: reason, message: message, instanceID: winner.instanceID}, nil
 		}
 		inst = route.source
 		linkMode = determineLinkMode([]*models.Instance{inst}, inst.ID)
 	}
 
-	planBuild, episodes, err := s.assembleSeasonPack(ctx, prep, inst, route, winner, matchedTitles[winner.instanceID], linkMode, req.indexer)
+	planBuild, episodes, err := s.assembleSeasonPack(ctx, prep, inst, route, winner, matchedTitles[winner.instanceID], linkMode, indexer)
 	if err != nil {
-		return s.failApply(ctx, req.name, err, prep, winner, route.receiverOf(winner.instanceID))
+		return s.failApply(ctx, prep.packName, err, prep, winner, route.receiverOf(winner.instanceID))
 	}
 
-	crossCategory := s.resolveSeasonPackCategory(ctx, prep, req.indexer, episodes)
-	result, err := s.addSeasonPack(ctx, prep, inst, route, checks[inst.ID], planBuild, episodes, crossCategory, prep.settings.SeasonPackTags, linkMode, req.name)
+	crossCategory := s.resolveSeasonPackCategory(ctx, prep, indexer, episodes)
+	result, err := s.addSeasonPack(ctx, prep, inst, route, checks[inst.ID], planBuild, episodes, crossCategory, prep.settings.SeasonPackTags, linkMode, prep.packName)
 	if err == nil && result.applied {
 		pack.addedTo[result.addedInstanceID] = true
 	}
@@ -456,7 +470,7 @@ func (s *Service) addSeasonPack(
 			log.Warn().Err(rollbackErr).Str("torrentName", torrentName).Msg("season pack: failed to rollback after add failure")
 		}
 		s.recordApplyRun(ctx, torrentName, reason, cause, inst.ID, receiverID, len(episodes), prep.totalEpisodes, float64(len(episodes))/float64(prep.totalEpisodes), linkMode)
-		return &seasonPackApplyResult{reason: reason, message: message}, nil
+		return &seasonPackApplyResult{reason: reason, message: message, instanceID: inst.ID}, nil
 	}
 	savePath, mapped := seasonPackSavePath(route, planBuild)
 	if !mapped {
@@ -543,6 +557,7 @@ func seasonPackFacts(prep *seasonPackPrep, planBuild *seasonPackPlanBuild) AddFa
 		ManualAssembly:   prep.manual,
 		SeasonPackLinked: float64(planBuild.linkedBytes) / float64(planBuild.totalBytes),
 		SkipRecheck:      prep.settings.SkipRecheck,
+		SkipAutoResume:   prep.skipAutoResume,
 	}
 }
 
@@ -564,7 +579,7 @@ func (s *Service) assembleSeasonPack(
 	}
 
 	lookup := s.seasonPackLookup(ctx, prep, []*models.Instance{inst})
-	torrents, err := s.seasonPackTorrents(ctx, lookup, matchedTitles)(inst.ID)
+	torrents, err := s.seasonPackTorrents(ctx, prep, lookup, matchedTitles)(inst.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
@@ -826,7 +841,7 @@ func (s *Service) failApply(
 		reason = "drifted"
 	}
 	s.recordApplyRun(ctx, torrentName, reason, err.Error(), winner.instanceID, addedInstanceID, winner.matched, prep.totalEpisodes, winner.coverage, "")
-	return &seasonPackApplyResult{reason: reason, message: err.Error()}, nil
+	return &seasonPackApplyResult{reason: reason, message: err.Error(), instanceID: winner.instanceID}, nil
 }
 
 func findInstance(instances []*models.Instance, id int) *models.Instance {
@@ -1092,7 +1107,7 @@ func seasonPackMetadataTitles(packRelease *rls.Release) []string {
 
 func (s *Service) computeCoverage(ctx context.Context, prep *seasonPackPrep, lookup *heldLookup) (matches []seasonPackCoverage, matchedTitles map[int]map[string][]string, err error) {
 	matchedTitles = map[int]map[string][]string{}
-	torrentsOf := s.seasonPackTorrents(ctx, lookup, nil)
+	torrentsOf := s.seasonPackTorrents(ctx, prep, lookup, nil)
 	for _, inst := range prep.eligible {
 		torrents, err := torrentsOf(inst.ID)
 		if err != nil {
@@ -1149,7 +1164,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			return nil
 		}
 		logged[key] = struct{}{}
-		return log.Debug().
+		return log.Trace().
 			Str("pack", packRelease.Title).
 			Int("season", packRelease.Series).
 			Str("candidate", candidateName).

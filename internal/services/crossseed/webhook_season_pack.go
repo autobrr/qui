@@ -3,37 +3,40 @@
 
 package crossseed
 
-import (
-	"context"
+import "context"
 
-	"github.com/rs/zerolog/log"
-
-	"github.com/autobrr/qui/internal/models"
-)
-
-func (s *Service) webhookSeasonPackInstances(name string, settings *models.CrossSeedAutomationSettings, instances []*models.Instance) []int {
-	if !settings.SeasonPackEnabled || !isTVSeasonPack(s.matcher().parseSeasonPackName(name)) {
+func (s *Service) webhookSeasonPackPrep(input webhookCheckInput) *seasonPackPrep {
+	if !input.settings.SeasonPackEnabled {
 		return nil
 	}
-	var ids []int
-	for _, instance := range filterLinkEligible(instances) {
-		ids = append(ids, instance.ID)
+	prep := s.newSeasonPackPrep(input.announced.rawName, input.settings)
+	if prep == nil {
+		return nil
 	}
-	return ids
+	prep.heldOnly = true
+	prep.eligible = filterLinkEligible(input.instances)
+	return prep
+}
+
+func (s *Service) webhookSeasonPackLookup(ctx context.Context, prep *seasonPackPrep, direct *heldLookup) *heldLookup {
+	lookup := s.seasonPackLookup(ctx, prep, prep.eligible)
+	if lookup == nil || len(lookup.candidates()) == 0 {
+		return nil
+	}
+	lookup.shareWait(direct.wait)
+	return lookup
 }
 
 func (s *Service) webhookSeasonPackCheck(ctx context.Context, input webhookCheckInput, direct *heldLookup) (*WebhookSeasonPack, error) {
-	name := input.announced.rawName
-	instanceIDs := s.webhookSeasonPackInstances(name, input.settings, input.instances)
-	if len(instanceIDs) == 0 {
+	prep := s.webhookSeasonPackPrep(input)
+	if prep == nil {
 		return nil, nil
 	}
-	result, err := s.checkSeasonPack(ctx, seasonPackRequest{
-		name:        name,
-		instanceIDs: instanceIDs,
-		heldOnly:    true,
-		wait:        direct.wait,
-	})
+	lookup := s.webhookSeasonPackLookup(ctx, prep, direct)
+	if lookup == nil {
+		return nil, nil
+	}
+	result, err := s.checkPreparedSeasonPack(ctx, prep, lookup)
 	if err != nil || !result.ready {
 		return nil, err
 	}
@@ -46,31 +49,63 @@ func (s *Service) webhookSeasonPackCheck(ctx context.Context, input webhookCheck
 	}, nil
 }
 
-func (s *Service) webhookSeasonPackApply(ctx context.Context, name string, request *CrossSeedRequest, instances []*models.Instance, settings *models.CrossSeedAutomationSettings) (*CrossSeedResponse, error) {
+func (s *Service) webhookSeasonPackApply(ctx context.Context, input webhookCheckInput, request *CrossSeedRequest) (*CrossSeedResponse, error) {
 	response := &CrossSeedResponse{}
-	instanceIDs := s.webhookSeasonPackInstances(name, settings, instances)
-	if len(instanceIDs) == 0 {
+	prep := s.webhookSeasonPackPrep(input)
+	if prep == nil {
 		return response, nil
 	}
-	result, err := s.applySeasonPack(ctx, seasonPackRequest{
-		name:        name,
-		torrentData: request.TorrentData,
-		instanceIDs: instanceIDs,
-		indexer:     request.IndexerName,
-		heldOnly:    true,
-	})
+	direct := s.webhookHeldLookup(ctx, input)
+	if direct == nil {
+		return response, nil
+	}
+	answer, err := s.webhookMatchHeldTitles(ctx, input, DetermineContentType(input.announced.release).ContentType, direct)
 	if err != nil {
 		return nil, err
 	}
-	if !result.applied {
-		log.Debug().Str("torrentName", name).Str("reason", result.reason).Msg("Season pack was not assembled from a webhook apply")
+	if len(answer.matches) > 0 {
 		return response, nil
 	}
-	added := s.seasonPackAddedResult(ctx, name, result)
-	if instance := findInstance(instances, result.instanceID); instance != nil {
-		added.InstanceName = instance.Name
+	lookup := s.webhookSeasonPackLookup(ctx, prep, direct)
+	if lookup == nil {
+		return response, nil
 	}
-	response.Success = true
-	response.Results = append(response.Results, added)
+	prep.skipAutoResume = request.SkipAutoResume
+	if problem := s.readSeasonPackTorrent(prep, request.TorrentData); problem != "" {
+		s.recordApplyRun(ctx, prep.packName, "invalid_torrent", problem, 0, 0, 0, 0, 0, "")
+		return response, nil
+	}
+	result, err := s.applyPreparedSeasonPack(ctx, prep, lookup, request.IndexerName)
+	if err != nil {
+		return nil, err
+	}
+	response.Success = result.applied
+	if result.applied {
+		response.Results = append(response.Results, s.seasonPackAddedResult(ctx, prep.packName, result))
+	} else if result.instanceID != 0 {
+		response.Results = append(response.Results, InstanceCrossSeedResult{
+			InstanceID: result.instanceID,
+			Status:     seasonPackRefusedStatus(result.reason),
+			Message:    result.message,
+		})
+	}
+	for i := range response.Results {
+		if instance := findInstance(input.instances, response.Results[i].InstanceID); instance != nil {
+			response.Results[i].InstanceName = instance.Name
+		}
+	}
 	return response, nil
+}
+
+func seasonPackRefusedStatus(reason string) string {
+	switch reason {
+	case "already_exists":
+		return StatusExists
+	case "drifted":
+		return "below_threshold"
+	}
+	if _, known := resultClasses[reason]; known {
+		return reason
+	}
+	return "error"
 }

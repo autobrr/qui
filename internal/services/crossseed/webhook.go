@@ -111,7 +111,9 @@ func (s *Service) applyAutobrrAnnouncement(ctx context.Context, announcedName st
 	}
 	matches := s.findAutobrrAnnouncementMatches(ctx, announcedName, meta.Info.TotalLength(), instances, baseRequest, settings)
 	if len(matches) == 0 {
-		return s.webhookSeasonPackApply(ctx, announcedName, baseRequest, instances, settings)
+		announced := namedRelease{release: s.releaseCache.Parse(announcedName), rawName: announcedName}
+		input := newWebhookCheckInput(announced, uint64(meta.Info.TotalLength()), baseRequest.FindIndividualEpisodes, settings, instances)
+		return s.webhookSeasonPackApply(ctx, input, baseRequest)
 	}
 
 	return s.invokeBoundAnnouncementMatches(ctx, matches, func(match boundAnnouncementMatch) *CrossSeedRequest {

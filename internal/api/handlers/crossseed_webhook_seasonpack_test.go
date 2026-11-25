@@ -10,10 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"slices"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -154,9 +151,11 @@ func TestWebhookSkipsTheSeasonPackStepWhenItsGateIsClosed(t *testing.T) {
 			directScan := map[heldTitlesState]int64{heldTitlesOff: 1, heldTitlesBuilding: 1}[tc.state]
 			require.Equal(t, directScan, rig.sync.lists.Load()-lists, "only the direct check reads the torrent list")
 
-			applied := rig.webhookApply(endpointPack, pack)
-			require.False(t, applied.Success)
-			require.Empty(t, applied.Results)
+			for _, torrent := range [][]byte{pack, endpointTorrent(t, endpointPack, 1, "notes.txt")} {
+				applied := rig.webhookApply(endpointPack, torrent)
+				require.False(t, applied.Success)
+				require.Empty(t, applied.Results)
+			}
 			require.Zero(t, rig.arr.totals.Load())
 			require.Zero(t, rig.sync.adds.Load())
 			require.Empty(t, rig.runs())
@@ -192,107 +191,7 @@ func TestWebhookCheckNeedsALinkEligibleInstanceForAnAssembly(t *testing.T) {
 	status, answer := rig.webhookCheck(webhookPackRequest{TorrentName: endpointPack})
 	require.Equal(t, http.StatusNotFound, status)
 	require.Nil(t, answer.SeasonPack)
-	require.False(t, rig.webhookApply(endpointPack, endpointPackTorrent(t, 1, 4)).Success)
+	require.Empty(t, rig.webhookApply(endpointPack, endpointPackTorrent(t, 1, 4)).Results)
 	require.Zero(t, rig.arr.totals.Load())
 	require.Empty(t, rig.runs())
-}
-
-func TestWebhookApplyAssemblesThePackThatTheCheckMatched(t *testing.T) {
-	var absolute []string
-	for n := 25; n < 29; n++ {
-		absolute = append(absolute, fmt.Sprintf("Harbor.Signal.-.%d.1080p.WEB-DL.H.264-LUMA", n))
-	}
-	absoluteFiles := make([]string, len(absolute))
-	for i, name := range absolute {
-		absoluteFiles[i] = name + ".mkv"
-	}
-	renamed := make([]string, 4)
-	for i := range renamed {
-		renamed[i] = fmt.Sprintf("Hafensignal.S01E%02d.1080p.WEB-DL.H.264-LUMA", i+1)
-	}
-	const absolutePack = "Harbor.Signal.S03.1080p.WEB-DL.H.264-LUMA"
-	for _, tc := range []struct {
-		name    string
-		pack    string
-		torrent []byte
-		rig     seasonPackEndpointCase
-	}{
-		{name: "episodes", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: endpointEpisodes(4), total: 4}},
-		{name: "seasonless episodes", pack: absolutePack, torrent: endpointTorrent(t, absolutePack, 1, absoluteFiles...), rig: seasonPackEndpointCase{held: absolute}},
-		{name: "Sonarr title", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: slices.Concat(endpointEpisodes(2), renamed[2:]), total: 4, sonarrTitles: []string{"Hafensignal"}}},
-		{name: "alternate title", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: renamed, total: 4, alternates: seasonPackAlternateTitles{"Hafensignal": {"Harbor Signal"}}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			rig := newSeasonPackEndpointRig(t, &tc.rig, heldTitlesReady)
-			require.Eventually(t, func() bool {
-				status, _ := rig.webhookCheck(webhookPackRequest{TorrentName: tc.pack})
-				return status == http.StatusOK
-			}, 10*time.Second, 10*time.Millisecond)
-
-			applied := rig.webhookApply(tc.pack, tc.torrent)
-			require.True(t, applied.Success)
-			require.Len(t, applied.Results, 1)
-			require.Equal(t, 1, applied.Results[0].InstanceID)
-			require.Equal(t, "lib", applied.Results[0].InstanceName)
-			require.Equal(t, "added", applied.Results[0].Status)
-			require.EqualValues(t, 1, rig.sync.adds.Load())
-			run := rig.runs()[0]
-			require.Equal(t, "apply", run.Phase)
-			require.Equal(t, "applied", run.Status)
-			require.Equal(t, 4, run.MatchedEpisodes)
-		})
-	}
-}
-
-func TestWebhookApplyOfAPackWithNothingHeldWritesNoRun(t *testing.T) {
-	rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{total: 4}, heldTitlesReady)
-	applied := rig.webhookApply(endpointPack, endpointPackTorrent(t, 1, 4))
-	require.False(t, applied.Success)
-	require.Empty(t, applied.Results)
-	require.Zero(t, rig.arr.totals.Load())
-	require.Empty(t, rig.runs())
-}
-
-func TestWebhookApplyWithoutANameFollowsTheAutomaticSwitch(t *testing.T) {
-	pack := endpointPackTorrent(t, 1, 4)
-	for _, automatic := range []bool{false, true} {
-		t.Run(fmt.Sprintf("automatic %t", automatic), func(t *testing.T) {
-			rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: endpointEpisodes(4), total: 4, setup: func(r *seasonPackEndpointRig) {
-				r.settings.SeasonPackEnabled, r.settings.SeasonPackAutomationEnabled = !automatic, automatic
-			}}, heldTitlesReady)
-			applied := rig.webhookApply("", pack)
-			require.Equal(t, automatic, applied.Success)
-			require.Equal(t, map[bool]int64{true: 1}[automatic], rig.sync.adds.Load())
-		})
-	}
-}
-
-func TestWebhookApplyAndSeasonPackApplyAddOnePackOnce(t *testing.T) {
-	pack := endpointPackTorrent(t, 1, 4)
-	rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: endpointEpisodes(4), total: 4}, heldTitlesReady)
-	var webhook crossseed.CrossSeedResponse
-	var wg sync.WaitGroup
-	rig.sync.onAdd = sync.OnceFunc(func() {
-		wg.Go(func() { webhook = rig.webhookApply(endpointPack, pack) })
-		deadline := time.After(200 * time.Millisecond)
-		tick := time.Tick(time.Millisecond)
-		for rig.sync.checks.Load() < 2 {
-			select {
-			case <-deadline:
-				return
-			case <-tick:
-			}
-		}
-	})
-	legacy := rig.post("/api/cross-seed/season-pack/apply", mustJSON(t, webhookPackRequest{TorrentName: endpointPack, TorrentData: base64.StdEncoding.EncodeToString(pack)}))
-	wg.Wait()
-
-	require.Equal(t, http.StatusOK, legacy.Code)
-	require.False(t, webhook.Success)
-	require.EqualValues(t, 1, rig.sync.adds.Load())
-	reasons := map[string]int{}
-	for _, run := range rig.runs() {
-		reasons[run.Reason]++
-	}
-	require.Equal(t, map[string]int{"applied": 1, "already_exists": 1}, reasons)
 }

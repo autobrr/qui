@@ -149,6 +149,62 @@
       }
     ]
   },
+  "applied, recheck fails": {
+    "status": 200,
+    "response": {
+      "applied": true,
+      "message": "torrent added paused; automatic recheck failed, retry queued",
+      "instanceId": 1,
+      "addedInstanceId": 1,
+      "matchedEpisodes": 3,
+      "totalEpisodes": 4,
+      "coverage": 0.75,
+      "linkMode": "hardlink"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "apply",
+        "status": "applied",
+        "reason": "applied",
+        "message": "torrent added paused; automatic recheck failed, retry queued",
+        "instanceId": 1,
+        "addedInstanceId": 1,
+        "matchedEpisodes": 3,
+        "totalEpisodes": 4,
+        "coverage": 0.75,
+        "linkMode": "hardlink"
+      }
+    ]
+  },
+  "applied, recheck fails and resume queue full": {
+    "status": 200,
+    "response": {
+      "applied": true,
+      "message": "torrent added paused; automatic recheck failed",
+      "instanceId": 1,
+      "addedInstanceId": 1,
+      "matchedEpisodes": 3,
+      "totalEpisodes": 4,
+      "coverage": 0.75,
+      "linkMode": "hardlink"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "apply",
+        "status": "applied",
+        "reason": "applied",
+        "message": "torrent added paused; automatic recheck failed",
+        "instanceId": 1,
+        "addedInstanceId": 1,
+        "matchedEpisodes": 3,
+        "totalEpisodes": 4,
+        "coverage": 0.75,
+        "linkMode": "hardlink"
+      }
+    ]
+  },
   "applied, recheck queued": {
     "status": 200,
     "response": {
@@ -168,6 +224,34 @@
         "status": "applied",
         "reason": "applied",
         "message": "torrent added paused; recheck queued",
+        "instanceId": 1,
+        "addedInstanceId": 1,
+        "matchedEpisodes": 3,
+        "totalEpisodes": 4,
+        "coverage": 0.75,
+        "linkMode": "hardlink"
+      }
+    ]
+  },
+  "applied, resume queue full": {
+    "status": 200,
+    "response": {
+      "applied": true,
+      "message": "torrent added paused; automatic resume queue is full",
+      "instanceId": 1,
+      "addedInstanceId": 1,
+      "matchedEpisodes": 3,
+      "totalEpisodes": 4,
+      "coverage": 0.75,
+      "linkMode": "hardlink"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "apply",
+        "status": "applied",
+        "reason": "applied",
+        "message": "torrent added paused; automatic resume queue is full",
         "instanceId": 1,
         "addedInstanceId": 1,
         "matchedEpisodes": 3,

@@ -19,9 +19,10 @@ type seasonPackTurn struct {
 	addedTo map[int]bool
 }
 
-func (a *seasonPackApplies) enter(ctx context.Context, infoHash string) (*seasonPackTurn, func(), error) {
+func (a *seasonPackApplies) claim(infoHash string) (pack *seasonPackTurn, release func()) {
 	a.mu.Lock()
-	pack := a.packs[infoHash]
+	defer a.mu.Unlock()
+	pack = a.packs[infoHash]
 	if pack == nil {
 		pack = &seasonPackTurn{turn: make(chan struct{}, 1), addedTo: map[int]bool{}}
 		if a.packs == nil {
@@ -30,25 +31,21 @@ func (a *seasonPackApplies) enter(ctx context.Context, infoHash string) (*season
 		a.packs[infoHash] = pack
 	}
 	pack.claims++
-	a.mu.Unlock()
-
-	select {
-	case pack.turn <- struct{}{}:
-		return pack, func() {
-			<-pack.turn
-			a.release(infoHash, pack)
-		}, nil
-	case <-ctx.Done():
-		a.release(infoHash, pack)
-		return nil, nil, ctx.Err()
+	return pack, func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		pack.claims--
+		if pack.claims == 0 {
+			delete(a.packs, infoHash)
+		}
 	}
 }
 
-func (a *seasonPackApplies) release(infoHash string, pack *seasonPackTurn) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	pack.claims--
-	if pack.claims == 0 {
-		delete(a.packs, infoHash)
+func (p *seasonPackTurn) takeTurn(ctx context.Context) (giveUp func(), err error) {
+	select {
+	case p.turn <- struct{}{}:
+		return func() { <-p.turn }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }

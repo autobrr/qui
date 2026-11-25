@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -118,6 +119,7 @@ type seasonPackEndpointArr struct {
 	titles  []string
 	lookups atomic.Int64
 	totals  atomic.Int64
+	onTotal func(call int64)
 }
 
 func (a *seasonPackEndpointArr) LookupExternalIDs(context.Context, string, arr.ContentType) (*arr.ExternalIDsResult, error) {
@@ -126,7 +128,10 @@ func (a *seasonPackEndpointArr) LookupExternalIDs(context.Context, string, arr.C
 }
 
 func (a *seasonPackEndpointArr) LookupSeasonEpisodeTotal(context.Context, string, int) (*arr.SeasonEpisodeTotalResult, error) {
-	a.totals.Add(1)
+	call := a.totals.Add(1)
+	if a.onTotal != nil {
+		a.onTotal(call)
+	}
 	if a.total == 0 {
 		return nil, nil
 	}
@@ -135,14 +140,15 @@ func (a *seasonPackEndpointArr) LookupSeasonEpisodeTotal(context.Context, string
 
 type seasonPackEndpointSync struct {
 	*internalqb.SyncManager
-	listErr error
-	hasErr  error
-	addErr  error
-	hidden  bool
-	lists   atomic.Int64
-	checks  atomic.Int64
-	adds    atomic.Int64
-	onAdd   func()
+	listErr    error
+	hasErr     error
+	addErr     error
+	recheckErr error
+	hidden     bool
+	lists      atomic.Int64
+	adds       atomic.Int64
+	added      map[string]string
+	onAdd      func()
 }
 
 func (s *seasonPackEndpointSync) GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error) {
@@ -161,7 +167,6 @@ func (s *seasonPackEndpointSync) GetCachedInstanceTorrents(ctx context.Context, 
 }
 
 func (s *seasonPackEndpointSync) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
-	s.checks.Add(1)
 	if s.hasErr != nil {
 		return nil, false, s.hasErr
 	}
@@ -170,6 +175,7 @@ func (s *seasonPackEndpointSync) HasTorrentByAnyHash(ctx context.Context, instan
 
 func (s *seasonPackEndpointSync) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	s.adds.Add(1)
+	s.added = options
 	if s.onAdd != nil {
 		s.onAdd()
 	}
@@ -177,6 +183,13 @@ func (s *seasonPackEndpointSync) AddTorrent(ctx context.Context, instanceID int,
 		return nil, s.addErr
 	}
 	return s.SyncManager.AddTorrent(ctx, instanceID, fileContent, options)
+}
+
+func (s *seasonPackEndpointSync) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
+	if action == "recheck" && s.recheckErr != nil {
+		return s.recheckErr
+	}
+	return s.SyncManager.BulkAction(ctx, instanceID, hashes, action)
 }
 
 func (s *seasonPackEndpointSync) GetDirectoryContentCtx(_ context.Context, _ int, dir string, _ qbt.DirectoryContentMode, _ bool) (any, error) {
@@ -220,6 +233,7 @@ type seasonPackEndpointRig struct {
 	db          *database.DB
 	blocklistDB *seasonPackEndpointDB
 	servers     map[int]*qbtstub.Server
+	settler     *crossseed.Settler
 }
 
 func newSeasonPackEndpointRig(t *testing.T, tc *seasonPackEndpointCase, held heldTitlesState) *seasonPackEndpointRig {
@@ -261,7 +275,8 @@ func newSeasonPackEndpointRig(t *testing.T, tc *seasonPackEndpointCase, held hel
 	testutil.SetUnexportedField(t, r.svc, "metadataService", (*metadata.Service)(nil))
 	testutil.SetUnexportedField(t, r.svc, "arrService", r.arr)
 	testutil.SetUnexportedField(t, r.svc, "syncManager", r.sync)
-	testutil.SetUnexportedField(t, r.svc, "adder", crossseed.NewAdder(r.sync, r.blocklist, crossseed.NewSettler(r.sync.SyncManager, runs), r.svc.ResumeBudgetBytes, r.svc.RunExternalProgram))
+	r.settler = crossseed.NewSettler(r.sync, runs)
+	testutil.SetUnexportedField(t, r.svc, "adder", crossseed.NewAdder(r.sync, r.blocklist, r.settler, r.svc.ResumeBudgetBytes, r.svc.RunExternalProgram))
 	testutil.SetUnexportedField(t, r.svc, "visibleRetryDelay", time.Nanosecond)
 	testutil.SetUnexportedField(t, r.svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 		if r.settingsErr != nil {
@@ -329,6 +344,14 @@ func (r *seasonPackEndpointRig) updateInstance(id int, params *models.InstanceUp
 	require.NoError(r.t, err)
 	_, err = r.instances.Update(r.t.Context(), id, instance.Name, instance.Host, instance.Username, "", nil, nil, params)
 	require.NoError(r.t, err)
+}
+
+func (r *seasonPackEndpointRig) fillResumeQueue() {
+	r.sync.recheckErr = errors.New("recheck rejected")
+	defer func() { r.sync.recheckErr = nil }()
+	for !r.settler.Settle(r.t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull {
+		continue
+	}
 }
 
 func (r *seasonPackEndpointRig) post(path string, body []byte) *httptest.ResponseRecorder {
