@@ -109,7 +109,7 @@ function ThemeTile({ theme, palette, variations, isSelected, onSelect, customFil
             aria-pressed={isSelected}
             onClick={onSelect}
             className={cn(
-              "flex w-full flex-col gap-1.5 rounded-lg border bg-card p-1.5 text-left outline-none transition-colors hover:border-muted-foreground/50 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              "flex w-full flex-col gap-1.5 rounded-lg border bg-card p-1.5 text-left outline-none transition-colors hover:border-muted-foreground/50 focus-visible:ring-3 focus-visible:ring-ring/50",
               isSelected && "border-primary ring-1 ring-primary hover:border-primary"
             )}
           >
@@ -176,7 +176,7 @@ function CurrentTheme({ theme, palette, dark, variation, onVariationSelect }: Cu
                     aria-pressed={variation === v.id}
                     aria-label={v.id}
                     onClick={() => onVariationSelect(v.id)}
-                    className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:size-11"
+                    className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50 max-sm:size-11"
                   >
                     <span
                       className={cn(
@@ -472,7 +472,7 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
                         setExpanded(false)
                       }}
                       className={cn(
-                        "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:h-9 max-sm:gap-1 max-sm:px-2",
+                        "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 max-sm:h-9 max-sm:gap-1 max-sm:px-2",
                         active
                           ? "border-primary/50 bg-primary/10 font-medium text-foreground"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground"

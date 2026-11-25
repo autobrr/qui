@@ -985,7 +985,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 		}
 		d := backend.Paths()
 
-		views, err := s.filesReader.GetCachedInstanceTorrents(ctx, otherID)
+		others, err := s.filesReader.GetTorrentRefs(ctx, otherID, qbittorrent.TorrentRefFilter{WithHelperTorrents: true})
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
 				Msg("automations: failed to get torrents for cross-scope, skipping instance")
@@ -993,11 +993,11 @@ func (s *Service) scanOtherInstancesForDeficits(
 			continue
 		}
 
-		otherHashes := make([]string, 0, len(views))
-		savePaths := make(map[string]string, len(views))
-		for _, v := range views {
-			otherHashes = append(otherHashes, v.Hash)
-			savePaths[v.Hash] = v.SavePath
+		otherHashes := make([]string, 0, len(others))
+		savePaths := make(map[string]string, len(others))
+		for _, t := range others {
+			otherHashes = append(otherHashes, t.Hash)
+			savePaths[t.Hash] = t.SavePath
 		}
 
 		filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, otherID, otherHashes)

@@ -456,7 +456,7 @@ export function Header({ sidebarIconOnly = false, sidebarHidden = false, sidebar
                       >
                         <ListTodo className="h-4 w-4" />
                         {activeTaskCount > 0 && (
-                          <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
+                          <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0">
                             {activeTaskCount}
                           </Badge>
                         )}

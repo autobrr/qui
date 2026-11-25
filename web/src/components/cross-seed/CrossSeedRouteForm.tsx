@@ -332,7 +332,7 @@ function RoutePathInput({ baseDir, crossSeedInstanceId, value, onChange, disable
 
   return (
     <div className="space-y-1">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">{baseDir}</Label>
+      <Label htmlFor={id} size="sm" className="text-muted-foreground">{baseDir}</Label>
       <Input
         ref={inputRef}
         id={id}

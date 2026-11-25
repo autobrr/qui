@@ -296,7 +296,7 @@ function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
             <AlertDialogCancel>{t("preferences.ssh.replaceDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => pin(true)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("preferences.ssh.replaceDialog.confirm")}
             </AlertDialogAction>

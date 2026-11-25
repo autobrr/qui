@@ -294,7 +294,8 @@ export function WorkflowPreviewDialog({
     )
   }, [condition, dynamicColumns])
 
-  const confirmClassName = destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
+  const confirmVariant = destructive ? "destructive" : "default"
+  const confirmClassName = !destructive && warning ? "bg-amber-600 text-white hover:bg-amber-700" : undefined
 
   const dryRunToggle = onDryRunChange && <DryRunToggle checked={dryRun} onCheckedChange={onDryRunChange} />
 
@@ -310,7 +311,7 @@ export function WorkflowPreviewDialog({
           {dryRunToggle}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} variant={confirmVariant} className={confirmClassName}>
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {t("preferences.workflowPreview.saveWithoutPreview")}
             </AlertDialogAction>
@@ -417,7 +418,7 @@ export function WorkflowPreviewDialog({
                               {torrent.name}
                             </TruncatedText>
                             {(torrent.isCrossSeed || torrent.isHardlinkCopy) && (
-                              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
+                              <span className={`shrink-0 text-10 px-1.5 py-0.5 rounded ${
                                 torrent.isHardlinkCopy? "bg-violet-500/10 text-violet-600": "bg-blue-500/10 text-blue-600"
                               }`}>
                                 {torrent.isHardlinkCopy ? t("preferences.workflowPreview.crossSeedHardlinked") : t("preferences.workflowPreview.crossSeedSameFiles")}
@@ -503,7 +504,7 @@ export function WorkflowPreviewDialog({
           </div>
           <div className="flex gap-2">
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} variant={confirmVariant} className={confirmClassName}>
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {confirmLabel}
             </AlertDialogAction>

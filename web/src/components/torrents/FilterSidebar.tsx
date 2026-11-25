@@ -100,7 +100,7 @@ function FilterBadge({ count, onClick }: FilterBadgeProps) {
   return (
     <Badge
       variant="secondary"
-      className="ml-2 h-5 px-1.5 text-xs cursor-pointer hover:bg-secondary/80"
+      className="ml-2 h-5 px-1.5 cursor-pointer hover:bg-secondary/80"
       onClick={(e: React.MouseEvent) => {
         e.stopPropagation()
         onClick()

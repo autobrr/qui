@@ -157,12 +157,12 @@ func (r *routedFilesReader) GetAllTorrentRefs(_ context.Context, instanceID int)
 	return []*qbt.Torrent{&routed}, nil
 }
 
-func (r *routedFilesReader) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
-	if instanceID != r.crossSeedID {
-		return nil, nil
-	}
-	routed := r.routed
-	return []qbittorrent.CrossInstanceTorrentView{{TorrentView: &qbittorrent.TorrentView{Torrent: &routed}}}, nil
+func (*routedFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	return nil, nil
+}
+
+func (r *routedFilesReader) GetTorrentRefs(ctx context.Context, instanceID int, _ qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	return r.GetAllTorrentRefs(ctx, instanceID)
 }
 
 func TestHardlinkIndexCountsRoutedLinksAsOtherTorrents(t *testing.T) {

@@ -72,7 +72,7 @@ export function QuickThemeVariations({ variations, selected, onSelect, className
                 keepInParent(event)
                 onSelect(v.id)
               }}
-              className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <span
                 className={cn(

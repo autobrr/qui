@@ -945,7 +945,7 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
             <>
               {folderPath && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">{t("dialogs.renameFile.location")}</Label>
+                  <Label size="sm" className="text-muted-foreground">{t("dialogs.renameFile.location")}</Label>
                   <div className="text-xs font-mono text-muted-foreground bg-muted/50 rounded px-2.5 py-1.5 break-all">
                     {folderPath}/
                   </div>
@@ -1125,7 +1125,7 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
 
               {parentPath && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">{t("dialogs.renameFolder.location")}</Label>
+                  <Label size="sm" className="text-muted-foreground">{t("dialogs.renameFolder.location")}</Label>
                   <div className="text-xs font-mono text-muted-foreground bg-muted/50 rounded px-2.5 py-1.5 break-all">
                     {parentPath}/
                   </div>

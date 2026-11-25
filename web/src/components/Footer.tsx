@@ -14,7 +14,7 @@ export const Footer = () => {
 
   return (
     <div className="flex items-center justify-between mt-6 px-1">
-      <p className="text-[10px] text-muted-foreground/60">
+      <p className="text-10 text-muted-foreground/60">
         {t("footer.copyright", { years })}
       </p>
       <Button

@@ -245,12 +245,12 @@ export function ReannounceOverview({
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
                           <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
                           {isEnabled && stats.successToday > 0 && (
-                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
+                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
                               {t("preferences.reannounceOverview.today", { count: stats.successToday })}
                             </Badge>
                           )}
                           {isEnabled && stats.failedToday > 0 && (
-                            <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                            <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
                               {t("preferences.reannounceOverview.failed", { count: stats.failedToday })}
                             </Badge>
                           )}
@@ -434,7 +434,7 @@ export function ReannounceOverview({
                                           <Badge
                                             variant="outline"
                                             className={cn(
-                                              "capitalize text-[10px] px-1.5 py-0 h-5",
+                                              "capitalize text-10 px-1.5 py-0 h-5",
                                               outcomeClasses[event.outcome]
                                             )}
                                           >

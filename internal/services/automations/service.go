@@ -602,6 +602,7 @@ type ResolveRequest = crossseed.ResolveRequest
 type filesReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
+	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 }
 
 type torrentDeleter interface {
@@ -678,7 +679,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		filesReader:               syncManager,
 		targetLookup:              syncManager,
 		deleter:                   syncManager,
-		routedTorrents:            syncManager,
+		routedTorrents:            routedFileOwners{syncManager},
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,

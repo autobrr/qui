@@ -154,7 +154,7 @@ export function MobileFooterNav() {
       <Download className="h-4 w-4" />
       <div className="flex flex-col">
         <span className="font-medium">{t("mobileNav.updateAvailable")}</span>
-        <span className="text-[10px] opacity-80">{t("mobileNav.updateVersion", { version: updateInfo.tag_name })}</span>
+        <span className="text-10 opacity-80">{t("mobileNav.updateVersion", { version: updateInfo.tag_name })}</span>
       </div>
     </>
   )
@@ -392,7 +392,7 @@ export function MobileFooterNav() {
             <DropdownMenuSeparator />
 
             <div className="flex items-center justify-between px-3 py-2">
-              <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground/60 select-none">
+              <div className="flex flex-col gap-0.5 text-10 text-muted-foreground/60 select-none">
                 <span className="font-medium text-muted-foreground/70">{t("mobileNav.version", { version: appVersion })}</span>
                 <div className="flex items-center gap-1">
                   <Copyright className="h-2.5 w-2.5 flex-shrink-0" />

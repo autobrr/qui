@@ -296,7 +296,7 @@ function ProgramEditor({ open, onOpenChange, program, pending, submitDisabled, e
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
-          className="font-mono md:text-[13px]"
+          className="font-mono md:text-13"
           onChange={(event) => {
             setPath(event.target.value)
             setErrors((prev) => ({ ...prev, path: undefined }))
@@ -311,7 +311,7 @@ function ProgramEditor({ open, onOpenChange, program, pending, submitDisabled, e
             rows={3}
             autoCapitalize="off"
             spellCheck={false}
-            className="font-mono md:text-[13px]"
+            className="font-mono md:text-13"
             onChange={(event) => setArgsTemplate(event.target.value)}
           />
         </Field>
@@ -333,7 +333,7 @@ function PlaceholderList() {
   const { t } = useTranslation("settings")
   return (
     <Collapsible>
-      <CollapsibleTrigger className="group -mx-1 inline-flex min-h-8 items-center gap-1 rounded-md px-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:min-h-10">
+      <CollapsibleTrigger className="group -mx-1 inline-flex min-h-8 items-center gap-1 rounded-md px-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 max-sm:min-h-10">
         {t("externalPrograms.availablePlaceholders")}
         <ChevronDown aria-hidden="true" className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
       </CollapsibleTrigger>
@@ -369,7 +369,7 @@ function PathMappingsField({ mappings, onChange }: { mappings: PathMapping[]; on
         autoComplete="off"
         autoCapitalize="off"
         spellCheck={false}
-        className="font-mono md:text-[13px]"
+        className="font-mono md:text-13"
         onChange={(event) => update(index, { [side]: event.target.value })}
       />
     </label>

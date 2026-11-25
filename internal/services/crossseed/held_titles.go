@@ -22,6 +22,7 @@ import (
 
 type heldTitlesSync interface {
 	InstanceSnapshot(ctx context.Context, instanceID int) *qbt.SyncSnapshot
+	ListSnapshot(instanceID int, snapshot *qbt.SyncSnapshot) []*qbt.Torrent
 	CopyGroups() *qbittorrent.CopyGroups
 }
 
@@ -443,7 +444,7 @@ func (h *heldTitles) finishBuild(instanceID int, inst *heldInstance, index *held
 }
 
 func (h *heldTitles) build(ctx context.Context, instanceID int, snapshot *qbt.SyncSnapshot) (*heldIndex, bool) {
-	torrents := snapshot.Torrents()
+	torrents := h.sync.ListSnapshot(instanceID, snapshot)
 	index := newHeldIndex(h.alternates, len(torrents))
 	for _, torrent := range torrents {
 		if ctx.Err() != nil {

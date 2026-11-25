@@ -1,6 +1,7 @@
 import path from 'node:path'
 
 import js from '@eslint/js'
+import { plugin as shadcn } from '@shadcn/lint'
 import stylistic from '@stylistic/eslint-plugin'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
@@ -413,6 +414,38 @@ export default tseslint.config([
       '@typescript-eslint/no-non-null-assertion': 'error',
       'qui/entry-files': ['error', { root: path.join(import.meta.dirname, 'src'), features: 'components' }],
       'qui/layer-order': ['error', { root: path.join(import.meta.dirname, 'src'), layers }],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**'],
+    plugins: { shadcn },
+    settings: {
+      shadcn: {
+        note: 'Ask the maintainer before you add an option to a primitive.',
+        ui: '@/components/ui',
+      },
+    },
+    rules: {
+      'shadcn/no-arbitrary-values': ['error', { allow: ['layout'] }],
+      'shadcn/no-restyle': ['error', {
+        deny: [],
+        contracts: [{
+          pattern: '^(Button|Badge|Label)$',
+          allow: ['layout', 'color'],
+          message: { typography: '"{{className}}" is not allowed on <{{component}}>: <{{component}}> owns its {{category}}. Use a size: {{sizes}}.' },
+        }],
+      }],
+      'shadcn/no-unknown-classes': ['error', { allow: ['ss-*', 'fi', 'animated-logo-element', 'toaster'] }],
+      'shadcn/require-static-classes': 'error',
+    },
+  },
+  {
+    files: ['src/components/{ui,kit}/**/*.{ts,tsx}'],
+    rules: {
+      'shadcn/no-arbitrary-values': 'off',
+      'shadcn/no-restyle': 'off',
+      'shadcn/require-static-classes': 'off',
     },
   },
 ])
