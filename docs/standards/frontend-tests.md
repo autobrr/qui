@@ -1,6 +1,6 @@
 # Frontend test standards
 
-- The rules in `docs/standards/tests.md` apply to frontend tests too, except the Go ones. For example, a test from a bug fix gets `// regression: #N` on the line above it.
+- The rules in `docs/standards/tests.md` apply to frontend tests too, except the Go ones.
 - Vitest + React Testing Library. A new test goes in the `__tests__/` folder of the directory it covers (`components/cross-seed/__tests__/`) where that folder exists, else beside the file as `*.test.ts(x)`.
 - Prefer extracting logic into hooks (`web/src/hooks/`) and pure helpers (`web/src/lib/`) so it is unit-testable without mounting the whole tree (see `web/src/hooks/torrent-table/` for the pattern).
 - Vitest runs with `globals: false` + jsdom. The setup file `web/src/test/setup.ts` runs the MSW server lifecycle, gives jsdom a `localStorage` when Node has none and a `ResizeObserver` that does nothing, and unmounts each render after each test. `web/vitest.config.ts` restores each `vi.spyOn`, `vi.stubGlobal`, and `vi.stubEnv` before each test, and runs the suite in UTC:

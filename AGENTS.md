@@ -31,7 +31,6 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | A line that fires on each request, tick, or torrent goes at TRACE | `TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss` and `TestSeasonPackCheckWritesNoDebugLineWithoutMatch` for the checks that autobrr calls on each announce, `logbudget.AssertFlat` for loops over torrents. Other paths: judgment |
 | A code file stays under 20,000 bytes | `make lint-ratchet` (`.file-size.json`) |
 | A lint exception gives its reason on the line, and a maintainer approves a new one | `nolintlint`, ESLint `qui/disable-reason`, the Exceptions workflow |
-| A new test in a `fix` PR carries `// regression: #N` | `make check-regression-marker`, the Regression marker workflow: one marker in each file whose test cases or Go anonymous-struct table rows grow. Each further test and web table rows: judgment |
 | A frontend test leaks no spy, stub, render, or time zone into the next | `web/vitest.config.ts` and `web/src/test/setup.ts` do the teardown |
 | Effects only in listed hooks, the folder order, feature entry files, no `title=` tooltips, each page in `Page` | `pnpm lint` |
 | Frontend source gets a narrower type from a type guard, a zod schema, or a type on the source of the value, with no new `as` cast and no new `!` (ADR 0089) | `pnpm lint` |

@@ -10,7 +10,7 @@ import (
 	"regexp"
 )
 
-var directive = regexp.MustCompile(`^//(go:|nolint\b| nolint:|exhaustive:| ?#nosec\b| Deprecated: | Copyright \(c\) | SPDX-License-Identifier: | regression: #\d+| goes away (in #\d+|when the maintainer decides))`)
+var directive = regexp.MustCompile(`^//(go:|nolint\b| nolint:|exhaustive:| ?#nosec\b| Deprecated: | Copyright \(c\) | SPDX-License-Identifier: | goes away (in #\d+|when the maintainer decides))`)
 
 func Lines(path string, src []byte) ([]int, error) {
 	fset := token.NewFileSet()

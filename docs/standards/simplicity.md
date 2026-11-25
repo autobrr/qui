@@ -35,5 +35,5 @@ Comments are banned in Go and TypeScript code. `make lint-ratchet` fails on one 
 
 The markers that a tool or a standard in this repo reads stay, because they are not prose:
 
-- Go: the license header, `//go:` directives, `//nolint:<linter> // reason`, `//exhaustive:`, `// #nosec`, `// Deprecated:`, `// regression: #N`, and `// goes away in #N` or `// goes away when the maintainer decides` on an Experimental feature.
-- TypeScript: the license header, `eslint-disable` and `eslint-enable`, `@ts-expect-error`, `@ts-nocheck`, `/// <reference`, `@deprecated`, `// i18n-namespace: <ns>`, and `// regression: #N`.
+- Go: the license header, `//go:` directives, `//nolint:<linter> // reason`, `//exhaustive:`, `// #nosec`, `// Deprecated:`, and `// goes away in #N` or `// goes away when the maintainer decides` on an Experimental feature.
+- TypeScript: the license header, `eslint-disable` and `eslint-enable`, `@ts-expect-error`, `@ts-nocheck`, `/// <reference`, `@deprecated`, and `// i18n-namespace: <ns>`.
