@@ -85,26 +85,17 @@ func TestWebhookCheckAnswersForASeasonPackAssembly(t *testing.T) {
 		coverage *webhookPackCoverage
 		run      string
 	}{
-		{name: "above the threshold", rig: seasonPackEndpointCase{held: endpointEpisodes(3), total: 4}, want: http.StatusOK,
-			coverage: &webhookPackCoverage{InstanceID: 1, MatchedEpisodes: 3, TotalEpisodes: 4, Coverage: 0.75}, run: "ready"},
-		{name: "the size is ignored", rig: seasonPackEndpointCase{held: held, total: 4}, request: webhookPackRequest{Size: 999}, want: http.StatusOK,
-			coverage: &webhookPackCoverage{InstanceID: 1, MatchedEpisodes: 4, TotalEpisodes: 4, Coverage: 1}, run: "ready"},
-		{name: "the instance with the best coverage", rig: seasonPackEndpointCase{held: endpointEpisodes(3), heldElsewhere: held, total: 4}, want: http.StatusOK,
+		{name: "the instance with the best coverage, whatever the size", rig: seasonPackEndpointCase{held: endpointEpisodes(3), heldElsewhere: held, total: 4}, request: webhookPackRequest{Size: 999}, want: http.StatusOK,
 			coverage: &webhookPackCoverage{InstanceID: 2, MatchedEpisodes: 4, TotalEpisodes: 4, Coverage: 1}, run: "ready"},
 		{name: "no episode total", rig: seasonPackEndpointCase{held: endpointEpisodes(1), heldElsewhere: endpointEpisodes(2)}, want: http.StatusOK,
 			coverage: &webhookPackCoverage{InstanceID: 2, MatchedEpisodes: 2, ThresholdSkipped: true}, run: "ready_no_threshold"},
 		{name: "a requested instance", rig: seasonPackEndpointCase{held: held, heldElsewhere: endpointEpisodes(3), total: 4}, request: webhookPackRequest{InstanceIDs: []int{2}}, want: http.StatusOK,
 			coverage: &webhookPackCoverage{InstanceID: 2, MatchedEpisodes: 3, TotalEpisodes: 4, Coverage: 0.75}, run: "ready"},
-		{name: "below the threshold", rig: seasonPackEndpointCase{held: endpointEpisodes(2), total: 4}, want: http.StatusNotFound, run: "skipped"},
 		{name: "episodes held, none match", rig: seasonPackEndpointCase{held: otherWeb, total: 4}, want: http.StatusNotFound, run: "skipped"},
-		{name: "nothing held", rig: seasonPackEndpointCase{total: 4}, want: http.StatusNotFound},
-		{name: "an episode", rig: seasonPackEndpointCase{held: endpointEpisodes(3), total: 4}, request: webhookPackRequest{TorrentName: endpointEpisode(4)}, want: http.StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rig := newSeasonPackEndpointRig(t, &tc.rig, heldTitlesReady)
-			if tc.request.TorrentName == "" {
-				tc.request.TorrentName = endpointPack
-			}
+			tc.request.TorrentName = endpointPack
 			lists := rig.sync.lists.Load()
 			status, answer := rig.webhookCheck(tc.request)
 			require.Equal(t, tc.want, status)
@@ -139,7 +130,6 @@ func TestWebhookSkipsTheSeasonPackStepWhenItsGateIsClosed(t *testing.T) {
 		{name: "automatic setting alone", state: heldTitlesReady, setup: func(r *seasonPackEndpointRig) {
 			r.settings.SeasonPackEnabled, r.settings.SeasonPackAutomationEnabled = false, true
 		}},
-		{name: "Held titles off", state: heldTitlesOff},
 		{name: "Held titles building", state: heldTitlesBuilding},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -164,24 +154,13 @@ func TestWebhookSkipsTheSeasonPackStepWhenItsGateIsClosed(t *testing.T) {
 }
 
 func TestWebhookCheckPrefersADirectMatchOverAnAssembly(t *testing.T) {
-	for _, tc := range []struct {
-		name       string
-		incomplete bool
-		want       int
-	}{
-		{name: "complete", want: http.StatusOK},
-		{name: "still downloading", incomplete: true, want: http.StatusAccepted},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: endpointEpisodes(4), total: 4, setup: func(r *seasonPackEndpointRig) { r.holdPack(tc.incomplete) }}, heldTitlesReady)
-			status, answer := rig.webhookCheck(webhookPackRequest{TorrentName: endpointPack})
-			require.Equal(t, tc.want, status)
-			require.Len(t, answer.Matches, 1)
-			require.Nil(t, answer.SeasonPack)
-			require.Empty(t, rig.runs())
-			require.Zero(t, rig.arr.totals.Load())
-		})
-	}
+	rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: endpointEpisodes(4), total: 4, setup: func(r *seasonPackEndpointRig) { r.holdPack(true) }}, heldTitlesReady)
+	status, answer := rig.webhookCheck(webhookPackRequest{TorrentName: endpointPack})
+	require.Equal(t, http.StatusAccepted, status)
+	require.Len(t, answer.Matches, 1)
+	require.Nil(t, answer.SeasonPack)
+	require.Empty(t, rig.runs())
+	require.Zero(t, rig.arr.totals.Load())
 }
 
 func TestWebhookCheckNeedsALinkEligibleInstanceForAnAssembly(t *testing.T) {

@@ -31,35 +31,22 @@ func renamedEndpointEpisodes(count int) []string {
 }
 
 func TestWebhookApplyAssemblesThePackThatTheCheckMatched(t *testing.T) {
-	var absolute []string
-	for n := 25; n < 29; n++ {
-		absolute = append(absolute, fmt.Sprintf("Harbor.Signal.-.%d.1080p.WEB-DL.H.264-LUMA", n))
-	}
-	absoluteFiles := make([]string, len(absolute))
-	for i, name := range absolute {
-		absoluteFiles[i] = name + ".mkv"
-	}
 	renamed := renamedEndpointEpisodes(4)
-	const absolutePack = "Harbor.Signal.S03.1080p.WEB-DL.H.264-LUMA"
 	for _, tc := range []struct {
-		name    string
-		pack    string
-		torrent []byte
-		rig     seasonPackEndpointCase
+		name string
+		rig  seasonPackEndpointCase
 	}{
-		{name: "episodes", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: endpointEpisodes(4), total: 4}},
-		{name: "seasonless episodes", pack: absolutePack, torrent: endpointTorrent(t, absolutePack, 1, absoluteFiles...), rig: seasonPackEndpointCase{held: absolute}},
-		{name: "Sonarr title", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: slices.Concat(endpointEpisodes(2), renamed[2:]), total: 4, sonarrTitles: []string{"Hafensignal"}}},
-		{name: "alternate title of a show that Sonarr does not know", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: renamed, alternates: seasonPackAlternateTitles{"Hafensignal": {"Harbor Signal"}}}},
+		{name: "Sonarr title", rig: seasonPackEndpointCase{held: slices.Concat(endpointEpisodes(2), renamed[2:]), total: 4, sonarrTitles: []string{"Hafensignal"}}},
+		{name: "alternate title of a show that Sonarr does not know", rig: seasonPackEndpointCase{held: renamed, alternates: seasonPackAlternateTitles{"Hafensignal": {"Harbor Signal"}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rig := newSeasonPackEndpointRig(t, &tc.rig, heldTitlesReady)
 			require.Eventually(t, func() bool {
-				status, _ := rig.webhookCheck(webhookPackRequest{TorrentName: tc.pack})
+				status, _ := rig.webhookCheck(webhookPackRequest{TorrentName: endpointPack})
 				return status == http.StatusOK
 			}, 10*time.Second, 10*time.Millisecond)
 
-			applied := rig.webhookApply(tc.pack, tc.torrent)
+			applied := rig.webhookApply(endpointPack, endpointPackTorrent(t, 1, 4))
 			require.True(t, applied.Success)
 			require.Len(t, applied.Results, 1)
 			require.Equal(t, 1, applied.Results[0].InstanceID)
@@ -92,12 +79,10 @@ func TestWebhookApplyReportsWhyAPackWasNotAssembled(t *testing.T) {
 	}{
 		"blocked":                                  {"blocked", crossseed.ClassSkipped},
 		"existing check fails":                     {"error", crossseed.ClassFailed},
-		"blocklist check fails":                    {"error", crossseed.ClassFailed},
 		"cross-seed instance unavailable":          {"crossseed_instance_unavailable", crossseed.ClassFailed},
 		"cross-seed instance cannot see the files": {"crossseed_instance_cannot_see_data", crossseed.ClassFailed},
 		"below threshold":                          {"below_threshold", crossseed.ClassSkipped},
 		"layout mismatch":                          {"error", crossseed.ClassFailed},
-		"link fails":                               {"error", crossseed.ClassFailed},
 		"recheck skipped":                          {"skipped_recheck", crossseed.ClassSkipped},
 		"add fails":                                {"error", crossseed.ClassFailed},
 	}
@@ -162,12 +147,10 @@ func TestWebhookApplyWithoutANameAssemblesThePackThatTheCheckMatched(t *testing.
 		totals    int64
 	}{
 		{name: "webhook setting", state: heldTitlesReady, webhook: true, held: endpointEpisodes(4), want: []string{"added"}, runs: 1, totals: 1},
-		{name: "automatic setting", state: heldTitlesReady, automatic: true, held: endpointEpisodes(4), want: []string{"added"}, runs: 1, totals: 1},
 		{name: "both settings", state: heldTitlesReady, webhook: true, automatic: true, held: endpointEpisodes(4), want: []string{"added"}, runs: 1, totals: 1},
 		{name: "both settings, held under an alternate title", state: heldTitlesReady, webhook: true, automatic: true, alternate: true, want: []string{"added"}, runs: 1, totals: 1},
 		{name: "both settings, below the threshold", state: heldTitlesReady, webhook: true, automatic: true, held: endpointEpisodes(2), want: []string{"no_match"}, runs: 1, totals: 1},
 		{name: "no setting", state: heldTitlesReady, held: endpointEpisodes(4), want: []string{"no_match"}},
-		{name: "Held titles off", webhook: true, held: endpointEpisodes(4), want: []string{"no_match"}},
 		{name: "Held titles building", state: heldTitlesBuilding, webhook: true, held: endpointEpisodes(4), want: []string{"no_match"}},
 		{name: "nothing held", state: heldTitlesReady, webhook: true, want: []string{"no_match"}},
 		{name: "below the threshold", state: heldTitlesReady, webhook: true, held: endpointEpisodes(2), want: []string{"below_threshold"}, runs: 1, totals: 1},

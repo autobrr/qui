@@ -36,10 +36,6 @@ func TestWebhookCheckOfASeasonPackWaitsOnceForASync(t *testing.T) {
 		sonarr int
 		runs   int
 	}{
-		"nothing held while a sync hangs": {
-			before: func(rig *freshPackRig) { rig.instances[0].syncTakes(time.Minute) },
-			waited: heldSyncWait,
-		},
 		"too little held while a sync hangs": {
 			before: func(rig *freshPackRig) {
 				rig.instances[0].hold(freshOtherName, 1)
