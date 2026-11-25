@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/testutil/biglib"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 func packLibraries(t *testing.T) (first, second *heldLibrary, helper string) {
@@ -212,6 +213,22 @@ func TestSeasonPackCheckAsksSonarrNothingOnceTheAlternateTitlesAreKnown(t *testi
 
 	require.Equal(t, "no_matches", resp.Reason)
 	require.Equal(t, 1, held.sonarr.seasonCalls)
+	require.Empty(t, held.takeRuns())
+}
+
+func TestSeasonPackCheckAsksSonarrNothingWhileOnlyAMovieAwaitsItsTitles(t *testing.T) {
+	movie := qbt.Torrent{Hash: heldHash('9', 1), Name: "Copper.Fjord.2019.1080p.BluRay.x264-GRP", Size: packLocalFileSize, TotalSize: packLocalFileSize, Progress: 1, AddedOn: 1}
+	rig := newPackRig(t, t.TempDir(), serveHeldLibrary(t, append(packTorrents('4', packAliasedLocal, 1, 2, 3, 4), movie), nil))
+	radarr := &fakeAlternateTitles{failsOn: func(title string) bool { return title == "Copper Fjord" }}
+	held := rig.held(packAliasSource(), radarr)
+	require.Eventually(t, func() bool { return slices.Contains(radarr.askedTitles(), "Copper Fjord") }, 30*time.Second, 5*time.Millisecond)
+	requireCaughtUpOn(t, held.Service, string(releases.ContentTypeTV))
+	require.False(t, held.heldTitles.alternates.caughtUp(string(releases.ContentTypeMovie)))
+
+	resp := held.check(t, packNotHeld, "")
+
+	require.Equal(t, "no_matches", resp.Reason)
+	require.Zero(t, held.sonarr.seasonCalls)
 	require.Empty(t, held.takeRuns())
 }
 

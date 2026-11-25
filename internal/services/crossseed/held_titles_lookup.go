@@ -9,6 +9,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 const (
@@ -65,7 +66,7 @@ func (l *heldLookup) answers(ctx context.Context) bool {
 }
 
 func (l *heldLookup) holdsNothing(ctx context.Context) bool {
-	caughtUp := l.titles.alternates.caughtUp()
+	caughtUp := l.titles.alternates.caughtUp(string(releases.DetermineContentType(l.query.announced.release).ContentType))
 	return caughtUp && l.answers(ctx) && len(l.candidates()) == 0
 }
 

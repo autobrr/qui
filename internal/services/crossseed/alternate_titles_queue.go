@@ -146,10 +146,11 @@ func (q *alternateTitleQueue) asked() {
 	q.asking = nil
 }
 
-func (q *alternateTitleQueue) owesAnswer() bool {
-	return q.asking != nil && q.asking.holders > 0 ||
-		slices.ContainsFunc(q.waiting, func(title *heldTitle) bool { return title.holders > 0 }) ||
-		slices.ContainsFunc(q.retries, func(retry titleRetry) bool { return retry.owed && retry.holders > 0 })
+func (q *alternateTitleQueue) owesAnswer(contentType string) bool {
+	owed := func(title *heldTitle) bool { return title.holders > 0 && title.identity.contentType == contentType }
+	return q.asking != nil && owed(q.asking) ||
+		slices.ContainsFunc(q.waiting, owed) ||
+		slices.ContainsFunc(q.retries, func(retry titleRetry) bool { return retry.owed && owed(retry.heldTitle) })
 }
 
 func (q *alternateTitleQueue) retry(next titleRetry) {
