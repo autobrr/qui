@@ -8,7 +8,9 @@ import (
 	"iter"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/rls"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -32,4 +34,15 @@ func listedTorrents(cached []qbittorrent.CrossInstanceTorrentView, alternateTitl
 			}
 		}
 	}
+}
+
+func (s *Service) matchEpisodeCandidatesDetailed(
+	cached []qbittorrent.CrossInstanceTorrentView,
+	packName string,
+	packRelease *rls.Release,
+	packEpisodes map[episodeIdentity]packEpisodeOrigin,
+	settings *models.CrossSeedAutomationSettings,
+	aliasTitles []string,
+) map[episodeIdentity][]episodeMatch {
+	return s.matchEpisodeTorrents(listedTorrents(cached, nil), packName, packRelease, packEpisodes, settings, aliasTitles)
 }

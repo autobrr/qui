@@ -212,7 +212,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 				return planned, nil
 			}
 		}
-		candidates = s.matchEpisodeCandidatesDetailed(listedTorrents(cached, nil), prep.packName, packRelease, prep.packEpisodes, settings, nil)
+		candidates = s.matchEpisodeCandidatesDetailed(cached, prep.packName, packRelease, prep.packEpisodes, settings, nil)
 	} else {
 		candidates = make(map[episodeIdentity][]episodeMatch)
 		for _, hash := range hashes {

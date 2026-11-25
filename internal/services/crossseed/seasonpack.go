@@ -551,7 +551,7 @@ func (s *Service) assembleSeasonPack(
 		return nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
 
-	candidates := s.matchEpisodeCandidatesDetailed(torrents, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
+	candidates := s.matchEpisodeTorrents(torrents, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
 	if len(candidates) < winner.MatchedEpisodes {
 		return nil, nil, fmt.Errorf("%w: episode count drifted during apply", errLayoutMismatch)
 	}
@@ -1092,7 +1092,7 @@ func (s *Service) computeCoverage(ctx context.Context, prep *seasonPackPrep, loo
 			return nil, nil, fmt.Errorf("load cached torrents for instance %d: %w", inst.ID, err)
 		}
 
-		matched := s.matchEpisodeCandidatesDetailed(torrents, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
+		matched := s.matchEpisodeTorrents(torrents, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
 		if len(matched) == 0 {
 			continue
 		}
@@ -1121,7 +1121,7 @@ func titlesByHash(matched map[episodeIdentity][]episodeMatch) map[string][]strin
 	return titles
 }
 
-func (s *Service) matchEpisodeCandidatesDetailed(
+func (s *Service) matchEpisodeTorrents(
 	torrents iter.Seq2[*qbt.Torrent, []string],
 	packName string,
 	packRelease *rls.Release,
