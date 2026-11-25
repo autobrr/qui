@@ -38,6 +38,9 @@ func (h *heldTitles) lookup(ctx context.Context, query heldTitlesQuery, instance
 	for _, instance := range instances {
 		lookup.targets = append(lookup.targets, instance.ID)
 		owner, err := h.svc.syncManager.GetSyncOwner(ctx, instance.ID)
+		if err != nil && query.everyInstance {
+			return nil
+		}
 		if err != nil {
 			lookup.readErrors[instance.ID] = err
 			continue
@@ -55,7 +58,7 @@ func (h *heldTitles) lookup(ctx context.Context, query heldTitlesQuery, instance
 }
 
 func (l *heldLookup) answers(ctx context.Context) bool {
-	if l.query.everySynced && len(l.synced) < len(l.owners) {
+	if l.query.everyInstance && len(l.synced) < len(l.targets) {
 		return false
 	}
 	return l.titles.ready(ctx, l.targets)
@@ -71,7 +74,7 @@ func (l *heldLookup) addTitles(titles []string) {
 		return
 	}
 	for _, title := range titles {
-		l.query.titles = addNormalizedTitle(l.query.titles, title)
+		l.query.addedKeys = addNormalizedTitle(l.query.addedKeys, title)
 	}
 }
 

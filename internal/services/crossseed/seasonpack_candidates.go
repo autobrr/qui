@@ -14,11 +14,11 @@ import (
 
 func (s *Service) seasonPackLookup(ctx context.Context, prep *seasonPackPrep, instances []*models.Instance) *heldLookup {
 	lookup := s.heldTitles.lookup(ctx, heldTitlesQuery{
-		announced:   namedRelease{release: prep.packRelease, rawName: prep.packName},
-		titlesOnly:  true,
-		everySynced: true,
+		announced:     namedRelease{release: prep.packRelease, rawName: prep.packName},
+		titlesOnly:    true,
+		everyInstance: true,
 	}, instances)
-	if lookup == nil || len(lookup.readErrors) > 0 {
+	if lookup == nil {
 		return nil
 	}
 	lookup.addTitles(prep.aliasTitles)

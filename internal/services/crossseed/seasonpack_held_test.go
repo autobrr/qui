@@ -108,7 +108,7 @@ func packParityCases(t *testing.T) []packParityCase {
 
 func TestSeasonPackCheckAnswersAsTheFullScan(t *testing.T) {
 	first, second, helper := packLibraries(t)
-	rig := newPackRig(t, first, second)
+	rig := newPackRig(t, t.TempDir(), first, second)
 	settings := rig.settings
 	helpers := fakeHelpers{helper: true}
 	rig.syncs.SetHelperTorrents(helpers)
@@ -163,16 +163,17 @@ func TestSeasonPackCheckAnswersAsTheFullScan(t *testing.T) {
 
 func TestSeasonPackCheckAsksSonarrWhileTheAlternateTitlesAreNotKnown(t *testing.T) {
 	aliased := &arr.SeasonEpisodeTotalResult{TotalEpisodes: 4, Titles: []string{"Vinterhagen", "Winter Orchard"}}
-	down := &fakeAlternateTitles{down: true}
+	down, partial := &fakeAlternateTitles{down: true}, &fakeAlternateTitles{partial: true}
 	for name, source := range map[string]AlternateTitleSource{
 		"queue waits for its answer": gatedAlternateTitles{packAliasSource(), make(chan struct{})},
 		"source does not answer":     down,
+		"source answers in part":     partial,
 	} {
 		t.Run(name, func(t *testing.T) {
-			rig := newPackRig(t, serveHeldLibrary(t, packTorrents('4', packAliasedLocal, 1, 2, 3, 4), nil))
+			rig := newPackRig(t, t.TempDir(), serveHeldLibrary(t, packTorrents('4', packAliasedLocal, 1, 2, 3, 4), nil))
 			full, held := rig.full(), rig.held(source)
-			if source == down {
-				require.Eventually(t, func() bool { return len(down.askedTitles()) > 0 }, 30*time.Second, 5*time.Millisecond)
+			if asked, ok := source.(*fakeAlternateTitles); ok {
+				require.Eventually(t, func() bool { return len(asked.askedTitles()) > 0 }, 30*time.Second, 5*time.Millisecond)
 			}
 			full.sonarr.seasonResult, held.sonarr.seasonResult = aliased, aliased
 			for _, torrent := range []string{"", packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4)} {
@@ -192,7 +193,7 @@ func TestSeasonPackCheckAsksSonarrWhileTheAlternateTitlesAreNotKnown(t *testing.
 }
 
 func TestSeasonPackCheckAsksSonarrNothingOnceTheAlternateTitlesAreKnown(t *testing.T) {
-	rig := newPackRig(t, serveHeldLibrary(t, packTorrents('4', packAliasedLocal, 1, 2, 3, 4), nil))
+	rig := newPackRig(t, t.TempDir(), serveHeldLibrary(t, packTorrents('4', packAliasedLocal, 1, 2, 3, 4), nil))
 	open := make(chan struct{})
 	held := rig.held(gatedAlternateTitles{packAliasSource(), open})
 	held.check(t, packNotHeld, "")
@@ -212,7 +213,7 @@ func TestSeasonPackCheckAnswersAsTheFullScanWithoutHeldTitles(t *testing.T) {
 	torrents := packTorrents('1', packShowEpisode, 1, 2, 3, 4)
 	packs := map[string]string{packShow: packOf(t, packShow, packShowEpisode, 1, 2, 3, 4), packNotHeld: ""}
 	t.Run("not built yet", func(t *testing.T) {
-		rig := newPackRig(t, serveHeldLibrary(t, torrents, nil))
+		rig := newPackRig(t, t.TempDir(), serveHeldLibrary(t, torrents, nil))
 		stopped, cancel := context.WithCancel(t.Context())
 		cancel()
 		svc, sonarr := rig.heldTitles(stopped)
@@ -227,7 +228,7 @@ func TestSeasonPackCheckAnswersAsTheFullScanWithoutHeldTitles(t *testing.T) {
 		require.Equal(t, full.sonarr.seasonCalls, held.sonarr.seasonCalls)
 	})
 	t.Run("one instance never synced", func(t *testing.T) {
-		rig := newPackRig(t, serveHeldLibrary(t, nil, nil))
+		rig := newPackRig(t, t.TempDir(), serveHeldLibrary(t, nil, nil))
 		held := rig.held()
 		late := serveHeldLibrary(t, torrents, nil)
 		late.down = true
@@ -240,7 +241,7 @@ func TestSeasonPackCheckAnswersAsTheFullScanWithoutHeldTitles(t *testing.T) {
 		require.Equal(t, []SeasonPackCheckMatch{{InstanceID: 2, MatchedEpisodes: 4, TotalEpisodes: 4, Coverage: 1}}, resp.Matches, "the check waits for the first sync")
 	})
 	t.Run("one instance does not answer", func(t *testing.T) {
-		rig := newPackRig(t, serveHeldLibrary(t, torrents, nil), serveHeldLibrary(t, nil, nil))
+		rig := newPackRig(t, t.TempDir(), serveHeldLibrary(t, torrents, nil), serveHeldLibrary(t, nil, nil))
 		full, held := rig.full(), rig.held()
 		for _, svc := range []packService{full, held} {
 			svc.syncManager = unreachableInstance{qbittorrentSync: svc.syncManager, id: 2}
@@ -269,7 +270,7 @@ func (a *lookupArr) LookupSeasonEpisodeTotal(ctx context.Context, title string, 
 }
 
 func TestSeasonPackCheckSurvivesARebuildDuringTheSonarrCall(t *testing.T) {
-	rig := newPackRig(t, serveHeldLibrary(t, packTorrents('1', packShowEpisode, 1, 2, 3, 4), nil))
+	rig := newPackRig(t, t.TempDir(), serveHeldLibrary(t, packTorrents('1', packShowEpisode, 1, 2, 3, 4), nil))
 	held := rig.held()
 	held.arrService = &lookupArr{during: func() {
 		h := held.heldTitles
