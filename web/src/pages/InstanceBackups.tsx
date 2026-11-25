@@ -1159,7 +1159,7 @@ export function InstanceBackups() {
                 {restoreExcludedHashes.length > 0 ? (
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-muted-foreground/40 bg-muted/20 px-3 py-2">
                     <div className="flex items-center gap-2 text-sm">
-                      <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                      <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.excludedBadge")}</Badge>
                       <span>{t("backups.restore.excludedSummary", { count: restoreExcludedHashes.length })}</span>
                     </div>
                   </div>
@@ -1183,7 +1183,7 @@ export function InstanceBackups() {
                                 <ul className="space-y-1 text-sm">
                                   {restorePlan.categories.create.map(item => (
                                     <li key={`cat-create-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="outline" className="text-[10px] uppercase">{t("backups.restore.create")}</Badge>
+                                      <Badge variant="outline" className="text-10 uppercase">{t("backups.restore.create")}</Badge>
                                       <span>{item.name}</span>
                                       {item.savePath ? (
                                         <span className="text-xs text-muted-foreground">({item.savePath})</span>
@@ -1199,7 +1199,7 @@ export function InstanceBackups() {
                                 <ul className="space-y-1 text-sm">
                                   {restorePlan.categories.update.map(item => (
                                     <li key={`cat-update-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.update")}</Badge>
+                                      <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.update")}</Badge>
                                       <span>{item.name}</span>
                                       <span className="text-xs text-muted-foreground">
                                         {item.currentPath || "—"} → {item.desiredPath || "—"}
@@ -1215,7 +1215,7 @@ export function InstanceBackups() {
                                 <ul className="space-y-1 text-sm">
                                   {restorePlan.categories.delete.map(name => (
                                     <li key={`cat-delete-${name}`} className="flex items-center gap-2">
-                                      <Badge variant="destructive" className="text-[10px] uppercase">{t("backups.restore.delete")}</Badge>
+                                      <Badge variant="destructive" className="text-10 uppercase">{t("backups.restore.delete")}</Badge>
                                       <span>{name}</span>
                                     </li>
                                   ))}
@@ -1283,7 +1283,7 @@ export function InstanceBackups() {
                                         className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
                                       >
                                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                                          <Badge variant="outline" className="text-[10px] uppercase">{t("backups.restore.add")}</Badge>
+                                          <Badge variant="outline" className="text-10 uppercase">{t("backups.restore.add")}</Badge>
                                           <span className="font-medium truncate">
                                             {item.manifest.name || hash}
                                           </span>
@@ -1292,7 +1292,7 @@ export function InstanceBackups() {
                                             <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
                                           ) : null}
                                           {isExcluded ? (
-                                            <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                                            <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.excludedBadge")}</Badge>
                                           ) : null}
                                         </div>
                                         <Button
@@ -1347,7 +1347,7 @@ export function InstanceBackups() {
                                             <div className="flex items-center gap-2">
                                               <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
                                               {isExcluded ? (
-                                                <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                                                <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.excludedBadge")}</Badge>
                                               ) : null}
                                             </div>
                                             <span className="text-xs text-muted-foreground">
@@ -1391,7 +1391,7 @@ export function InstanceBackups() {
                                             <div key={`${update.hash}-${change.field}`} className="flex flex-wrap items-center gap-2 text-sm">
                                               <Badge
                                                 variant={change.supported ? "secondary" : "outline"}
-                                                className="text-[10px] uppercase"
+                                                className="text-10 uppercase"
                                               >
                                                 {change.supported ? t("backups.restore.auto") : t("backups.restore.manual")}
                                               </Badge>
@@ -1424,10 +1424,10 @@ export function InstanceBackups() {
                                         key={`torrent-delete-${hash}`}
                                         className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
                                       >
-                                        <Badge variant="destructive" className="text-[10px] uppercase">{t("backups.restore.delete")}</Badge>
+                                        <Badge variant="destructive" className="text-10 uppercase">{t("backups.restore.delete")}</Badge>
                                         <code className="text-xs text-muted-foreground">{hash}</code>
                                         {isExcluded ? (
-                                          <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                                          <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.excludedBadge")}</Badge>
                                         ) : null}
                                         <Button
                                           variant="ghost"

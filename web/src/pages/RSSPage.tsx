@@ -1452,12 +1452,12 @@ function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove
             {name}
           </span>
           {rule.useRegex && (
-            <Badge variant="outline" className="h-5 px-1 text-[10px]">
+            <Badge variant="outline" className="h-5 px-1 text-10">
               <Regex className="h-3 w-3" />
             </Badge>
           )}
           {rule.smartFilter && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{t("rules.smartBadge")}</Badge>
+            <Badge variant="secondary" className="h-5 px-1.5 text-10">{t("rules.smartBadge")}</Badge>
           )}
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">

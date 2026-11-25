@@ -282,7 +282,7 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
             >
               <TruncatedText>{tag}</TruncatedText>
               {!known.has(tag) && (
-                <span className="ml-1 text-[10px] text-muted-foreground">{t("addTorrentDialog.options.newTag")}</span>
+                <span className="ml-1 text-10 text-muted-foreground">{t("addTorrentDialog.options.newTag")}</span>
               )}
               <button
                 type="button"
@@ -359,7 +359,7 @@ function PickerItem({ value, selected, onSelect, label, hint, searching = false 
       </span>
       {selected && <span className="sr-only">{t("addTorrentDialog.options.selectedState")}</span>}
       {searching && (
-        <kbd aria-hidden className="hidden shrink-0 rounded border px-1 font-sans text-[10px] text-muted-foreground group-data-[selected=true]:inline">↵</kbd>
+        <kbd aria-hidden className="hidden shrink-0 rounded border px-1 font-sans text-10 text-muted-foreground group-data-[selected=true]:inline">↵</kbd>
       )}
     </ResponsiveCommandItem>
   )

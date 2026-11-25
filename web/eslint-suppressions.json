@@ -66,6 +66,9 @@
     },
     "qui/no-direct-effect": {
       "count": 2
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 5
     }
   },
   "src/components/cross-seed/RouteProtectionConfirm.tsx": {
@@ -104,6 +107,9 @@
   "src/components/dashboard/InstanceList.tsx": {
     "qui/entry-files": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
     }
   },
   "src/components/dashboard/StreamChart.tsx": {
@@ -113,6 +119,9 @@
   },
   "src/components/dashboard/TopTrackerGroups.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
       "count": 1
     }
   },
@@ -128,6 +137,11 @@
   },
   "src/components/display-profiles/DisplayProfileIconPicker.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/display-profiles/DisplayProfileSheet.tsx": {
+    "shadcn/no-arbitrary-values": {
       "count": 1
     }
   },
@@ -159,6 +173,11 @@
       "count": 2
     }
   },
+  "src/components/instances/InstanceErrorDisplay.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
   "src/components/instances/InstanceForm.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
@@ -174,6 +193,11 @@
       "count": 2
     },
     "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/instances/marks/InstanceMarkIcon.tsx": {
+    "shadcn/no-arbitrary-values": {
       "count": 1
     }
   },
@@ -197,6 +221,9 @@
   },
   "src/components/instances/preferences/OrphanScanPreviewDialog.tsx": {
     "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
       "count": 1
     }
   },
@@ -227,6 +254,9 @@
   "src/components/instances/preferences/PreferencesFormShell.tsx": {
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     }
   },
   "src/components/instances/preferences/ReannounceOverview.tsx": {
@@ -237,6 +267,9 @@
   "src/components/instances/preferences/TrackerReannounceForm.tsx": {
     "qui/no-direct-effect": {
       "count": 3
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     },
     "shadcn/require-static-classes": {
       "count": 1
@@ -251,6 +284,9 @@
     },
     "qui/no-direct-effect": {
       "count": 9
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     }
   },
   "src/components/instances/preferences/WorkflowPreviewDialog.tsx": {
@@ -314,6 +350,9 @@
     },
     "qui/no-direct-effect": {
       "count": 3
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
     }
   },
   "src/components/layout/HeaderInstanceTitle.tsx": {
@@ -326,6 +365,9 @@
       "count": 1
     },
     "qui/entry-files": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
       "count": 1
     }
   },
@@ -340,6 +382,9 @@
   "src/components/layout/SectionedPage.tsx": {
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     }
   },
   "src/components/layout/Sidebar.tsx": {
@@ -349,6 +394,9 @@
     "qui/entry-files": {
       "count": 2
     },
+    "shadcn/no-arbitrary-values": {
+      "count": 3
+    },
     "shadcn/require-static-classes": {
       "count": 1
     }
@@ -356,10 +404,16 @@
   "src/components/layout/UnifiedScopeDropdownSection.tsx": {
     "qui/entry-files": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
     }
   },
   "src/components/magicui/shine-border.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
       "count": 1
     }
   },
@@ -369,6 +423,9 @@
     },
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 3
     }
   },
   "src/components/problem-reports/SentReports.tsx": {
@@ -416,6 +473,11 @@
       "count": 4
     }
   },
+  "src/components/search/ChecklistPicker.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
   "src/components/search/SearchForm.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
@@ -430,6 +492,14 @@
     },
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/settings/ApiKeysManager.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
     }
   },
   "src/components/settings/ApplicationSettings.tsx": {
@@ -523,15 +593,24 @@
   "src/components/statistics/EventsChart.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 2
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
     }
   },
   "src/components/statistics/GroupChart.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     }
   },
   "src/components/statistics/GroupTable.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
       "count": 1
     },
     "shadcn/require-static-classes": {
@@ -541,16 +620,25 @@
   "src/components/statistics/LibraryGrowthChart.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
     }
   },
   "src/components/statistics/StatisticsControls.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 3
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     }
   },
   "src/components/statistics/TransferChart.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 3
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
     }
   },
   "src/components/statistics/YearView.tsx": {
@@ -559,6 +647,9 @@
     },
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 5
     }
   },
   "src/components/statistics/useTapTooltip.ts": {
@@ -572,6 +663,9 @@
   "src/components/support/SupportDialog.tsx": {
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 6
     }
   },
   "src/components/support/reminder.ts": {
@@ -585,11 +679,17 @@
   "src/components/themes/CustomThemeEditor.tsx": {
     "qui/no-direct-effect": {
       "count": 2
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     }
   },
   "src/components/themes/LicenseManager.tsx": {
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 4
     }
   },
   "src/components/themes/ThemeMenuDialog.tsx": {
@@ -611,6 +711,14 @@
     },
     "qui/no-direct-effect": {
       "count": 5
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/AddTorrentPickers.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     }
   },
   "src/components/torrents/CategoryTree.tsx": {
@@ -634,6 +742,14 @@
       "count": 1
     },
     "react-refresh/only-export-components": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 8
+    }
+  },
+  "src/components/torrents/DeleteTorrentDialog.tsx": {
+    "shadcn/no-arbitrary-values": {
       "count": 1
     }
   },
@@ -690,6 +806,9 @@
     "qui/no-direct-effect": {
       "count": 8
     },
+    "shadcn/no-arbitrary-values": {
+      "count": 5
+    },
     "shadcn/require-static-classes": {
       "count": 3
     }
@@ -717,6 +836,9 @@
     "qui/no-direct-effect": {
       "count": 6
     },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
     "shadcn/require-static-classes": {
       "count": 1
     }
@@ -730,6 +852,9 @@
     },
     "qui/no-direct-effect": {
       "count": 11
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     }
   },
   "src/components/torrents/TorrentDiscReportDialog.tsx": {
@@ -765,6 +890,9 @@
     "qui/no-direct-effect": {
       "count": 1
     },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
     "shadcn/require-static-classes": {
       "count": 2
     }
@@ -781,6 +909,9 @@
     },
     "qui/no-direct-effect": {
       "count": 7
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 3
     }
   },
   "src/components/torrents/bulk-actions/BulkActionProvider.tsx": {
@@ -799,6 +930,9 @@
   "src/components/torrents/details/CrossSeedTable.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 2
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     },
     "shadcn/require-static-classes": {
       "count": 1
@@ -845,6 +979,11 @@
       "count": 1
     }
   },
+  "src/components/torrents/table/GroupCopiesNoticePicture.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
   "src/components/torrents/table/TorrentTableRow.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 2
@@ -853,9 +992,19 @@
       "count": 1
     }
   },
+  "src/components/torrents/table/TrackerIcon.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
   "src/components/torrents/torrentLimitDialogHelpers.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
+    }
+  },
+  "src/components/transfers/BetaBadge.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 3
     }
   },
   "src/components/transfers/TransferDetailsDialog.tsx": {
@@ -871,6 +1020,9 @@
       "count": 2
     },
     "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
       "count": 1
     }
   },
@@ -1407,6 +1559,9 @@
     },
     "qui/entry-files": {
       "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 4
     }
   },
   "src/lib/add-torrent-urls.ts": {
@@ -1583,6 +1738,11 @@
       "count": 6
     }
   },
+  "src/lib/utils.ts": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
   "src/lib/workflow-utils.ts": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 4
@@ -1637,6 +1797,9 @@
     },
     "qui/no-direct-effect": {
       "count": 4
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
     }
   },
   "src/pages/Search.tsx": {
@@ -1668,6 +1831,9 @@
     },
     "qui/no-direct-effect": {
       "count": 7
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
     }
   },
   "src/router.tsx": {

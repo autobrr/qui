@@ -75,7 +75,7 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
                 type="button"
                 disabled={!settled}
                 aria-label={t("displayProfiles.iconPicker.trigger", { icon: iconLabelKey ? t(iconLabelKey) : t("displayProfiles.iconPicker.letter") })}
-                className="shrink-0 rounded-lg outline-none ring-1 ring-border hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                className="shrink-0 rounded-lg outline-none ring-1 ring-border hover:ring-foreground/40 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
               >
                 <DisplayProfileTile profile={profile} size="lg" />
               </button>

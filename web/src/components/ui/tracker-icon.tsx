@@ -23,7 +23,7 @@ export const TrackerIconImage = memo(({ tracker, trackerIcons }: TrackerIconImag
   const src = resolveTrackerIconSrc(trackerIcons, trimmed)
 
   return (
-    <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none shrink-0">
+    <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-10 font-medium uppercase leading-none shrink-0">
       {src && !hasError ? (
         <img
           src={src}

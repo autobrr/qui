@@ -417,7 +417,7 @@ export function WorkflowPreviewDialog({
                               {torrent.name}
                             </TruncatedText>
                             {(torrent.isCrossSeed || torrent.isHardlinkCopy) && (
-                              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
+                              <span className={`shrink-0 text-10 px-1.5 py-0.5 rounded ${
                                 torrent.isHardlinkCopy? "bg-violet-500/10 text-violet-600": "bg-blue-500/10 text-blue-600"
                               }`}>
                                 {torrent.isHardlinkCopy ? t("preferences.workflowPreview.crossSeedHardlinked") : t("preferences.workflowPreview.crossSeedSameFiles")}

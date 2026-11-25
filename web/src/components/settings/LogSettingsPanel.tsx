@@ -286,7 +286,7 @@ function LogEntry({
   }
 
   const badgeClass = cn(
-    "mr-2 inline-flex h-4 w-12 shrink-0 items-center justify-center rounded align-[1px] text-[10px] font-medium uppercase sm:mr-0",
+    "mr-2 inline-flex h-4 w-12 shrink-0 items-center justify-center rounded align-[1px] text-10 font-medium uppercase sm:mr-0",
     LEVEL_BADGE_COLORS[entry.level]
   )
 
@@ -661,7 +661,7 @@ function LogScrollBody({ ref, label, children }: { ref: Ref<HTMLDivElement>; lab
       role="region"
       aria-label={label}
       tabIndex={0}
-      className="h-[clamp(20rem,calc(100dvh-24rem),60rem)] overflow-auto rounded-md border bg-muted/30 p-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:-mx-4 max-sm:h-[max(20rem,calc(100dvh-13rem))] max-sm:overflow-x-hidden max-sm:rounded-none max-sm:border-x-0 max-sm:px-4"
+      className="h-[clamp(20rem,calc(100dvh-24rem),60rem)] overflow-auto rounded-md border bg-muted/30 p-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 max-sm:-mx-4 max-sm:h-[max(20rem,calc(100dvh-13rem))] max-sm:overflow-x-hidden max-sm:rounded-none max-sm:border-x-0 max-sm:px-4"
       style={{ overflowAnchor: "none" }}
     >
       <div className="font-mono text-xs leading-relaxed sm:w-fit sm:min-w-full">{children}</div>
