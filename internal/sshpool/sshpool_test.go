@@ -490,12 +490,17 @@ func dialerWithTimeout(timeout time.Duration) *Dialer {
 func TestTimeoutBoundsHandshake(t *testing.T) {
 	t.Parallel()
 
-	addr := sshtest.NewHangingListener(t).Addr
+	listener := sshtest.NewHangingListener(t)
 
 	start := time.Now()
-	_, err := testWithin(t, dialerWithTimeout(200*time.Millisecond), instanceAt(t, addr), 10*time.Second)
+	_, err := testWithin(t, dialerWithTimeout(time.Second), instanceAt(t, listener.Addr), 10*time.Second)
 	require.Error(t, err, "a stalled handshake must fail rather than wait for the caller to give up")
 	assert.Less(t, time.Since(start), 5*time.Second)
+	select {
+	case <-listener.Accepted:
+	default:
+		t.Fatal("the connection did not reach the SSH handshake")
+	}
 }
 
 func TestTimeoutBoundsProbe(t *testing.T) {

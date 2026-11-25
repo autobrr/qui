@@ -13,6 +13,7 @@ import (
 	"runtime/pprof"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -142,7 +143,13 @@ func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t 
 func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
 	// Blocking endpoint: the connection is accepted but the response never comes,
 	// so the probe fails with a deadline, the signature of a saturated instance.
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	var arrived atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/app/webapiVersion" {
+			http.NotFound(w, r)
+			return
+		}
+		arrived.Store(true)
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
@@ -155,12 +162,14 @@ func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
 	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
 	pool.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	client, err := pool.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
 	require.Error(t, err)
 	require.Nil(t, client)
+	require.True(t, IsDeadlineExpired(err), "the probe must fail at the deadline: %v", err)
+	require.True(t, arrived.Load(), "the health probe did not reach qBittorrent")
 
 	assert.False(t, pool.isInBackoff(instanceID), "a timed-out probe must not put the instance in backoff")
 	pool.mu.RLock()

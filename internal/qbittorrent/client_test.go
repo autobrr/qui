@@ -435,6 +435,7 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 	require.NoError(t, err, "transient capability fetch failures must not block client creation")
 	require.NotNil(t, client)
 	require.False(t, client.IsHealthy(), "client should start unhealthy until a capability refresh succeeds")
+	require.ErrorIs(t, context.Cause(ctx), context.DeadlineExceeded, "client did not reach the capability lookup")
 }
 
 // TestNewClientWithTimeoutTransportIndependentOfLoginBudget verifies that a short

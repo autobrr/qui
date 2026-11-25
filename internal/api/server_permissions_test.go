@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 )
@@ -56,13 +57,14 @@ var openToEveryKey = map[routeKey]struct{}{
 var routeParam = regexp.MustCompile(`\{[^}]+\}`)
 
 type permissionRig struct {
-	deps *Dependencies
-	url  string
+	deps   *Dependencies
+	authDB *database.DB
+	url    string
 }
 
 func newPermissionRig(t *testing.T, setup ...func(*Dependencies)) *permissionRig {
 	t.Helper()
-	deps := newTestDependencies(t)
+	deps, db := newTestDependenciesWithDB(t)
 	// The walk reaches the log handlers, which need a config that can persist.
 	var err error
 	deps.Config, err = config.New(t.TempDir(), "test")
@@ -76,7 +78,7 @@ func newPermissionRig(t *testing.T, setup ...func(*Dependencies)) *permissionRig
 	require.NoError(t, err)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
-	return &permissionRig{deps: deps, url: srv.URL}
+	return &permissionRig{deps: deps, authDB: db, url: srv.URL}
 }
 
 func (rig *permissionRig) key(t *testing.T, perms ...models.Permission) string {
@@ -84,9 +86,7 @@ func (rig *permissionRig) key(t *testing.T, perms ...models.Permission) string {
 	if perms == nil {
 		perms = []models.Permission{}
 	}
-	raw, _, err := rig.deps.AuthService.CreateAPIKey(t.Context(), "script", perms, nil)
-	require.NoError(t, err)
-	return raw
+	return newUsedAPIKey(t, rig.authDB, "script", perms, nil)
 }
 
 // send returns the status and body. A request that is still running after a

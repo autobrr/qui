@@ -34,6 +34,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
 func TestNormalizeConnectionStatus(t *testing.T) {
@@ -2230,42 +2231,53 @@ func TestSortTorrentsByTimestampTiebreak(t *testing.T) {
 // unified view degrades to a partial result instead of returning a hard error that blanks
 // the whole table (discussion #2096).
 func TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial(t *testing.T) {
-	// A blocking qBittorrent endpoint: accepts the connection but never responds,
-	// so the health check blocks until the caller's context deadline expires.
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	var arrived atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/app/webapiVersion" {
+			http.NotFound(w, r)
+			return
+		}
+		arrived.Store(true)
 		<-r.Context().Done()
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+
+	root := t.TempDir()
+	stub := qbtstub.New(t, root)
+	stub.Add(qbtstub.Torrent{Hash: hashA, Name: "Test video", SavePath: root, Files: []string{"video.mkv"}})
 
 	pool := setupTestPool(t)
-	defer pool.Close()
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 
-	ctx := context.Background()
-	// inst1 has the lower ID, so the deterministic ID-ascending loop processes it
-	// first; inst2 must never be contacted once inst1 consumes the shared deadline.
-	inst1, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	ctx := t.Context()
+	reachable, err := pool.instanceStore.Create(ctx, "reachable", stub.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
-	_, err = pool.instanceStore.Create(ctx, "other", "http://192.0.2.2:8080", "user", "pass", nil, nil, false, nil)
+	unreachable, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	_, err = pool.instanceStore.Create(ctx, "later", stub.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	// Pre-seed inst1 as an existing, unhealthy client pointed at the blocking server.
-	// GetClient takes the exists-&&-unhealthy branch -> HealthCheck -> GetWebAPIVersionCtx,
-	// which blocks until our short deadline fires.
 	pool.mu.Lock()
-	pool.clients[inst1.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: inst1.ID}
+	pool.clients[unreachable.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: unreachable.ID}
 	pool.mu.Unlock()
-
 	sm := NewSyncManager(pool, nil)
 
-	callCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
-	defer cancel()
+	seed, err := sm.GetTorrentRefsFresh(ctx, reachable.ID, TorrentRefFilter{})
+	require.NoError(t, err)
+	require.Len(t, seed, 1)
+	require.Equal(t, hashA, seed[0].Hash)
 
-	// The stream read: a poll skips these clients, because they have no data.
+	callCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
 	resp, err := sm.ListTorrents(callCtx, TorrentListView{Unified: true, CacheOnly: true})
 
 	require.NoError(t, err, "unreachable instance must not fail the whole aggregate")
 	require.NotNil(t, resp)
-	assert.True(t, resp.PartialResults, "expected partial results when one instance is unreachable")
+	require.True(t, resp.PartialResults, "expected partial results when one instance is unreachable")
+	require.Len(t, resp.CrossInstanceTorrents, 1)
+	assert.Equal(t, reachable.ID, resp.CrossInstanceTorrents[0].InstanceID)
+	assert.Equal(t, hashA, resp.CrossInstanceTorrents[0].Hash)
+	require.True(t, arrived.Load(), "the slow instance did not receive the health probe")
 }
 
 // TestGetCrossInstanceTorrents_CallerCancellationReturnsError verifies that a genuine

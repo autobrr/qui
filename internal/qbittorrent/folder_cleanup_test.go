@@ -662,7 +662,6 @@ func TestFolderCleanupWaitingBuildsNoScope(t *testing.T) {
 // A symlink found while walking down is never entered, and keeps its folder.
 func TestFolderCleanupWalkDownSkipsSymlinks(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.tree("torrents/tv/Pack/a.mkv")
 		e.fs.symlink(e.p("torrents/tv/Pack/Link"))
 		e.tree("torrents/tv/Pack/Link/Empty/")
@@ -677,7 +676,6 @@ func TestFolderCleanupWalkDownSkipsSymlinks(t *testing.T) {
 // content left. The clean then must not walk into the folder it points to.
 func TestFolderCleanupWalkDownSkipsASymlinkedRoot(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.fs.symlink(e.p("torrents/tv/Pack"))
 		e.tree("torrents/tv/Pack/Empty/")
 		e.run(e.rootFolder("torrents/tv", "Pack"))
@@ -691,7 +689,6 @@ func TestFolderCleanupWalkDownSkipsASymlinkedRoot(t *testing.T) {
 // the deadline, and the folders below it are in the folder it points to.
 func TestFolderCleanupSkipsFoldersBelowASymlink(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.tree("torrents/tv/Show/Sub/Deeper/a.mkv", "torrents/tv/Show/Sub/Other/c.mkv", "torrents/tv/Show/Plain/b.mkv")
 		snap := e.noRoot("torrents/tv/Show", "Sub/Deeper/a.mkv", "Sub/Other/c.mkv", "Plain/b.mkv")
 		e.rm("torrents/tv/Show/Sub", "torrents/tv/Show/Plain/b.mkv")
@@ -709,7 +706,6 @@ func TestFolderCleanupSkipsFoldersBelowASymlink(t *testing.T) {
 // symlink either.
 func TestFolderCleanupClimbSkipsFoldersBelowASymlink(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.tree("torrents/tv/A/B/f.mkv")
 		snap := e.singleFile("torrents/tv", "A/B/f.mkv")
 		e.rm("torrents/tv/A")
@@ -724,7 +720,6 @@ func TestFolderCleanupClimbSkipsFoldersBelowASymlink(t *testing.T) {
 // the walk down does not start.
 func TestFolderCleanupWalkDownSkipsARootFolderBelowASymlink(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.tree("torrents/tv/A/Pack/a.mkv")
 		snap := e.rootFolder("torrents/tv", "A/Pack")
 		e.rm("torrents/tv/A")
@@ -831,7 +826,6 @@ func TestFolderCleanupClimbPassesAGoneFolder(t *testing.T) {
 // folders below it are still cleaned.
 func TestFolderCleanupCleansBelowASymlinkedSavePath(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.fs.symlink(e.p("torrents/linked"))
 		e.tree("torrents/linked/Show/Sub/a.mkv")
 		snap := e.noRoot("torrents/linked", "Show/Sub/a.mkv")
@@ -881,7 +875,6 @@ func TestFolderCleanupJunkFiles(t *testing.T) {
 
 	t.Run("a symlink named like junk keeps the folder", func(t *testing.T) {
 		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-			skipSymlinksOnWindows(t, e)
 			e.fs.symlink(e.p("torrents/tv/Rel-GRP/Thumbs.db"))
 			e.run(e.noRoot("torrents/tv/Rel-GRP", "a.mkv"))
 			e.requireTree([]string{"torrents/tv/Rel-GRP/Thumbs.db"}, nil)
@@ -1505,7 +1498,6 @@ func TestFolderCleanupCheckReplacesAnEarlierFailure(t *testing.T) {
 
 func TestFolderCleanupNeverRemovesASymlink(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
-		skipSymlinksOnWindows(t, e)
 		e.fs.symlink(e.p("torrents/tv/Link"))
 		e.tree("torrents/tv/Link/Rel-GRP/")
 		e.run(e.noRoot("torrents/tv/Link/Rel-GRP", "a.mkv"))

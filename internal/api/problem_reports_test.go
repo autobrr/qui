@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/textproto"
 	"net/url"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -168,8 +169,7 @@ func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 		},
 	})
 
-	rig.apiKey, _, err = deps.AuthService.CreateAPIKey(t.Context(), "script", models.AllPermissions(), nil)
-	require.NoError(t, err)
+	rig.apiKey = newUsedAPIKey(t, db, "script", models.AllPermissions(), nil)
 
 	router, err := NewServer(deps).Handler()
 	require.NoError(t, err)
@@ -585,13 +585,19 @@ func TestProblemReportSendRefusals(t *testing.T) {
 }
 
 func TestProblemReportSendTimeoutIsUnavailable(t *testing.T) {
-	rig := newReportRig(t, reportRigOptions{client: &http.Client{Timeout: 200 * time.Millisecond}})
+	rig := newReportRig(t, reportRigOptions{client: &http.Client{Timeout: time.Second}})
 	_, facts := rig.facts("startedFrom=menu")
-	rig.fake.Hold()
+	received, release := rig.fake.Hold()
+	t.Cleanup(release)
 
 	status, answer := rig.send(menuReport("text", facts, "none", nil), nil)
 	assert.Equal(t, http.StatusBadGateway, status)
 	assert.Equal(t, "unavailable", answer["error"])
+	select {
+	case <-received:
+	default:
+		t.Fatal("the report did not reach brrbin")
+	}
 }
 
 func TestProblemReportSendSurvivesAClosedTab(t *testing.T) {
@@ -813,6 +819,12 @@ func TestProblemReportSentReportsWithNoRowsAsksBrrbinNothing(t *testing.T) {
 }
 
 func TestProblemReportSentReportsStatuses(t *testing.T) {
+	waitForWallClockStep := func() {
+		before := time.Now().Round(0)
+		for !time.Now().Round(0).After(before) {
+			runtime.Gosched()
+		}
+	}
 	rig := newReportRig(t, reportRigOptions{})
 	first := rig.sendReport("11111111-1111-4111-8111-111111111111", "Torrents vanish\nafter a restart")
 	second := rig.sendReport("22222222-2222-4222-8222-222222222222", "Uploads stall")
@@ -827,6 +839,7 @@ func TestProblemReportSentReportsStatuses(t *testing.T) {
 	rig.fake.SetStatus(second, fakebrrbin.Status{Status: "issue", Issue: &fakebrrbin.Issue{Number: 4321, URL: issueURL}})
 	rig.fake.SetStatus(old, fakebrrbin.Status{Status: "issue", Issue: &fakebrrbin.Issue{Number: 9999, URL: issueURL}})
 
+	waitForWallClockStep()
 	sent := len(rig.fake.Requests())
 	reports := rig.sentReports()
 
@@ -852,6 +865,7 @@ func TestProblemReportSentReportsStatuses(t *testing.T) {
 	assert.True(t, reports[2].StatusChangedAt.Equal(reports[2].SentAt))
 
 	// The same answer again changes no status.
+	waitForWallClockStep()
 	again := rig.sentReports()
 	assert.True(t, again[0].StatusChangedAt.Equal(reports[0].StatusChangedAt), "an unchanged status keeps its time")
 

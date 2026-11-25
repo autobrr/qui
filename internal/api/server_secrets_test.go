@@ -81,6 +81,7 @@ func TestReadKeyGetsNoPlantedSecret(t *testing.T) {
 	reached := map[routeKey]bool{}
 	for _, route := range rig.routes {
 		status, response := rig.answer(t, route, readKey, nil)
+		require.NotEqual(t, handlerPanicBody, response, "%s %s panicked for a read key", route.Method, route.Path)
 		if status == http.StatusForbidden && (response == browserOnlyBody || strings.HasPrefix(response, needsPermissionPrefix)) {
 			continue
 		}
@@ -95,7 +96,8 @@ func TestReadKeyGetsNoPlantedSecret(t *testing.T) {
 			assert.True(t, answered, "%s %s: %d %s", route.Method, route.Path, status, response)
 		}
 
-		_, response = rig.answer(t, route, "", cookie)
+		status, response = rig.answer(t, route, "", cookie)
+		require.NotEqual(t, handlerPanicBody, response, "%s %s panicked for a session (status %d)", route.Method, route.Path, status)
 		for _, secret := range rig.planted {
 			if secret.audience != shownToNobody {
 				shownToSession[secret.name] = shownToSession[secret.name] || strings.Contains(response, secret.value)

@@ -164,6 +164,26 @@ func TestAllEndpointsDocumented(t *testing.T) {
 	t.Logf("OpenAPI spec documents %d API routes", len(documentedRoutes))
 }
 
+func newServerCheckingHandlerPanics(t *testing.T, deps *Dependencies) *Server {
+	t.Helper()
+	server := NewServer(deps)
+	server.logger = server.logger.Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, message string) {
+		if message == "log system error" {
+			t.Error("API handler panicked; see recovery log")
+		}
+	}))
+	return server
+}
+
+func newUsedAPIKey(t *testing.T, db *database.DB, name string, permissions []models.Permission, instanceIDs []int) string {
+	t.Helper()
+	store := models.NewAPIKeyStore(db)
+	raw, key, err := store.Create(t.Context(), name, permissions, instanceIDs)
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateLastUsed(t.Context(), key.ID))
+	return raw
+}
+
 func newTestDependencies(t *testing.T) *Dependencies {
 	t.Helper()
 	deps, _ := newTestDependenciesWithDB(t)

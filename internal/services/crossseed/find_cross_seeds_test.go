@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -16,7 +17,20 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
 )
+
+func linkSecondMount(t *testing.T, dataDir, mountDir string) {
+	t.Helper()
+	err := os.Symlink(dataDir, mountDir)
+	if testutil.IsWindowsSymlinkPrivilegeError(err) {
+		out, err := exec.CommandContext(t.Context(), "cmd.exe", "/d", "/c", "mklink", "/j", mountDir, dataDir).CombinedOutput()
+		require.NoError(t, err, "%s", out)
+		t.Cleanup(func() { require.NoError(t, os.Remove(mountDir)) })
+		return
+	}
+	require.NoError(t, err)
+}
 
 // crossSeedsService puts the fixtures on two local instances.
 func crossSeedsService(torrents ...crossMatchFixture) (*Service, *tierSyncManager) {
@@ -153,7 +167,7 @@ func TestFindCrossSeedsFindsSharedFilesOnOtherInstances(t *testing.T) {
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 	}
 	// A symlinked folder stands in for a second mount of the data folder.
-	require.NoError(t, os.Symlink(dataDir, mountDir))
+	linkSecondMount(t, dataDir, mountDir)
 	write := func(name, data string) {
 		require.NoError(t, os.WriteFile(filepath.Join(dataDir, name), []byte(data), 0o600))
 	}
@@ -250,7 +264,7 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 	}
 	// A symlinked folder stands in for a second mount of the data folder.
-	require.NoError(t, os.Symlink(dataDir, mountDir))
+	linkSecondMount(t, dataDir, mountDir)
 
 	var library []crossMatchFixture
 	add := func(instanceID int, hash, name, dir string) {
@@ -375,7 +389,7 @@ func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 	}
 	// A symlinked folder stands in for a second mount of the data folder.
-	require.NoError(t, os.Symlink(dataDir, mountDir))
+	linkSecondMount(t, dataDir, mountDir)
 	write := func(name, data string) {
 		require.NoError(t, os.WriteFile(filepath.Join(dataDir, name), []byte(data), 0o600))
 	}

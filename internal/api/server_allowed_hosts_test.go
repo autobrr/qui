@@ -66,12 +66,11 @@ func TestAllowedHostsAdmission(t *testing.T) {
 }
 
 func TestAllowedHostsWithCredentials(t *testing.T) {
-	deps := newTestDependencies(t)
+	deps, db := newTestDependenciesWithDB(t)
 	deps.Config.Config.AllowedHosts = []string{"localhost"}
 	router, err := NewServer(deps).Handler()
 	require.NoError(t, err)
-	apiKey, _, err := deps.AuthService.CreateAPIKey(t.Context(), "allowed-hosts-test", models.AllPermissions(), nil)
-	require.NoError(t, err)
+	apiKey := newUsedAPIKey(t, db, "allowed-hosts-test", models.AllPermissions(), nil)
 	session, err := deps.SessionManager.Load(t.Context(), "")
 	require.NoError(t, err)
 	deps.SessionManager.Put(session, "authenticated", true)

@@ -600,82 +600,57 @@ func TestHandleTorrentCompletion_DefersWhileMoving(t *testing.T) {
 	require.GreaterOrEqual(t, syncMock.hitCount(hash), 3)
 }
 
-func TestHandleTorrentCompletion_RetriesAfterCheckingTimeout(t *testing.T) {
-	completionStore := setupCompletionStoreForQueueTests(t)
+type completionRetrySyncMock struct {
+	completionPollingSyncMock
+	lane     *completionLane
+	checking qbt.Torrent
+	ready    bool
+}
 
-	hash := "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
-	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
-		hash: {
-			{
-				Hash:         hash,
-				Name:         "checking-retry",
-				Progress:     0.27,
-				State:        qbt.TorrentStateCheckingResumeData,
-				CompletionOn: 220,
-			},
-			{
-				Hash:         hash,
-				Name:         "checking-retry",
-				Progress:     0.27,
-				State:        qbt.TorrentStateCheckingResumeData,
-				CompletionOn: 220,
-			},
-			{
-				Hash:         hash,
-				Name:         "checking-retry",
-				Progress:     0.27,
-				State:        qbt.TorrentStateCheckingResumeData,
-				CompletionOn: 220,
-			},
-			{
-				Hash:         hash,
-				Name:         "checking-retry",
-				Progress:     0.27,
-				State:        qbt.TorrentStateCheckingResumeData,
-				CompletionOn: 220,
-			},
-			{
-				Hash:         hash,
-				Name:         "checking-retry",
-				Progress:     1.0,
-				State:        qbt.TorrentStateUploading,
-				CompletionOn: 220,
-			},
-		},
-	})
-
-	invoked := make(chan qbt.Torrent, 1)
-	svc := &Service{
-		completionStore: completionStore,
-		syncManager:     syncMock,
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return models.DefaultCrossSeedAutomationSettings(), nil
-		},
-		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
-			invoked <- *torrent
-			return nil
-		},
+func (m *completionRetrySyncMock) GetTorrentRefs(context.Context, int, internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	m.lane.mu.Lock()
+	if wait := m.lane.waits[m.checking.Hash]; wait != nil && wait.attempt > 1 {
+		m.ready = true
 	}
-	setCompletionCheckingTimings(svc, 5*time.Millisecond, 12*time.Millisecond)
-	setCompletionCheckingRetryPolicy(svc, 8*time.Millisecond, 3)
+	ready := m.ready
+	m.lane.mu.Unlock()
+	torrent := m.checking
+	if ready {
+		torrent.Progress = 1
+		torrent.State = qbt.TorrentStateUploading
+	}
+	return testTorrentRefs([]qbt.Torrent{torrent}), nil
+}
 
-	svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
-		Hash:         hash,
+func TestHandleTorrentCompletion_RetriesAfterCheckingTimeout(t *testing.T) {
+	checking := qbt.Torrent{
+		Hash:         "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
 		Name:         "checking-retry",
 		Progress:     0.27,
 		State:        qbt.TorrentStateCheckingResumeData,
 		CompletionOn: 220,
-	})
-
-	select {
-	case torrent := <-invoked:
-		require.InDelta(t, 1.0, torrent.Progress, 0.0001)
-		require.Equal(t, qbt.TorrentStateUploading, torrent.State)
-	case <-time.After(time.Second):
-		t.Fatal("completion search was not invoked after checking retry")
 	}
 
-	require.Equal(t, 6, syncMock.hitCount(hash))
+	var invoked *qbt.Torrent
+	svc := &Service{
+		completionStore: setupCompletionStoreForQueueTests(t),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
+			invoked = torrent
+			return nil
+		},
+	}
+	svc.syncManager = &completionRetrySyncMock{lane: svc.getCompletionLane(1), checking: checking}
+	setCompletionCheckingTimings(svc, 10*time.Millisecond, 100*time.Millisecond)
+	setCompletionCheckingRetryPolicy(svc, 10*time.Millisecond, 2)
+
+	svc.HandleTorrentCompletion(t.Context(), 1, checking)
+
+	require.NotNil(t, invoked, "completion search was not invoked after checking retry")
+	require.InDelta(t, 1.0, invoked.Progress, 0.0001)
+	require.Equal(t, qbt.TorrentStateUploading, invoked.State)
 }
 
 func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T) {

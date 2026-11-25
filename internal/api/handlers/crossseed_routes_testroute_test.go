@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -280,16 +281,20 @@ func TestCrossSeedRouteListingCheck(t *testing.T) {
 
 	t.Run("transport error", func(t *testing.T) {
 		f := newRouteFixture(t)
+		var arrived atomic.Bool
 		// The listing drops the connection without an answer.
 		crossSeed := f.instance("seeds", listingQBittorrent(t, func(string, string) (int, []string) {
+			arrived.Store(true)
 			return 0, nil
 		}), models.FilesystemModeNone)
+		require.NoError(t, f.routes.CheckAvailable(t.Context(), crossSeed.ID, true))
 		// go-qbittorrent waits seconds before it tries again, so stop it there.
-		ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 		defer cancel()
 		_, err := f.routes.Lists(ctx, crossSeed.ID, "/seeds/links", "Plain", qbt.DirectoryContentAll)
 		require.ErrorIs(t, err, crossseedroute.ErrUnavailable)
 		require.NotErrorIs(t, err, crossseedroute.ErrCannotSeeFolder)
+		require.True(t, arrived.Load(), "the directory listing did not reach qBittorrent")
 	})
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
 )
 
 func TestBuildMissingFilesResultInvalidPathLeavesUnknown(t *testing.T) {
@@ -203,8 +204,9 @@ func TestBuildMissingFilesResultSkipsALocalSymlinkLoop(t *testing.T) {
 
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "present.mkv"), []byte("present"), 0o600))
-	require.NoError(t, os.Symlink("loop-b.mkv", filepath.Join(dir, "loop-a.mkv")))
-	require.NoError(t, os.Symlink("loop-a.mkv", filepath.Join(dir, "loop-b.mkv")))
+	for _, pair := range [][2]string{{"loop-b.mkv", "loop-a.mkv"}, {"loop-a.mkv", "loop-b.mkv"}} {
+		testutil.SymlinkOrSkip(t, pair[0], filepath.Join(dir, pair[1]))
+	}
 
 	torrent := qbt.Torrent{Hash: "hash", SavePath: dir, Progress: 1}
 	result, connectionLost := buildMissingFilesResult(t.Context(), localbackend.NewBackend(),
