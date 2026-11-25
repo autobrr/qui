@@ -132,21 +132,22 @@ func TestWebhookApplyAssemblesNothingWhileADirectMatchIsStillDownloading(t *test
 			Hash: heldHash('2', 1), Name: packShow, Size: 4 * packLocalFileSize, TotalSize: 4 * packLocalFileSize, Progress: 0.5, AddedOn: 1,
 		}},
 	} {
-		t.Run(name, func(t *testing.T) {
-			root := t.TempDir()
-			rig := newPackRig(t, root, packLibraryOnDisk(t, root, slices.Concat(packTorrents('1', packShowEpisode, 1, 2, 3, 4), pending)))
-			held := rig.applying(rig.held())
-			require.NoError(t, os.MkdirAll(rig.links, 0o755))
+		for _, torrentName := range []string{packShow, ""} {
+			t.Run(name+" named "+torrentName, func(t *testing.T) {
+				root := t.TempDir()
+				rig := newPackRig(t, root, packLibraryOnDisk(t, root, slices.Concat(packTorrents('1', packShowEpisode, 1, 2, 3, 4), pending)))
+				held := rig.applying(rig.held())
+				require.NoError(t, os.MkdirAll(rig.links, 0o755))
 
-			resp, err := held.AutobrrApply(t.Context(), &AutobrrApplyRequest{TorrentName: packShow, TorrentData: torrent})
+				resp, err := held.AutobrrApply(t.Context(), &AutobrrApplyRequest{TorrentName: torrentName, TorrentData: torrent})
 
-			require.NoError(t, err)
-			assembles := pending == nil
-			require.Equal(t, assembles, resp.Success, "%+v", resp.Results)
-			require.Equal(t, assembles, len(resp.Results) > 0)
-			require.Equal(t, assembles, held.sonarr.seasonCalls > 0)
-			require.Equal(t, assembles, len(held.takeRuns()) > 0)
-		})
+				require.NoError(t, err)
+				assembles := pending == nil
+				require.Equal(t, assembles, resp.Success, "%+v", resp.Results)
+				require.Equal(t, assembles, held.sonarr.seasonCalls > 0)
+				require.Equal(t, assembles, len(held.takeRuns()) > 0)
+			})
+		}
 	}
 }
 

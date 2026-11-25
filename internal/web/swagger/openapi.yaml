@@ -6272,7 +6272,7 @@ paths:
       description: |
         Accepts a torrent file from autobrr and calculates its actual total size from the metainfo.
         When `torrentName` is present, qui repeats classification against live local sources and checks the downloaded metadata against the original announcement.
-        When `torrentName` is present and no torrent matches, qui assembles a season pack from held episodes under the same conditions as the webhook check. While a torrent that matches the release is still downloading, qui assembles nothing. An assembled pack gets the season pack category and tags from the settings, not `category`, `tags`, or `startPaused`. An assembly that fails is an entry in `results`.
+        When no torrent matches, qui assembles a season pack from held episodes under the same conditions as the webhook check. Without `torrentName`, qui uses the name in the torrent. While a torrent that matches the release is still downloading, qui assembles nothing. An assembled pack gets the season pack category and tags from the settings, not `category`, `tags`, or `startPaused`. An assembly that fails is an entry in `results`.
         When `torrentName` is omitted, qui keeps the legacy strict apply behavior.
         When `instanceIds` is omitted or empty, qui attempts to inject the torrent into every configured instance that has a match.
       parameters:

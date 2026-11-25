@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,7 +17,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
 func TestWebhookApplyAssemblesThePackThatTheCheckMatched(t *testing.T) {
@@ -141,18 +144,75 @@ func TestWebhookApplyOfAPackFollowsTheAutoResumeSwitch(t *testing.T) {
 	}
 }
 
-func TestWebhookApplyWithoutANameFollowsTheAutomaticSwitch(t *testing.T) {
-	pack := endpointPackTorrent(t, 1, 4)
-	for _, automatic := range []bool{false, true} {
-		t.Run(fmt.Sprintf("automatic %t", automatic), func(t *testing.T) {
-			rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: endpointEpisodes(4), total: 4, setup: func(r *seasonPackEndpointRig) {
-				r.settings.SeasonPackEnabled, r.settings.SeasonPackAutomationEnabled = !automatic, automatic
-			}}, heldTitlesReady)
-			applied := rig.webhookApply("", pack)
-			require.Equal(t, automatic, applied.Success)
-			require.Equal(t, map[bool]int64{true: 1}[automatic], rig.sync.adds.Load())
+func TestWebhookApplyWithoutANameAssemblesThePackThatTheCheckMatched(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		state     heldTitlesState
+		webhook   bool
+		automatic bool
+		held      []string
+		want      []string
+		runs      int
+		totals    int64
+	}{
+		{name: "webhook setting", state: heldTitlesReady, webhook: true, held: endpointEpisodes(4), want: []string{"added"}, runs: 1, totals: 1},
+		{name: "automatic setting", state: heldTitlesReady, automatic: true, held: endpointEpisodes(4), want: []string{"added"}, runs: 1, totals: 1},
+		{name: "both settings", state: heldTitlesReady, webhook: true, automatic: true, held: endpointEpisodes(4), want: []string{"added"}, runs: 1, totals: 1},
+		{name: "both settings, below the threshold", state: heldTitlesReady, webhook: true, automatic: true, held: endpointEpisodes(2), want: []string{"no_match"}, runs: 1, totals: 1},
+		{name: "no setting", state: heldTitlesReady, held: endpointEpisodes(4), want: []string{"no_match"}},
+		{name: "Held titles off", webhook: true, held: endpointEpisodes(4), want: []string{"no_match"}},
+		{name: "Held titles building", state: heldTitlesBuilding, webhook: true, held: endpointEpisodes(4), want: []string{"no_match"}},
+		{name: "nothing held", state: heldTitlesReady, webhook: true, want: []string{"no_match"}},
+		{name: "below the threshold", state: heldTitlesReady, webhook: true, held: endpointEpisodes(2), want: []string{"below_threshold"}, runs: 1, totals: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: tc.held, total: 4, setup: func(r *seasonPackEndpointRig) {
+				r.settings.SeasonPackEnabled, r.settings.SeasonPackAutomationEnabled = tc.webhook, tc.automatic
+			}}, tc.state)
+			applied := rig.webhookApply("", endpointPackTorrent(t, 1, 4))
+			var statuses []string
+			for _, result := range applied.Results {
+				require.Equal(t, "lib", result.InstanceName)
+				statuses = append(statuses, result.Status)
+			}
+			require.Equal(t, tc.want, statuses)
+			require.Equal(t, slices.Contains(tc.want, "added"), applied.Success)
+			require.Len(t, rig.runs(), tc.runs)
+			require.Equal(t, tc.totals, rig.arr.totals.Load())
 		})
 	}
+}
+
+func TestWebhookApplyWithoutANameAddsTheResultOfAnotherInstance(t *testing.T) {
+	rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{heldElsewhere: endpointEpisodes(4), total: 4, setup: func(r *seasonPackEndpointRig) {
+		r.servers[1].Add(qbtstub.Torrent{
+			Hash: fmt.Sprintf("%040d", 7), Name: endpointPack, SavePath: filepath.Join(r.root, "lib"),
+			Layout: qbtstub.RootFolder, Files: []string{endpointEpisode(9) + ".mkv"},
+		})
+	}}, heldTitlesReady)
+
+	applied := rig.webhookApply("", endpointPackTorrent(t, 1, 4))
+
+	statuses := map[string]string{}
+	for _, result := range applied.Results {
+		statuses[result.InstanceName] = result.Status
+	}
+	require.True(t, applied.Success)
+	require.Equal(t, map[string]string{"lib": "no_match", "other": "added"}, statuses)
+}
+
+func TestWebhookApplyWithoutANameKeepsADirectResult(t *testing.T) {
+	pack := endpointPackTorrent(t, 1, 4)
+	rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: endpointEpisodes(4), total: 4, setup: func(r *seasonPackEndpointRig) {
+		_, err := r.blocklist.Upsert(t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: 1, InfoHash: endpointHash(t, pack)})
+		require.NoError(t, err)
+		r.holdPack(false)
+	}}, heldTitlesReady)
+	applied := rig.webhookApply("", pack)
+	require.Len(t, applied.Results, 1)
+	require.Equal(t, "blocked", applied.Results[0].Status)
+	require.Zero(t, rig.arr.totals.Load())
+	require.Empty(t, rig.runs())
 }
 
 func TestWebhookApplyAndSeasonPackApplyAddOnePackOnce(t *testing.T) {

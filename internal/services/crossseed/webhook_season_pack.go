@@ -3,7 +3,12 @@
 
 package crossseed
 
-import "context"
+import (
+	"context"
+	"slices"
+
+	"github.com/autobrr/qui/internal/models"
+)
 
 func (s *Service) webhookSeasonPackPrep(input webhookCheckInput) *seasonPackPrep {
 	if !input.settings.SeasonPackEnabled {
@@ -95,6 +100,36 @@ func (s *Service) webhookSeasonPackApply(ctx context.Context, input webhookCheck
 		}
 	}
 	return response, nil
+}
+
+func foundNoDirectMatch(response *CrossSeedResponse) bool {
+	return response.TorrentInfo != nil && !slices.ContainsFunc(response.Results, func(result InstanceCrossSeedResult) bool {
+		return result.Status != "no_match"
+	})
+}
+
+func (s *Service) applyNamelessSeasonPack(ctx context.Context, request *CrossSeedRequest, settings *models.CrossSeedAutomationSettings, response *CrossSeedResponse) error {
+	instances, err := s.resolveInstances(ctx, request.TargetInstanceIDs)
+	if err != nil {
+		return err
+	}
+	name := response.TorrentInfo.Name
+	announced := namedRelease{release: s.releaseCache.Parse(name), rawName: name}
+	input := newWebhookCheckInput(announced, uint64(response.TorrentInfo.Size), request.FindIndividualEpisodes, settings, instances)
+	pack, err := s.webhookSeasonPackApply(ctx, input, request)
+	if err != nil {
+		return err
+	}
+	response.Success = pack.Success
+	for _, result := range pack.Results {
+		i := slices.IndexFunc(response.Results, func(direct InstanceCrossSeedResult) bool { return direct.InstanceID == result.InstanceID })
+		if i < 0 {
+			response.Results = append(response.Results, result)
+			continue
+		}
+		response.Results[i] = result
+	}
+	return nil
 }
 
 func seasonPackRefusedStatus(reason string) string {
