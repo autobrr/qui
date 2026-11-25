@@ -73,6 +73,11 @@
       "count": 2
     }
   },
+  "src/components/cross-seed/RssRunItem.tsx": {
+    "shadcn/require-static-classes": {
+      "count": 2
+    }
+  },
   "src/components/cross-seed/RssTab.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 3
@@ -167,6 +172,9 @@
   "src/components/instances/marks/InstanceMarkEditor.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 2
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
     }
   },
   "src/components/instances/preferences/AutomationActivityRunDialog.tsx": {
@@ -179,6 +187,11 @@
       "count": 1
     },
     "qui/no-direct-effect": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/OrphanScanOverview.tsx": {
+    "shadcn/require-static-classes": {
       "count": 2
     }
   },
@@ -216,9 +229,17 @@
       "count": 1
     }
   },
+  "src/components/instances/preferences/ReannounceOverview.tsx": {
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
   "src/components/instances/preferences/TrackerReannounceForm.tsx": {
     "qui/no-direct-effect": {
       "count": 3
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
     }
   },
   "src/components/instances/preferences/WorkflowDialog.tsx": {
@@ -243,6 +264,9 @@
     },
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/require-static-classes": {
+      "count": 2
     }
   },
   "src/components/instances/preferences/preferenceView.ts": {
@@ -324,6 +348,9 @@
     },
     "qui/entry-files": {
       "count": 2
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
     }
   },
   "src/components/layout/UnifiedScopeDropdownSection.tsx": {
@@ -408,6 +435,9 @@
   "src/components/settings/ApplicationSettings.tsx": {
     "qui/no-direct-effect": {
       "count": 2
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
     }
   },
   "src/components/settings/ArrInstancesManager.tsx": {
@@ -503,6 +533,9 @@
   "src/components/statistics/GroupTable.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
+    },
+    "shadcn/require-static-classes": {
+      "count": 2
     }
   },
   "src/components/statistics/LibraryGrowthChart.tsx": {
@@ -656,6 +689,14 @@
     },
     "qui/no-direct-effect": {
       "count": 8
+    },
+    "shadcn/require-static-classes": {
+      "count": 3
+    }
+  },
+  "src/components/torrents/TorrentCreationTasks.tsx": {
+    "shadcn/require-static-classes": {
+      "count": 2
     }
   },
   "src/components/torrents/TorrentCreatorDialog.tsx": {
@@ -675,6 +716,9 @@
     },
     "qui/no-direct-effect": {
       "count": 6
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
     }
   },
   "src/components/torrents/TorrentDialogs.tsx": {
@@ -720,6 +764,9 @@
     },
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/require-static-classes": {
+      "count": 2
     }
   },
   "src/components/torrents/TorrentTableOptimized.tsx": {
@@ -752,6 +799,14 @@
   "src/components/torrents/details/CrossSeedTable.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 2
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/details/MobileDetails.tsx": {
+    "shadcn/require-static-classes": {
+      "count": 1
     }
   },
   "src/components/torrents/details/PeersTable.tsx": {
@@ -767,6 +822,11 @@
       "count": 1
     }
   },
+  "src/components/torrents/details/StatRow.tsx": {
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
   "src/components/torrents/details/TorrentFileTable.tsx": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
@@ -777,6 +837,11 @@
   },
   "src/components/torrents/details/TrackersTable.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/CompactRow.tsx": {
+    "shadcn/require-static-classes": {
       "count": 1
     }
   },

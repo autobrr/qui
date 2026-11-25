@@ -90,7 +90,7 @@ The counter reads one file at a time. It counts a sleep in a function that runs 
 
 ### Suppressed ESLint Rules
 
-`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Eight rules have entries:
+`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Nine rules have entries:
 
 - `@typescript-eslint/consistent-type-assertions` reports each type cast (`value as Type`) outside the tests and `src/test`. `as const` and `satisfies` pass. Get the type from a type guard, a zod schema, or a type on the source of the value. ADR 0089 has the reason.
 - `@typescript-eslint/no-non-null-assertion` reports each `value!` outside the tests and `src/test`. Check the value, or give its source a type without `null` and `undefined`. ADR 0089 has the reason.
@@ -100,10 +100,23 @@ The counter reads one file at a time. It counts a sleep in a function that runs 
 - `qui/no-direct-effect` reports each call of `useEffect`, `useLayoutEffect`, or `useInsertionEffect` outside the tests and outside the hooks in `effectHooks` of `web/eslint.config.js`. ADR 0073 has the reason.
 - `react-hooks/exhaustive-deps` reports a hook whose dependency list does not match the values that the hook reads.
 - `react-refresh/only-export-components` reports a file that exports a component and another value, because fast refresh then reloads the whole file.
+- `shadcn/require-static-classes` reports a dynamically built `className` on a UI primitive that `@shadcn/lint` cannot read, outside the tests, `src/test`, `src/components/ui`, and `src/components/kit`. ADR 0090 has the reason.
 
 After you fix a report of one of these rules, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 6 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 6 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
 
 A new rule that old code breaks starts the same way: add its name to `suppressedRules`, and write its reports to the file one time with `pnpm exec eslint --suppress-rule <rule>` and the paths of the `lint` script in `web/package.json`.
+
+### UI Primitive Styling (`@shadcn/lint`)
+
+`@shadcn/lint` guards the styling of UI primitives (ADR 0090). Each rule turns on in its own change with its settings, its held counts in `web/eslint-suppressions.json` (when it holds existing findings), and its name in `suppressedRules` of `scripts/ratchet/comments.go`.
+
+- **What the rules do not see:** a plain `<button>` or `<span>`, the files in `web/src/components/ui/` (primitives), and `web/src/components/kit/` (the kit). `shadcn/no-unknown-classes` and `shadcn/no-raw-colors` still cover `ui/` and `kit/` once enabled. Test files and `src/test/` stay outside all `@shadcn/lint` rules.
+- **Known limit of held counts:** `web/eslint-suppressions.json` holds one count per rule per file, so in a file that already holds findings, a new finding can replace a fixed one without raising the count. Reviewers read the touched lines of files with held findings.
+- **Degraded-load guard:** `@shadcn/lint` writes a `[@shadcn/lint]` warning to stderr when configuration cannot be read or (for rules that load the stylesheet) when Tailwind or the theme stylesheet fails to load and the plugin falls back to its bundled grammar. The `Lint frontend` step in `.github/workflows/lint.yml` fails if stderr contains `[@shadcn/lint]`.
+- **Updating `@shadcn/lint`:** the plugin is pinned at an exact version in `web/package.json` and excluded from Dependabot's monthly `npm` group in `.github/dependabot.yml`, so its updates arrive in a standalone PR instead of blocking the monthly group, because counts can shift between versions and it calls an unstable Tailwind API. To update it (or finish its Dependabot PR):
+  1. Run `pnpm --dir web add -D -E @shadcn/lint@<version>`.
+  2. Run `pnpm --dir web lint` and verify stderr contains no `[@shadcn/lint]` warning.
+  3. If counts changed for a held `shadcn/*` rule on unchanged code, re-record that rule in `web/eslint-suppressions.json` (remove its old entries, run `pnpm --dir web exec eslint --suppress-rule <rule> "src/**/*.{ts,tsx,js,jsx}" "*.{js,ts}" "scripts/**/*.mjs"`, and review the diff). Note that `scripts/ratchet` rejects a total increase against `origin/develop`, so a version bump that raises counts is reviewed and merged by a maintainer.
 
 ### Held Effects
 

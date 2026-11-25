@@ -83,6 +83,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Theme preview**: A custom theme that one browser shows before the user saves it. It reaches no theme slot and no other browser, and a page reload ends it.
 - **Default theme visit**: A page visit that opens with `?theme=default` in the address. qui shows the default theme until the next page load without the parameter, and it reads and writes no theme slot and no theme cache in the browser. A theme selection in a picker ends it. _Avoid_: safe mode.
 - **Hidden theme**: A theme that the quick theme pickers do not show. A community theme starts hidden, unless qui showed it before it became a community theme. The user shows or hides a theme in Settings → Themes. _Avoid_: disabled theme.
+- **Status color**: One of the theme colors for success, warning, and info. Each built-in theme sets its own, and a custom theme without them gets the standard ones. _Avoid_: semantic color, state color.
 
 ## Client settings
 
@@ -278,6 +279,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Section**: One part of a sectioned page. The user picks it from the section nav of the page, and only one section shows at a time. _Avoid_: tab, panel.
 - **Sectioned page**: A page with a section nav, for example Settings or Cross-Seed. _Avoid_: tabbed page.
 - **Single page**: A page that stacks its cards and has no section nav, for example Search or Backups.
+
+## UI primitives
+
+- **UI primitive**: A component in the primitives folder of the frontend, such as Button, Badge, or Label. It owns its look, and a page picks a look by an option. _Avoid_: shared part (a Shared part is files that torrents share), base component.
+- **Option** (of a UI primitive): A named look of a UI primitive that a page selects with a prop, a variant or a size. A new option needs the word of a maintainer. _Avoid_: style, preset.
 
 ## Transfer and Share
 
