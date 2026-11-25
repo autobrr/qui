@@ -73,8 +73,9 @@ type Service struct {
 	searcher *Searcher
 	injector *Injector
 
-	directoryMu map[directoryMuKey]*sync.Mutex
-	mu          sync.Mutex
+	directoryMu      map[directoryMuKey]*sync.Mutex
+	directoryWriteMu sync.Mutex
+	mu               sync.Mutex
 
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
@@ -2782,6 +2783,8 @@ func (s *Service) ListDirectories(ctx context.Context) ([]*models.DirScanDirecto
 }
 
 func (s *Service) CreateDirectory(ctx context.Context, dir *models.DirScanDirectory) (*models.DirScanDirectory, error) {
+	s.directoryWriteMu.Lock()
+	defer s.directoryWriteMu.Unlock()
 	if err := s.ensureUniqueDirectoryPath(ctx, dir); err != nil {
 		return nil, fmt.Errorf("create directory: %w", err)
 	}
@@ -2801,6 +2804,8 @@ func (s *Service) GetDirectory(ctx context.Context, id int) (*models.DirScanDire
 }
 
 func (s *Service) UpdateDirectory(ctx context.Context, id int, params *models.DirScanDirectoryUpdateParams) (*models.DirScanDirectory, error) {
+	s.directoryWriteMu.Lock()
+	defer s.directoryWriteMu.Unlock()
 	if params != nil && (params.Path != nil || params.TargetInstanceID != nil) {
 		existing, err := s.store.GetDirectory(ctx, id)
 		if err != nil {
