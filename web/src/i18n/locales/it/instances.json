@@ -472,6 +472,7 @@
       "activeCount": "{{enabled}}/{{total}} attivi",
       "today": "{{count}} oggi",
       "failed": "{{count}} falliti",
+      "outcomeFailed": "Fallito",
       "failedToLoadRules": "Impossibile caricare le regole",
       "checkConnection": "Verifica la connessione all'istanza.",
       "loadingRules": "Caricamento regole...",

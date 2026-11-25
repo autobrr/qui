@@ -472,6 +472,7 @@
       "activeCount": "{{enabled}}/{{total}} 活跃",
       "today": "今日 {{count}} 条",
       "failed": "{{count}} 条失败",
+      "outcomeFailed": "失败",
       "failedToLoadRules": "加载规则失败",
       "checkConnection": "请检查与实例的连接。",
       "loadingRules": "正在加载规则...",

@@ -472,6 +472,7 @@
       "activeCount": "{{enabled}}/{{total}} 활성",
       "today": "오늘 {{count}}개",
       "failed": "실패 {{count}}개",
+      "outcomeFailed": "실패",
       "failedToLoadRules": "규칙을 불러오지 못했습니다",
       "checkConnection": "인스턴스 연결을 확인하세요.",
       "loadingRules": "규칙 불러오는 중...",

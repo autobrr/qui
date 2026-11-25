@@ -472,6 +472,7 @@
       "activeCount": "{{enabled}}/{{total}} 活躍",
       "today": "今日 {{count}} 條",
       "failed": "{{count}} 條失敗",
+      "outcomeFailed": "失敗",
       "failedToLoadRules": "載入規則失敗",
       "checkConnection": "請檢查與實例的連線。",
       "loadingRules": "正在載入規則...",
