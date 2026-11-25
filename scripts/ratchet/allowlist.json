@@ -733,7 +733,7 @@
     "internal/services/discscan/service.go": 30,
     "internal/services/externalprograms/arguments_windows_test.go": 5,
     "internal/services/externalprograms/command_windows.go": 17,
-    "internal/services/externalprograms/service.go": 20,
+    "internal/services/externalprograms/service.go": 18,
     "internal/services/externalprograms/service_test.go": 3,
     "internal/services/filesmanager/print_cache_test.go": 15,
     "internal/services/filesmanager/repository.go": 32,
