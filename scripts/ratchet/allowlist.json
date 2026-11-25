@@ -1,5 +1,4 @@
 {
-  "comments": {},
   "contextcheck": {
     "internal/api/handlers/auth.go": 1,
     "internal/api/handlers/instances.go": 6,
