@@ -19,6 +19,7 @@ const (
 type heldLookup struct {
 	titles     *heldTitles
 	query      heldTitlesQuery
+	targets    []int
 	owners     []*syncowner.Owner
 	synced     []int
 	readErrors map[int]error
@@ -34,9 +35,8 @@ func (h *heldTitles) lookup(ctx context.Context, query heldTitlesQuery, instance
 		return nil
 	}
 	lookup := &heldLookup{titles: h, query: query, readErrors: map[int]error{}}
-	targets := make([]int, len(instances))
-	for i, instance := range instances {
-		targets[i] = instance.ID
+	for _, instance := range instances {
+		lookup.targets = append(lookup.targets, instance.ID)
 		owner, err := h.svc.syncManager.GetSyncOwner(ctx, instance.ID)
 		if err != nil {
 			lookup.readErrors[instance.ID] = err
@@ -47,11 +47,36 @@ func (h *heldTitles) lookup(ctx context.Context, query heldTitlesQuery, instance
 			lookup.synced = append(lookup.synced, instance.ID)
 		}
 	}
-	if !h.ready(ctx, targets) {
+	if !lookup.answers(ctx) {
 		return nil
 	}
 	lookup.wait = newHeldWait(lookup.owners)
 	return lookup
+}
+
+func (l *heldLookup) answers(ctx context.Context) bool {
+	if l.query.everySynced && len(l.synced) < len(l.owners) {
+		return false
+	}
+	return l.titles.ready(ctx, l.targets)
+}
+
+func (l *heldLookup) holdsNothing(ctx context.Context) bool {
+	caughtUp := l.titles.alternates.caughtUp()
+	return caughtUp && l.answers(ctx) && len(l.candidates()) == 0
+}
+
+func (l *heldLookup) addTitles(titles []string) {
+	if l == nil {
+		return
+	}
+	for _, title := range titles {
+		l.query.titles = addNormalizedTitle(l.query.titles, title)
+	}
+}
+
+func (l *heldLookup) awaitDueSyncs(ctx context.Context) (due bool) {
+	return l != nil && l.wait.await(ctx)
 }
 
 func (l *heldLookup) candidates() map[int]heldCandidates {
@@ -59,6 +84,9 @@ func (l *heldLookup) candidates() map[int]heldCandidates {
 }
 
 func (l *heldLookup) refreshStale() {
+	if l == nil {
+		return
+	}
 	for _, owner := range l.owners {
 		owner.RefreshStale()
 	}

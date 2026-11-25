@@ -603,7 +603,7 @@ func TestFixC_MatchStoresStampedReleaseWithoutMutatingCache(t *testing.T) {
 	svc := &Service{releaseCache: NewReleaseCache()}
 	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
 
-	got := svc.matchEpisodeCandidatesDetailed(cached, "", packRelease, packEpisodes, settings, nil)
+	got := svc.matchEpisodeCandidatesDetailed(listedTorrents(cached, nil), "", packRelease, packEpisodes, settings, nil)
 	require.Len(t, got, 1)
 	matches, ok := got[episodeIdentity{series: 3, episode: 25}]
 	require.True(t, ok, "identity must be the stamped one")
@@ -629,7 +629,7 @@ func TestLightCheck_CountsAbsoluteNumberedLocalsForKnownSeasonPack(t *testing.T)
 	svc := &Service{releaseCache: NewReleaseCache()}
 	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
 
-	got := svc.matchEpisodeCandidatesDetailed(cached, "", packRelease, nil, settings, nil)
+	got := svc.matchEpisodeCandidatesDetailed(listedTorrents(cached, nil), "", packRelease, nil, settings, nil)
 	require.Len(t, got, 2, "light check must count both seasoned and absolute-numbered locals")
 	_, ok := got[episodeIdentity{series: 3, episode: 1}]
 	require.True(t, ok, "seasoned local must count")
@@ -652,7 +652,7 @@ func TestMatchEpisodeCandidates_ExcludesIncompleteEpisodes(t *testing.T) {
 	svc := &Service{releaseCache: NewReleaseCache()}
 	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
 
-	got := svc.matchEpisodeCandidatesDetailed(cached, "", packRelease, nil, settings, nil)
+	got := svc.matchEpisodeCandidatesDetailed(listedTorrents(cached, nil), "", packRelease, nil, settings, nil)
 	require.Len(t, got, 1, "incomplete episode must not count as a candidate")
 	_, ok := got[episodeIdentity{series: 3, episode: 1}]
 	require.True(t, ok, "complete episode must count")
@@ -672,7 +672,7 @@ func TestMatchEpisodeCandidates_IgnoresTorrentSizeOfNameMatch(t *testing.T) {
 	svc := &Service{releaseCache: NewReleaseCache()}
 	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
 
-	got := svc.matchEpisodeCandidatesDetailed(cached, "Cool.Show.S03.1080p.WEB.x264-GRP", &parsedPack, packEpisodes, settings, nil)
+	got := svc.matchEpisodeCandidatesDetailed(listedTorrents(cached, nil), "Cool.Show.S03.1080p.WEB.x264-GRP", &parsedPack, packEpisodes, settings, nil)
 	require.Len(t, got, 1)
 }
 
@@ -756,7 +756,7 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 			svc := &Service{releaseCache: NewReleaseCache()}
 			settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
 
-			got := svc.matchEpisodeCandidatesDetailed(cached, "", packRelease, tt.packEpisodes, settings, nil)
+			got := svc.matchEpisodeCandidatesDetailed(listedTorrents(cached, nil), "", packRelease, tt.packEpisodes, settings, nil)
 			require.Len(t, got, 1, "only the fully matching episode may count")
 
 			for _, w := range tt.want {
@@ -2961,7 +2961,7 @@ func TestMatchEpisodeCandidates_MultiEpisodeLocalStaysAnEpisodeSource(t *testing
 	svc := &Service{releaseCache: NewReleaseCache()}
 	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
 
-	got := svc.matchEpisodeCandidatesDetailed(cached, "", packRelease, packEpisodes, settings, nil)
+	got := svc.matchEpisodeCandidatesDetailed(listedTorrents(cached, nil), "", packRelease, packEpisodes, settings, nil)
 	require.Len(t, got, 1)
 	matches, ok := got[episodeIdentity{series: 3, episode: 25}]
 	require.True(t, ok, "range local must be identified by its first episode")
@@ -2979,10 +2979,10 @@ func TestMatchEpisodeCandidates_RangeKeepsRepackRule(t *testing.T) {
 	svc := &Service{releaseCache: NewReleaseCache()}
 	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
 
-	got := svc.matchEpisodeCandidatesDetailed(cached, "Cool.Show.S03.1080p.WEB.x264-GRP", &parsedPack, nil, settings, nil)
+	got := svc.matchEpisodeCandidatesDetailed(listedTorrents(cached, nil), "Cool.Show.S03.1080p.WEB.x264-GRP", &parsedPack, nil, settings, nil)
 	require.Empty(t, got, "a REPACK range must not count toward a pack without REPACK")
 
 	settings.SeasonPackSkipRepackCompare = true
-	got = svc.matchEpisodeCandidatesDetailed(cached, "Cool.Show.S03.1080p.WEB.x264-GRP", &parsedPack, nil, settings, nil)
+	got = svc.matchEpisodeCandidatesDetailed(listedTorrents(cached, nil), "Cool.Show.S03.1080p.WEB.x264-GRP", &parsedPack, nil, settings, nil)
 	require.Len(t, got, 1, "with the setting on, the range counts")
 }
