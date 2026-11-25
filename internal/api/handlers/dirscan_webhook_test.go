@@ -206,7 +206,6 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 	require.Equal(t, created.ID, resp.DirectoryID)
 	require.Equal(t, dirPath, resp.DirectoryPath)
 	require.Equal(t, dirPath, resp.ScanRoot)
-
 }
 
 func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T) {
@@ -532,7 +531,6 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 
 	resp := scan.response(t, rec)
 	require.Equal(t, created.ID, resp.DirectoryID)
-
 }
 
 func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T) {
@@ -580,5 +578,4 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 
 	resp := scan.response(t, rec)
 	require.Equal(t, created.ID, resp.DirectoryID)
-
 }

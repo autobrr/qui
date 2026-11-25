@@ -20,16 +20,24 @@ import (
 	"github.com/autobrr/qui/internal/testutil"
 )
 
-func linkSecondMount(t *testing.T, dataDir, mountDir string) {
+func newSecondMountFixture(t *testing.T, root string) (dataDir, linkDir, mountDir string) {
 	t.Helper()
+	const dataName, mountName = "data", "mount"
+	dataDir, linkDir, mountDir = filepath.Join(root, dataName), filepath.Join(root, "links"), filepath.Join(root, mountName)
+	for _, dir := range []string{dataDir, linkDir} {
+		require.NoError(t, os.Mkdir(dir, 0o755))
+	}
 	err := os.Symlink(dataDir, mountDir)
 	if testutil.IsWindowsSymlinkPrivilegeError(err) {
-		out, err := exec.CommandContext(t.Context(), "cmd.exe", "/d", "/c", "mklink", "/j", mountDir, dataDir).CombinedOutput()
+		cmd := exec.CommandContext(t.Context(), "cmd.exe", "/d", "/c", "mklink", "/j", mountName, dataName)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "%s", out)
 		t.Cleanup(func() { require.NoError(t, os.Remove(mountDir)) })
-		return
+	} else {
+		require.NoError(t, err)
 	}
-	require.NoError(t, err)
+	return dataDir, linkDir, mountDir
 }
 
 // crossSeedsService puts the fixtures on two local instances.
@@ -161,13 +169,8 @@ func TestFindCrossSeedsFindsSharedFilesOnOtherInstances(t *testing.T) {
 		pack    = "Harbor.Watch.S01.1080p.WEB.h264-GRP"
 		episode = "Harbor.Watch.S01E01.1080p.WEB.h264-GRP"
 	)
-	root := t.TempDir()
-	dataDir, linkDir, mountDir := filepath.Join(root, "data"), filepath.Join(root, "links"), filepath.Join(root, "mount")
-	for _, dir := range []string{filepath.Join(dataDir, pack), linkDir} {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-	// A symlinked folder stands in for a second mount of the data folder.
-	linkSecondMount(t, dataDir, mountDir)
+	dataDir, linkDir, mountDir := newSecondMountFixture(t, t.TempDir())
+	require.NoError(t, os.Mkdir(filepath.Join(dataDir, pack), 0o755))
 	write := func(name, data string) {
 		require.NoError(t, os.WriteFile(filepath.Join(dataDir, name), []byte(data), 0o600))
 	}
@@ -259,12 +262,7 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	dataDir, linkDir, mountDir := filepath.Join(root, "data"), filepath.Join(root, "links"), filepath.Join(root, "mount")
-	for _, dir := range []string{dataDir, linkDir} {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-	// A symlinked folder stands in for a second mount of the data folder.
-	linkSecondMount(t, dataDir, mountDir)
+	dataDir, linkDir, mountDir := newSecondMountFixture(t, root)
 
 	var library []crossMatchFixture
 	add := func(instanceID int, hash, name, dir string) {
@@ -383,13 +381,8 @@ func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 		pack    = "Harbor.Watch.S01.1080p.WEB.h264-GRP"
 		episode = "Harbor.Watch.S01E01.1080p.WEB.h264-GRP"
 	)
-	root := t.TempDir()
-	dataDir, linkDir, mountDir := filepath.Join(root, "data"), filepath.Join(root, "links"), filepath.Join(root, "mount")
-	for _, dir := range []string{filepath.Join(dataDir, pack), linkDir} {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-	// A symlinked folder stands in for a second mount of the data folder.
-	linkSecondMount(t, dataDir, mountDir)
+	dataDir, linkDir, mountDir := newSecondMountFixture(t, t.TempDir())
+	require.NoError(t, os.Mkdir(filepath.Join(dataDir, pack), 0o755))
 	write := func(name, data string) {
 		require.NoError(t, os.WriteFile(filepath.Join(dataDir, name), []byte(data), 0o600))
 	}
