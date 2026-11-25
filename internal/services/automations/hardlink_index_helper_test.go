@@ -34,7 +34,14 @@ func (h helperOnInstance) HelperKinds(instanceID int) map[string]string {
 	return map[string]string{h.hash: "share"}
 }
 
-func TestHardlinkIndexCountsARoutedHelperTorrentAsATorrent(t *testing.T) {
+type helperLinkRig struct {
+	service  *Service
+	sourceID int
+	source   qbt.Torrent
+}
+
+func newHelperLinkRig(t *testing.T, routed bool) *helperLinkRig {
+	t.Helper()
 	ctx := t.Context()
 	dir := t.TempDir()
 	links := filepath.Join(dir, "links")
@@ -49,27 +56,22 @@ func TestHardlinkIndexCountsARoutedHelperTorrentAsATorrent(t *testing.T) {
 	source := singleFileTorrent(routedSourceHash, filepath.Join(dir, "data"), "movie.mkv")
 	helper := singleFileTorrent(routedHash, filepath.Join(links, "Movie"), "movie.mkv")
 	sourceQbit := newFakeQbit(t, []qbt.Torrent{source}, files)
-	crossQbit := newFakeQbit(t, []qbt.Torrent{helper}, files)
+	otherQbit := newFakeQbit(t, []qbt.Torrent{helper}, files)
 
-	db := testdb.NewMigratedSQLite(t, "hardlink-routed-helper")
+	db := testdb.NewMigratedSQLite(t, "hardlink-helper")
 	instances, err := models.NewInstanceStore(db, make([]byte, 32))
 	require.NoError(t, err)
 	sourceInstance, err := instances.Create(ctx, "lib", sourceQbit.URL, "", "", nil, nil, false, new(true))
 	require.NoError(t, err)
-	crossInstance, err := instances.Create(ctx, "seeds", crossQbit.URL, "", "", nil, nil, false, new(true))
+	otherInstance, err := instances.Create(ctx, "seeds", otherQbit.URL, "", "", nil, nil, false, new(true))
 	require.NoError(t, err)
-	routeStore := models.NewCrossSeedRouteStore(db)
-	require.NoError(t, routeStore.Upsert(ctx, &models.CrossSeedRoute{
-		SourceInstanceID: sourceInstance.ID, CrossSeedInstanceID: crossInstance.ID,
-		Rows: []models.CrossSeedRouteRow{{BaseDir: links}},
-	}))
 
 	clients, err := qbittorrent.NewClientPool(instances, models.NewInstanceErrorStore(db), time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = clients.Close() })
 	syncManager := qbittorrent.NewSyncManager(clients, nil)
 	syncManager.SetFilesManager(filesmanager.NewService(db))
-	syncManager.SetHelperTorrents(helperOnInstance{instanceID: crossInstance.ID, hash: routedHash})
+	syncManager.SetHelperTorrents(helperOnInstance{instanceID: otherInstance.ID, hash: routedHash})
 	backends := fsops.NewPool(instances, localbackend.NewBackend())
 
 	forget := func() {
@@ -80,8 +82,31 @@ func TestHardlinkIndexCountsARoutedHelperTorrentAsATorrent(t *testing.T) {
 	forget()
 	t.Cleanup(forget)
 	service := NewService(Config{}, instances, nil, nil, nil, syncManager, nil, nil, nil, backends)
-	service.crossSeedRoutes = crossseedroute.NewService(routeStore, instances, clients, backends)
+	if routed {
+		routeStore := models.NewCrossSeedRouteStore(db)
+		require.NoError(t, routeStore.Upsert(ctx, &models.CrossSeedRoute{
+			SourceInstanceID: sourceInstance.ID, CrossSeedInstanceID: otherInstance.ID,
+			Rows: []models.CrossSeedRouteRow{{BaseDir: links}},
+		}))
+		service.crossSeedRoutes = crossseedroute.NewService(routeStore, instances, clients, backends)
+	}
+	return &helperLinkRig{service: service, sourceID: sourceInstance.ID, source: source}
+}
 
-	index := service.GetHardlinkIndex(ctx, sourceInstance.ID, torrentRefs([]qbt.Torrent{source}))
+func TestHardlinkIndexCountsARoutedHelperTorrentAsATorrent(t *testing.T) {
+	rig := newHelperLinkRig(t, true)
+
+	index := rig.service.GetHardlinkIndex(t.Context(), rig.sourceID, torrentRefs([]qbt.Torrent{rig.source}))
 	require.Equal(t, HardlinkScopeTorrentsOnly, index.ScopeByHash[routedSourceHash], "the routed Share torrent still holds the hardlink")
+}
+
+func TestCrossScopeFindsAHelperTorrentOnAnotherInstance(t *testing.T) {
+	rig := newHelperLinkRig(t, false)
+
+	index := rig.service.GetHardlinkIndex(t.Context(), rig.sourceID, torrentRefs([]qbt.Torrent{rig.source}))
+	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash[routedSourceHash])
+	index.crossScopeMu.Lock()
+	rig.service.augmentCrossInstanceScope(t.Context(), rig.sourceID, index)
+	index.crossScopeMu.Unlock()
+	require.Equal(t, HardlinkScopeTorrentsOnly, index.CrossScopeByHash[routedSourceHash], "the Transfer torrent on the other instance holds the hardlink")
 }
