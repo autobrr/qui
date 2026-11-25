@@ -124,7 +124,8 @@ func (d *drifting) report(ctx context.Context) driftReport {
 }
 
 func (r *result) broken() bool {
-	return r.problem != "" || 2*r.failed[head] > r.rounds && 2*r.failed[base] <= r.rounds
+	unmeasured := r.rounds == r.want && (len(r.before.names) == 0 || len(r.after.names) == 0)
+	return r.problem != "" || unmeasured || 2*r.failed[head] > r.rounds && 2*r.failed[base] <= r.rounds
 }
 
 func losses(rows []row) []row {

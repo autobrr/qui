@@ -222,3 +222,43 @@ func TestRerunsOfANoisyPartKeepTheFailuresOfTheWholeRuns(t *testing.T) {
 		assert.True(t, r.broken())
 	})
 }
+
+func TestOneFailedRunWithoutResultIsCountedAndTheRunsGoOn(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		plain := bench{"a", "BenchmarkPlain"}
+		m := fakeRunner{}.meter()
+		calls := 0
+		m.run = func(context.Context, side, bench, string) (samples, error) {
+			if calls++; calls == 3 {
+				return samples{}, runFailed("plain_test.go:9: a check takes 11ms, want under 10ms")
+			}
+			return readSamples([]byte("BenchmarkPlain 1 5 ns/op\n"), 1)
+		}
+		r := m.measure(t.Context(), []bench{plain})[0]
+		assert.Equal(t, 2*m.want, calls)
+		assert.Equal(t, 1, r.failed[head])
+		assert.False(t, r.broken())
+	})
+}
+
+func TestRunsThatAlwaysFailWithoutResultTurnTheWeeklyJobRed(t *testing.T) {
+	for name, fails := range map[string]func(side) bool{
+		"only on the branch": func(s side) bool { return s == head },
+		"on both sides":      func(side) bool { return true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				m := fakeRunner{}.meter()
+				m.run = func(_ context.Context, s side, _ bench, _ string) (samples, error) {
+					if fails(s) {
+						return samples{}, runFailed("plain_test.go:9: no rows")
+					}
+					return readSamples([]byte("BenchmarkPlain 1 5 ns/op\n"), 1)
+				}
+				r := m.measure(t.Context(), []bench{{"a", "BenchmarkPlain"}})[0]
+				assert.Equal(t, m.want, r.rounds)
+				assert.True(t, r.broken())
+			})
+		})
+	}
+}

@@ -119,7 +119,7 @@ func (b *builder) exec(ctx context.Context, binary, commit, dir string, args ...
 		return nil, fmt.Errorf("one run takes more than %s, so %d runs of each side do not fit in %s", b.runLimit(), b.rounds, b.limit)
 	}
 	if err != nil {
-		return stdout.Bytes(), errors.New(failure(append(stdout.Bytes(), stderr.Bytes()...), err))
+		return stdout.Bytes(), runFailed(failure(append(stdout.Bytes(), stderr.Bytes()...), err))
 	}
 	return stdout.Bytes(), nil
 }
@@ -139,6 +139,10 @@ func goTool(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	cmd.Dir = dir
 	return cmd
 }
+
+type runFailed string
+
+func (r runFailed) Error() string { return string(r) }
 
 func failure(out []byte, err error) string {
 	text := ""

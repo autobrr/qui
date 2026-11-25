@@ -6,6 +6,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -85,7 +86,7 @@ func (r *result) round(ctx context.Context, run runFunc, pattern string, whole b
 		}
 		if err != nil {
 			failure := fmt.Sprintf("it fails on %s: %v", s, err)
-			if len(out.names) == 0 {
+			if _, ran := errors.AsType[runFailed](err); len(out.names) == 0 && !ran {
 				r.problem = failure
 				return
 			}

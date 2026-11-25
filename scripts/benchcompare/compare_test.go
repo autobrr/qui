@@ -55,7 +55,7 @@ func TestCompareNamesTheFailureOfABenchmark(t *testing.T) {
 
 	o := options{cache: t.TempDir(), rounds: 6, benchtime: time.Microsecond, limit: time.Hour, progress: io.Discard}
 	report := compared(t.Context(), t, r, o)
-	assert.Contains(t, report, "| CAN'T TELL | sum.BenchmarkAdd |  |  |  |  | it fails on the branch: sum_test.go:9: too many |")
+	assert.Contains(t, report, "| CAN'T TELL | sum.BenchmarkAdd | sec/op |  |  |  | it fails on the branch: sum_test.go:9: too many |")
 }
 
 func compared(ctx context.Context, t *testing.T, r testRepo, o options) string {
