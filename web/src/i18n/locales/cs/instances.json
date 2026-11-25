@@ -472,6 +472,7 @@
       "activeCount": "{{enabled}}/{{total}} aktivní",
       "today": "{{count}} dnes",
       "failed": "{{count}} selhalo",
+      "outcomeFailed": "Selhalo",
       "failedToLoadRules": "Nepodařilo se načíst pravidla",
       "checkConnection": "Zkontrolujte spojení s instancí.",
       "loadingRules": "Načítání pravidel...",
