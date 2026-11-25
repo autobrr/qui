@@ -67,7 +67,7 @@ function write(key: string, value: string | null): void {
     if (value === null) localStorage.removeItem(key)
     else localStorage.setItem(key, value)
   } catch {
-    // A full or blocked storage keeps the old value.
+    return
   }
 }
 

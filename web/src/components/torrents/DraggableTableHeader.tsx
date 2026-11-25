@@ -15,7 +15,6 @@ import { centersSelectCheckbox } from "@/lib/torrent-table/row-display"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 import type { TorrentTableHeader } from "./tanstackTableFeatures"
 
-{/* Auto-fit width for column headers on double-click*/}
 const TORRENT_ROW_CELL_MEASURE = "data-torrent-column-measure"
 
 function escapeColumnIdForSelector(columnId: string): string {
@@ -54,7 +53,6 @@ function measureTorrentColumnFitWidth(gridRoot: HTMLElement, columnId: string): 
 
   return maxContent
 }
-{/* Auto-fit width for column headers on double-click end*/}
 
 interface DraggableTableHeaderProps {
   header: TorrentTableHeader

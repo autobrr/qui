@@ -764,7 +764,7 @@
       "count": 7
     },
     "qui/no-comments": {
-      "count": 181
+      "count": 179
     },
     "qui/no-direct-effect": {
       "count": 9
@@ -834,7 +834,7 @@
   },
   "src/components/kit/ConfirmDialog.tsx": {
     "qui/no-comments": {
-      "count": 9
+      "count": 8
     }
   },
   "src/components/kit/Editor.test.tsx": {
@@ -1117,11 +1117,6 @@
     },
     "qui/no-comments": {
       "count": 32
-    }
-  },
-  "src/components/query-builder/fields.generated.ts": {
-    "qui/no-comments": {
-      "count": 3
     }
   },
   "src/components/search/SearchForm.tsx": {
@@ -1723,7 +1718,7 @@
       "count": 4
     },
     "qui/no-comments": {
-      "count": 6
+      "count": 4
     }
   },
   "src/components/torrents/FilePrioritySelect.tsx": {
@@ -1847,7 +1842,7 @@
       "count": 10
     },
     "qui/no-comments": {
-      "count": 77
+      "count": 76
     },
     "qui/no-direct-effect": {
       "count": 6
@@ -1866,7 +1861,7 @@
       "count": 2
     },
     "qui/no-comments": {
-      "count": 49
+      "count": 47
     },
     "qui/no-direct-effect": {
       "count": 11
@@ -1996,7 +1991,7 @@
       "count": 2
     },
     "qui/no-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/torrents/details/GeneralTabHorizontal.tsx": {
@@ -2505,7 +2500,7 @@
       "count": 1
     },
     "qui/no-comments": {
-      "count": 13
+      "count": 12
     }
   },
   "src/contexts/LayoutRouteContext.tsx": {
@@ -3203,11 +3198,6 @@
       "count": 1
     }
   },
-  "src/hooks/usePersistedThemeVariation.ts": {
-    "qui/no-comments": {
-      "count": 1
-    }
-  },
   "src/hooks/usePersistedUnifiedInstanceFilter.ts": {
     "qui/no-comments": {
       "count": 1
@@ -3270,7 +3260,7 @@
       "count": 1
     },
     "qui/no-comments": {
-      "count": 24
+      "count": 23
     },
     "qui/no-direct-effect": {
       "count": 1
@@ -3723,11 +3713,6 @@
       "count": 2
     }
   },
-  "src/lib/api-key-permissions.generated.ts": {
-    "qui/no-comments": {
-      "count": 2
-    }
-  },
   "src/lib/api-key-permissions.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
@@ -3741,7 +3726,7 @@
       "count": 8
     },
     "qui/no-comments": {
-      "count": 129
+      "count": 123
     }
   },
   "src/lib/base-url.ts": {
@@ -3762,7 +3747,7 @@
       "count": 5
     },
     "qui/no-comments": {
-      "count": 118
+      "count": 116
     },
     "qui/no-direct-effect": {
       "count": 1
@@ -4204,7 +4189,7 @@
       "count": 1
     },
     "qui/no-comments": {
-      "count": 11
+      "count": 10
     }
   },
   "src/lib/theme-storage.visit.test.ts": {
@@ -4337,7 +4322,7 @@
   },
   "src/lib/tracker-customizations.ts": {
     "qui/no-comments": {
-      "count": 18
+      "count": 15
     }
   },
   "src/lib/tracker-icons.ts": {

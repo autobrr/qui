@@ -34,10 +34,10 @@ export function parseCachedTheme(raw: string | null): Theme | null {
     if (theme?.id && theme.id !== FALLBACK_THEME.id && theme.cssVars?.light && theme.cssVars?.dark) {
       return theme;
     }
+    return null;
   } catch {
-    // Ignore malformed cache
+    return null;
   }
-  return null;
 }
 
 function hydrateCachedTheme(): Theme[] {

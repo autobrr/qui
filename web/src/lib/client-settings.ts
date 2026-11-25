@@ -306,7 +306,7 @@ function persistPending(): void {
     if (pending.size === 0) localStorage.removeItem(OUTBOX_KEY)
     else localStorage.setItem(OUTBOX_KEY, JSON.stringify([...pending.keys()]))
   } catch {
-    // Best effort; losing the outbox only reopens the unload race.
+    return
   }
 }
 
@@ -321,7 +321,7 @@ function loadPersistedPending(): void {
       if (value !== null) queue(key, value)
     }
   } catch {
-    // Corrupt outbox: drop it, the values themselves are still in localStorage.
+    return
   }
 }
 
