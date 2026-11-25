@@ -28,6 +28,9 @@
     /* Status */
     --destructive: oklch(0.55 0.22 25);
     --destructive-foreground: oklch(1.00 0 0);
+    --success: oklch(0.4900 0.1500 145.0000);
+    --warning: oklch(0.5100 0.1056 80.0000);
+    --info: oklch(0.5050 0.1271 245.0000);
 
     /* UI */
     --border: oklch(0.88 0.02 350);
@@ -95,6 +98,9 @@
 
     --destructive: oklch(0.62 0.21 25);
     --destructive-foreground: oklch(0.98 0 0);
+    --success: oklch(0.7200 0.1000 145.0000);
+    --warning: oklch(0.7200 0.1000 80.0000);
+    --info: oklch(0.7200 0.1000 245.0000);
 
     --border: oklch(0.22 0.01 285);
     --input: oklch(0.18 0.01 285);
