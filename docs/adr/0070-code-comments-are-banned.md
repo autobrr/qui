@@ -13,7 +13,7 @@ The markers that a tool or a standard reads are not prose and stay: the license 
 
 About 39,000 comments were in the code when the ban started. On 2026-11-25 one change deleted every comment that was left, without sorting them, and with them the counts that held them. Commit `9fcce7861` still has the text. `scripts/ratchet` fails on each comment in a Go file, and ESLint fails on each comment in a web file. No allowlist holds one.
 
-The same change deleted the 1,087 `// regression: #N` markers on tests from bug fixes, and the check of ADR 0086 that asked for them. The commit that added a test names its fix: in a sample of 150 markers, `git blame` gave the same number for 116.
+The same change deleted the 1,088 `// regression: #N` markers on tests from bug fixes, and the check of ADR 0086 that asked for them. The commit that added a test names its fix: in a sample of 150 markers, `git blame` gave the same number for 116.
 
 ## Consequences
 
