@@ -7,7 +7,9 @@ import type { Automation } from "@/types"
 import { getTrackerTokens } from "@/lib/workflow-utils"
 import { BYTE_LADDER, formatValueWithUnit, scaleToUnit } from "@/lib/unit-format"
 import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { extendTailwindMerge } from "tailwind-merge"
+
+const twMerge = extendTailwindMerge({ extend: { theme: { text: ["10", "13"] } } })
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

@@ -202,7 +202,7 @@ function NewKeyNotice({ newKey, onDone }: { newKey: NewClientApiKey; onDone: () 
       <div className="flex items-center gap-1 rounded-md border bg-background py-1 pr-1 pl-3">
         <code
           aria-label={t("clientApiKeys.newKey.proxyUrl")}
-          className={cn("min-w-0 flex-1 py-1 font-mono text-[13px] [overflow-wrap:anywhere]", incognitoMode && "blur-sm select-none")}
+          className={cn("min-w-0 flex-1 py-1 font-mono text-13 [overflow-wrap:anywhere]", incognitoMode && "blur-sm select-none")}
         >
           {url}
         </code>

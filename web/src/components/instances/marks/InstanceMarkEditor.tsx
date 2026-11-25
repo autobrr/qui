@@ -41,7 +41,7 @@ const SWATCHES: (InstanceMarkColor | null)[] = [null, ...INSTANCE_MARK_COLORS]
 
 const COLOR_STEPS: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }
 
-const optionClassName = "outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50"
+const optionClassName = "outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50"
 const pressedClassName = "bg-accent ring-1 ring-foreground/40"
 const previewClassName = "grid size-8 place-items-center rounded-md border bg-background text-foreground"
 const labelColumnClassName = "sm:grid sm:grid-cols-[6rem_1fr] sm:items-center sm:gap-2"

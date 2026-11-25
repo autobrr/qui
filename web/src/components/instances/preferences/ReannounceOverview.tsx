@@ -434,7 +434,7 @@ export function ReannounceOverview({
                                           <Badge
                                             variant="outline"
                                             className={cn(
-                                              "capitalize text-[10px] px-1.5 py-0 h-5",
+                                              "capitalize text-10 px-1.5 py-0 h-5",
                                               outcomeClasses[event.outcome]
                                             )}
                                           >

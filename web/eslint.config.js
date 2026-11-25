@@ -426,6 +426,7 @@ export default tseslint.config([
       },
     },
     rules: {
+      'shadcn/no-arbitrary-values': ['error', { allow: ['layout'] }],
       'shadcn/no-unknown-classes': ['error', { allow: ['ss-*', 'fi', 'animated-logo-element', 'toaster'] }],
       'shadcn/require-static-classes': 'error',
     },
@@ -433,6 +434,7 @@ export default tseslint.config([
   {
     files: ['src/components/{ui,kit}/**/*.{ts,tsx}'],
     rules: {
+      'shadcn/no-arbitrary-values': 'off',
       'shadcn/require-static-classes': 'off',
     },
   },

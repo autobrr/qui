@@ -103,7 +103,7 @@ function DayField({ id, label, value, max, onChange }: DayFieldProps) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <div className="relative flex h-9 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-[color,box-shadow] has-focus-visible:border-ring has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 dark:bg-input/30">
+      <div className="relative flex h-9 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-[color,box-shadow] has-focus-visible:border-ring has-focus-visible:ring-3 has-focus-visible:ring-ring/50 dark:bg-input/30">
         <span className={cn("tabular-nums", !day && "text-muted-foreground")}>{day ? formatCalendarDay(day, preferences) : t("customRange.pick")}</span>
         <CalendarDays className="size-4 text-muted-foreground" />
         <Input

@@ -779,7 +779,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                 {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
                                 {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
                                 {run.status === "canceled" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                <Badge variant="outline" className="text-[10px] shrink-0">
+                                <Badge variant="outline" className="text-10 shrink-0">
                                   {run.kind === "scheduled" ? t("scan.runKind.scheduled") : t("scan.runKind.manual")}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">
@@ -813,7 +813,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                               <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
                                 {successResults.map((result, i) => (
                                   <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
-                                    <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
+                                    <Badge variant="default" className="text-10 shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
                                     <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                     {routeLabel(result)}
                                   </div>
@@ -823,16 +823,16 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                 )}
                                 {skippedResults.length > 0 && (
                                   <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-                                    <span className="text-[10px] text-muted-foreground font-medium">{t("scan.skippedLabel")}</span>
+                                    <span className="text-10 text-muted-foreground font-medium">{t("scan.skippedLabel")}</span>
                                     {skippedResults.map((result, i) => (
                                       <div key={`skipped-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                         <div className="flex items-center gap-2">
-                                          <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
+                                          <Badge variant="secondary" className="text-10 shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                           {routeLabel(result)}
                                         </div>
                                         {result.message && (
-                                          <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message}</span>
+                                          <span className="text-muted-foreground/70 pl-[104px] text-10">{result.message}</span>
                                         )}
                                       </div>
                                     ))}
@@ -840,15 +840,15 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                 )}
                                 {failedResults.length > 0 && (
                                   <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-                                    <span className="text-[10px] text-muted-foreground font-medium">{t("scan.failed")}</span>
+                                    <span className="text-10 text-muted-foreground font-medium">{t("scan.failed")}</span>
                                     {failedResults.map((result, i) => (
                                       <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                         <div className="flex items-center gap-2">
-                                          <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
+                                          <Badge variant="destructive" className="text-10 shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                           {routeLabel(result)}
                                         </div>
-                                        <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || t("scan.noMessageProvided")}</span>
+                                        <span className="text-muted-foreground/70 pl-[104px] text-10">{result.message || t("scan.noMessageProvided")}</span>
                                       </div>
                                     ))}
                                   </div>

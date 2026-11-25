@@ -68,7 +68,7 @@ export function DisplayProfileIconPicker({ icon, color, onIconChange, onColorCha
                           aria-pressed={pressed}
                           onClick={() => onIconChange(entry.name)}
                           className={cn(
-                            "grid size-9 place-items-center rounded-md outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                            "grid size-9 place-items-center rounded-md outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50",
                             pressed && "bg-accent ring-1 ring-foreground/40"
                           )}
                         >
@@ -97,7 +97,7 @@ export function DisplayProfileIconPicker({ icon, color, onIconChange, onColorCha
                         aria-pressed={pressed}
                         aria-label={label}
                         onClick={() => onColorChange(option.color)}
-                        className={cn("grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", option.className)}
+                        className={cn("grid size-7 place-items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50", option.className)}
                       >
                         <span
                           className={cn(

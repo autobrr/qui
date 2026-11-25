@@ -1,6 +1,6 @@
 [build]
   publish = "build"
-  command = "pnpm --dir ../web install --frozen-lockfile && pnpm --dir ../web build:demo && rm -rf static/demo && cp -r ../web/dist-demo static/demo && pnpm build"
+  command = "(cd ../web && pnpm install --frozen-lockfile && pnpm build:demo) && rm -rf static/demo && cp -r ../web/dist-demo static/demo && pnpm build"
 
 [build.environment]
   NODE_VERSION = "24"

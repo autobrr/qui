@@ -3,8 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { formatBytesOrFallback, joinPath, parseTrackerDomains, takeTurns } from "@/lib/utils"
+import { cn, formatBytesOrFallback, joinPath, parseTrackerDomains, takeTurns } from "@/lib/utils"
 import type { Automation } from "@/types"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
 import "@/i18n"
 
@@ -30,6 +32,22 @@ describe("parseTrackerDomains", () => {
     }))
 
     expect(result).toEqual(["a.com", "b.com", "c.com"])
+  })
+})
+
+describe("cn with a named font size", () => {
+  const indexCss = readFileSync(resolve(__dirname, "../../index.css"), "utf8")
+  const namedSizes = [...indexCss.matchAll(/--text-(\w+):/g)].map(([, name]) => `text-${name}`)
+
+  it.each(namedSizes)("keeps a text color and drops an earlier font size and line height: %s", (size) => {
+    expect(cn(`text-red-500 text-xs leading-none ${size}`)).toBe(`text-red-500 ${size}`)
+  })
+
+  it.each([
+    ["a variant", "md:text-red-500 md:text-sm md:leading-none md:text-13", "md:text-red-500 md:text-13"],
+    ["a line-height modifier", "text-red-500 text-sm leading-none text-13/5", "text-red-500 text-13/5"],
+  ])("does the same with %s", (_, classes, merged) => {
+    expect(cn(classes)).toBe(merged)
   })
 })
 

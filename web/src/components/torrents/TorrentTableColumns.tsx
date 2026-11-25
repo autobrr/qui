@@ -98,7 +98,7 @@ const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) =>
 
   return (
     <div className="flex h-full w-full items-center justify-center" role={title ? "img" : undefined} aria-label={title || undefined}>
-      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
+      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-10 font-medium uppercase leading-none">
         {src && !hasError ? (
           <img
             src={src}

@@ -202,6 +202,9 @@
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
 
+  --text-10: 10px;
+  --text-13: 13px;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

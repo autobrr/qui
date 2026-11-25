@@ -125,7 +125,7 @@ function Calendar({ days }: { days: CalendarDay[] }) {
             const first = week.find(day => day && new Date(day.start).getDate() === 1)
             return (
               <li key={index} className="flex min-w-0 flex-col gap-[3px]">
-                <span className={cn("flex h-4 text-[10px] leading-4 whitespace-nowrap text-muted-foreground", index >= weeks.length - 2 && "justify-end")} aria-hidden>
+                <span className={cn("flex h-4 text-10 leading-4 whitespace-nowrap text-muted-foreground", index >= weeks.length - 2 && "justify-end")} aria-hidden>
                   {first && new Date(first.start).toLocaleDateString(locale, { month: "short" })}
                 </span>
                 <ol className="contents">
