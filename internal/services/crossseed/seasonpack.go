@@ -325,17 +325,14 @@ func (s *Service) applySeasonPack(ctx context.Context, req seasonPackRequest) (*
 		return &seasonPackApplyResult{reason: reason, message: message}, nil
 	}
 
-	lookup := s.seasonPackLookup(ctx, prep, prep.eligible)
-	defer lookup.refreshStale()
-	return s.applyPreparedSeasonPack(ctx, prep, lookup, req.indexer)
+	return s.applyPreparedSeasonPack(ctx, prep, req.indexer)
 }
 
-func (s *Service) applyPreparedSeasonPack(ctx context.Context, prep *seasonPackPrep, lookup *heldLookup, indexer string) (*seasonPackApplyResult, error) {
+func (s *Service) applyPreparedSeasonPack(ctx context.Context, prep *seasonPackPrep, indexer string) (*seasonPackApplyResult, error) {
 	hashes := collectHashes(prep.meta)
 	pack, release := s.seasonPackApplies.claim(hashes[0])
 	defer release()
 	s.lookUpSeason(ctx, prep)
-	lookup.addTitles(prep.aliasTitles)
 	giveUp, err := pack.takeTurn(ctx)
 	if err != nil {
 		return nil, err
@@ -393,6 +390,8 @@ func (s *Service) applyPreparedSeasonPack(ctx context.Context, prep *seasonPackP
 	}
 	prep.eligible = unblocked
 
+	lookup := s.seasonPackLookup(ctx, prep, prep.eligible)
+	defer lookup.refreshStale()
 	matches, matchedTitles, err := s.computeCoverage(ctx, prep, lookup)
 	if err != nil {
 		message := err.Error()

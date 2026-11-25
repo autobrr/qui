@@ -74,8 +74,7 @@ func (s *Service) webhookSeasonPackApply(ctx context.Context, input webhookCheck
 	if len(answer.matches) > 0 {
 		return response, nil
 	}
-	lookup := s.webhookSeasonPackLookup(ctx, prep, direct)
-	if lookup == nil {
+	if s.webhookSeasonPackLookup(ctx, prep, direct) == nil {
 		return response, nil
 	}
 	prep.skipAutoResume = request.SkipAutoResume
@@ -83,7 +82,7 @@ func (s *Service) webhookSeasonPackApply(ctx context.Context, input webhookCheck
 		s.recordApplyRun(ctx, prep.packName, "invalid_torrent", problem, 0, 0, 0, 0, 0, "")
 		return response, nil
 	}
-	result, err := s.applyPreparedSeasonPack(ctx, prep, lookup, request.IndexerName)
+	result, err := s.applyPreparedSeasonPack(ctx, prep, request.IndexerName)
 	if err != nil {
 		return nil, err
 	}
