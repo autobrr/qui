@@ -84,9 +84,38 @@ type seasonPackRunRecord struct {
 	LinkMode        string  `json:"linkMode"`
 }
 
+type heldTitlesState int
+
+const (
+	heldTitlesOff heldTitlesState = iota
+	heldTitlesBuilding
+	heldTitlesReady
+)
+
+type heldTitlesNeverBuilt struct {
+	*internalqb.SyncManager
+	started atomic.Bool
+}
+
+func (h *heldTitlesNeverBuilt) InstanceSnapshot(ctx context.Context, instanceID int) *qbt.SyncSnapshot {
+	if !h.started.Load() {
+		return nil
+	}
+	return h.SyncManager.InstanceSnapshot(ctx, instanceID)
+}
+
+func (*heldTitlesNeverBuilt) AddSyncEventSink(internalqb.SyncEventSink) {}
+
+type seasonPackAlternateTitles map[string][]string
+
+func (a seasonPackAlternateTitles) AlternateTitles(_ context.Context, held crossseed.HeldRelease) (crossseed.AlternateTitles, error) {
+	return crossseed.AlternateTitles{Titles: a[held.Title]}, nil
+}
+
 type seasonPackEndpointArr struct {
 	total   int
 	lookups atomic.Int64
+	totals  atomic.Int64
 }
 
 func (a *seasonPackEndpointArr) LookupExternalIDs(context.Context, string, arr.ContentType) (*arr.ExternalIDsResult, error) {
@@ -95,6 +124,7 @@ func (a *seasonPackEndpointArr) LookupExternalIDs(context.Context, string, arr.C
 }
 
 func (a *seasonPackEndpointArr) LookupSeasonEpisodeTotal(context.Context, string, int) (*arr.SeasonEpisodeTotalResult, error) {
+	a.totals.Add(1)
 	if a.total == 0 {
 		return nil, nil
 	}
@@ -107,9 +137,14 @@ type seasonPackEndpointSync struct {
 	hasErr  error
 	addErr  error
 	hidden  bool
+	lists   atomic.Int64
+	checks  atomic.Int64
+	adds    atomic.Int64
+	onAdd   func()
 }
 
 func (s *seasonPackEndpointSync) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
+	s.lists.Add(1)
 	if s.listErr != nil {
 		return nil, s.listErr
 	}
@@ -117,6 +152,7 @@ func (s *seasonPackEndpointSync) GetCachedInstanceTorrents(ctx context.Context, 
 }
 
 func (s *seasonPackEndpointSync) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+	s.checks.Add(1)
 	if s.hasErr != nil {
 		return nil, false, s.hasErr
 	}
@@ -124,6 +160,10 @@ func (s *seasonPackEndpointSync) HasTorrentByAnyHash(ctx context.Context, instan
 }
 
 func (s *seasonPackEndpointSync) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
+	s.adds.Add(1)
+	if s.onAdd != nil {
+		s.onAdd()
+	}
 	if s.addErr != nil {
 		return nil, s.addErr
 	}
@@ -173,7 +213,7 @@ type seasonPackEndpointRig struct {
 	servers     map[int]*qbtstub.Server
 }
 
-func newSeasonPackEndpointRig(t *testing.T, tc *seasonPackEndpointCase, held bool) *seasonPackEndpointRig {
+func newSeasonPackEndpointRig(t *testing.T, tc *seasonPackEndpointCase, held heldTitlesState) *seasonPackEndpointRig {
 	t.Helper()
 	root := t.TempDir()
 	r := &seasonPackEndpointRig{
@@ -233,18 +273,30 @@ func newSeasonPackEndpointRig(t *testing.T, tc *seasonPackEndpointCase, held boo
 		_, err := r.sync.SyncManager.GetCachedInstanceTorrents(t.Context(), id)
 		require.NoError(t, err)
 	}
-	if held {
-		r.svc.StartHeldTitles(t.Context(), experimental.New([]string{string(experimental.HeldTitles)}), r.sync.SyncManager, clients, nil)
-		require.Eventually(t, func() bool {
-			before := r.arr.lookups.Load()
-			r.post("/api/cross-seed/webhook/check", mustJSON(t, seasonPackEndpointRequest{TorrentName: endpointUnheld}))
-			return r.arr.lookups.Load() == before
-		}, 10*time.Second, 10*time.Millisecond)
-	}
+	r.startHeldTitles(held, clients, tc.alternates)
 	if tc.fail != nil {
 		tc.fail(r)
 	}
 	return r
+}
+
+func (r *seasonPackEndpointRig) startHeldTitles(state heldTitlesState, clients *internalqb.ClientPool, alternates seasonPackAlternateTitles) {
+	r.t.Helper()
+	features := experimental.New([]string{string(experimental.HeldTitles)})
+	switch state {
+	case heldTitlesOff:
+	case heldTitlesBuilding:
+		never := &heldTitlesNeverBuilt{SyncManager: r.sync.SyncManager}
+		r.svc.StartHeldTitles(r.t.Context(), features, never, never, nil)
+		never.started.Store(true)
+	case heldTitlesReady:
+		r.svc.StartHeldTitles(r.t.Context(), features, r.sync.SyncManager, clients, []crossseed.AlternateTitleSource{alternates})
+		require.Eventually(r.t, func() bool {
+			before := r.arr.lookups.Load()
+			r.post("/api/cross-seed/webhook/check", mustJSON(r.t, seasonPackEndpointRequest{TorrentName: endpointUnheld}))
+			return r.arr.lookups.Load() == before
+		}, 10*time.Second, 10*time.Millisecond)
+	}
 }
 
 func (r *seasonPackEndpointRig) addInstance(name string, held []string) int {
@@ -278,15 +330,20 @@ func (r *seasonPackEndpointRig) post(path string, body []byte) *httptest.Respons
 	return resp
 }
 
-func (r *seasonPackEndpointRig) record(endpoint string, body []byte) seasonPackEndpointRecord {
+func (r *seasonPackEndpointRig) runs() []seasonPackRunRecord {
 	r.t.Helper()
-	resp := r.post("/api/cross-seed/season-pack/"+endpoint, body)
 	list := httptest.NewRecorder()
 	r.router.ServeHTTP(list, httptest.NewRequestWithContext(r.t.Context(), http.MethodGet, "/api/cross-seed/season-pack/runs", nil))
 	require.Equal(r.t, http.StatusOK, list.Code)
-	record := seasonPackEndpointRecord{Status: resp.Code, Response: jsontext.Value(r.portable(resp.Body.Bytes()))}
-	require.NoError(r.t, json.Unmarshal([]byte(r.portable(list.Body.Bytes())), &record.Runs))
-	return record
+	var runs []seasonPackRunRecord
+	require.NoError(r.t, json.Unmarshal([]byte(r.portable(list.Body.Bytes())), &runs))
+	return runs
+}
+
+func (r *seasonPackEndpointRig) record(endpoint string, body []byte) seasonPackEndpointRecord {
+	r.t.Helper()
+	resp := r.post("/api/cross-seed/season-pack/"+endpoint, body)
+	return seasonPackEndpointRecord{Status: resp.Code, Response: jsontext.Value(r.portable(resp.Body.Bytes())), Runs: r.runs()}
 }
 
 func (r *seasonPackEndpointRig) portable(body []byte) string {

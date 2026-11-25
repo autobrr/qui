@@ -31,6 +31,7 @@ type seasonPackEndpointCase struct {
 	name          string
 	held          []string
 	heldElsewhere []string
+	alternates    seasonPackAlternateTitles
 	total         int
 	request       seasonPackEndpointRequest
 	torrent       []byte
@@ -155,7 +156,7 @@ func seasonPackApplyCases(t *testing.T) []seasonPackEndpointCase {
 
 func TestSeasonPackEndpointsKeepTheirWireFormat(t *testing.T) {
 	for endpoint, cases := range map[string][]seasonPackEndpointCase{"check": seasonPackCheckCases(t), "apply": seasonPackApplyCases(t)} {
-		for mode, held := range map[string]bool{"held_titles_off": false, "held_titles_ready": true} {
+		for mode, held := range map[string]heldTitlesState{"held_titles_off": heldTitlesOff, "held_titles_ready": heldTitlesReady} {
 			path := filepath.Join("testdata", "season_pack_endpoints", endpoint+"_"+mode+".json")
 			want := map[string]jsontext.Value{}
 			if !*updateSeasonPackEndpoints {
