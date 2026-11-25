@@ -146,10 +146,12 @@ func TestSeasonPackCheckWaitsOnceForASync(t *testing.T) {
 			rig.instances[0].syncTakes(takes)
 			rig.instances[0].startSync()
 
-			resp, waited := rig.checkPack(pack)
+			for _, torrent := range []string{pack, ""} {
+				resp, waited := rig.checkPack(torrent)
 
-			require.True(t, resp.Ready)
-			require.Zero(t, waited)
+				require.True(t, resp.Ready)
+				require.Zero(t, waited)
+			}
 		})
 	})
 	t.Run("no sync due", func(t *testing.T) {

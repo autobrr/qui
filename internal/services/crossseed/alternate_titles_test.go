@@ -258,6 +258,22 @@ func TestAlternateTitlesAskAgainAfterAnIncompleteAnswer(t *testing.T) {
 	})
 }
 
+func TestAlternateTitlesOweNothingForATitleThatLeft(t *testing.T) {
+	for name, source := range map[string]*fakeAlternateTitles{"asked": {hangs: true}, "failed": {down: true}} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				a := runAlternateTitles(t, source)
+				title := holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
+				synctest.Wait()
+				require.False(t, a.caughtUp())
+
+				a.drop(title)
+				require.True(t, a.caughtUp())
+			})
+		})
+	}
+}
+
 func TestAlternateTitlesLogOneLineForTheRetriesOfAnHour(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const titles = 100

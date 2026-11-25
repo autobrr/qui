@@ -76,7 +76,7 @@ func packParityCases(t *testing.T) []packParityCase {
 		{name: "episodes with a torrent", pack: packShow, torrent: packOf(t, packShow, packShowEpisode, 1, 2, 3, 4), matched: packMatched{1: 4, 2: 2}, ready: true},
 		{name: "episodes of two instances", pack: packShow, torrent: packOf(t, packShow, packShowEpisode, 1, 2), matched: packMatched{1: 2, 2: 2}, ready: true},
 		{name: "episodes with a torrent and a higher total", pack: packShow, torrent: packOf(t, packShow, packShowEpisode, 1, 2, 3, 4), sonarr: total(5), matched: packMatched{1: 4, 2: 2}, ready: true},
-		{name: "episodes below the threshold", pack: packShow, torrent: packOf(t, packShow, packShowEpisode, 1, 2, 3, 4), sonarr: total(8), matched: packMatched{1: 4, 2: 2}},
+		{name: "episodes below the threshold", pack: packShow, torrent: packOf(t, packShow, packShowEpisode, 1, 2, 3, 4), sonarr: total(8), matched: packMatched{1: 4, 2: 2}, settings: func(s *models.CrossSeedAutomationSettings) { s.SeasonPackCoverageThreshold = 0 }},
 		{name: "episodes without a torrent", pack: packShow, sonarr: total(4), matched: packMatched{1: 4, 2: 2}, ready: true},
 		{name: "episodes without a torrent and a total", pack: packShow, matched: packMatched{1: 4, 2: 2}, ready: true},
 		{name: "ranges", pack: "Copper.Fjord.S01.1080p.WEB.x264-GRP9", matched: packMatched{1: 2}, ready: true},
