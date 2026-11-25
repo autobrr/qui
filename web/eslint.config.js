@@ -420,6 +420,12 @@ export default tseslint.config([
     },
   },
   {
+    files: ['src/**/*.generated.ts'],
+    rules: {
+      'qui/no-comments': 'off',
+    },
+  },
+  {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**', ...Object.keys(effectHooks)],
     rules: {

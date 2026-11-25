@@ -2223,16 +2223,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (submitState.enabled) {
       saveCheckRun.current += 1
       const checkRun = saveCheckRun.current
-      try {
-        const validation = await api.validateAutomationRegex(instanceId, payload)
-        if (!validation.valid && validation.errors.length > 0) {
-          setRegexErrors(validation.errors)
-          toast.error(t("preferences.workflowDialog.toast.invalidRegexPatternUnsupported"))
-          return
-        }
-      } catch {
-        // If validation endpoint fails, let the save attempt proceed
-        // The backend will still reject invalid regexes
+      const validation = await api.validateAutomationRegex(instanceId, payload).catch(() => null)
+      if (validation && !validation.valid && validation.errors.length > 0) {
+        setRegexErrors(validation.errors)
+        toast.error(t("preferences.workflowDialog.toast.invalidRegexPatternUnsupported"))
+        return
       }
       // A newer Save or a close replaced this check, or the user edited the form. The next Save checks the new values.
       if (checkRun !== saveCheckRun.current || JSON.stringify(currentForm.current) !== JSON.stringify(submitState)) return

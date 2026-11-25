@@ -154,11 +154,11 @@ export const CrossSeedTable = memo(function CrossSeedTable({
         const tracker = info.getValue()
         if (!tracker) return <span className="text-muted-foreground">-</span>
 
-        let hostname = tracker
+        let hostname: string
         try {
           hostname = new URL(tracker).hostname
         } catch {
-          // Keep original if parsing fails
+          hostname = tracker
         }
 
         const displayName = incognitoMode? getLinuxTracker(`${info.row.original.hash}-0`): trackerDisplayNames.get(hostname.toLowerCase()) || hostname

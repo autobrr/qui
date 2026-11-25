@@ -131,7 +131,7 @@ export function useSelfUpdate() {
           }
         }
       } catch {
-        // qui is down.
+        if (controller.signal.aborted) return
       }
       if (!controller.signal.aborted) {
         pollTimer = window.setTimeout(poll, POLL_INTERVAL_MS)

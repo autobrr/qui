@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/alexedwards/scs/v2"
 	qbt "github.com/autobrr/go-qbittorrent"

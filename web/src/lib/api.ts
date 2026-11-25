@@ -348,11 +348,7 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
         }
       }
     } finally {
-      try {
-        await reader.cancel()
-      } catch {
-        // ignore cancel errors
-      }
+      await reader.cancel().catch(() => undefined)
       reader.releaseLock()
     }
     snippet += decoder.decode()
@@ -384,29 +380,31 @@ export async function clearQuiServiceWorker(): Promise<void> {
   // Scope cleanup to qui's own service worker and caches to avoid disrupting
   // other apps on a shared origin (e.g. https://host/qui alongside https://host/photos).
   const quiScope = new URL(withBasePath("/"), window.location.origin).href
+  await unregisterServiceWorkers(quiScope)
+  await deleteCaches(quiScope)
+}
 
-  if ("serviceWorker" in navigator) {
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(
-        registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
-      )
-    } catch {
-      // ignore unregister errors
-    }
+async function unregisterServiceWorkers(quiScope: string): Promise<void> {
+  if (!("serviceWorker" in navigator)) return
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations()
+    await Promise.all(
+      registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
+    )
+  } catch {
+    return
   }
+}
 
-  // Workbox names its precache after the SW scope, so filtering by quiScope
-  // avoids touching other apps' caches.
-  if ("caches" in window) {
-    try {
-      const names = await caches.keys()
-      await Promise.all(
-        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
-      )
-    } catch {
-      // ignore cache clear errors
-    }
+async function deleteCaches(quiScope: string): Promise<void> {
+  if (!("caches" in window)) return
+  try {
+    const names = await caches.keys()
+    await Promise.all(
+      names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
+    )
+  } catch {
+    return
   }
 }
 
@@ -1336,12 +1334,8 @@ class ApiClient {
         const errorData = await response.json()
         errorMessage = errorData.error || errorData.message || errorMessage
       } catch {
-        try {
-          const errorText = await response.text()
-          errorMessage = errorText || errorMessage
-        } catch {
-          // nothing to see here
-        }
+        const errorText = await response.text().catch(() => "")
+        errorMessage = errorText || errorMessage
       }
       throw new Error(errorMessage)
     }

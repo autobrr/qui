@@ -47,12 +47,12 @@ export function extractTrackerHost(tracker: string | undefined | null): string {
     const url = new URL(urlString, "http://placeholder")
     return url.hostname.toLowerCase()
   } catch {
-    // Fall through - extract manually
+    return hostBeforePathAndPort(trimmed)
   }
+}
 
-  // Manual extraction: strip path and port
-  let host = trimmed.toLowerCase()
-  // Remove path
+function hostBeforePathAndPort(tracker: string): string {
+  let host = tracker.toLowerCase()
   const pathIndex = host.indexOf("/")
   if (pathIndex !== -1) {
     host = host.substring(0, pathIndex)

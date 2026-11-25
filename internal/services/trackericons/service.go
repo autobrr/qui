@@ -11,11 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
-
-	// Registered for their side effect: image.Decode needs the gif and jpeg
-	// decoders to read icons that are not png.
-	_ "image/gif"
-	_ "image/jpeg"
+	"image/gif"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"maps"
@@ -32,8 +29,7 @@ import (
 	"time"
 
 	"code.dny.dev/ssrf"
-	// Same again for .ico, which browsers still serve as a favicon.
-	_ "github.com/mat/besticon/v3/ico"
+	"github.com/mat/besticon/v3/ico"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/html"
@@ -69,6 +65,8 @@ var (
 	globalMu      sync.RWMutex
 	fetchEnabled  atomic.Bool
 )
+
+var _ = []func(io.Reader) (image.Image, error){gif.Decode, jpeg.Decode, ico.Decode}
 
 func init() {
 	fetchEnabled.Store(true)

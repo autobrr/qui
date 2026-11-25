@@ -12,9 +12,6 @@ import (
 	"slices"
 	"time"
 
-	// Embeds the zone database, which Windows and minimal container images lack.
-	_ "time/tzdata"
-
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/trackergroup"
 )

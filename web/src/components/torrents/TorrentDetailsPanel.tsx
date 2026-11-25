@@ -1284,11 +1284,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       const torrentKey = `${match.instanceId}-${match.hash}`
                       const isSelected = selectedCrossSeedTorrents.has(torrentKey)
                       const status = getStatusBadgeProps(match, true, t)
-                      let trackerHostname = match.tracker
+                      let trackerHostname: string
                       try {
                         trackerHostname = new URL(match.tracker).hostname
                       } catch {
-                        // Keep the value when it is not a URL
+                        trackerHostname = match.tracker
                       }
                       return (
                         <div
