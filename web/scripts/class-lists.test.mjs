@@ -82,6 +82,26 @@ test("an option that the script cannot read is compared with each value that it 
   assert.deepEqual(compare(side(sized, body), side(shrink, body)).map(({ same }) => same), [false])
 })
 
+test("a null option turns the option off, so it differs from an omitted one", () => {
+  const nullable = { Label: { ...sized.Label, classes: ({ size = "default", className }) => twMerge("flex", size && (size === "sm" ? "text-xs" : "text-sm"), className) } }
+  const same = (before, after) => compare(side(nullable, before), side(nullable, after)).map((result) => result.same)
+  assert.deepEqual(same("const a = <Label size={null} />", "const a = <Label />"), [false])
+  assert.deepEqual(same("const a = <Label size={small ? null : \"sm\"} />", "const a = <Label size={small ? undefined : \"sm\"} />"), [false])
+  assert.deepEqual(same("const a = <Label size={null} className=\"text-sm\" />", "const a = <Label className=\"text-sm\" />"), [true])
+  assert.deepEqual(same("const a = <Label className={cn(null, \"mb-1\")} />", "const a = <Label className=\"mb-1\" />"), [true])
+})
+
+test("a spread differs when its definition differs", () => {
+  const look = "const look = { className: \"text-xs\" }\n"
+  const element = "const a = <Label {...look} />"
+  assert.deepEqual(verdicts(look + element, look + element), [{ changed: false, same: true }])
+  assert.deepEqual(verdicts(look + element, look.replace("xs", "lg") + element), [{ changed: false, same: false }])
+  assert.deepEqual(verdicts(look + element, `${look}const a = <Label {...look} className={look.className} />`), [{ changed: false, same: true }])
+  const late = "const a = <Label className={base} {...look} />"
+  assert.deepEqual(verdicts(look + late, look.replace("xs", "lg") + late), [{ changed: false, same: false }])
+  assert.deepEqual(verdicts(`const base = "mb-1"\n${look}${late}`, `const base = "mb-2"\n${look}${late}`), [{ changed: false, same: false }])
+})
+
 test("a spread gives its class to an element that names none", () => {
   assert.deepEqual(verdicts("const a = <Label {...look} className={cn(\"font-medium\", look.className)} />", "const a = <Label {...look} className={look.className} />"), [{ changed: true, same: true }])
   assert.deepEqual(verdicts("const a = <Label {...look} className={cn(\"font-medium\", look.className)} />", "const a = <Label {...look} />"), [{ changed: true, same: true }])

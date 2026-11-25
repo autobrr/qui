@@ -67,7 +67,7 @@ function constantOf(identifier) {
   return isConstant ? definition.initializer : undefined
 }
 
-function definedText(node) {
+function definedText(node, text = node.getText()) {
   const definitions = new Set()
   const collect = (each) => {
     if (ts.isIdentifier(each)) {
@@ -80,14 +80,15 @@ function definedText(node) {
     ts.forEachChild(each, collect)
   }
   collect(node)
-  return [node, ...definitions].map((each) => each.getText()).join("\n")
+  return [text, ...[...definitions].map((each) => each.getText())].join("\n")
 }
 
 function classParts(node, decided) {
   const unread = [{ unread: definedText(node) }]
   if (ts.isStringLiteralLike(node)) return [node.text]
   if (ts.isParenthesizedExpression(node)) return classParts(node.expression, decided)
-  if (node.kind === ts.SyntaxKind.NullKeyword || node.kind === ts.SyntaxKind.FalseKeyword || node.getText() === "undefined") return []
+  if (node.kind === ts.SyntaxKind.NullKeyword) return [null]
+  if (node.kind === ts.SyntaxKind.FalseKeyword || node.getText() === "undefined") return []
   if (ts.isConditionalExpression(node)) return classParts(holds(node.condition, decided) ? node.whenTrue : node.whenFalse, decided)
   if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return holds(node.left, decided) ? classParts(node.right, decided) : []
   if (ts.isCallExpression(node) && mergeFunctions.has(node.expression.getText())) return node.arguments.flatMap((argument) => classParts(argument, decided))
@@ -109,13 +110,17 @@ function propsOf(element) {
   for (const attribute of element.attributes.properties) {
     if (ts.isJsxAttribute(attribute)) {
       const value = attribute.initializer
-      props.set(attribute.name.getText(), { node: value && ts.isJsxExpression(value) ? value.expression : value })
+      const node = value && ts.isJsxExpression(value) ? value.expression : value
+      props.set(attribute.name.getText(), { node, text: node?.getText() })
       continue
     }
-    const spread = attribute.expression.getText()
     for (const name of [...optionProps, "className"]) {
       const earlier = props.get(name)
-      props.set(name, { unread: earlier ? `${element.attributes.getText()}.${name}` : `${spread}.${name}` })
+      const text = `${attribute.expression.getText()}.${name}`
+      const unread = definedText(attribute.expression, text)
+      props.set(name, earlier
+        ? { text: `${earlier.text}\n${text}`, unread: `${earlier.unread ?? definedText(earlier.node)}\n${unread}` }
+        : { text, unread })
     }
   }
   return props
@@ -125,8 +130,7 @@ function optionOf(prop, decided) {
   if (!prop) return { value: undefined }
   if (prop.unread) return prop
   const parts = classParts(prop.node, decided)
-  if (parts.length === 0) return { value: undefined }
-  return typeof parts[0] === "string" ? { value: parts[0] } : parts[0]
+  return parts[0]?.unread ? parts[0] : { value: parts[0] }
 }
 
 function segmentsOf(prop, decided) {
@@ -135,11 +139,11 @@ function segmentsOf(prop, decided) {
   const texts = [""]
   const unread = []
   for (const part of parts) {
-    if (typeof part === "string") {
-      texts[texts.length - 1] += ` ${part}`
-    } else {
+    if (part?.unread) {
       unread.push(part.unread)
       texts.push("")
+    } else {
+      texts[texts.length - 1] += ` ${part ?? ""}`
     }
   }
   return { texts, unread }
@@ -161,7 +165,7 @@ function elementsOf({ source, primitives }) {
   ts.forEachChild(file, function visit(node) {
     if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && local.has(node.tagName.getText())) {
       const props = propsOf(node)
-      const text = [...optionProps, "className"].map((name) => props.get(name)?.node?.getText() ?? props.get(name)?.unread ?? "").join("\n")
+      const text = [...optionProps, "className"].map((name) => props.get(name)?.text ?? "").join("\n")
       elements.push({ name: local.get(node.tagName.getText()), props, text, line: file.getLineAndCharacterOfPosition(node.getStart()).line + 1 })
     }
     ts.forEachChild(node, visit)
