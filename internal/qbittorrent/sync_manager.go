@@ -1125,14 +1125,14 @@ func (sm *SyncManager) SetTorrentCompletionHandler(notify, handler TorrentComple
 	if sm == nil || sm.clientPool == nil {
 		return
 	}
-	sm.clientPool.SetTorrentCompletionHandler(notify, handler)
+	sm.clientPool.SetTorrentCompletionHandler(sm.skipHelperFinish(notify), sm.skipHelperFinish(handler))
 }
 
 func (sm *SyncManager) SetTorrentAddedHandler(handler TorrentAddedHandler) {
 	if sm == nil || sm.clientPool == nil {
 		return
 	}
-	sm.clientPool.SetTorrentAddedHandler(handler)
+	sm.clientPool.SetTorrentAddedHandler(sm.skipHelperAdds(handler))
 }
 
 func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, hash string) error {
@@ -1212,7 +1212,7 @@ func (sm *SyncManager) GetTorrentRefsFresh(ctx context.Context, instanceID int, 
 	if err != nil {
 		return nil, err
 	}
-	return filter.Select(syncManager.SnapshotUnchecked()), nil
+	return sm.selectRefs(instanceID, filter, syncManager.SnapshotUnchecked()), nil
 }
 
 func (sm *SyncManager) syncFresh(ctx context.Context, instanceID int) (*syncowner.Owner, error) {
@@ -1238,7 +1238,7 @@ func (sm *SyncManager) GetTorrentRefsWithin(ctx context.Context, instanceID int,
 			return nil, fmt.Errorf("refresh maindata: %w", err)
 		}
 	}
-	return filter.Select(syncManager.SnapshotUnchecked()), nil
+	return sm.selectRefs(instanceID, filter, syncManager.SnapshotUnchecked()), nil
 }
 
 func (sm *SyncManager) OmitsTrackersOnExport(ctx context.Context, instanceID int) (bool, error) {
@@ -1385,6 +1385,13 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	mainData := resolveMainData(syncManager, mainDataModeForRequest(skipFreshData, syncManager.LastSyncTime()))
 
 	syncSnapshot := listSnapshot(syncManager, skipFreshData)
+	var hidden, hiddenRows snapshotHelpers
+	if !view.WithHelperTorrents {
+		hidden = helpersOf(syncSnapshot, sm.helpers(), instanceID)
+	}
+	if len(filters.Hashes) == 0 {
+		hiddenRows = hidden
+	}
 
 	var hashLookupHit bool
 	if len(filters.Hashes) == 1 && syncSnapshot != nil {
@@ -1414,9 +1421,9 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	case rule.none:
 		filteredTorrents = nil
 	case rule.narrows():
-		filteredTorrents = snapshotMatching(syncSnapshot, rule.match)
+		filteredTorrents = hiddenRows.drop(snapshotMatching(syncSnapshot, rule.match))
 	default:
-		filteredTorrents = snapshotTorrents(syncSnapshot)
+		filteredTorrents = hidden.drop(snapshotTorrents(syncSnapshot))
 		allTorrentsForCounts = filteredTorrents
 	}
 
@@ -1470,7 +1477,7 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 				return allTorrentsForCounts
 			}
 
-			torrents := snapshotTorrents(syncSnapshot)
+			torrents := hidden.drop(snapshotTorrents(syncSnapshot))
 			if len(torrents) == 0 {
 				log.Trace().
 					Int("instanceID", instanceID).
@@ -1478,7 +1485,11 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 			}
 			return torrents
 		}
-		counts = sm.cachedCountsForRequest(ctx, client, countsGen, allTorrents, mainData, trackerHealthSupported, useSubcategories)
+		if view.WithHelperTorrents {
+			counts = sm.cachedCountsForRequest(ctx, client, countsGen, allTorrents, mainData, trackerHealthSupported, useSubcategories)
+		} else {
+			counts = sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerHealthSupported, useSubcategories)
+		}
 	}
 
 	var paginatedViews []TorrentView
@@ -1578,7 +1589,7 @@ func (sm *SyncManager) lookupInstanceName(ctx context.Context, instanceID int) (
 }
 
 func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, instanceName string, snapshot *qbt.SyncSnapshot) []CrossInstanceTorrentView {
-	torrents := snapshotTorrents(snapshot)
+	torrents := sm.ListSnapshot(instanceID, snapshot)
 	if len(torrents) == 0 {
 		return nil
 	}
@@ -1619,11 +1630,12 @@ func (sm *SyncManager) listUnifiedTorrents(ctx context.Context, view *TorrentLis
 
 	groupCopies := view.CopyGroups
 	instanceView := TorrentListView{
-		Search:            view.Search,
-		Filters:           view.Filters,
-		SidebarCounts:     view.SidebarCounts,
-		CacheOnly:         view.CacheOnly,
-		FullPasskeyAccess: view.FullPasskeyAccess,
+		Search:             view.Search,
+		Filters:            view.Filters,
+		SidebarCounts:      view.SidebarCounts,
+		CacheOnly:          view.CacheOnly,
+		FullPasskeyAccess:  view.FullPasskeyAccess,
+		WithHelperTorrents: view.WithHelperTorrents,
 	}
 	var requestInstanceIDs []int
 
@@ -3568,7 +3580,7 @@ func (sm *SyncManager) GetAllTorrentRefs(ctx context.Context, instanceID int) ([
 	if snapshot == nil {
 		return nil, nil
 	}
-	torrents := snapshot.Torrents()
+	torrents := sm.ListSnapshot(instanceID, snapshot)
 
 	if expected := sm.pendingStates(instanceID, client, syncManager.LastSyncTime(), snapshot); len(expected) > 0 {
 		for i, torrent := range torrents {

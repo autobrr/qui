@@ -97,6 +97,10 @@ type seasonPackViewsReader struct {
 	read       []int
 }
 
+func (*seasonPackViewsReader) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	return nil, nil
+}
+
 func (r *seasonPackViewsReader) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
 	r.read = append(r.read, instanceID)
 	if r.failing[instanceID] {
