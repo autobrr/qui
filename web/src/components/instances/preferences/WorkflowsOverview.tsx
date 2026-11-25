@@ -183,10 +183,10 @@ function getOutcomeBadgeText(event: AutomationActivity): string {
   const ns = "instances"
   if (event.outcome === "dry-run") return i18n.t(`${s}.dryRun`, { ns })
   if (event.outcome === "skipped") return i18n.t(`${s}.skipped`, { ns })
-  if (event.action === "external_program") return i18n.t(`${s}.${event.outcome === "success" ? "executed" : "failed"}`, { ns })
-  if (event.action === "exported_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "exported" : "failed"}`, { ns })
-  if (event.action === "transferred_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "transferStarted" : "failed"}`, { ns })
-  return i18n.t(`${s}.${event.outcome === "success" ? "removed" : "failed"}`, { ns })
+  if (event.action === "external_program") return i18n.t(`${s}.${event.outcome === "success" ? "executed" : "outcomeFailed"}`, { ns })
+  if (event.action === "exported_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "exported" : "outcomeFailed"}`, { ns })
+  if (event.action === "transferred_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "transferStarted" : "outcomeFailed"}`, { ns })
+  return i18n.t(`${s}.${event.outcome === "success" ? "removed" : "outcomeFailed"}`, { ns })
 }
 
 function sumRecordValues(values: Record<string, number> | undefined): number {

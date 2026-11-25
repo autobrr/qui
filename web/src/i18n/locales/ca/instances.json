@@ -509,6 +509,7 @@
       "activeCount": "{{enabled}}/{{total}} actives",
       "today": "{{count}} avui",
       "failed": "{{count}} fallits",
+      "outcomeFailed": "Fallit",
       "failedToLoadRules": "No s'han pogut carregar les regles",
       "checkConnection": "Comprova la connexió amb la instància.",
       "loadingRules": "S'estan carregant les regles...",

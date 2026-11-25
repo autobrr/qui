@@ -76,7 +76,18 @@ describe("WorkflowsOverview", () => {
 
     await screen.findByText("Film.2020.1080p-GRP")
     const badges = screen.getAllByText("Transfer to instance").map(action => action.parentElement?.textContent)
-    expect(badges).toEqual([expect.stringContaining("Started"), expect.stringContaining("failed")])
+    expect(badges).toEqual(["Transfer to instanceStarted", "Transfer to instanceFailed"])
+  })
+
+  it.each([
+    ["external_program", "External program"],
+    ["delete_failed", "Delete"],
+  ] as const)("shows Failed as the outcome of a failed %s run", async (action, actionLabel) => {
+    mocks.activity = [transferActivity({ action, outcome: "failed", reason: "The target is offline." })]
+    await renderOverview()
+
+    await screen.findByText("The target is offline.")
+    expect(screen.getByText(actionLabel).parentElement?.textContent).toBe(`${actionLabel}Failed`)
   })
 
   it("shows no All torrents badge for a Transfer rule with a condition", async () => {
