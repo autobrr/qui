@@ -11,13 +11,6 @@ import (
 	"syscall"
 )
 
-// IsClientDisconnect reports whether err is an expected client-side socket or
-// request-lifetime failure: the peer went away, the connection was closed, or
-// the request context was canceled or timed out.
-//
-// Detection goes through errors.Is for wrapped errors and also matches on the
-// message, because the Windows forms (connection aborted, connection forcibly
-// closed by the remote host) do not map to syscall.EPIPE or syscall.ECONNRESET.
 func IsClientDisconnect(err error) bool {
 	if err == nil {
 		return false

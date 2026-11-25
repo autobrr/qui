@@ -29,10 +29,6 @@ func TestBuildTorznabQueryKeepsParsedSeasonAndEpisode(t *testing.T) {
 			expectedEpisode: new(1140),
 		},
 		{
-			// Resolution must never be appended to the query: indexers whose free-text
-			// search only matches the series name (e.g. BTN, IPT) return zero results
-			// when a bare resolution token is present. Resolution is enforced post-search
-			// in the Match verdict instead.
 			name:      "KeepsParsedTitleWithoutResolution",
 			inputName: "Some.Show.S01E02.mkv",
 			release: rls.Release{
@@ -60,9 +56,6 @@ func TestBuildTorznabQueryKeepsParsedSeasonAndEpisode(t *testing.T) {
 }
 
 func TestBuildTorznabQueryOmitsYearForMovies(t *testing.T) {
-	// Trackers that search a movie database instead of release names
-	// (PassThePopcorn) match q against the title alone, so a trailing year
-	// returns nothing. The year travels as the separate year parameter.
 	release := rls.Release{Type: rls.Movie, Title: "The Matrix", Year: 1999}
 
 	got := BuildTorznabQuery("The.Matrix.1999.1080p.BluRay.x264-GROUP", &release, false)

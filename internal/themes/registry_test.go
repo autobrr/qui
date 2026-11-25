@@ -10,9 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRegistryIDsPinned pins the id of every built-in theme, free and licensed.
-// These ids are stored in browsers and in the
-// theme_settings table, so a change here breaks every user's saved selection.
 func TestRegistryIDsPinned(t *testing.T) {
 	want := map[string]struct{}{
 		"minimal":         {},
@@ -37,7 +34,6 @@ func TestRegistryIDsPinned(t *testing.T) {
 	require.Empty(t, want, "missing free themes")
 
 	t.Run("licensed", func(t *testing.T) {
-		// A new licensed theme needs no entry here, but these ids must stay.
 		for _, id := range []string{
 			"amber-minimal", "amethyst-haze", "bubblegum", "catppuccin", "catppuccin-latte",
 			"claude", "cs-office", "cyberpunk", "darcula", "dracula", "ethereal", "everforest", //nolint:misspell // Darcula is a theme name
@@ -52,9 +48,6 @@ func TestRegistryIDsPinned(t *testing.T) {
 	})
 }
 
-// TestRegistryOrder pins the catalog order: the default first, then display
-// names case-insensitively, so lowercase names like "autobrr" do not sink to
-// the bottom.
 func TestRegistryOrder(t *testing.T) {
 	all := All()
 	require.Equal(t, "minimal", all[0].ID)
@@ -65,9 +58,6 @@ func TestRegistryOrder(t *testing.T) {
 	}
 }
 
-// TestParsePremiumFromDir pins the premium classification: location is
-// authoritative, so a file under assets/premium/ without a metadata header
-// must never be served as a free theme.
 func TestParsePremiumFromDir(t *testing.T) {
 	noHeader := ":root {\n  --primary: red;\n}\n"
 	require.True(t, parse(noHeader, "mystery", true).Premium, "premium dir must classify premium without a header")
@@ -75,8 +65,6 @@ func TestParsePremiumFromDir(t *testing.T) {
 	require.True(t, parse("/* @premium: true */\n"+noHeader, "mystery", false).Premium, "header alone still classifies premium")
 }
 
-// TestParseIDHeader pins the id rule: an @id line wins, so a renamed theme
-// keeps the id that users have stored. Without @id, the id is the name slug.
 func TestParseIDHeader(t *testing.T) {
 	renamed := parse("/* @name: Terracotta\n * @id: claude\n */\n", "terracotta", true)
 	require.Equal(t, "claude", renamed.ID)
@@ -117,9 +105,6 @@ func TestRegistryParse(t *testing.T) {
 	require.False(t, Exists("nope"))
 }
 
-// Locked previews render outside their stylesheet, so every swatch must be a
-// concrete color, never an unresolved var() reference (e.g. Catppuccin's
-// "--primary: var(--variation-color)").
 func TestPreviewVarsAreConcrete(t *testing.T) {
 	for _, theme := range All() {
 		for mode, vars := range map[string]map[string]string{"light": theme.Preview.Light, "dark": theme.Preview.Dark} {

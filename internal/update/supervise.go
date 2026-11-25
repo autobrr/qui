@@ -14,18 +14,10 @@ import (
 	"os/exec"
 )
 
-// restartExitCode is the exit code that a supervised child uses to ask the
-// supervisor for a Restart. 75 is EX_TEMPFAIL: qui itself exits with 0 or 1,
-// and a Go panic exits with 2.
 const restartExitCode = 75
 
 const supervisedEnv = "QUI_SUPERVISED"
 
-// runSupervisor starts the binary at path as a child with qui's own argv, and
-// starts it again each time the child exits with restartExitCode. It returns
-// the first other exit code. With a nil stderr the child shares the
-// supervisor's stdio. qui-tray.exe has no console, so its child gets no stdin
-// or stdout and writes stderr to the given writer.
 func runSupervisor(path string, stderr io.Writer) (int, error) {
 	for {
 		//nolint:gosec // G204: path is qui's own binary, resolved at startup, and argv is qui's own
@@ -50,9 +42,6 @@ func runSupervisor(path string, stderr io.Writer) (int, error) {
 
 const stderrTailSize = 16 << 10
 
-// stderrTail keeps the end of the child's stderr for the error dialog. Only
-// the exec copy goroutine writes to it, and Wait returns after that goroutine
-// ends, so the supervisor reads it without a lock.
 type stderrTail struct {
 	b []byte
 }
@@ -84,7 +73,6 @@ func exitMessage(code int, stderr []byte) string {
 		Error   string `json:"error"`
 	}
 	if json.Unmarshal(line, &event) == nil {
-		// Any other log line was last only by chance, as after a kill.
 		text = ""
 		if event.Level == "fatal" || event.Level == "panic" {
 			text = event.Message

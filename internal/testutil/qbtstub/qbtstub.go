@@ -1,9 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package qbtstub is a small qBittorrent WebAPI over a temp dir. Deletes and
-// moves happen on disk the way qBittorrent and libtorrent do them, so tests can
-// assert what is left behind.
 package qbtstub
 
 import (
@@ -33,20 +30,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Layout is how a torrent's files sit under its save path.
 type Layout uint8
 
 const (
-	// RootFolder: the files sit in save/Name.
 	RootFolder Layout = iota
-	// SingleFile: the one file is save/Name.
 	SingleFile
-	// NoRootFolder: the files sit directly in the save path.
 	NoRootFolder
 )
 
-// Torrent is one torrent in the stub. Files are slash names below the root
-// folder, or below the save path without one; a single file has none.
 type Torrent struct {
 	Hash         string
 	Name         string
@@ -54,173 +45,86 @@ type Torrent struct {
 	DownloadPath string
 	Category     string
 	AutoTMM      bool
-	// Incomplete is a torrent still downloading, which setDownloadPath moves.
-	Incomplete bool
-	Layout     Layout
-	Tags       []string
-	Files      []string
-	// InfohashV1 and InfohashV2 are reported as the WebAPI does; Hash alone
-	// names the torrent in a request.
-	InfohashV1 string
-	InfohashV2 string
-	// Popularity and Private are sent from qBittorrent 5.0. NoMetadata is a
-	// magnet link that has no metadata yet, which sends no private value.
-	Popularity float64
-	Private    bool
-	NoMetadata bool
-	// AddedOn is the Unix time at which qBittorrent added the torrent.
-	AddedOn int64
-	// Uploaded is the bytes that the torrent sent, and Peers its connected
-	// peers, which sync/torrentPeers reports.
-	Uploaded int64
-	Peers    []qbt.TorrentPeer
-	// Moving reports the state "moving", as qBittorrent does while it moves
-	// the files to a new save path. The save path changes when the move ends.
-	Moving bool
+	Incomplete   bool
+	Layout       Layout
+	Tags         []string
+	Files        []string
+	InfohashV1   string
+	InfohashV2   string
+	Popularity   float64
+	Private      bool
+	NoMetadata   bool
+	AddedOn      int64
+	Uploaded     int64
+	Peers        []qbt.TorrentPeer
+	Moving       bool
 
-	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
-	// staleNames are the file names from before the last renames, which the
-	// next staleLists torrents/files answers still give.
 	staleNames []string
 	staleLists int
-	// add is set for a torrent that came in through torrents/add.
-	add *added
+	add        *added
 }
 
-// Server answers the WebAPI calls qui makes around a delete or a move.
 type Server struct {
 	*httptest.Server
-	t          *testing.T
-	mu         sync.Mutex
-	rid        int
-	torrents   map[string]*Torrent
-	categories map[string]string
-	// addedTags holds the tags that each torrents/add gave a torrent.
-	addedTags map[string][]string
-	// downloadPaths holds each category's download path option, with no
-	// entry when the category inherits it.
-	downloadPaths map[string]*qbt.CategoryDownloadPath
-	savePath      string
-	// ConflictAfter, when set, makes setCategory change that many torrents
-	// and then answer 409, as qBittorrent does when it throws part way
-	// through the list.
-	ConflictAfter int
-	// Reject, when set, answers every write with this status and changes
-	// nothing.
-	Reject int
-	// SlowMoves, when set, makes the moves of torrents with ATM on wait for
-	// FinishMoves: as in qBittorrent, the save path changes at once and the
-	// content path once the files have moved.
-	SlowMoves bool
-	// ScanDirs is reported as the scan_dirs preference: each monitored
-	// folder maps to 0 (save there), 1 (the default save path) or a path.
-	ScanDirs map[string]any
-	// DownloadPath, when set, replaces the reported temp_path
-	// <save path>/incomplete. DownloadPathOff turns it off.
-	DownloadPath    string
-	DownloadPathOff bool
-	// SubcategoriesOff reports use_subcategories turned off.
-	SubcategoriesOff bool
-	// AutoManagement reports auto_tmm_enabled turned on: the default
-	// torrent management mode is Automatic.
-	AutoManagement bool
-	// RefreshInterval is reported as the refresh_interval preference, in
-	// milliseconds, 1 without a value. StaleSyncs is how many syncs after a
-	// recheck still report the state from before it, 1 without a value.
-	RefreshInterval int
-	StaleSyncs      int
-	// Platform and Libtorrent, when one is set, make app/buildInfo answer
-	// with this build platform and libtorrent version. Without them the
-	// endpoint answers 404.
-	Platform   string
-	Libtorrent string
-	// CategoriesStatus, when set, makes torrents/categories answer with it.
-	CategoriesStatus int
-	// WebAPIVersion, when set, replaces the reported 2.11.4 (qBittorrent
-	// 5.1). Category edits follow it: up to 5.1 an edit that changes nothing
-	// or names a missing category answers 409 (404 later), up to 5.2 an edit
-	// replaces every option, and from 2.16.1 (5.3) it keeps the options it
-	// leaves out.
-	WebAPIVersion string
-	// WebAPIVersionStatus, when set, makes app/webapiVersion answer with it.
+	t                   *testing.T
+	mu                  sync.Mutex
+	rid                 int
+	torrents            map[string]*Torrent
+	categories          map[string]string
+	addedTags           map[string][]string
+	downloadPaths       map[string]*qbt.CategoryDownloadPath
+	savePath            string
+	ConflictAfter       int
+	Reject              int
+	SlowMoves           bool
+	ScanDirs            map[string]any
+	DownloadPath        string
+	DownloadPathOff     bool
+	SubcategoriesOff    bool
+	AutoManagement      bool
+	RefreshInterval     int
+	StaleSyncs          int
+	Platform            string
+	Libtorrent          string
+	CategoriesStatus    int
+	WebAPIVersion       string
 	WebAPIVersionStatus int
-	// HangWebAPIVersion makes app/webapiVersion answer only when the request
-	// ends, so the caller times out.
-	HangWebAPIVersion bool
-	// PartialUpdates answers a sync with a nonzero rid as a partial update, as
-	// qBittorrent does. Without it, each sync is a full update.
-	PartialUpdates bool
-	// LeaveOutNew makes a partial update send a torrent that the last full
-	// update did not list without its added_on, as qBittorrent before
-	// 5.3.0rc1 does after it lost a sync response. qui leaves such a torrent
-	// out of its cache until the next full update.
-	LeaveOutNew bool
-	// FailSyncs makes the first FailSyncs sync/maindata requests answer 500.
-	FailSyncs int
-	// CheckSyncs is how many syncs a check of an added torrent reports
-	// checking before it ends.
-	CheckSyncs int
-	// ListAfterSyncs is how many syncs leave out a torrent after its add, as
-	// qBittorrent lists a new torrent only once libtorrent added it.
-	ListAfterSyncs int
-	// StaleFileLists is how many torrents/files answers after a rename
-	// still give the names from before it, as qBittorrent lists a new name
-	// only once libtorrent renamed the file.
-	StaleFileLists int
-	// HashCheck makes a check of an added torrent hash each piece against
-	// its .torrent. Without it, a file passes when its size is right.
-	HashCheck bool
-	// IncompleteFilesExt is qBittorrent's setting "Append .!qB extension to
-	// incomplete files": a hash check renames each incomplete file.
-	IncompleteFilesExt bool
-	// OnAdd, when set, runs for each new torrent of torrents/add before the
-	// stub has it. It runs under the lock of the stub.
-	OnAdd func(hash string)
-	// DropAddAnswers is how many adds of torrents/add take effect, and then
-	// drop the connection instead of the answer.
-	DropAddAnswers int
-	// OnWrite, when set, runs for each write before the stub answers it,
-	// with its endpoint, such as torrents/stop. It runs under the lock of
-	// the stub.
-	OnWrite func(endpoint string)
-	// OnSync, when set, runs for each sync/maindata request before the stub
-	// answers it. It runs under the lock of the stub.
-	OnSync func()
-	// ListenPort is reported as the listen_port preference. qBittorrent
-	// reports 0 when it picks a random port.
-	ListenPort int
-	// BittorrentProtocol is reported as the bittorrent_protocol preference:
-	// 0 is qBittorrent's default "TCP and μTP", 1 "TCP", and 2 "μTP".
-	BittorrentProtocol int
-	// FreeSpace is the free space that the server state reports for the
-	// default save path, and app/getFreeSpaceAtPath for any path from
-	// qBittorrent 5.3. A download from a stub of the swarm takes its bytes.
-	FreeSpace int64
-	// Unreachable is a closed port: no peer of the swarm connects to the
-	// stub, and the stub still connects to its peers.
-	Unreachable bool
+	HangWebAPIVersion   bool
+	PartialUpdates      bool
+	LeaveOutNew         bool
+	FailSyncs           int
+	CheckSyncs          int
+	ListAfterSyncs      int
+	StaleFileLists      int
+	HashCheck           bool
+	IncompleteFilesExt  bool
+	OnAdd               func(hash string)
+	DropAddAnswers      int
+	OnWrite             func(endpoint string)
+	OnSync              func()
+	ListenPort          int
+	BittorrentProtocol  int
+	FreeSpace           int64
+	Unreachable         bool
 
 	swarm                  *Swarm
 	externalV4, externalV6 string
 
-	calls        map[string]int
-	writes       map[string]int
-	conflicts    map[string]int
-	bodies       map[string]string
-	params       map[string]url.Values
-	writeLog     []string
-	requests     int
-	syncs        int
-	synced       map[int]chan struct{}
-	versionReads int
-	// freeSpacePath is the path of the last app/getFreeSpaceAtPath request.
+	calls         map[string]int
+	writes        map[string]int
+	conflicts     map[string]int
+	bodies        map[string]string
+	params        map[string]url.Values
+	writeLog      []string
+	requests      int
+	syncs         int
+	synced        map[int]chan struct{}
+	versionReads  int
 	freeSpacePath string
-	// listed holds the hashes of the last full update.
-	listed map[string]bool
+	listed        map[string]bool
 }
 
-// New starts a stub whose default save path is savePath.
 func New(t *testing.T, savePath string) *Server {
 	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, addedTags: map[string][]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
 		savePath: savePath, calls: map[string]int{}, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{},
@@ -230,15 +134,12 @@ func New(t *testing.T, savePath string) *Server {
 	return s
 }
 
-// AddCategory adds a category; an empty path inherits the default save path.
 func (s *Server) AddCategory(name, savePath string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.categories[name] = savePath
 }
 
-// SetCategoryDownloadPath sets a category's download path option, nil to
-// make it inherit.
 func (s *Server) SetCategoryDownloadPath(name string, option *qbt.CategoryDownloadPath) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -249,16 +150,12 @@ func (s *Server) SetCategoryDownloadPath(name string, option *qbt.CategoryDownlo
 	s.downloadPaths[name] = option
 }
 
-// CategoryDownloadPath returns a category's download path option, nil when it
-// inherits.
 func (s *Server) CategoryDownloadPath(name string) *qbt.CategoryDownloadPath {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.downloadPaths[name]
 }
 
-// categoryJSON is a category as qBittorrent 5.1 sends it, which leaves
-// download_path out when the category inherits it.
 func (s *Server) categoryJSON(name string) map[string]any {
 	c := map[string]any{"name": name, "savePath": s.categories[name]}
 	if option, ok := s.downloadPaths[name]; ok {
@@ -267,55 +164,42 @@ func (s *Server) categoryJSON(name string) map[string]any {
 	return c
 }
 
-// SetExternalAddress sets the external addresses that the server state
-// reports, as qBittorrent learns them from its peers. An empty value is an
-// address that qBittorrent does not know yet.
 func (s *Server) SetExternalAddress(v4, v6 string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.externalV4, s.externalV6 = v4, v6
 }
 
-// SetDefaultSavePath changes the default save path, as an edit in
-// qBittorrent's own WebUI does, without qui seeing the request.
 func (s *Server) SetDefaultSavePath(p string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.savePath = p
 }
 
-// SetOnAdd sets OnAdd under the lock of the stub. Use it when another
-// process sends the add: the race detector sees no order between a plain
-// assignment and the handler.
 func (s *Server) SetOnAdd(fn func(hash string)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.OnAdd = fn
 }
 
-// SetOnWrite sets OnWrite under the lock of the stub, as SetOnAdd does.
 func (s *Server) SetOnWrite(fn func(endpoint string)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.OnWrite = fn
 }
 
-// SetRefreshInterval changes the refresh_interval preference, in
-// milliseconds, as an edit in qBittorrent's own WebUI does.
 func (s *Server) SetRefreshInterval(ms int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.RefreshInterval = ms
 }
 
-// DefaultSavePath returns the reported default save path.
 func (s *Server) DefaultSavePath() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.savePath
 }
 
-// Add adds a torrent and writes its files.
 func (s *Server) Add(t Torrent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -327,8 +211,6 @@ func (s *Server) Add(t Torrent) {
 	}
 }
 
-// DeleteElsewhere deletes a torrent with its files, as a request from
-// another client does, without qui seeing the request.
 func (s *Server) DeleteElsewhere(hash string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -338,59 +220,48 @@ func (s *Server) DeleteElsewhere(hash string) {
 	}
 }
 
-// DeleteElsewhereKeepFiles removes a torrent as another client does, and
-// keeps its files.
 func (s *Server) DeleteElsewhereKeepFiles(hash string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.torrents, hash)
 }
 
-// Writes counts the write requests qBittorrent received on an endpoint.
 func (s *Server) Writes(endpoint string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.writes[endpoint]
 }
 
-// Conflicts counts the writes to endpoint that answered 409.
 func (s *Server) Conflicts(endpoint string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.conflicts[endpoint]
 }
 
-// Calls counts the requests qBittorrent received on an endpoint.
 func (s *Server) Calls(endpoint string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.calls[endpoint]
 }
 
-// Requests counts every request qBittorrent received.
 func (s *Server) Requests() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.requests
 }
 
-// RequestsWithout counts every request qBittorrent received, without the
-// requests on endpoint.
 func (s *Server) RequestsWithout(endpoint string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.requests - s.calls[endpoint]
 }
 
-// Syncs counts the sync/maindata requests qBittorrent received.
 func (s *Server) Syncs() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.syncs
 }
 
-// Synced returns a channel that closes once the stub has received n
-// sync/maindata requests.
 func (s *Server) Synced(n int) <-chan struct{} {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -405,51 +276,42 @@ func (s *Server) Synced(n int) <-chan struct{} {
 	return ch
 }
 
-// FreeSpacePath is the path of the last app/getFreeSpaceAtPath request.
 func (s *Server) FreeSpacePath() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.freeSpacePath
 }
 
-// VersionReads counts the app/webapiVersion requests qBittorrent received.
 func (s *Server) VersionReads() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.versionReads
 }
 
-// Tags returns the sorted tags of a torrent.
 func (s *Server) Tags(hash string) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Sorted(slices.Values(s.torrents[hash].Tags))
 }
 
-// AddedTags returns the sorted tags that torrents/add gave a torrent, also
-// after the torrent left the stub.
 func (s *Server) AddedTags(hash string) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Sorted(slices.Values(s.addedTags[hash]))
 }
 
-// LastBody is the raw body of the last write to an endpoint.
 func (s *Server) LastBody(endpoint string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.bodies[endpoint]
 }
 
-// LastParams are the parameters of the last write to an endpoint, also of a
-// multipart upload.
 func (s *Server) LastParams(endpoint string) url.Values {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.params[endpoint].Clone()
 }
 
-// WriteLog lists the endpoints of the writes, in the order they came in.
 func (s *Server) WriteLog() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -484,8 +346,6 @@ func (s *Server) diskFiles(t *Torrent) []string {
 	return files
 }
 
-// onHost is the host path of p. A stub whose files qui reaches over sshtest
-// names them as pkg/sftp does, /C:/x on Windows for the host path C:\x.
 func onHost(p string) string {
 	if native, ok := strings.CutPrefix(p, "/"); ok && filepath.VolumeName(native) != "" {
 		return filepath.FromSlash(native)
@@ -493,7 +353,6 @@ func onHost(p string) string {
 	return p
 }
 
-// join joins the slash name to dir in the form of dir.
 func join(dir, name string) string {
 	if onHost(dir) != dir {
 		return path.Join(dir, name)
@@ -501,7 +360,6 @@ func join(dir, name string) string {
 	return filepath.Join(dir, filepath.FromSlash(name))
 }
 
-// fileNames are the file names that torrents/files reports.
 func (s *Server) fileNames(t *Torrent) []string {
 	switch t.Layout {
 	case SingleFile:
@@ -544,16 +402,12 @@ func (s *Server) categoryPath(name string) string {
 	return join(s.savePath, name)
 }
 
-// move relocates the content the way libtorrent's move_storage does: file by
-// file, leaving the old folders it emptied. Handlers run off the test
-// goroutine, so failures are reported with assert.
 func (s *Server) move(t *Torrent, dest string) {
 	from := *t
 	t.SavePath, t.DownloadPath = dest, ""
 	s.relocate(&from, t)
 }
 
-// moveATM moves a torrent with ATM on, which SlowMoves holds back.
 func (s *Server) moveATM(t *Torrent, dest string) {
 	if !s.SlowMoves {
 		s.move(t, dest)
@@ -566,7 +420,6 @@ func (s *Server) moveATM(t *Torrent, dest string) {
 	t.SavePath, t.DownloadPath = dest, ""
 }
 
-// FinishMoves completes the moves SlowMoves held back.
 func (s *Server) FinishMoves() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -580,7 +433,6 @@ func (s *Server) FinishMoves() {
 
 func (s *Server) relocate(from, to *Torrent) {
 	old, files := s.diskFiles(from), s.diskFiles(to)
-	// qBittorrent starts no move to the folder where the content is.
 	if slices.Equal(old, files) {
 		return
 	}
@@ -593,9 +445,6 @@ func (s *Server) relocate(from, to *Torrent) {
 	}
 }
 
-// remove deletes the files the way qBittorrent before 5.2.2 does: the root
-// folder whole, but only the files of a torrent without one. A file already
-// missing, such as one set to Do Not Download, is skipped.
 func (s *Server) remove(t *Torrent) {
 	if t.Layout == RootFolder {
 		assert.NoError(s.t, os.RemoveAll(onHost(s.contentPath(t))))
@@ -644,8 +493,6 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// qBittorrent 5 reads a GET's query, and a POST's urlencoded or multipart
-	// body only. A repeated key keeps its last value.
 	params := r.URL.Query()
 	var form *multipart.Form
 	if r.Method == http.MethodPost {
@@ -751,7 +598,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				}
 				row["downloaded"], row["downloaded_session"] = t.add.allTime, t.add.downloaded
 			}
-			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
+			if s.webAPIAtLeast("2.11.2") {
 				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata
 				if t.NoMetadata {
 					row["private"] = nil
@@ -817,8 +664,6 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "torrents/setDownloadPath":
-		// TorrentImpl::setDownloadPath: an incomplete torrent moves into the
-		// new path, or back to its save path when that is empty.
 		for _, t := range s.selected(param("id"), "|") {
 			p := param("path")
 			if t.AutoTMM || p == t.DownloadPath {
@@ -877,7 +722,6 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "torrents/setTags":
-		// qBittorrent 5.1 (WebAPI 2.11.4) added the endpoint.
 		if !s.webAPIAtLeast("2.11.4") {
 			http.NotFound(w, r)
 			return
@@ -921,7 +765,6 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			s.recheck(t)
 		}
 	case "torrents/setShareLimits":
-		// LastBody has what qui sent.
 	case "torrents/categories":
 		if s.CategoriesStatus != 0 {
 			w.WriteHeader(s.CategoriesStatus)
@@ -948,14 +791,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		_, sentOption := params["downloadPathEnabled"]
 		partial := s.webAPIAtLeast("2.16.1")
 		if sentSavePath || !partial {
-			// qBittorrent stores a cleaned path.
 			savePath = param("savePath")
 			if savePath != "" {
 				savePath = path.Clean(savePath)
 			}
 		}
-		// Up to qBittorrent 5.2 an edit replaces every option of the category,
-		// so a download path the request leaves out goes back to inherit.
 		if sentOption || !partial {
 			option = nil
 			if enabled := param("downloadPathEnabled"); enabled == "true" || enabled == "false" {

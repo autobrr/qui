@@ -135,8 +135,6 @@ func TestUpdateInstanceClearsConnectionBackoff(t *testing.T) {
 	_, err = clientPool.GetClient(t.Context(), instance.ID)
 	oldBackoff := backoff(err)
 
-	// New settings that also fail: they are tried, and the backoff starts again
-	// from the first attempt instead of growing from the old attempt count.
 	update(stillFailingServer.URL)
 	_, err = clientPool.GetClient(t.Context(), instance.ID)
 	require.Error(t, err)
@@ -152,9 +150,6 @@ func TestUpdateInstanceClearsConnectionBackoff(t *testing.T) {
 	require.Empty(t, errs)
 }
 
-// An update that saves another setting keeps an empty public peer address
-// empty, and the list shows the address that qui works out from the last sync
-// apart from the address that the user set. The list itself sends no sync.
 func TestUpdateInstanceKeepsThePublicPeerAddress(t *testing.T) {
 	stub := qbtstub.New(t, t.TempDir())
 	stub.ListenPort = 51413
@@ -197,8 +192,6 @@ func TestUpdateInstanceKeepsThePublicPeerAddress(t *testing.T) {
 	}
 	list := func() addresses {
 		t.Helper()
-		// An update drops the client: connect again, as the async test does.
-		// The list reads the last sync, so sync the new client first.
 		client, err := clientPool.GetClient(t.Context(), instance.ID)
 		require.NoError(t, err)
 		require.NoError(t, client.SyncOwner().Sync(t.Context()))

@@ -23,10 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// searchWithHistory runs one Torznab search over the indexers against a local
-// server, so that Search history has an entry for each indexer under the
-// returned job ID. The server also serves "/<title>.torrent" as a torrent
-// named <title>, and a 404 for a title that starts with "download-fail".
 func searchWithHistory(t *testing.T, indexerIDs []int) (*jackett.Service, uint64, string) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +74,6 @@ func searchWithHistory(t *testing.T, indexerIDs []int) (*jackett.Service, uint64
 	}
 }
 
-// historyBadges returns the outcome of each indexer in Search history for one job.
 func historyBadges(t *testing.T, service *jackett.Service, jobID uint64) map[int]string {
 	t.Helper()
 	history, err := service.GetSearchHistory(t.Context(), 100)
@@ -109,9 +104,8 @@ func TestApplySourceSearchResults(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		results []TorrentSearchResult
-		// cancelAfter cancels the context after the add of this title.
+		name        string
+		results     []TorrentSearchResult
 		cancelAfter string
 		wantEntries []string
 		wantCounts  sourceApplyCounts

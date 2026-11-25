@@ -50,10 +50,8 @@ function isByteUnit(unit: string): unit is ByteUnit {
   return unit in BYTES_PER_UNIT
 }
 
-// "KiB/s" -> "KiB"
 const withoutPerSecond = (unit: string) => unit.replace(/\/s$/, "")
 
-// The factor from the wire unit to the display unit, for example 1/1024 from B/s to KiB/s.
 function displayScale(field: PreferenceField): number {
   const wire = withoutPerSecond(field.wireUnit ?? "")
   const display = withoutPerSecond(field.displayUnit ?? "")
@@ -86,10 +84,8 @@ function NumberWidget({ id, field, labels, value, onChange, disabled }: WidgetPr
   const { t } = useTranslation("instances")
   const unit = useUnitLabel(field.displayUnit)
   const scale = displayScale(field)
-  // The text while the user types, so that a partial number such as "1." stays in the box.
   const [text, setText] = useState<string | null>(null)
   const isUnlimited = labels.unlimited !== undefined && value === labels.unlimited
-  // A converted value keeps two decimals: 1500 B/s shows as 1.46 KiB/s.
   const shown = text ?? (isUnlimited ? "" : String(scale === 1 ? Number(value) : Number((Number(value) * scale).toFixed(2))))
 
   return (
@@ -123,9 +119,6 @@ function NumberWidget({ id, field, labels, value, onChange, disabled }: WidgetPr
   )
 }
 
-// Incognito mode blurs text, paths, and lists: they can hold paths, addresses, and commands.
-// A password box uses new-password, so that the browser does not fill in the password of qui. The password belongs
-// to qBittorrent, so the password managers leave it alone too.
 function TextWidget({ id, field, labels, value, onChange, disabled }: WidgetProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
@@ -148,9 +141,6 @@ function TextWidget({ id, field, labels, value, onChange, disabled }: WidgetProp
   )
 }
 
-// qBittorrent 5.0 and later can list folders, so a folder field suggests them as the user types.
-// A file field, such as the IP filter, has no option source and gets no suggestions. The same
-// input stays mounted when the capabilities arrive, so a user who types early keeps the focus.
 function PathWidget({ id, instanceId, field, labels, value, onChange, disabled }: WidgetProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
@@ -266,8 +256,6 @@ function SelectWidget({ id, field, labels, value, onChange, disabled }: WidgetPr
   )
 }
 
-// scan_dirs maps each watched folder to 0 (save to the watched folder), 1 (save to the
-// default save path), or a path to save to.
 const SAVE_TO_WATCHED_FOLDER = 0
 const SAVE_TO_DEFAULT_PATH = 1
 type WatchFolderDestination = "monitored-folder" | "default-save-location" | "other"
@@ -299,7 +287,6 @@ function scanDirsOf(folders: WatchFolder[]): Record<string, number | string> {
 function WatchFoldersWidget({ labels, value, onChange, disabled }: WidgetProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
-  // The rows live here, so that a row with an empty path stays while the user fills it in.
   const [folders, setFolders] = useState(() => watchFoldersOf(value))
   const update = (next: WatchFolder[]) => {
     setFolders(next)
@@ -312,7 +299,6 @@ function WatchFoldersWidget({ labels, value, onChange, disabled }: WidgetProps) 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        {/* The label points at no control: a click on it must not add a folder. */}
         <FieldLabel labels={labels} />
         <Button
           type="button"
@@ -384,15 +370,12 @@ function WatchFoldersWidget({ labels, value, onChange, disabled }: WidgetProps) 
   )
 }
 
-// The address values that are not addresses of one interface.
 const ALL_ADDRESSES = [
   { value: "", labelKey: "preferences.networkBinding.allAddresses" },
   { value: "0.0.0.0", labelKey: "preferences.networkBinding.allIPv4Addresses" },
   { value: "::", labelKey: "preferences.networkBinding.allIPv6Addresses" },
 ]
 
-// Radix Select rejects an item with the value "", which is "Any interface" and "All addresses".
-// So each item value gets a prefix.
 const itemValue = (value: string) => `=${value}`
 
 interface NetworkBindingProps {
@@ -401,13 +384,10 @@ interface NetworkBindingProps {
   addressLabels: FieldLabels
   iface: string
   address: string
-  // The readable name of the saved interface. qBittorrent before 4.6 does not send it.
   interfaceName: string
   onChange: (key: string, value: unknown) => void
 }
 
-// The network interface and its address. Until the network binding route answers, and when it
-// fails, the widget shows the values as read-only text.
 export function NetworkBindingWidget({ instanceId, interfaceLabels, addressLabels, iface, address, interfaceName, onChange }: NetworkBindingProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
@@ -419,7 +399,6 @@ export function NetworkBindingWidget({ instanceId, interfaceLabels, addressLabel
   const blur = incognitoMode ? "blur-sm select-none" : undefined
   const allAddresses = ALL_ADDRESSES.find(option => option.value === address)
 
-  // A failed load after a save keeps the old list, so the error counts too.
   if (!interfaces || isError) {
     return (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -456,7 +435,6 @@ export function NetworkBindingWidget({ instanceId, interfaceLabels, addressLabel
           value={itemValue(iface)}
           onValueChange={(next) => {
             onChange("current_network_interface", next.slice(1))
-            // An address of the old interface does not exist on the new one.
             onChange("current_interface_address", "")
           }}
         >

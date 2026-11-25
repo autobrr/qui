@@ -11,16 +11,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip"
 interface TruncatedTextProps extends React.HTMLAttributes<HTMLSpanElement> {
   children: React.ReactNode
   tooltipSide?: "top" | "right" | "bottom" | "left"
-  /** Custom tooltip content. If provided, always shows on hover regardless of truncation. */
   tooltipContent?: React.ReactNode
   wrap?: boolean
   openOnTap?: boolean | "only"
 }
 
-/**
- * Text that shows its full text in a tooltip only while part of it is hidden: cut off at the end of the line, or
- * clipped to a number of lines. If `tooltipContent` is provided, it always shows on hover.
- */
 export const TruncatedText = React.forwardRef<HTMLSpanElement, TruncatedTextProps>(
   ({ children, className, tooltipSide = "top", tooltipContent, wrap = false, openOnTap = true, ...props }, ref) => {
     const [element, setElement] = React.useState<HTMLSpanElement | null>(null)

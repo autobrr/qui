@@ -1,8 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package lowdisk opens the System notice "Low disk" on SQLite when the disk
-// of the database file has little free space.
 package lowdisk
 
 import (
@@ -24,8 +22,6 @@ const (
 	maxLimitBytes = 1_000_000_000
 )
 
-// Limit returns the free space below which the notice opens, for a disk of
-// totalBytes: the smaller of 1 GB and 5% of the disk.
 func Limit(totalBytes int64) int64 {
 	return min(maxLimitBytes, totalBytes/20)
 }
@@ -35,37 +31,26 @@ type disk struct {
 	totalBytes int64
 }
 
-// Monitor checks the free space of the disk of the SQLite database file. On
-// Postgres, it does nothing.
 type Monitor struct {
 	db       *database.DB
 	notices  *systemnotice.Module
 	readDisk func(ctx context.Context, dir string) (disk, error)
 
-	mu     sync.Mutex
-	loaded bool
-	// low is true from a reading below the limit until a reading at or above
-	// the recovery mark.
-	low       bool
-	dismissed bool
-	// stored is the dismiss in the database. It differs from dismissed after
-	// a failed write, and the next check writes it again.
-	stored bool
-	// failureSeen is the opening of "Recording stopped" at the last check or
-	// dismiss, so that only a new opening undoes a dismiss.
+	mu          sync.Mutex
+	loaded      bool
+	low         bool
+	dismissed   bool
+	stored      bool
 	failureSeen uint64
 	lastErr     string
 }
 
-// New returns the monitor, and makes a dismiss of the notice "Low disk" go
-// through it, so that the dismiss survives a restart.
 func New(db *database.DB, notices *systemnotice.Module) *Monitor {
 	m := &Monitor{db: db, notices: notices, readDisk: readDisk}
 	notices.OnDismiss(systemnotice.LowDisk, m.dismiss)
 	return m
 }
 
-// Run checks the disk at once and then each minute, until ctx ends.
 func (m *Monitor) Run(ctx context.Context) {
 	if m.db.SQLitePath() == "" {
 		return
@@ -94,12 +79,6 @@ func (m *Monitor) logCheck(err error) {
 	}
 }
 
-// Check reads the free space once. Below the limit, it opens the notice,
-// unless the user dismissed it. The notice closes when the free space
-// recovers to the limit plus 10%. A dismissed notice opens again after the
-// free space recovers and drops below the limit again, or when the notice
-// "Recording stopped" opens after the dismiss. When the dismiss cannot be
-// stored, Check still shows the notice and returns the error.
 func (m *Monitor) Check(ctx context.Context) error {
 	if m.db.SQLitePath() == "" {
 		return nil
@@ -147,7 +126,6 @@ func (m *Monitor) dismiss(ctx context.Context) error {
 	if err := m.loadLocked(ctx); err != nil {
 		return err
 	}
-	// A page that has not polled since the notice closed can still send a dismiss.
 	if _, isOpen := m.notices.Opening(systemnotice.LowDisk); !isOpen {
 		return nil
 	}
@@ -170,7 +148,6 @@ func (m *Monitor) loadLocked(ctx context.Context) error {
 	}
 	m.stored = count > 0
 	m.dismissed = m.stored
-	// A dismiss is stored only while the disk is low.
 	m.low = m.stored
 	m.loaded = true
 	return nil
@@ -199,7 +176,6 @@ func readDisk(ctx context.Context, dir string) (disk, error) {
 	return disk{freeBytes: stat.BytesAvailable, totalBytes: stat.BytesTotal}, nil
 }
 
-// formatBytes gives decimal units, as disk makers do.
 func formatBytes(n int64) string {
 	if n >= 1_000_000_000 {
 		return strconv.FormatFloat(float64(n/100_000_000)/10, 'f', -1, 64) + " GB"

@@ -13,8 +13,6 @@ describe("nextSelection", () => {
   })
 
   it("replaces instead of appending in single mode", () => {
-    // Regression: appending put the new value at index 1, and callers that store
-    // one string read index 0, so picking a second option looked like a no-op.
     expect(nextSelection(["a"], "b", true)).toEqual(["b"])
   })
 

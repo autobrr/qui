@@ -14,7 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// fakeReply is one canned pass response, keyed by query, year, and indexers.
 type fakeReply struct {
 	results []jackett.SearchResult
 	covered []int
@@ -27,7 +26,6 @@ func replyKey(query string, year int, ids []int) string {
 	return fmt.Sprintf("%s|%d|%v", query, year, ids)
 }
 
-// wantRequest pins the wire-visible shape of one pass.
 type wantRequest struct {
 	query       string
 	year        int
@@ -36,9 +34,6 @@ type wantRequest struct {
 	season      *int
 }
 
-// TestGatherSearchResults drives the retry ladder with a recording fake: which
-// passes fire, on which indexers, with which request, and how the covered set
-// moves. usable accepts by title so no parsing runs.
 func TestGatherSearchResults(t *testing.T) {
 	const match, junk = "match", "junk"
 	hit := func(indexerID int, title string) jackett.SearchResult {
@@ -79,8 +74,7 @@ func TestGatherSearchResults(t *testing.T) {
 			wantCovered:  []int{2},
 			wantAnswered: true,
 			wantTitles:   []string{junk, junk},
-			// A retry of every indexer reports outcomes under its own job.
-			wantJobID: 2,
+			wantJobID:    2,
 		},
 		{
 			name: "year set with one usable hit skips the yearless retry",
@@ -101,7 +95,6 @@ func TestGatherSearchResults(t *testing.T) {
 				replyKey("Show", 0, []int{1, 2}): {results: []jackett.SearchResult{hit(1, match), hit(2, junk)}, covered: []int{1, 2}},
 				replyKey("Alias", 0, []int{2}):   {results: []jackett.SearchResult{hit(2, match)}, covered: []int{2}},
 			},
-			// tagSourcedIDs keeps the title passes on an ID primary.
 			tagSourcedIDs: true,
 			idCap:         nil,
 			wantRequests: []wantRequest{
@@ -173,7 +166,6 @@ func TestGatherSearchResults(t *testing.T) {
 				{query: "Show", indexerIDs: []int{1, 2, 3}},
 				{query: "Show", indexerIDs: []int{2}, skipHistory: true},
 			},
-			// The rescue answered nothing for indexer 2, so it is uncovered.
 			wantCovered:  []int{1, 3},
 			wantAnswered: true,
 			wantTitles:   []string{match},
@@ -194,8 +186,7 @@ func TestGatherSearchResults(t *testing.T) {
 			wantCovered:  []int{1},
 			wantAnswered: true,
 			wantTitles:   []string{match},
-			// A partial retry pass makes the whole search partial.
-			wantPartial: true,
+			wantPartial:  true,
 		},
 		{
 			name: "failed yearless retry uncovers every indexer but the primary still answered",
@@ -213,7 +204,6 @@ func TestGatherSearchResults(t *testing.T) {
 			wantTitles:   []string{},
 			wantPartial:  true,
 		},
-		// regression: #3306
 		{
 			name:  "yearless retry targets only the indexers that searched by title",
 			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2, 3}, IMDbID: "tt1", OmitQueryForIDs: true},
@@ -229,16 +219,13 @@ func TestGatherSearchResults(t *testing.T) {
 			wantCovered:  []int{1, 2, 3},
 			wantAnswered: true,
 			wantTitles:   []string{junk, junk},
-			// Indexers 1 and 2 have history rows only under the primary job.
-			wantJobID: 1,
+			wantJobID:    1,
 		},
-		// regression: #3306
 		{
 			name:  "narrowed yearless retry keeps its own job when the primary came from cache",
 			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2, 3}, IMDbID: "tt1", OmitQueryForIDs: true},
 			idCap: []int{1, 2},
 			replies: map[string]fakeReply{
-				// A primary served wholly from cache has no job.
 				replyKey("Movie", 2020, []int{1, 2, 3}): {results: []jackett.SearchResult{hit(1, junk)}, covered: []int{1, 2, 3}},
 				replyKey("Movie", 0, []int{3}):          {results: []jackett.SearchResult{hit(3, junk)}, covered: []int{3}, jobID: 2},
 			},
@@ -251,7 +238,6 @@ func TestGatherSearchResults(t *testing.T) {
 			wantTitles:   []string{junk, junk},
 			wantJobID:    2,
 		},
-		// regression: #3306
 		{
 			name:  "every indexer searching by ID sends no yearless retry",
 			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2}, IMDbID: "tt1", OmitQueryForIDs: true},
@@ -264,7 +250,6 @@ func TestGatherSearchResults(t *testing.T) {
 			wantAnswered: true,
 			wantTitles:   []string{junk},
 		},
-		// regression: #3306
 		{
 			name:          "title retry after tag-sourced IDs drops the year when every indexer searched by ID",
 			req:           jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2}, IMDbID: "tt1", OmitQueryForIDs: true},
@@ -282,7 +267,6 @@ func TestGatherSearchResults(t *testing.T) {
 			wantAnswered: true,
 			wantTitles:   []string{match},
 		},
-		// regression: #3306
 		{
 			name:  "failed yearless retry uncovers only the title indexers it targeted",
 			req:   jackett.TorznabSearchRequest{Query: "Movie", Year: 2020, IndexerIDs: []int{1, 2, 3}, IMDbID: "tt1", OmitQueryForIDs: true},
@@ -530,7 +514,6 @@ func TestGatherSearchResults(t *testing.T) {
 			}
 			require.Equal(t, tt.wantTitles, titles)
 			require.Equal(t, tt.wantPartial, resp.Partial)
-			// The decision trace lists every requested indexer, also after a narrowed retry pass.
 			require.Equal(t, tt.req.IndexerIDs, resp.RequestedIndexerIDs)
 			require.Equal(t, tt.wantJobID, resp.JobID)
 		})

@@ -20,9 +20,6 @@ func NewDatabaseShrinkHandler(service *dbshrink.Service) *DatabaseShrinkHandler 
 	return &DatabaseShrinkHandler{service: service}
 }
 
-// Status returns the size of the database file, the free disk space, the need
-// of a shrink, and the outcome of the shrink at the last start.
-// GET /api/database/shrink
 func (h *DatabaseShrinkHandler) Status(w http.ResponseWriter, r *http.Request) {
 	status, err := h.service.Status(r.Context())
 	if err != nil {
@@ -37,9 +34,6 @@ type databaseShrinkResponse struct {
 	Restarting bool `json:"restarting"`
 }
 
-// Request stores the "shrink pending" mark and restarts qui. Where Restart is
-// not available, the shrink runs at the next start.
-// POST /api/database/shrink
 func (h *DatabaseShrinkHandler) Request(w http.ResponseWriter, r *http.Request) {
 	restarting, err := h.service.Request(r.Context())
 	switch {
@@ -53,8 +47,6 @@ func (h *DatabaseShrinkHandler) Request(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// DismissResult forgets the outcome of the last shrink after the web UI showed it.
-// DELETE /api/database/shrink/result
 func (h *DatabaseShrinkHandler) DismissResult(w http.ResponseWriter, _ *http.Request) {
 	h.service.DismissResult()
 	w.WriteHeader(http.StatusNoContent)

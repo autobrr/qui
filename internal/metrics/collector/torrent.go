@@ -391,8 +391,6 @@ func (c *TorrentCollector) collectServerState(ch chan<- prometheus.Metric, respo
 	)
 }
 
-// mergeByName adds the groups that share one label, because a duplicate label
-// would fail the whole scrape. A customization named like a domain does this.
 func mergeByName(groups map[trackergroup.Group]qbittorrent.TrackerTransferStats) map[string]qbittorrent.TrackerTransferStats {
 	byName := make(map[string]qbittorrent.TrackerTransferStats, len(groups))
 	for group, stats := range groups {

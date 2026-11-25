@@ -17,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// regression: #4471
 func TestListTargetsShowsTheFullURLOnlyWithNotificationsWrite(t *testing.T) {
 	store := models.NewNotificationTargetStore(testdb.NewMigratedSQLite(t, "notification-targets"))
 	stored := []string{
@@ -40,11 +39,8 @@ func TestListTargetsShowsTheFullURLOnlyWithNotificationsWrite(t *testing.T) {
 		key  *models.APIKey
 		want []string
 	}{
-		// regression: #4471
 		{name: "a read key gets each URL as its scheme", key: permission(models.LevelRead), want: []string{"discord://", "generic+https://", "ntfy://", "telegram://"}},
-		// regression: #4471
 		{name: "a write key gets the full URLs", key: permission(models.LevelWrite), want: stored},
-		// regression: #4471
 		{name: "a session gets the full URLs", want: stored},
 	}
 	for _, tt := range tests {

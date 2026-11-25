@@ -89,21 +89,15 @@ export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodP
 interface DayFieldProps {
   id: string
   label: string
-  // A day as YYYY-MM-DD, or an empty string.
   value: string
   max?: string
   onChange: (value: string) => void
 }
 
-/**
- * A date field that shows its day in the date format of the user. The date field of the browser lies on top of the
- * text and cannot be seen, because a browser shows a date only in its own format.
- */
 function DayField({ id, label, value, max, onChange }: DayFieldProps) {
   const { t } = useTranslation("statistics")
   const { preferences } = usePersistedDateTimePreferences()
   const day = parseDay(value)
-  // iOS Safari reports a tap as a mouse click, so the type comes from pointer down.
   const press = useRef<string>(undefined)
 
   return (
@@ -119,8 +113,6 @@ function DayField({ id, label, value, max, onChange }: DayFieldProps) {
           max={max}
           value={value}
           onChange={event => onChange(event.target.value)}
-          // Firefox opens its calendar only on a click on its own calendar button, and closes it again without preventDefault.
-          // A touch keeps the picker of the device, because Safari on iOS has no showPicker for a date.
           onPointerDown={event => {
             press.current = event.pointerType
           }}
@@ -152,13 +144,11 @@ function CustomRange({ onCustom, children }: { onCustom: (firstDay: Date, lastDa
   const last = parseDay(lastDay)
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
-  // A range that starts after today has no past to show.
   const valid = first !== undefined && last !== undefined && first <= last && firstDay <= today
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      {/* iOS opens its date picker over the form when the first field gets focus, so a touch screen leaves the focus where it is. */}
       <PopoverContent align="end" collisionPadding={16} className="w-72" onOpenAutoFocus={touch ? event => event.preventDefault() : undefined}>
         <form
           className="space-y-3"
@@ -191,7 +181,6 @@ interface InstanceFilterProps {
   onChange: (selected: number[]) => void
 }
 
-/** An empty selection means all instances. */
 export function InstanceFilter({ options, selected, onChange }: InstanceFilterProps) {
   const { t } = useTranslation("statistics")
   const label = selected.length === 0 ? t("instances.all") : selected.length === 1 ? options.find(option => option.id === selected[0])?.name : t("instances.count", { count: selected.length })
@@ -225,7 +214,6 @@ export function InstanceFilter({ options, selected, onChange }: InstanceFilterPr
   )
 }
 
-/** Selects the series colors of the charts: the distinct set or the chart colors of the theme. */
 export function SeriesColorPicker() {
   const { t } = useTranslation("statistics")
   const [set, setSet] = useSeriesColorSet()

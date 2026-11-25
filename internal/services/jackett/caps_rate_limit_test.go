@@ -72,7 +72,6 @@ func TestDetectRateLimitUsesStructuredRetryAfter(t *testing.T) {
 	}
 }
 
-// countCapsWarnings counts the caps-blind warnings emitted while the test runs.
 func countCapsWarnings(t *testing.T) *atomic.Int32 {
 	t.Helper()
 
@@ -97,8 +96,6 @@ func assertSingleCapsFetch(t *testing.T, requests <-chan string) {
 	}
 }
 
-// A rate-limited caps fetch must skip the indexer and engage the backoff
-// ladder instead of failing open (rationale at the skip site in service.go).
 func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -129,8 +126,6 @@ func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
 			wantCapsWarnings: 1,
 		},
 		{
-			// A 200 that advertises no search modes stores nothing and returns no
-			// error, so the search degrades exactly as a failed fetch does.
 			name:             "caps 200 without search modes warns",
 			capsStatus:       http.StatusOK,
 			capsBody:         emptyCapsXML,
@@ -250,7 +245,6 @@ func TestQueryCooldownDoesNotBlockTorrentDownload(t *testing.T) {
 	assert.Equal(t, int32(1), downloadCalls.Load())
 }
 
-// One indexer that cannot serve caps must not fill the log.
 func TestCapsUnavailableWarningIsSuppressedWithinCooldown(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

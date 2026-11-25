@@ -15,7 +15,6 @@ afterEach(() => {
 })
 
 describe("DrawerContent", () => {
-  // regression: #4390
   it("moves focus into the drawer when it opens", async () => {
     stubPhone("upright")
     render(

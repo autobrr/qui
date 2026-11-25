@@ -10,7 +10,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/api", () => ({
   api: {
-    // The tests fill the cache, so a fetch never answers.
     getInstancePreferenceView: vi.fn(() => new Promise(() => {})),
     updateInstancePreferences: vi.fn(),
   },
@@ -48,7 +47,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// The hooks read the preferences view, which holds only the keys that the catalog shows.
 it("reads only keys that the preferences view holds", () => {
   const read = [...new Set([...hookSource.matchAll(/preferences\?\.(\w+)/g)].map(match => match[1]))]
 

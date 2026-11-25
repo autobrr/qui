@@ -471,9 +471,6 @@ func TestServiceRecordActivityLimit(t *testing.T) {
 	require.Equal(t, 4, failedCount)
 }
 
-// A scope that cannot match any torrent must not reach the client. The service
-// here has no client pool, so a fetch attempt would panic: returning cleanly
-// proves the scan short-circuited before the request.
 func TestScanInstance_SkipsFetchWhenScopeCannotMatch(t *testing.T) {
 	svc := &Service{}
 
@@ -655,7 +652,6 @@ func newScanTestService(t *testing.T, version string, torrents map[string]qbt.To
 	pool, err := qbittorrent.NewClientPool(instances, models.NewInstanceErrorStore(db), time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
-	// Fill the cache before attaching qui's background tracker refresh.
 	syncCtx, cancel := context.WithCancel(t.Context())
 	_, err = pool.GetClient(syncCtx, instance.ID)
 	cancel()

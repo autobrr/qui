@@ -18,14 +18,12 @@ import { DisplayProfileList } from "./DisplayProfileList"
 import { DisplayProfileTile } from "./DisplayProfileTile"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
-/** "Display profile" with the profile of this browser, and a separator under it, for the menu of the mobile torrent list. */
 export function DisplayProfileMenuItem({ onSelect }: { onSelect: () => void }) {
   const { t } = useTranslation("torrents")
   const { active } = useNamedDisplayProfiles()
 
   return (
     <>
-      {/* Not the ui item: it mutes each icon without a text color, and the tile icon has the profile color. */}
       <DropdownMenuPrimitive.Item
         onSelect={onSelect}
         className="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground"
@@ -42,11 +40,9 @@ export function DisplayProfileMenuItem({ onSelect }: { onSelect: () => void }) {
 interface DisplayProfileSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Gets the focus when the sheet, or the New profile dialog from it, closes: the menu item that opened the sheet is gone. */
   returnFocusRef: RefObject<HTMLElement | null>
 }
 
-/** The profile list in a bottom sheet for a phone. A tap on a row picks that profile for this browser and closes the sheet. */
 export function DisplayProfileSheet({ open, onOpenChange, returnFocusRef }: DisplayProfileSheetProps) {
   const { t } = useTranslation("torrents")
   const { active, settled, pick } = useNamedDisplayProfiles()
@@ -65,7 +61,6 @@ export function DisplayProfileSheet({ open, onOpenChange, returnFocusRef }: Disp
           side="bottom"
           className="max-h-[85dvh] gap-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
           onOpenAutoFocus={returnFocus.remember}
-          // New profile hands the focus to its dialog, which returns it on close.
           onCloseAutoFocus={(event) => (newProfileOpen ? event.preventDefault() : returnFocus.restore(event))}
         >
           <SheetHeader className="pb-2">

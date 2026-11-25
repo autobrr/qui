@@ -37,7 +37,6 @@ function renderSettings(): void {
   render(<TooltipProvider><DisplayProfilesSettings /></TooltipProvider>)
 }
 
-/** Default, Laptop, and Phone with its own sort and filters, with this browser on Laptop. */
 function renderWithThreeProfiles(): void {
   const laptop = createDisplayProfile("Laptop")
   setDisplayProfileOwnSortAndFilters(createDisplayProfile("Phone"), true)
@@ -49,7 +48,6 @@ function list(): HTMLElement {
   return screen.getByRole("list", { name: "Display profiles" })
 }
 
-/** The Close button in the footer of an editor. The X in the corner has the same name. */
 function footerClose(dialog: HTMLElement): HTMLElement {
   return within(dialog).getAllByRole("button", { name: "Close" }).find((button) => button.dataset.slot !== "dialog-close")!
 }
@@ -58,7 +56,6 @@ function row(name: string): HTMLElement {
   return within(list()).getByRole("button", { name: new RegExp(`^${name}`) })
 }
 
-/** The editor, a region named after the profile that it shows. */
 function editor(): HTMLElement {
   return screen.getByRole("region")
 }
@@ -66,11 +63,9 @@ function editor(): HTMLElement {
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
-  // The first read of the server ended, so the section takes changes.
   markClientSettingsUnavailable()
 })
 
-/** The controls that change a profile, in the editor and in the header. */
 function profileActions(): HTMLButtonElement[] {
   const inEditor = within(editor())
   return [

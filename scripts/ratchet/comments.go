@@ -15,28 +15,27 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/autobrr/qui/scripts/comments/gocomments"
+	"github.com/autobrr/qui/scripts/gocomments"
 	"github.com/autobrr/qui/scripts/offlog"
 )
 
 const (
-	commentsLinter   = "comments"
 	offlogLinter     = "offlog"
 	suppressionsPath = "web/eslint-suppressions.json"
 )
 
-var suppressedRules = []string{"@typescript-eslint/consistent-type-assertions", "@typescript-eslint/no-non-null-assertion", "qui/disable-reason", "qui/entry-files", "qui/layer-order", "qui/no-comments", "qui/no-direct-effect", "react-hooks/exhaustive-deps", "react-refresh/only-export-components"}
+var suppressedRules = []string{"@typescript-eslint/consistent-type-assertions", "@typescript-eslint/no-non-null-assertion", "qui/disable-reason", "qui/entry-files", "qui/layer-order", "qui/no-direct-effect", "react-hooks/exhaustive-deps", "react-refresh/only-export-components"}
 
-func goComments() (map[string]int, error) {
-	got := map[string]int{}
+func commentProblems() ([]string, error) {
+	var problems []string
 	err := eachTrackedGoFile(func(path string, src []byte) error {
-		n, err := gocomments.Count(path, src)
-		if n > 0 {
-			got[path] = n
+		lines, err := gocomments.Lines(path, src)
+		for _, line := range lines {
+			problems = append(problems, fmt.Sprintf("%s:%d: a comment. Delete it, and let a name, a type, a test, or an ADR carry the meaning. See \"Comments\" in docs/standards/simplicity.md.", path, line))
 		}
 		return err
 	})
-	return got, err
+	return problems, err
 }
 
 func offLogLines() (map[string][]int, error) {
@@ -52,7 +51,7 @@ func offLogLines() (map[string][]int, error) {
 }
 
 func eachTrackedGoFile(visit func(path string, src []byte) error) error {
-	paths, err := gocomments.Tracked()
+	paths, err := trackedGoFiles()
 	if err != nil {
 		return err
 	}
@@ -71,6 +70,14 @@ func eachTrackedGoFile(visit func(path string, src []byte) error) error {
 	return nil
 }
 
+func trackedGoFiles() ([]string, error) {
+	out, err := exec.CommandContext(context.Background(), "git", "ls-files", "-z", "--", "*.go").Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files: %w", err)
+	}
+	return strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00"), nil
+}
+
 func offLogProblems(lines map[string][]int, allow map[string]int) []string {
 	var problems []string
 	for _, file := range slices.Sorted(maps.Keys(lines)) {
@@ -82,21 +89,6 @@ func offLogProblems(lines map[string][]int, allow map[string]int) []string {
 		}
 	}
 	return problems
-}
-
-func writeCommentCounts() error {
-	raw, err := os.ReadFile(allowlistPath)
-	if err != nil {
-		return err
-	}
-	allow, err := parse(raw)
-	if err != nil {
-		return fmt.Errorf("%s: %w", allowlistPath, err)
-	}
-	if allow[commentsLinter], err = goComments(); err != nil {
-		return err
-	}
-	return writeAllowlist(allow)
 }
 
 func suppressionGrowth(base string) ([]string, error) {

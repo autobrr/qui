@@ -5,9 +5,6 @@ package fsutil
 
 import "testing"
 
-// TestDirModeInvariants pins the directory-mode constant so an accidental edit
-// is caught. ContentDirMode requests all bits and lets umask decide (discussion
-// #1704).
 func TestDirModeInvariants(t *testing.T) {
 	if ContentDirMode != 0o777 {
 		t.Errorf("ContentDirMode = %04o, want 0777", ContentDirMode)

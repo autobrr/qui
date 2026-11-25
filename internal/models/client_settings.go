@@ -9,9 +9,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// ClientSettingsStore persists frontend user settings as an opaque key-value
-// map. Values are raw strings the backend never parses; the frontend owns the
-// encoding of every key.
 type ClientSettingsStore struct {
 	db dbinterface.Querier
 }
@@ -20,7 +17,6 @@ func NewClientSettingsStore(db dbinterface.Querier) *ClientSettingsStore {
 	return &ClientSettingsStore{db: db}
 }
 
-// GetAll returns every stored setting. An empty map means nothing is stored.
 func (s *ClientSettingsStore) GetAll(ctx context.Context) (map[string]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM client_settings`)
 	if err != nil {
@@ -39,8 +35,6 @@ func (s *ClientSettingsStore) GetAll(ctx context.Context) (map[string]string, er
 	return settings, rows.Err()
 }
 
-// SetMany upserts the given settings atomically, leaving keys not in the map
-// untouched.
 func (s *ClientSettingsStore) SetMany(ctx context.Context, settings map[string]string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

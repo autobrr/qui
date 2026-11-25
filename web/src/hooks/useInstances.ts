@@ -10,7 +10,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-/** The key of the status save, so that a list can read the ids of the instances that it still runs for. */
 export const instanceStatusKey = ["instances", "status"] as const
 
 export function useInstances() {
@@ -20,23 +19,19 @@ export function useInstances() {
   const { data: instances, isLoading, error } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
-    // Instance list rarely changes; real-time connection status now comes from SSE
-    refetchInterval: 2 * 60 * 1000, // Refetch every 2 minutes
+    refetchInterval: 2 * 60 * 1000,
   })
 
   const createMutation = useMutation({
     mutationFn: (data: InstanceFormData) => api.createInstance(data),
     onSuccess: async (newInstance) => {
-      // Immediately add the new instance to cache
       queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
         if (!old) return [newInstance]
         return [...old.filter(i => i.id !== newInstance.id), newInstance]
       })
 
-      // Test connection immediately to get actual status
       try {
         const status = await api.testConnection(newInstance.id)
-        // Update the instance with the actual connection status
         queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
           if (!old) return []
           return old.map(i =>
@@ -47,7 +42,6 @@ export function useInstances() {
         console.error("Failed to test connection after creation:", error)
       }
 
-      // Invalidate to ensure consistency with backend
       queryClient.invalidateQueries({ queryKey: ["instances"] })
     },
   })
@@ -58,17 +52,13 @@ export function useInstances() {
       data: Partial<InstanceFormData>
     }) => api.updateInstance(id, data),
     onSuccess: async (updatedInstance) => {
-      // Immediately update the instance in cache, preserving only the connected
-      // flag to avoid UI flicker (testConnection will refresh it)
       queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
         if (!old) return [updatedInstance]
         return old.map(i => i.id === updatedInstance.id? { ...updatedInstance, connected: i.connected }: i)
       })
 
-      // Test connection immediately to get actual status
       try {
         const status = await api.testConnection(updatedInstance.id)
-        // Update the instance with the actual connection status
         queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
           if (!old) return []
           return old.map(i =>
@@ -79,7 +69,6 @@ export function useInstances() {
         console.error("Failed to test connection after update:", error)
       }
 
-      // Invalidate to ensure consistency with backend
       queryClient.invalidateQueries({ queryKey: ["instances"] })
     },
   })
@@ -121,8 +110,6 @@ export function useInstances() {
   })
 
   const deleteMutation = useMutation({
-    // The history delete needs Settings: write, so it is a second request. When
-    // it fails, the instance is gone and a part of its history can stay.
     mutationFn: async ({ id, deleteHistory }: { id: number; name: string; deleteHistory?: boolean }) => {
       await api.deleteInstance(id)
       if (deleteHistory) {
@@ -136,10 +123,8 @@ export function useInstances() {
     },
     onSuccess: ({ historyError }) => {
       queryClient.invalidateQueries({ queryKey: ["instances"] })
-      // The delete removes each route to or from the instance.
       queryClient.invalidateQueries({ queryKey: crossSeedRoutesKey })
       queryClient.invalidateQueries({ queryKey: ["transfer-history"] })
-      // This callback runs also when the dialog that removed the instance is gone.
       if (historyError) {
         toast.error(t("deleteHistory.failed"), {
           description: historyError instanceof Error ? historyError.message : undefined,

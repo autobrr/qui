@@ -18,9 +18,7 @@ interface RSSRunItemProps {
 
 export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
   const { t } = useTranslation("crossseed")
-  // A routed result names the instance that held the match and the Cross-seed instance.
   const instanceLabel = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? crossSeedRouteText(t, result.instanceName, result.crossSeedInstanceName, result.success) : result.instanceName
-  // A routed label is long, so it shrinks on a narrow screen and leaves room for the release name.
   const instanceBadgeSize = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? "shrink min-w-0 max-w-64" : "shrink-0 w-20"
   const hasResults = run.results && run.results.length > 0
   const successResults = run.results?.filter(r => r.success) ?? []

@@ -61,7 +61,6 @@ function renderManager() {
   )
 }
 
-/** Answers the question that a delete asks first. */
 async function confirmDelete() {
   fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "trackerCustomizations.delete" }))
 }
@@ -75,7 +74,6 @@ afterEach(() => {
 })
 
 describe("TrackerCustomizationsManager", () => {
-  // regression: #4108
   it("clears the group selection when the selected customization is deleted", async () => {
     mocks.customizations = [customization(1, "Alpha", ["a.example.invalid"]), customization(2, "Bravo", ["b.example.invalid"])]
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
@@ -95,7 +93,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.queryByRole("checkbox", { name: "Bravo" })).not.toBeNull()
   })
 
-  // regression: #4108
   it("asks again about a conflict after the pasted text changes", async () => {
     mocks.customizations = [customization(1, "Alpha", ["a.example.invalid"]), customization(2, "Bravo", ["b.example.invalid"])]
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
@@ -114,7 +111,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(importButton().hasAttribute("disabled")).toBe(true)
   })
 
-  // regression: #4108
   it("does not reopen the import dialog while an import still runs", async () => {
     mocks.customizations = []
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
@@ -132,7 +128,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.getByRole("button", { name: "trackerCustomizations.importButton" }).hasAttribute("disabled")).toBe(true)
   })
 
-  // regression: #4108
   it("drops a domain from the selection when an import gives it a customization", async () => {
     mocks.deleteTrackerCustomization.mockImplementation((id: number) => {
       mocks.customizations = mocks.customizations.filter(c => c.id !== id)
@@ -160,7 +155,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
     expect(screen.queryByRole("listitem", { name: "a.example.invalid" })).toBeNull()
 
-    // A delete of the imported customization gives the domain its row back, unselected.
     fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.delete" }))
     await confirmDelete()
     const box = await screen.findByRole("checkbox", { name: "a.example.invalid" })
@@ -168,7 +162,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
   })
 
-  // regression: #4108
   it("keeps the selection of a rename that opens while a cancelled import still runs", async () => {
     mocks.instances = [{ id: 1, isActive: true }]
     mocks.activeTrackers = { "a.example.invalid": "https://a.example.invalid/announce", "b.example.invalid": "https://b.example.invalid/announce" }
@@ -191,7 +184,6 @@ describe("TrackerCustomizationsManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "actions.cancel" }))
     await waitFor(() => expect(screen.queryByLabelText("trackerCustomizations.importDialog.jsonData")).toBeNull())
 
-    // A wide screen and a phone each have a Rename button in the row, and jsdom shows both.
     fireEvent.click(within(screen.getByRole("listitem", { name: "b.example.invalid" })).getAllByRole("button", { name: "trackerCustomizations.rename" })[0])
     fireEvent.change(await screen.findByLabelText("trackerCustomizations.customizeDialog.displayName"), { target: { value: "Bravo" } })
     await act(async () => finishImport())
@@ -202,7 +194,6 @@ describe("TrackerCustomizationsManager", () => {
 })
 
 describe("useUpdateTrackerCustomization", () => {
-  // regression: #4108
   it("puts the saved customization in the cache before the refetch answers", async () => {
     const client = newClient()
     const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>

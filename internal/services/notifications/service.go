@@ -112,8 +112,6 @@ func (s *Service) Start(ctx context.Context) {
 	}
 
 	s.startOnce.Do(func() {
-		// The store keeps the targets after the first read, so an event that
-		// a database fault causes, such as a System notice, still finds them.
 		if _, err := s.store.ListEnabled(ctx); err != nil {
 			s.logger.Warn().Err(err).Msg("notifications: failed to read the targets at start")
 		}
@@ -123,8 +121,6 @@ func (s *Service) Start(ctx context.Context) {
 	})
 }
 
-// Listens reports whether an enabled target listens for the event type. On a
-// read error it reports true, so the event is queued and dispatch reads again.
 func (s *Service) Listens(ctx context.Context, eventType EventType) bool {
 	targets, err := s.store.ListEnabled(ctx)
 	return err != nil || slices.ContainsFunc(targets, func(target *models.NotificationTarget) bool {
@@ -210,8 +206,6 @@ func (s *Service) dispatch(ctx context.Context, event Event) {
 		}
 
 		if err := s.send(ctx, target, event, title, message); err != nil {
-			// Redact: shoutrrr errors embed the post URL, which carries the
-			// webhook token / bot token for most services.
 			s.logger.Error().Str("error", redact.String(err.Error())).Str("target", target.Name).Str("event", string(event.Type)).Msg("notifications: send failed")
 		}
 	}
@@ -483,8 +477,6 @@ func (s *Service) resolveInstanceLabel(ctx context.Context, event Event) string 
 	return instance.Name
 }
 
-// allowsEvent reports whether a target with eventTypes gets eventType. An
-// empty list means each event type, except the ones a target must pick.
 func allowsEvent(eventTypes []string, eventType EventType) bool {
 	if len(eventTypes) == 0 {
 		return !optIn(eventType)

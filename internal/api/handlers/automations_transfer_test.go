@@ -23,8 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// The automations API saves a rule with a Transfer to Instance action and
-// keeps each field of the action.
 func TestAutomationRuleWithATransferSaves(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "automation-transfer")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -90,10 +88,6 @@ func TestAutomationRuleWithATransferSaves(t *testing.T) {
 	}
 }
 
-// regression: #4242
-// A Transfer adds the cross-seeds of a torrent to the Cross-seed instance of
-// its target, so an API key with an Instance limit must reach that instance
-// too, to save or run a Transfer rule (ADR 0040).
 func TestATransferRuleNeedsTheCrossSeedInstanceOfItsTargetInTheKeyLimit(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "automation-transfer-route")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))

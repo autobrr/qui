@@ -26,10 +26,6 @@ const (
 
 var _ fsops.RootOpener = (*Backend)(nil)
 
-// OpenRoot opens dir as a Root over SFTP. SFTP has no openat, so each call
-// checks its name with the path rules of the dialect, and refuses a name
-// with a folder below dir that is a symlink or a file. A swap on the server
-// between that check and the request stays possible.
 func (b *Backend) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
 	client, err := b.client(ctx)
 	if err != nil {
@@ -131,10 +127,6 @@ func (r *root) OpenWrite(ctx context.Context, name string, offset int64) (fsops.
 	return r.b.open(ctx, p, os.O_WRONLY, offset)
 }
 
-// RenameNoReplace never trusts the plain SFTP rename to refuse a name that
-// exists: SFTPGo 2.7.6 replaces the file. With hardlink@openssh.com it links
-// and removes the old name. Without it, or when the link fails, it renames
-// only when an lstat finds newName free.
 func (r *root) RenameNoReplace(ctx context.Context, oldName, newName string) error {
 	client, oldPath, err := r.open(ctx, "rename", oldName)
 	if err != nil {
@@ -172,7 +164,6 @@ func (r *root) Link(ctx context.Context, oldName, newName string) error {
 	if err != nil {
 		return err
 	}
-	// Client.Link sends the extended packet unconditionally.
 	if _, ok := client.HasExtension(sshpool.HardlinkExtension); !ok {
 		return pathError("link", newPath, fmt.Errorf("%w: server does not advertise %s", fsops.ErrUnsupported, sshpool.HardlinkExtension))
 	}
@@ -200,5 +191,4 @@ func (r *root) Remove(ctx context.Context, name string) error {
 	return unlink(ctx, client, p, fi.IsDir())
 }
 
-// Close holds nothing: the pool owns the connection.
 func (r *root) Close() error { return nil }

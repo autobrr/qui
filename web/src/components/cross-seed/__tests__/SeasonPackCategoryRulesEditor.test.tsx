@@ -6,8 +6,6 @@
 import { cleanup, render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-// Return the key itself so assertions can target stable strings without loading
-// the full i18n runtime.
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
@@ -16,7 +14,6 @@ import { SeasonPackCategoryRulesEditor } from "@/components/cross-seed/SeasonPac
 import type { SeasonPackCategoryRule } from "@/types"
 
 describe("SeasonPackCategoryRulesEditor", () => {
-  // globals: false in vitest.config disables auto-cleanup, so do it explicitly.
   afterEach(() => {
     cleanup()
   })

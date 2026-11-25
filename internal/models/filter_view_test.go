@@ -21,8 +21,6 @@ const testFilterViewUserID = 1
 func setupFilterViewStore(t *testing.T) *models.FilterViewStore {
 	t.Helper()
 
-	// No user row is seeded on purpose: OIDC-only and auth-disabled installs
-	// never populate the user table, so filter_views must not depend on it.
 	return models.NewFilterViewStore(testdb.NewMigratedSQLite(t, "filter-views"))
 }
 
@@ -34,7 +32,6 @@ func TestFilterViewStoreCreateAndList(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, views)
 
-	// Seeded out of order: List must return them by name.
 	seeds := []struct {
 		name    string
 		filters string

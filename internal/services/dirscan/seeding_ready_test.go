@@ -15,11 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// An instance that has not synced since qui started is not ready, and the
-// check asks for a sync, since nothing else may start one. After a sync the
-// instance is ready. A client qui cannot get names its own cause.
-//
-// regression: #3613
 func TestSyncManagerSeedingReady(t *testing.T) {
 	ctx := t.Context()
 	stub := qbtstub.New(t, t.TempDir())
@@ -33,18 +28,12 @@ func TestSyncManagerSeedingReady(t *testing.T) {
 	pool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 60*time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pool.Close() })
-	// GetClient runs the first sync, which the stub fails. It runs before
-	// NewSyncManager because the pool starts a tracker health loop for a
-	// client it creates once a sync manager is registered, and that loop could
-	// hold the pool's instance lock when the hint fires.
 	_, err = pool.GetClient(ctx, instance.ID)
 	require.NoError(t, err)
 	require.Equal(t, 1, stub.Syncs())
 	files := syncManagerTorrentFiles{qbittorrent.NewSyncManager(pool, nil)}
 
 	require.ErrorContains(t, files.SeedingReady(ctx, instance.ID), "waiting for first sync")
-	// Syncs never overlap, and each applies its result before the next
-	// request, so a third request means the good second sync has landed.
 	select {
 	case <-stub.Synced(3):
 	case <-time.After(10 * time.Second):

@@ -36,15 +36,12 @@ import (
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
-// ExtractedArchive represents the result of streaming extraction to disk.
-// Caller must call Close() to clean up the temporary directory.
 type ExtractedArchive struct {
-	TempDir      string            // Root temp directory (caller must clean up)
-	ManifestPath string            // Path to extracted manifest.json
-	TorrentPaths map[string]string // archivePath -> absolute file path on disk
+	TempDir      string
+	ManifestPath string
+	TorrentPaths map[string]string
 }
 
-// Close removes the temporary directory and all extracted files.
 func (e *ExtractedArchive) Close() error {
 	if e.TempDir != "" {
 		return os.RemoveAll(e.TempDir)
@@ -52,16 +49,13 @@ func (e *ExtractedArchive) Close() error {
 	return nil
 }
 
-// streamingExtractor defines a streaming archive format extractor.
-// A nil extractToDisk function indicates manifest-only (JSON) format.
 type streamingExtractor struct {
 	suffixes      []string
 	extractToDisk func(archivePath string) (*ExtractedArchive, error)
 }
 
-// streamingExtractors lists supported formats for streaming extraction.
 var streamingExtractors = []streamingExtractor{
-	{suffixes: []string{".json"}}, // nil extractToDisk = manifest only
+	{suffixes: []string{".json"}},
 	{suffixes: []string{".zip"}, extractToDisk: extractZipToDisk},
 	{suffixes: []string{".tar.gz", ".tgz"}, extractToDisk: extractTarGzToDisk},
 	{suffixes: []string{".tar.zst"}, extractToDisk: extractTarZstToDisk},
@@ -82,8 +76,6 @@ func findStreamingExtractor(filename string) *streamingExtractor {
 	return nil
 }
 
-// isPlainExtension reports whether ext is a leading dot followed by ASCII
-// alphanumerics, the only shape the temp-file pattern should ever carry.
 func isPlainExtension(ext string) bool {
 	if len(ext) < 2 || ext[0] != '.' {
 		return false
@@ -96,11 +88,7 @@ func isPlainExtension(ext string) bool {
 	return true
 }
 
-// saveUploadToTemp copies the uploaded file to a temp file for streaming extraction.
 func saveUploadToTemp(src io.Reader, filename string) (string, error) {
-	// Determine extension for temp file. The name comes from the upload, so
-	// anything that is not a plain extension is discarded rather than carried
-	// into the temp file pattern.
 	ext := filepath.Ext(filename)
 	if !isPlainExtension(ext) {
 		ext = ".tmp"
@@ -125,7 +113,6 @@ func saveUploadToTemp(src io.Reader, filename string) (string, error) {
 	return tmpFile.Name(), nil
 }
 
-// copyStreamToFile copies from a reader to a file, creating parent directories as needed.
 func copyStreamToFile(src io.Reader, destPath string) error {
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return fmt.Errorf("create directory: %w", err)
@@ -344,7 +331,6 @@ func (h *BackupsHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		runs = runs[:requestedLimit]
 	}
 
-	// Merge progress data for running backups
 	runsWithProgress := make([]*backupRunWithProgress, len(runs))
 	for i, run := range runs {
 		runWithProgress := &backupRunWithProgress{BackupRun: run}
@@ -403,9 +389,6 @@ func (h *BackupsHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, manifest)
 }
 
-// DownloadRun downloads a backup archive.
-// Query parameters:
-//   - format: compression format (zip, tar.gz, tar.zst, tar.br, tar.xz, tar) - defaults to zip
 func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -439,14 +422,12 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load manifest
 	manifest, err := h.service.LoadManifest(r.Context(), runID)
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, "Failed to load backup manifest")
 		return
 	}
 
-	// Parse format parameter
 	format := r.URL.Query().Get("format")
 	if format == "" {
 		format = "zip"
@@ -464,7 +445,6 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set headers based on format
 	var contentType, extension string
 	switch format {
 	case "zip":
@@ -487,8 +467,6 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		extension = "tar"
 	}
 
-	// Marshal manifest BEFORE setting headers or creating writers
-	// This ensures any marshal error can be reported properly via RespondError
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
@@ -500,11 +478,9 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 
 	if format == "zip" {
-		// Create zip writer
 		zipWriter := zip.NewWriter(w)
 		defer zipWriter.Close()
 
-		// Add manifest to zip
 		manifestHeader := &zip.FileHeader{
 			Name:   "manifest.json",
 			Method: zip.Deflate,
@@ -520,20 +496,17 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Add torrent files to zip
 		for _, item := range manifest.Items {
 			if item.TorrentBlob == "" {
 				continue
 			}
 
-			// Validate blob path to prevent directory traversal
 			torrentPath := h.service.ResolveBackupPath(item.TorrentBlob)
 			if torrentPath == "" {
 				continue
 			}
 			file, err := os.Open(torrentPath)
 			if err != nil {
-				// Skip missing files
 				continue
 			}
 
@@ -559,13 +532,11 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 			file.Close()
 		}
 
-		// Close zip writer to finalize
 		if err := zipWriter.Close(); err != nil {
 			log.Error().Err(err).Int64("runID", runID).Msg("Failed to finalize zip")
 			return
 		}
 	} else {
-		// Handle tar-based formats
 		var compressor io.WriteCloser
 		var err error
 		switch format {
@@ -592,7 +563,6 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		tarWriter := tar.NewWriter(compressor)
 		defer tarWriter.Close()
 
-		// Add manifest to tar
 		manifestHeader := &tar.Header{
 			Name:    "manifest.json",
 			Size:    int64(len(manifestData)),
@@ -608,20 +578,17 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Add torrent files to tar
 		for _, item := range manifest.Items {
 			if item.TorrentBlob == "" {
 				continue
 			}
 
-			// Validate blob path to prevent directory traversal
 			torrentPath := h.service.ResolveBackupPath(item.TorrentBlob)
 			if torrentPath == "" {
 				continue
 			}
 			file, err := os.Open(torrentPath)
 			if err != nil {
-				// Skip missing files
 				continue
 			}
 
@@ -651,7 +618,6 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 
 			file.Close()
 		}
-		// tarWriter and compressor are closed by defers
 	}
 }
 
@@ -662,7 +628,6 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Parse multipart form with reduced memory limit (large files spool to disk)
 	if err := r.ParseMultipartForm(32 << 20); err != nil { //nolint:gosec // G120: the uploader is the authenticated single user restoring their own backup; memory is bounded and the rest spools to disk
 		RespondError(w, http.StatusBadRequest, "Failed to parse multipart form")
 		return
@@ -671,11 +636,9 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 	var manifestData []byte
 	var torrentPaths map[string]string
 
-	// Check for archive upload first (zip or tar.gz containing manifest + torrents)
 	if archiveFile, archiveHeader, err := r.FormFile("archive"); err == nil {
 		defer archiveFile.Close()
 
-		// Find streaming extractor
 		extractor := findStreamingExtractor(archiveHeader.Filename)
 		if extractor == nil {
 			RespondError(w, http.StatusBadRequest, "Unsupported format. Use .json (manifest-only), .zip, .tar.gz, .tar.zst, .tar.br, .tar.xz, or .tar")
@@ -683,14 +646,12 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 		}
 
 		if extractor.extractToDisk == nil {
-			// Manifest-only upload (JSON) - read directly (small file)
 			manifestData, err = io.ReadAll(archiveFile)
 			if err != nil {
 				RespondError(w, http.StatusInternalServerError, "Failed to read manifest file")
 				return
 			}
 		} else {
-			// Save upload to temp file for streaming extraction
 			archivePath, err := saveUploadToTemp(archiveFile, archiveHeader.Filename)
 			if err != nil {
 				RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save archive: %v", err))
@@ -698,7 +659,6 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 			}
 			defer os.Remove(archivePath)
 
-			// Extract to temp directory
 			extracted, err := extractor.extractToDisk(archivePath)
 			if err != nil {
 				RespondError(w, http.StatusBadRequest, fmt.Sprintf("Failed to extract archive: %v", err))
@@ -706,7 +666,6 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 			}
 			defer extracted.Close()
 
-			// Read manifest from extracted temp file
 			manifestData, err = os.ReadFile(extracted.ManifestPath)
 			if err != nil {
 				RespondError(w, http.StatusBadRequest, "Failed to read manifest from archive")
@@ -716,7 +675,6 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 			torrentPaths = extracted.TorrentPaths
 		}
 	} else {
-		// Fall back to manifest-only upload
 		file, _, err := r.FormFile("manifest")
 		if err != nil {
 			RespondError(w, http.StatusBadRequest, "Either 'archive' (zip/tar.gz) or 'manifest' file is required")
@@ -731,10 +689,8 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// Get requestedBy from context or use default
 	requestedBy := "api-import"
 	if user := r.Context().Value("user"); user != nil {
-		// TODO: extract username from context if available
 		requestedBy = "user"
 	}
 
@@ -747,19 +703,10 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 	RespondJSON(w, http.StatusCreated, run)
 }
 
-// archiveEntryBaseName classifies an archive entry by its final element.
-// Entry names are slash-delimited by the zip and tar specs, so filepath.Base
-// only agrees with that on Windows: on Linux it would read "b\\manifest.json"
-// as one long filename and quietly skip the entry.
 func archiveEntryBaseName(name string) string {
 	return strings.ToLower(path.Base(strings.ReplaceAll(name, `\`, "/")))
 }
 
-// safeArchiveEntryPath converts a slash-delimited archive entry name into the
-// local relative path to extract it to, or "" when the entry escapes the
-// extraction directory. Entry names come from an untrusted archive, so this
-// rejects POSIX and Windows escapes on every OS rather than only the escapes
-// the host filesystem happens to understand.
 func safeArchiveEntryPath(name string) string {
 	raw := strings.ReplaceAll(strings.TrimSpace(name), `\`, "/")
 	if slices.Contains(strings.Split(raw, "/"), "..") {
@@ -774,9 +721,6 @@ func safeArchiveEntryPath(name string) string {
 	return filepath.FromSlash(slash)
 }
 
-// --- Streaming extractors (write directly to disk) ---
-
-// extractZipToDisk extracts a zip archive to a temp directory.
 func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 	archiveFile, err := os.Open(archivePath)
 	if err != nil {
@@ -806,15 +750,6 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 
 	cleanup := func() { os.RemoveAll(tempDir) }
 
-	// Entry names are normalised before they are joined, so two names that
-	// differ only in slash style resolve to one destination. Extracting both
-	// would leave the second entry's bytes sitting under the first entry's name.
-	// The manifest is matched on basename, so it collides the same way and is
-	// guarded separately below. Claims are folded to lower case because a
-	// destination differing only in case is the same file on Windows and on a
-	// default macOS volume. The writers open with O_EXCL as the backstop for
-	// whatever else a filesystem folds together, and fs.ErrExist from that is
-	// reported as the collision it is rather than as a create failure.
 	claimed := make(map[string]string)
 
 	for _, file := range reader.File {
@@ -872,7 +807,6 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 	return result, nil
 }
 
-// extractZipFileToDisk extracts a single zip file entry to disk.
 func extractZipFileToDisk(zf *zip.File, destPath string) error {
 	rc, err := zf.Open()
 	if err != nil {
@@ -895,7 +829,6 @@ func extractZipFileToDisk(zf *zip.File, destPath string) error {
 	return err
 }
 
-// extractTarGzToDisk extracts a tar.gz archive to a temp directory.
 func extractTarGzToDisk(archivePath string) (*ExtractedArchive, error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -912,7 +845,6 @@ func extractTarGzToDisk(archivePath string) (*ExtractedArchive, error) {
 	return extractTarReaderToDisk(gzReader)
 }
 
-// extractTarToDisk extracts a plain tar archive to a temp directory.
 func extractTarToDisk(archivePath string) (*ExtractedArchive, error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -923,7 +855,6 @@ func extractTarToDisk(archivePath string) (*ExtractedArchive, error) {
 	return extractTarReaderToDisk(f)
 }
 
-// extractTarZstToDisk extracts a tar.zst archive to a temp directory.
 func extractTarZstToDisk(archivePath string) (*ExtractedArchive, error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -940,7 +871,6 @@ func extractTarZstToDisk(archivePath string) (*ExtractedArchive, error) {
 	return extractTarReaderToDisk(zstReader)
 }
 
-// extractTarBrToDisk extracts a tar.br archive to a temp directory.
 func extractTarBrToDisk(archivePath string) (*ExtractedArchive, error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -952,7 +882,6 @@ func extractTarBrToDisk(archivePath string) (*ExtractedArchive, error) {
 	return extractTarReaderToDisk(brReader)
 }
 
-// extractTarXzToDisk extracts a tar.xz archive to a temp directory.
 func extractTarXzToDisk(archivePath string) (*ExtractedArchive, error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -968,7 +897,6 @@ func extractTarXzToDisk(archivePath string) (*ExtractedArchive, error) {
 	return extractTarReaderToDisk(xzReader)
 }
 
-// extractTarReaderToDisk extracts a tar stream to a temp directory.
 func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 	tempDir, err := os.MkdirTemp("", "qui-extract-*")
 	if err != nil {
@@ -982,8 +910,6 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 
 	cleanup := func() { os.RemoveAll(tempDir) }
 
-	// See extractZipToDisk: normalised names can collide, and the second write
-	// would silently replace the first entry's bytes.
 	claimed := make(map[string]string)
 
 	tarReader := tar.NewReader(r)
@@ -1019,7 +945,6 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 			safePath := safeArchiveEntryPath(name)
 			if safePath == "" {
 				log.Warn().Str("entry", name).Msg("Skipping archive entry that resolves outside the extraction directory")
-				// Consume the entry so the tar reader stays aligned.
 				_, _ = io.Copy(io.Discard, tarReader) //nolint:gosec // G110: the archive is one the authenticated user uploaded to restore their own backup
 				continue
 			}
@@ -1039,7 +964,6 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 			}
 			result.TorrentPaths[name] = destPath
 		} else {
-			// Skip other files but consume the data
 			_, _ = io.Copy(io.Discard, tarReader) //nolint:gosec // G110: the archive is one the authenticated user uploaded to restore their own backup
 		}
 	}

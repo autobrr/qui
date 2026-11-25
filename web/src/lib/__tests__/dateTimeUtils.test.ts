@@ -17,9 +17,6 @@ import {
 } from "@/lib/dateTimeUtils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// Fixed reference point used by every formatter test below. Picking a known
-// timestamp lets us assert exact output strings rather than approximate
-// substrings. 2024-06-15 14:30:45 UTC -> 1718461845.
 const TS_2024_06_15_14_30_45_UTC = 1718461845
 
 const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
@@ -52,9 +49,6 @@ const createStorageStub = (): Storage => {
   }
 }
 
-// Node 26 exposes an experimental global localStorage accessor that returns
-// undefined unless Node is started with --localstorage-file. Keep this test on
-// the browser Storage contract without depending on runtime-specific globals.
 const installTestLocalStorage = () => {
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
@@ -71,10 +65,6 @@ const restoreOriginalLocalStorage = () => {
   Reflect.deleteProperty(globalThis, "localStorage")
 }
 
-// Intent: Unix-seconds timestamp -> formatted string using the user's
-// timezone + date/time format preferences. Tests pass explicit preferences
-// so we never depend on localStorage; the localStorage fallback path is
-// covered separately.
 describe("formatTimestamp", () => {
   it.each([0, undefined as unknown as number, null as unknown as number])("returns 'N/A' for falsy timestamp %p", (ts) => {
     expect(formatTimestamp(ts)).toBe("N/A")
@@ -90,9 +80,6 @@ describe("formatTimestamp", () => {
 
   it("respects 12h time format (hour12)", () => {
     const result = formatTimestamp(TS_2024_06_15_14_30_45_UTC, utcPrefs({ timeFormat: "12h" }))
-    // iso date + 12h time. Asserting structurally rather than exact whitespace
-    // because Intl uses U+202F (narrow no-break space) before AM/PM in some
-    // engines.
     expect(result).toMatch(/^2024-06-15 02:30\s*PM$/)
   })
 
@@ -100,7 +87,7 @@ describe("formatTimestamp", () => {
     const utc = formatTimestamp(TS_2024_06_15_14_30_45_UTC, utcPrefs())
     const ny = formatTimestamp(TS_2024_06_15_14_30_45_UTC, utcPrefs({ timezone: "America/New_York" }))
     expect(utc).toBe("2024-06-15 14:30")
-    expect(ny).toBe("2024-06-15 10:30") // EDT is UTC-4 in June
+    expect(ny).toBe("2024-06-15 10:30")
   })
 
   it("formats with us date format (MM/DD/YYYY)", () => {
@@ -116,7 +103,7 @@ describe("formatTimestamp", () => {
   it("relative format delegates to formatRelativeTime", () => {
     vi.useFakeTimers()
     try {
-      vi.setSystemTime(new Date("2024-06-15T14:30:50Z")) // 5 seconds after
+      vi.setSystemTime(new Date("2024-06-15T14:30:50Z"))
       expect(formatTimestamp(TS_2024_06_15_14_30_45_UTC, utcPrefs({ dateFormat: "relative" }))).toBe("Just now")
     } finally {
       vi.useRealTimers()
@@ -124,9 +111,6 @@ describe("formatTimestamp", () => {
   })
 })
 
-// Intent: same machinery as formatTimestamp but date-only — no time
-// component. The relative format still applies (date-only relative makes
-// sense for "added 2 days ago" style displays).
 describe("formatDateOnly", () => {
   it("returns 'N/A' for falsy timestamp", () => {
     expect(formatDateOnly(0)).toBe("N/A")
@@ -155,9 +139,6 @@ describe("formatDateOnly", () => {
   })
 })
 
-// Intent: time-only formatter. Uses the user's timezone and 12h/24h
-// preference. Locale comes from the runtime ([] arg), so we assert
-// structurally on the parts we control.
 describe("formatTimeOnly", () => {
   it("returns 'N/A' for falsy timestamp", () => {
     expect(formatTimeOnly(0)).toBe("N/A")
@@ -180,7 +161,6 @@ describe("formatTimeOnly", () => {
 })
 
 describe("formatClockTime", () => {
-  // regression: #4110
   it("falls back to local time for a saved time zone that Intl rejects", () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     try {
@@ -192,8 +172,6 @@ describe("formatClockTime", () => {
   })
 })
 
-// Intent: thin Date -> formatted-string wrapper. Just confirm it routes
-// through formatTimestamp with the right epoch conversion.
 describe("formatDate", () => {
   it("converts a Date to seconds and delegates to formatTimestamp", () => {
     const d = new Date("2024-06-15T14:30:45Z")
@@ -215,9 +193,6 @@ describe("formatISOTimestamp", () => {
   })
 })
 
-// Intent: always relative, independent of user preferences. Drives "last
-// activity", "seen complete", and similar at-a-glance fields. Must handle
-// past + future + invalid inputs without throwing.
 describe("formatRelativeTime", () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -267,7 +242,7 @@ describe("formatRelativeTime", () => {
   })
 
   it("accepts Unix seconds (number)", () => {
-    expect(formatRelativeTime(1718445600)).toBe("2 hours ago") // 2024-06-15T10:00:00Z
+    expect(formatRelativeTime(1718445600)).toBe("2 hours ago")
   })
 
   it("accepts ISO string", () => {
@@ -275,13 +250,8 @@ describe("formatRelativeTime", () => {
   })
 })
 
-// Intent: HH:mm:ss using the host's LOCAL timezone. Pin behavior by
-// constructing the Date in local time so the test runs deterministically
-// regardless of CI vs developer-machine timezone.
 describe("formatTimeHMS", () => {
   it("zero-pads hours, minutes, seconds", () => {
-    // Local-time date constructor — values come out the way we put them in,
-    // regardless of test runner's timezone.
     expect(formatTimeHMS(new Date(2024, 0, 15, 4, 5, 9))).toBe("04:05:09")
     expect(formatTimeHMS(new Date(2024, 0, 15, 14, 30, 45))).toBe("14:30:45")
     expect(formatTimeHMS(new Date(2024, 0, 15, 0, 0, 0))).toBe("00:00:00")
@@ -293,9 +263,9 @@ describe("isNeverCompletedTimestamp", () => {
   it("rejects qBittorrent never-completed sentinels", () => {
     expect(isNeverCompletedTimestamp(0)).toBe(true)
     expect(isNeverCompletedTimestamp(-1)).toBe(true)
-    expect(isNeverCompletedTimestamp(28800)).toBe(true) // qbit 4.x west of UTC
-    expect(isNeverCompletedTimestamp(86400)).toBe(true) // boundary
-    expect(isNeverCompletedTimestamp(4294967295)).toBe(true) // qbit 4.1 uint32(-1)
+    expect(isNeverCompletedTimestamp(28800)).toBe(true)
+    expect(isNeverCompletedTimestamp(86400)).toBe(true)
+    expect(isNeverCompletedTimestamp(4294967295)).toBe(true)
     expect(isNeverCompletedTimestamp(undefined)).toBe(true)
     expect(isNeverCompletedTimestamp(null)).toBe(true)
   })
@@ -306,10 +276,6 @@ describe("isNeverCompletedTimestamp", () => {
   })
 })
 
-// Intent: when no preferences are passed, the formatter pulls from
-// localStorage. Empty / missing storage uses a sensible default. Errors
-// during read are swallowed (logged) so a corrupted key never crashes
-// the UI.
 describe("formatTimestamp localStorage fallback", () => {
   beforeEach(() => {
     installTestLocalStorage()
@@ -321,8 +287,6 @@ describe("formatTimestamp localStorage fallback", () => {
   })
 
   it("uses the runtime's resolved timezone when localStorage is empty", () => {
-    // We can't assert an exact value (depends on test runner) but the call
-    // must succeed and return a non-empty, non-"N/A" string.
     const result = formatTimestamp(TS_2024_06_15_14_30_45_UTC)
     expect(result).not.toBe("N/A")
     expect(result.length).toBeGreaterThan(0)

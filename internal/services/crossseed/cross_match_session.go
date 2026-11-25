@@ -16,23 +16,17 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// CrossMatchSession reads only the torrents that a reader asks for and their groups, and keeps what it read (ADR 0042).
 type CrossMatchSession interface {
 	Resolve(ctx context.Context, req ResolveRequest) *CrossMatchResult
 }
 
-// ResolveRequest names the torrents that one Resolve answers.
 type ResolveRequest struct {
-	// A torrent outside the snapshot is in no set.
-	Hashes []string
-	All    bool
-	// Groups follows each group to its whole component. Without it, only the facts are read.
-	Groups bool
-	// OtherShared checks the whole library, because a scoped pool can miss a Shared file.
+	Hashes      []string
+	All         bool
+	Groups      bool
 	OtherShared bool
 }
 
-// Indexes refer to torrents.
 type crossMatchSession struct {
 	svc        *Service
 	instanceID int
@@ -42,19 +36,17 @@ type crossMatchSession struct {
 	instances  []*models.Instance
 	listErr    error
 	files      *batchFiles
-	// asked holds the file keys that a fetch asked for, so no round asks twice.
-	asked map[string]struct{}
+	asked      map[string]struct{}
 
 	indexed    bool
 	reads      localReads
-	picks      [][]*candidatePick // Name and Release picks; path picks join as path groups are read
-	reverse    [][]int            // the torrents that pick each torrent
+	picks      [][]*candidatePick
+	reverse    [][]int
 	pathGroups [][]int
 	groupsOf   [][]int
 	groupRead  []bool
 	expanded   []bool
-	links      []map[int]struct{} // both ways
-	// A classification is final once the path groups are read, because the picks are final then.
+	links      []map[int]struct{}
 	classified []*indexMatch
 
 	otherIndexed bool
@@ -62,10 +54,9 @@ type crossMatchSession struct {
 	others       []qbittorrent.CrossInstanceTorrentView
 	offline      []*models.Instance
 	otherPicks   [][]*candidatePick
-	shared       *CrossMatchResult // the other-instance Shared-file check, once it ran
+	shared       *CrossMatchResult
 }
 
-// OpenCrossMatchSession reads no file list. A failed instance list makes every torrent Unknown.
 func (s *Service) OpenCrossMatchSession(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) (CrossMatchSession, error) {
 	torrents, instances, listErr, err := s.crossMatchSnapshot(ctx, currentInstanceID)
 	if err != nil {
@@ -139,12 +130,10 @@ func (c *crossMatchSession) Resolve(ctx context.Context, req ResolveRequest) *Cr
 		c.otherShared(ctx, result)
 	}
 
-	// A peer whose torrents could not be read can hold the only copy.
 	c.addUnknown(result, req.OtherShared)
 	return result
 }
 
-// index selects the candidates of the whole library from names and local reads.
 func (c *crossMatchSession) index(ctx context.Context) {
 	if c.indexed {
 		return
@@ -206,7 +195,6 @@ func (c *crossMatchSession) addTorrent(n fileNeed, i int) {
 	}
 }
 
-// addSource follows the rules of prefetch.
 func (c *crossMatchSession) addSource(n fileNeed, i int, picks []*candidatePick) {
 	if len(picks) == 0 || c.torrents[i].ContentPath == "" {
 		return
@@ -229,7 +217,6 @@ func (c *crossMatchSession) addUnreadGroups(n fileNeed, i int) {
 	}
 }
 
-// fetch follows prefetch, and skips the keys that an earlier fetch asked for.
 func (c *crossMatchSession) fetch(ctx context.Context, need fileNeed) {
 	for instanceID, set := range need {
 		var hashes []string
@@ -259,7 +246,6 @@ func (c *crossMatchSession) fetch(ctx context.Context, need fileNeed) {
 	}
 }
 
-// readGroups links the torrents that share a file path.
 func (c *crossMatchSession) readGroups(ctx context.Context, torrents []int) {
 	var groups [][]int
 	for _, i := range torrents {
@@ -274,7 +260,7 @@ func (c *crossMatchSession) readGroups(ctx context.Context, torrents []int) {
 		return
 	}
 	needs := c.needs
-	needs.SameContent = true // addSharedPathPicks returns the links only with SameContent
+	needs.SameContent = true
 	shared := c.files.addSharedPathPicks(ctx, c.instanceID, c.torrents, groups, c.picks, needs)
 	for hash, next := range shared {
 		for _, other := range next {
@@ -295,7 +281,6 @@ func (c *crossMatchSession) link(i, j int) {
 	}
 }
 
-// Call classify only after the path groups of i are read.
 func (c *crossMatchSession) classify(ctx context.Context, i int) indexMatch {
 	if m := c.classified[i]; m != nil {
 		return *m
@@ -305,7 +290,6 @@ func (c *crossMatchSession) classify(ctx context.Context, i int) indexMatch {
 	return m
 }
 
-// unreadLink links a pick whose list cannot be read, as classifyCandidates does.
 func (c *crossMatchSession) unreadLink(ctx context.Context, source, m int) bool {
 	s, t := c.torrents[source], c.torrents[m]
 	if s.ContentPath == "" || t.ContentPath == "" {
@@ -318,7 +302,6 @@ func (c *crossMatchSession) unreadLink(ctx context.Context, source, m int) bool 
 	return !ok
 }
 
-// close follows the links from start in batched rounds, with one fetch per round.
 func (c *crossMatchSession) close(ctx context.Context, start []int) {
 	frontier := slices.DeleteFunc(slices.Clone(start), func(i int) bool { return c.expanded[i] })
 	for len(frontier) > 0 && ctx.Err() == nil {
@@ -342,7 +325,6 @@ func (c *crossMatchSession) close(ctx context.Context, start []int) {
 	}
 }
 
-// linkUnread links m to each pick and picker when one of the two lists cannot be read.
 func (c *crossMatchSession) linkUnread(ctx context.Context, m int) {
 	c.expanded[m] = true
 	for _, hash := range c.classify(ctx, m).unreadCandidates {
@@ -386,8 +368,6 @@ func (c *crossMatchSession) component(i int) []int {
 	return slices.Sorted(maps.Keys(seen))
 }
 
-// addGroups adds the file lists of the groups with two or more torrents. It returns the asked
-// torrents and the members of their groups, which the closure classified.
 func (c *crossMatchSession) addGroups(ctx context.Context, asked []int, result *CrossMatchResult) []int {
 	result.SameInstanceContentByHash = make(map[string][]string)
 	result.MemberFiles = make(map[string]qbt.TorrentFiles)
@@ -416,7 +396,6 @@ func (c *crossMatchSession) addGroups(ctx context.Context, asked []int, result *
 	return slices.Compact(members)
 }
 
-// readFacts reads the torrents, their path groups and their picks, but not the groups.
 func (c *crossMatchSession) readFacts(ctx context.Context, asked []int) {
 	need := make(fileNeed)
 	for _, i := range asked {
@@ -466,7 +445,6 @@ func (c *crossMatchSession) fetchOtherFacts(ctx context.Context, asked []int) {
 	c.fetch(ctx, need)
 }
 
-// otherShared runs once per session.
 func (c *crossMatchSession) otherShared(ctx context.Context, result *CrossMatchResult) {
 	if c.shared == nil {
 		c.shared = &CrossMatchResult{}

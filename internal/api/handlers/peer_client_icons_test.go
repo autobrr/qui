@@ -34,7 +34,6 @@ type iconRig struct {
 	hits    *atomic.Int32
 }
 
-// newIconRig serves body from a fake upstream through the real service and handler.
 func newIconRig(t *testing.T, upstream http.HandlerFunc, icons func(base string) []peerclienticons.Icon) iconRig {
 	t.Helper()
 	hits := &atomic.Int32{}
@@ -59,7 +58,6 @@ func (rig iconRig) get(name string) *httptest.ResponseRecorder {
 	return rr
 }
 
-// storedIcons lists the icon files on disk, without the retry state.
 func (rig iconRig) storedIcons(t *testing.T) []string {
 	t.Helper()
 	entries, err := os.ReadDir(rig.iconDir)
@@ -123,7 +121,6 @@ func TestPeerClientIcon_BadDownloadStoresNothingAndWaits(t *testing.T) {
 			}
 			http.Redirect(w, r, "/moved", http.StatusFound)
 		}},
-		// The hash matches the whole body, so only the size limit rejects it.
 		{"over 1 MiB", sha(strings.Repeat("a", 1<<20) + "a"), serveBody(strings.Repeat("a", 1<<20) + "a")},
 	}
 	for _, tt := range tests {
@@ -172,7 +169,7 @@ func TestPeerClientIcon_FileDroppedInDirectoryIsNotServed(t *testing.T) {
 func TestPeerClientIcon_FillGoesOnRootElementOnce(t *testing.T) {
 	rig := newIconRig(t, serveBody(testSVG), oneIcon("utorrent", sha(testSVG), "#76b83f"))
 
-	for range 2 { // downloaded, then from disk
+	for range 2 {
 		body := rig.get("utorrent").Body.String()
 		require.True(t, strings.HasPrefix(body, `<svg fill="#76b83f" `), body)
 		require.Equal(t, 1, strings.Count(body, "fill="), body)

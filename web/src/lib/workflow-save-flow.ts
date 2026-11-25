@@ -18,11 +18,9 @@ export type WorkflowSaveFlow =
 export type WorkflowSaveFlowEvent =
   | { type: "dryRunAsked" }
   | { type: "previewStarted" }
-  // The first page, or the first page of another preview view.
   | { type: "previewLoaded"; result: AutomationPreviewResult }
   | { type: "previewFailed"; error: string }
   | { type: "morePreviewLoaded"; result: AutomationPreviewResult }
-  // The user cancelled or confirmed, or the editor closed.
   | { type: "closed" }
 
 export const EDITING: WorkflowSaveFlow = { step: "editing" }

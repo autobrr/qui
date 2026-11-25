@@ -18,8 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// expiredCacheAt is older than the max age and the cleanup age below, so an
-// expired read is an expired read on both engines.
 var expiredCacheAt = time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func TestTorznabTorrentCacheStoreSQLite(t *testing.T) {
@@ -48,16 +46,12 @@ func runTorznabTorrentCacheStoreTests(t *testing.T, open func(t *testing.T) *dat
 	})
 }
 
-// regression: #3100
 func checkRefreshedEntrySurvivesExpiredFetch(t *testing.T, db *database.DB) {
 	indexerID := insertTestTorznabIndexer(t, db, "Cache Indexer", "http://indexer.example")
 	const cacheKey = "cache-key-refresh"
 	stale := []byte("stale-payload")
 	fresh := []byte("fresh-payload")
 
-	// The old Fetch deleted the expired row by id on a goroutine after it
-	// returned the miss. When that delete ran after the refresh, it removed the
-	// new payload. Fetch must leave the row to Cleanup.
 	signals := newCacheSignals(db)
 	store := models.NewTorznabTorrentCacheStore(signals)
 	ctx := t.Context()
@@ -74,10 +68,6 @@ func checkRefreshedEntrySurvivesExpiredFetch(t *testing.T, db *database.DB) {
 	require.True(t, ok, "refreshed payload missing after an expired fetch")
 	require.Equal(t, fresh, got)
 
-	// The touch from the hit runs on a goroutine that Fetch started after an
-	// eviction goroutine would have started. Go does not run them in that
-	// order, so with one CPU this check on SQLite can miss a delete that has
-	// not run yet. The Postgres run catches it.
 	awaitTorrentCacheTouch(t, db, signals, indexerID, cacheKey)
 	select {
 	case <-signals.evicted:
@@ -102,8 +92,6 @@ func checkFetchMissesExpiredAndHitsLive(t *testing.T, db *database.DB) {
 	require.NoError(t, err)
 	require.False(t, ok)
 
-	// A hit touches last_used_at after it returns. Age that column first so the
-	// test can see that the touch wrote it.
 	ageTorrentCacheLastUsed(t, db, indexerID, "cache-key-live")
 	got, ok, err := store.Fetch(ctx, indexerID, "cache-key-live", time.Hour)
 	require.NoError(t, err)
@@ -192,9 +180,6 @@ func awaitTorrentCacheTouch(t *testing.T, db *database.DB, signals *cacheSignals
 	require.True(t, lastUsed.After(expiredCacheAt), "touch did not update last_used_at")
 }
 
-// cacheSignals sends on evicted when a delete on torznab_torrent_cache
-// arrives, whatever shape its SQL takes, and on touched after the async cache
-// touch has written last_used_at.
 type cacheSignals struct {
 	dbinterface.Querier
 	evicted chan struct{}

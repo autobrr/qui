@@ -75,40 +75,27 @@ const COLUMN_TO_QB_FIELD: Partial<Record<keyof (Torrent & CrossInstanceTorrent),
   reannounce: "Reannounce",
   private: "Private",
   priority: "Priority",
-  instanceName: "InstanceName", // Cross-seed filtering instance column
+  instanceName: "InstanceName",
 }
 
-// State categories: maps filter value to all qBittorrent states in that category
-// Must match namedStatuses in internal/qbittorrent/torrent_list_query.go
 const STATE_CATEGORY_MAP: Record<string, string[]> = {
-  // Seeding states (uploading category)
   uploading: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP"],
-  // Downloading states
   downloading: ["downloading", "stalledDL", "metaDL", "forcedMetaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
-  // Completed states, also during a recheck
   completed: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP", "pausedUP", "stoppedUP"],
-  // Stalled states
   stalled: ["stalledDL", "stalledUP"],
   stalled_uploading: ["stalledUP"],
   stalled_downloading: ["stalledDL"],
-  // Checking states
   checking: ["checkingDL", "checkingUP", "checkingResumeData"],
-  // Error states
   errored: ["error", "missingFiles"],
-  // Paused/stopped states
   paused: ["pausedDL", "pausedUP", "stoppedDL", "stoppedUP"],
   stopped: ["pausedDL", "pausedUP", "stoppedDL", "stoppedUP"],
-  // Active states (downloading or uploading actively)
   active: ["downloading", "uploading", "forcedDL", "forcedUP"],
-  // Moving state
   moving: ["moving"],
 }
 
-// Remap column IDs for filtering to use total counts instead of connected counts
-// This matches the sorting behavior in TorrentTableOptimized.tsx (lines 972-976)
 const FILTER_COLUMN_REMAP: Record<string, string> = {
-  num_seeds: "num_complete",    // Filter by total seeds, not connected
-  num_leechs: "num_incomplete", // Filter by total peers, not connected
+  num_seeds: "num_complete",
+  num_leechs: "num_incomplete",
 }
 
 const OPERATION_TO_EXPR: Record<FilterOperation, string> = {
@@ -140,11 +127,8 @@ function escapeExprValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
 }
 
-// Saved filters store these values, so only the labels are translated: a translated value would
-// miss FILTER_UNIT_BYTES and send NaN to the backend. PiB is left out; nobody filters at that size.
 const FILTER_UNIT_LADDER: SizeUnit[] = ["B", "KiB", "MiB", "GiB", "TiB"]
 
-// Built per call, not at import, so the labels follow a language switch.
 export function getSizeUnitOptions(): { value: SizeUnit; label: string }[] {
   return FILTER_UNIT_LADDER.map((unit) => ({ value: unit, label: unitLabel(unit) }))
 }
@@ -153,8 +137,6 @@ export function getSpeedUnitOptions(): { value: SpeedUnit; label: string }[] {
   return FILTER_UNIT_LADDER.map((unit) => ({ value: `${unit}/s`, label: unitLabel(unit, true) }))
 }
 
-// A speed filter is its size filter per second, so both spellings resolve to the same
-// magnitude. The "/s" is part of the stored SpeedUnit value, not something this layer chooses.
 const FILTER_UNIT_BYTES: Record<SizeUnit | SpeedUnit, number> = Object.fromEntries(
   FILTER_UNIT_LADDER.flatMap((unit) => [[unit, BYTES_PER_UNIT[unit]], [`${unit}/s`, BYTES_PER_UNIT[unit]]])
 ) as Record<SizeUnit | SpeedUnit, number>
@@ -178,28 +160,7 @@ function convertDurationToSeconds(value: number, unit: DurationUnit): number {
   return Math.floor(value * unitMultipliers[unit])
 }
 
-/**
- * Converts a column filter to qBittorrent expr format
- *
- * Examples:
- * - { columnId: "ratio", operation: "gt", value: "2" } => "Ratio > 2"
- * - { columnId: "name", operation: "contains", value: "linux" } => "Name contains \"linux\""
- * - { columnId: "size", operation: "gt", value: "10", sizeUnit: "GiB" } => "Size > 10737418240"
- * - { columnId: "added_on", operation: "gt", value: "2024-01-01" } => "AddedOn > 1704067200"
- *
- * State filters use category expansion (matching FilterSidebar behavior):
- * - "uploading" (Seeding) expands to: uploading, stalledUP, queuedUP, checkingUP, forcedUP
- * - "downloading" expands to: downloading, stalledDL, metaDL, forcedMetaDL, queuedDL, allocating, checkingDL, forcedDL
- * - "completed" expands to the upload states, paused and stopped ones included
- *
- * Example expansions:
- * - { columnId: "state", operation: "eq", value: "uploading" } =>
- *   "(string(State) == \"uploading\" || string(State) == \"stalledUP\" || ...)"
- * - { columnId: "state", operation: "ne", value: "uploading" } =>
- *   "(string(State) != \"uploading\" && string(State) != \"stalledUP\" && ...)"
- */
 export function columnFilterToExpr(filter: ColumnFilter): string | null {
-  // Apply column remapping for filtering (use total counts instead of connected)
   const effectiveColumnId = FILTER_COLUMN_REMAP[filter.columnId] ?? filter.columnId
   const fieldName = COLUMN_TO_QB_FIELD[effectiveColumnId as keyof Torrent]
 
@@ -343,25 +304,18 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
     return `${fieldName} ${operator} ${fractionValue}`
   }
 
-  // Handle state column with category expansion
-  // When filtering by a state category (e.g., "uploading" which means "Seeding"),
-  // expand it to match all qBittorrent states in that category
   if (filter.columnId === "state" && (filter.operation === "eq" || filter.operation === "ne")) {
     const stateCategory = STATE_CATEGORY_MAP[filter.value]
     if (stateCategory && stateCategory.length >= 1) {
-      // Generate combined expression for all states in the category
       const stateExpressions = stateCategory.map(state =>
         `string(${fieldName}) ${operator} "${escapeExprValue(state)}"`
       )
       if (filter.operation === "eq") {
-        // "eq" (equals): any state in category matches -> OR logic
         return `(${stateExpressions.join(" || ")})`
       } else {
-        // "ne" (not equals): exclude all states in category -> AND logic
         return `(${stateExpressions.join(" && ")})`
       }
     }
-    // Unknown state: fall through to default handling
   }
 
   const needsQuotes = isNaN(Number(filter.value)) ||
@@ -391,17 +345,6 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
   }
 }
 
-/**
- * Converts multiple column filters to a combined expr string
- * Multiple filters are combined with AND logic
- *
- * Example:
- * [
- *   { columnId: "ratio", operation: "gt", value: "2" },
- *   { columnId: "state", operation: "eq", value: "downloading" }
- * ]
- * => "Ratio > 2 && State == \"downloading\""
- */
 export function columnFiltersToExpr(filters: ColumnFilter[], operator: string = "and"): string | null {
   if (!filters || filters.length === 0) {
     return null

@@ -165,8 +165,6 @@ func createSeasonPackHandlerTorrent(t *testing.T, rootName string, files []strin
 			Length: int64(len(content)),
 		})
 	}
-	// Order files by full path, the shape every real torrent-creation tool
-	// produces.
 	slices.SortFunc(info.Files, func(a, b metainfo.FileInfo) int {
 		return strings.Compare(strings.Join(a.Path, "/"), strings.Join(b.Path, "/"))
 	})
@@ -187,9 +185,6 @@ func createSeasonPackHandlerTorrent(t *testing.T, rootName string, files []strin
 func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	packFile := "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"
-	// Single-file pack: an unmatched extra like notes.txt would be a pending
-	// file sharing a piece with the episode, and the piece-boundary safety
-	// check would fail assembly before the AddTorrent call under test.
 	torrentData := createSeasonPackHandlerTorrent(t, packName, []string{packFile})
 
 	metaBytes, err := base64.StdEncoding.DecodeString(torrentData)
@@ -206,9 +201,6 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 		HardlinkBaseDir:          t.TempDir(),
 	}
 
-	// The episode must exist on disk with the pack file's exact size, on the
-	// same filesystem as the hardlink base dir, so assembly succeeds and the
-	// apply reaches AddTorrent.
 	episodePath := filepath.Join(t.TempDir(), "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv")
 	require.NoError(t, os.WriteFile(episodePath, make([]byte, meta.Files[0].Size), 0o600))
 

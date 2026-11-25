@@ -69,7 +69,6 @@ afterEach(() => {
 })
 
 describe("IndexersPage", () => {
-  // regression: #4233
   it("keeps a newer switch state when a capability sync answers late", async () => {
     mocks.stored = INDEXER
     let finishSync: (indexer: TorznabIndexer) => void = () => {}
@@ -81,7 +80,6 @@ describe("IndexersPage", () => {
     fireEvent.click(toggle)
     await waitFor(() => expect([toggle.getAttribute("aria-checked"), toggle.hasAttribute("disabled")]).toEqual(["false", false]))
 
-    // The server read the row for this answer before the switch saved.
     finishSync({ ...INDEXER, enabled: true, capabilities: ["search"] })
     await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("indexers.toast.capsSynced"))
 

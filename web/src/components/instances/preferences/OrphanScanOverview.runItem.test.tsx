@@ -18,8 +18,6 @@ function render(ui: ReactElement) {
   return { client, ...rtlRender(<QueryClientProvider client={client}><TooltipProvider>{ui}</TooltipProvider></QueryClientProvider>) }
 }
 
-// OrphanScanRunItem only needs a translator; keep the module's other exports
-// (initReactI18next is pulled in through the import graph).
 vi.mock("react-i18next", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-i18next")>()
   return {
@@ -84,7 +82,6 @@ describe("OrphanScanRunItem", () => {
 
     fireEvent.click(container.querySelector("button")!)
     fireEvent.click(container.querySelector("button")!)
-    // A run status event and a stream reconnect invalidate these prefixes.
     await client.invalidateQueries({ queryKey: ["orphan-scan", 1] })
     await client.invalidateQueries({ queryKey: ["orphan-scan"] })
     await vi.advanceTimersByTimeAsync(5_000)
@@ -113,7 +110,6 @@ describe("OrphanScanRunItem", () => {
   it("renders a run with no error and no scan paths as a plain row", () => {
     const { container } = render(<OrphanScanRunItem run={makeRun()} />)
 
-    // No trigger means no chevron and nothing to expand.
     expect(container.querySelector("button")).toBeNull()
   })
   it.each([

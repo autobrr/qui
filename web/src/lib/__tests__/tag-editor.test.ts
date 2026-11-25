@@ -13,9 +13,6 @@ import {
 } from "@/lib/tag-editor"
 import { describe, expect, it } from "vitest"
 
-// Intent: numeric-aware locale collation so users see tag-1, tag-2, ...,
-// tag-10 instead of tag-1, tag-10, tag-2. Catches anyone who swaps in a
-// plain lexical sort.
 describe("sortTags", () => {
   it("sorts numerically aware (tag10 after tag2)", () => {
     expect(sortTags(["tag10", "tag2", "tag1"])).toEqual(["tag1", "tag2", "tag10"])
@@ -26,11 +23,6 @@ describe("sortTags", () => {
   })
 })
 
-// Intent: render the bulk tag editor. Each tag shown to the user has three
-// states: "on" (all selected torrents have it), "off" (none have it), or
-// "mixed" (some do, some don't). The sort order pins the row order the
-// user sees. Catches anyone who flips the "mixed vs on" condition (which
-// would silently overwrite tags users don't intend to change).
 describe("buildTagEditorItems", () => {
   it("returns empty when no tags are available", () => {
     expect(buildTagEditorItems([], [], 0)).toEqual([])
@@ -69,15 +61,11 @@ describe("buildTagEditorItems", () => {
   })
 
   it("counts each torrent at most once per tag (duplicate tags within one torrent don't inflate the count)", () => {
-    // Edge case: tag appears twice in one torrent string. Without the Set
-    // dedupe inside the count loop, "linux" would count twice for a single
-    // torrent, falsely meeting `count === selectedCount` for non-shared tags.
     const items = buildTagEditorItems(
       [],
       ["linux,linux", "windows"],
       2
     )
-    // linux is on torrent 1 only (count=1, not 2), so it must be 'mixed'.
     expect(items.find(i => i.tag === "linux")?.initialState).toBe("mixed")
   })
 
@@ -87,8 +75,6 @@ describe("buildTagEditorItems", () => {
   })
 
   it("does not mark tags 'on' when selectedCount is zero", () => {
-    // Catches a divide-by-zero-like bug where 0 selected + 0 count would
-    // erroneously match initialState === 'on'.
     const items = buildTagEditorItems(["x"], [], 0)
     expect(items.find(i => i.tag === "x")?.initialState).toBe("off")
   })
@@ -99,10 +85,6 @@ describe("buildTagEditorItems", () => {
   })
 })
 
-// Intent: the tristate checkbox cycle the user clicks through.
-// 'mixed' -> 'on' (one click "applies to all"); 'on' -> 'off'; 'off' -> 'on'.
-// Catches anyone who lets 'mixed' loop back to itself (no way to apply it)
-// or breaks the on/off toggle pair.
 describe("cycleTagSelectionState", () => {
   it.each<["on" | "off" | "mixed", "on" | "off"]>([
     ["mixed", "on"],
@@ -113,10 +95,6 @@ describe("cycleTagSelectionState", () => {
   })
 })
 
-// Intent: convert the current UI state into the set of add/remove operations
-// to send. A tag is only added if it was NOT already fully on; only removed
-// if it was NOT already fully off. Catches anyone who would emit redundant
-// no-op operations (which the qBittorrent API tolerates but adds churn).
 describe("buildTagUpdatePlan", () => {
   const item = (overrides: Partial<TagEditorItem>): TagEditorItem => ({
     tag: "x",
@@ -159,8 +137,6 @@ describe("buildTagUpdatePlan", () => {
   })
 })
 
-// Intent: short-circuit so callers can skip API requests when the user
-// hasn't actually changed anything.
 describe("hasTagUpdatePlan", () => {
   it.each<[{ add: string[]; remove: string[] }, boolean]>([
     [{ add: [], remove: [] }, false],

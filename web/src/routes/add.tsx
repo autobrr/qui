@@ -48,7 +48,6 @@ function AddTorrentHandler() {
   const [dialogOpen, setDialogOpen] = useState(true)
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
 
-  // Track if payload was ever received (prevents falling back to "waiting" state after consumption)
   const hasReceivedPayload = useRef(false)
 
   const activeInstances = instances?.filter(i => i.isActive) ?? []
@@ -93,7 +92,6 @@ function AddTorrentHandler() {
     return subscribeLaunchQueueEvents(handleLaunchQueueEvent)
   }, [authLoading, handleLaunchQueueEvent, isAuthenticated, magnet])
 
-  // Check if running as installed PWA (file-handler launches only happen in standalone mode)
   const isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true
 
@@ -147,7 +145,6 @@ function AddTorrentHandler() {
     if (magnet) {
       storeAddIntent({ magnet, openAdd: true })
     } else if (expectingFiles || isStandalone) {
-      // In standalone mode without magnet, files may be coming via launchQueue
       storeAddIntent({ hasFiles: true, openAdd: true })
     }
     return <Navigate to="/login" />

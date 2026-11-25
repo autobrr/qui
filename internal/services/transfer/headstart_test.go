@@ -28,8 +28,6 @@ func (r *diskRoot) Link(ctx context.Context, oldName, newName string) error {
 		return &os.LinkError{Op: "link", Old: oldName, New: newName, Err: fsops.ErrConnectionLost}
 	}
 	if r.d.noLinks {
-		// A root makes the missing folders of newName before the link
-		// fails, so they stay.
 		if err := r.Root.Link(ctx, oldName, newName); err == nil {
 			_ = r.Remove(ctx, newName)
 		}
@@ -44,10 +42,6 @@ const (
 	episode3 = "Show.S01E03.mkv"
 )
 
-// newPack is a torrent of three files in the folder Show.S01.1080p-GRP, with
-// pieces of 16 bytes. Piece 2 holds the end of the first file and the start
-// of the second, and piece 4 the end of the second and the start of the
-// third. Only piece 3 lies fully inside the second file.
 func newPack(t *testing.T) show {
 	t.Helper()
 	return packOf(t,
@@ -56,8 +50,6 @@ func newPack(t *testing.T) show {
 		qbtstub.ContentFile{Path: episode3, Data: numbered("E03", 30)})
 }
 
-// packOf is a torrent of files in the folder Show.S01.1080p-GRP, with pieces
-// of 16 bytes.
 func packOf(t *testing.T, files ...qbtstub.ContentFile) show {
 	t.Helper()
 	data, hash := qbtstub.NewContentTorrent(t, showName, 16, files...)
@@ -68,7 +60,6 @@ func packOf(t *testing.T, files ...qbtstub.ContentFile) show {
 	return s
 }
 
-// numbered is n bytes that never repeat at another offset of the file.
 func numbered(prefix string, n int) []byte {
 	var data []byte
 	for i := 0; len(data) < n; i++ {
@@ -77,8 +68,6 @@ func numbered(prefix string, n int) []byte {
 	return data[:n]
 }
 
-// placeOnTarget writes files on the target, as rclone does before the
-// Transfer, and returns what each one is before the Transfer.
 func (r *rig) placeOnTarget(files map[string][]byte) map[string]os.FileInfo {
 	r.t.Helper()
 	write(r.t, filepath.Join(r.dstDir, showName), files)
@@ -91,8 +80,6 @@ func (r *rig) placeOnTarget(files map[string][]byte) map[string]os.FileInfo {
 	return before
 }
 
-// requireUntouched fails when a file that qui did not write lost its name,
-// or changed its size, its time, or its content.
 func (r *rig) requireUntouched(before map[string]os.FileInfo, files map[string][]byte) {
 	r.t.Helper()
 	for name, was := range before {
@@ -108,17 +95,12 @@ func (r *rig) requireUntouched(before map[string]os.FileInfo, files map[string][
 	}
 }
 
-// Files that are already on the target count as a head start: qui checks
-// them, copies only the missing files, proves every file, and keeps on the
-// source the files that it did not copy.
 func TestTransferUsesFilesAlreadyOnTheTarget(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		onTarget      []string
 		incompleteExt bool
-		// checks counts the checks on the target: a full head start needs
-		// no check after the copy.
-		checks int
+		checks        int
 	}{
 		{name: "every file", onTarget: []string{episode1, episode2, episode3}, checks: 1},
 		{name: "with .!qB on, a correct file between two missing ones", onTarget: []string{episode2}, incompleteExt: true, checks: 2},
@@ -179,11 +161,6 @@ func TestTransferUsesFilesAlreadyOnTheTarget(t *testing.T) {
 	}
 }
 
-// A file on the target that fails its check is a conflict. The Transfer
-// stops and names the file, and leaves it as it is, also when qBittorrent
-// appends .!qB to the incomplete files that it checks. The check-only helper
-// stops when its files are checked, and qui neither starts it again nor
-// gives it a peer, so it never downloads.
 func TestTransferStopsAtAFileOnTheTargetThatFailsItsCheck(t *testing.T) {
 	r := newRig(t)
 	s := newPack(t)
@@ -196,7 +173,6 @@ func TestTransferStopsAtAFileOnTheTargetThatFailsItsCheck(t *testing.T) {
 
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
-	// regression: #4231
 	require.Equal(t, "Conflict: the file at "+filepath.Join(r.dstDir, showName, episode2)+" on homelab differs from the torrent.", record.FailureReason)
 	r.requireUntouched(before, theirs)
 	require.Equal(t, map[string]string{showName + "/" + episode2: string(theirs[episode2])}, tree(t, r.dstDir),
@@ -209,8 +185,6 @@ func TestTransferStopsAtAFileOnTheTargetThatFailsItsCheck(t *testing.T) {
 	require.Equal(t, "false", r.dst.LastParams("torrents/delete").Get("deleteFiles"))
 }
 
-// Where qui cannot make a hardlink on the target, it does not check the file
-// that is there, and the file is a conflict. No helper reads it.
 func TestTransferTreatsAFileItCannotLinkAsAConflict(t *testing.T) {
 	r := newRig(t)
 	s := newPack(t)
@@ -223,7 +197,6 @@ func TestTransferTreatsAFileItCannotLinkAsAConflict(t *testing.T) {
 
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
-	// regression: #4231
 	require.Contains(t, record.FailureReason, "Conflict: qui cannot check the file at "+filepath.Join(r.dstDir, showName, episode2)+
 		" on homelab, because it cannot make a hardlink there")
 	require.Zero(t, r.dst.Writes("torrents/add"), "no helper checks the file")
@@ -232,10 +205,6 @@ func TestTransferTreatsAFileItCannotLinkAsAConflict(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 }
 
-// A file on the target with no piece of its own passes the check before the
-// copy, because each of its pieces is shared with a missing file. qui's own
-// check of the copy never covers its bytes, so the check on the target
-// proves it, and stops the Transfer when it differs.
 func TestTransferProvesAFileOnTheTargetWithNoPieceOfItsOwn(t *testing.T) {
 	r := newRig(t)
 	const nfo = "Show.S01.nfo"

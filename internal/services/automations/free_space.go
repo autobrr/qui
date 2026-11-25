@@ -20,11 +20,8 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// FreeSpaceSourceKeyQBittorrent is the source key for qBittorrent free space.
 const FreeSpaceSourceKeyQBittorrent = "qbt"
 
-// resolveFreeSpaceSource converts a models.FreeSpaceSource to the internal type.
-// Returns a default qBittorrent source if the input is nil.
 func resolveFreeSpaceSource(src *models.FreeSpaceSource) models.FreeSpaceSource {
 	if src == nil || src.Type == "" {
 		return models.FreeSpaceSource{Type: models.FreeSpaceSourceQBittorrent}
@@ -32,11 +29,6 @@ func resolveFreeSpaceSource(src *models.FreeSpaceSource) models.FreeSpaceSource 
 	return *src
 }
 
-// GetFreeSpaceSourceKey returns a unique key for the given source.
-// Keys are "qbt" for the qBittorrent default directory, "path:/cleaned/path" for
-// filesystem backend sources, "qbitPath:<path>" for paths read on the qBittorrent
-// host, and "allowance:/cleaned/path" for allowance sources. The allowance is not
-// in the key, so rules with one path share one measurement.
 func GetFreeSpaceSourceKey(src *models.FreeSpaceSource) string {
 	resolved := resolveFreeSpaceSource(src)
 	trimmed := strings.TrimSpace(resolved.Path)
@@ -46,19 +38,14 @@ func GetFreeSpaceSourceKey(src *models.FreeSpaceSource) string {
 
 	switch resolved.Type {
 	case models.FreeSpaceSourcePath, models.FreeSpaceSourceAllowance:
-		// path, not filepath: the source is a POSIX path on the host that
-		// holds the disk, which is not the qui host when access is over SSH.
 		return string(resolved.Type) + ":" + path.Clean(trimmed)
 	case models.FreeSpaceSourceQbitPath:
-		// Remote path: keep the qBittorrent host's separators, so a Windows host
-		// and a POSIX host never collapse onto the same key.
 		return "qbitPath:" + trimmed
 	default:
 		return FreeSpaceSourceKeyQBittorrent
 	}
 }
 
-// qbtFreeSpace returns qBittorrent's reported free space for the instance.
 func qbtFreeSpace(ctx context.Context, syncManager *qbittorrent.SyncManager, instance *models.Instance) (int64, error) {
 	if syncManager == nil {
 		return 0, errors.New("syncManager is nil")
@@ -73,7 +60,6 @@ func qbtFreeSpace(ctx context.Context, syncManager *qbittorrent.SyncManager, ins
 	return freeSpace, nil
 }
 
-// qbtFreeSpaceAtPath returns the free space qBittorrent reports at p on its own host.
 func qbtFreeSpaceAtPath(ctx context.Context, syncManager *qbittorrent.SyncManager, instance *models.Instance, p string) (int64, error) {
 	if syncManager == nil {
 		return 0, errors.New("syncManager is nil")
@@ -82,7 +68,6 @@ func qbtFreeSpaceAtPath(ctx context.Context, syncManager *qbittorrent.SyncManage
 		return 0, errors.New("instance required for qBittorrent path free space source")
 	}
 
-	// An unmeasurable path arrives as an error, so conditions never read it as zero free space.
 	freeSpace, err := syncManager.GetFreeSpaceAtPath(ctx, instance.ID, p)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get free space at %s from qBittorrent: %w", p, err)
@@ -90,9 +75,6 @@ func qbtFreeSpaceAtPath(ctx context.Context, syncManager *qbittorrent.SyncManage
 	return freeSpace, nil
 }
 
-// freeSpaceBytes reads the free space of src. Only a path source resolves a
-// backend, and it fails rather than fall back to qBittorrent's value, which
-// can measure a different disk.
 func (s *Service) freeSpaceBytes(ctx context.Context, instance *models.Instance, src *models.FreeSpaceSource) (int64, error) {
 	resolved := resolveFreeSpaceSource(src)
 
@@ -101,7 +83,6 @@ func (s *Service) freeSpaceBytes(ctx context.Context, instance *models.Instance,
 		return qbtFreeSpace(ctx, s.syncManager, instance)
 
 	case models.FreeSpaceSourcePath:
-		// The pool's fresh row decides the mode, not the caller's snapshot.
 		backend, fsInstance, err := s.backendPool.Require(ctx, instance.ID, models.CapabilityRead)
 		if err != nil {
 			return 0, fmt.Errorf("no filesystem backend for free space path: %w", err)
@@ -120,7 +101,6 @@ func (s *Service) freeSpaceBytes(ctx context.Context, instance *models.Instance,
 		return result.BytesAvailable, nil
 
 	case models.FreeSpaceSourceQbitPath:
-		// The path belongs to the qBittorrent host, so qui passes it through unchanged.
 		p := strings.TrimSpace(resolved.Path)
 		if p == "" {
 			return 0, errors.New("free space source path is empty")
@@ -132,12 +112,7 @@ func (s *Service) freeSpaceBytes(ctx context.Context, instance *models.Instance,
 	}
 }
 
-// usageUnder returns the bytes that the files under root hold: the sum of the
-// lengths of the regular files, hidden files too. A hardlinked file counts one
-// time. It follows no symlink except root itself. It fails when it cannot read
-// a folder or a file, so a part of the tree never reads as empty.
 func (s *Service) usageUnder(ctx context.Context, instance *models.Instance, root string) (int64, error) {
-	// The pool's fresh row decides the mode, not the caller's snapshot.
 	backend, fsInstance, err := s.backendPool.Require(ctx, instance.ID, models.CapabilityIdentity)
 	if err != nil {
 		return 0, fmt.Errorf("no filesystem backend with file identity for free space allowance: %w", err)
@@ -172,17 +147,12 @@ func (s *Service) usageUnder(ctx context.Context, instance *models.Instance, roo
 		switch {
 		case entry.Err != nil:
 			return 0, fmt.Errorf("failed to measure %s: cannot read %s: %w", root, entry.Path, entry.Err)
-		// A file that was deleted between the listing and the stat holds no space.
 		case errors.Is(entry.StatErr, fs.ErrNotExist):
 			continue
 		case entry.StatErr != nil:
 			return 0, fmt.Errorf("failed to measure %s: cannot read %s: %w", root, entry.Path, entry.StatErr)
 		case !entry.Mode.IsRegular():
 			continue
-		// A remote walk without identity is the walk of a host that has no
-		// shell, of a tree too large for the shell walk, or of a tree where
-		// the shell walk failed. In the last case the walk goes on to the
-		// folder that it cannot read, and that folder is the reason to report.
 		case remote && entry.FileIDErr != nil:
 			if identityErr == nil {
 				identityErr = fmt.Errorf("failed to measure %s: %s: %w", root, entry.Path, entry.FileIDErr)
@@ -211,9 +181,6 @@ func (s *Service) usageUnder(ctx context.Context, instance *models.Instance, roo
 	return usage, nil
 }
 
-// previewUsageReuse is how long a preview reuses the usage that a preview
-// measured. The rule dialog sends a preview after each edit, and each one
-// would walk the tree again.
 const previewUsageReuse = time.Minute
 
 type previewUsageKey struct {
@@ -226,8 +193,6 @@ type previewUsageReading struct {
 	at    time.Time
 }
 
-// previewUsageUnder is usageUnder for a preview. A preview that arrives while
-// another one measures waits for it, and then reuses its figure.
 func (s *Service) previewUsageUnder(ctx context.Context, instance *models.Instance, root string) (int64, error) {
 	key := previewUsageKey{instanceID: instance.ID, root: root}
 	s.previewUsageMu.Lock()

@@ -8,20 +8,10 @@ import type { DiscScanRun, TorrentFile } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useMemo } from "react"
 
-// useDiscScans holds the Disc scans of one torrent for the Content tab: the
-// newest run per Disc path, and the start and cancel calls. The list refetches
-// on the discscan.run activity event; a start or cancel response replaces the
-// row for its Disc path at once so the dialog does not wait for that round trip.
-//
-// A start on a Disc another torrent already scanned returns that torrent's
-// cached row. The list of this torrent never carries it, so it is not written
-// into the list; the dialog reads it from start.data instead. The completion
-// toast lives in DiscScanToasts, which stays mounted when this hook is not.
 export function useDiscScans(instanceId: number, torrentHash: string, files: TorrentFile[] | undefined, enabled: boolean) {
   const queryClient = useQueryClient()
   const queryKey = ["disc-scans", instanceId, torrentHash]
 
-  // files only load on the Content tab, so this query is scoped to it too.
   const { data: runs } = useQuery({
     queryKey,
     queryFn: () => api.listDiscScans(instanceId, torrentHash),
@@ -42,9 +32,6 @@ export function useDiscScans(instanceId: number, torrentHash: string, files: Tor
     onSuccess: replaceRun,
   })
 
-  // runFor picks the row the dialog shows: the list row of this torrent, else
-  // the row of another torrent that the start of this Disc returned, updated
-  // by its cancel when the user canceled that shared run from here.
   const runFor = (discPath: string): DiscScanRun | undefined => {
     const started = start.variables?.discPath === discPath ? start.data : undefined
     return runsByPath.get(discPath) ?? (cancel.data && cancel.data.id === started?.id ? cancel.data : started)

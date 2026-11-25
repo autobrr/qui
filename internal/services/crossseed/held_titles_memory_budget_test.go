@@ -69,6 +69,7 @@ func newBigHeldLibrary(tb testing.TB, size int) *bigHeldLibrary {
 	pool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Minute)
 	require.NoError(tb, err)
 	tb.Cleanup(func() { _ = pool.Close() })
+	waitForSyncsAtCleanup(tb, client)
 	testutil.SetUnexportedField(tb, pool, "clients", map[int]*qbittorrent.Client{instance.ID: client})
 
 	files := ttlcache.New[string, qbt.TorrentFiles](ttlcache.SetDefaultTTL(time.Hour))

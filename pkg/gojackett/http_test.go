@@ -15,9 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A cancelled caller must end the retry loop, not just the attempt in flight:
-// otherwise a search whose deadline passed keeps retrying in the background
-// and logs long after its caller has moved on.
 func TestRetryDoStopsWhenContextEnds(t *testing.T) {
 	t.Parallel()
 
@@ -80,12 +77,8 @@ func TestRetryDoReleasesConnectionOn5xx(t *testing.T) {
 		require.Error(t, err)
 	}
 
-	// A released connection is closed or idle in the pool, depending on whether
-	// the client read the short body before the close. Close the idle ones, so
-	// that only a leaked connection stays open.
 	client.http.CloseIdleConnections()
 
-	// The server sees each client close a moment after the call returns.
 	closed := make(chan struct{})
 	mu.Lock()
 	if len(open) == 0 {

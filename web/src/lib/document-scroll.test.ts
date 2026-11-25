@@ -25,12 +25,10 @@ function fakeWindow() {
 }
 
 describe("keepDocumentAtTop", () => {
-  // regression: #4298
   it("scrolls the document back to the top after a rotation back to portrait", () => {
     const win = fakeWindow()
     keepDocumentAtTop(win as unknown as Window)
 
-    // iOS resizes twice on the way back to portrait; the second resize changes only the height and brings the scroll.
     win.fire("resize", 0)
     win.fire("resize", 62)
 

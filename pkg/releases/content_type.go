@@ -25,9 +25,6 @@ const (
 	ContentTypeUnknown   ContentType = "unknown"
 )
 
-// ContentTypes lists every value DetermineContentType can return, in display order.
-// The automation rule editor reads it from the generated
-// web/src/components/query-builder/fields.generated.ts.
 var ContentTypes = []ContentType{
 	ContentTypeMovie,
 	ContentTypeTV,
@@ -45,9 +42,6 @@ type ContentTypeInfo struct {
 	ContentType ContentType
 }
 
-// normalizeReleaseTypeForContent inspects parsed metadata to correct obvious
-// misclassifications (e.g. video torrents parsed as music because of dash-separated
-// folder names such as BDMV/STREAM paths).
 func normalizeReleaseTypeForContent(release *rls.Release) *rls.Release {
 	normalized := *release
 	if normalized.Type != rls.Music {
@@ -154,7 +148,6 @@ func isAdultContent(release *rls.Release) bool {
 }
 
 func isBenignXXXContent(release *rls.Release, titleLower, subtitleLower, collectionLower string) bool {
-	// Avoid flagging the mainstream xXx film franchise.
 	if strings.HasPrefix(titleLower, "xxx") || strings.HasPrefix(subtitleLower, "xxx") || strings.HasPrefix(collectionLower, "xxx") {
 		if release.Year == 2002 || release.Year == 2005 || release.Year == 2017 {
 			return true
@@ -169,7 +162,6 @@ func isBenignXXXContent(release *rls.Release, titleLower, subtitleLower, collect
 	return false
 }
 
-// RIAJ media type mapping based on the 3rd character of the 4-letter manufacturer code.
 var riajMediaTypes = map[byte]string{
 	'A': "dvd-audio",
 	'B': "dvd-video",
@@ -234,9 +226,6 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	return ClassifyAs(release, release.Type)
 }
 
-// ClassifyAs classifies a release as if it parsed as releaseType. Unlike
-// DetermineContentType it skips the music-to-video rescue, so callers that
-// already know the type from other evidence keep it.
 func ClassifyAs(release *rls.Release, releaseType rls.Type) ContentTypeInfo {
 	var info ContentTypeInfo
 
@@ -274,9 +263,6 @@ func ClassifyAs(release *rls.Release, releaseType rls.Type) ContentTypeInfo {
 	case rls.App:
 		info.ContentType = ContentTypeApp
 	case rls.Education:
-		// rls mixes video courses with book publishers here. Book would skip the
-		// courses and the year fallback would search them as movies, so they skip
-		// the fallback.
 		info.ContentType = ContentTypeUnknown
 	case rls.Unknown:
 	}

@@ -17,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// selectTestDeletions runs the Deletion selection without a qBittorrent client.
 func selectTestDeletions(t *testing.T, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext) *deletionSelection {
 	t.Helper()
 	svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil)}
@@ -30,7 +29,6 @@ func selectTestDeletions(t *testing.T, rules []*models.Automation, torrents []qb
 	})
 }
 
-// A cross-seed that two rules reach goes to the rule that claims first, in rule order.
 func TestDeletionSelection_SharedCrossSeedGoesToTheFirstRule(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "b", Tags: "second", AddedOn: 1, SavePath: "/data", ContentPath: "/data/movie"},
@@ -57,7 +55,6 @@ func TestDeletionSelection_SharedCrossSeedGoesToTheFirstRule(t *testing.T) {
 	}
 }
 
-// Each delete rule claims only the torrents on the trackers of its pattern.
 func TestDeletionSelection_TrackerPatternPerRule(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "a", Tags: "old", AddedOn: 1, Tracker: "https://alpha.example/announce"},
@@ -78,8 +75,6 @@ func TestDeletionSelection_TrackerPatternPerRule(t *testing.T) {
 	require.Equal(t, 1, selection.byHash["c"].rule.id)
 }
 
-// A later rule that claims a torrent still expands it, when an earlier rule's expansion
-// already took the torrent but with a narrower scope.
 func TestDeletionSelection_LaterClaimStillExpandsWiderScope(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "a", Tags: "first", AddedOn: 1, SavePath: "/data", ContentPath: "/data/movie"},
@@ -110,7 +105,6 @@ func TestDeletionSelection_LaterClaimStillExpandsWiderScope(t *testing.T) {
 }
 
 func TestDeletionSelection_HardlinkRuleFollowsTakenTorrent(t *testing.T) {
-	// The pack shares files with both episodes, and the library copy is a hardlink of the pack.
 	torrents := []qbt.Torrent{
 		{Hash: "episode1", Tags: "first", AddedOn: 1, SavePath: "/data", ContentPath: "/data/show/e1.mkv"},
 		{Hash: "episode2", Tags: "second", AddedOn: 2, SavePath: "/data", ContentPath: "/data/show/e2.mkv"},
@@ -156,7 +150,6 @@ func TestDeletePreview_KeepFilesGroupMemberGetsBadge(t *testing.T) {
 	require.Zero(t, result.CrossSeedCount, "a keep-files group member is not a cross-seed")
 }
 
-// filesByHashReader gives each torrent its own file list, or fails the read with err.
 type filesByHashReader struct {
 	files map[string]qbt.TorrentFiles
 	err   error
@@ -179,8 +172,6 @@ func (filesByHashReader) GetCachedInstanceTorrents(context.Context, int) ([]qbit
 	return nil, nil
 }
 
-// Two torrents with the same folder as content path and save path form an ambiguous
-// group. The group delete goes ahead only when their files overlap.
 func TestDeletionSelection_SharedSavePathChecksFileOverlap(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "a", Tags: "old", AddedOn: 1, SavePath: "/data", ContentPath: "/data"},

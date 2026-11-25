@@ -90,13 +90,14 @@ func (a announcedAlternateTitles) AlternateTitles(ctx context.Context, held Held
 }
 
 type fakeArrServer struct {
-	mu       sync.Mutex
-	down     bool
-	hangs    bool
-	noSeries bool
-	parsed   map[string]string
-	requests []string
-	cache    *models.ArrIDCacheStore
+	mu         sync.Mutex
+	down       bool
+	hangs      bool
+	noSeries   bool
+	lookupDown bool
+	parsed     map[string]string
+	requests   []string
+	cache      *models.ArrIDCacheStore
 }
 
 func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +111,7 @@ func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.requests = append(f.requests, r.URL.Path)
-	if f.down || f.noSeries && strings.HasPrefix(r.URL.Path, "/api/v3/series/") {
+	if f.down || f.noSeries && strings.HasPrefix(r.URL.Path, "/api/v3/series/") || f.lookupDown && strings.HasSuffix(r.URL.Path, "/lookup") {
 		http.Error(w, "down", http.StatusServiceUnavailable)
 		return
 	}
@@ -348,4 +349,48 @@ func TestAlternateTitlesFetchLogBudget(t *testing.T) {
 			return arr.NewService(instances, models.NewArrIDCacheStore(db))
 		}))
 	})
+}
+
+func TestArrAlternateTitlesPauseOnlyASourceThatIsDown(t *testing.T) {
+	for name, c := range map[string]struct {
+		breakArr func(f *fakeArrServer)
+		paused   bool
+	}{
+		"title searches fail": {func(f *fakeArrServer) { f.lookupDown = true }, false},
+		"Radarr is down":      {func(f *fakeArrServer) { f.down = true }, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fake, service := newFakeArr(t)
+			c.breakArr(fake)
+			drained := make(chan struct{})
+			stop := sync.OnceFunc(func() { close(drained) })
+			var a *alternateTitleIndex
+			a = newAlternateTitleIndex(NewArrAlternateTitles(service)[1:], func() bool {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				if len(a.queues[0].waiting) == 0 || !a.queues[0].pausedUntil.IsZero() {
+					stop()
+				}
+				return false
+			})
+			a.queues[0].every = 0
+			for i := range 2 * sourceFailuresInARow {
+				holdName(a, fmt.Sprintf("Copper Fjord %s 2019 1080p BluRay x264-GRP", strings.Repeat("x", i+1)), 1)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				a.run(ctx)
+			}()
+			<-drained
+			cancel()
+			<-done
+
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			require.Equal(t, c.paused, !a.queues[0].pausedUntil.IsZero())
+			require.NotEmpty(t, a.queues[0].retries, "a failed title is asked again after its own wait")
+		})
+	}
 }

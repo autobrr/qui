@@ -26,7 +26,6 @@ import type { ThemeThumbnailPalette } from "@/lib/theme-thumbnail"
 import { cn } from "@/lib/utils"
 
 interface ThemeMenuDialogProps {
-  /** The button that opens the dialog. Focus returns to it when the dialog closes. */
   trigger: ReactNode
   catalog: readonly Theme[]
   currentThemeId: string
@@ -34,22 +33,18 @@ interface ThemeMenuDialogProps {
   paletteOf: (theme: Theme) => ThemeThumbnailPalette
   onShownChange: (themes: readonly Theme[], shown: boolean) => void
   onReplace: (next: ThemeVisibility) => void
-  /** Opens the dialog once, for a link to it. */
   openRequested?: boolean
   onOpenRequestHandled?: () => void
 }
 
-/** Chooses the themes that the quick theme pickers list, with a checkbox for each theme and for each group. */
 export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, paletteOf, onShownChange, onReplace, openRequested = false, onOpenRequestHandled }: ThemeMenuDialogProps) {
   const { t } = useTranslation("settings")
   const baseId = useId()
   const [open, setOpenState] = useState(false)
   const [query, setQuery] = useState("")
-  // The choices from before Reset to defaults, until the next change or until the dialog closes.
   const [beforeReset, setBeforeReset] = useState<ThemeVisibility | null>(null)
   const searching = query.trim() !== ""
   const matches = catalog.filter((theme) => themeMatchesSearch(theme, query))
-  // The quick pickers always list the theme in use, whatever its choice is.
   const inMenu = (theme: Theme) => theme.id === currentThemeId || isThemeShown(theme, visibility)
   const shownCount = catalog.filter(inMenu).length
   const hasChoices = Object.keys(visibility).length > 0
@@ -91,7 +86,6 @@ export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, 
       <DialogContent
         className="flex max-h-[min(40rem,90dvh)] flex-col gap-4 sm:max-w-lg"
         onOpenAutoFocus={(event) => {
-          // Focus on the search field would open the keyboard of a phone over the list.
           event.preventDefault()
           const content = event.currentTarget as HTMLElement | null
           content?.focus()
@@ -122,8 +116,6 @@ export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, 
           {THEME_GROUPS.map((group) => {
             const themes = matches.filter((theme) => themeGroup(theme) === group)
             if (themes.length === 0) return null
-            // The count says how many themes of the whole group the menu lists. The checkbox acts on the
-            // whole group except the locked theme in use, so a search locks it.
             const groupThemes = catalog.filter((theme) => themeGroup(theme) === group)
             const shown = groupThemes.filter(inMenu).length
             const toggleable = groupThemes.filter((theme) => theme.id !== currentThemeId)

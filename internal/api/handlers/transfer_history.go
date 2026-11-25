@@ -27,8 +27,6 @@ type transferHistoryResponse struct {
 	Rows []transferhistory.TransferRow `json:"rows"`
 }
 
-// Transfer returns the transfer of one instance in a period.
-// GET /api/instances/{instanceID}/transfer-history?from=&to=&bucket=&groupBy=&group=&groupOf=&limit=&timeZone=
 func (h *TransferHistoryHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -71,9 +69,6 @@ func (h *TransferHistoryHandler) Transfer(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, transferHistoryResponse{Rows: rows})
 }
 
-// parseHistoryPeriod reads the period of a history query. Without from, the
-// period has no start. Without to, the end is now. It writes the error
-// response and returns false for a time that is not RFC 3339.
 func parseHistoryPeriod(w http.ResponseWriter, r *http.Request) (from, to time.Time, ok bool) {
 	to = time.Now().UTC()
 	for name, dst := range map[string]*time.Time{"from": &from, "to": &to} {
@@ -89,8 +84,6 @@ func parseHistoryPeriod(w http.ResponseWriter, r *http.Request) (from, to time.T
 	return from, to, true
 }
 
-// respondHistoryError writes the error response of a history query and
-// reports whether err is set.
 func respondHistoryError(w http.ResponseWriter, err error, instanceID int) bool {
 	switch {
 	case err == nil:
@@ -108,9 +101,6 @@ type transferHistoryLibraryResponse struct {
 	Rows []transferhistory.LibraryRow `json:"rows"`
 }
 
-// Library returns the adds, completions, and deletes of one instance for each
-// UTC day of a period.
-// GET /api/instances/{instanceID}/transfer-history/library?from=&to=
 func (h *TransferHistoryHandler) Library(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -131,9 +121,6 @@ func (h *TransferHistoryHandler) Library(w http.ResponseWriter, r *http.Request)
 
 const defaultDeletesPage = 50
 
-// Deletes returns a page of the deleted torrents of one instance in a
-// period, with the newest first.
-// GET /api/instances/{instanceID}/transfer-history/deletes?from=&to=&cause=&limit=&offset=
 func (h *TransferHistoryHandler) Deletes(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -165,9 +152,6 @@ func (h *TransferHistoryHandler) Deletes(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, answer)
 }
 
-// Status returns the instances that have history, also the removed ones, the
-// size of the history, and the Statistics settings.
-// GET /api/transfer-history/status
 func (h *TransferHistoryHandler) Status(w http.ResponseWriter, r *http.Request) {
 	status, err := h.module.Status(r.Context())
 	if err != nil {
@@ -181,8 +165,6 @@ func (h *TransferHistoryHandler) Status(w http.ResponseWriter, r *http.Request) 
 	RespondJSON(w, http.StatusOK, status)
 }
 
-// UpdateSettings stores the recording switch and the Detail retention.
-// PUT /api/transfer-history/settings
 func (h *TransferHistoryHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Recording           *bool `json:"recording"`
@@ -204,9 +186,6 @@ func (h *TransferHistoryHandler) UpdateSettings(w http.ResponseWriter, r *http.R
 	}
 }
 
-// DeleteHistory deletes the transfer history of one instance, also a removed
-// one, or of each instance: everything, or the UTC days before the day of before.
-// DELETE /api/transfer-history?instanceId=&before=
 func (h *TransferHistoryHandler) DeleteHistory(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 	d := transferhistory.HistoryDelete{AllInstances: params.Get("instanceId") == "all"}
@@ -229,7 +208,6 @@ func (h *TransferHistoryHandler) DeleteHistory(w http.ResponseWriter, r *http.Re
 			RespondError(w, http.StatusBadRequest, "Invalid before: the time is in the future")
 			return
 		}
-		// The module reads a zero Before as a delete of everything.
 		if before.IsZero() {
 			RespondError(w, http.StatusBadRequest, "Invalid before: give a time after 0001-01-01")
 			return
@@ -239,12 +217,10 @@ func (h *TransferHistoryHandler) DeleteHistory(w http.ResponseWriter, r *http.Re
 	err := h.module.DeleteHistory(r.Context(), d)
 	switch {
 	case err != nil && r.Context().Err() != nil:
-		// The worker does not stop the delete when the client leaves.
 		log.Warn().Int("instanceID", d.InstanceID).Bool("allInstances", d.AllInstances).Time("before", d.Before).
 			Msg("transfer history: the client left before the delete of history ended; the delete goes on")
 		return
 	case err != nil:
-		// The module logs the failure.
 		RespondError(w, http.StatusInternalServerError, "Failed to delete transfer history")
 	default:
 		w.WriteHeader(http.StatusNoContent)

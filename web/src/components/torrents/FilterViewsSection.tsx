@@ -42,7 +42,6 @@ import { toast } from "sonner"
 
 interface FilterViewsSectionProps {
   selectedFilters: TorrentFilters
-  /** Must be the sidebar's applyFilterChange so subcategory expansion is recomputed. */
   onApply: (filters: TorrentFilters) => void
   hasActiveFilters: boolean
   triggerClassName: string
@@ -81,7 +80,6 @@ export function FilterViewsSection({
     setNameDialogOpen(true)
   }
 
-  // The toast holds the replaced filters so Undo can write them back.
   const updateViewFilters = (view: FilterView) => {
     const replaced = view.filters
     updateView.mutate({
@@ -103,7 +101,6 @@ export function FilterViewsSection({
     const name = nameDraft.trim()
     if (!name || createView.isPending || updateView.isPending) return
 
-    // Close only once the write lands, so a 409 leaves the typed name in place.
     const opts = { onSuccess: () => setNameDialogOpen(false) }
     if (renameTarget) {
       updateView.mutate({

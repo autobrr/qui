@@ -50,7 +50,6 @@ func TestReleasesMatch_ResolutionAndLanguage(t *testing.T) {
 			candidateName: "NCIS.Sydney.S03E07.MULTi.1080p.WEB.H264-GROUP",
 			wantMatch:     true,
 		},
-		// SD resolution exception: empty resolution should match known SD resolutions.
 		{
 			name:          "empty resolution matches 480p (SD exception)",
 			sourceName:    "Show.S01E01.WEB-DL-GROUP",
@@ -81,8 +80,6 @@ func TestReleasesMatch_ResolutionAndLanguage(t *testing.T) {
 			candidateName: "Show.S01E01.720p.WEB-DL-GROUP",
 			wantMatch:     false,
 		},
-		// A missing language tag means unknown, not ENGLISH: trackers that label the
-		// original audio language publish releases that others publish untagged.
 		{
 			name:          "empty language matches ENGLISH",
 			sourceName:    "Show.S01E01.1080p.WEB-DL-GROUP",

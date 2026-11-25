@@ -38,8 +38,6 @@ type PathReplace struct {
 	To   string
 }
 
-// ParsePathReplace parses a from=to rule. To must be an absolute path on
-// this host; From is a path as the source client stored it
 func ParsePathReplace(rule string) (PathReplace, error) {
 	from, to, ok := strings.Cut(rule, "=")
 	if !ok || from == "" || to == "" {
@@ -50,7 +48,6 @@ func ParsePathReplace(rule string) (PathReplace, error) {
 		return PathReplace{}, errors.Errorf("invalid replace path %q, %s is not an absolute path on this OS", rule, to)
 	}
 
-	// only / may match every path, \\ or // would rewrite them all
 	if from != "/" && strings.Trim(from, `/\`) == "" {
 		return PathReplace{}, errors.Errorf("invalid replace path %q, %s is not a usable source path", rule, from)
 	}
@@ -150,7 +147,6 @@ func (m Migrater) Backup() error {
 			return errors.Wrapf(err, "could not create %s backup of directory: %s to %s", source, sourceDir, sourceBackupArchive)
 		}
 
-		// a fresh qBittorrent install may not have a BT_backup dir yet
 		if _, err := os.Stat(qbitDir); os.IsNotExist(err) {
 			log.Info().Msgf("qBittorrent directory does not exist yet, skipping backup: %s", qbitDir)
 		} else {
@@ -174,8 +170,6 @@ func archiveDir(dir, archiveName string) error {
 	}
 	defer root.Close()
 
-	// with --source-dir . the archive lands inside the walked tree; it must
-	// not be written into itself
 	archiveAbs, err := filepath.Abs(archiveName)
 	if err != nil {
 		return err
@@ -245,15 +239,8 @@ func archiveDir(dir, archiveName string) error {
 	return out.Close()
 }
 
-// replacePath rewrites the prefix of a source client path with the first
-// matching rule and returns it in host form, or returns p unchanged. Matches
-// end at a path separator, so /data does not match /database. Windows-style
-// rules (drive letters and UNC shares) match case-insensitively with either
-// slash, which lets a library move between Windows and Unix hosts
 func replacePath(p string, rules []PathReplace) string {
 	for _, r := range rules {
-		// convert slashes by the rule's style, so a POSIX rule keeps
-		// literal backslashes and does not match a \\nas\share path
 		posix := strings.HasPrefix(r.From, "/") && !strings.HasPrefix(r.From, "//")
 		src, from := p, r.From
 		if !posix {
@@ -278,15 +265,11 @@ func replacePath(p string, rules []PathReplace) string {
 	return p
 }
 
-// foreignAbs reports whether p is absolute on another OS but not on this
-// host: a Windows drive or UNC path on Unix, a POSIX path on Windows. libtorrent
-// would resolve such a path against the save path
 func foreignAbs(p string) bool {
 	if filepath.IsAbs(p) {
 		return false
 	}
 
-	// a single leading backslash is a valid POSIX file name character
 	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\\`) {
 		return true
 	}
@@ -294,9 +277,6 @@ func foreignAbs(p string) bool {
 	return len(p) >= 3 && p[1] == ':' && (p[2] == '/' || p[2] == '\\') && ('a' <= p[0]|0x20 && p[0]|0x20 <= 'z')
 }
 
-// sourceSlash turns the backslashes of a Windows-style path into slashes.
-// POSIX paths keep theirs, a backslash is a valid file name character there;
-// a leading // is a UNC share written with forward slashes
 func sourceSlash(p string) string {
 	if strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "//") {
 		return p
@@ -343,10 +323,6 @@ func firstNonZero(values ...int64) int64 {
 	return 0
 }
 
-// CopyFile copies the file named src to dst with the mode of src. It writes
-// a temp file next to dst and renames it into place after the data is synced,
-// so a failed copy never leaves a partial dst: the importers treat an existing
-// dst as already imported and would skip it on the next run
 func CopyFile(src, dst string) (err error) {
 	in, err := os.Open(src)
 	if err != nil {

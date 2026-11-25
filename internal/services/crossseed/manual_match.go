@@ -24,14 +24,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
 
-// Manual match: the user chooses the target torrent. Candidate discovery and
-// the category and content-type gates are bypassed; the recheck is the arbiter
-// of a wrong pick.
-
-// manualMatchType marks an add plan whose target was pinned by the user and
-// whose files did not validate against the uploaded torrent. Such adds skip
-// file alignment and the link modes (nothing validated to link). Every Manual
-// match, validated or not, verifies before seeding.
 const manualMatchType = "manual"
 
 const (
@@ -39,8 +31,6 @@ const (
 	manualMatchProposalLimit = 10
 )
 
-// findManualTargetCandidate resolves a pinned target hash to a single
-// candidate, replacing discovery for Manual match requests.
 func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandidatesRequest) (*FindCandidatesResponse, error) {
 	instanceIDs := normalizeInstanceIDs(req.TargetInstanceIDs)
 	if len(instanceIDs) != 1 {
@@ -84,8 +74,6 @@ func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandid
 	return nil, fmt.Errorf("%w: manual match target not found in instance", ErrTorrentNotFound)
 }
 
-// ManualMatchProposal is one suggested target for a Manual match, ranked by
-// file-size overlap with the uploaded torrent.
 type ManualMatchProposal struct {
 	Hash              string  `json:"hash"`
 	Name              string  `json:"name"`
@@ -96,27 +84,20 @@ type ManualMatchProposal struct {
 	OverlapFraction   float64 `json:"overlap_fraction"`
 }
 
-// ManualMatchProposalsResponse carries the ranked target proposals plus the
-// prefill values the Manual match dialog needs.
 type ManualMatchProposalsResponse struct {
-	PackMode                  bool     `json:"pack_mode"`
-	PackEpisodeCount          int      `json:"pack_episode_count"`
-	AssemblyUnavailableReason string   `json:"assembly_unavailable_reason"`
-	ProposalLimit             int      `json:"proposal_limit"`
-	ProposalsTruncated        bool     `json:"proposals_truncated"`
-	SourceName                string   `json:"source_name"`
-	SourceSize                int64    `json:"source_size"`
-	SourceFileCount           int      `json:"source_file_count"`
-	DefaultTags               []string `json:"default_tags"`
-	// PinnedCategory is set when the automation settings pin every cross-seed to
-	// one category. The apply then ignores the request category, so the dialog
-	// shows this value instead of offering a pick it would discard.
-	PinnedCategory string                `json:"pinned_category"`
-	Proposals      []ManualMatchProposal `json:"proposals"`
+	PackMode                  bool                  `json:"pack_mode"`
+	PackEpisodeCount          int                   `json:"pack_episode_count"`
+	AssemblyUnavailableReason string                `json:"assembly_unavailable_reason"`
+	ProposalLimit             int                   `json:"proposal_limit"`
+	ProposalsTruncated        bool                  `json:"proposals_truncated"`
+	SourceName                string                `json:"source_name"`
+	SourceSize                int64                 `json:"source_size"`
+	SourceFileCount           int                   `json:"source_file_count"`
+	DefaultTags               []string              `json:"default_tags"`
+	PinnedCategory            string                `json:"pinned_category"`
+	Proposals                 []ManualMatchProposal `json:"proposals"`
 }
 
-// ManualMatchProposalsFromBase64 decodes a base64 torrent payload and ranks
-// Manual match target proposals for it.
 func (s *Service) ManualMatchProposalsFromBase64(ctx context.Context, instanceID int, torrentData, requestedHash string) (*ManualMatchProposalsResponse, error) {
 	torrentBytes, err := s.decodeTorrentData(torrentData)
 	if err != nil {
@@ -125,9 +106,6 @@ func (s *Service) ManualMatchProposalsFromBase64(ctx context.Context, instanceID
 	return s.ManualMatchProposals(ctx, instanceID, torrentBytes, requestedHash)
 }
 
-// ManualMatchProposals ranks same-instance torrents by file-size overlap with
-// the uploaded torrent. requestedHash, when set, is always included in the
-// result (even at zero overlap) so the dialog can report on an arbitrary pick.
 func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torrentBytes []byte, requestedHash string) (*ManualMatchProposalsResponse, error) {
 	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 	if err != nil {
@@ -154,8 +132,6 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	}
 
 	sourceRelease := s.releaseCache.Parse(meta.Name)
-	// A pack named only with a Season numeral parses as a movie. Its episode
-	// files make it a pack, so a movie sequel stays a movie.
 	packRelease := s.matcher().parseSeasonPackName(meta.Name)
 	packEpisodeCount := 0
 	if isTVSeasonPack(packRelease) {
@@ -177,10 +153,6 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	}
 	wantHash := normalizeHash(requestedHash)
 
-	// Coarse pass on cached metadata only: total-size ratio, plus every torrent
-	// whose parsed title matches. File lists are loaded only for the shortlist.
-	// ponytail: title+size heuristic can miss exotic containment shapes; the
-	// manual picker behind the proposals covers those.
 	type coarseEntry struct {
 		torrent *qbt.Torrent
 		ratio   float64
@@ -194,9 +166,6 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		}
 		torrent := view.Torrent
 		if wantHash != "" && normalizeHash(torrent.Hash) == wantHash {
-			// The requested hash claims its shortlist slot outright: the
-			// "always included" guarantee must survive a coarse pass crowded
-			// with keeps that outrank it.
 			requestedTorrent = torrent
 			continue
 		}
@@ -252,11 +221,6 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		if overlap == 0 && !isRequested {
 			continue
 		}
-		// The apply skips link modes for a pick whose files do not validate,
-		// landing it at the target's save path; only a validated pick reaches
-		// the link-mode destination. Mirror the apply's validation call so the
-		// read-only save path shows what the add will actually do.
-		// ponytail: plain parsed releases approximate the apply's release view.
 		if linkMode && overlap > 0 &&
 			s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(torrent.Name), sourceRelease, candidateFiles, meta.Files, defaultSizeMismatchTolerancePercent).MatchType != "" {
 			linkTargets[hashKey] = torrent
@@ -286,8 +250,6 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		s.previewLinkSavePaths(ctx, instance, meta, trackerDomain, proposals, linkTargets, filesByHash)
 	}
 
-	// Default tag parity with the search-results dialog, which applies
-	// "cross-seed" unless the user changes it. The badges stay toggleable.
 	defaultTags := []string{"cross-seed"}
 	pinnedCategory := ""
 	if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil {
@@ -318,7 +280,6 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	}, nil
 }
 
-// overlapBytesBySize sums the bytes of the multiset intersection of file sizes.
 func overlapBytesBySize(sourceSizes map[int64]int, candidateFiles qbt.TorrentFiles) int64 {
 	if len(candidateFiles) == 0 {
 		return 0

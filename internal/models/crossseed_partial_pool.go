@@ -14,7 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// These constants define persisted partial pool modes, states, and coordination markers.
 const (
 	CrossSeedPartialPoolStatusActive  = "active"
 	CrossSeedPartialPoolStatusDormant = "dormant"
@@ -44,7 +43,6 @@ const (
 	CrossSeedPartialPoolRecheckRequested = "partial pool recheck requested"
 )
 
-// CrossSeedPartialPool groups partial link-mode torrents by their original source.
 type CrossSeedPartialPool struct {
 	ID               int64
 	SourceInstanceID int
@@ -55,9 +53,6 @@ type CrossSeedPartialPool struct {
 	Members          []*CrossSeedPartialPoolMember
 }
 
-// CrossSeedPartialPoolMember is one qBittorrent torrent managed by a partial
-// pool. Review and retry fields persist coordinator sub-state separately from
-// LastError diagnostics.
 type CrossSeedPartialPoolMember struct {
 	ID                  int64
 	PoolID              int64
@@ -82,7 +77,6 @@ type CrossSeedPartialPoolMember struct {
 	Files               []*CrossSeedPartialPoolMemberFile
 }
 
-// CrossSeedPartialPoolMemberFile is durable per-file completion state.
 type CrossSeedPartialPoolMemberFile struct {
 	ID                int64
 	MemberID          int64
@@ -92,17 +86,14 @@ type CrossSeedPartialPoolMemberFile struct {
 	PiecesRoot        string
 	WantedAtAdmission bool
 	MaterializedAtAdd bool
-	// ReplaceableAtAdd records that no target path existed immediately before the qBittorrent add.
-	ReplaceableAtAdd bool
-	Status           string
-	SourceFileID     *int64
-	LastError        string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ReplaceableAtAdd  bool
+	Status            string
+	SourceFileID      *int64
+	LastError         string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
-// CrossSeedPartialPoolRegistration contains the source-resolution evidence and
-// the member/files inserted in one transaction.
 type CrossSeedPartialPoolRegistration struct {
 	SourceInstanceID int
 	SourceTorrentKey string
@@ -116,19 +107,16 @@ type CrossSeedPartialPoolRegistration struct {
 	Files  []CrossSeedPartialPoolMemberFile
 }
 
-// NullableInt64Update distinguishes no update from setting a value or NULL.
 type NullableInt64Update struct {
 	Set   bool
 	Value *int64
 }
 
-// NullableTimeUpdate distinguishes no update from setting a value or NULL.
 type NullableTimeUpdate struct {
 	Set   bool
 	Value *time.Time
 }
 
-// PartialPoolMemberMutation contains fields changed with a member status claim.
 type PartialPoolMemberMutation struct {
 	MissingBytes        *int64
 	StartedByPool       *bool
@@ -141,7 +129,6 @@ type PartialPoolMemberMutation struct {
 	LastError           *string
 }
 
-// PartialPoolFileMutation contains fields changed with a file status claim.
 type PartialPoolFileMutation struct {
 	SourceFileID NullableInt64Update
 	LastError    *string
@@ -172,9 +159,6 @@ func normalizedPartialPoolAliases(values ...[]string) []string {
 
 var errPartialPoolRegistrationChanged = errors.New("partial pool changed during registration")
 
-// RegisterPartialPoolMember atomically resolves or creates the source pool and
-// persists one member plus every file. An alias-equivalent re-admission keeps
-// the member identity but replaces its stale admission and file state.
 func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registration CrossSeedPartialPoolRegistration) (*CrossSeedPartialPool, *CrossSeedPartialPoolMember, error) {
 	member := registration.Member
 	member.TorrentKey = normalizePartialPoolKey(member.TorrentKey)
@@ -239,9 +223,6 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 	}
 }
 
-// Keep coarse-clock admissions distinct at PostgreSQL's microsecond precision.
-// Bound the advance to one second: CreatedAt also controls wall-clock admission
-// deadlines, so a substantial clock rollback must reset it to the current time.
 func nextPartialPoolAdmissionTime(now, previous time.Time) time.Time {
 	if !now.After(previous) && previous.Sub(now) < time.Second {
 		return previous.Add(time.Microsecond).Truncate(time.Microsecond)
@@ -375,9 +356,6 @@ func partialPoolFromMatched(ctx context.Context, tx dbinterface.TxQuerier, regis
 }
 
 func lockPartialPoolForAdmission(ctx context.Context, tx dbinterface.TxQuerier, poolID, memberID int64, reAdmission bool) (time.Time, error) {
-	// Every admission and downloader claim takes the pool row first. Keeping
-	// that lock order prevents a claim from overlooking an uncommitted member
-	// on PostgreSQL and serializes competing claims before they inspect members.
 	result, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = status WHERE id = ?`, poolID)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("lock partial pool for registration: %w", err)
@@ -735,7 +713,6 @@ func partialPoolMemberByID(pool *CrossSeedPartialPool, id int64) *CrossSeedParti
 	return nil
 }
 
-// GetPartialPool loads a pool and all of its members/files.
 func (s *CrossSeedStore) GetPartialPool(ctx context.Context, poolID int64) (*CrossSeedPartialPool, error) {
 	pool := &CrossSeedPartialPool{}
 	err := s.db.QueryRowContext(ctx, `
@@ -877,20 +854,14 @@ func scanPartialPoolFile(scanner rowScanner) (*CrossSeedPartialPoolMemberFile, e
 	return file, nil
 }
 
-// ListPartialPoolsForReconciliation loads every pool with a non-removed
-// member. Manual and complete members remain observable for completion/removal.
 func (s *CrossSeedStore) ListPartialPoolsForReconciliation(ctx context.Context) ([]*CrossSeedPartialPool, error) {
 	return s.listPartialPoolsForReconciliation(ctx, "")
 }
 
-// ListActivePartialPoolsForReconciliation loads scheduled pools with a
-// non-removed member.
 func (s *CrossSeedStore) ListActivePartialPoolsForReconciliation(ctx context.Context) ([]*CrossSeedPartialPool, error) {
 	return s.listPartialPoolsForReconciliation(ctx, CrossSeedPartialPoolStatusActive)
 }
 
-// ListPartialPoolMembersAwaitingRecheckObservation loads only members whose
-// requested piece check has not yet been observed.
 func (s *CrossSeedStore) ListPartialPoolMembersAwaitingRecheckObservation(ctx context.Context) ([]*CrossSeedPartialPoolMember, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, pool_id, instance_id, torrent_key, infohash_v1, infohash_v2,
@@ -967,7 +938,6 @@ func (s *CrossSeedStore) listPartialPoolsForReconciliation(ctx context.Context, 
 	return pools, nil
 }
 
-// ResolvePartialPoolMember finds a member by any hash alias and reactivates its pool.
 func (s *CrossSeedStore) ResolvePartialPoolMember(ctx context.Context, instanceID int, aliases ...string) (*CrossSeedPartialPool, *CrossSeedPartialPoolMember, error) {
 	normalized := normalizedPartialPoolAliases(aliases)
 	memberID, poolID, found, err := findPartialPoolMemberByAliases(ctx, s.db, instanceID, normalized)
@@ -984,7 +954,6 @@ func (s *CrossSeedStore) ResolvePartialPoolMember(ctx context.Context, instanceI
 	return pool, partialPoolMemberByID(pool, memberID), nil
 }
 
-// SetPartialPoolStatus changes pool scheduling state.
 func (s *CrossSeedStore) SetPartialPoolStatus(ctx context.Context, poolID int64, status string) error {
 	if status != CrossSeedPartialPoolStatusActive && status != CrossSeedPartialPoolStatusDormant {
 		return fmt.Errorf("invalid partial pool status %q", status)
@@ -996,8 +965,6 @@ func (s *CrossSeedStore) SetPartialPoolStatus(ctx context.Context, poolID int64,
 	return nil
 }
 
-// SetPartialPoolStatusIfUnchanged changes scheduling state only when the pool
-// has not been updated since it was loaded.
 func (s *CrossSeedStore) SetPartialPoolStatusIfUnchanged(ctx context.Context, poolID int64, updatedAt time.Time, status string) (bool, error) {
 	if status != CrossSeedPartialPoolStatusActive && status != CrossSeedPartialPoolStatusDormant {
 		return false, fmt.Errorf("invalid partial pool status %q", status)
@@ -1014,7 +981,6 @@ func (s *CrossSeedStore) SetPartialPoolStatusIfUnchanged(ctx context.Context, po
 	return changed == 1, err
 }
 
-// TransitionPartialPoolMember applies an expected-state and admission compare-and-set.
 func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, memberID int64, admittedAt time.Time, expected []string, status string, mutation PartialPoolMemberMutation) (bool, error) {
 	if len(expected) == 0 || !validPartialPoolMemberStatus(status) {
 		return false, errors.New("partial pool member transition requires valid states")
@@ -1083,9 +1049,6 @@ func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, member
 	return changed == 1, err
 }
 
-// ClaimPartialPoolDownloader locks the pool row before inspecting current pool
-// membership, then claims at most one eligible downloader whose admission
-// generation matches admittedAt.
 func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberID, downloadedBytes int64, admittedAt, now, admissionCutoff time.Time) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1179,7 +1142,6 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 	return true, nil
 }
 
-// TransitionPartialPoolFile applies an expected-state and admission compare-and-set.
 func (s *CrossSeedStore) TransitionPartialPoolFile(ctx context.Context, fileID int64, admittedAt time.Time, expected []string, status string, mutation PartialPoolFileMutation) (bool, error) {
 	if len(expected) == 0 || !validPartialPoolFileStatus(status) {
 		return false, errors.New("partial pool file transition requires valid states")
@@ -1214,10 +1176,6 @@ func (s *CrossSeedStore) TransitionPartialPoolFile(ctx context.Context, fileID i
 	return changed == 1, err
 }
 
-// TransitionPartialPoolHardlinkRollback atomically marks a verifying file
-// missing, clears its source, and records the member's pending follow-up check.
-// It returns false without committing when either compare-and-set no longer
-// matches, and returns an error for invalid input or database failures.
 func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Context, memberID, fileID int64, memberAdmittedAt, fileAdmittedAt time.Time, memberStatus string) (bool, error) {
 	if memberID == 0 || fileID == 0 || (memberStatus != CrossSeedPartialPoolMemberStatusVerifying && memberStatus != CrossSeedPartialPoolMemberStatusRechecking) {
 		return false, errors.New("partial pool hardlink rollback requires valid member and file state")
@@ -1265,8 +1223,6 @@ func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Conte
 	return true, nil
 }
 
-// MarkPartialPoolMemberRemoved records qBittorrent removal only while the
-// member's pool and admission timestamp still match, then deletes an empty pool.
 func (s *CrossSeedStore) MarkPartialPoolMemberRemoved(ctx context.Context, poolID, memberID int64, admittedAt time.Time, reason string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1313,7 +1269,6 @@ func (s *CrossSeedStore) MarkPartialPoolMemberRemoved(ctx context.Context, poolI
 	return tx.Commit()
 }
 
-// PruneEmptyPartialPools removes source anchors left after instance cascades.
 func (s *CrossSeedStore) PruneEmptyPartialPools(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		DELETE FROM cross_seed_partial_pools

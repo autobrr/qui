@@ -17,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 )
 
-// lstatCounter counts the Lstat calls a backend without a batch receives.
 type lstatCounter struct {
 	fsops.Backend
 	n atomic.Int32
@@ -28,8 +27,6 @@ func (c *lstatCounter) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, e
 	return c.Backend.Lstat(ctx, p)
 }
 
-// A callback that stops at the first file costs one lstat on a backend
-// without a batch, as it did before batching came in for remote backends.
 func TestForEachLocalTorrentFileStopsEarlyWithoutABatch(t *testing.T) {
 	dir := t.TempDir()
 	files := make(qbt.TorrentFiles, 0, 3)

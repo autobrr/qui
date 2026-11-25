@@ -6,6 +6,5 @@ package models
 import "errors"
 
 var (
-	// ErrBasicAuthPasswordRequired is returned when a basic auth username is provided but the password is missing.
 	ErrBasicAuthPasswordRequired = errors.New("basic_password is required when basic auth is enabled")
 )

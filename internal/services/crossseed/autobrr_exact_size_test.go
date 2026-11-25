@@ -19,9 +19,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TestCheckWebhookReportedSizeFallback catches a check that applies relaxed
-// metadata matching without exact announced byte evidence, or labels a
-// tolerance-only strict match as exact.
 func TestCheckWebhookReportedSizeFallback(t *testing.T) {
 	t.Parallel()
 
@@ -99,8 +96,6 @@ func TestCheckWebhookReportedSizeFallback(t *testing.T) {
 	}
 }
 
-// TestCheckWebhookUnknownSizePreflight catches an unknown-size check that
-// either rejects allowed descriptive drift or permits hard identity drift.
 func TestCheckWebhookUnknownSizePreflight(t *testing.T) {
 	t.Parallel()
 
@@ -175,8 +170,6 @@ func TestCheckWebhookUnknownSizePreflight(t *testing.T) {
 	}
 }
 
-// TestCheckWebhookNearMissLog catches a near-miss log that skips a fansub
-// release, whose tag parses to the site, or that logs a torrent of another group.
 func TestCheckWebhookNearMissLog(t *testing.T) {
 	previousLogger := log.Logger
 	previousLevel := zerolog.GlobalLevel()
@@ -242,9 +235,6 @@ func TestCheckWebhookNearMissLog(t *testing.T) {
 	}
 }
 
-// TestCheckWebhookARRAlternateTitles catches a webhook check that ignores ARR
-// alternate titles the search path already uses, and a check that repeats the
-// ARR lookup for every scanned torrent instead of once per request.
 func TestCheckWebhookARRAlternateTitles(t *testing.T) {
 	t.Parallel()
 
@@ -311,10 +301,6 @@ func TestCheckWebhookARRAlternateTitles(t *testing.T) {
 	}
 }
 
-// TestCheckWebhookAnnouncementCheapGate catches positive nonexact checks that
-// fetch selected files even though only raw strict/tolerance matching can
-// survive. Exact byte evidence remains the sole path that earns file-aware
-// relaxed matching.
 func TestCheckWebhookAnnouncementCheapGate(t *testing.T) {
 	t.Parallel()
 

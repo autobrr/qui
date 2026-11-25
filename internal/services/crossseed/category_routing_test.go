@@ -60,7 +60,6 @@ func TestSourceClass(t *testing.T) {
 			want:    "BLURAY",
 		},
 		{
-			// regression: #3286
 			name:    "UHD WEB-DL routes as WEB",
 			release: &rls.Release{Source: "UHD.WEB-DL", Resolution: "2160p"},
 			want:    "WEB",

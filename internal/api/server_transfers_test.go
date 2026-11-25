@@ -23,7 +23,6 @@ func TestTransferStartRoute(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, status, "a body without the torrent")
 
 	t.Run("a refusal answers 409 with its reason", func(t *testing.T) {
-		// No way and each way reach the checks.
 		for _, way := range []string{"", "auto", "copy", "bittorrent"} {
 			status, body := rig.sendBody(t, http.MethodPost, "/api/transfers", "", cookie,
 				`{"sourceInstanceId":1,"hash":"aaaa","targetInstanceId":2,"way":"`+way+`"}`)
@@ -40,7 +39,6 @@ func TestTransferStartRoute(t *testing.T) {
 	})
 }
 
-// addInstances adds the instances 1 and 2 that the Transfers of a test name.
 func addInstances(t *testing.T, rig *permissionRig) {
 	t.Helper()
 	for _, name := range []string{"seedbox", "homelab"} {
@@ -49,7 +47,6 @@ func addInstances(t *testing.T, rig *permissionRig) {
 	}
 }
 
-// addTransfer stores a Transfer of hash in state. A finished one has ended.
 func addTransfer(t *testing.T, rig *permissionRig, hash string, state transfer.State, finished bool, edit func(*transfer.Record)) int64 {
 	t.Helper()
 	record := &transfer.Record{
@@ -171,8 +168,6 @@ func TestTransferActionRoutes(t *testing.T) {
 	require.ErrorIs(t, err, transfer.ErrNotFound, "the finished row is gone")
 }
 
-// The bulk route acts on the rows of ids, or on every row behind a chip. It
-// counts the rows that the action does not fit as skipped.
 func TestTransferBulkRoute(t *testing.T) {
 	rig := newPermissionRig(t)
 	cookie := rig.sessionCookie(t)
@@ -180,7 +175,6 @@ func TestTransferBulkRoute(t *testing.T) {
 	first := addTransfer(t, rig, "aaaa", transfer.StateDone, true, nil)
 	second := addTransfer(t, rig, "bbbb", transfer.StateCancelled, true, nil)
 	running := addTransfer(t, rig, "cccc", transfer.StateCopying, false, nil)
-	// A Transfer to its own source: a retry plans it again, and qui refuses it.
 	refused := addTransfer(t, rig, "dddd", transfer.StateFailed, true, func(r *transfer.Record) {
 		r.TargetInstanceID, r.Members[0].TargetInstanceID = 1, 1
 	})

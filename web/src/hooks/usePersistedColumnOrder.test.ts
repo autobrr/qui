@@ -12,7 +12,6 @@ import { usePersistedColumnOrder } from "./usePersistedColumnOrder"
 
 const KEY = "qui-column-order:1"
 
-// Shaped like the real default: select first, tracker_icon after priority, state before dlspeed.
 const DEFAULT = [
   "select",
   "priority",
@@ -89,7 +88,6 @@ describe("usePersistedColumnOrder", () => {
     expect(window.localStorage.getItem(KEY)).toBe(saved)
   })
 
-  // TorrentTableRow's memo compares columnOrder with Object.is, and the table passes a new default array each render.
   it("keeps the same array across renders", () => {
     window.localStorage.setItem(KEY, JSON.stringify(without(DEFAULT, "size")))
     const { result, rerender } = renderHook(() => usePersistedColumnOrder([...DEFAULT], 1))

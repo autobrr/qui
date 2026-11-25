@@ -88,7 +88,6 @@ export function OrphanScanPreviewDialog({
     })
   }
 
-  // CSV columns for orphan files export
   const csvColumns: CsvColumn<OrphanScanFile>[] = [
     { header: "Path", accessor: f => f.filePath },
     { header: "Type", accessor: f => f.isAbandonedDir ? "directory" : "file" },
@@ -152,7 +151,6 @@ export function OrphanScanPreviewDialog({
 
         <div className="flex-1 min-h-0 overflow-hidden border rounded-lg">
           <div className="overflow-auto max-h-[50vh]">
-            {/* Path fills what the other columns leave and truncates. Narrower screens scroll sideways. */}
             <table className="w-full min-w-[640px] text-sm">
               <thead className="sticky top-0">
                 <tr className="border-b">

@@ -15,11 +15,9 @@ import (
 )
 
 type deleteNoteSeen struct {
-	instanceID int
-	hashes     []string
-	actor      DeleteActor
-	// deletesSent is the number of delete requests that qBittorrent got
-	// before the note.
+	instanceID  int
+	hashes      []string
+	actor       DeleteActor
 	deletesSent int
 }
 

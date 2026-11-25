@@ -57,7 +57,6 @@ export interface OrphanScanRun {
   instanceId: number
   status: OrphanScanRunStatus
   triggeredBy: OrphanScanTriggerType
-  // Only the response for one run includes scanPaths; the runs list sends scanPathCount alone.
   scanPaths?: string[]
   scanPathCount: number
   filesFound: number
@@ -69,9 +68,7 @@ export interface OrphanScanRun {
   errorMessage?: string | null
   startedAt: string
   completedAt?: string | null
-  // The mode the run scanned under, which can differ from the instance's current one.
   filesystemMode: FilesystemMode
-  // A remote run deletes only when its scan read every file's identity.
   identityComplete: boolean
 }
 

@@ -51,8 +51,6 @@ func TestSelectEligibleRootWork_SkipIndividualEpisodesDropsUngroupableEpisode(t 
 	now := time.Date(2026, time.March, 16, 13, 0, 0, 0, time.UTC)
 	fresh := now.Add(-24 * time.Hour)
 
-	// One episode cannot make a season pack search, so the root has no work
-	// left once individual episodes are off.
 	scanResult := &ScanResult{
 		Searchees: []*Searchee{
 			{
@@ -107,7 +105,6 @@ func TestSelectEligibleRootWork_SkipKeepsMixedAgePackForFreshEpisode(t *testing.
 	old := now.AddDate(0, 0, -30)
 	fresh := now.Add(-2 * time.Hour)
 
-	// An airing season: two episodes past the age cutoff, one grabbed today.
 	scanResult := &ScanResult{
 		Searchees: []*Searchee{
 			{
@@ -122,19 +119,16 @@ func TestSelectEligibleRootWork_SkipKeepsMixedAgePackForFreshEpisode(t *testing.
 		},
 	}
 
-	// Skip off: the mixed-age pack goes stale and the fresh episode carries the work.
 	kept := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 3, now, nil, false, nil)
 	require.Len(t, kept.roots, 1)
 	require.Len(t, kept.roots[0].items, 1)
 	require.True(t, kept.roots[0].items[0].isEpisode)
 
-	// Skip on: the pack is the only search the fresh episode has, so it stays eligible.
 	skipped := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 3, now, nil, true, nil)
 	require.Len(t, skipped.roots, 1)
 	require.Len(t, skipped.roots[0].items, 1)
 	require.Equal(t, "Show Name S01", skipped.roots[0].items[0].searchee.Name)
 	require.False(t, skipped.roots[0].items[0].isEpisode)
-	// Only the fresh episode counts as avoided work; the stale ones drop as stale.
 	require.Equal(t, 1, skipped.skippedEpisodes)
 }
 
@@ -161,8 +155,6 @@ func TestSelectEligibleRootWork_SkipCountsOnlyPendingEpisodes(t *testing.T) {
 		},
 	}
 
-	// Every file already searched everywhere: the episodes are finished work,
-	// not avoided work, so they keep the all_final reason and the counter stays 0.
 	trackedFiles := &trackedFilesIndex{
 		byPath: map[string]*models.DirScanFile{
 			paths[0]: {FilePath: paths[0], Status: models.DirScanFileStatusNoMatch, SearchedIndexerIDs: []int{1}},

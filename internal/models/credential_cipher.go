@@ -20,27 +20,17 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// credentialKeySize is the AES-256 key length every credential store expects.
 const credentialKeySize = 32
 
-// credentialCipherPrefix marks a value sealed under the HKDF-derived key. The
-// stored bytes start with a random nonce. A version byte inside the payload
-// could not be told apart from legacy ciphertext, so the marker sits outside
-// the base64.
 const credentialCipherPrefix = "qui2:"
 
-// CredentialCipher seals the credentials the stores keep in the database. It
-// writes under the current key and can still read values written under the
-// pre-HKDF key when one is configured.
 type CredentialCipher struct {
 	current cipher.AEAD
 	legacy  cipher.AEAD
 }
 
-// CredentialCipherOption configures a CredentialCipher at construction.
 type CredentialCipherOption func(*CredentialCipher) error
 
-// NewCredentialCipher builds a cipher around a 32-byte key.
 func NewCredentialCipher(key []byte, opts ...CredentialCipherOption) (*CredentialCipher, error) {
 	current, err := newCredentialAEAD(key)
 	if err != nil {
@@ -57,8 +47,6 @@ func NewCredentialCipher(key []byte, opts ...CredentialCipherOption) (*Credentia
 	return c, nil
 }
 
-// WithLegacyEncryptionKey lets the cipher read values written before the key
-// was derived with HKDF.
 func WithLegacyEncryptionKey(key []byte) CredentialCipherOption {
 	return func(c *CredentialCipher) error {
 		legacy, err := newCredentialAEAD(key)
@@ -83,8 +71,6 @@ func newCredentialAEAD(key []byte) (cipher.AEAD, error) {
 	return cipher.NewGCM(block)
 }
 
-// Encrypt seals plaintext under the current key. aad is bound into the tag and
-// must be passed again to Decrypt.
 func (c *CredentialCipher) Encrypt(plaintext string, aad []byte) (string, error) {
 	nonce := make([]byte, c.current.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
@@ -95,15 +81,10 @@ func (c *CredentialCipher) Encrypt(plaintext string, aad []byte) (string, error)
 	return credentialCipherPrefix + base64.StdEncoding.EncodeToString(sealed), nil
 }
 
-// Decrypt opens a value written by Encrypt, or an unprefixed legacy value under
-// the legacy key when one is configured.
 func (c *CredentialCipher) Decrypt(ciphertext string, aad []byte) (string, error) {
 	aead := c.current
 	encoded := ciphertext
 	if isLegacyCiphertext(ciphertext) {
-		// Trying the current key here would turn a missing legacy key into an
-		// authentication failure. That reads exactly like a changed session
-		// secret, and it would make correct wiring opt-in.
 		if c.legacy == nil {
 			return "", errors.New("legacy ciphertext but no legacy key configured")
 		}
@@ -130,36 +111,27 @@ func (c *CredentialCipher) Decrypt(ciphertext string, aad []byte) (string, error
 	return string(plaintext), nil
 }
 
-// isLegacyCiphertext reports a stored value that predates the versioned format.
 func isLegacyCiphertext(ciphertext string) bool {
 	return !strings.HasPrefix(ciphertext, credentialCipherPrefix)
 }
 
-// legacyCredentialTable names the encrypted columns of one table for the
-// startup rewrite pass.
 type legacyCredentialTable struct {
 	table   string
 	columns []string
 }
 
-// resealedRow holds the columns of one row that the rewrite pass will update.
 type resealedRow struct {
 	id      int64
 	columns []string
 	values  []any
 }
 
-// rewriteLegacyRows re-seals every unprefixed value in the named columns under
-// the current key and reports how many rows it updated.
 func (c *CredentialCipher) rewriteLegacyRows(ctx context.Context, db dbinterface.Querier, spec legacyCredentialTable) (int, error) {
 	pending, err := c.resealLegacyRows(ctx, db, spec)
 	if err != nil {
 		return 0, err
 	}
 
-	// Every row is its own idempotent UPDATE, so a failure part way through
-	// leaves the rest legacy and readable. Report what did commit, because the
-	// operator needs to know whether nothing or almost everything moved.
 	rewritten := 0
 	for _, row := range pending {
 		assignments := make([]string, 0, len(row.columns))
@@ -177,11 +149,6 @@ func (c *CredentialCipher) rewriteLegacyRows(ctx context.Context, db dbinterface
 	return rewritten, nil
 }
 
-// resealLegacyRows reads the table and re-encrypts what it can. It returns
-// before its caller issues any UPDATE, so the result set is closed by then.
-// A row that will not decrypt is left exactly as it is. An operator who changed
-// sessionSecret has credentials to re-enter. Overwriting them here would destroy
-// the evidence.
 func (c *CredentialCipher) resealLegacyRows(ctx context.Context, db dbinterface.Querier, spec legacyCredentialTable) ([]resealedRow, error) {
 	query := fmt.Sprintf("SELECT id, %s FROM %s", strings.Join(spec.columns, ", "), spec.table)
 	rows, err := db.QueryContext(ctx, query)
@@ -211,9 +178,6 @@ func (c *CredentialCipher) resealLegacyRows(ctx context.Context, db dbinterface.
 
 			plaintext, err := c.Decrypt(value.String, nil)
 			if err != nil {
-				// The whole row is abandoned, so its other columns are neither
-				// tried nor logged. One failing column means the key changed,
-				// which breaks every column of every row at once.
 				log.Warn().
 					Err(err).
 					Str("table", spec.table).

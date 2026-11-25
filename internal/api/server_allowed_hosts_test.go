@@ -23,7 +23,6 @@ func TestAllowedHostsAdmission(t *testing.T) {
 	router, err := NewServer(deps).Handler()
 	require.NoError(t, err)
 
-	// The router keeps its list even if the source configuration changes.
 	deps.Config.Config.AllowedHosts[0] = "attacker.test"
 	for _, tc := range []struct {
 		name, method, path, host, peer string
@@ -81,7 +80,6 @@ func TestAllowedHostsWithCredentials(t *testing.T) {
 	for _, credential := range []string{"session", "API key", "none"} {
 		for _, host := range []string{"localhost", "attacker.test"} {
 			t.Run(credential+"/"+host, func(t *testing.T) {
-				// This endpoint sits behind auth and needs no client warm-up.
 				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/version", nil)
 				req.Host = host
 				if credential == "session" {

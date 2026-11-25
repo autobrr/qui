@@ -13,24 +13,15 @@ import (
 	"github.com/autobrr/qui/pkg/redact"
 )
 
-// Statuses for SearchIndexerOutcome.Status.
 const (
-	// searchIndexerStatusSearched means the indexer answered every pass of the search.
-	searchIndexerStatusSearched = "searched"
-	// searchIndexerStatusNotCovered means the indexer missed at least one pass
-	// (rate limited or a retry pass failed) and stays eligible for the next run.
+	searchIndexerStatusSearched   = "searched"
 	searchIndexerStatusNotCovered = "not_covered"
-	// searchIndexerStatusError means the indexer reported an error during a search pass.
-	searchIndexerStatusError = "error"
-	// searchIndexerStatusExcluded means content filtering excluded the indexer.
-	searchIndexerStatusExcluded = "excluded"
+	searchIndexerStatusError      = "error"
+	searchIndexerStatusExcluded   = "excluded"
 )
 
-// maxTraceRejectedPerReason caps the rejected-candidate detail per reason;
-// RejectionCounts still reports the full totals.
 const maxTraceRejectedPerReason = 5
 
-// SearchRejectedCandidate is one Torznab result the search classifier rejected.
 type SearchRejectedCandidate struct {
 	Indexer   string `json:"indexer"`
 	IndexerID int    `json:"indexerId"`
@@ -39,19 +30,13 @@ type SearchRejectedCandidate struct {
 	Reason    string `json:"reason"`
 }
 
-// SearchIndexerOutcome reports how one indexer fared during the Torznab passes.
 type SearchIndexerOutcome struct {
-	IndexerID int    `json:"indexerId"`
-	Status    string `json:"status"`
-	Detail    string `json:"detail,omitempty"`
-	// Candidates is the number of raw results this indexer contributed before filtering.
-	Candidates int `json:"candidates"`
+	IndexerID  int    `json:"indexerId"`
+	Status     string `json:"status"`
+	Detail     string `json:"detail,omitempty"`
+	Candidates int    `json:"candidates"`
 }
 
-// SearchDecisionTrace explains why a search accepted or rejected candidates.
-// It travels with the response for the manual search dialog and is never persisted.
-// Every count covers the Torznab passes only. Gazelle results reach the response
-// without passing through this funnel.
 type SearchDecisionTrace struct {
 	SourceSize          int64                     `json:"sourceSize"`
 	TolerancePercent    float64                   `json:"tolerancePercent"`
@@ -66,9 +51,6 @@ type SearchDecisionTrace struct {
 	Indexers            []SearchIndexerOutcome    `json:"indexers,omitempty"`
 }
 
-// searchTraceRejections samples rejected candidates for the trace. Counts live
-// in the caller's releaseFilterReasons map (plus the size-filter counter);
-// runningCount is that count after the current rejection.
 type searchTraceRejections struct {
 	candidates []SearchRejectedCandidate
 }
@@ -86,14 +68,11 @@ func (r *searchTraceRejections) add(res jackett.SearchResult, reason string, run
 	})
 }
 
-// searchIndexerErrors captures per-indexer failures from the jackett
-// per-indexer completion callback, which fires from scheduler goroutines.
 type searchIndexerErrors struct {
 	mu   sync.Mutex
 	errs map[int]string
 }
 
-// record keeps the first error per indexer, redacted for API exposure.
 func (e *searchIndexerErrors) record(_ uint64, indexerID int, err error) {
 	if err == nil || indexerID <= 0 {
 		return
@@ -114,8 +93,6 @@ func (e *searchIndexerErrors) snapshot() map[int]string {
 	return maps.Clone(e.errs)
 }
 
-// buildSearchIndexerOutcomes derives one outcome row per indexer involved in
-// the search: the requested set plus content-excluded indexers.
 func buildSearchIndexerOutcomes(requested, covered []int, errs map[int]string, excluded map[int]string, candidates map[int]int) []SearchIndexerOutcome {
 	if len(requested) == 0 && len(excluded) == 0 {
 		return nil

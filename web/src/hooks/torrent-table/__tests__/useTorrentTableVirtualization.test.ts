@@ -8,8 +8,6 @@ import type { TorrentRow } from "@/components/torrents/tanstackTableFeatures"
 import { renderHook } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// Stable virtualizer singleton (TDZ-safe via vi.hoisted) — the whole point of R1
-// is that the hook returns THIS instance by reference, not a fresh wrapper.
 const { virtualizerMock } = vi.hoisted(() => ({
   virtualizerMock: {
     measure: vi.fn(),
@@ -52,7 +50,7 @@ describe("useTorrentTableVirtualization", () => {
     rerender(baseProps({ desktopViewMode: "dense" }))
 
     expect(result.current.virtualizer).toBe(v1)
-    expect(result.current.virtualizer).toBe(virtualizerMock) // not re-boxed
+    expect(result.current.virtualizer).toBe(virtualizerMock)
   })
 
   it("clamps safeLoadedRows to the rendered row count", () => {

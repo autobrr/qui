@@ -14,9 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// SearchGatherer runs the Torznab primary pass and the retry passes of one
-// search for one source. It decides retries with the usable predicate it is handed
-// and never parses or classifies a title itself (ADR 0007, ADR 0072).
 type SearchGatherer struct {
 	Search        func(ctx context.Context, req *jackett.TorznabSearchRequest) (*jackett.SearchResponse, error)
 	IDCapIndexers func(ctx context.Context, req *jackett.TorznabSearchRequest) []int
@@ -24,11 +21,9 @@ type SearchGatherer struct {
 }
 
 type GatherInput struct {
-	Req           *jackett.TorznabSearchRequest
-	TagSourcedIDs bool
-	// AltTitle is the alternate-title query; empty skips that pass.
-	AltTitle string
-	// AltTitleSeason replaces the season on the alternate-title pass. Nil keeps the season of Req.
+	Req            *jackett.TorznabSearchRequest
+	TagSourcedIDs  bool
+	AltTitle       string
 	AltTitleSeason *int
 	TVSourceYear   int
 	TorrentName    string
@@ -41,11 +36,6 @@ func (s *Service) newSearchGatherer(usable func(jackett.SearchResult) bool) Sear
 	return SearchGatherer{Search: s.searchOnce, IDCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, Usable: usable}
 }
 
-// Gather returns the response with every pass's results merged, the covered
-// indexer IDs, whether any indexer answered any pass, and the primary-pass or
-// context error. Passes search on waitCtx.
-// Only ctx cancellation aborts a retry. A failed yearless retry marks the
-// response partial. A failed retry removes its targets from coverage.
 func (g SearchGatherer) Gather(ctx, waitCtx context.Context, in GatherInput) (*jackett.SearchResponse, []int, bool, error) {
 	req := in.Req
 	resp, err := g.Search(waitCtx, req)
@@ -57,22 +47,9 @@ func (g SearchGatherer) Gather(ctx, waitCtx context.Context, in GatherInput) (*j
 	}
 	results := resp.Results
 
-	// An indexer only counts as covered when it answered every pass of this
-	// search: a pass it missed is exactly the query that might have matched,
-	// so it must stay eligible for the next run.
 	covered := resp.CoveredIndexerIDs
-	// A failed retry uncovers indexers that did answer, so coverage cannot
-	// tell whether Torznab ran at all.
 	answered := len(covered) > 0
 
-	// Retry without year when the first pass turned up nothing usable, whether
-	// it returned no hits at all or only hits that release and size filtering
-	// rejected. The year is the narrowest primary-query constraint, so it is
-	// the first fallback to drop, also on every later pass. This pass stays
-	// gated on the whole search: dropping the year fires on nearly every movie
-	// and has low per-indexer value, unlike the targeted passes below. An
-	// indexer that searched by ID got no year, so only the title indexers are
-	// searched again.
 	dropYear := req.Year > 0 && !slices.ContainsFunc(results, g.Usable)
 	addYear := in.TVSourceYear > 0 && req.Year == 0
 	var idCap []int
@@ -103,12 +80,6 @@ func (g SearchGatherer) Gather(ctx, waitCtx context.Context, in GatherInput) (*j
 				resp.Partial = true
 				covered = subtractInts(covered, targets)
 			} else if retryResp != nil {
-				// The retry is a tracked job of its own, so JobID and Cache come
-				// from it; the merged results keep both passes and the requested
-				// indexers stay those of the primary. An indexer outside a narrowed
-				// retry has a history row only under the primary job, so outcomes
-				// stay on that job. A primary served from cache has no job, so the
-				// retry keeps its own.
 				results = append(results, retryResp.Results...)
 				retryResp.Partial = resp.Partial || retryResp.Partial
 				retryResp.RequestedIndexerIDs = resp.RequestedIndexerIDs
@@ -126,13 +97,6 @@ func (g SearchGatherer) Gather(ctx, waitCtx context.Context, in GatherInput) (*j
 		laterYear = 0
 	}
 
-	// retry is a per-indexer retry: it re-queries only targets with query, as
-	// an internal continuation of the primary search. No history row of its
-	// own, IDs cleared so the title reaches ID-capable indexers, and no year
-	// once the yearless gate dropped it. SkipCachePersist stays unset so repeated
-	// passes reuse the Torznab result cache instead of re-hitting indexers.
-	// Outcome reporting keys on indexer ID under the primary job. A failed
-	// pass drops its targets from the covered set.
 	retry := func(pass string, targets []int, query string, season *int, year int) error {
 		if len(targets) == 0 {
 			return nil
@@ -193,10 +157,6 @@ func (g SearchGatherer) Gather(ctx, waitCtx context.Context, in GatherInput) (*j
 		}
 	}
 
-	// Indexers that searched by tag-sourced ID never saw the title query.
-	// Retry by title so an incorrect tag does not leave them without usable
-	// results. Indexers without ID caps already searched by title in the
-	// primary pass and are covered by the passes below.
 	if in.TagSourcedIDs {
 		targets := intersectInts(idCap, unsatisfied())
 		if err := retry("title retry after tag-sourced IDs", targets, req.Query, nil, laterYear); err != nil {
@@ -204,22 +164,12 @@ func (g SearchGatherer) Gather(ctx, waitCtx context.Context, in GatherInput) (*j
 		}
 	}
 
-	// The title passes are skipped for arr-ID searches, which do not rely on
-	// title text; a tag-sourced ID primary keeps them because the IDs came
-	// from the file, not a resolver, and the retry request drops them.
 	if !req.OmitQueryForIDs || in.TagSourcedIDs {
-		// A tracker can index the same content under a different title
-		// (localized, romanized, or an *arr scene alias). An indexer that
-		// already produced a usable candidate is left alone, because
-		// cross-seed success is per tracker, not per search.
 		if in.AltTitle != "" {
 			if err := retry("alternate title", unsatisfied(), in.AltTitle, in.AltTitleSeason, laterYear); err != nil {
 				return nil, nil, false, err
 			}
 		}
-		// Some trackers index a show with "&" while the release name spells
-		// out "and". A literal q only matches one spelling; the match loop
-		// dedupes the merged candidates by GUID/download URL.
 		if altQuery, ok := alternateConnectorQuery(req.Query); ok {
 			if err := retry("alternate connector", unsatisfied(), altQuery, nil, laterYear); err != nil {
 				return nil, nil, false, err
@@ -231,8 +181,6 @@ func (g SearchGatherer) Gather(ctx, waitCtx context.Context, in GatherInput) (*j
 	return resp, covered, answered, nil
 }
 
-// indexersWithoutResults returns the requested indexer IDs that produced no
-// results, preserving request order.
 func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) []int {
 	if len(requestedIDs) == 0 {
 		return nil
@@ -250,12 +198,6 @@ func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) 
 	return missing
 }
 
-// indexersWithoutUsableResults returns the requested indexer IDs that produced
-// no USABLE candidate. Unlike indexersWithoutResults (which counts any raw
-// hit), an indexer whose hits were all rejected by release/size filtering is
-// still re-queried by the per-indexer retry passes, so a candidate it carries
-// under another title, spelling, or ID can surface instead of being
-// permanently suppressed.
 func indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchResult, usable func(jackett.SearchResult) bool) []int {
 	kept := make([]jackett.SearchResult, 0, len(results))
 	for _, r := range results {
@@ -266,9 +208,6 @@ func indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchRe
 	return indexersWithoutResults(requestedIDs, kept)
 }
 
-// clearSearchRequestIDs strips the external-ID parameters from a retry
-// request copied off an ID-driven primary, so its title query reaches every
-// indexer instead of being dropped for the ID-capable ones.
 func clearSearchRequestIDs(req *jackett.TorznabSearchRequest) {
 	req.IMDbID = ""
 	req.TVDbID = ""
@@ -278,7 +217,6 @@ func clearSearchRequestIDs(req *jackett.TorznabSearchRequest) {
 	req.OmitQueryForIDs = false
 }
 
-// searchOnce runs a single Torznab search to completion and returns its response.
 func (s *Service) searchOnce(ctx context.Context, req *jackett.TorznabSearchRequest) (*jackett.SearchResponse, error) {
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)

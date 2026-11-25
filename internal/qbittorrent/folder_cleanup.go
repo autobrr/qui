@@ -22,43 +22,25 @@ import (
 )
 
 const (
-	folderCleanupTick = 3 * time.Second
-	// folderCleanupRemoteTick is how often a remote instance's items are
-	// checked, since each check costs round trips per torrent over SSH.
-	folderCleanupRemoteTick = 30 * time.Second
-	folderCleanupDeadline   = 2 * time.Minute
-	// folderCleanupProxyPrepareBudget bounds the snapshot a proxied request
-	// waits on before it is sent, well inside the timeouts clients use.
+	folderCleanupTick               = 3 * time.Second
+	folderCleanupRemoteTick         = 30 * time.Second
+	folderCleanupDeadline           = 2 * time.Minute
 	folderCleanupProxyPrepareBudget = 5 * time.Second
-	// folderCleanupPrepareBudget bounds it for qui's own operations, well
-	// inside the 60 s automations allow for applying their actions.
-	folderCleanupPrepareBudget = 30 * time.Second
-	// folderCleanupStopWait bounds how long Stop waits for a worker stuck in
-	// a filesystem call that ignores its context, so shutdown goes on.
-	folderCleanupStopWait = 5 * time.Second
-	// folderCleanupCapacity bounds the folders and top-level entries held across
-	// the queue. A batch past it is left to orphan scan.
-	folderCleanupCapacity = 65536
+	folderCleanupPrepareBudget      = 30 * time.Second
+	folderCleanupStopWait           = 5 * time.Second
+	folderCleanupCapacity           = 65536
 )
 
-// FolderCleanup removes the leftover folders a torrent leaves after qui deletes
-// or moves it. It decides on its own which folders are stop folders, which are
-// protected, and when the content is gone; callers only hand it snapshots.
 type FolderCleanup struct {
 	pool    backendRequirer
 	view    folderView
 	ignores ignoreMatcher
 
-	// tick is how often the worker checks its queue, remoteTick how often it
-	// checks a remote instance's items, and deadline how long an item waits
-	// for its torrent to leave. Tests shorten them before Start.
-	tick       time.Duration
-	remoteTick time.Duration
-	deadline   time.Duration
-	stopWait   time.Duration
-	capacity   int
-	// prepareBudget and proxyPrepareBudget bound how long qui's own
-	// operations and proxied requests wait on their snapshots.
+	tick               time.Duration
+	remoteTick         time.Duration
+	deadline           time.Duration
+	stopWait           time.Duration
+	capacity           int
 	prepareBudget      time.Duration
 	proxyPrepareBudget time.Duration
 
@@ -75,22 +57,11 @@ type backendRequirer interface {
 	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability, more ...models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
 }
 
-// folderView is the sync manager's cached view of an instance, read on every
-// check. Its requests do not grow with the torrent count.
 type folderView interface {
-	// liveTorrents and ownRows return the torrents of the Sync snapshot:
-	// never change one.
 	liveTorrents(ctx context.Context, instanceID int) ([]*qbt.Torrent, error)
-	// ownRows is the cached rows of hashes alone, keyed by canonicalizeHash.
 	ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]*qbt.Torrent, error)
-	// InstanceFolders reads the preferences and the categories with
-	// requests.
 	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (InstanceFolders, error)
-	// hintRefresh asks for one sync, for a torrent the cache still shows
-	// where the snapshot left it, or for an item about to reach its
-	// deadline.
 	hintRefresh(instanceID int)
-	// lastSync is when the cache last took a successful sync.
 	lastSync(ctx context.Context, instanceID int) (time.Time, error)
 }
 
@@ -98,79 +69,45 @@ type ignoreMatcher interface {
 	IgnoredPathMatcher(ctx context.Context, instanceID int, d fsops.PathDialect) (func(path string) bool, error)
 }
 
-// folderLayout says how a torrent's content sits under its save path.
 type folderLayout uint8
 
 const (
-	// layoutRootFolder: the content path is the torrent's own folder.
 	layoutRootFolder folderLayout = iota
-	// layoutSingleFile: the content path is the torrent's only file.
 	layoutSingleFile
-	// layoutNoRootFolder: the files sit directly in the save path, which is
-	// also the content path.
 	layoutNoRootFolder
 )
 
-// folderSnapshot is one torrent as it was before qui asked qBittorrent to
-// delete or move it. Paths are in the backend's dialect, as qBittorrent
-// reports them.
 type folderSnapshot struct {
-	InstanceID   int
-	Hash         string
-	SavePath     string
-	DownloadPath string
-	ContentPath  string
-	Layout       folderLayout
-	// Files holds the slash names qBittorrent lists, read only for
-	// layoutNoRootFolder.
+	InstanceID     int
+	Hash           string
+	SavePath       string
+	DownloadPath   string
+	ContentPath    string
+	Layout         folderLayout
 	Files          []string
 	ContentExisted bool
-	// Move is set for a move. The item then waits until the torrent's row
-	// shows a new content path, rather than until the row is gone, since the
-	// move may not happen at all.
-	Move bool
+	Move           bool
 }
 
-// pendingFolder is a snapshot reduced to the folders it can touch, so the queue
-// holds folders rather than a large torrent's file names.
 type pendingFolder struct {
-	snap folderSnapshot
-	// relDirs are the slash folders the torrent's files sat in, deepest first.
-	relDirs []string
-	// topLevel are the slash names directly in the save path, in file order.
-	topLevel []string
-	// gone counts the leading topLevel entries already seen gone, so a retry
-	// stats only what was still there.
-	gone int
-	// judgeErr is why the last check could not judge the item's folders, so
-	// a drop at the deadline can say cleanup did not run.
-	judgeErr error
-	// unreadable is the path the last content check could not read, which
-	// keeps the item waiting.
+	snap       folderSnapshot
+	relDirs    []string
+	topLevel   []string
+	gone       int
+	judgeErr   error
 	unreadable *fs.PathError
-	// atDeadline marks an item judged at the deadline with content still
-	// in place.
 	atDeadline bool
-	// syncAsked is when the item, with content still in place, last asked
-	// for a sync ahead of its deadline.
-	syncAsked time.Time
-	// checked is when the item was queued or last checked on a remote
-	// instance, which waits remoteTick between checks.
-	checked time.Time
-	expires time.Time
+	syncAsked  time.Time
+	checked    time.Time
+	expires    time.Time
 }
 
 func (p *pendingFolder) cost() int { return 1 + len(p.relDirs) + len(p.topLevel) }
 
-// asksAgain reports whether p, which asked for a sync on an earlier check,
-// asks again on the last tick before its deadline. On a remote instance that
-// earlier ask came a remote tick ahead, and a torrent added at these folders
-// since would be missing from the scope. It needs no read of the backend.
 func (p *pendingFolder) asksAgain(now time.Time, tick time.Duration) bool {
 	return !p.syncAsked.IsZero() && now.Sub(p.syncAsked) >= tick && !now.Add(tick).Before(p.expires)
 }
 
-// NewFolderCleanup returns a stopped cleanup; Start runs its worker.
 func NewFolderCleanup(pool backendRequirer, view folderView, ignores ignoreMatcher) *FolderCleanup {
 	return &FolderCleanup{
 		pool:               pool,
@@ -186,21 +123,14 @@ func NewFolderCleanup(pool backendRequirer, view folderView, ignores ignoreMatch
 	}
 }
 
-// SetTickForTest sets how often the worker checks its queue. Call it before
-// Start. Product code does not call it.
 func (c *FolderCleanup) SetTickForTest(tick time.Duration) { c.tick = tick }
 
-// Start runs the one worker until ctx ends or Stop is called.
 func (c *FolderCleanup) Start(ctx context.Context) {
 	ctx, c.cancel = context.WithCancel(ctx)
 	c.done = make(chan struct{})
 	go c.run(ctx)
 }
 
-// Stop drops pending work and waits up to stopWait for the worker to exit.
-// Snapshots handed in afterwards are ignored. A worker that has not exited by
-// then, such as one inside a hung filesystem call, is left to finish its tick,
-// which takes no new work.
 func (c *FolderCleanup) Stop() {
 	c.drop()
 	if c.cancel == nil {
@@ -224,7 +154,6 @@ func (c *FolderCleanup) drop() {
 	c.mu.Unlock()
 }
 
-// room is how many more torrents the queue could take, at one folder each.
 func (c *FolderCleanup) room() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -234,17 +163,11 @@ func (c *FolderCleanup) room() int {
 	return c.capacity - c.held
 }
 
-// enqueue hands over torrents that are about to leave their folders, and
-// reports whether it queued any. It never blocks on the filesystem.
-// alreadyDropped counts torrents the caller left out for lack of room, so the
-// one warning carries the full count.
 func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) bool {
 	now := time.Now()
 	expires := now.Add(c.deadline)
 	items := make([]*pendingFolder, 0, len(snaps))
 	for _, snap := range snaps {
-		// Content that was missing before the operation may be an unmounted
-		// disk; its empty mount point must stay.
 		if !snap.ContentExisted {
 			continue
 		}
@@ -315,8 +238,6 @@ func newPendingFolder(snap folderSnapshot, expires time.Time) (*pendingFolder, e
 	return item, nil
 }
 
-// topLevelNames returns the distinct slash names directly in the save path, in
-// file order. It fails on a name cleanTorrentFileName refuses.
 func topLevelNames(files []string) ([]string, error) {
 	var top []string
 	seen := make(map[string]struct{})
@@ -334,10 +255,6 @@ func topLevelNames(files []string) ([]string, error) {
 	return top, nil
 }
 
-// cleanTorrentFileName validates a torrent-internal slash name. qBittorrent
-// reports these from torrent metadata, so a name that is absolute, drive
-// qualified, UNC, carries a backslash or climbs with ".." is refused on every
-// OS rather than joined to a save path.
 func cleanTorrentFileName(name string) (string, bool) {
 	if name == "" || strings.ContainsRune(name, '\\') || strings.HasPrefix(name, "/") || hasDriveLetter(name) {
 		return "", false
@@ -368,9 +285,6 @@ func (c *FolderCleanup) run(ctx context.Context) {
 	}
 }
 
-// runTick keeps the batch counted in held while it works unlocked, so an
-// enqueue meanwhile sees the room the batch may take back, and releases the
-// cost of each item that does not come back for a retry.
 func (c *FolderCleanup) runTick(ctx context.Context) {
 	c.mu.Lock()
 	batch := c.pending
@@ -390,8 +304,6 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 		byInstance[id] = append(byInstance[id], item)
 	}
 
-	// One instant decides both whether an item cleans at the deadline and
-	// whether it is dropped, so no item passes the deadline between the two.
 	now := time.Now()
 	var retry []*pendingFolder
 	for _, id := range order {
@@ -422,8 +334,6 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 			Msg("folder cleanup: torrent still in its folder at the deadline, dropped")
 		return true
 	})
-	// Each failure was logged at Debug as it may pass. One that lasted to the
-	// deadline, such as an ignore path the host cannot read, turns cleanup off.
 	for _, id := range order {
 		if n := unjudged[id]; n > 0 {
 			log.Warn().Err(judgeErr[id]).Int("instanceID", id).Int("torrents", n).
@@ -454,7 +364,6 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 	c.mu.Unlock()
 }
 
-// markUnjudged records err on items whose folders could not be judged, to retry.
 func markUnjudged(instanceID int, err error, items []*pendingFolder) []*pendingFolder {
 	log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: cannot judge folders yet, will retry")
 	for _, item := range items {
@@ -463,9 +372,6 @@ func markUnjudged(instanceID int, err error, items []*pendingFolder) []*pendingF
 	return items
 }
 
-// checkInstance cleans the items whose content is gone, and at the deadline
-// those whose content could be read once a fresh sync has landed, and returns
-// the ones to check again.
 func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items []*pendingFolder, now time.Time) []*pendingFolder {
 	for _, item := range items {
 		item.judgeErr = nil
@@ -477,21 +383,10 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	if err != nil {
 		return markUnjudged(instanceID, err, items)
 	}
-	// lead is the longest time to the item's next check.
 	lead := c.tick
-	// waiting are the items this check leaves for a later one.
 	var waiting []*pendingFolder
-	// hint asks for a sync at the end of the check, and asked records an
-	// item's request for one ahead of its deadline, which goes out before
-	// the check removes anything on this instance, so the sync lands
-	// before the next tick.
 	hint, asked := false, false
 	if models.FilesystemAccessMode(instance) == models.FilesystemModeRemote {
-		// The instance is checked once one of its items is due, and then
-		// all of them are, so it costs at most one check per remoteTick.
-		// That check runs on the first tick after it is due. Between two
-		// checks only the items at their deadline are checked, so batches
-		// queued a few seconds apart do not each check the rest again.
 		lead = c.remoteTick + c.tick
 		if slices.ContainsFunc(items, func(item *pendingFolder) bool { return !now.Before(item.checked.Add(c.remoteTick)) }) {
 			for _, item := range items {
@@ -521,7 +416,6 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	}
 
 	var ready, retry []*pendingFolder
-	// synced is read once, and only for an item at its deadline.
 	var synced *time.Time
 	var syncErr error
 	var unjudged []*pendingFolder
@@ -531,24 +425,10 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 			ready = append(ready, item)
 			continue
 		}
-		// Content can stay for good, such as a file the user added in one
-		// of the torrent's folders, which holdsFiles finds at any depth. At
-		// the deadline the item is judged anyway, so its row and the scope
-		// still protect, and the clean removes only the folders that are
-		// empty. A path the check could not read keeps the item waiting, and
-		// the deadline warns about it.
 		if item.unreadable != nil {
 			retry = append(retry, item)
 			continue
 		}
-		// While content is there nothing reads the item's row, so nothing
-		// asks for a sync, and the cache may predate a torrent added at
-		// these folders since. One check ahead of the deadline the item asks
-		// for one, again on the last tick if that check came earlier, and the
-		// deadline judges only against a sync that landed after the last ask.
-		// Without one the item is dropped as before, which is also what
-		// happens when an overrunning tick makes the ticker skip that last
-		// tick before the deadline.
 		if now.Before(item.expires) {
 			if item.syncAsked.IsZero() && !now.Add(lead).Before(item.expires) || item.asksAgain(now, c.tick) {
 				item.syncAsked = now
@@ -576,7 +456,6 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 		ready = append(ready, item)
 	}
 	if len(unjudged) > 0 {
-		// The deadline drop then warns that the folders went unjudged.
 		retry = append(retry, markUnjudged(instanceID, syncErr, unjudged)...)
 	}
 	if asked {
@@ -587,9 +466,6 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 		return retry
 	}
 
-	// The usual first check after a delete finds the torrent's own row still
-	// cached. That alone decides it waits, so the scope, a full read of the
-	// cached torrents and two requests, is built only for the rest.
 	hashes := make([]string, len(ready))
 	for i, item := range ready {
 		hashes[i] = item.snap.Hash
@@ -613,7 +489,6 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 		if err != nil {
 			retry = append(retry, markUnjudged(instanceID, err, judge)...)
 		} else {
-			// The full read can be newer than the row read above, so it decides.
 			for _, item := range judge {
 				if _, wait := waiting[item]; wait {
 					hint = true
@@ -628,9 +503,6 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 			}
 		}
 	}
-	// A row still in place asks for a sync even after the request above,
-	// which may have landed before the reads that found the row. A second
-	// hint only restarts the debounce if the first sync has not started.
 	if hint {
 		c.view.hintRefresh(instanceID)
 	}

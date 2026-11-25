@@ -22,12 +22,10 @@ vi.mock("@/components/instances/preferences/OrphanScanPreviewDialog", () => ({
   OrphanScanPreviewDialog: () => null,
 }))
 
-// SettingsSummary.test.tsx covers the pair layout, so this file checks only the pairs the card passes in.
 vi.mock("@/components/instances/preferences/SettingsSummary", () => ({
   SettingsSummary: ({ parts }: { parts: string[] }) => <span data-testid="settings-summary">{JSON.stringify(parts)}</span>,
 }))
 
-// Stable singletons: a fresh object per render would rerun effects forever.
 const { instancesQuery, settingsQuery, runsQuery, mutation } = vi.hoisted(() => {
   const instance = {
     id: 1,

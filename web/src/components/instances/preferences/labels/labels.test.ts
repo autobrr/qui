@@ -12,7 +12,6 @@ import catalogSource from "../../../../../../internal/qbittorrent/prefcatalog/ca
 import { preferenceWidgets } from "../PreferenceWidgets"
 import { preferenceTabLabels } from "."
 
-// The Go source of the catalog declares each control type as `ControlX Control = "x"`.
 const catalogControls = [...catalogSource.matchAll(/^\s*Control\w+\s+Control\s*=\s*"(\w+)"/gm)].map(match => match[1])
 
 describe("preference labels", () => {

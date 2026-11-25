@@ -23,9 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// settingsFailingQuerier fails exactly the orphan_scan_settings read and passes
-// every other statement to the real database, so the run reaches the settings
-// load the way it would in production.
 type settingsFailingQuerier struct {
 	dbinterface.Querier
 }
@@ -37,8 +34,6 @@ func (q settingsFailingQuerier) QueryRowContext(ctx context.Context, query strin
 	return q.Querier.QueryRowContext(ctx, query, args...)
 }
 
-// deletionFixture builds a run that has already reached preview_ready with one
-// orphan file and one abandoned directory pending.
 type deletionFixture struct {
 	svc              *Service
 	store            *models.OrphanScanStore
@@ -58,8 +53,6 @@ func newDeletionFixture(t *testing.T, dbName string) *deletionFixture {
 	f := newOrphanOnlyFixture(t, dbName, orphanOnlyOptions{}, func(defaultSavePath string) {
 		abandoned = filepath.Join(defaultSavePath, "leftover")
 		strayFile = filepath.Join(defaultSavePath, "stray.txt")
-		// A folder holding nothing but an orphan: the run empties it, so it is
-		// previewed as a directory too.
 		categoryFolder = filepath.Join(defaultSavePath, "movies")
 		orphanInCategory = filepath.Join(categoryFolder, "junk.txt")
 
@@ -81,10 +74,6 @@ func newDeletionFixture(t *testing.T, dbName string) *deletionFixture {
 	}
 }
 
-// TestExecuteDeletion_SkipsDirectoryThatBecameACategoryDestination covers a
-// category created between the preview and the confirmation. The directory was
-// fair game when it was listed and must not be removed now that qBittorrent
-// will write into it.
 func TestExecuteDeletion_SkipsDirectoryThatBecameACategoryDestination(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-category-race")
 
@@ -96,9 +85,6 @@ func TestExecuteDeletion_SkipsDirectoryThatBecameACategoryDestination(t *testing
 	require.NoFileExists(t, f.strayFile, "the orphan file should still have been deleted")
 }
 
-// TestExecuteDeletion_ProtectsCategoriesEvenWhenTheOptionWasTurnedOff covers the
-// operator disabling abandoned-directory cleanup after previewing. Directories
-// already pending are still judged against the category list.
 func TestExecuteDeletion_ProtectsCategoriesEvenWhenTheOptionWasTurnedOff(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-category-toggle-off")
 
@@ -121,9 +107,6 @@ func TestExecuteDeletion_ProtectsCategoriesEvenWhenTheOptionWasTurnedOff(t *test
 	require.DirExists(t, f.abandoned, "category protection must not depend on the option still being enabled")
 }
 
-// TestExecuteDeletion_DeletesAbandonedDirectoryWhenNothingClaimsIt is the
-// control: without a claim the same fixture is removed, so the tests above fail
-// for the right reason.
 func TestExecuteDeletion_DeletesAbandonedDirectoryWhenNothingClaimsIt(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-control")
 
@@ -133,16 +116,9 @@ func TestExecuteDeletion_DeletesAbandonedDirectoryWhenNothingClaimsIt(t *testing
 	require.NoFileExists(t, f.strayFile)
 }
 
-// TestExecuteDeletion_DirectoriesCountTowardsTheRunOutcome covers a run whose
-// only file could not be deleted while a directory went. Judging the outcome on
-// the file count alone marked that run failed, and UpdateRunFailed stores no
-// folder count, so the directories it did remove vanished from the report.
 func TestExecuteDeletion_DirectoriesCountTowardsTheRunOutcome(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-dirs-count")
 
-	// Leave the abandoned directory as the only entry that can succeed: park
-	// every other entry, then add one whose path no scan root covers, which
-	// fails deterministically on every OS.
 	pending, err := f.store.GetFilesForDeletion(t.Context(), f.runID)
 	require.NoError(t, err)
 	for _, file := range pending {
@@ -166,9 +142,6 @@ func TestExecuteDeletion_DirectoriesCountTowardsTheRunOutcome(t *testing.T) {
 	require.Contains(t, run.ErrorMessage, "1 item(s)", "the failed file still has to be reported as a warning")
 }
 
-// TestExecuteDeletion_FailsWhenSettingsCannotBeRead covers a settings read that
-// errors. Continuing would rebuild the protection map with an empty scope, so
-// the run must stop instead of deleting against thinner protection.
 func TestExecuteDeletion_FailsWhenSettingsCannotBeRead(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-settings-error")
 
@@ -180,9 +153,6 @@ func TestExecuteDeletion_FailsWhenSettingsCannotBeRead(t *testing.T) {
 	require.FileExists(t, f.strayFile, "nothing may be deleted when the scope cannot be determined")
 }
 
-// TestExecuteDeletion_FailsOnAnInvalidIgnorePath covers an ignore path that is
-// not absolute when the user confirms. The scan refuses such a path, so the
-// delete must refuse it too and not run under a rule the scan never accepted.
 func TestExecuteDeletion_FailsOnAnInvalidIgnorePath(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-invalid-ignore")
 
@@ -209,10 +179,6 @@ func TestExecuteDeletion_FailsOnAnInvalidIgnorePath(t *testing.T) {
 	require.DirExists(t, f.abandoned, "nothing may be deleted under an invalid ignore path")
 }
 
-// TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun covers a category
-// folder the run empties by deleting the orphan inside it. It was previewed
-// while no category pointed at it, so the re-check at deletion time is what
-// refuses it.
 func TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-second-pass")
 
@@ -224,9 +190,6 @@ func TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun(t *testing.T) {
 	require.DirExists(t, f.categoryFolder, "emptying a category folder must not remove it")
 }
 
-// TestExecuteDeletion_RefusesToRemoveADirectoryReplacedByAFile covers a file
-// created where the preview listed an empty directory. Remove would delete it,
-// and it is data nobody reviewed.
 func TestExecuteDeletion_RefusesToRemoveADirectoryReplacedByAFile(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-dir-became-file")
 
@@ -241,12 +204,6 @@ func TestExecuteDeletion_RefusesToRemoveADirectoryReplacedByAFile(t *testing.T) 
 	require.Equal(t, "new data", string(content))
 }
 
-// TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots
-// covers settings changing between preview and confirmation. Instance A's own
-// torrents live outside the default save path, so once the declared root is
-// dropped its roots no longer overlap instance B's and B stops being merged
-// into the protection map. Deletion is still authorized by the roots the run
-// recorded, so protection has to be computed against those roots too.
 func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t *testing.T) {
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "shared")
@@ -271,7 +228,6 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath})
 
-	// Only instance A exists while the preview is built.
 	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "a", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
@@ -307,8 +263,6 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 	require.Len(t, files, 1)
 	require.Equal(t, stray, files[0].FilePath)
 
-	// Instance B now seeds that file, and default-save-path scanning is turned
-	// off, leaving A's live roots disjoint from B's.
 	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "a", IsActive: true, HasLocalFilesystemAccess: true},
@@ -344,11 +298,6 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 	require.FileExists(t, stray, "a file another local instance now seeds must not be deleted")
 }
 
-// TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone covers a scan
-// run with abandoned-directory cleanup off. Deleting the orphan empties the
-// category folder, but nothing removes a directory the preview did not list.
-// Turning the option off after a preview is a different case: those directories
-// are already listed and confirmed, and the run still removes them.
 func TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone(t *testing.T) {
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "torrents")
@@ -383,7 +332,6 @@ func TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone(t *testing
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath, CategorySaveFolders: []string{categoryFolder}})
 
-	// Abandoned-directory cleanup is off, so the run previews the orphan only.
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
 		GracePeriodMinutes:  0,

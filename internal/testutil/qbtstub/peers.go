@@ -18,10 +18,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Swarm lets stubs reach each other as BitTorrent peers. A stub that gets
-// the address of another stub as a peer of a torrent connects to it, unless
-// the other stub is Unreachable. When one of the two seeds the torrent and
-// the other checked its files and wants the rest, the files pass at once.
 type Swarm struct {
 	mu    sync.Mutex
 	peers map[string]*Server
@@ -31,9 +27,6 @@ func NewSwarm() *Swarm {
 	return &Swarm{peers: map[string]*Server{}}
 }
 
-// Join gives s the public peer address addr: the external address and the
-// listen port that s reports, and the address at which the other stubs of
-// the swarm reach it.
 func (w *Swarm) Join(s *Server, addr netip.AddrPort) {
 	w.mu.Lock()
 	w.peers[addr.String()] = s
@@ -58,8 +51,6 @@ func (w *Swarm) at(addr string) *Server {
 	return w.peers[addr]
 }
 
-// addPeers answers torrents/addPeers: each peer must be host:port. The stub
-// connects to each peer that is a stub of its swarm.
 func (s *Server) addPeers(w http.ResponseWriter, param func(string) string) {
 	var peers []string
 	for p := range strings.SplitSeq(param("peers"), "|") {
@@ -78,8 +69,6 @@ func (s *Server) addPeers(w http.ResponseWriter, param func(string) string) {
 	}
 }
 
-// connect connects the torrent t of s to the same torrent of other. It locks
-// other: the swarm of a test connects one pair at a time.
 func (s *Server) connect(t *Torrent, other *Server) {
 	other.mu.Lock()
 	defer other.mu.Unlock()
@@ -108,14 +97,8 @@ func wants(t *Torrent) bool {
 	return !a.stopped && a.checked && !a.checking && a.progress < 1
 }
 
-// allTimeLateSyncs is how many syncs after a download report the downloaded
-// count from before it. A client that polls once a second reads that count a
-// few times.
 const allTimeLateSyncs = 4
 
-// pass writes each wanted file of the torrent to of s that differs from the
-// file of the seeding torrent from of the stub seeder, as a download does, and
-// completes the torrent. A seeder that misses a file sends nothing.
 func (s *Server) pass(seeder *Server, from, to *Torrent) {
 	sources, targets := seeder.diskFiles(from), s.diskFiles(to)
 	data := make([][]byte, len(sources))
@@ -145,7 +128,6 @@ func (s *Server) pass(seeder *Server, from, to *Torrent) {
 	to.add.progress, to.add.pieceStates = 1, nil
 }
 
-// freeSpaceAt answers app/getFreeSpaceAtPath, from qBittorrent 5.3.
 func (s *Server) freeSpaceAt(w http.ResponseWriter, r *http.Request) {
 	if !s.webAPIAtLeast("2.15.2") {
 		http.NotFound(w, r)

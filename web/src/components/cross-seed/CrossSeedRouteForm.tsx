@@ -32,9 +32,6 @@ const testResultKeys: Record<CrossSeedRouteTestRowResult, string> = {
   cannotWrite: "crossseed:routeForm.testResult.cannotWrite",
 }
 
-// The Cross-seed instance's form of a path, as the route rules compare it
-// (pathcmp.NormalizePath): either separator, "." and ".." resolved, case
-// ignored on a drive-letter path.
 function crossSeedKey(path: string): string {
   const slashed = path.replace(/\\/g, "/")
   const root = slashed.startsWith("//") ? "//" : slashed.startsWith("/") ? "/" : ""
@@ -42,7 +39,6 @@ function crossSeedKey(path: string): string {
   const parts: string[] = []
   for (const part of slashed.split("/")) {
     if (part === "..") {
-      // .. stops at the drive, and at the server and share of a UNC path.
       if (parts.length > (root === "//" ? 2 : drive ? 1 : 0)) parts.pop()
     } else if (part !== "." && part !== "") {
       parts.push(part)
@@ -52,8 +48,6 @@ function crossSeedKey(path: string): string {
   return drive ? key.toLowerCase() : key
 }
 
-// The card keeps the base folders in one comma-separated field. Two spellings
-// of one folder, such as /data/a and /data/a/, are one base folder.
 function splitBaseDirs(configured: string): string[] {
   const dirs = new Map<string, string>()
   for (const dir of configured.split(",").map(dir => dir.trim()).filter(Boolean)) {
@@ -62,7 +56,6 @@ function splitBaseDirs(configured: string): string[] {
   return [...dirs.values()]
 }
 
-// The routed torrent counts can change between two reads, so they are left out.
 function sameRoute(a: CrossSeedRouteStatus | null, b: CrossSeedRouteStatus | null): boolean {
   const key = (route: CrossSeedRouteStatus | null) => JSON.stringify(route && [route.crossSeedInstanceId, route.rows.map(row => [row.baseDir, row.mappedPath])])
   return key(a) === key(b)
@@ -72,7 +65,6 @@ function nested(parent: string, child: string): boolean {
   return parent === child || child.startsWith(parent.replace(/\/$/, "") + "/")
 }
 
-// The first two rows that map to the same folder or to nested folders on the Cross-seed instance.
 function overlappingRows(rows: CrossSeedRouteRow[]): [string, string] | undefined {
   const keys = rows.map(row => crossSeedKey(row.mappedPath || row.baseDir))
   for (let i = 0; i < keys.length; i++) {
@@ -82,11 +74,6 @@ function overlappingRows(rows: CrossSeedRouteRow[]): [string, string] | undefine
   }
 }
 
-/**
- * The route form of one instance in the Hardlink / Reflink Mode card: the
- * Cross-seed instance picker, one mapped path for each base folder, Test route,
- * save, and clear (ADR 0035). localWrite is the card's Write plus local mode check.
- */
 export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instance; localWrite: boolean }) {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
@@ -94,19 +81,16 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const { data: routes = [], isSuccess: routesRead } = useCrossSeedRoutes()
   const saved = routes.find(route => route.sourceInstanceId === instance.id)
   const routeQuery = useCrossSeedRoute(instance, saved !== undefined)
-  // A turned-off read keeps its old cached data, so a route that another tab cleared is ignored here.
   const savedRoute = saved ? routeQuery.data : undefined
   const { isLoading: isLoadingRoute, isFetching: isFetchingRoute } = routeQuery
   const routeReadFailed = saved !== undefined && routeQuery.isError
   const [draft, setDraft] = useState<{ crossSeedInstanceId?: number; paths: Record<string, string> } | null>(null)
-  // A save or clear that takes saved rows away waits for a confirm (#3269). No baseDirs means all rows.
   const [checking, setChecking] = useState(false)
   const [confirm, setConfirm] = useState<{ clear: true; baseDirs?: never; countUnknown?: boolean } | { clear: false; baseDirs?: string[]; countUnknown?: never } | null>(null)
 
   const sourceNames = routes
     .filter(route => route.crossSeedInstanceId === instance.id)
     .flatMap(route => instances.find(other => other.id === route.sourceInstanceId)?.name ?? [])
-  // A Cross-seed instance needs no filesystem access, so its reason comes first.
   let disabledReason: string | undefined
   if (sourceNames.length > 0) {
     disabledReason = t("routeForm.receivesCrossSeeds", { names: sourceNames.join(", ") })
@@ -118,8 +102,6 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     disabledReason = t("routeForm.needsLinkMode")
   }
 
-  // A route save needs the Cross-seed instance online on qBittorrent 5.0 or later,
-  // the version that also brings path autocomplete.
   const candidates = instances.filter(other =>
     other.id !== instance.id &&
     other.isActive &&
@@ -148,8 +130,6 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     mutationFn: () => api.testCrossSeedRoute(instance.id, { crossSeedInstanceId: crossSeedInstanceId!, rows }),
     onError: (error) => toast.error(t("routeForm.testFailed"), { description: error.message }),
   })
-  // The mutation stays pending until the route reads refresh, so the form never
-  // shows the old route with Save on.
   const onRouteChanged = async () => {
     await queryClient.invalidateQueries({ queryKey: crossSeedRoutesKey })
     setDraft(null)
@@ -171,14 +151,11 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     },
     onError: (error) => toast.error(t("routeForm.clearFailed"), { description: error.message }),
   })
-  // Save and Clear read the route again first: another tab can have saved, changed,
-  // or cleared it. A changed route reloads the form and writes nothing.
   const readRouteFirst = (unchanged: (current: CrossSeedRouteStatus | null) => boolean, next: () => void, readFailed: (error: Error) => void) => {
     setChecking(true)
     void api.getCrossSeedRoute(instance.id)
       .then(current => {
         if (unchanged(current)) {
-          // The dialog counts the routed torrents of this read, not of the older form read.
           queryClient.setQueryData(crossSeedRouteKey(instance), current)
           return next()
         }
@@ -196,22 +173,17 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   const decideSave = () => {
     if (!saved) return saveRoute.mutate()
     if (crossSeedInstanceId !== saved.crossSeedInstanceId || !savedRoute) return setConfirm({ clear: false })
-    // The read also gives a base folder added after the save an empty row, and the orphan scan protects the torrents under it.
     const changed = savedRoute.rows
-      // rows is built from savedRoute.rows, in the same order.
       .filter((row, i) => rows[i].mappedPath !== row.mappedPath)
       .map(row => row.baseDir)
     if (changed.length === 0) return saveRoute.mutate()
     setConfirm({ clear: false, baseDirs: changed })
   }
-  // A clear deletes the whole route, so only the Cross-seed instance that the dialog names must match.
-  // A failed read makes the count unknown, and the clear can go on.
   const handleClear = () => readRouteFirst(
     current => current !== null && current.crossSeedInstanceId === saved?.crossSeedInstanceId,
     () => setConfirm({ clear: true }),
     () => setConfirm({ clear: true, countUnknown: true })
   )
-  // A null read means another tab cleared the route, so no routed torrent loses protection.
   const confirmRows = savedRoute === null ? [] : savedRoute?.rows.filter(row => !confirm?.baseDirs || confirm.baseDirs.includes(row.baseDir))
 
   const edit = (next: { crossSeedInstanceId?: number; baseDir?: string; mappedPath?: string }) => {
@@ -223,9 +195,6 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   }
 
   const busy = checking || testRoute.isPending || saveRoute.isPending || clearRoute.isPending
-  // Until the route list and the saved route are read, the rows have empty paths, and a save would erase the route.
-  // A refetch keeps the old cached rows, so a save or a clear waits for it too,
-  // and a failed refetch keeps Save off: another tab can have changed the route.
   const routeRead = routesRead && !isFetchingRoute && !routeReadFailed && (saved === undefined || savedRoute !== undefined)
   const canSubmit = disabledReason === undefined && crossSeedInstanceId !== undefined && rows.length > 0 && overlap === undefined && routeRead && !busy
   const testResult = testRoute.data
@@ -253,7 +222,6 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
     </div>
   )
 
-  // Without a saved route, a turned-off picker is all there is to show.
   if (disabledReason && !saved) {
     return (
       <div className="space-y-4">
@@ -300,7 +268,6 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
           {testResult?.crossSeedUnavailable ? (
             <div className="text-sm text-destructive">
               <p>{t("routeStatus.unavailable")}</p>
-              {/* The backend message starts with the same label. */}
               <p className="text-xs text-muted-foreground">{testResult.crossSeedUnavailable.replace(/^Cross-seed instance unavailable: /, "")}</p>
             </div>
           ) : testResult && (
@@ -342,7 +309,6 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
         onConfirm={() => (confirm?.clear ? clearRoute : saveRoute).mutate()}
         sourceName={instance.name}
         crossSeedName={savedCrossSeed?.name ?? ""}
-        // A failed read makes the count unknown, also over an older cached read.
         routedTorrents={routeReadFailed || confirm?.countUnknown ? null : confirmRows && countRoutedTorrents(confirmRows)}
         clear={confirm?.clear}
       />
@@ -350,8 +316,6 @@ export function CrossSeedRouteForm({ instance, localWrite }: { instance: Instanc
   )
 }
 
-// One base folder row: the path where the Cross-seed instance sees it, with
-// folder suggestions from the Cross-seed instance.
 function RoutePathInput({ baseDir, crossSeedInstanceId, value, onChange, disabled }: {
   baseDir: string
   crossSeedInstanceId: number
@@ -360,7 +324,6 @@ function RoutePathInput({ baseDir, crossSeedInstanceId, value, onChange, disable
   disabled: boolean
 }) {
   const { t } = useTranslation("crossseed")
-  // Unique in the page: two Source instances can share a Cross-seed instance and a base folder.
   const id = useId()
   const { data: capabilities } = useInstanceCapabilities(crossSeedInstanceId)
   const suggestsFolders = capabilities?.supportsPathAutocomplete ?? false

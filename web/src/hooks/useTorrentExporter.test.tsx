@@ -49,8 +49,6 @@ const mockedToast = vi.mocked(toast, true)
 
 const INSTANCE_ID = 7
 
-// Records the `download` attribute of every anchor that gets clicked so we can
-// assert the filenames produced by buildDownloadName / ensureUniqueFilename.
 let clickedDownloads: string[]
 let clickSpy: ReturnType<typeof vi.spyOn>
 
@@ -61,7 +59,6 @@ function makeExportResult(filename: string | null) {
 beforeEach(() => {
   clickedDownloads = []
 
-  // jsdom does not implement these — stub them so triggerBrowserDownload runs.
   vi.stubGlobal("URL", {
     createObjectURL: vi.fn(() => "blob:mock-url"),
     revokeObjectURL: vi.fn(),
@@ -82,7 +79,6 @@ afterEach(() => {
 
 afterEach(cleanup)
 
-// The export arguments for a selection written as hashes and torrents, so each case reads as one line.
 function exportArgs({ hashes, torrents, isAllSelected, filters = makeFilters(), search = "", excludeHashes, sortField, sortOrder }: {
   hashes: string[]
   torrents: Torrent[]
@@ -124,7 +120,6 @@ describe("useTorrentExporter", () => {
         }))
       })
 
-      // In-flight: the awaited export promise has not resolved yet.
       await waitFor(() => expect(result.current.isExporting).toBe(true))
 
       await act(async () => {
@@ -251,7 +246,6 @@ describe("useTorrentExporter", () => {
       const { result } = setupHook()
       await act(async () => {
         await result.current.exportTorrents(...exportArgs({
-          // hash order requested differs from array order -> assert ordering
           hashes: ["aaa", "ccc"],
           torrents,
           isAllSelected: false,
@@ -381,7 +375,6 @@ describe("useTorrentExporter", () => {
       })
 
       expect(getLinuxIsoName).toHaveBeenCalledWith("aaa")
-      // getLinuxIsoName mock returns "linux-aaa.iso"; .iso stripped, .torrent added.
       expect(clickedDownloads).toEqual(["linux-aaa.torrent"])
     })
   })
@@ -420,7 +413,6 @@ describe("useTorrentExporter", () => {
         } as never)
         .mockResolvedValueOnce({
           torrents: [
-            // h2 duplicate across pages -> deduped
             makeTorrent({ hash: "h2", name: "two" }),
             makeTorrent({ hash: "h3", name: "three" }),
           ],
@@ -464,10 +456,8 @@ describe("useTorrentExporter", () => {
     })
 
     it("falls back to length===limit when hasMore is undefined and skips excluded hashes", async () => {
-      // First page exactly fills the limit but hasMore is omitted -> fetch again.
       const fullPage = Array.from({ length: 300 }, (_, i) =>
         makeTorrent({ hash: `g${i}`, name: `iso-${i}` }))
-      // Mark one as excluded to verify excludeSet skip during fetch.
       fullPage[0] = makeTorrent({ hash: "excluded", name: "skip-me" })
 
       mockedApi.getTorrents

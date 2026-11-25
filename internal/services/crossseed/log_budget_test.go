@@ -20,15 +20,9 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TestWebhookCheckLogBudget catches a DEBUG line that qui writes once for each
-// torrent of the library on every autobrr announce. qui logs at DEBUG by default.
-// regression: #4266
 func TestWebhookCheckLogBudget(t *testing.T) {
 	const batchSize = 3_000_000_000
 	instance := &models.Instance{ID: 12, Name: "primary", IsActive: true}
-	// The announce shares its group with the episodes, so each one is a near
-	// miss, and its size with the batches and the movies, so each one is read
-	// from its files.
 	announce := &WebhookCheckRequest{
 		InstanceIDs: []int{instance.ID},
 		TorrentName: "Silver.Harbor.S01E06.1080p.WEB-DL.H.264-LUMA",
@@ -51,7 +45,6 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 			files[batch] = qbt.TorrentFiles{
 				{Name: path.Join(name, fmt.Sprintf("Lantern%04d.E140.MULTi.1080p.BluRay.x264-QUiRK.mkv", i)), Size: batchSize},
 			}
-			// A movie name without a year is read from its files too.
 			movie := fmt.Sprintf("m%039x", i)
 			name = fmt.Sprintf("Quarry%04d.1080p.BluRay.x264-QUiRK", i)
 			torrents = append(torrents, qbt.Torrent{
@@ -94,9 +87,6 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 	smallCold, smallWarm := checks(10)
 	largeCold, largeWarm := checks(1000)
 
-	// The fixture reaches the per-torrent paths: every episode is a near miss,
-	// every batch and movie is read from its files, and the warm check reads
-	// the files from the cache.
 	for _, large := range []logbudget.Lines{largeCold, largeWarm} {
 		require.GreaterOrEqual(t, large.Message("[CROSSSEED-SEARCH] File has explicit episode markers, using file for TV detection"), 1000)
 		require.GreaterOrEqual(t, large.Message("[CROSSSEED-SEARCH] Using largest file for content type detection"), 1000)

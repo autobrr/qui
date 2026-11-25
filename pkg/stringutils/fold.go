@@ -9,14 +9,6 @@ import (
 	"unicode/utf8"
 )
 
-// Case-insensitive helpers that do not allocate for ASCII input, which torrent
-// names, categories, tags and tracker URLs effectively always are. The obvious
-// spelling, strings.Contains(strings.ToLower(a), strings.ToLower(b)), builds a
-// lower-cased copy of both strings. That is fine once, but these run once per
-// torrent, or once per comparison inside a sort, where the copies dominate the
-// work. Both arguments are folded, so callers never have to pre-lower anything.
-// Non-ASCII input falls back to the ToLower form so results stay identical.
-
 func lowerASCII(c byte) byte {
 	if c >= 'A' && c <= 'Z' {
 		return c + 'a' - 'A'
@@ -40,7 +32,6 @@ func ContainsFold(s, sub string) bool {
 	if !isASCII(s) || !isASCII(sub) {
 		return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
 	}
-	// Only sound for ASCII: ToLower can change a non-ASCII string's byte length.
 	if len(sub) > len(s) {
 		return false
 	}
@@ -68,7 +59,6 @@ func HasPrefixFold(s, prefix string) bool {
 	if !isASCII(s) || !isASCII(prefix) {
 		return strings.HasPrefix(strings.ToLower(s), strings.ToLower(prefix))
 	}
-	// Only sound for ASCII: ToLower can change a non-ASCII string's byte length.
 	if len(prefix) > len(s) {
 		return false
 	}
@@ -84,7 +74,6 @@ func HasSuffixFold(s, suffix string) bool {
 	if !isASCII(s) || !isASCII(suffix) {
 		return strings.HasSuffix(strings.ToLower(s), strings.ToLower(suffix))
 	}
-	// Only sound for ASCII: ToLower can change a non-ASCII string's byte length.
 	if len(suffix) > len(s) {
 		return false
 	}
@@ -112,7 +101,5 @@ func CompareFold(a, b string) int {
 		}
 	}
 
-	// One string is a folded prefix of the other, so only the lengths decide.
-	// Lower-casing cannot change that, even if the longer tail is not ASCII.
 	return cmp.Compare(len(a), len(b))
 }

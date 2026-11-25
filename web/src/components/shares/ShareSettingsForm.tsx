@@ -19,7 +19,6 @@ import { toast } from "sonner"
 
 type TrackerChoice = "own" | "outside"
 
-/** The form keeps numbers as typed text, so a field can be empty while the user types. */
 interface Draft {
   tracker: TrackerChoice
   port: string
@@ -49,13 +48,11 @@ function draftOf(settings: ShareSettings): Draft {
   }
 }
 
-/** An empty or bad number goes to the server as 0, and the server names the field. */
 function toNumber(text: string): number {
   const value = Number(text.trim())
   return Number.isInteger(value) ? value : 0
 }
 
-/** An empty port is 0, no port. A bad port goes to the server as -1, which it refuses: port 0 would turn qui's tracker off. */
 function toPort(text: string): number {
   if (text.trim() === "") return 0
   const value = Number(text.trim())
@@ -65,7 +62,6 @@ function toPort(text: string): number {
 function settingsOf(draft: Draft, saved: ShareSettings): ShareSettings {
   const own = draft.tracker === "own"
   return {
-    // An outside tracker closes qui's port: qui uses the tracker URL only while its own tracker is off.
     port: own ? toPort(draft.port) : 0,
     publicAddress: own ? draft.publicAddress.trim() : "",
     trustedProxies: draft.trustedProxies.split(/[\s,]+/).filter(Boolean),
@@ -81,7 +77,6 @@ function settingsOf(draft: Draft, saved: ShareSettings): ShareSettings {
   }
 }
 
-/** Settings → Shares: the Share tracker, the trusted proxies, the limits, and the defaults of a new Share. */
 export function ShareSettingsForm() {
   const { t } = useTranslation("shares")
   const query = useQuery({ queryKey: shareSettingsQueryKey, queryFn: getShareSettings })

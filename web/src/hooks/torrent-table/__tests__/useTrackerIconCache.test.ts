@@ -58,7 +58,6 @@ describe("useTrackerIconCache", () => {
     const first = result.current.trackerIcons
     expect(first).toEqual({ "a.com": "iconA" })
 
-    // New object, same contents → shallow-equal → previous reference retained.
     mockIcons.mockReturnValue(iconsResult({ "a.com": "iconA" }))
     rerender()
     expect(result.current.trackerIcons).toBe(first)
@@ -90,12 +89,10 @@ describe("useTrackerIconCache", () => {
     const { result, rerender } = renderHook(() => useTrackerIconCache())
     const first = result.current.trackerCustomizationLookup
 
-    // New array, same id + updatedAt → same cache key → same lookup reference.
     mockCustomizations.mockReturnValue(customizationsResult([makeCustomization()]))
     rerender()
     expect(result.current.trackerCustomizationLookup).toBe(first)
 
-    // Changed updatedAt → new cache key → rebuilt lookup.
     mockCustomizations.mockReturnValue(customizationsResult([makeCustomization({ updatedAt: "2024-02-02T00:00:00Z" })]))
     rerender()
     expect(result.current.trackerCustomizationLookup).not.toBe(first)

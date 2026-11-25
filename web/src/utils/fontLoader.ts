@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Map of font names to their Google Fonts URLs. Exported for fontLoader.test.ts.
 export const FONT_MAP: Record<string, string> = {
   "-apple-system": "",
   "Inter": "Inter:wght@300;400;500;600;700",

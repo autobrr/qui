@@ -25,9 +25,6 @@ func TestAlternateConnectorQuery(t *testing.T) {
 			wantOK:  true,
 		},
 		{
-			// rls preserves the source release's connector casing, so a release
-			// named "Law.And.Order..." yields the title "Law And Order ...". This
-			// title-case spelling is common in scene/p2p naming and must still swap.
 			name:    "title-case And connector is swapped",
 			query:   "Law And Order Special Victims Unit 1080p",
 			wantAlt: "Law & Order Special Victims Unit 1080p",
@@ -86,9 +83,6 @@ func TestAlternateConnectorQuery(t *testing.T) {
 	}
 }
 
-// TestIndexersWithoutResults locks in the alternate-connector pass's indexer
-// scoping: it re-queries only the indexers that returned nothing in the primary
-// pass, in request order, so the extra round-trip stays minimal.
 func TestIndexersWithoutResults(t *testing.T) {
 	result := func(indexerID int) jackett.SearchResult {
 		return jackett.SearchResult{IndexerID: indexerID}

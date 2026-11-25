@@ -15,7 +15,6 @@ import "@/i18n"
 
 const { metadataResult, translationResult } = vi.hoisted(() => ({
   metadataResult: { data: undefined },
-  // Echoes the key, plus the instance name or the message that the routed text interpolates.
   translationResult: { t: (key: string, opts?: { instance?: string; message?: string }) => opts?.instance ?? opts?.message ? `${key}:${opts.instance ?? opts.message}` : key },
 }))
 
@@ -35,7 +34,6 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.restoreAllMocks() })
 
-// Instance 1 routes its cross-seeds to the Cross-seed instance "seeds".
 function mockRoute() {
   vi.mocked(api.listCrossSeedRoutes).mockResolvedValue([{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] }])
   vi.mocked(api.getInstances).mockResolvedValue([{ id: 1, name: "lib" }, { id: 2, name: "seeds" }] as Awaited<ReturnType<typeof api.getInstances>>)
@@ -136,7 +134,6 @@ it("refreshes the source list when the result is not routed, also with a cached 
   mockRoute()
   const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries")
   vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(singleProposals)
-  // The route was cleared after the dialog read it.
   vi.mocked(api.applyManualCrossSeed).mockResolvedValue({ success: true, results: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", class: "added" }] })
   const ui = openDialog()
 

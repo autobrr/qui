@@ -21,8 +21,6 @@ const (
 	webAPIQbit52 = "2.15.1"
 )
 
-// A torrent list as qBittorrent 5.0 or later sends it: one torrent has metadata, and the
-// magnet link has none yet, so it has no private value.
 const skipTestTorrents = `{
 	"withmeta": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
 	"magnet":   {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false}
@@ -40,7 +38,6 @@ func privateIs(value string, negate bool) *models.RuleCondition {
 	return &models.RuleCondition{Field: models.FieldPrivate, Operator: models.OperatorEqual, Value: value, Negate: negate}
 }
 
-// deletedHashes returns what the stub got in torrents/delete.
 func deletedHashes(stub *stubQbt) []string {
 	var hashes []string
 	for _, write := range stub.recordedWrites() {
@@ -51,7 +48,6 @@ func deletedHashes(stub *stubQbt) []string {
 	return hashes
 }
 
-// requireSkipEntry checks the one activity entry of a skipped rule.
 func requireSkipEntry(t *testing.T, activities []*models.AutomationActivity, outcome, field, requires string) {
 	t.Helper()
 	require.Len(t, activities, 1)
@@ -62,7 +58,6 @@ func requireSkipEntry(t *testing.T, activities []*models.AutomationActivity, out
 	require.Equal(t, RuleSkip{Field: field, Requires: requires}, details)
 }
 
-// regression: #3763
 func TestRun_PrivateRuleSkipsAnInstanceBeforeQbit5(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit46)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -73,11 +68,9 @@ func TestRun_PrivateRuleSkipsAnInstanceBeforeQbit5(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, stub.recordedWrites())
 	requireSkipEntry(t, activities, models.ActivityOutcomeSkipped, string(models.FieldPrivate), "qBittorrent 5.0+")
-	// The next tick waits for the interval of the rule and fetches no torrent list for it.
 	require.NotZero(t, svc.lastRuleRun[ruleKey{instanceID, rule.ID}])
 }
 
-// regression: #3763
 func TestRun_PlansTheDeletesAtQbit52(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit52)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -86,13 +79,9 @@ func TestRun_PlansTheDeletesAtQbit52(t *testing.T) {
 	_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
 
 	require.NoError(t, err)
-	// The magnet link has no private value, so it drops out, and the other torrent stays.
 	require.Equal(t, []string{"withmeta"}, deletedHashes(stub))
 }
 
-// regression: #3763
-// Each rule reads a field that the instance does not send, and the torrents would match it on
-// the zero value.
 func TestRun_SkipsARuleThatReadsAnUnknownField(t *testing.T) {
 	deleteAll := func(cond *models.RuleCondition) *models.Automation {
 		rule := parityDeleteRule(DeleteModeKeepFiles, cond)
@@ -168,9 +157,6 @@ func TestRun_SkipsARuleThatReadsAnUnknownField(t *testing.T) {
 	}
 }
 
-// regression: #3763
-// With an unknown version, every requirement is unmet. The run reads the version again, so one
-// failed read does not stop the rule until qui restarts.
 func TestRun_UnknownVersionSkipsUntilARead(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit52)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -196,15 +182,12 @@ func TestRun_UnknownVersionSkipsUntilARead(t *testing.T) {
 	require.Equal(t, []string{"withmeta"}, deletedHashes(stub))
 }
 
-// regression: #3763
-// A field in an action that is off is not read, and the skip of one rule leaves the other rules.
 func TestRun_SkipStaysOnTheRuleThatReadsTheField(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit46)
 	skipped := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
 	skipped.ID = 1
 	runs := parityDeleteRule(DeleteModeKeepFiles, &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorEqual, Value: "withmeta"})
 	runs.ID = 2
-	// An action that is off reads nothing.
 	runs.Conditions.Pause = &models.PauseAction{Enabled: false, Condition: privateIs("false", false)}
 
 	activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{skipped, runs}, false)
@@ -220,8 +203,6 @@ func TestRun_SkipStaysOnTheRuleThatReadsTheField(t *testing.T) {
 	require.Equal(t, []int{1}, skips)
 }
 
-// regression: #3763
-// The dry run and each preview show the reason of the live run.
 func TestDryRunAndPreviews_ShowTheSkip(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit46)
 	want := &RuleSkip{Field: string(models.FieldPrivate), Requires: "qBittorrent 5.0+"}
@@ -254,8 +235,6 @@ func TestDryRunAndPreviews_ShowTheSkip(t *testing.T) {
 	require.Empty(t, stub.recordedWrites())
 }
 
-// regression: #3763
-// A preview of one action skips for a field in another action, because the live run skips the whole rule.
 func TestPreview_SkipsForAFieldInAnotherAction(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit46)
 	rule := parityCategoryRule(models.CategoryAction{})
@@ -267,12 +246,11 @@ func TestPreview_SkipsForAFieldInAnotherAction(t *testing.T) {
 	require.Equal(t, &RuleSkip{Field: string(models.FieldPrivate), Requires: "qBittorrent 5.0+"}, preview.Skipped)
 }
 
-// regression: #3763
 func TestRun_WritesOneEntryForEachRuleOnEachInstance(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit46)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
 	rule.ID = 1
-	rule.IntervalSeconds = new(0) // each scheduled run below reaches the rule
+	rule.IntervalSeconds = new(0)
 	run := func(svc *Service) {
 		t.Helper()
 		_, err := svc.applyRulesForInstance(t.Context(), instanceID, false, []*models.Automation{rule}, false)
@@ -291,20 +269,16 @@ func TestRun_WritesOneEntryForEachRuleOnEachInstance(t *testing.T) {
 	require.Equal(t, 1, entries())
 	require.Empty(t, stub.recordedWrites())
 
-	// qui keeps the state in memory, so a restart writes the entry again.
 	restarted := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, svc.instanceStore, nil, svc.activityStore, nil, svc.syncManager, nil, nil, nil, svc.backendPool)
 	run(restarted)
 	run(restarted)
 	require.Equal(t, 2, entries())
 
-	// A run that a person starts always says why the rule did nothing.
 	_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
 	require.NoError(t, err)
 	require.Equal(t, 3, entries())
 }
 
-// regression: #3763
-// When the rule can run again, a later skip is a new fact, so it gets a new entry.
 func TestRun_WritesTheEntryAgainAfterTheRuleRan(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		t.Run(map[bool]string{false: "live", true: "scheduled dry run"}[dryRun], func(t *testing.T) {
@@ -329,7 +303,6 @@ func TestRun_WritesTheEntryAgainAfterTheRuleRan(t *testing.T) {
 				stub.mu.Lock()
 				stub.webAPIVersion = version
 				stub.mu.Unlock()
-				// qui reads the version on a full sync update. Read it here, whatever the sync cache holds.
 				client, err := svc.syncManager.GetClient(t.Context(), instanceID)
 				require.NoError(t, err)
 				require.NoError(t, client.RefreshCapabilities(t.Context()))
@@ -349,8 +322,6 @@ func TestRun_WritesTheEntryAgainAfterTheRuleRan(t *testing.T) {
 	}
 }
 
-// regression: #3763
-// A magnet link without metadata has no private value, whatever the rule asks about it.
 func TestRun_TorrentWithoutMetadataDropsOutOfAPrivateRule(t *testing.T) {
 	name := func(value string) *models.RuleCondition {
 		return &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: value}
@@ -376,8 +347,6 @@ func TestRun_TorrentWithoutMetadataDropsOutOfAPrivateRule(t *testing.T) {
 	}
 }
 
-// regression: #3763
-// The torrent drops out of the rule, also of an action in it that does not read Private.
 func TestPlan_TorrentWithoutMetadataDropsOutOfEachActionOfTheRule(t *testing.T) {
 	torrents := []qbt.Torrent{{Hash: "withmeta", HasMetadata: new(true)}, {Hash: "magnet", HasMetadata: new(false)}}
 	rule := planTestRule(7, &models.ActionConditions{
@@ -390,8 +359,6 @@ func TestPlan_TorrentWithoutMetadataDropsOutOfEachActionOfTheRule(t *testing.T) 
 	require.Equal(t, []string{"withmeta"}, plan.pause.hashes)
 }
 
-// regression: #3763
-// A group member is another torrent than the one that the rule chose, so its condition says unknown itself.
 func TestEvaluate_UnknownPrivateNeverMatches(t *testing.T) {
 	torrent := qbt.Torrent{Hash: "magnet", HasMetadata: new(false)}
 	for _, cond := range []*models.RuleCondition{privateIs("false", false), privateIs("true", true)} {
@@ -399,8 +366,6 @@ func TestEvaluate_UnknownPrivateNeverMatches(t *testing.T) {
 	}
 }
 
-// regression: #3763
-// A dry run of a saved rule keeps the ID of the rule, and the live run still writes its entry.
 func TestRun_DryRunDoesNotHideTheLiveEntry(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit46)
 	rule := parityDeleteRule(DeleteModeKeepFiles, privateIs("false", false))
@@ -416,8 +381,6 @@ func TestRun_DryRunDoesNotHideTheLiveEntry(t *testing.T) {
 	requireSkipEntry(t, live, models.ActivityOutcomeSkipped, string(models.FieldPrivate), "qBittorrent 5.0+")
 }
 
-// regression: #3763
-// A preview shows one action of the rule, and the torrent drops out as in the run of the whole rule.
 func TestPreview_TorrentWithoutMetadataDropsOutForAFieldInAnotherAction(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit52)
 	rule := parityCategoryRule(models.CategoryAction{})
@@ -432,9 +395,6 @@ func TestPreview_TorrentWithoutMetadataDropsOutForAFieldInAnotherAction(t *testi
 	require.Equal(t, "withmeta", preview.Examples[0].Hash)
 }
 
-// regression: #3763
-// A managed reset deletes the tag from every torrent, so the run adds it back to a torrent that
-// dropped out of the rule. The torrent stays as it was.
 func TestRun_TorrentWithoutMetadataKeepsItsManagedTags(t *testing.T) {
 	const torrents = `{
 		"withmeta": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
@@ -476,9 +436,6 @@ func TestRun_TorrentWithoutMetadataKeepsItsManagedTags(t *testing.T) {
 	}
 }
 
-// regression: #3763
-// The reset splits and trims the configured tags, so an entry written that way must not lose
-// them. The torrent keeps the spelling of its own tag.
 func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -513,10 +470,6 @@ func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.
 	}
 }
 
-// regression: #3763
-// A grouped action is all or none, so a member that dropped out of the rule stops it. The
-// condition of the grouped action matches both torrents. A delete cannot share a rule with
-// another action, so it reads Private in an OR. The other rules read it in their pause action.
 func TestRun_GroupWithATorrentWithoutMetadataSkipsTheGroupedAction(t *testing.T) {
 	name := &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "m"}
 	grouping := &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "bysave", Keys: []string{"savePath"}}}}
@@ -557,8 +510,6 @@ func TestRun_GroupWithATorrentWithoutMetadataSkipsTheGroupedAction(t *testing.T)
 	})
 }
 
-// regression: #3763
-// The preview keeps only the category action, but the live run skips the group for the whole rule.
 func TestPreview_GroupWithATorrentWithoutMetadataShowsNoCategoryChange(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit52)
 	rule := parityCategoryRule(models.CategoryAction{})
@@ -573,8 +524,6 @@ func TestPreview_GroupWithATorrentWithoutMetadataShowsNoCategoryChange(t *testin
 	require.Zero(t, preview.TotalMatches)
 }
 
-// regression: #3763
-// The skip is known before the run reads other data, so a failure for another rule does not hide it.
 func TestRun_WritesTheSkipEntryWhenSetupFailsForAnotherRule(t *testing.T) {
 	svc, instanceID, _ := newSkipTestService(t, webAPIQbit46)
 	emptyStore, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, t.Name()+"-empty"), make([]byte, 32))
@@ -594,6 +543,5 @@ func TestRun_WritesTheSkipEntryWhenSetupFailsForAnotherRule(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, activities, 1)
 	require.Equal(t, models.ActivityActionRuleSkipped, activities[0].Action)
-	// The run stops with an error, so only this signal tells an open activity log about the entry.
 	require.Len(t, publisher.events, 1)
 }

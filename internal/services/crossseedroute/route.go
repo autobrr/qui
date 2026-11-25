@@ -1,9 +1,6 @@
 // Copyright (c) 2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package crossseedroute holds the cross-seed routes from a Source instance to
-// its Cross-seed instance (ADR 0035), the availability check, and the route
-// rules. Orphan scan, automations, Dir Scan, and cross-seed all read it.
 package crossseedroute
 
 import (
@@ -24,8 +21,6 @@ import (
 	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
-// ErrUnavailable marks an instance that is offline, turned off in qui, or,
-// for an add or a listing, older than qBittorrent 5.0.
 var ErrUnavailable = errors.New("instance unavailable")
 
 type RuleError struct {
@@ -49,21 +44,13 @@ type Service struct {
 	instances instanceGetter
 	clients   *qbittorrent.ClientPool
 	backends  *fsops.Pool
-	// saveMu holds the rule check and the write of a save together, so two
-	// saves at the same time cannot store a route of two hops. A row drop
-	// and a route clear hold it too, so that a row drop cannot write back rows
-	// that a save replaced or a route that a clear removed.
-	saveMu sync.Mutex
+	saveMu    sync.Mutex
 }
 
 func NewService(store *models.CrossSeedRouteStore, instances instanceGetter, clients *qbittorrent.ClientPool, backends *fsops.Pool) *Service {
 	return &Service{CrossSeedRouteStore: store, instances: instances, clients: clients, backends: backends}
 }
 
-// CheckAvailable returns an ErrUnavailable error when qui cannot use the
-// instance. An instance turned off in qui also matches
-// qbittorrent.ErrInstanceDisabled. forListing adds the qBittorrent 5.0
-// (WebAPI 2.11.2) need of a directory listing, for an add or a listing.
 func (s *Service) CheckAvailable(ctx context.Context, instanceID int, forListing bool) error {
 	instance, err := s.instances.Get(ctx, instanceID)
 	if err != nil {
@@ -72,8 +59,6 @@ func (s *Service) CheckAvailable(ctx context.Context, instanceID int, forListing
 	if !instance.IsActive {
 		return fmt.Errorf("%w: %s: %w", ErrUnavailable, instance.Name, qbittorrent.ErrInstanceDisabled)
 	}
-	// The pool logs a new client in on a detached context, so give the login
-	// only what is left of ctx.
 	loginTimeout := 60 * time.Second
 	if deadline, ok := ctx.Deadline(); ok {
 		loginTimeout = time.Until(deadline)
@@ -94,9 +79,6 @@ func (s *Service) CheckAvailable(ctx context.Context, instanceID int, forListing
 	return nil
 }
 
-// Get returns the route of a Source instance, or nil when it has none. A base
-// folder that the Source instance gained after the save gets an empty row, so
-// it keeps the same path on both instances.
 func (s *Service) Get(ctx context.Context, sourceInstanceID int) (*models.CrossSeedRoute, error) {
 	route, err := s.CrossSeedRouteStore.Get(ctx, sourceInstanceID)
 	if err != nil || route == nil {
@@ -122,9 +104,6 @@ type HashFinder interface {
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
 }
 
-// FindLinked looks for hashes on the Cross-seed instance or the Source
-// instances of instanceID, and names where it found one. It skips a turned-off
-// Source instance, because its route does nothing then.
 func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
 	route, err := s.CrossSeedRouteStore.Get(ctx, instanceID)
 	if err != nil {
@@ -299,10 +278,6 @@ func movedRow(rows []models.CrossSeedRouteRow) (models.CrossSeedRouteRow, bool) 
 	return models.CrossSeedRouteRow{}, false
 }
 
-// CheckInstanceChange returns a *RuleError when storing after in place of
-// before breaks a saved route. after is the instance row as it is after the
-// change. A route that before already breaks the same way does not refuse the
-// change, so that the user can still edit the instance.
 func (s *Service) CheckInstanceChange(ctx context.Context, before, after *models.Instance) error {
 	routes, err := s.List(ctx)
 	if err != nil {
@@ -336,9 +311,6 @@ func (s *Service) CheckInstanceChange(ctx context.Context, before, after *models
 	return nil
 }
 
-// sourceChangeBreaks returns a message for each rule of route that source
-// breaks, of the rules that a change to its Source instance can break. A
-// Source instance is in local mode, so its keys use the host dialect.
 func sourceChangeBreaks(route *models.CrossSeedRoute, crossSeedName string, source *models.Instance) []string {
 	keys := BaseDirKeys(fsops.HostPaths, source.HardlinkBaseDir)
 	var breaks []string
@@ -380,17 +352,12 @@ func rowsFor(stored []models.CrossSeedRouteRow, keys []string) []models.CrossSee
 	return rows
 }
 
-// Delete clears the route of the Source instance. It holds saveMu, so that a
-// row drop cannot write the route back.
 func (s *Service) Delete(ctx context.Context, sourceInstanceID int) error {
 	s.saveMu.Lock()
 	defer s.saveMu.Unlock()
 	return s.CrossSeedRouteStore.Delete(ctx, sourceInstanceID)
 }
 
-// DropRemovedBaseDirs drops the rows of the base folders that the Source
-// instance no longer has from its route. It reads the instance under saveMu,
-// so that an older update cannot drop a row that a newer update added back.
 func (s *Service) DropRemovedBaseDirs(ctx context.Context, sourceInstanceID int) error {
 	s.saveMu.Lock()
 	defer s.saveMu.Unlock()
@@ -421,8 +388,6 @@ func BaseDirKeys(d fsops.PathDialect, configured string) []string {
 	return keys
 }
 
-// crossSeedKey compares paths in the Cross-seed instance's form, which has no
-// dialect: either separator, case kept except on a drive-letter path.
 func crossSeedKey(p string) string {
 	p = crossSeedPath(p)
 	if pathcmp.IsWindowsDriveAbs(p) {

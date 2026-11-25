@@ -35,7 +35,6 @@ func TestServerCompression(t *testing.T) {
 	deps.Config.Config.AuthDisabled = true
 	deps.Config.Config.IAcknowledgeThisIsABadIdea = true
 	deps.Config.Config.AuthDisabledAllowedCIDRs = []string{"127.0.0.1/32"}
-	// Bodies must exceed the compressor's 1 KiB MinSize, or gzip never applies.
 	fileData := bytes.Repeat([]byte("sample file content\n"), 200)
 	require.NoError(t, os.WriteFile(filepath.Join(configDir, "qui.log"), fileData, 0o600))
 	for day := 11; day <= 30; day++ {
@@ -140,7 +139,6 @@ func TestServerCompression(t *testing.T) {
 				plain := httptest.NewRecorder()
 				router.ServeHTTP(plain, compressionRequest(t, path, "identity"))
 				require.Equal(t, http.StatusOK, plain.Code)
-				// A smaller body fits one block, and its frame declares a window sized to the body.
 				require.GreaterOrEqual(t, plain.Body.Len(), 128<<10)
 				res := httptest.NewRecorder()
 				router.ServeHTTP(res, compressionRequest(t, path, "zstd"))
@@ -162,7 +160,6 @@ func TestServerCompression(t *testing.T) {
 				require.Empty(t, res.Header().Get("Content-Encoding"))
 			})
 
-			// Neighbors of the uncompressed routes, plus top-level routes that must register on `compressed`.
 			for _, path := range []string{apiPrefix + "/instances/7/torrents/sample/files", apiPrefix + "/instances/7/torrents/sample/files/3/mediainfo", apiPrefix + "/instances/7/rss/items", "/health", baseURL} {
 				t.Run("compressed "+path, func(t *testing.T) {
 					data := `{"sample":"` + strings.Repeat("content ", 200) + `"}`
@@ -204,7 +201,6 @@ func compressionRequest(t *testing.T, path, encoding string) *http.Request {
 	return req
 }
 
-// Wrap testHandler with the middleware registered for the route that matches path.
 func withRouteRegisteredMiddleware(t *testing.T, router *chi.Mux, path string, testHandler http.Handler) http.Handler {
 	t.Helper()
 	pattern := router.Find(chi.NewRouteContext(), http.MethodGet, path)

@@ -17,14 +17,10 @@ export type RestartOverlay = "hidden" | "restarting" | "slow" | "notApplied" | "
 const POLL_INTERVAL_MS = 1000
 const SLOW_AFTER_MS = 60_000
 
-// /api/version reports "1.31.0", a release tag_name is "v1.31.0".
 const withoutV = (version: string) => version.trim().replace(/^v/, "")
 
 interface ActionTarget {
-  // startedAt of the process that got the request. The old process can still
-  // answer while its graceful shutdown waits, so only a new one counts.
   startedAt: string
-  // Set after a Self-update.
   update?: SelfUpdateResult
 }
 
@@ -40,21 +36,15 @@ export function useVersionInfo() {
   })
 }
 
-// Holds the Restart, Self-update, and database shrink actions: the confirmation
-// dialog, the request, and the overlay that waits for qui to answer again.
 export function useSelfUpdate() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [overlay, setOverlay] = useState<RestartOverlay>("hidden")
 
   const versionQuery = useVersionInfo()
 
-  // A target of null means that qui does not restart: a shrink then waits
-  // for the next start.
   const actionMutation = useMutation({
     mutationFn: async (action: SystemAction): Promise<ActionTarget | null> => {
       const { startedAt } = await api.getApplicationInfo()
-      // qui can close its listener before the response arrives, so pause
-      // before the request, not when the overlay shows.
       setSSORecoveryPaused(true)
       switch (action.kind) {
         case "restart":
@@ -82,8 +72,6 @@ export function useSelfUpdate() {
   })
 
   const overlayActive = overlay !== "hidden"
-  // Browser Back can unmount a Settings tab that owns this hook, and the poll
-  // with it. No beforeunload prompt: the poll reloads the page itself.
   useBlocker({
     shouldBlockFn: () => true,
     disabled: !overlayActive && !actionMutation.isPending,
@@ -94,8 +82,6 @@ export function useSelfUpdate() {
     if (!overlayActive || !target) {
       return
     }
-    // Plain fetch, not the API client: its SSO and 401 handling would navigate
-    // away while qui is down.
     const controller = new AbortController()
     let pollTimer = 0
     const poll = async () => {
@@ -105,8 +91,6 @@ export function useSelfUpdate() {
           credentials: "include",
           signal: controller.signal,
         })
-        // A 404 after a base URL change must not reload: the overlay then
-        // points the user to the new address.
         if (response.ok) {
           const info = await response.json().catch(() => null) as { startedAt?: string; version?: string } | null
           if (info?.startedAt && info.startedAt !== target.startedAt) {
@@ -118,10 +102,7 @@ export function useSelfUpdate() {
               setOverlay("notApplied")
               return
             }
-            // The service worker serves the old frontend from its precache and
-            // holds the new one behind the "Update available" toast.
             await clearQuiServiceWorker()
-            // A reload would hide the no-backup warning before anyone reads it.
             if (target.update.backupError) {
               setOverlay("installed")
               return
@@ -131,7 +112,7 @@ export function useSelfUpdate() {
           }
         }
       } catch {
-        // qui is down.
+        if (controller.signal.aborted) return
       }
       if (!controller.signal.aborted) {
         pollTimer = window.setTimeout(poll, POLL_INTERVAL_MS)
@@ -158,9 +139,6 @@ export function useSelfUpdate() {
     retrySupportCheck: () => void versionQuery.refetch(),
     confirmOpen,
     setConfirmOpen: (open: boolean) => {
-      // Escape still closes the dialog while Cancel is disabled, and focus
-      // returns to the button under the overlay. A reset then drops the
-      // startedAt that the overlay compares against.
       if (overlayActive || (!open && actionMutation.isPending)) {
         return
       }
@@ -171,7 +149,6 @@ export function useSelfUpdate() {
     },
     restart: () => actionMutation.mutate({ kind: "restart" }),
     install: (tag: string) => actionMutation.mutate({ kind: "update", tag }),
-    /** Requests a shrink of the database file. It resolves to false when the shrink waits for the next start. */
     shrink: async () => (await actionMutation.mutateAsync({ kind: "shrink" })) !== null,
     pending: actionMutation.isPending,
     error: actionMutation.error,

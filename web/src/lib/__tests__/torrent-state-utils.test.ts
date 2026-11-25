@@ -35,7 +35,6 @@ describe("getStateLabel", () => {
     expect(getStateLabel("unknown", t)).toBe("Unknown")
   })
 
-  // Listed, not derived from the JSON: a derived list loses a state the moment the file does.
   const QBITTORRENT_STATES = [
     "downloading", "metaDL", "forcedMetaDL", "allocating", "stalledDL", "queuedDL", "checkingDL", "forcedDL",
     "uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP",
@@ -58,7 +57,6 @@ describe("getStateLabel", () => {
     }
   )
 
-  // Letters only, so these pass the separator check; i18next would resolve them to inherited functions.
   it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
     "does not let the inherited name %j resolve to a function", (state) => {
       expect(getStateLabel(state, t)).toBe("Unrecognized")

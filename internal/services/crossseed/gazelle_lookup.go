@@ -14,11 +14,9 @@ import (
 	"github.com/autobrr/qui/internal/services/systemnotice"
 )
 
-// GazelleLookupStatus is the state of one RED/OPS lookup.
 type GazelleLookupStatus string
 
 const (
-	// GazelleWillAsk is the plan of a lookup that the search sends.
 	GazelleWillAsk  GazelleLookupStatus = "will_ask"
 	GazelleMatch    GazelleLookupStatus = "match"
 	GazelleNoMatch  GazelleLookupStatus = "no_match"
@@ -26,8 +24,6 @@ const (
 	GazelleFailed   GazelleLookupStatus = "failed"
 )
 
-// GazelleLookupReason says why the search did not ask a site, or why its
-// lookup failed.
 type GazelleLookupReason string
 
 const (
@@ -41,27 +37,18 @@ const (
 	GazelleReasonError         GazelleLookupReason = "error"
 )
 
-// GazelleLookup is the RED/OPS lookup of one site that has an API key, for one
-// search: the plan before the search, or the outcome after it.
 type GazelleLookup struct {
-	// Site is the API host of the site.
-	Site      string              `json:"site"`
-	Name      string              `json:"name"`
-	ShortName string              `json:"shortName"`
-	IndexerID int                 `json:"indexerId"`
-	Status    GazelleLookupStatus `json:"status"`
-	Reason    GazelleLookupReason `json:"reason,omitempty"`
-	// Detail is the error text of a failed lookup.
-	Detail string `json:"detail,omitempty"`
-	// ReplacedIndexerIDs are the Torznab indexers of the site that the search
-	// leaves out, because it asks the site through its API.
-	ReplacedIndexerIDs []int `json:"replacedIndexerIds,omitempty"`
+	Site               string              `json:"site"`
+	Name               string              `json:"name"`
+	ShortName          string              `json:"shortName"`
+	IndexerID          int                 `json:"indexerId"`
+	Status             GazelleLookupStatus `json:"status"`
+	Reason             GazelleLookupReason `json:"reason,omitempty"`
+	Detail             string              `json:"detail,omitempty"`
+	ReplacedIndexerIDs []int               `json:"replacedIndexerIds,omitempty"`
 
-	// seededByCopy reports that the torrent or a duplicate copy of it comes
-	// from the site, whatever the reason that the lookup shows.
 	seededByCopy bool
-	// sent reports that the lookup sent a request to the site.
-	sent bool
+	sent         bool
 }
 
 func (l GazelleLookup) notAsked(reason GazelleLookupReason) GazelleLookup {
@@ -74,12 +61,6 @@ func (l GazelleLookup) failed(reason GazelleLookupReason, detail string) Gazelle
 	return l
 }
 
-// gazelleCooldownDue reports whether the lookups of one torrent need no retry,
-// so the Library Scan stamps the RED/OPS cooldown of the torrent. A failed
-// lookup needs a retry. A search that asks no site stamps the cooldown for a
-// failed music check, and when a copy seeds on each site that has a key.
-// keyMissing is gazelleKeyMissing of the Search scope: a missing API key stamps
-// none, so a key that the user adds later works at the next run.
 func gazelleCooldownDue(lookups []GazelleLookup, keyMissing bool) bool {
 	lookedUp := false
 	for _, l := range lookups {
@@ -91,7 +72,6 @@ func gazelleCooldownDue(lookups []GazelleLookup, keyMissing bool) bool {
 	return lookedUp || (len(lookups) > 0 && !keyMissing)
 }
 
-// gazelleRequestsSent reports whether a lookup sent a request to a site.
 func gazelleRequestsSent(lookups []GazelleLookup) bool {
 	return slices.ContainsFunc(lookups, func(l GazelleLookup) bool { return l.sent })
 }
@@ -101,8 +81,6 @@ func gazelleLookupSite(l GazelleLookup) gazellemusic.Site {
 	return site
 }
 
-// gazelleOutcomeText describes one outcome in plain text, for a log line, a
-// notification, and a Library Scan row.
 func gazelleOutcomeText(l GazelleLookup) string {
 	switch l.Status {
 	case GazelleMatch:
@@ -139,7 +117,6 @@ func gazelleReasonText(l GazelleLookup) string {
 	}
 }
 
-// gazelleLookupsLine is the RED/OPS line of a completion notification.
 func gazelleLookupsLine(lookups []GazelleLookup) string {
 	parts := make([]string, 0, len(lookups))
 	for _, l := range lookups {
@@ -148,21 +125,16 @@ func gazelleLookupsLine(lookups []GazelleLookup) string {
 	return "RED/OPS: " + strings.Join(parts, ", ")
 }
 
-// keyRejectedNotice is the System notice that opens when the site rejects the
-// API key.
 func keyRejectedNotice(site gazellemusic.Site) systemnotice.Kind {
 	return systemnotice.Kind(site.SettingsName + "_key_rejected")
 }
 
-// gazelleKeyGensNow returns the key generation of each site.
 func (s *Service) gazelleKeyGensNow() map[string]uint64 {
 	s.gazelleNoticeMu.Lock()
 	defer s.gazelleNoticeMu.Unlock()
 	return maps.Clone(s.gazelleKeyGens)
 }
 
-// setKeyRejectedNotice opens or closes the key rejected notice of the site,
-// unless a settings save changed the key of the site after generation gen.
 func (s *Service) setKeyRejectedNotice(site gazellemusic.Site, gen uint64, open bool, cause string) {
 	if s.systemNotices == nil {
 		return
@@ -179,8 +151,6 @@ func (s *Service) setKeyRejectedNotice(site gazellemusic.Site, gen uint64, open 
 	s.systemNotices.Close(keyRejectedNotice(site))
 }
 
-// closeKeyRejectedNotices closes the key rejected notice of each site that
-// answered.
 func (s *Service) closeKeyRejectedNotices(lookups []GazelleLookup, clients *gazelleClientSet) {
 	for _, l := range lookups {
 		if l.Status == GazelleMatch || l.Status == GazelleNoMatch {
@@ -189,12 +159,6 @@ func (s *Service) closeKeyRejectedNotices(lookups []GazelleLookup, clients *gaze
 	}
 }
 
-// GazelleKeysSaved takes the settings that a save stored, as the request sent
-// them (a typed key, the placeholder of a stored key, or "" for no key), and
-// the API hosts whose key the save checked with the site. It closes the key
-// rejected notice of each site that the save fixes: the check passed, the key
-// is cleared, or RED/OPS is off. A site whose key or switch changed gets a new
-// key generation, so a client from before the save leaves its notice alone.
 func (s *Service) GazelleKeysSaved(settings *models.CrossSeedAutomationSettings, checked []string) {
 	if settings == nil {
 		return
@@ -215,7 +179,6 @@ func (s *Service) GazelleKeysSaved(settings *models.CrossSeedAutomationSettings,
 	}
 }
 
-// keyRejectedOpen reports that the key rejected notice of the site is open.
 func (s *Service) keyRejectedOpen(site gazellemusic.Site) bool {
 	if s.systemNotices == nil {
 		return false

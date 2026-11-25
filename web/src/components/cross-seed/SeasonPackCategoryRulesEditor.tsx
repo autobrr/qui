@@ -12,10 +12,8 @@ import { Plus, X } from "lucide-react"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
-// Resolution options for the routing rules (canonical lowercase rls values).
 const RESOLUTION_OPTIONS = ["2160p", "1080p", "720p", "576p", "480p"] as const
 
-// Source options. Stored value "" means any source; the rest are canonical uppercase.
 const SOURCE_OPTIONS: Array<{ value: string; labelKey: string }> = [
   { value: "", labelKey: "rules.seasonPack.categoryRouting.anySource" },
   { value: "WEB", labelKey: "rules.seasonPack.categoryRouting.source.web" },
@@ -24,14 +22,11 @@ const SOURCE_OPTIONS: Array<{ value: string; labelKey: string }> = [
   { value: "HDTV", labelKey: "rules.seasonPack.categoryRouting.source.hdtv" },
 ]
 
-// Select uses a non-empty sentinel for the "any source" entry because Radix
-// Select reserves "" for clearing the value.
 const ANY_SOURCE_VALUE = "__any__"
 
 interface SeasonPackCategoryRulesEditorProps {
   value: SeasonPackCategoryRule[]
   onChange: (rules: SeasonPackCategoryRule[]) => void
-  /** Aggregated qBittorrent category metadata used to suggest categories. */
   categoryMetadata: Record<string, { name: string; savePath: string }>
   disabled?: boolean
 }

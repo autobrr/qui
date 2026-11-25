@@ -1,10 +1,6 @@
 // Copyright (c) 2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package themes embeds the built-in theme CSS files and exposes their
-// metadata so the API can serve and validate them. The CSS is the single
-// source of truth; the frontend parses the full stylesheet, this package
-// only reads the small metadata header and the preview color variables.
 package themes
 
 import (
@@ -26,9 +22,7 @@ type Theme struct {
 	Description string
 	Premium     bool
 	CSS         string
-	// Preview holds the light/dark swatch colors shown for locked premium
-	// themes, extracted from --primary/--secondary/--accent.
-	Preview Preview
+	Preview     Preview
 }
 
 type Preview struct {
@@ -44,10 +38,6 @@ var (
 	slugRe        = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
-// GenerateID derives a theme id from its name when the file has no @id
-// line. The rule is frozen: derived ids are stored in the database and in
-// browsers, so it must never change.
-// TestRegistryIDsPinned enforces this for every committed theme.
 func GenerateID(name string) string {
 	return strings.Trim(slugRe.ReplaceAllString(strings.ToLower(name), "-"), "-")
 }
@@ -87,9 +77,6 @@ func load() []Theme {
 	return themes
 }
 
-// parse reads a theme from its CSS. fromPremiumDir classifies the theme as
-// premium by its location, so a missing or malformed metadata header can
-// never serve a premium stylesheet ungated.
 func parse(css, fallbackID string, fromPremiumDir bool) Theme {
 	t := Theme{CSS: css, Premium: fromPremiumDir || premiumRe.MatchString(css)}
 
@@ -99,7 +86,6 @@ func parse(css, fallbackID string, fromPremiumDir bool) Theme {
 	if m := descriptionRe.FindStringSubmatch(css); m != nil {
 		t.Description = m[1]
 	}
-	// An @id line keeps the stored id of a renamed theme.
 	if m := idRe.FindStringSubmatch(css); m != nil {
 		t.ID = m[1]
 	}
@@ -112,10 +98,6 @@ func parse(css, fallbackID string, fromPremiumDir bool) Theme {
 	return t
 }
 
-// extractPreviewVars pulls the swatch variables out of one selector block.
-// Indirect values ("--primary: var(--variation-color)") resolve against the
-// block itself and then :root, so locked previews carry concrete colors that
-// render outside the stylesheet.
 func extractPreviewVars(css, selector string) map[string]string {
 	own := blockVars(css, selector)
 	if own == nil {
@@ -163,8 +145,6 @@ func blockVars(css, selector string) map[string]string {
 	return vars
 }
 
-// resolveVar follows var(--x) references through own, then root. An
-// unresolvable or cyclic reference drops the swatch.
 func resolveVar(value string, own, root map[string]string) (string, bool) {
 	for range 10 {
 		inner, isRef := strings.CutPrefix(value, "var(")

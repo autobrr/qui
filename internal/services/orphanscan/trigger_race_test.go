@@ -18,8 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// heldInstance holds every scan at its backend lookup until release closes,
-// so a started run stays active while the other triggers race.
 type heldInstance struct {
 	release chan struct{}
 }
@@ -54,8 +52,6 @@ func runConcurrentTriggers(t *testing.T, newDB func(testing.TB, string) *databas
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(held, newTestBackend()))
 	stubSync(svc)
 
-	// One round rarely loses on Postgres because the first triggers dial fresh
-	// connections. Later rounds reuse warm ones, where the race shows.
 	const rounds, triggers = 10, 8
 	instanceIDs := make([]int, 0, rounds)
 	for range rounds {
@@ -88,7 +84,6 @@ func runConcurrentTriggers(t *testing.T, newDB func(testing.TB, string) *databas
 		assert.Equal(t, 1, started, "instance %d", instance.ID)
 	}
 
-	// Let the held scans fail on the unstubbed torrent list before the database closes.
 	close(held.release)
 	require.Eventually(t, func() bool {
 		for _, id := range instanceIDs {

@@ -80,11 +80,6 @@ func selectEligibleRootWork(
 				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "all_final", selection.cutoff, trackedFiles))
 				continue
 			}
-			// Checked after stale and all_final so the count reads as searches
-			// the option avoided this scan, not as a running total of episodes.
-			// Same rule as SkipIndividualEpisodes in crossseed/library_scan.go: an episode
-			// that cannot join a season pack search is dropped, never searched alone.
-			// Change both together.
 			if skipIndividualEpisodes && item.isEpisode {
 				selection.skippedEpisodes++
 				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "individual_episode", selection.cutoff, trackedFiles))
@@ -104,8 +99,6 @@ func selectEligibleRootWork(
 			continue
 		}
 
-		// Skipped episodes are the only signal the skip option leaves behind,
-		// so log them even when the root still has eligible work.
 		for _, item := range droppedItems {
 			if item.reason == "individual_episode" {
 				logDroppedWorkItem(l, root, item, selection.cutoff)
@@ -153,11 +146,6 @@ func workItemHasPendingFiles(item searcheeWorkItem, trackedFiles *trackedFilesIn
 	return false
 }
 
-// isFinalTrackedFile reports whether a tracked file needs no more search work.
-// A no_match row stays final only while every enabled indexer was part of the
-// search that stamped it. When a new indexer appears, the row is pending again.
-// Rows without a recorded search set (legacy rows, or an unknown enabled set)
-// keep the old behavior and stay final.
 func isFinalTrackedFile(tracked *models.DirScanFile, enabledIndexerIDs map[int]struct{}) bool {
 	if tracked == nil || !isFinalFileStatus(tracked.Status) {
 		return false
@@ -317,10 +305,6 @@ func workItemIsStale(item searcheeWorkItem, cutoff time.Time, skipIndividualEpis
 		return false
 	}
 
-	// A mixed-age season pack is normally stale: its old episodes were already
-	// searched, and a fresh episode gets its own episode search. With individual
-	// episodes skipped, the pack is the only search a fresh episode has, so the
-	// pack stays eligible as long as its newest episode is fresh.
 	if item.tvGroup != nil && len(contentFiles) > 1 && !skipIndividualEpisodes {
 		for _, f := range contentFiles {
 			if f == nil {

@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Fingerprints written by older versions are 0644, and WriteFile only applies
-// its mode when it creates the file, so reading one has to tighten it.
 func TestGetDeviceIDRestrictsExistingFingerprintMode(t *testing.T) {
 	configDir := t.TempDir()
 	const userID = "user@example.com"
@@ -31,8 +29,6 @@ func TestGetDeviceIDRestrictsExistingFingerprintMode(t *testing.T) {
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
-// A fingerprint file that exists but is empty is rewritten, and WriteFile
-// leaves the original mode alone when the file is already there.
 func TestPersistFingerprintRestrictsExistingFingerprintMode(t *testing.T) {
 	configDir := t.TempDir()
 	const userID = "user@example.com"

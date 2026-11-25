@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// CrossMatchNeeds specifies which cross-match sets to compute.
 type CrossMatchNeeds struct {
 	SameExists   bool
 	SameSeeding  bool
@@ -28,51 +27,25 @@ type CrossMatchNeeds struct {
 	SameContent  bool
 	OtherExists  bool
 	OtherSeeding bool
-	// OtherShared asks for the torrents that share a file with a torrent on
-	// another instance, and for the torrents that qui could not check.
-	OtherShared bool
+	OtherShared  bool
 }
 
-// CrossMatchResult contains all cross-match sets for a given instance.
 type CrossMatchResult struct {
-	Err                  error // The current torrent snapshot could not be read.
-	SameInstanceExists   map[string]struct{}
-	SameInstanceSeeding  map[string]struct{}
-	OtherInstanceExists  map[string]struct{}
-	OtherInstanceSeeding map[string]struct{}
-	// SameInstanceTagsByHash maps a source hash to the sorted raw Tags strings of
-	// its same-instance cross-seed matches (self excluded). A hash is present only
-	// when at least one match carries a non-empty tag string.
-	SameInstanceTagsByHash map[string][]string
-	// SameInstanceContentByHash links torrents on the same instance that share
-	// at least one file on disk (the Content tier, self excluded). It keeps only
-	// enough links to connect each shared-file group, so read a group by
-	// following the links, not from one entry. A candidate whose files could not
-	// be read is also linked, so that a delete or move fails closed. A hash is
-	// present only when it has a link.
-	SameInstanceContentByHash map[string][]string
-	// SameInstanceUnknown and OtherInstanceUnknown hold the torrents whose
-	// file list, candidate's file list, or instance list could not be read.
-	// Conditions without a confirmed positive match are unknown for this run.
-	SameInstanceUnknown  map[string]struct{}
-	OtherInstanceUnknown map[string]struct{}
-	// OtherInstanceShared holds the torrents that share a file with a torrent
-	// on another active instance. Both instances need trusted identity.
-	// OtherInstanceSharedUnknown holds the torrents that qui could not check:
-	// every torrent while OfflineLocalInstances names an instance or the
-	// instance list cannot be read, and a torrent whose file list or folders
-	// could not be read.
+	Err                        error
+	SameInstanceExists         map[string]struct{}
+	SameInstanceSeeding        map[string]struct{}
+	OtherInstanceExists        map[string]struct{}
+	OtherInstanceSeeding       map[string]struct{}
+	SameInstanceTagsByHash     map[string][]string
+	SameInstanceContentByHash  map[string][]string
+	SameInstanceUnknown        map[string]struct{}
+	OtherInstanceUnknown       map[string]struct{}
 	OtherInstanceShared        map[string]struct{}
 	OtherInstanceSharedUnknown map[string]struct{}
-	// OfflineLocalInstances names the active instances with trusted identity
-	// whose torrents could not be read.
-	OfflineLocalInstances []string
-	// MemberFiles holds the file lists that a CrossMatchSession read for the
-	// members of the groups with two or more torrents.
-	MemberFiles map[string]qbt.TorrentFiles
+	OfflineLocalInstances      []string
+	MemberFiles                map[string]qbt.TorrentFiles
 }
 
-// candidateEntry holds pre-computed data for a candidate torrent.
 type candidateEntry struct {
 	hash       string
 	tags       string
@@ -82,7 +55,6 @@ type candidateEntry struct {
 	view       *qbittorrent.CrossInstanceTorrentView
 }
 
-// candidateKey names one torrent on one instance, with the hash in its normal form.
 type candidateKey struct {
 	instanceID int
 	hash       string
@@ -103,39 +75,23 @@ func newCandidateEntry(view *qbittorrent.CrossInstanceTorrentView, needsSeeding 
 	}
 }
 
-// releaseCandidate extends candidateEntry with the Read release for rls matching.
 type releaseCandidate struct {
 	candidateEntry
 	read namedRelease
 }
 
-// matchIndex holds pre-built indexes that select the Name and Release
-// candidates of a source torrent before their file lists are fetched.
 type matchIndex struct {
-	byName map[string][]candidateEntry // key: normalizeLowerTrim(name)
-	// byTitleKey holds each torrent under every Title key. A grouping key can
-	// be looser than the matcher, never stricter: the matcher still decides
-	// each pair.
+	byName     map[string][]candidateEntry
 	byTitleKey map[titleEpisodeKey][]*releaseCandidate
-	// bySize holds each torrent under its exact total size, so that a retitled
-	// copy or a copy that numbers its episodes in another way meets the source.
-	bySize map[int64][]*releaseCandidate
+	bySize     map[int64][]*releaseCandidate
 }
 
-// titleEpisodeKey adds the episode and the air date to a Title key, so that
-// the episodes of a long-running show or a daily show do not all meet each
-// other. The matcher, with individual episodes off, accepts only a pair with
-// equal episodes, and rejects two full dates that differ. A name without a
-// full date can match any date, so it meets the dated torrents through
-// anyDate. Thus the key stays looser than the matcher.
 type titleEpisodeKey struct {
 	title   string
 	episode int
-	date    int // yyyymmdd, 0 without a full date, or anyDate
+	date    int
 }
 
-// anyDate holds every dated torrent of a Title key and episode, for a source
-// without a full date.
 const anyDate = -1
 
 const releaseRejectTraceLimit = 10
@@ -173,7 +129,6 @@ func newBatchFiles(s *Service, instances []*models.Instance, allPaths bool) *bat
 	}
 }
 
-// addUnknownSets makes every torrent Unknown in each set whose flag is set.
 func addUnknownSets(result *CrossMatchResult, torrents []qbittorrent.CrossInstanceTorrentView, same, other, shared bool) {
 	all := func() map[string]struct{} {
 		set := make(map[string]struct{}, len(torrents))
@@ -201,8 +156,6 @@ func indexesOf(n int) []int {
 	return indexes
 }
 
-// addOtherInstanceFacts fills the other-instance Exists, Seeding and Unknown
-// sets of the torrents at indexes.
 func (s *Service) addOtherInstanceFacts(
 	ctx context.Context,
 	instanceID int,
@@ -236,9 +189,6 @@ func (s *Service) addOtherInstanceFacts(
 	}
 }
 
-// otherSharedCandidates returns the picks and the path groups that the
-// other-instance Shared-file check reads. Only a candidate with trusted
-// identity can share a file, so qui reads no other file list.
 func otherSharedCandidates(
 	instances []*models.Instance,
 	torrents []qbittorrent.CrossInstanceTorrentView,
@@ -257,8 +207,6 @@ func otherSharedCandidates(
 	return sharedPicks, crossPathGroups(instances, torrents, others, func(string) bool { return true })
 }
 
-// addOtherSharedResult runs the other-instance Shared-file check and names
-// the offline instances with trusted identity.
 func (b *batchFiles) addOtherSharedResult(
 	ctx context.Context,
 	instanceID int,
@@ -280,35 +228,22 @@ func (b *batchFiles) addOtherSharedResult(
 	}
 }
 
-// batchFiles keeps the file data of each torrent that one caller reads, so
-// that a torrent that is a candidate of many sources is read once.
 type batchFiles struct {
-	svc       *Service
-	instances []*models.Instance
-	byKey     map[string]*batchFileData     // nil value: the fetch failed
-	fetched   map[string]qbt.TorrentFiles   // file lists that prefetch read
-	links     map[string]*localMatchContext // per source, keeps its stat results
-	// linkTiers holds the link check result per pair of torrents. A link
-	// goes both ways, so the pair is checked once.
-	linkTiers map[[2]string]localLinkResult
-	// folders holds the file identity of each folder that sharedFile read. A
-	// zero key is a folder that does not exist or has no file identity. Only
-	// local instances reach it, so a path on the qui host is the key.
-	folders map[string]fsops.FileKey
-	// trustedIdentityOnly limits links to instances with TrustedIdentity, as
-	// localMatchContext does.
+	svc                 *Service
+	instances           []*models.Instance
+	byKey               map[string]*batchFileData
+	fetched             map[string]qbt.TorrentFiles
+	links               map[string]*localMatchContext
+	linkTiers           map[[2]string]localLinkResult
+	folders             map[string]fsops.FileKey
 	trustedIdentityOnly bool
-	// allPaths keeps the normalized path of every file, for the
-	// Shared-file paths of addSharedPathPicks.
-	allPaths bool
-	// otherSharedOnly gives a candidate on another instance a tier only for a
-	// Shared file, as the delete check asks.
-	otherSharedOnly bool
+	allPaths            bool
+	otherSharedOnly     bool
 }
 
 type localLinkResult struct {
 	tier string
-	err  error // the check could not be read, so an empty tier is unknown
+	err  error
 }
 
 type batchFileData struct {
@@ -342,7 +277,6 @@ func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath str
 	return data, true
 }
 
-// selectAllCandidates runs selectCandidates for each torrent of the instance.
 func (s *Service) selectAllCandidates(ctx context.Context, torrents []qbittorrent.CrossInstanceTorrentView, idx *matchIndex, sameInstance bool, reads localReads) [][]*candidatePick {
 	picks := make([][]*candidatePick, len(torrents))
 	for i := range torrents {
@@ -355,11 +289,6 @@ func (s *Service) selectAllCandidates(ctx context.Context, torrents []qbittorren
 	return picks
 }
 
-// prefetch reads the file lists of the torrents in pathGroups, of the sources
-// with candidates, and of their candidates, in one GetTorrentFilesBatch call
-// per instance. The sync manager then fetches the lists that it has no copy of
-// in parallel, not one after another. A list that the call does not return is
-// read again by get.
 func (b *batchFiles) prefetch(ctx context.Context, sourceInstanceID int, sources []qbittorrent.CrossInstanceTorrentView, pathGroups [][]int, picksBySource ...[][]*candidatePick) {
 	need := make(map[int]map[string]struct{})
 	add := func(instanceID int, hash string) {
@@ -403,19 +332,12 @@ func (b *batchFiles) prefetch(ctx context.Context, sourceInstanceID int, sources
 	}
 }
 
-// sharedPathGroups groups the torrents whose cached paths allow a shared file
-// on disk: the torrents with one content path, a torrent with the torrents
-// whose content path is inside its content path, and the torrents of a save
-// path that holds a multi-file torrent without a subfolder (its content path is
-// the save path). It returns the indexes into torrents of each group with two
-// or more members.
 func sharedPathGroups(torrents []qbittorrent.CrossInstanceTorrentView) [][]int {
 	byContentPath := make(map[string][]int)
 	bySavePath := make(map[string][]int)
 	flatSavePaths := make(map[string]bool)
 	for i := range torrents {
 		contentPath := normalizePathForComparison(torrents[i].ContentPath)
-		// A magnet without metadata has no files.
 		if contentPath == "" {
 			continue
 		}
@@ -433,7 +355,6 @@ func sharedPathGroups(torrents []qbittorrent.CrossInstanceTorrentView) [][]int {
 			groups = append(groups, group)
 		}
 	}
-	// qui adds an episode cross-seed inside the folder of its season pack.
 	for contentPath, group := range byContentPath {
 		for inner, dir := contentPath, path.Dir(contentPath); dir != inner && dir != "." && dir != "/"; inner, dir = dir, path.Dir(dir) {
 			if outer := byContentPath[dir]; len(outer) > 0 {
@@ -449,11 +370,6 @@ func sharedPathGroups(torrents []qbittorrent.CrossInstanceTorrentView) [][]int {
 	return groups
 }
 
-// addSharedPathPicks adds to the picks of each torrent in pathGroups the
-// torrents that share a file path with it. One index of file paths finds them,
-// so a flat folder costs its file count, not its pair count. A torrent whose
-// file list cannot be read is paired with every member of its groups, so that
-// a delete or move fails closed. Safety groups also include ignored files.
 func (b *batchFiles) addSharedPathPicks(
 	ctx context.Context,
 	instanceID int,
@@ -506,7 +422,6 @@ func (b *batchFiles) addSharedPathPicks(
 		}
 		return i
 	}
-	// A connecting edge is enough; repeated shared files need no more edges.
 	share := func(i, j int) {
 		if sharedPaths == nil || i == j {
 			return
@@ -572,24 +487,16 @@ func (b *batchFiles) addSharedPathPicks(
 	return sharedPaths
 }
 
-// folderEntry is one file name in one folder on disk.
 type folderEntry struct {
 	folder fsops.FileKey
 	name   string
 }
 
-// crossPathGroup is a group of sharedPathGroups that joins torrents of the
-// instance (sources, indexes into its torrents) with torrents on other
-// instances with trusted identity.
 type crossPathGroup struct {
 	sources []int
 	others  []*candidatePick
 }
 
-// crossPathGroups returns the groups of sharedPathGroups over the torrents of
-// the instance that isSelected keeps and the torrents of others on instances
-// with trusted identity that hold torrents of both sides. A group is one unit,
-// so that a flat save path costs its torrent count, not its pair count.
 func crossPathGroups(instances []*models.Instance, torrents, others []qbittorrent.CrossInstanceTorrentView, isSelected func(hash string) bool) []crossPathGroup {
 	all, sources := selectedAndTrustedOthers(instances, torrents, others, isSelected)
 	var groups []crossPathGroup
@@ -609,8 +516,6 @@ func crossPathGroups(instances []*models.Instance, torrents, others []qbittorren
 	return groups
 }
 
-// prefetchGroups gives prefetch the sources of each group, and the other
-// torrents of each group as picks of its first source.
 func prefetchGroups(torrentCount int, groups []crossPathGroup) (sources [][]int, picks [][]*candidatePick) {
 	if len(groups) == 0 {
 		return nil, nil
@@ -624,13 +529,6 @@ func prefetchGroups(torrentCount int, groups []crossPathGroup) (sources [][]int,
 	return sources, picks
 }
 
-// addOtherShared adds to result.OtherInstanceShared each torrent with a file
-// in a folder entry of a candidate on another instance with trusted identity.
-// A candidate is a pick of the torrent or a torrent of one of its path
-// groups. A torrent whose file list or folders, or a candidate's, could not be
-// read goes to result.OtherInstanceSharedUnknown. The candidates only limit
-// which torrents qui reads: a folder entry of any candidate counts for every
-// torrent, because a Shared file is a fact on disk.
 func (b *batchFiles) addOtherShared(
 	ctx context.Context,
 	instanceID int,
@@ -641,8 +539,6 @@ func (b *batchFiles) addOtherShared(
 ) {
 	_, groupPicks := prefetchGroups(len(torrents), groups)
 	entries, candidateRead := b.candidateFolderEntries(ctx, picks, groupPicks)
-	// readStatus reports whether qui read any of the candidates, and whether
-	// a read failed.
 	readStatus := func(candidates []*candidatePick) (checked, unknown bool) {
 		for _, p := range candidates {
 			ok, read := candidateRead[cacheKeyForTorrentFiles(p.entry.instanceID, p.entry.hash)]
@@ -685,9 +581,6 @@ func (b *batchFiles) addOtherShared(
 	}
 }
 
-// candidateFolderEntries reads the folder entries of each candidate on an
-// instance with trusted identity. read maps the files cache key of each
-// candidate that it checked to whether the read succeeded.
 func (b *batchFiles) candidateFolderEntries(ctx context.Context, picksBySource ...[][]*candidatePick) (entries map[folderEntry]struct{}, read map[string]bool) {
 	entries = make(map[folderEntry]struct{})
 	read = make(map[string]bool)
@@ -713,9 +606,6 @@ func (b *batchFiles) candidateFolderEntries(ctx context.Context, picksBySource .
 	return entries, read
 }
 
-// readFolders returns folderEntries for every file of a torrent, ignored files
-// too, because a delete with files removes them. ok is false when its file
-// list or a folder could not be read.
 func (b *batchFiles) readFolders(ctx context.Context, instanceID int, hash, savePath string) (map[string][]fsops.FileKey, bool) {
 	data, ok := b.get(ctx, instanceID, hash, savePath)
 	if !ok {
@@ -741,17 +631,12 @@ func sharesFolderEntry(folders map[string][]fsops.FileKey, entries map[folderEnt
 	return false
 }
 
-// linkedTier returns matchTypeHardlink or matchTypeReflink when the candidate
-// files are linked copies of the source files, as the Cross-Seed tab checks
-// them. A failed verification keeps the result unknown.
 func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, sourceInstanceID int, c candidateEntry) localLinkResult {
 	candidateInstance := instanceByID(b.instances, c.instanceID)
 	identity := models.CapabilityIdentity
 	if b.trustedIdentityOnly {
 		identity = models.CapabilityTrustedIdentity
 	}
-	// Check the cheap gates here, so that a source without file identity
-	// never builds a context.
 	if candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Has(identity) ||
 		!instanceHas(b.instances, sourceInstanceID, identity) {
 		return localLinkResult{}
@@ -789,7 +674,6 @@ func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, source
 	return result
 }
 
-// buildIndexFromViews builds a matchIndex from CrossInstanceTorrentViews.
 func (s *Service) buildIndexFromViews(views []qbittorrent.CrossInstanceTorrentView, needsSeeding bool, reads localReads) *matchIndex {
 	if len(views) == 0 {
 		return nil
@@ -812,10 +696,6 @@ func newMatchIndex() *matchIndex {
 	}
 }
 
-// buildOtherInstanceIndex builds a matchIndex from all torrents on other
-// active instances, and adds their reads from files to reads. views holds the
-// torrents that it read. offline holds the instances whose torrents could not
-// be read.
 func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool, reads localReads) (idx *matchIndex, views []qbittorrent.CrossInstanceTorrentView, offline []*models.Instance) {
 	idx = newMatchIndex()
 
@@ -851,11 +731,9 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 	return idx, views, offline
 }
 
-// indexView adds a single torrent view to all indexes.
 func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorrentView, needsSeeding bool, reads localReads) {
 	entry := newCandidateEntry(view, needsSeeding)
 
-	// Index by normalized name
 	name := normalizeLowerTrim(view.Name)
 	if name != "" {
 		idx.byName[name] = append(idx.byName[name], entry)
@@ -877,31 +755,19 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 	}
 }
 
-// indexMatch is the result of classifyCandidates for one source torrent.
 type indexMatch struct {
-	matched bool
-	seeding bool // a match is seeding
-	// memberTags holds the non-empty raw Tags strings of the matches, sorted,
-	// when collectTags is set.
-	memberTags []string
-	// Unread candidates outside the path groups still need conservative action grouping.
+	matched          bool
+	seeding          bool
+	memberTags       []string
 	unreadCandidates []string
-	// unread is set when the file list of the source or of a candidate could
-	// not be read, so the other fields may be wrong.
-	unread bool
+	unread           bool
 }
 
-// candidatePick is a candidate that passed the prefilter. nameOrRelease is the
-// tier it gets if its file sizes pair with the source. It is empty for a
-// torrent that addSharedPathPicks added.
 type candidatePick struct {
 	entry         candidateEntry
 	nameOrRelease string
 }
 
-// selectCandidates selects the Name and Release candidates of a source torrent
-// from the index: its name group, its Title key and episode groups, and its
-// size group. sameInstance excludes the source itself.
 func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease, idx *matchIndex, sameInstance bool) []*candidatePick {
 	sourceHash := normalizeHash(source.Hash)
 
@@ -925,14 +791,11 @@ func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease,
 		}
 	}
 
-	// A dated source meets the torrents of its date and the undated torrents.
-	// An undated source meets the undated torrents and every dated torrent.
 	sourceDate := releaseDate(sourceRead.release)
 	otherDate := 0
 	if sourceDate == 0 {
 		otherDate = anyDate
 	}
-	// A candidate that two groups select meets the matcher once.
 	evaluated := make(map[*releaseCandidate]struct{})
 	rejected := 0
 	evaluate := func(c *releaseCandidate) {
@@ -968,9 +831,6 @@ func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease,
 	return picks
 }
 
-// classifyCandidates classifies each candidate of a source torrent with
-// localMatchTier. sameInstance allows the Content tier. A candidate whose file
-// list cannot be read is not a match and sets unread.
 func (s *Service) classifyCandidates(
 	ctx context.Context,
 	source *qbt.Torrent,
@@ -980,7 +840,6 @@ func (s *Service) classifyCandidates(
 	files *batchFiles,
 ) indexMatch {
 	var result indexMatch
-	// A magnet without metadata has no files, so nothing holds its data.
 	if len(picks) == 0 || source.ContentPath == "" {
 		return result
 	}
@@ -999,7 +858,6 @@ func (s *Service) classifyCandidates(
 
 	for _, p := range picks {
 		c := p.entry
-		// A magnet without metadata has no files.
 		if c.view.ContentPath == "" {
 			continue
 		}
@@ -1033,7 +891,6 @@ func (s *Service) classifyCandidates(
 	return result
 }
 
-// isTorrentViewSeeding checks if a CrossInstanceTorrentView is in a seeding state.
 func isTorrentViewSeeding(view *qbittorrent.CrossInstanceTorrentView) bool {
 	if view == nil || view.TorrentView == nil || view.Torrent == nil || view.Progress < 1.0 {
 		return false

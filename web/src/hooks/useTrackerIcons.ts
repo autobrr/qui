@@ -7,20 +7,14 @@ import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 import { useQuery } from "@tanstack/react-query"
 
-/**
- * Hook for fetching all cached tracker icons
- * Returns a map of tracker hostnames to base64-encoded data URLs
- */
 export function useTrackerIcons() {
-  // Icons are append-only and rare; rely on "tracker.icons" events to
-  // invalidate ["tracker-icons"] rather than polling on an interval.
   useActivityStream()
 
   const query = useQuery<Record<string, string>>({
     queryKey: ["tracker-icons"],
     queryFn: () => api.getTrackerIcons(),
-    staleTime: 60000, // 1 minute
-    gcTime: 1800000, // Keep in cache for 30 minutes
+    staleTime: 60000,
+    gcTime: 1800000,
     refetchInterval: false,
     refetchIntervalInBackground: false,
     placeholderData: (previousData) => previousData,

@@ -9,8 +9,6 @@ import type { ColumnFilter } from "@/lib/column-filter-utils"
 import { cleanup, render } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// Capture each column's onFilterChange so we can drive it directly (the real
-// DraggableTableHeader's sortable/popover internals are irrelevant to this test).
 const captured: Record<string, (columnId: string, filter: ColumnFilter | null) => void> = {}
 vi.mock("@/components/torrents/DraggableTableHeader", () => ({
   DraggableTableHeader: ({ header, onFilterChange }: { header: { column: { id: string } }; onFilterChange?: (id: string, f: ColumnFilter | null) => void }) => {

@@ -31,7 +31,6 @@ describe("hasOnlyMod", () => {
 describe("latinKeyOf", () => {
   it("reads the letter that the layout types", () => {
     expect(latinKeyOf({ key: "K", code: "KeyK" })).toBe("k")
-    // Dvorak types "t" with the key at the place of K.
     expect(latinKeyOf({ key: "t", code: "KeyK" })).toBe("t")
   })
 

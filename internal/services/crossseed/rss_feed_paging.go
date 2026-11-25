@@ -14,17 +14,8 @@ import (
 )
 
 const (
-	// rssFeedPageSize is the fixed page length for automation feed fetches.
-	// Offsets build on the number of items an indexer actually returned, so
-	// the value only bounds one round trip and does not have to match an
-	// indexer's own clamp.
-	rssFeedPageSize = 100
-	// rssFeedMaxPages bounds feed pages per indexer per run. Paging exists to
-	// walk back to the last handled item after a gap between runs; a gap
-	// deeper than this is treated as lost.
-	rssFeedMaxPages = 5
-	// rssFeedPageTimeout bounds one deeper page round trip. Deeper pages are
-	// best effort, so a slow indexer stops paging instead of stalling the run.
+	rssFeedPageSize    = 100
+	rssFeedMaxPages    = 5
 	rssFeedPageTimeout = 3 * time.Minute
 )
 
@@ -33,14 +24,6 @@ type feedItemKey struct {
 	indexerID int
 }
 
-// feedPageContinuation walks one fetched feed page. It returns the results
-// that are new to this run (fresh) and the indexers whose page carried at
-// least one fresh item that the feed-item store has not handled yet — only
-// those can still gain from a deeper page. collected is extended in place
-// with every fresh key, so an indexer that ignores the offset parameter and
-// returns the same page again yields nothing fresh and stops. Results
-// without a GUID cannot be deduplicated, so they are never fresh and never
-// extend paging.
 func feedPageContinuation(pageResults []jackett.SearchResult, collected map[feedItemKey]struct{}, handled func(guid string, indexerID int) bool) ([]jackett.SearchResult, []int) {
 	var fresh []jackett.SearchResult
 	var continueIndexers []int
@@ -68,9 +51,6 @@ func feedPageContinuation(pageResults []jackett.SearchResult, collected map[feed
 	return fresh, continueIndexers
 }
 
-// groupIndexersByOffset buckets the still-active indexers by their next feed
-// offset. Indexers clamp the requested page size, so offsets drift apart and
-// each distinct offset needs its own request.
 func groupIndexersByOffset(active []int, offsets map[int]int) map[int][]int {
 	groups := make(map[int][]int)
 	for _, id := range active {
@@ -79,13 +59,6 @@ func groupIndexersByOffset(active []int, offsets map[int]int) map[int][]int {
 	return groups
 }
 
-// pageAutomationFeed extends the first feed page with deeper pages, so
-// announces that scrolled past one page between runs are still handled. Each
-// indexer pages on while its previous page contained at least one item the
-// feed-item store has not seen, and stops on an empty page, a fully known
-// page, or the page cap. Offsets advance by the number of items the indexer
-// actually returned. Deeper pages run at background priority and are best
-// effort: an error, timeout, or queue skip keeps everything fetched so far.
 func (s *Service) pageAutomationFeed(ctx context.Context, firstPage *jackett.SearchResponse, maxPages int) {
 	if maxPages <= 1 || s.automationStore == nil || s.jackettService == nil {
 		return
@@ -94,7 +67,6 @@ func (s *Service) pageAutomationFeed(ctx context.Context, firstPage *jackett.Sea
 	handled := func(guid string, indexerID int) bool {
 		seen, _, err := s.automationStore.HasProcessedFeedItem(ctx, guid, indexerID)
 		if err != nil {
-			// Unknown store state must not extend paging.
 			log.Debug().
 				Err(err).
 				Str("guid", guid).
@@ -159,7 +131,6 @@ func (s *Service) pageAutomationFeed(ctx context.Context, firstPage *jackett.Sea
 	}
 }
 
-// recentFeedPage fetches one feed page synchronously.
 func (s *Service) recentFeedPage(ctx context.Context, offset int, indexerIDs []int) (*jackett.SearchResponse, error) {
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)

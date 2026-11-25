@@ -40,7 +40,6 @@ func TestLimit(t *testing.T) {
 	}
 }
 
-// sent counts the events that the notice module sends.
 type sent struct {
 	mu     sync.Mutex
 	events []notifications.Event
@@ -58,7 +57,6 @@ func (s *sent) count() int {
 	return len(s.events)
 }
 
-// fakeDisk is a disk with a free space that the test sets.
 type fakeDisk struct {
 	mu    sync.Mutex
 	free  int64
@@ -79,8 +77,6 @@ func (d *fakeDisk) read(_ context.Context, dir string) (disk, error) {
 	return disk{freeBytes: d.free, totalBytes: d.total}, nil
 }
 
-// The test disk has 10 GB, so its limit is 500 MB, and the notice closes at
-// 550 MB.
 const (
 	lowFree    = 400 * mb
 	plentyFree = 600 * mb
@@ -137,8 +133,7 @@ func TestTheNoticeOpensBelowTheLimit(t *testing.T) {
 
 func TestTheDismissRule(t *testing.T) {
 	tests := []struct {
-		name string
-		// after runs after the user dismissed the notice of a low disk.
+		name     string
 		after    func(t *testing.T, monitor *Monitor, notices *systemnotice.Module, disk *fakeDisk)
 		wantOpen bool
 	}{

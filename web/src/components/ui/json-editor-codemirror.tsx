@@ -11,7 +11,6 @@ import CodeMirror, { EditorView } from "@uiw/react-codemirror"
 import { useMemo } from "react"
 import type { JsonEditorProps } from "./json-editor"
 
-// Mapped to the qui CSS variables so the editor follows every theme; no stock theme package.
 const quiTheme = EditorView.theme({
   "&": {
     backgroundColor: "var(--background)",
@@ -44,14 +43,12 @@ const quiHighlight = HighlightStyle.define([
   { tag: [tags.number, tags.bool, tags.null], color: "var(--chart-3)" },
 ])
 
-// jsonParseLinter reports a zero-width diagnostic, which renders as a dot; stretch it to the line end so the error is underlined.
 const parseLinter = jsonParseLinter()
 const jsonLint = linter((view) => parseLinter(view).map((d) => ({ ...d, to: view.state.doc.lineAt(d.from).to })))
 
 const baseExtensions = [json(), jsonLint, quiTheme, syntaxHighlighting(quiHighlight), EditorView.lineWrapping]
 
 export default function JsonEditorCodeMirror({ value, onChange, placeholder, "aria-label": ariaLabel }: JsonEditorProps) {
-  // The wrapper div takes stray props; the label must sit on .cm-content, the role="textbox" element.
   const extensions = useMemo(
     () => [...baseExtensions, EditorView.contentAttributes.of({ "aria-label": ariaLabel })],
     [ariaLabel]

@@ -19,7 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// newExportDryRunService boots a Service with a source holding one torrent in /data, in state, and an empty target.
 func newExportDryRunService(t *testing.T, state string) (svc *Service, sourceID, targetID int) {
 	t.Helper()
 

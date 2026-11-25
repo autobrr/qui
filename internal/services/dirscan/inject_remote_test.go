@@ -20,8 +20,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// fakeRemoteHost is an instance's own backend: its dialect, and every call it took.
-// Any method it does not define panics on the nil embedded Backend.
 type fakeRemoteHost struct {
 	fsops.Backend
 	d           fsops.PathDialect
@@ -73,7 +71,6 @@ func (h *fakeRemoteHost) RemoveTree(_ context.Context, created *fsops.TreeCreate
 	return nil
 }
 
-// remoteInjectRequest is a full match of one file in a folder that keeps the torrent's own names.
 func remoteInjectRequest(d fsops.PathDialect, scanInstance *models.Instance) *InjectRequest {
 	const folder = "Synthetic.Film.2024.1080p.WEB.x264-GRP"
 	searcheePath := dialectPath(d, "/data/lib/"+folder)
@@ -122,7 +119,6 @@ func TestInjectRegularOnRemoteInstance(t *testing.T) {
 	}
 }
 
-// Without the walked row nothing could tell whether this row is still the server the searchee's paths came from.
 func TestInjectRefusesARequestWithNoScanInstance(t *testing.T) {
 	t.Parallel()
 
@@ -131,7 +127,6 @@ func TestInjectRefusesARequestWithNoScanInstance(t *testing.T) {
 	manager := &recordingTorrentManager{}
 	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, (&settleFake{}).idle(), nil), nil, nil, remotePoolOver(row, host, &remoteSpy{}))
 
-	// Not the inject helper, which fills in a nil ScanInstance.
 	result, err := injector.Inject(t.Context(), remoteInjectRequest(fsops.SlashPaths, nil))
 
 	require.EqualError(t, err, "inject request missing scan instance")
@@ -282,8 +277,6 @@ func TestValidateLinkTreeInstance(t *testing.T) {
 	}
 }
 
-// statFailingHost answers every Stat and MkdirAll with err, as SSH does while
-// qBittorrent stays reachable.
 type statFailingHost struct {
 	*fakeRemoteHost
 	err     error
@@ -301,7 +294,6 @@ func (h *statFailingHost) MkdirAll(context.Context, string, fs.FileMode) error {
 	return h.err
 }
 
-// regression: #2919
 func TestInjectDoesNotGuessTheLayoutWhenTheHostStopsAnswering(t *testing.T) {
 	t.Parallel()
 

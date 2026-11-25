@@ -35,7 +35,7 @@ func TestShouldAcceptDirScanMatch_PiecePercentThreshold(t *testing.T) {
 
 	settings := &models.DirScanSettings{
 		AllowPartial:                 true,
-		MinPieceRatio:                70, // percent
+		MinPieceRatio:                70,
 		SkipPieceBoundarySafetyCheck: true,
 	}
 
@@ -408,9 +408,6 @@ func TestDescribeDirScanDecisionHints_FlexibleCorroborationFailure(t *testing.T)
 	}
 }
 
-// A flexible size-only match of one file needs a second proof. Two names share
-// a title when they pass the title rule of the Match verdict, as on every
-// cross-seed Match path.
 func TestRefineDirScanMatchDecision_TitlesMatch(t *testing.T) {
 	t.Parallel()
 

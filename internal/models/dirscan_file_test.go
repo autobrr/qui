@@ -84,7 +84,6 @@ func TestDirScanStore_UpsertFile_RoundTripsSearchedIndexerIDs(t *testing.T) {
 	require.Len(t, files, 1)
 	require.Equal(t, []int{3, 7}, files[0].SearchedIndexerIDs)
 
-	// A nil set writes NULL and reads back as nil.
 	file.SearchedIndexerIDs = nil
 	require.NoError(t, store.UpsertFile(ctx, file))
 	files, err = store.ListFiles(ctx, dir.ID, nil, 10, 0)
@@ -152,10 +151,6 @@ func bytesOfLength(length int, value byte) []byte {
 	return result
 }
 
-// The first scan after the migration stores the tagged ID; the scan after
-// that sees the same ID at a new path and moves the row instead of adding one.
-// A directory moved to another instance keeps its rows but drops their file
-// IDs: an ID only means the same file on the filesystem it was read from.
 func TestDirScanStore_UpdateDirectory_ClearsFileIDsWhenTargetInstanceChanges(t *testing.T) {
 	ctx := context.Background()
 	db := setupDirScanTestDB(t)
@@ -232,8 +227,6 @@ func TestDirScanStore_UpdateDirectory_KeepsFileIDsWhenTheUpdateFails(t *testing.
 		Status:      models.DirScanFileStatusPending,
 	}))
 
-	// The handler validates the target instance but not the arr instance, so a
-	// missing arr instance reaches the store and the foreign key rejects the row.
 	missingArr := 999999
 	_, err = store.UpdateDirectory(ctx, dir.ID, &models.DirScanDirectoryUpdateParams{
 		TargetInstanceID: &second.ID,

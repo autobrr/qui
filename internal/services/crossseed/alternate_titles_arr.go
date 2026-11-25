@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -29,6 +30,9 @@ func (a arrAlternateTitles) AlternateTitles(ctx context.Context, held HeldReleas
 		return AlternateTitles{}, nil
 	}
 	result, err := a.arr.LookupExternalIDs(ctx, held.TorrentName, contentType)
+	if errors.Is(err, arr.ErrTitleUnanswered) {
+		return AlternateTitles{Requested: true}, fmt.Errorf("look up the alternate titles of %s: %w: %w", contentType, ErrTitleUnanswered, err)
+	}
 	if err != nil {
 		return AlternateTitles{Requested: true}, fmt.Errorf("look up the alternate titles of %s: %w", contentType, err)
 	}

@@ -27,7 +27,6 @@ import type { ExternalProgram, ExternalProgramPayload, PathMapping } from "@/typ
 const PROGRAMS_KEY = ["externalPrograms"]
 const TOGGLE_KEY = ["externalPrograms", "toggle"]
 
-/** The automations that use a program, from the 409 answer to a delete. */
 interface AutomationReference {
   id: number
   instanceId: number
@@ -36,7 +35,6 @@ interface AutomationReference {
 
 interface DeleteState {
   program: ExternalProgram
-  /** The automations that use the program, once the server refused the first delete. */
   conflict: AutomationReference[] | null
   open: boolean
 }
@@ -64,9 +62,7 @@ export function ExternalProgramsManager() {
   const queryClient = useQueryClient()
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<ExternalProgram | null>(null)
-  // A new key on each open gives the form fresh state.
   const [editorSession, setEditorSession] = useState(0)
-  // The dialog keeps its program and its text while it fades out.
   const [deleting, setDeleting] = useState<DeleteState | null>(null)
 
   const errorText = (error: unknown) => error instanceof Error && error.message ? error.message : t("externalPrograms.unknownError")
@@ -81,7 +77,6 @@ export function ExternalProgramsManager() {
     mutationFn: ({ id, data }: { id: number | null; data: ExternalProgramPayload }) =>
       id === null ? api.createExternalProgram(data) : api.updateExternalProgram(id, data),
     onSuccess: (saved, { id }) => {
-      // The switch sends every field of its row, so the row holds the saved values before the switch is in reach again.
       if (id !== null) queryClient.setQueryData<ExternalProgram[]>(PROGRAMS_KEY, (old) => old?.map((item) => item.id === id ? saved : item))
       void queryClient.invalidateQueries({ queryKey: PROGRAMS_KEY })
       setEditorOpen(false)
@@ -92,7 +87,6 @@ export function ExternalProgramsManager() {
   const setEnabledInCache = (id: number, enabled: boolean) =>
     queryClient.setQueryData<ExternalProgram[]>(PROGRAMS_KEY, (old) => old?.map((item) => item.id === id ? { ...item, enabled } : item))
 
-  // The switch and the editor of a program take no save while its switch save runs, so two saves of one program never overlap.
   const toggleMutation = useMutation({
     mutationKey: TOGGLE_KEY,
     mutationFn: (program: ExternalProgram) => api.updateExternalProgram(program.id, toPayload(program)),
@@ -112,7 +106,6 @@ export function ExternalProgramsManager() {
     mutationFn: ({ id, force }: { id: number; force: boolean }) => api.deleteExternalProgram(id, force),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PROGRAMS_KEY })
-      // A forced delete removes the program action from the automations that used it.
       void queryClient.invalidateQueries({ queryKey: ["automations"] })
       toast.success(t("externalPrograms.toasts.deleted"))
     },
@@ -121,7 +114,6 @@ export function ExternalProgramsManager() {
         ? (error.data as { automations?: AutomationReference[] } | undefined)?.automations
         : undefined
       if (automations) {
-        // The dialog stays open and lists the automations, and the next confirm forces the delete.
         setDeleting((current) => current && { ...current, conflict: automations })
         return
       }
@@ -184,7 +176,6 @@ export function ExternalProgramsManager() {
           }}
         />
       </Section>
-      {/* Outside the section, so a failed refetch of the list never takes an open form away. */}
       <ProgramEditor
         key={editorSession}
         open={editorOpen}
@@ -227,7 +218,6 @@ export function ExternalProgramsManager() {
 interface ProgramEditorProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** The program to edit, or null for a new one. */
   program: ExternalProgram | null
   pending: boolean
   submitDisabled: boolean
@@ -339,7 +329,6 @@ function ProgramEditor({ open, onOpenChange, program, pending, submitDisabled, e
   )
 }
 
-/** The placeholders that the arguments can hold, folded away until the user opens them. */
 function PlaceholderList() {
   const { t } = useTranslation("settings")
   return (
@@ -362,7 +351,6 @@ function PlaceholderList() {
   )
 }
 
-/** Pairs of a remote path and a local path. A phone puts the two paths of a pair one above the other, each with its label. */
 function PathMappingsField({ mappings, onChange }: { mappings: PathMapping[]; onChange: (mappings: PathMapping[]) => void }) {
   const { t } = useTranslation("settings")
   const labelId = useId()

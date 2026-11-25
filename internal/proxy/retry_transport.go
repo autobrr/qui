@@ -20,10 +20,9 @@ import (
 )
 
 const (
-	maxRetries       = 3
-	initialRetryWait = 50 * time.Millisecond
-	maxRetryWait     = 500 * time.Millisecond
-	// Small qBittorrent form posts should be replayable after re-login.
+	maxRetries            = 3
+	initialRetryWait      = 50 * time.Millisecond
+	maxRetryWait          = 500 * time.Millisecond
 	maxAuthReplayBodySize = 10 * 1024 * 1024
 )
 
@@ -267,8 +266,6 @@ func isRetryableError(err error) bool {
 }
 
 func isRetryableNetError(err error) bool {
-	// Check OpError first - dial errors (including dial timeouts) are retryable
-	// since they indicate transient connection issues, not slow server responses
 	if opErr, ok := errors.AsType[*net.OpError](err); ok {
 		if opErr.Op == "dial" {
 			return true
@@ -276,7 +273,7 @@ func isRetryableNetError(err error) bool {
 		if opErr.Op == "read" {
 			var netErr net.Error
 			if errors.As(err, &netErr) && netErr.Timeout() {
-				return false // Read timeout = slow server, don't retry
+				return false
 			}
 			return true
 		}
@@ -311,8 +308,6 @@ func isIdempotentMethod(method string) bool {
 	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
 		return true
 	case http.MethodPut, http.MethodDelete:
-		// PUT and DELETE are technically idempotent but we should be more conservative
-		// in a proxy scenario. For qBittorrent API, most mutations are POST anyway.
 		return false
 	default:
 		return false

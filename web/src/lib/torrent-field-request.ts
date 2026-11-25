@@ -7,8 +7,6 @@ import type { TorrentFilters } from "@/types"
 
 import type { TorrentActionTarget } from "./torrent-action-targets"
 
-// Fields the context menu copies on demand. The /torrents/field endpoint also
-// accepts "tags" (bulk tag baselines); api.ts keeps that wider union.
 export type TorrentFieldName = "name" | "hash" | "full_path" | "magnet_uri"
 
 export interface TorrentFieldScope {
@@ -27,9 +25,6 @@ export interface TorrentFieldSelection {
   targets: TorrentActionTarget[]
 }
 
-// Builds the /torrents/field request body. An explicit selection resolves by
-// hash on a single instance and by instance/hash targets on the unified view;
-// without a selection the request carries the active filter scope (select-all).
 export function buildTorrentFieldRequest(scope: TorrentFieldScope, selection?: TorrentFieldSelection) {
   const { isCrossInstance, ...rest } = scope
   if (selection) {

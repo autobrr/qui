@@ -15,9 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// TestAutomationDocsExamples runs each json block on the automations docs page through the rule check, so a docs example cannot drift from the code.
-// The instance has local filesystem access, so the check does not reject fields that need it.
-// The check does not look up programs or target instances.
 func TestAutomationDocsExamples(t *testing.T) {
 	doc, err := os.ReadFile("../../../documentation/docs/features/automations.md")
 	if err != nil {

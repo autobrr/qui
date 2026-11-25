@@ -1,7 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package testutil holds small helpers that tests in several packages share.
 package testutil
 
 import (
@@ -30,20 +29,15 @@ func SymlinkOrSkip(t testing.TB, target, link string) {
 	require.NoError(t, err)
 }
 
-// RoundTripFunc is an http.RoundTripper that answers with the function.
 type RoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// SetUnexportedField sets a field, exported or not, on the struct that target
-// points to, for a test that cannot reach it through a constructor.
 func SetUnexportedField(t testing.TB, target any, fieldName string, value any) {
 	t.Helper()
 	UnexportedField(t, reflect.ValueOf(target).Elem(), fieldName).Set(reflect.ValueOf(value))
 }
 
-// UnexportedField returns a field, exported or not, of the struct v, as a
-// value that the test can read and set.
 func UnexportedField(t testing.TB, v reflect.Value, fieldName string) reflect.Value {
 	t.Helper()
 	field := v.FieldByName(fieldName)

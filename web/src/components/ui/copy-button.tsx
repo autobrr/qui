@@ -15,16 +15,11 @@ const CHECK_MS = 1500
 
 interface CopyButtonProps {
   value: string
-  // Names the value in the toast and the accessible name, such as "Save Path"
   label: string
   className?: string
   iconClassName?: string
 }
 
-/**
- * An icon button that copies a value, shows a toast, and turns its copy icon
- * into a green check for a moment.
- */
 export function CopyButton({ value, label, className, iconClassName = "size-3.5" }: CopyButtonProps) {
   const { t } = useTranslation("common")
   const [copied, setCopied] = useState(false)
@@ -32,7 +27,6 @@ export function CopyButton({ value, label, className, iconClassName = "size-3.5"
   useEffect(() => () => clearTimeout(timer.current), [])
 
   const handleClick = async (e: MouseEvent) => {
-    // The button often sits in a clickable row
     e.stopPropagation()
     try {
       await copyTextToClipboard(value)
@@ -51,7 +45,6 @@ export function CopyButton({ value, label, className, iconClassName = "size-3.5"
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          // The button often sits in a form, for example in the Facts of an editor, and a copy saves nothing.
           type="button"
           variant="ghost"
           size="icon"

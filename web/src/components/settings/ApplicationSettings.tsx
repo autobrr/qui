@@ -34,7 +34,6 @@ function formatSessionAuth(user: User | undefined): string {
   return username ? `${method} (${username})` : method
 }
 
-/** The Application tab: the build of qui and its updates, the support shortcut, the runtime, the sign-in setup, and the storage paths. */
 export function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: boolean; onUpdateOpened: () => void }) {
   const { t } = useTranslation("settings")
   const { formatISOTimestamp, formatTimestamp } = useDateTimeFormatters()
@@ -73,7 +72,6 @@ export function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdat
     void currentUserQuery.refetch()
   }
 
-  // The install dialog lives in the button, so the button must stay on the page when the info fails to load.
   const installButton = (className: string) => latest && (
     <InstallUpdateButton selfUpdate={selfUpdate} release={latest} className={className} />
   )
@@ -112,7 +110,6 @@ export function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdat
       {
         label: t("application.build.updateStatus"),
         value: status.label,
-        // On a phone the install button sits beside the hint, so the date gets a line of its own.
         hint: (
           <>
             {status.detail && <span className="max-sm:block">{status.detail}<span aria-hidden="true" className="max-sm:hidden"> · </span></span>}
@@ -193,7 +190,6 @@ export function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdat
   )
 }
 
-/** The uptime from the last load of the info, counted up each second. */
 function LiveUptime({ seconds, since }: { seconds: number; since: number }) {
   const [now, setNow] = useState(Date.now)
   useEffect(() => {

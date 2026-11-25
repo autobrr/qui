@@ -63,9 +63,6 @@ func TestGetFileIDWindowsOpenFailure(t *testing.T) {
 	require.Zero(t, links)
 }
 
-// TestLegacyFileIDWindows covers the fallback taken on volumes that reject the
-// FileIdInfo query (FAT/exFAT, some SMB redirectors). It cannot be reached
-// through GetFileID on NTFS, so it is exercised directly.
 func TestLegacyFileIDWindows(t *testing.T) {
 	dir := t.TempDir()
 	sourcePath := filepath.Join(dir, "source")

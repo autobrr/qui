@@ -25,11 +25,6 @@ import (
 
 const musicQuerySourceHash = "5f2b1c4d3e6a7089bacd1122334455667788990a"
 
-// A category mapping rule forces music on a name that parses with TV structure,
-// such as a disc image with no audio extension. The request on the wire keeps the
-// album title in the query and sends no season or episode.
-// TestBuildTorznabRequest holds the other query rules.
-// TestDetermineContentTypeWithFiles holds the file signal that forces music.
 func TestSearchTorrentMatches_ForcedMusicBuildsMusicQuery(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -120,8 +115,6 @@ func TestSearchTorrentMatches_ForcedMusicBuildsMusicQuery(t *testing.T) {
 			require.NotEqual(t, "music", DetermineContentTypeWithFiles(contentDetectionRelease, sourceFiles).ContentType,
 				"fixture only exercises the rule while the file signal does not already say music")
 
-			// nil gazelle clients: this source is not a gazelle tracker, and a client set here
-			// would send the fixture out to the real RED/OPS hosts.
 			_, err = svc.searchTorrentMatches(ctx, instance.ID, musicQuerySourceHash, TorrentSearchOptions{}, searchScope{torznabIndexerIDs: []int{1}}, nil)
 			require.NoError(t, err)
 

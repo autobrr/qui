@@ -32,19 +32,15 @@ const LICENSE_PLAN = "license"
 const LINK = "-my-2 py-2 underline underline-offset-4 hover:text-foreground"
 const PHONE_BOTTOM = "pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
 
-// Focus goes to the dialog itself, not to its first control: a screen reader starts at
-// the title, and no control shows a focus ring that the user did not ask for.
 function focusContent(event: Event) {
   event.preventDefault()
   if (event.target instanceof HTMLElement) event.target.focus()
 }
 
-/** The one support dialog of the app. openSupport opens it from any place. */
 export function SupportDialogRoot() {
   return <SupportDialog open={useSupportOpen()} onOpenChange={setSupportOpen} />
 }
 
-/** A dialog on a wide screen, and a bottom sheet on a phone. */
 export function SupportDialog({ open, onOpenChange }: SupportDialogProps) {
   const { t } = useTranslation("common")
   const isPhone = useIsPhone()
@@ -91,7 +87,6 @@ function Heading({ children }: { children: ReactNode }) {
   return <h2 className="flex items-center gap-2 pr-8 pb-2 text-lg leading-7 font-semibold tracking-tight sm:text-xl">{children}</h2>
 }
 
-// One square is one day, and one column is one week. The newest week is at the right.
 function ReleaseMap({ days }: { days: number[] }) {
   const { t } = useTranslation("common")
   const releaseDays = new Set(days)
@@ -121,14 +116,12 @@ function SupportBody({ onClose }: { onClose: () => void }) {
   const isPhone = useIsPhone()
   const { hasPremiumAccess, isSupporter } = useHasPremiumAccess()
   const reminder = useSupportReminder()
-  // The body mounts on each open. The count stays for this open, also after the answer below ends the reminder.
   const [reminderDays] = useState(reminder.due ? reminder.days : null)
   const { data: licenses } = useLicenseDetails()
   const deleteLicense = useDeleteLicense()
   const [addingKey, setAddingKey] = useState(false)
   const [planId, setPlanId] = useState<string>(DODO_SUPPORTER_PLANS[0].id)
 
-  // An open of the dialog while the reminder is due answers the reminder for a year.
   useEffect(() => {
     if (reminder.due) answerReminder()
   }, [reminder.due])
@@ -177,9 +170,7 @@ function SupportBody({ onClose }: { onClose: () => void }) {
     )
   }
 
-  // As in Settings, a server with a stored theme license gets no offer to buy the license again, also when the license is not valid.
   const licensed = hasPremiumAccess || Boolean(themeLicense)
-  // The license plan can go away after the user picks it, when the license list loads. The first yearly plan then takes its place.
   const selectedId = licensed && planId === LICENSE_PLAN ? DODO_SUPPORTER_PLANS[0].id : planId
   const supporterPlan = DODO_SUPPORTER_PLANS.find((plan) => plan.id === selectedId)
   const releaseDays = import.meta.env.VITE_RELEASE_DAYS ?? []
@@ -220,7 +211,6 @@ function SupportBody({ onClose }: { onClose: () => void }) {
             <p>
               <Trans ns="common" i18nKey="support.ended" components={{ portal: <LicensePortalLink /> }} />
             </p>
-            {/* A payment that failed makes the key invalid too, and the customer portal is where the user fixes it. */}
             <p className="flex flex-wrap gap-x-4">
               <a href={DODO_CUSTOMER_PORTAL_URL} target="_blank" rel="noopener noreferrer" className={LINK}>
                 {t("support.supporter.manage")}
@@ -247,17 +237,14 @@ function SupportBody({ onClose }: { onClose: () => void }) {
         )}
       </RadioGroup>
 
-      {/* On a phone, the checkout button stays in view under the text that scrolls. */}
       <div className={cn("space-y-2", isPhone && "sticky bottom-0 order-last -mx-5 border-t bg-background px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]")}>
         <Button className="h-12 w-full justify-between px-4 aria-disabled:pointer-events-none aria-disabled:opacity-50 sm:h-11" asChild>
           {supporterPlan ? (
-            // The demo has no server that can take a key.
             <a href={supporterPlan.url} target="_blank" rel="noopener noreferrer" onClick={isDemo ? undefined : () => setAddingKey(true)}>
               <span className="font-medium">{t("support.checkout")}</span>
               <span className="tabular-nums opacity-90">{t("support.plans.yearly", { price: supporterPlan.price })}</span>
             </a>
           ) : (
-            // Without the license list, the server can have a stored theme license that the dialog does not know.
             <a href={licenses ? themeLicenseCheckoutUrl() : undefined} aria-disabled={!licenses || undefined}>
               <span className="font-medium">{t("support.checkout")}</span>
               <span className="tabular-nums opacity-90">{t("support.fromPrice", { price: THEME_LICENSE_MIN_PRICE })}</span>
@@ -279,9 +266,7 @@ function SupportBody({ onClose }: { onClose: () => void }) {
             </button>
           </p>
         )}
-        {/* The notice above has this action for a key that is not valid. A key in another state, such as offline, gets it here. */}
         {supporterKey && supporterKey.status !== "invalid" && <p>{removeKey}</p>}
-        {/* Settings, where both come back, is not in the demo. */}
         {!isDemo && reminder.settled && !reminder.shortcutHidden && (
           <p>
             <Trans

@@ -3,18 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-/**
- * Column definition for CSV export.
- */
 export interface CsvColumn<T> {
   header: string
   accessor: (row: T) => string | number | boolean | null | undefined
 }
 
-/**
- * Escape a value for CSV format (RFC 4180).
- * Wraps in quotes if contains comma, newline, or double-quote.
- */
 function escapeCsvValue(value: string | number | boolean | null | undefined): string {
   if (value == null) return ""
   const str = String(value)
@@ -24,9 +17,6 @@ function escapeCsvValue(value: string | number | boolean | null | undefined): st
   return str
 }
 
-/**
- * Convert rows to CSV string.
- */
 export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
   const headerLine = columns.map(c => escapeCsvValue(c.header)).join(",")
   const dataLines = rows.map(row =>
@@ -35,9 +25,6 @@ export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
   return [headerLine, ...dataLines].join("\n")
 }
 
-/**
- * Trigger a file download in the browser.
- */
 export function downloadBlob(content: string, filename: string, mimeType = "text/csv;charset=utf-8"): void {
   const blob = new Blob([content], { type: mimeType })
   const url = URL.createObjectURL(blob)

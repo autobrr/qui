@@ -58,7 +58,6 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
-  // Keep table responsive while tasks run and ease off polling once queue clears
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["torrent-creation-tasks", instanceId],
     queryFn: () => api.getTorrentCreationTasks(instanceId),
@@ -107,14 +106,12 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
 
   return (
     <div>
-      {/* Mobile/Tablet Card Layout */}
       <div className="lg:hidden space-y-3 p-4">
         {tasks.map((task) => (
           <div
             key={task.taskID}
             className="border rounded-lg p-4 space-y-3 bg-card"
           >
-            {/* Header with source and status */}
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0 space-y-1">
                 <Tooltip>
@@ -141,7 +138,6 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
               </div>
             </div>
 
-            {/* Progress bar for running tasks */}
             {task.status === "Running" && task.progress !== undefined && (
               <div className="space-y-1.5">
                 <Progress value={task.progress} className="h-2" />
@@ -151,14 +147,12 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
               </div>
             )}
 
-            {/* Error message */}
             {task.errorMessage && (
               <div className="text-xs text-destructive break-words">
                 {task.errorMessage}
               </div>
             )}
 
-            {/* Footer with date and actions */}
             <div className="flex items-center justify-between gap-3 pt-2 border-t">
               <div className="text-xs text-muted-foreground">
                 {formatDate(new Date(task.timeAdded))}
@@ -188,7 +182,6 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
         ))}
       </div>
 
-      {/* Desktop Table Layout */}
       <div className="hidden lg:block">
         <Table>
           <TableHeader>

@@ -19,16 +19,11 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// settlePoll is what qBittorrent shows on one poll of the settle worker.
 type settlePoll struct {
-	// torrent is nil while qBittorrent does not list the torrent.
 	torrent *qbt.Torrent
-	// before changes the fake just before the worker reads this poll.
-	before func(*settleFake)
+	before  func(*settleFake)
 }
 
-// settleFake is qBittorrent for the settle module. Each worker poll takes the
-// next entry of polls; after the last one the torrent is gone.
 type settleFake struct {
 	mu              sync.Mutex
 	polls           []settlePoll
@@ -48,7 +43,6 @@ type settleFake struct {
 func (f *settleFake) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// The worker reads once by hash and again unfiltered only when a hash is missing.
 	if len(filter.Hashes) > 0 {
 		f.current = nil
 		if f.next < len(f.polls) {
@@ -147,9 +141,6 @@ func joinPolls(parts ...[]settlePoll) []settlePoll {
 	return out
 }
 
-// TestSettle drives the settle module through Settle and a fake qBittorrent.
-// Each row is an add, the torrent states the worker sees on each poll, and the
-// calls qBittorrent must receive.
 func TestSettle(t *testing.T) {
 	const (
 		have    = qbt.PieceStateAlreadyDownloaded
@@ -164,13 +155,9 @@ func TestSettle(t *testing.T) {
 		uploading    = torrentAt(qbt.TorrentStateUploading, 1, 0)
 		queuedUp     = torrentAt(qbt.TorrentStateQueuedUp, 1, 0)
 		missingFiles = torrentAt(qbt.TorrentStateMissingFiles, 0.0101, 2<<30)
-		// probe resumes any entry still queued after a sawn piece check.
-		probe = repeatPoll(torrentAt(qbt.TorrentStatePausedDl, 1, 0), 2)
+		probe        = repeatPoll(torrentAt(qbt.TorrentStatePausedDl, 1, 0), 2)
 	)
 
-	// The mkv reports slightly under 1: qbit file progress is piece-based, so the
-	// piece spanning the mkv/sample boundary fails hashing when the sample is
-	// absent. Its few missing MiB must count against the budget, not veto forgiveness.
 	sampleOnlyMissing := qbt.TorrentFiles{
 		{Name: "Show.S01E01.mkv", Progress: 0.999, Priority: 1, Size: 4 << 30},
 		{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 70 << 20},
@@ -185,33 +172,22 @@ func TestSettle(t *testing.T) {
 		{Name: "Show.S01E02.mkv", Progress: 0, Priority: 0, Size: 4 << 30},
 		{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 70 << 20},
 	}
-	// A real title containing an ignore keyword must stay relevant: substring
-	// matching would classify this episode as a "trailer" sidecar and resume.
 	keywordTitleMissing := qbt.TorrentFiles{
 		{Name: "Trailer.Park.Boys.S01E01.mkv", Progress: 0.9, Priority: 1, Size: 1500 << 20},
 	}
-	// A directory that merely ends in an ignore keyword is not a sidecar dir:
-	// unanchored "sample/" matching would forgive this missing video.
 	keywordSuffixDirMissing := qbt.TorrentFiles{
 		{Name: "Movie.Resample/video.mkv", Progress: 0.5, Priority: 1, Size: 300 << 20},
 	}
-	// A keyword at the end of the stem is a qualifier under any separator, not
-	// just "-": these samples must be forgivable. Each sample alone exceeds the
-	// 50 MiB budget so a mutant dropping either separator fails this row.
 	dottedSampleMissing := qbt.TorrentFiles{
 		{Name: "Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 4 << 30},
 		{Name: "Movie.2024.Sample.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
 		{Name: "Movie_sample.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
 	}
-	// A bonus folder marks its videos, also in the plural. Each video alone
-	// exceeds the 50 MiB budget, so a mutant dropping either form fails this row.
 	bonusFolderMissing := qbt.TorrentFiles{
 		{Name: "Show.S01/Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 4 << 30},
 		{Name: "Show.S01/Extras/Behind the Scenes.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
 		{Name: "Show.S01/Featurettes/Making Of.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
 	}
-	// "Resample" merely ends in "sample": separator-less suffix matching would
-	// forgive this real video.
 	keywordSuffixStemMissing := qbt.TorrentFiles{
 		{Name: "Movie.Resample.mkv", Progress: 0.5, Priority: 1, Size: 300 << 20},
 	}
@@ -220,7 +196,6 @@ func TestSettle(t *testing.T) {
 		{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 70 << 20},
 	}
 
-	// E01 and E02 are linked, E03 is pending. Piece 15 sits inside E02 alone.
 	insideFiles := qbt.TorrentFiles{
 		{Name: "Show.S01/Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
 		{Name: "Show.S01/Show.S01E02.mkv", Progress: 0.9, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 19}},
@@ -234,7 +209,6 @@ func TestSettle(t *testing.T) {
 	for i := 20; i < 30; i++ {
 		insidePieces[i] = missing
 	}
-	// E02 shares piece 20 with pending E03; that piece is the only failure.
 	straddleFiles := qbt.TorrentFiles{
 		{Name: "Show.S01/Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
 		{Name: "Show.S01/Show.S01E02.mkv", Progress: 0.95, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 20}},
@@ -247,9 +221,6 @@ func TestSettle(t *testing.T) {
 	for i := 20; i < 30; i++ {
 		straddlePieces[i] = missing
 	}
-	// An empty file reports [start, start-1]; it occupies no piece and must not
-	// excuse a neighbour. E01 fails its last piece, an empty pending file follows
-	// at [10,9], and another sits at offset zero as [0,-1].
 	emptyFiles := qbt.TorrentFiles{
 		{Name: "Show.S01/zero.txt", Progress: 1, Priority: 1, Size: 0, PieceRange: []int{0, -1}},
 		{Name: "Show.S01/Show.S01E01.mkv", Progress: 0.9, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
@@ -263,10 +234,8 @@ func TestSettle(t *testing.T) {
 	for i := 9; i < 20; i++ {
 		emptyPieces[i] = missing
 	}
-	// Keyed by path: qBittorrent drops pad files from its list and renumbers indexes.
 	linked := map[string]struct{}{"Show.S01/Show.S01E01.mkv": {}, "Show.S01/Show.S01E02.mkv": {}}
 	linkedPartial := torrentAt(qbt.TorrentStatePausedDl, 0.66, 30<<20)
-	// qBittorrent lists a hybrid torrent by its v2 hash; the add knows the v1 hash first.
 	hybridPartial := &qbt.Torrent{
 		Hash: "v2hash", InfohashV1: "v1hash", InfohashV2: "v2hash",
 		State: qbt.TorrentStatePausedDl, Progress: 0.66, AmountLeft: 30 << 20, Completed: 1,
@@ -292,10 +261,8 @@ func TestSettle(t *testing.T) {
 		wantOutcome SettleOutcome
 		wantActions []string
 		wantReads   int
-		// wantBlocked is the linked file named in the season pack history row.
 		wantBlocked string
 	}{
-		// Budget gate.
 		{
 			name:        "missing bytes within budget resume without file fetch",
 			added:       budget(50 << 20),
@@ -418,8 +385,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "resume:hash1"},
 		},
 		{
-			// Ordinary zero-budget entries trust zero missing bytes even when
-			// piece progress reads under 1. The verify gate uses full progress.
 			name:        "budget zero trusts zero missing bytes over progress",
 			added:       budget(0),
 			fake:        &settleFake{polls: budgetDecision(0, 0.99)},
@@ -435,9 +400,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1"},
 		},
 		{
-			// Before the recheck settles the video still reports incomplete, so
-			// forgiveness says no; that verdict must not stick once a later poll
-			// shows only the sample missing.
 			name:  "forgiveness retries after a negative verdict",
 			added: budget(50 << 20),
 			fake: &settleFake{
@@ -458,8 +420,6 @@ func TestSettle(t *testing.T) {
 			wantReads:   2,
 		},
 		{
-			// A recheck can start and finish between polls. A grant earned before
-			// a checking state was seen must not be cached.
 			name:  "forgiveness is not cached before a checking state",
 			added: budget(50 << 20),
 			fake: &settleFake{
@@ -478,8 +438,6 @@ func TestSettle(t *testing.T) {
 			wantReads:   2,
 		},
 		{
-			// A failed resume keeps a cached grant; a later checking state must
-			// drop it so the post-check shortfall decides.
 			name:  "checking clears a cached forgiveness verdict",
 			added: budget(50 << 20),
 			fake: &settleFake{
@@ -501,7 +459,6 @@ func TestSettle(t *testing.T) {
 			wantReads:   2,
 		},
 
-		// Missing-files recovery.
 		{
 			name:        "reflink missingFiles is resumed once",
 			added:       AddedTorrent{Gate: GateBudget, Budget: 50 << 20, RecoverMissingFiles: true},
@@ -524,15 +481,12 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "resume:hash1", "resume:hash1", "resume:hash1"},
 		},
 		{
-			// The threshold gate never takes the recovery flag: a hardlink
-			// season pack in missingFiles stays paused for review.
 			name:        "threshold gate leaves missingFiles for manual review",
 			added:       AddedTorrent{Gate: GateThreshold, Threshold: 0.95, RecoverMissingFiles: true},
 			fake:        &settleFake{polls: joinPolls(polls(missingFiles), probe)},
 			wantActions: []string{"recheck:hash1"},
 		},
 		{
-			// A recovery nudge can start an over-budget torrent downloading.
 			name:  "over-budget recovery download is paused",
 			added: AddedTorrent{Gate: GateBudget, Budget: 50 << 20, RecoverMissingFiles: true},
 			fake: &settleFake{
@@ -545,8 +499,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "resume:hash1", "pause:hash1"},
 		},
 		{
-			// Fetching the file list for forgiveness can stall while the torrent
-			// downloads, so the worker pauses first and decides from the paused state.
 			name:  "recovery download is paused before the forgiveness verdict",
 			added: AddedTorrent{Gate: GateBudget, Budget: 50 << 20, RecoverMissingFiles: true},
 			fake: &settleFake{
@@ -562,7 +514,6 @@ func TestSettle(t *testing.T) {
 			wantReads:   1,
 		},
 		{
-			// A grant earned from the paused state keeps a recovery download running.
 			name:  "granted recovery download is not paused",
 			added: AddedTorrent{Gate: GateBudget, Budget: 50 << 20, RecoverMissingFiles: true},
 			fake: &settleFake{
@@ -581,7 +532,6 @@ func TestSettle(t *testing.T) {
 			wantReads:   1,
 		},
 
-		// Threshold gate and resume confirmation.
 		{
 			name:        "below threshold while downloading keeps watching",
 			added:       threshold(0.95),
@@ -619,7 +569,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "resume:hash1", "resume:hash1", "resume:hash1"},
 		},
 
-		// Verify gate.
 		{
 			name:        "verify resumes after an observed full check",
 			added:       AddedTorrent{Gate: GateVerify},
@@ -627,14 +576,12 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "resume:hash1"},
 		},
 		{
-			// An optimistic 100% before any hash check must not resume.
 			name:        "verify ignores a pre-check 100%",
 			added:       AddedTorrent{Gate: GateVerify},
 			fake:        &settleFake{polls: polls(pausedFull, pausedFull)},
 			wantActions: []string{"recheck:hash1"},
 		},
 		{
-			// Resume-data validation alone does not prove a piece check ran.
 			name:        "verify ignores resume-data validation before the fast-complete delay",
 			added:       AddedTorrent{Gate: GateVerify},
 			fake:        &settleFake{polls: polls(resumeData, pausedFull, pausedFull)},
@@ -647,8 +594,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1"},
 		},
 		{
-			// A 100%-overlap recheck can finish between polls, so checking is never
-			// seen. After the delay a settled 100% resumes, confirms, and drops (#2554).
 			name:  "verify resumes a fast recheck after the delay",
 			added: AddedTorrent{Gate: GateVerify},
 			fake: &settleFake{polls: joinPolls(
@@ -658,7 +603,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "resume:hash1"},
 		},
 		{
-			// Regression: the only checking state seen was the forced-recheck startup.
 			name:  "verify fast resume after only resume-data validation",
 			added: AddedTorrent{Gate: GateVerify},
 			fake: &settleFake{polls: joinPolls(
@@ -675,8 +619,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1"},
 		},
 		{
-			// A resume-data check after a piece check is a qBittorrent restart:
-			// the earlier check no longer proves the recheck ran.
 			name:  "verify interrupted check stays paused after the delay",
 			added: AddedTorrent{Gate: GateVerify},
 			fake: &settleFake{polls: joinPolls(
@@ -702,7 +644,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "resume:hash1", "resume:hash1"},
 		},
 
-		// Monitor gate and skipped auto-resume.
 		{
 			name:        "monitor never resumes a full check",
 			added:       AddedTorrent{Gate: GateMonitor, SkipAutoResume: true},
@@ -711,8 +652,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1"},
 		},
 		{
-			// qBittorrent can report zero missing bytes at zero progress before
-			// the recheck starts; the monitor must also require full progress.
 			name:        "monitor waits for full progress",
 			added:       AddedTorrent{Gate: GateMonitor, SkipAutoResume: true},
 			fake:        &settleFake{polls: polls(torrentAt(qbt.TorrentStatePausedDl, 0, 0), pausedFull)},
@@ -727,10 +666,7 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1"},
 		},
 
-		// A recheck call that fails after the add.
 		{
-			// skip_checking reports 100% before any recheck, so the first poll
-			// must send the recheck, not resume.
 			name:        "failed recheck is sent again and then resumes",
 			added:       budget(50 << 20),
 			fake:        &settleFake{polls: polls(stoppedFull, checkingUp, stoppedFull), recheckFailures: 1},
@@ -752,8 +688,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "recheck:hash1"},
 		},
 		{
-			// Resume-data validation comes first; a piece check then proves the
-			// failed call landed, so the recheck is not sent again.
 			name:        "failed recheck waits out resume-data validation and is not restarted",
 			added:       AddedTorrent{Gate: GateComplete},
 			fake:        &settleFake{polls: polls(resumeData, checkingUp, stoppedFull), recheckFailures: 1},
@@ -761,8 +695,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "resume:hash1"},
 		},
 		{
-			// A piece check seen while the recheck is pending proves the failed
-			// call landed. A qBittorrent restart after it must still block the fast resume.
 			name:  "failed recheck then restart does not resume",
 			added: AddedTorrent{Gate: GateVerify},
 			fake: &settleFake{
@@ -776,7 +708,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1"},
 		},
 
-		// Dir Scan gates.
 		{
 			name:        "after-recheck resumes below 100% once the recheck ran",
 			added:       AddedTorrent{Gate: GateAfterRecheck},
@@ -784,7 +715,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1", "resume:hash1"},
 		},
 		{
-			// A fast recheck can finish between polls; completed bytes prove it ran.
 			name:        "after-recheck resumes on completed bytes without a seen check",
 			added:       AddedTorrent{Gate: GateAfterRecheck},
 			fake:        &settleFake{polls: polls(linkedPartial, linkedPartial)},
@@ -797,7 +727,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1"},
 		},
 		{
-			// Every path waits up to the same absolute timeout, then leaves the torrent paused.
 			name:  "after-recheck gives up at the settle timeout",
 			added: AddedTorrent{Gate: GateAfterRecheck},
 			fake: &settleFake{polls: joinPolls(
@@ -824,8 +753,6 @@ func TestSettle(t *testing.T) {
 			wantActions: []string{"recheck:hash1"},
 		},
 
-		// ADR 0004 linked-file check. A linked file that rechecks below 100%
-		// blocks the resume unless every failed piece straddles a pending file.
 		{
 			name:  "threshold mode mismatched linked file stays paused",
 			added: AddedTorrent{Gate: GateThreshold, Threshold: 0.6, LinkedPaths: linked},
@@ -896,7 +823,6 @@ func TestSettle(t *testing.T) {
 			wantBlocked: "Show.S01/Show.S01E01.mkv",
 		},
 		{
-			// An empty read would make every boundary pack look mismatched.
 			name:  "no piece states retries instead of blocking a boundary pack",
 			added: AddedTorrent{Gate: GateThreshold, Threshold: 0.6, LinkedPaths: linked},
 			fake: &settleFake{
@@ -973,7 +899,6 @@ func TestSettle(t *testing.T) {
 	}
 }
 
-// TestSettleQueueFull covers the status text when the worker cannot take a torrent.
 func TestSettleQueueFull(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1004,7 +929,6 @@ func TestSettleQueueFull(t *testing.T) {
 			want:        " - recheck failed and monitor queue full, manual intervention required - auto-resume skipped per settings",
 		},
 		{
-			// Nothing to watch, so a full queue does not matter.
 			name:  "skipped auto-resume",
 			added: AddedTorrent{Gate: GateBudget, SkipAutoResume: true},
 			want:  " - auto-resume skipped per settings",
@@ -1013,7 +937,6 @@ func TestSettleQueueFull(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fake := &settleFake{}
-			// No worker runs, so the queue fills up.
 			settler := NewSettler(fake, nil)
 			for range cap(settler.queue) {
 				settler.Settle(t.Context(), AddedTorrent{InstanceID: 1, Hashes: []string{"other"}})
@@ -1029,13 +952,9 @@ func TestSettleQueueFull(t *testing.T) {
 	}
 }
 
-// settleScript shows the settle module a scripted torrent over a caller's own
-// sync fake, and records what the module sends to qBittorrent. Only the
-// recheck reaches the caller's fake, so a fake that fails it still fails it.
 type settleScript struct {
 	qbittorrentSync
-	mu sync.Mutex
-	// The first recheckFailures recheck calls fail before they reach the caller's fake.
+	mu              sync.Mutex
 	recheckFailures int
 	polls           []*qbt.Torrent
 	next            int
@@ -1043,9 +962,6 @@ type settleScript struct {
 	actions         []string
 }
 
-// startSettleScript gives service a running settle module over its own sync
-// fake. Each worker poll shows the next torrent; after the last one the
-// torrent is gone. Call it inside a synctest bubble.
 func startSettleScript(t *testing.T, service *Service, torrents ...*qbt.Torrent) *settleScript {
 	t.Helper()
 	script := &settleScript{qbittorrentSync: service.syncManager, polls: torrents}
@@ -1069,7 +985,6 @@ func (s *settleScript) GetTorrentRefs(_ context.Context, _ int, filter qbittorre
 	}
 	torrent := *s.current
 	if torrent.Hash == "" && len(filter.Hashes) > 0 {
-		// A scripted torrent with no hash answers to the hash the worker watches.
 		torrent.Hash = filter.Hashes[0]
 	}
 	return testTorrentRefs([]qbt.Torrent{torrent}), nil
@@ -1089,7 +1004,6 @@ func (s *settleScript) BulkAction(ctx context.Context, instanceID int, hashes []
 		return errors.New("recheck failed")
 	}
 	if action != "recheck" {
-		// The caller's fake has no lock, and the test reads it while the worker runs.
 		return nil
 	}
 	return s.qbittorrentSync.BulkAction(ctx, instanceID, hashes, action)
@@ -1099,8 +1013,6 @@ func (s *settleScript) GetTorrentPieceStates(context.Context, int, string) ([]qb
 	return nil, errors.New("no piece states")
 }
 
-// wait lets the worker take every scripted poll, and returns the calls the
-// module sent and how many polls it took.
 func (s *settleScript) wait() ([]string, int) {
 	time.Sleep(recheckPollInterval * time.Duration(len(s.polls)+2))
 	synctest.Wait()
@@ -1109,23 +1021,17 @@ func (s *settleScript) wait() ([]string, int) {
 	return s.actions, s.next
 }
 
-// scripted is a torrent state for the settle script, listed under hash.
 func scripted(hash string, state qbt.TorrentState, progress float64, amountLeft int64) *qbt.Torrent {
 	torrent := torrentAt(state, progress, amountLeft)
 	torrent.Hash = hash
 	return torrent
 }
 
-// verifyScript tells the verify gate from a byte gate: two optimistic 100%
-// polls, then an observed check. The verify gate resumes once, after the
-// check; a byte gate resumes on the second poll and again after the check.
 func verifyScript(hash string) []*qbt.Torrent {
 	full := scripted(hash, qbt.TorrentStatePausedUp, 1, 0)
 	return []*qbt.Torrent{full, full, scripted(hash, qbt.TorrentStateCheckingUp, 0.5, 0), full}
 }
 
-// completeScript tells the complete gate from the budget gate: a recheck that
-// ends 1 MiB short. The budget gate resumes it, the complete gate does not.
 func completeScript(hash string) []*qbt.Torrent {
 	return []*qbt.Torrent{
 		scripted(hash, qbt.TorrentStateCheckingDl, 0.5, 0),
@@ -1133,7 +1039,6 @@ func completeScript(hash string) []*qbt.Torrent {
 	}
 }
 
-// actionNames drops the hashes from recorded actions.
 func actionNames(actions []string) []string {
 	names := make([]string, len(actions))
 	for i, action := range actions {
@@ -1142,14 +1047,10 @@ func actionNames(actions []string) []string {
 	return names
 }
 
-// idleSettler takes torrents for a test that does not watch the settle;
-// no worker runs.
 func idleSettler(sync qbittorrentSync) *Settler {
 	return NewSettler(&settleScript{qbittorrentSync: sync}, nil)
 }
 
-// lookupFake lists the same torrents for each filtered read. The unfiltered
-// read fails with allErr.
 type lookupFake struct {
 	settleFake
 	listed []qbt.Torrent
@@ -1166,7 +1067,6 @@ func (f *lookupFake) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent
 func TestPollInstanceTwoHashesOfOneTorrent(t *testing.T) {
 	const v1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const v2 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	// The recheck ended short of the complete gate, so the step drops the entry.
 	torrent := qbt.Torrent{Hash: v1, InfohashV1: v1, InfohashV2: v2, State: qbt.TorrentStatePausedDl, Progress: 0.5, AmountLeft: 100}
 	settler := NewSettler(&lookupFake{listed: []qbt.Torrent{torrent}}, nil)
 	pending := make(map[string]*pendingResume)
@@ -1174,7 +1074,6 @@ func TestPollInstanceTwoHashesOfOneTorrent(t *testing.T) {
 		pending[recheckResumeKey(1, hash)] = &pendingResume{instanceID: 1, hash: hash, budgetBytes: new(int64), sawChecking: true}
 	}
 
-	// The v2 entry is rekeyed onto v1 and dropped before the v1 hash comes up.
 	settler.pollInstance(t.Context(), pending, 1, []string{v2, v1})
 	require.Empty(t, pending)
 }

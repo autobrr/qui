@@ -10,11 +10,6 @@ import { api } from "@/lib/api"
 export const SENT_REPORTS_KEY = ["problem-reports", "sent"]
 export const SEND_REPORT_KEY = ["problem-reports", "send"]
 
-/**
- * Sent reports with their Report statuses. Each mount asks qui, and so brrbin, again: qui asks brrbin only when the
- * dialog or Sent reports opens, so nothing refetches by itself. Call it only in a component that mounts once for each
- * open, not in one that a layout change mounts again.
- */
 export function useSentReports() {
   return useQuery({
     queryKey: SENT_REPORTS_KEY,

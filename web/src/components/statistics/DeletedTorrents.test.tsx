@@ -48,12 +48,8 @@ interface DeletesRequest {
 
 let deletesOf: Map<number, TransferHistoryDeleteEvent[]>
 let requests: DeletesRequest[]
-// While set, the route waits for it before it answers.
 let hold: Promise<void> | undefined
-// Answers the held requests. The teardown calls it too, so a test that fails before it answers them still ends.
 let release: () => void
-// The client of the rendered table. A test ends only after its requests answered, as a request that is still on its way
-// reaches the route of the next test.
 let client: QueryClient | undefined
 
 function event(instanceId: number, index: number, time: number, kind: TransferHistoryCauseKind, name?: string): TransferHistoryDeleteEvent {
@@ -89,11 +85,9 @@ function renderTable(instances: TransferHistoryInstance[]) {
 }
 
 function shownNames(): string[] {
-  // The name is the first line of the cell. A phone row puts it in a button when the row opens, and in a div when it has nothing more to show.
   return [...document.querySelectorAll("tbody tr td:nth-child(2) > :first-child")].map(node => node.textContent ?? "")
 }
 
-// The names of ten deletes of an instance in a row, from the delete with the index first.
 function tenNames(instanceId: number, first: number): string[] {
   return Array.from({ length: 10 }, (_, index) => `Built.Name.${instanceId}.${first + index}-GRP`)
 }
@@ -142,7 +136,6 @@ afterEach(async () => {
     cleanup()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-    // A test of Show fewer stubs it, as jsdom has no layout.
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
   }
 })
@@ -177,7 +170,6 @@ describe("DeletedTorrents", () => {
   })
 
   it("shows ten deletes for each page on a desktop, merges the instances with the newest first, and loads the next server page when a page needs it", async () => {
-    // Instance 2 has the newer deletes, so the first pages of the table hold only them.
     deletesOf.set(1, Array.from({ length: 40 }, (_, index) => event(1, index, 500_000 - index * 10, "user")))
     deletesOf.set(2, Array.from({ length: 70 }, (_, index) => event(2, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox"), instance(2, "Home")])
@@ -186,7 +178,6 @@ describe("DeletedTorrents", () => {
     expect(screen.getByText("table.range from=1 to=10 total=110")).toBeTruthy()
     expect(previousPage().disabled).toBe(true)
 
-    // The first five pages come from the first server page of each instance.
     for (const first of [10, 20, 30, 40]) {
       fireEvent.click(nextPage())
       expect(shownNames()).toEqual(tenNames(2, first))
@@ -242,13 +233,11 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByLabelText("table.nextPage")).toBeNull()
   })
 
-  // regression: #4132
   it("shows a delete once when a new delete moves it onto the next page", async () => {
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
     await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 0)))
 
-    // Two new deletes before the next server page push the last two rows of the first server page onto the second one.
     deletesOf.set(1, [event(1, 100, 2_000_000, "user"), event(1, 101, 1_999_000, "user"), ...deletesOf.get(1)!])
     const names = shownNames()
     for (const first of [10, 20, 30, 40]) {
@@ -262,7 +251,6 @@ describe("DeletedTorrents", () => {
     expect(new Set(names).size).toBe(60)
   })
 
-  // regression: #4132
   it("keeps the rows while the rows of a moved period load", async () => {
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     const { moveTo } = renderTable([instance(1, "Seedbox")])
@@ -280,7 +268,6 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.1-GRP", "Built.Name.1.0-GRP"]))
   })
 
-  // regression: #4132
   it("lets the user load a page again after it failed", async () => {
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     let failNext = true
@@ -298,14 +285,12 @@ describe("DeletedTorrents", () => {
       fireEvent.click(nextPage())
     }
     await vi.waitFor(() => expect(screen.getByText(/database is locked/)).toBeTruthy())
-    // The table stays on the last page that it has the rows of.
     expect(shownNames()).toEqual(tenNames(1, 40))
     await vi.waitFor(() => expect(nextPage().disabled).toBe(false))
     fireEvent.click(nextPage())
     await vi.waitFor(() => expect(shownNames()).toEqual(tenNames(1, 50)))
   })
 
-  // regression: #4179
   it("shows the deletes that a phone loaded on Show more, also after a reload failed", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -314,7 +299,6 @@ describe("DeletedTorrents", () => {
     renderTable([instance(1, "Seedbox")])
     await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
     failing = true
-    // A window that gets the focus again loads the page again.
     act(() => {
       focusManager.setFocused(false)
       focusManager.setFocused(true)
@@ -326,7 +310,6 @@ describe("DeletedTorrents", () => {
     expect(shownNames()).toHaveLength(15)
   })
 
-  // regression: #4179
   it("shows five deletes on a phone, ten more for each Show more, and loads the next page after the loaded ones", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -348,14 +331,12 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByText("deletes.more")).toBeNull()
   })
 
-  // regression: #4179
   it("shows the next loaded deletes on a phone at once, also while the loaded pages load again", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
     await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
     hold = new Promise(resolve => { release = resolve })
-    // A window that gets the focus again loads the page again.
     act(() => {
       focusManager.setFocused(false)
       focusManager.setFocused(true)
@@ -368,7 +349,6 @@ describe("DeletedTorrents", () => {
     release()
   })
 
-  // regression: #4179
   it("shows five deletes again on a phone after Show fewer, and keeps its button in view", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -388,7 +368,6 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByText("table.showFewer")).toBeNull()
   })
 
-  // regression: #4179
   it("loads the first page of the other filters of each instance after the first filter", async () => {
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     deletesOf.set(2, [event(2, 0, 4_000, "automation")])
@@ -397,7 +376,6 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(requests.filter(request => request.cause !== null).map(request => `${request.instanceId} ${request.cause} ${request.offset}`).sort()).toEqual([
       "1 automation 0", "1 other 0", "1 user 0", "2 automation 0", "2 other 0", "2 user 0",
     ]))
-    // The rows of a switch come from the preload only when each preload answered.
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
     const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
     fireEvent.mouseDown(trigger("deletes.filters.user"), { button: 0 })
@@ -405,7 +383,6 @@ describe("DeletedTorrents", () => {
     expect(shownNames()).toEqual(["Built.Name.1.0-GRP"])
   })
 
-  // regression: #4179
   it("keeps the rows of the last filter, dimmed, until the rows of the next filter load", async () => {
     deletesOf.set(1, [event(1, 0, 5_000, "user"), event(1, 1, 4_000, "automation")])
     let preloading = false
@@ -421,7 +398,6 @@ describe("DeletedTorrents", () => {
     }))
     renderTable([instance(1, "Seedbox")])
     await vi.waitFor(() => expect(shownNames()).toHaveLength(2))
-    // The preload of the filter Automations still waits, so a switch has no rows of its own yet.
     await vi.waitFor(() => expect(preloading).toBe(true))
     const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
 
@@ -434,7 +410,6 @@ describe("DeletedTorrents", () => {
     expect(document.querySelector("table")!.closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("false")
   })
 
-  // regression: #4179
   it("shows five deletes again on a phone after a return to an earlier filter", async () => {
     stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -445,7 +420,6 @@ describe("DeletedTorrents", () => {
     const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
 
     fireEvent.mouseDown(trigger("deletes.filters.user"), { button: 0 })
-    // The rows of the other filter show. Until they load, the earlier rows stay and keep their count.
     await vi.waitFor(() => expect(document.querySelector("table")!.closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("false"))
     fireEvent.mouseDown(trigger("deletes.filters.all"), { button: 0 })
 
@@ -453,10 +427,8 @@ describe("DeletedTorrents", () => {
     expect(shownNames()).toHaveLength(5)
   })
 
-  // regression: #4179
   it("opens a delete with a cut name on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {
     stubPhone("upright")
-    // jsdom has no layout. A name that needs more lines than the row shows has a larger scroll height.
     vi.spyOn(Element.prototype, "scrollHeight", "get").mockReturnValue(60)
     vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(40)
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
@@ -471,7 +443,6 @@ describe("DeletedTorrents", () => {
     expect(name.getAttribute("aria-expanded")).toBe("false")
   })
 
-  // regression: #4179
   it("offers no opener on a phone for a delete whose name and cause show in full", async () => {
     stubPhone("upright")
     deletesOf.set(1, [event(1, 0, 5_000, "automation", "Tidy up")])
@@ -483,7 +454,6 @@ describe("DeletedTorrents", () => {
     expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
   })
 
-  // regression: #4358
   it("shows a cut-off cause on a tap on a touch screen wider than a phone, where the row does not open", async () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null

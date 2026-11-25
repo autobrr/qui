@@ -13,9 +13,8 @@ import (
 )
 
 type searcheeWorkItem struct {
-	searchee *Searchee
-	tvGroup  *tvGroupKey
-	// isEpisode marks a search for one loose TV episode, which a directory can opt out of.
+	searchee  *Searchee
+	tvGroup   *tvGroupKey
 	isEpisode bool
 }
 
@@ -147,7 +146,6 @@ func groupTVEpisodes(d fsops.PathDialect, searchee *Searchee, parser *Parser) ma
 		return nil
 	}
 
-	// Track which parent directories contain episodes from multiple seasons.
 	seasonsByDir := make(map[string]map[int]struct{})
 
 	groups := make(map[tvGroupKey]*tvGroup)

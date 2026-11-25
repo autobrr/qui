@@ -37,11 +37,9 @@ func (f *fakeWriteNoter) taken() []int {
 }
 
 type proxiedDelete struct {
-	instanceID int
-	hashes     []string
-	keyName    string
-	// deletesSent is the number of delete requests that qBittorrent got
-	// before the note.
+	instanceID  int
+	hashes      []string
+	keyName     string
 	deletesSent int
 }
 
@@ -92,7 +90,6 @@ func TestProxyNotesTorrentWrites(t *testing.T) {
 	require.Equal(t, []proxiedDelete{{instance.ID, []string{proxyHashA, proxyHashB}, "autobrr", 0}}, deletes.seen,
 		"the delete note names the Client Proxy API key, before qBittorrent gets the delete")
 
-	// qBittorrent also reads a multipart body, and keeps the last value of a field.
 	multipartBody := "--rig\r\nContent-Disposition: form-data; name=\"hashes\"\r\n\r\n" + proxyHashA + "\r\n" +
 		"--rig\r\nContent-Disposition: form-data; name=\"hashes\"\r\n\r\n" + proxyHashB + "\r\n" +
 		"--rig\r\nContent-Disposition: form-data; name=\"deleteFiles\"\r\n\r\nfalse\r\n--rig--\r\n"

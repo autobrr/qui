@@ -14,7 +14,6 @@ export interface InstanceLibrary {
   pending: boolean
 }
 
-/** Reads the library rows of each instance. The rows are undefined while a query is pending or when no query runs. */
 export function useTransferHistoryLibrary(instances: TransferHistoryInstance[], period: { from?: Date; to: Date } | undefined): InstanceLibrary {
   const enabled = period !== undefined
   const combine = useCallback((results: UseQueryResult<TransferHistoryLibraryRow[]>[]): InstanceLibrary => ({

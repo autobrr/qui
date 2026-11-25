@@ -32,49 +32,31 @@ import (
 
 const (
 	crashEnv = "QUI_TRANSFER_CRASH"
-	// crashed is the exit code of a child that ended at its crash point.
-	crashed = 3
+	crashed  = 3
 )
 
-// crash is what the child process runs, and where it ends.
 type crash struct {
-	DB      string
-	Request transfer.Request
-	// Export, when set, runs this Export run instead of the Transfer.
-	Export *transfer.ExportRequest
-	// At is "before:<step>" or "after:<step>" for the save that records
-	// the step, "write:<n>" for the nth write of the copy, or empty when
-	// the parent kills the child.
+	DB          string
+	Request     transfer.Request
+	Export      *transfer.ExportRequest
 	At          string
 	Unconfirmed bool
 	Damage      map[string]int64
-	// InTheWay is the path of a file that lands on the target at the first
-	// write of the copy.
-	InTheWay string
-	// Cancel cancels the Transfer at the first write of the copy.
-	Cancel bool
-	// FailSave fails the save that records this step.
-	FailSave string
-	// Resume starts no Transfer: qui resumes the unfinished ones.
-	Resume bool
+	InTheWay    string
+	Cancel      bool
+	FailSave    string
+	Resume      bool
 }
 
-// qui ends at each step that it records, and at the adds that it cannot
-// record. After the restart, the Transfer resumes once or cleans up once,
-// and a second restart sends nothing.
 func TestTransferResumesAfterACrash(t *testing.T) {
 	const episode1, episode2 = "Show.S01E01.mkv", "Show.S01E02.mkv"
 	for _, tc := range []struct {
-		at          string
-		unconfirmed bool
-		damage      bool
-		headStart   bool
-		// group adds a torrent of the first episode, which shares its file.
-		group bool
-		// killAtAdd kills qui at the nth add of a torrent to the target.
-		killAtAdd int
-		// killAtRemoval kills qui once the source removed the torrent, before
-		// qui removes the files there.
+		at            string
+		unconfirmed   bool
+		damage        bool
+		headStart     bool
+		group         bool
+		killAtAdd     int
 		killAtRemoval bool
 		cancel        bool
 		want          string
@@ -95,12 +77,9 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 		{at: "after:check the files on the target", headStart: true, want: "done"},
 		{killAtAdd: 1, headStart: true, want: "done"},
 		{at: "after:copy the missing files", headStart: true, want: "done"},
-		// regression: #4242
 		{at: "after:clean up", unconfirmed: true, damage: true, want: "cleaned up"},
-		// regression: #4242
 		{at: "after:clean up", cancel: true, want: "cancelled"},
 		{at: "after:added", group: true, want: "done"},
-		// The adds are the check of the episode, the season, and the episode.
 		{killAtAdd: 3, group: true, want: "ownership unknown"},
 	} {
 		name := tc.at
@@ -235,10 +214,6 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 	}
 }
 
-// A Transfer that qui stopped after the step place, and whose resume fails
-// before it reads the target again, keeps the file that was on the target
-// before the Transfer when it cleans up.
-// regression: #4231
 func TestTransferCleanupKeepsTheHeadStartWhenTheResumeFails(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -260,9 +235,6 @@ func TestTransferCleanupKeepsTheHeadStartWhenTheResumeFails(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 }
 
-// A rename on the source while qui is stopped fails the resume, as a rename
-// during the copy does, and the cleanup finds the files under the old names.
-// regression: #4231
 func TestTransferStopsAtARenameWhileQuiIsStopped(t *testing.T) {
 	const first, second, spare = "Show.S01E05.mkv", "Show.S01E06.mkv", "Show.S01E07.mkv"
 	swap := []string{first, spare, second, first, spare, second}
@@ -307,19 +279,11 @@ func TestTransferStopsAtARenameWhileQuiIsStopped(t *testing.T) {
 	}
 }
 
-// A cleanup that runs without the run that read the names, after a cancel
-// or after a stop during the cleanup, finds the files under the names that
-// the first run recorded. A file of someone else at the new name of a
-// renamed file stays.
-// regression: #4231
 func TestTransferCleanupUsesTheRecordedNames(t *testing.T) {
 	const renamed = "Show.S01E05.mkv"
 	for _, tc := range []struct {
 		name string
-		// stop leaves the Transfer unfinished with its files in place, and
-		// renames episode1 on the source.
 		stop func(r *rig, s show) int64
-		// end ends the Transfer with a cleanup that reads the names again.
 		end  func(r *rig, id int64)
 		want transfer.State
 	}{
@@ -375,10 +339,6 @@ func TestTransferCleanupUsesTheRecordedNames(t *testing.T) {
 	}
 }
 
-// A rename or a move on the source after the copy, with a file of someone
-// else of the same size at the old path, keeps the files on the source: the
-// removal would take the file of someone else for the file that qui copied.
-// regression: #4231
 func TestTransferKeepsTheSourceFilesAfterAChangeOnTheSource(t *testing.T) {
 	const renamed = "Show.S01E05.mkv"
 	theirs := bytes.Repeat([]byte("x"), 40)
@@ -386,10 +346,8 @@ func TestTransferKeepsTheSourceFilesAfterAChangeOnTheSource(t *testing.T) {
 		name   string
 		change func(r *rig, s show)
 		reason string
-		// moved is the folder below the save path that holds the files of
-		// the torrent after the change.
-		moved string
-		file  string
+		moved  string
+		file   string
 	}{
 		{name: "a rename", change: func(r *rig, s show) {
 			r.renameOnSource(s, episode1, renamed)
@@ -441,12 +399,6 @@ func TestTransferKeepsTheSourceFilesAfterAChangeOnTheSource(t *testing.T) {
 	}
 }
 
-// A file that lands at a path of the copy during the copy stops the
-// Transfer at the rename into place, and the cleanup keeps it. A crash after
-// the cleanup, before qui recorded the end, keeps it too: the cleanup that
-// runs again after the restart does not take it for a file that qui placed,
-// also when qui could not record the files that it placed.
-// regression: #4231
 func TestTransferCleanupKeepsAFileInTheWayAfterACrash(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -478,9 +430,6 @@ func TestTransferCleanupKeepsAFileInTheWayAfterACrash(t *testing.T) {
 	}
 }
 
-// runCrashChild runs qui in a child process on the database of the rig, and
-// waits until it ends at its crash point, or until the parent kills it. The
-// parent takes the process from child to kill it.
 func runCrashChild(t *testing.T, plan crash, child chan<- *os.Process, killed bool) {
 	t.Helper()
 	env, err := json.Marshal(plan)
@@ -498,16 +447,12 @@ func runCrashChild(t *testing.T, plan crash, child chan<- *os.Process, killed bo
 	exit, ok := errors.AsType[*exec.ExitError](err)
 	require.True(t, ok, "qui never reached the crash point:\n%s", output.String())
 	if killed {
-		// On Windows a killed process exits with code 1, as a failed test does.
 		require.Empty(t, child, "the parent kills qui:\n%s", output.String())
 		return
 	}
 	require.Equal(t, crashed, exit.ExitCode(), output.String())
 }
 
-// TestTransferCrashChild is the qui that TestTransferResumesAfterACrash
-// ends. It runs the Transfer on the database of the parent, against the
-// stubs of the parent.
 func TestTransferCrashChild(t *testing.T) {
 	env := os.Getenv(crashEnv)
 	if env == "" {
@@ -562,8 +507,6 @@ func TestTransferCrashChild(t *testing.T) {
 	svc.Wait()
 }
 
-// crashAt ends the process at the save that records a step: before the save
-// or right after it. It fails the save that records the step fail.
 type crashAt struct {
 	dbinterface.Querier
 	before, after, fail string
@@ -584,7 +527,6 @@ func (c crashAt) ExecContext(ctx context.Context, query string, args ...any) (sq
 	return res, err
 }
 
-// lastStep returns the last step of a save of a Transfer.
 func lastStep(query string, args []any) string {
 	if !strings.Contains(query, "steps_json") || len(args) < 2 {
 		return ""

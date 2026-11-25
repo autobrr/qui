@@ -52,14 +52,10 @@ func TestBuildMissingFilesResultInvalidPathLeavesUnknown(t *testing.T) {
 	}
 }
 
-// rowGetter answers every Get with the current row, as the instance store does.
 type rowGetter struct{ row *models.Instance }
 
 func (g rowGetter) Get(context.Context, int) (*models.Instance, error) { return g.row, nil }
 
-// batchBackend is a remote host that answers only batch stats, so a check
-// that falls back to one Stat per file panics on the nil Backend. A path in
-// errs gets that error, and any other path exists.
 type batchBackend struct {
 	fsops.Backend
 	errs map[string]error
@@ -84,9 +80,6 @@ func (batchBackend) LstatBatch(context.Context, []string) ([]*fsops.LstatInfo, [
 	panic("the missing files check follows links")
 }
 
-// The callers gate on a snapshot that can be minutes old by the time the
-// backend is resolved. The check runs over the backend of the current row, and
-// only while that row still grants Read.
 func TestMissingFilesUsesTheBackendOfTheCurrentRow(t *testing.T) {
 	t.Parallel()
 
@@ -115,7 +108,6 @@ func TestMissingFilesUsesTheBackendOfTheCurrentRow(t *testing.T) {
 				filesReader: fakeFilesReader{files: qbt.TorrentFiles{{Name: "present.mkv"}}},
 				backendPool: fsops.NewPoolWithRemote(rowGetter{row: test.row}, localbackend.NewBackend(),
 					func(*models.Instance) fsops.Backend {
-						// The remote host does not have the local test directory.
 						return batchBackend{errs: map[string]error{path.Join(test.savePath, "present.mkv"): fs.ErrNotExist}}
 					}),
 			}
@@ -131,8 +123,6 @@ func TestMissingFilesUsesTheBackendOfTheCurrentRow(t *testing.T) {
 	}
 }
 
-// A remote instance reads the field: a torrent with a file that is not on the
-// host has missing files, and a torrent with every file there has none.
 func TestMissingFilesOnARemoteInstance(t *testing.T) {
 	t.Parallel()
 
@@ -157,9 +147,6 @@ func TestMissingFilesOnARemoteInstance(t *testing.T) {
 	require.True(t, EvaluateConditionWithContext(cond, broken, evalCtx, 0))
 }
 
-// A file that a lost connection left unchecked makes the torrent unknown, unless
-// another file is confirmed missing. A symlink loop is missing on a remote
-// instance, because OpenSSH's sftp-server answers ELOOP as no such file.
 func TestBuildMissingFilesResultOnARemoteHost(t *testing.T) {
 	t.Parallel()
 
@@ -197,8 +184,6 @@ func TestBuildMissingFilesResultOnARemoteHost(t *testing.T) {
 	}
 }
 
-// A local os.Stat returns ELOOP for a symlink loop, so the local check skips
-// the file and the torrent reads from its other files.
 func TestBuildMissingFilesResultSkipsALocalSymlinkLoop(t *testing.T) {
 	t.Parallel()
 

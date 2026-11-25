@@ -9,8 +9,6 @@ import (
 	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
-// RequireAllowedHosts takes a startup snapshot of allowedHosts.
-// Install it before RealIP so only direct loopback health probes bypass the list.
 func RequireAllowedHosts(entries []string) (func(http.Handler) http.Handler, error) {
 	list, err := httphelpers.NewHostAllowlist(entries)
 	if err != nil {

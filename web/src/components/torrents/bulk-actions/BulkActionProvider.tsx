@@ -71,15 +71,6 @@ interface DeletePlan {
   requests: DeleteRequest[]
 }
 
-/**
- * The bulk action module (ADR 0049). It acts on the Action target that the
- * Layout publishes, opens the dialog that a pick needs, sends the requests,
- * and exports. An open dialog follows the live selection, and it closes when
- * the selection becomes empty or the Layout publishes nothing. A failed
- * request leaves it open, except the tag editor, which closes after a
- * failure, and the share limits, which close on submit. A delete clears the
- * selection when the Action target is deleted.
- */
 export function BulkActionProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation("torrents")
   const queryClient = useQueryClient()
@@ -87,7 +78,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
   const published = useTorrentSelectionSummary()
   const [dialog, dispatch] = useReducer(bulkDialogReducer, CLOSED_DIALOG)
 
-  // A pick reads the target at click time, so a new target does not change the value of the context.
   const publishedRef = useRef(published)
   useLayoutEffect(() => {
     publishedRef.current = published
@@ -97,7 +87,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "close" })
   }
 
-  // The closed dialog keeps its direction while it animates out.
   const tmmEnable = useRef(false)
   if (dialog.name === "toggleAutoTMM") {
     tmmEnable.current = dialog.enable
@@ -140,7 +129,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     [actionTarget.previewTorrents, crossSeedWarning.affectedTorrents]
   )
 
-  // A close of the delete dialog, for any reason, stops the cross-seed check and clears its result.
   const isDeleteOpen = dialog.name === "delete"
   const resetCrossSeedWarning = crossSeedWarning.reset
   useEffect(() => {
@@ -173,10 +161,8 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
           toast.error(getActionErrorMessage(t, "delete", failedActionCount(body)), {
             description: (error instanceof Error && error.message) || t("actionToasts.unexpectedError"),
           })
-          // The server deletes on one instance after another, so a failure can follow deletes on other instances.
           if (scope === ALL_INSTANCES_ID) {
             scheduleTorrentListRefetches(queryClient, body.deleteFiles ? 5000 : 2000)
-            // A retry would resolve the filter again and delete torrents that joined it since.
             if (body.selectAll) {
               dispatch({ type: "close" })
               dispatchSelection({ type: "clear" })
@@ -187,7 +173,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
         removeDeletedTorrents(queryClient, instanceId, { ...body, clientHashes, clientCount: count })
         scheduleTorrentListRefetches(queryClient, body.deleteFiles ? 5000 : 2000)
         showSuccessToast(t, "delete", Math.max(1, count), body.deleteFiles)
-        // The first request deletes the Action target, so a failed cross-seed request leaves nothing to retry.
         if (index === 0) {
           dispatch({ type: "requestSucceeded", action: "delete" })
           dispatchSelection({ type: "clear" })
@@ -196,7 +181,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     },
   })
 
-  // The tag editor closes after a failure, and the toast names the step that failed.
   const { mutate: mutateTags, isPending: isTagsPending } = useMutation({
     mutationFn: async ({ scope, plan, request }: TagRequest) => {
       try {
@@ -229,7 +213,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     },
   })
 
-  // One mutation reports only its latest call, so the two speed-limit requests need their own flag.
   const [isSpeedLimitsPending, setIsSpeedLimitsPending] = useState(false)
   const isPending = isRequestPending || isDeletePending || isTagsPending || isRenamePending || isSpeedLimitsPending
 
@@ -256,7 +239,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({ pick, isPending, isExporting }), [pick, isPending, isExporting])
   const count = actionTarget.count
   const { previewTorrents } = actionTarget
-  // Stable, because the tag editor runs its reset effect again when onOpenChange changes.
   const close = useCallback((open: boolean) => {
     if (!open) dispatch({ type: "close" })
   }, [])
@@ -287,7 +269,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Rename acts on the first torrent of the Action target, on the instance of the page.
   const confirmRename = (name: string) => {
     const hash = previewTorrents[0]?.hash
     if (!hash) return
@@ -299,7 +280,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
     mutateRename({ instanceId, hash, name: trimmed })
   }
 
-  // The dialog stays open until the Action target is deleted.
   const confirmDelete = (event: MouseEvent) => {
     event.preventDefault()
     if (!published || dialog.name !== "delete") return
@@ -472,7 +452,6 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
         isPending={isPending}
       />
 
-      {/* Mounted only while open: each dialog keeps its form state for one torrent pick. */}
       {dialog.name === "transfer" && singleTorrent && (
         <TransferDialog
           open

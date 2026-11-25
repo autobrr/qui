@@ -14,20 +14,11 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Supervise turns the first serve process into a supervisor before it loads
-// the config: a supervisor that had started services would keep them running
-// next to its child. It returns in the child. See
-// docs/adr/0011-restart-replaces-the-process-in-place.md.
-//
-// qui-tray.exe passes showError, because it has no console. The supervisor
-// then shows its own error, or the end of the stderr of a child that failed,
-// in a dialog before it exits.
 func Supervise(showError func(msg string)) {
 	if os.Getenv(supervisedEnv) == "1" {
 		return
 	}
 
-	// The child shares the console and handles Ctrl+C and the close event.
 	signal.Notify(make(chan os.Signal, 1), os.Interrupt, syscall.SIGTERM)
 
 	var stderr io.Writer
@@ -60,8 +51,6 @@ func superviseInJob(stderr io.Writer) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	// Children inherit the job, so none runs outside it. The supervisor's exit,
-	// Task Scheduler "End" included, closes the job handle and kills the child.
 	if err := windows.AssignProcessToJobObject(job, windows.CurrentProcess()); err != nil {
 		return 0, fmt.Errorf("join kill-on-close job: %w", err)
 	}

@@ -10,8 +10,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// SplitArgs splits a command line string into arguments, respecting quoted strings.
-// It strips surrounding single/double quotes from quoted segments.
 func SplitArgs(s string) []string {
 	var args []string
 	var current strings.Builder
@@ -48,8 +46,6 @@ func SplitArgs(s string) []string {
 	return args
 }
 
-// BuildArguments substitutes variables in the args template with torrent data.
-// Returns arguments as an array suitable for exec.Command (no manual quoting needed).
 func BuildArguments(template string, torrentData map[string]string) []string {
 	if template == "" {
 		return []string{}
@@ -66,11 +62,6 @@ func BuildArguments(template string, torrentData map[string]string) []string {
 	return args
 }
 
-// ApplyPathMappings applies configured path mappings to convert remote paths to local paths.
-//
-// Mappings are matched longest-prefix-first to handle overlapping prefixes correctly.
-// Prefix matching requires a path separator boundary (/ or \) to avoid false matches
-// like "/data" matching "/data-backup".
 func ApplyPathMappings(path string, mappings []models.PathMapping) string {
 	if len(mappings) == 0 {
 		return path
@@ -87,13 +78,7 @@ func ApplyPathMappings(path string, mappings []models.PathMapping) string {
 			continue
 		}
 		if strings.HasPrefix(path, mapping.From) {
-			// Ensure we match at a path boundary, not mid-component.
-			// E.g., From="/data" should match "/data/foo" but not "/data-backup".
 			remainder := path[len(mapping.From):]
-			// Boundary match if:
-			// - exact match (remainder empty)
-			// - From ends with separator (e.g., "/data/" or "C:\data\")
-			// - remainder starts with separator
 			fromEndsWithSep := strings.HasSuffix(mapping.From, "/") || strings.HasSuffix(mapping.From, "\\")
 			if remainder == "" || fromEndsWithSep || remainder[0] == '/' || remainder[0] == '\\' {
 				return mapping.To + remainder

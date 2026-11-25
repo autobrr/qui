@@ -13,25 +13,19 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// Applied runs and all other runs each keep their newest
-// maxSeasonPackRunHistory, so a pile of failed runs cannot delete the applied
-// history.
 const (
 	maxSeasonPackRunHistory = 200
 	maxSeasonPackRunList    = 2 * maxSeasonPackRunHistory
 )
 
-// SeasonPackRun records one season pack check or apply.
 type SeasonPackRun struct {
-	ID          int64  `json:"id"`
-	TorrentName string `json:"torrentName"`
-	Phase       string `json:"phase"`
-	Status      string `json:"status"`
-	Reason      string `json:"reason"`
-	Message     string `json:"message"`
-	InstanceID  *int   `json:"instanceId,omitempty"`
-	// AddedInstanceID is the instance that receives the add: the Cross-seed
-	// instance of a routed apply, or InstanceID.
+	ID              int64     `json:"id"`
+	TorrentName     string    `json:"torrentName"`
+	Phase           string    `json:"phase"`
+	Status          string    `json:"status"`
+	Reason          string    `json:"reason"`
+	Message         string    `json:"message"`
+	InstanceID      *int      `json:"instanceId,omitempty"`
 	AddedInstanceID *int      `json:"addedInstanceId,omitempty"`
 	MatchedEpisodes int       `json:"matchedEpisodes"`
 	TotalEpisodes   int       `json:"totalEpisodes"`
@@ -40,17 +34,14 @@ type SeasonPackRun struct {
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
-// SeasonPackRunStore persists season-pack run activity.
 type SeasonPackRunStore struct {
 	db dbinterface.Querier
 }
 
-// NewSeasonPackRunStore constructs a new season-pack run store.
 func NewSeasonPackRunStore(db dbinterface.Querier) *SeasonPackRunStore {
 	return &SeasonPackRunStore{db: db}
 }
 
-// Create inserts a new season-pack run and returns it with the generated ID and timestamp.
 func (s *SeasonPackRunStore) Create(ctx context.Context, run *SeasonPackRun) (*SeasonPackRun, error) {
 	if run == nil {
 		return nil, errors.New("run cannot be nil")
@@ -96,7 +87,6 @@ func (s *SeasonPackRunStore) Create(ctx context.Context, run *SeasonPackRun) (*S
 	return s.get(ctx, id)
 }
 
-// List returns the most recent season-pack runs, ordered newest first.
 func (s *SeasonPackRunStore) List(ctx context.Context, limit int) ([]*SeasonPackRun, error) {
 	if limit <= 0 || limit > maxSeasonPackRunList {
 		limit = 50

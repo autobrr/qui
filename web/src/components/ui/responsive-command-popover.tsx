@@ -24,10 +24,6 @@ import { cn } from "@/lib/utils";
 
 const MobileContext = React.createContext<boolean | undefined>(undefined);
 
-/**
- * Returns whether the responsive command popover is rendering in mobile mode.
- * Must be used within a ResponsiveCommandPopover tree.
- */
 export function useResponsiveMobile(): boolean {
   const value = React.useContext(MobileContext);
   if (value === undefined) {
@@ -62,7 +58,6 @@ export function ResponsiveCommandPopover({
       <MobileContext.Provider value={true}>
         <Drawer open={open} onOpenChange={onOpenChange} repositionInputs={false}>
           <DrawerTrigger asChild>{trigger}</DrawerTrigger>
-          {/* fixed height keeps search input above viewport center so mobile keyboards don't shift the view */}
           <DrawerContent className="h-[85vh]">
             <DrawerHeader className="py-3 border-b">
               <DrawerTitle className="text-lg font-semibold">{title}</DrawerTitle>
@@ -155,7 +150,6 @@ const ResponsiveCommandList = React.forwardRef<
         className
       )}
       onWheel={(e) => {
-        // Prevent scroll event propagation to parent elements to ensure the list scrolls
         e.stopPropagation();
       }}
       {...props}
@@ -202,7 +196,6 @@ const ResponsiveCommandGroup = React.forwardRef<
 });
 ResponsiveCommandGroup.displayName = "ResponsiveCommandGroup";
 
-// For distinguishing taps from scrolls
 const TOUCH_SLOP = 10;
 
 const ResponsiveCommandItem = React.forwardRef<
@@ -231,7 +224,6 @@ const ResponsiveCommandItem = React.forwardRef<
     valueRef.current = props.value;
   });
 
-  // On mobile, only fire onSelect if the finger didn't move beyond touch slop
   const handlePointerUp = React.useCallback(
     (e: React.PointerEvent) => {
       if (isMobile && onSelectRef.current && e.pointerType === "touch" && touchStart.current) {

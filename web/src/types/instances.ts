@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// How qui reaches an instance's torrent data. Remote is SSH with a confirmed host key.
 export type FilesystemMode = "none" | "local" | "remote"
 
 export interface Instance {
@@ -17,27 +16,21 @@ export interface Instance {
   hasLocalFilesystemAccess: boolean
   capabilities: FilesystemCapabilities
   filesystemMode: FilesystemMode
-  // SSH access; the key itself never reaches the browser.
   sshHost?: string
   sshPort?: number
   sshUsername?: string
   sshHostKeyPinned?: boolean
-  // What the key lets qui run on the host, as the last probe found. Absent without credentials.
   sshTier?: SSHTier
-  // Whether the host advertises hardlink@openssh.com. Absent until a probe answers.
   sshHardlink?: boolean
   useHardlinks: boolean
   hardlinkBaseDir: string
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
-  // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
   useReflinks: boolean
   fallbackToRegularMode: boolean
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
-  // The host:port that the user set for other BitTorrent clients, or "".
   publicPeerAddress?: string
-  // The address that qui works out: publicPeerAddress, or else what qBittorrent reports. "" when it has none.
   resolvedPublicPeerAddress?: string
 }
 
@@ -52,7 +45,6 @@ export interface SSHCredentials {
 
 export type SSHTestStatus = "unpinned" | "pinned" | "mismatch" | "pin_unreadable" | "error"
 
-// POST /instances/{id}/ssh-test. hostKey is echoed back to pin it.
 export interface SSHTestResponse {
   status: SSHTestStatus
   hostKey?: string
@@ -73,7 +65,6 @@ export interface SSHProbe {
   gnuUserland: boolean
 }
 
-// What qui can do with an instance's files, from models.FilesystemCapabilitiesOf.
 export interface FilesystemCapabilities {
   read: boolean
   identity: boolean
@@ -95,11 +86,9 @@ export interface InstanceFormData {
   useHardlinks?: boolean
   hardlinkBaseDir?: string
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
-  // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
   useReflinks?: boolean
   fallbackToRegularMode?: boolean
   reannounceSettings: InstanceReannounceSettings
-  // The user's value only. Left out, the server keeps the stored value; "" clears it.
   publicPeerAddress?: string
 }
 
@@ -157,11 +146,9 @@ export interface LocalCrossSeedMatch {
   matchType: "content_path" | "hardlink" | "reflink" | "name" | "release"
 }
 
-/** An instance with local filesystem access that the delete check did not read. */
 export interface UncheckedInstance {
   instanceId: number
   instanceName: string
-  /** offline: qui cannot read its torrents. disabled: it is turned off in qui. */
   reason: "offline" | "disabled"
 }
 

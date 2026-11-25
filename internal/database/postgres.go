@@ -26,8 +26,6 @@ import (
 var postgresMigrationsFS embed.FS
 
 const (
-	// postgresMigrationAdvisoryLockID prevents concurrent migration runners on the same database.
-	// Keep this as a stable, app-specific 64-bit key shared by all qui migration processes.
 	postgresMigrationAdvisoryLockID int64 = 922337203685477000
 )
 
@@ -99,8 +97,6 @@ func newPostgres(dsn string, opts OpenOptions) (*DB, error) {
 	return db, nil
 }
 
-// postgresConnConfig parses dsn and sets the session time zone to UTC, also
-// when dsn or PGTZ asks for another zone, so that the database clock writes UTC.
 func postgresConnConfig(dsn string) (*pgx.ConnConfig, error) {
 	config, err := pgx.ParseConfig(dsn)
 	if err != nil {
@@ -140,9 +136,6 @@ func openPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// registerUTCTimestampCodec makes pgx bind each time as its UTC wall clock.
-// The default codec writes the wall clock of the time's own zone into a
-// TIMESTAMP value and drops the zone.
 func registerUTCTimestampCodec(_ context.Context, conn *pgx.Conn) error {
 	m := conn.TypeMap()
 	timestamp := &pgtype.Type{Name: "timestamp", OID: pgtype.TimestampOID, Codec: &utcTimestampCodec{}}

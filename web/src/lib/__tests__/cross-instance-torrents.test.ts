@@ -8,11 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { mergeStreamedCrossInstanceFirstPage, normalizeCrossInstanceTorrents, normalizeStreamedSnapshot, resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
 import type { CrossInstanceTorrent, Torrent, TorrentResponse } from "@/types"
 
-// A streamed cross-instance torrent as it arrives over SSE: the backend's
-// CrossInstanceTorrentView serializes instance metadata as snake_case
-// (instance_id / instance_name), while the rest of the torrent fields are
-// already camelCase. Cast through unknown so the test can model the raw wire
-// shape without fighting the camelCase-only public type.
 function streamed(hash: string, instanceId: number, instanceName: string): CrossInstanceTorrent {
   return {
     hash,
@@ -57,7 +52,6 @@ describe("normalizeCrossInstanceTorrents", () => {
       expect.objectContaining({ hash: "a", instanceId: 3, instanceName: "seedbox" }),
       expect.objectContaining({ hash: "b", instanceId: 7, instanceName: "home" }),
     ])
-    // Every row must carry a usable instanceName for the Instance column.
     expect(result?.every(t => typeof t.instanceName === "string" && t.instanceName.length > 0)).toBe(true)
   })
 
@@ -86,10 +80,6 @@ describe("resolveStreamedCrossInstanceTorrents", () => {
     return { total: 2, ...overrides }
   }
 
-  // This is the exact regression guard: an SSE snapshot arrives with snake_case
-  // instance metadata (cross_instance_torrents, instance_name) and the resolver
-  // must hand the table camelCase rows so the Instance column is not blank. The
-  // original bug set these raw rows directly, bypassing normalization.
   it("normalizes a streamed snake_case snapshot into camelCase rows", () => {
     const rows = resolveStreamedCrossInstanceTorrents(
       snapshot({
@@ -119,10 +109,6 @@ describe("resolveStreamedCrossInstanceTorrents", () => {
 })
 
 describe("normalizeStreamedSnapshot", () => {
-  // Guards the flicker regression: the stream handler writes this normalized
-  // snapshot into the React Query cache, which the REST-processing effect reads.
-  // If the cached snapshot kept snake_case rows, the effect would overwrite the
-  // table with blank-Instance rows on every tick.
   it("promotes both cross-instance arrays to camelCase so the cached snapshot is consistent", () => {
     const raw = {
       total: 1,
@@ -134,7 +120,6 @@ describe("normalizeStreamedSnapshot", () => {
     expect(result.cross_instance_torrents?.[0]).toEqual(
       expect.objectContaining({ instanceId: 3, instanceName: "seedbox" })
     )
-    // Both casings of the array must point at the normalized rows.
     expect(result.crossInstanceTorrents).toBe(result.cross_instance_torrents)
   })
 
@@ -154,11 +139,7 @@ describe("mergeStreamedCrossInstanceFirstPage", () => {
   const hashes = (rows: CrossInstanceTorrent[]) => rows.map(row => row.hash)
   const keys = (rows: CrossInstanceTorrent[]) => rows.map(row => `${row.instanceId}:${row.hash}`)
 
-  // The #1983 regression guard: the aggregated SSE stream only serves page 0, so it
-  // must MERGE into the displayed list rather than replace it. Before the fix every
-  // snapshot wiped the REST-appended later pages, pinning the unified view to page 0.
   it("preserves pagination-loaded later pages on a steady stream update", () => {
-    // prev = page0[a@1, b@1] + page1[c@1, d@1]; the fresh snapshot is still page 0.
     const prev: Torrent[] = [camel("a", 1, "alpha"), camel("b", 1, "alpha"), camel("c", 1, "alpha"), camel("d", 1, "alpha")]
     const merged = mergeStreamedCrossInstanceFirstPage(
       prev,
@@ -168,9 +149,6 @@ describe("mergeStreamedCrossInstanceFirstPage", () => {
   })
 
   it("keeps cross-seeded same-hash rows on different instances distinct (instanceId+hash identity)", () => {
-    // prev = page0[x@1, y@1] + page1[x@2, z@1]; total 4, fresh page 0 = [x@1, y@1].
-    // 'x' exists on both instance 1 and instance 2. A hash-only merge would drop the
-    // trailing 'x@2' as a duplicate of page-0 'x@1'; the instanceId+hash key keeps it.
     const prev: Torrent[] = [camel("x", 1, "alpha"), camel("y", 1, "alpha"), camel("x", 2, "beta"), camel("z", 1, "alpha")]
     const merged = mergeStreamedCrossInstanceFirstPage(
       prev,
@@ -180,9 +158,6 @@ describe("mergeStreamedCrossInstanceFirstPage", () => {
   })
 
   it("normalizes the streamed snake_case page so the Instance column is never blank", () => {
-    // Empty prev is also the filter-reset / initial-load path: useTorrentsList resets
-    // allTorrents to [] when scope/filters/search/sort change (useTorrentsList.ts), so this
-    // doubles as the "first stream payload after a reset" guard.
     const merged = mergeStreamedCrossInstanceFirstPage(
       [],
       snapshot(2, streamed("a", 3, "seedbox"), streamed("b", 7, "home"))
@@ -193,10 +168,6 @@ describe("mergeStreamedCrossInstanceFirstPage", () => {
   })
 
   it("clears the table on a total-0 snapshot no matter how many pages were appended", () => {
-    // #1983 is about deep pagination, so prove the clear path holds when prev spans several
-    // REST-appended pages: page0[a@1,b@1] + page1[c@1,d@1] + page2[e@1,f@1]. total===0 means
-    // the server now reports zero matches, so the whole client list is stale and must be
-    // invalidated — pagination depth must not leave orphaned rows behind.
     const prev: Torrent[] = [
       camel("a", 1, "alpha"), camel("b", 1, "alpha"),
       camel("c", 1, "alpha"), camel("d", 1, "alpha"),

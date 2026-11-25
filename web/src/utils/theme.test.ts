@@ -17,7 +17,6 @@ const cssVars = {
 }
 
 beforeEach(() => {
-  // jsdom has no matchMedia; setTheme resolves the system preference with it.
   vi.stubGlobal("matchMedia", vi.fn(() => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -51,10 +50,7 @@ describe("setTheme locked fallback", () => {
     window.removeEventListener("themechange", listener)
 
     expect(document.documentElement.getAttribute("data-theme")).toBe("minimal")
-    // The stored selection survives so it comes back when the license does.
     expect(localStorage.getItem("color-theme")).toBe("locked-premium")
-    // Flagged as system-driven so useThemeSettingsSync never pushes the
-    // downgrade to the server, which would overwrite the stored selection.
     expect(events).toEqual([{ themeId: "minimal", isSystemChange: true }])
   })
 
@@ -67,8 +63,6 @@ describe("setTheme locked fallback", () => {
     await setTheme("minimal", undefined, undefined, true)
     window.removeEventListener("themechange", listener)
 
-    // Hydration and server pulls restore existing state; the sync hook must
-    // never push them.
     expect(events).toEqual([true])
   })
 
@@ -91,8 +85,6 @@ describe("setTheme locked fallback", () => {
     window.removeEventListener("themechange", listener)
 
     expect(localStorage.getItem("color-theme")).toBe("locked-premium")
-    // A user change dispatched with the applied fallback theme; the sync hook
-    // maps it back to the stored selection before pushing to the server.
     expect(events).toEqual([{ themeId: "minimal", isSystemChange: false }])
   })
 })
@@ -172,7 +164,6 @@ describe("custom theme preview", () => {
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
   })
 
-  // regression: #4124
   it("stays on the page through a mode change and a theme change", async () => {
     const draft = ":root { --background: red; } .dark { --background: maroon; }"
     registerCustomThemes([customTheme])
@@ -191,7 +182,6 @@ describe("custom theme preview", () => {
     expect(customStyle()).toBe(customTheme.rawCss)
   })
 
-  // regression: #4124
   it("reports the css of the applied theme, not the draft", async () => {
     registerCustomThemes([customTheme])
     await setTheme("custom:ocean")
@@ -210,7 +200,6 @@ describe("custom theme preview", () => {
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
   })
 
-  // regression: #4124
   it("keeps css that loads an outside file off the page, and keeps the last good preview", async () => {
     const good = ":root { --background: red; } .dark { --background: maroon; }"
     await setTheme("minimal")
@@ -225,7 +214,6 @@ body { background: url(https://example.invalid/a.png); }`
 })
 
 describe("custom theme preview mode", () => {
-  // regression: #4124
   it("shows a light-only theme in light mode and an ordinary theme in the selected mode", async () => {
     await setTheme("minimal", "dark")
     expect(document.documentElement.classList.contains("dark")).toBe(true)

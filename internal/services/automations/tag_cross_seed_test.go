@@ -18,7 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// buildTagChangesForTest builds the tag changes that the Run plan would apply.
 func buildTagChangesForTest(states map[string]*torrentDesiredState) map[string]*tagChange {
 	changes := make(map[string]*tagChange)
 	for hash, state := range states {
@@ -42,8 +41,6 @@ func tagExpansionRule(action *models.TagAction) *models.Automation {
 	}
 }
 
-// crossSeedGroupsForTest groups the torrents that share a content path, the
-// way the matcher groups the torrents that share a file.
 func crossSeedGroupsForTest(torrents []qbt.Torrent) *crossSeedGroups {
 	return buildCrossSeedGroups(torrentRefs(torrents), &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)})
 }
@@ -92,8 +89,6 @@ func TestExpandTagStatesForCrossSeeds_PropagatesToSiblings(t *testing.T) {
 			assert.Equal(t, ref, sib.tagRuleByTag["managed"], "expected rule attribution on sibling")
 			require.Contains(t, sib.currentTags, "keep-me", "sibling state must be seeded with its own current tags")
 
-			// The diff loop must produce a per-sibling desired set that keeps unrelated
-			// tags (SetTags replaces the whole list).
 			sibChange := buildTagChangesForTest(states)["sibling"]
 			require.NotNil(t, sibChange)
 			assert.ElementsMatch(t, tt.wantAdd, sibChange.toAdd)
@@ -103,14 +98,12 @@ func TestExpandTagStatesForCrossSeeds_PropagatesToSiblings(t *testing.T) {
 	}
 }
 
-// A tag rule with includeCrossSeeds tags the cross-seed of a matching torrent, in the live run and the dry run.
 func TestApplyRules_TagIncludeCrossSeedsTagsEachCopy(t *testing.T) {
 	const (
 		x    = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		y    = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 		name = "Example.Show.S01E01.1080p.WEB-DL-GRP"
 	)
-	// Same name, different hash: X and Y are cross-seeds. Only X matches the rule.
 	torrents := []stubTorrent{{x, name, "mv", ""}, {y, name, "", ""}}
 	rule := tagExpansionRule(&models.TagAction{Enabled: true, Tags: []string{"moved"}, Mode: models.TagModeAdd, IncludeCrossSeeds: true, Condition: tagsContain("mv")})
 	want := map[string][]string{"tag": {x, y}}
@@ -236,8 +229,6 @@ func TestExpandTagStatesForCrossSeeds_SameRuleConflicts(t *testing.T) {
 	}
 }
 
-// The group is the torrents that share a file, as for category: a copy under
-// another save path expands, a torrent that only shares the folder does not.
 func TestExpandTagStatesForCrossSeeds_SharedFilesNotPath(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", SavePath: "/data/flat", ContentPath: "/data/flat", Tags: "abcd"},
@@ -272,8 +263,6 @@ func TestExpandTagStatesForCrossSeeds_SharedFilesNotPath(t *testing.T) {
 	require.NotContains(t, states, "neighbour", "a torrent that shares only the folder is not a cross-seed")
 }
 
-// A group whose file check did not complete gets no decision, as for category,
-// so the copies never diverge.
 func TestProcessTagAction_IncludeCrossSeeds_SkipsUnknownGroup(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd"},
@@ -319,9 +308,6 @@ func TestExpandTagStatesForCrossSeeds_UnknownRuleIntentSkipped(t *testing.T) {
 }
 
 func TestExpandTagStatesForCrossSeeds_NoOpSiblingRecordsNothing(t *testing.T) {
-	// Siblings already in the desired tag state must not land in tagChanges:
-	// phantom entries inflate dry-run/live activity counts and diverge from
-	// preview, which diffs against current tags.
 	tests := []struct {
 		scenario    string
 		action      string
@@ -376,9 +362,6 @@ func TestExpandTagStatesForCrossSeeds_NoOpSiblingRecordsNothing(t *testing.T) {
 }
 
 func TestExpandTagStatesForCrossSeeds_InjectedConflictsResolveByRuleOrder(t *testing.T) {
-	// Two rules expand conflicting decisions for the same tag onto a sibling
-	// that has no decision of its own. The later rule (store order: sort_order,
-	// then id) must win no matter how the trigger hashes sort.
 	addRule := tagExpansionRule(&models.TagAction{
 		Enabled:           true,
 		Tags:              []string{"managed"},
@@ -452,9 +435,6 @@ func TestExpandTagStatesForCrossSeeds_InjectedConflictsResolveByRuleOrder(t *tes
 }
 
 func TestProcessAndExpand_Tag_FullMode_AnyMatchWins(t *testing.T) {
-	// Trigger matches the condition; the sibling carries the tag but does not
-	// match. Full mode alone would strip the sibling; any-match-wins expansion
-	// must converge both copies on the tag instead.
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching Trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd"},
 		{Hash: "sibling", Name: "Other Copy", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
@@ -489,10 +469,6 @@ func TestProcessAndExpand_Tag_FullMode_AnyMatchWins(t *testing.T) {
 }
 
 func TestProcessAndExpand_Tag_FullMode_SteadyStateKeepsSiblingTag(t *testing.T) {
-	// Run 2 of the any-match-wins scenario: the trigger matches and already
-	// carries the tag (no local change), the sibling carries the tag but does
-	// not match. The trigger's assert intent must cancel the sibling's
-	// full-mode remove, or the feature would undo its own convergence.
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching Trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd, managed"},
 		{Hash: "sibling", Name: "Other Copy", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
@@ -524,8 +500,6 @@ func TestProcessAndExpand_Tag_FullMode_SteadyStateKeepsSiblingTag(t *testing.T) 
 }
 
 func TestProcessAndExpand_Tag_DeleteFromClient_ReaddsSiblings(t *testing.T) {
-	// DeleteFromClient wholesale-deletes the managed tag before re-adding
-	// matches; expanded siblings must land in tagChanges so they are re-added.
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching Trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
 		{Hash: "sibling", Name: "Other Copy", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
@@ -620,8 +594,6 @@ func TestRecordDryRunActivities_Tags_IncludeCrossSeeds_CountsSiblings(t *testing
 	assert.Equal(t, 2, details.Added["managed"], "expected trigger and expanded sibling to be counted")
 }
 
-// previewTagForTest runs PreviewTagRule against a stub qBittorrent that serves
-// the torrents. Torrents with the same content path are cross-seeds.
 func previewTagForTest(t *testing.T, torrents []qbt.Torrent, rule *models.Automation) *PreviewResult {
 	t.Helper()
 	fixture := parityFixture{torrents: make(map[string]map[string]any, len(torrents)), sameContent: sharingByContentPath(torrents)}
@@ -654,8 +626,6 @@ func TestPreviewTag_DirectVsCrossSeedClassification(t *testing.T) {
 		},
 	})
 
-	// Direct = the rule's own decision, cross-seed = changed only through expansion.
-	// The already-tagged sibling is a no-op and does not show.
 	result := previewTagForTest(t, torrents, rule)
 	assert.Equal(t, map[string]bool{"trigger": false, "sibling": true}, previewRows(result))
 	assert.Equal(t, 2, result.TotalMatches)
@@ -682,17 +652,12 @@ func TestPreviewTag_ManagedResetCountsReAdds(t *testing.T) {
 		},
 	})
 
-	// The live path deletes "managed" from the client first, so re-adding it to
-	// the trigger and its sibling is a real change the preview must count.
 	result := previewTagForTest(t, torrents, rule)
 	assert.Equal(t, map[string]bool{"trigger": false, "tagged-sibling": true}, previewRows(result))
 	assert.Equal(t, 2, result.TotalMatches)
 	assert.Equal(t, 1, result.CrossSeedCount)
 }
 
-// A full-mode rule removes the tag from a non-matching sibling, and the
-// matching trigger's expansion adds it back: nothing changes for the
-// sibling, so the preview must count it as neither direct nor cross-seed.
 func TestPreviewTag_ExpansionCancellingOwnRemovalCountsNothing(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching Trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd"},
@@ -739,7 +704,6 @@ func TestProcessTagAction_DeleteFromClient_UnknownGroupKeepsTag(t *testing.T) {
 	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrentRefs(torrents), evalCtx), noSkipWindow(rule), nil, nil)
 	changes := buildTagChangesForTest(states)
 
-	// The client-wide delete removes the tag from every torrent first.
 	require.Contains(t, changes, "trigger", "an unknown group keeps the tags it has")
 	assert.ElementsMatch(t, []string{"managed"}, changes["trigger"].toAdd)
 	assert.NotContains(t, changes, "sibling", "an unknown group gets no new tags")
@@ -777,8 +741,6 @@ func TestExpandTagStatesForCrossSeeds_LaterAddKeepsResetReadd(t *testing.T) {
 }
 
 func TestExpandTagStatesForCrossSeeds_SameRuleInjectedAddOverRemove(t *testing.T) {
-	// One rule adds the tag to one copy and removes it from another. The
-	// sibling must get the same result whichever trigger hash sorts first.
 	rule := tagExpansionRule(&models.TagAction{
 		Enabled:           true,
 		Tags:              []string{"managed"},
@@ -819,9 +781,6 @@ func TestExpandTagStatesForCrossSeeds_SameRuleInjectedAddOverRemove(t *testing.T
 }
 
 func TestProcessAndExpand_Tag_OtherRuleNoOpDecisionWins(t *testing.T) {
-	// One rule adds the tag to a torrent and its cross-seeds, another removes
-	// it from the copy. The copy's own rule must win on every run, also when
-	// the removal has nothing to do, or the tag flips each run.
 	addRule := tagExpansionRule(&models.TagAction{
 		Enabled:           true,
 		Tags:              []string{"managed"},
@@ -858,9 +817,6 @@ func TestProcessAndExpand_Tag_OtherRuleNoOpDecisionWins(t *testing.T) {
 }
 
 func TestProcessAndExpand_Tag_OtherFullRuleNonMatchWins(t *testing.T) {
-	// A full-mode rule decides about every torrent it checks: a copy that
-	// does not match it must not have the tag. Another rule's expansion must
-	// not add the tag there, or the full rule removes it on the next run.
 	addRule := tagExpansionRule(&models.TagAction{
 		Enabled:           true,
 		Tags:              []string{"managed"},
@@ -875,7 +831,6 @@ func TestProcessAndExpand_Tag_OtherFullRuleNonMatchWins(t *testing.T) {
 		Condition: &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "Other"},
 	})
 	fullRule.ID = 2
-	// The full rule runs first, so the add rule wins on the trigger.
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Name: "Matching", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
 		{Hash: "sibling", Name: "Copy", SavePath: "/data", ContentPath: "/data/show"},

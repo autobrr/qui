@@ -8,7 +8,6 @@ import { Lightbulb } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useInstanceName } from "./use-instance-name"
 
-/** The hints of a BitTorrent Transfer, for example a qBittorrent that uses "TCP and μTP". */
 export function TransferHints({ hints }: { hints: TransferHint[] }) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()

@@ -31,7 +31,6 @@ import type { LogSettings, LogSettingsUpdate } from "@/types"
 
 const LOG_SETTINGS_KEY = ["log-settings"]
 
-/** The Logs tab: the live log of the server, its log settings, and its log files. */
 export function LogSettingsPanel() {
   return (
     <>
@@ -61,7 +60,6 @@ function LogSettingsSection() {
   if (!settings) {
     return <Section title={t("logs.configuration.title")} description={t("logs.configuration.description")} queries={[query]} />
   }
-  // A new key gives the form fresh values when the settings change on the server, for example after a save.
   const key = [settings.level, settings.path, settings.maxSize, settings.maxBackups].join("\n")
   return <LogSettingsForm key={key} settings={settings} query={query} />
 }
@@ -75,7 +73,6 @@ interface LogSettingsDraft {
 
 type NumberField = "maxSize" | "maxBackups"
 
-/** The number in the text, without its decimals, when it is at least min. */
 function parseCount(text: string, min: number): number | undefined {
   const value = text.trim() === "" ? Number.NaN : Math.trunc(Number(text))
   return Number.isSafeInteger(value) && value >= min ? value : undefined
@@ -105,7 +102,6 @@ function LogSettingsForm({ settings, query }: { settings: LogSettings; query: Us
   })
 
   const submit = () => {
-    // A locked field cannot change, and the environment can lock a value that the form rejects, such as a max size of 0.
     const isLocked = (name: NumberField) => settings.locked?.[name] !== undefined
     const maxSize = parseCount(draft.maxSize, 1)
     const maxBackups = parseCount(draft.maxBackups, 0)
@@ -133,7 +129,6 @@ function LogSettingsForm({ settings, query }: { settings: LogSettings; query: Us
     return (
       <span className="inline-flex items-center gap-1">
         <Lock aria-hidden="true" className="size-3 shrink-0" />
-        {/* The server names the source: "environment", or "environment (empty)" for a variable without a value. */}
         {t(source === "environment (empty)" ? "logs.configuration.lockedByEmptyEnv" : "logs.configuration.lockedByEnv")}
       </span>
     )
@@ -183,7 +178,6 @@ function LogSettingsForm({ settings, query }: { settings: LogSettings; query: Us
         </div>
         <div className="col-span-2 sm:col-span-1">
           <Field label={t("logs.configuration.path")} description={lockNote("path")}>
-            {/* Read-only, not disabled, so that a long locked path can still be scrolled and copied. */}
             <Input
               className={cn("max-sm:h-10", settings.locked?.path !== undefined && "text-muted-foreground")}
               placeholder={t("logs.configuration.pathPlaceholder")}
@@ -243,7 +237,6 @@ function normalizeLevel(raw: string | undefined): LogLevel {
   if (level && ALL_LEVELS_SET.has(level as LogLevel)) {
     return level as LogLevel
   }
-  // Coerce fatal/panic to error
   if (level === "fatal" || level === "panic") {
     return "error"
   }
@@ -257,20 +250,14 @@ function parseLogLine(entry: RawLogLine): ParsedLogEntry {
     const time = typeof parsed.time === "string" ? parsed.time : ""
     const message = typeof parsed.message === "string" ? parsed.message : ""
 
-    // Extract extra fields (everything except level, time, message)
     const { level: _l, time: _t, message: _m, ...extra } = parsed
 
     return { id: entry.id, level, time, message, extra, raw: entry.text, isJson: true }
   } catch {
-    // Not valid JSON, return as raw text with info level
     return { id: entry.id, level: "info", time: "", message: entry.text, extra: {}, raw: entry.text, isJson: false }
   }
 }
 
-/**
- * One line of the log. A wide screen keeps it on one line, and the box scrolls sideways. A phone wraps it, and cuts an
- * entry with details after four lines: a tap opens the entry in full.
- */
 function LogEntry({
   entry,
   formatTimeOnly,
@@ -280,7 +267,6 @@ function LogEntry({
   entry: ParsedLogEntry
   formatTimeOnly: (timestamp: number, includeSeconds?: boolean) => string
   onSelect: () => void
-  /** Mutes the message from the level badge. A phone has no hover to show this, so it mutes from the entry instead. */
   onMute?: () => void
 }) {
   const { t } = useTranslation("settings")
@@ -315,7 +301,6 @@ function LogEntry({
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
     >
-      {/* The clamp sits inside the padding of the row, so no part of a fifth line shows. */}
       <div className={cn("max-sm:[overflow-wrap:anywhere] sm:flex sm:gap-2 sm:whitespace-nowrap", isClickable && "max-sm:line-clamp-4")}>
         <span className="mr-2 text-muted-foreground/60 sm:mr-0 sm:shrink-0">{entry.time ? formatTimeOnly(Date.parse(entry.time) / 1000, true) : ""}</span>
         {onMute ? (
@@ -354,11 +339,9 @@ function LogEntry({
   )
 }
 
-// Syntax highlight JSON string - returns React elements
 function highlightJson(json: string): ReactNode[] {
   if (!json) return []
 
-  // Token pattern: keys, strings, numbers, booleans, null, punctuation
   const tokenRegex = /("(?:\\.|[^"\\])*")\s*:|("(?:\\.|[^"\\])*")|(-?\d+\.?\d*(?:[eE][+-]?\d+)?)|(\btrue\b|\bfalse\b)|(\bnull\b)|([{}[\],:])/g
 
   const result: ReactNode[] = []
@@ -369,7 +352,6 @@ function highlightJson(json: string): ReactNode[] {
     const matchIndex = match.index
     if (matchIndex == null) continue
 
-    // Add any whitespace/text before this match
     if (matchIndex > lastIndex) {
       result.push(json.slice(lastIndex, matchIndex))
     }
@@ -377,25 +359,19 @@ function highlightJson(json: string): ReactNode[] {
     const [fullMatch, keyMatch, stringMatch, numberMatch, boolMatch, nullMatch, punctMatch] = match
 
     if (keyMatch) {
-      // Key (property name) - theme-aware cyan/teal
       result.push(
         <span key={key++} className="text-cyan-700 dark:text-cyan-400">{keyMatch}</span>,
         ":"
       )
     } else if (stringMatch) {
-      // String value - theme-aware green
       result.push(<span key={key++} className="text-green-700 dark:text-green-400">{stringMatch}</span>)
     } else if (numberMatch) {
-      // Number - theme-aware amber
       result.push(<span key={key++} className="text-amber-700 dark:text-amber-400">{numberMatch}</span>)
     } else if (boolMatch) {
-      // Boolean - theme-aware purple
       result.push(<span key={key++} className="text-purple-700 dark:text-purple-400">{boolMatch}</span>)
     } else if (nullMatch) {
-      // null - muted
       result.push(<span key={key++} className="text-muted-foreground">{nullMatch}</span>)
     } else if (punctMatch) {
-      // Punctuation - default color
       result.push(<span key={key++} className="text-muted-foreground/70">{punctMatch}</span>)
     } else {
       result.push(fullMatch)
@@ -404,7 +380,6 @@ function highlightJson(json: string): ReactNode[] {
     lastIndex = matchIndex + fullMatch.length
   }
 
-  // Add any remaining text
   if (lastIndex < json.length) {
     result.push(json.slice(lastIndex))
   }
@@ -425,7 +400,6 @@ function LogEntryDetail({
 }) {
   const { t } = useTranslation("settings")
   const { formatISOTimestamp } = useDateTimeFormatters()
-  // Memoize JSON stringification and highlighting to avoid re-tokenizing on unrelated renders
   const { prettyJson, highlightedJson } = useMemo(() => {
     const pretty = JSON.stringify({ level: entry.level, time: entry.time, message: entry.message, ...entry.extra }, null, 2)
     return { prettyJson: pretty, highlightedJson: highlightJson(pretty) }
@@ -474,7 +448,6 @@ function LogEntryDetail({
   )
 }
 
-// Buffer limits: soft cap when following live, hard cap always
 const LOG_SOFT_CAP = 1000
 const LOG_HARD_CAP = 10000
 
@@ -502,7 +475,6 @@ function LiveLogSection() {
   const [selectedLevels, setSelectedLevels] = usePersistedLogLevels()
   const [searchQuery, setSearchQuery] = useState("")
   const [droppedWhilePaused, setDroppedWhilePaused] = useState(false)
-  // The entry stays while its detail fades out.
   const [detail, setDetail] = useState<{ entry: ParsedLogEntry; open: boolean } | null>(null)
   const [logExclusions, setLogExclusions] = usePersistedLogExclusions()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -514,7 +486,6 @@ function LiveLogSection() {
   const setFollowing = (follow: boolean) => {
     autoScrollRef.current = follow
     setAutoScroll(follow)
-    // Following trims the buffer again, so the warning about dropped entries goes away.
     if (follow) setDroppedWhilePaused(false)
   }
 
@@ -539,11 +510,9 @@ function LiveLogSection() {
       const newEntry: RawLogLine = { id: nextIdRef.current++, text: event.data as string }
       setLines((prev) => {
         const newLines = [...prev, newEntry]
-        // Soft cap when auto-scroll ON (user following live)
         if (autoScrollRef.current && newLines.length > LOG_SOFT_CAP) {
           return newLines.slice(-LOG_SOFT_CAP)
         }
-        // Hard cap always to prevent unbounded memory
         if (newLines.length > LOG_HARD_CAP) {
           setDroppedWhilePaused(true)
           return newLines.slice(-LOG_HARD_CAP)
@@ -572,21 +541,16 @@ function LiveLogSection() {
     }
   }, [connect])
 
-  // Parse entries once when lines change (avoid re-parsing on filter/search changes)
   const parsedEntries = useMemo(() => lines.map(parseLogLine), [lines])
 
-  // Filter parsed entries
   const filteredEntries = useMemo(() => {
     const query = searchQuery.toLowerCase().trim()
 
     return parsedEntries.filter((e) => {
-      // Filter by level
       if (!selectedLevels.has(e.level)) return false
 
-      // Filter by muted messages
       if (logExclusions.includes(e.message)) return false
 
-      // Filter by search query
       if (query) {
         const matchesMessage = e.message.toLowerCase().includes(query)
         const matchesExtra = Object.values(e.extra).some((v) => {
@@ -600,7 +564,6 @@ function LiveLogSection() {
     })
   }, [parsedEntries, selectedLevels, searchQuery, logExclusions])
 
-  // Auto-scroll to bottom when enabled
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -691,10 +654,6 @@ function LiveLogSection() {
   )
 }
 
-/**
- * The log lines, in a box that fills most of the screen height. On a phone it reaches the edges of the card, so -mx-4
- * repeats the phone padding of Section, and its lines wrap, so it never scrolls sideways.
- */
 function LogScrollBody({ ref, label, children }: { ref: Ref<HTMLDivElement>; label: string; children: ReactNode }) {
   return (
     <div
@@ -745,10 +704,8 @@ interface LogFilterProps {
   onExclusionsChange: (patterns: string[]) => void
 }
 
-/** The level filter and the muted messages of the viewer, behind one button. */
 function LogFilter({ selectedLevels, onSelectedLevelsChange, exclusions, onExclusionsChange }: LogFilterProps) {
   const { t } = useTranslation("settings")
-  // Until the server answers, the levels show the default, and a pick would be lost.
   const settled = useClientSettingsSettled()
   const summary = selectedLevels.size === ALL_LOG_LEVELS.length
     ? t("logs.viewer.allLevels")

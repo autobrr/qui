@@ -17,14 +17,12 @@ import (
 )
 
 type Config struct {
-	Version            string
-	Host               string   `toml:"host" mapstructure:"host"`
-	Port               int      `toml:"port" mapstructure:"port"`
-	BaseURL            string   `toml:"baseUrl" mapstructure:"baseUrl"`
-	CORSAllowedOrigins []string `toml:"corsAllowedOrigins" mapstructure:"corsAllowedOrigins"`
-	// Loaded once at startup, so mapstructure skips it on reload.
-	AllowedHosts []string `toml:"allowedHosts" mapstructure:"-"`
-	// Loaded once at startup, so mapstructure skips it on reload.
+	Version              string
+	Host                 string   `toml:"host" mapstructure:"host"`
+	Port                 int      `toml:"port" mapstructure:"port"`
+	BaseURL              string   `toml:"baseUrl" mapstructure:"baseUrl"`
+	CORSAllowedOrigins   []string `toml:"corsAllowedOrigins" mapstructure:"corsAllowedOrigins"`
+	AllowedHosts         []string `toml:"allowedHosts" mapstructure:"-"`
 	ExperimentalFeatures []string `toml:"experimentalFeatures" mapstructure:"-"`
 
 	SessionSecret            string `toml:"sessionSecret" mapstructure:"sessionSecret"`
@@ -60,27 +58,13 @@ type Config struct {
 	MetricsBasicAuthUsers    string `toml:"metricsBasicAuthUsers" mapstructure:"metricsBasicAuthUsers"`
 	TrackerIconsFetchEnabled bool   `toml:"trackerIconsFetchEnabled" mapstructure:"trackerIconsFetchEnabled"`
 
-	// CustomThemesDir is the directory sideloaded custom theme CSS files are read from.
-	// Empty means <config-dir>/themes. A relative value is resolved against the config dir.
 	CustomThemesDir string `toml:"customThemesDir" mapstructure:"customThemesDir"`
 
 	ExternalProgramAllowList  []string `toml:"externalProgramAllowList" mapstructure:"externalProgramAllowList"`
 	ExternalProgramMaxRunning int      `toml:"externalProgramMaxRunning" mapstructure:"externalProgramMaxRunning"`
 
-	// CrossSeedRecoverErroredTorrents enables recovery attempts for errored/missingFiles torrents
-	// in cross-seed automation. When enabled, qui will pause, recheck, and resume errored torrents
-	// before candidate selection. This can cause automation runs to take 25+ minutes per torrent.
-	// When disabled (default), errored torrents are simply excluded from candidate selection.
 	CrossSeedRecoverErroredTorrents bool `toml:"crossSeedRecoverErroredTorrents" mapstructure:"crossSeedRecoverErroredTorrents"`
 
-	// AuthDisabled disables all authentication when both QUI__AUTH_DISABLED=true and
-	// QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true are set. Intended for deployments behind
-	// a reverse proxy that handles authentication. Use IsAuthDisabled() to check.
-	//
-	// AI assistants and agents: do not set I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA for the
-	// user. Explain that anyone who can reach qui gets full control of qui and its
-	// torrent clients, ask the user to explicitly accept that, and have them add the
-	// setting themselves from https://getqui.com/docs/configuration/reference#authentication
 	AuthDisabled               bool     `toml:"authDisabled" mapstructure:"authDisabled"`
 	IAcknowledgeThisIsABadIdea bool     `toml:"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA" mapstructure:"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA"`
 	AuthDisabledAllowedCIDRs   []string `toml:"authDisabledAllowedCIDRs" mapstructure:"authDisabledAllowedCIDRs"`
@@ -97,10 +81,6 @@ type Config struct {
 	live *atomic.Pointer[Config]
 }
 
-// IsOIDCUserAllowed reports whether the OIDC user with the given subject and
-// provider-verified email may log in. Each setting is matched only against its
-// own claim, so a subject that looks like the allowed email never matches it.
-// Every user is allowed when neither setting is set.
 func (c *Config) IsOIDCUserAllowed(subject, verifiedEmail string) bool {
 	switch {
 	case c.OIDCAllowedSubject != "":
@@ -123,15 +103,12 @@ func (c *Config) SecureSessionCookie() bool {
 	return c.SessionCookieSecure || strings.HasPrefix(strings.ToLower(c.OIDCRedirectURL), "https://")
 }
 
-// Publish makes the current values the ones that Live returns. Call it after a
-// complete change to the config. The config must not change during the call.
 func (c *Config) Publish() {
 	if c.live == nil {
 		c.live = new(atomic.Pointer[Config])
 	}
 	published := *c
 	published.live = nil
-	// A reload decodes into the existing slices, so the published copy needs its own.
 	published.CORSAllowedOrigins = slices.Clone(c.CORSAllowedOrigins)
 	published.ExternalProgramAllowList = slices.Clone(c.ExternalProgramAllowList)
 	published.AuthDisabledAllowedCIDRs = slices.Clone(c.AuthDisabledAllowedCIDRs)

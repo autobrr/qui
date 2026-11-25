@@ -30,20 +30,9 @@ import (
 
 const mediaIDWiringSourceHash = "14a238e56ab06fed600c38d5068998d95e9338c2"
 
-// regression: #3306
-// TestTagIDPrimaryMixedModeWithTitleRescue drives the full search flow against
-// two recording Torznab servers: one with an imdbid capability, one without.
-// With no arr ID available, the primary search must run ID-first from the
-// MKV tag in mixed mode: the ID-capable indexer searches by imdbid with no
-// title query, the title-only indexer gets the title query in the same pass.
-// When the ID results all fail verification, the title rescue pass must send
-// the plain title to the ID-queried indexer only; the title-only indexer
-// already searched by title and must not be re-run.
 func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 	const sourceName = "Signal.Static.1997.1080p.BluRay.DD5.1.x264-FIELDTEST"
 
-	// The ID query returns one (junk) candidate so the flow can observe a
-	// nonempty ID-assisted result set; title queries return nothing.
 	newRecorder := func(requests *[]url.Values, mu *sync.Mutex) *httptest.Server {
 		var server *httptest.Server
 		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,9 +87,7 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 	movieCategories := []models.TorznabIndexerCategory{{IndexerID: 1, CategoryID: 2000, CategoryName: "Movies"}}
 	svc := &Service{
 		instanceStore: instanceStore,
-		// ARR knows the title but has no IDs: the search starts degraded
-		// (arr_no_ids) and a successful ID retry must clear that notice.
-		arrService: &spyARRLookupService{result: &arr.ExternalIDsResult{}},
+		arrService:    &spyARRLookupService{result: &arr.ExternalIDsResult{}},
 		jackettService: jackett.NewService(&gettableIndexerStore{failingEnabledIndexerStore{indexers: []*models.TorznabIndexer{
 			{
 				ID:           1,
@@ -137,7 +124,6 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
-	// The MKV path behind the ID retry is resolved through the instance's backend.
 	svc.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend()))
 
 	resp, err := svc.searchTorrentMatches(ctx, instance.ID, mediaIDWiringSourceHash, TorrentSearchOptions{}, searchScope{torznabIndexerIDs: []int{1, 2}}, nil)
@@ -148,8 +134,6 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Primary pass, mixed mode: ID query to the ID-capable indexer, title
-	// query to the other one.
 	require.NotEmpty(t, idCapableRequests)
 	require.NotEmpty(t, idCapableRequests[0].Get("imdbid"),
 		"primary must search the ID-capable indexer by ID")
@@ -177,9 +161,6 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 		require.Empty(t, p.Get("imdbid"), "title-only indexer must never receive an ID param")
 	}
 
-	// The title-only indexer searches by title with the year, then once more
-	// without it in the yearless retry. A third request would be a re-run of
-	// its already-searched title query in the rescue: the waste this test pins.
 	require.Len(t, titleOnlyRequests, 2,
 		"the title rescue must reach only the ID-queried indexer")
 	require.Equal(t, "1997", titleOnlyRequests[0].Get("year"))

@@ -51,7 +51,6 @@ export type OfflineCause =
   | { kind: "error"; message: string }
   | { kind: "noAnswer" }
 
-// Incognito mode shows this in place of a host or an address.
 export const MASK = "••••••"
 
 export function offlineCause(d: DashboardInstanceStats): OfflineCause {
@@ -82,7 +81,6 @@ export function issueClass(issue: InstanceIssue): string {
   return ISSUE_DISPLAY[issue.kind].iconClass
 }
 
-/** The torrent counts of the instance with a tracker problem or an error, in ISSUE_KINDS order. A count of zero is left out. */
 export function instanceIssues(d: DashboardInstanceStats): InstanceIssue[] {
   return ISSUE_KINDS.flatMap(kind => {
     const count = d.torrentCounts?.status?.[kind] ?? 0
@@ -95,15 +93,10 @@ function diskFreeShare(d: DashboardInstanceStats): number | undefined {
   return freeBytes != null && totalBytes ? freeBytes / totalBytes : undefined
 }
 
-/** True when qui cannot read the size of the disk, so the free share is an estimate from the torrents of the instance. */
 export function isFreeShareEstimated(d: DashboardInstanceStats): boolean {
   return diskFreeShare(d) === undefined
 }
 
-/**
- * The share of the disk that is free. When qui cannot read the size of the disk, the share is out of the free space
- * and the Unique size of the instance, or undefined without a free space.
- */
 export function freeShare(d: DashboardInstanceStats): number | undefined {
   const measured = diskFreeShare(d)
   if (measured !== undefined) return measured
@@ -113,7 +106,6 @@ export function freeShare(d: DashboardInstanceStats): number | undefined {
   return total > 0 ? free / total : undefined
 }
 
-/** The upload and the download that qBittorrent counted since its first start, for the instances together. */
 export function allTimeTransfer(statsData: DashboardInstanceStats[]): { uploaded: number; downloaded: number } {
   return {
     uploaded: statsData.reduce((sum, d) => sum + (d.serverState?.alltime_ul ?? 0), 0),
@@ -121,10 +113,8 @@ export function allTimeTransfer(statsData: DashboardInstanceStats[]): { uploaded
   }
 }
 
-// A disk is almost full below this share of free space.
 const LOW_DISK_SHARE = 0.05
 
-/** True when qBittorrent reports its free space. It reports -1 when it cannot read it, for example right after a start. */
 export function reportsFreeSpace(d: DashboardInstanceStats): boolean {
   return (d.serverState?.free_space_on_disk ?? -1) >= 0
 }
@@ -141,25 +131,20 @@ export function isFirewalled(d: DashboardInstanceStats): boolean {
   return instanceHealth(d) === "ok" && connectionStatusOf(d) === "firewalled"
 }
 
-// A ramp of the text color of the theme, one shade for each instance layer, so that the layers stay apart in each theme.
 const SHADES = [88, 58, 36, 22, 13]
 
-/** The layer of the instances that share one layer after the instances that have a shade. */
 export const OTHER_LAYER = SHADES.length
 
-/** Returns the layer of each instance: its place in instanceIds for the first OTHER_LAYER instances, OTHER_LAYER for the rest. */
 export function instanceLayers(instanceIds: number[]): Map<number, number> {
   return new Map(instanceIds.map((id, index) => [id, Math.min(index, OTHER_LAYER)]))
 }
 
-/** The fill of an instance layer. The series colors mark Tracker groups only. */
 export function layerColor(layer: number): string {
   return layer >= OTHER_LAYER
     ? "color-mix(in oklab, var(--muted-foreground) 30%, transparent)"
     : `color-mix(in oklab, var(--foreground) ${SHADES[layer]}%, transparent)`
 }
 
-/** One layer of a chart: the bytes or the speed of each slot, upload and download. A null slot is a hole, with no value. */
 export interface ChartLayer {
   layer: number
   up: (number | null)[]
@@ -171,11 +156,6 @@ export interface DayChart {
   layers: ChartLayer[]
 }
 
-/**
- * Builds the hours of a chart of the last 24 hours from the rows of each instance, with one layer for each layer of
- * layerOf. An instance that layerOf does not hold goes to OTHER_LAYER. The layers are in layer order, and a layer with
- * no instance is left out.
- */
 export function buildDayChart(rowsByInstance: TransferHistoryRow[][], instanceIds: number[], layerOf: Map<number, number>, range: { from: Date; to: Date }): DayChart {
   const bars = buildBars(rowsByInstance, range, "hour")
   const slot = new Map(bars.map((bar, index) => [bar.start, index]))
@@ -201,21 +181,12 @@ export function buildDayChart(rowsByInstance: TransferHistoryRow[][], instanceId
   }
 }
 
-/** The Live chart has LIVE_SLOTS slots of LIVE_SLOT_MS each: 3 minutes. */
 export const LIVE_SLOTS = 90
 export const LIVE_SLOT_MS = 2000
-// Two samples of an instance at most this far apart are joined. A sample with no other sample this close is a single read.
 const LIVE_JOIN_MS = 3 * LIVE_SLOT_MS
 
 type LiveSample = LiveSamples["instances"][number]["samples"][number]
 
-/**
- * Builds the layers of the live chart from the samples of the server, in the layers of layerOf. The last slot ends at
- * the now of the samples. A sample fills the slots after it up to the next sample of its instance, or up to now, when
- * that is at most LIVE_JOIN_MS later, because the syncs of qui come a little more than 2 seconds apart. A longer
- * stretch with no sample is a hole (null). The chart leaves out the instances that layerOf does not hold, single reads
- * (a sample with no other sample within LIVE_JOIN_MS), and a layer with no value.
- */
 export function buildLiveLayers(live: LiveSamples, layerOf: Map<number, number>): ChartLayer[] {
   const now = Date.parse(live.now)
   const layers = new Map<number, ChartLayer>()
@@ -255,12 +226,10 @@ export interface TrackerGroupShare {
 
 export interface TrackerGroupShares {
   top: TrackerGroupShare[]
-  // The upload of the other Tracker groups and their count, absent when no other group uploaded.
   other?: { uploaded: number; groups: number }
   uploaded: number
 }
 
-/** Returns the Tracker groups with the most upload, in the series order of the Statistics charts, and the rest as Other. The parts add up to the upload. */
 export function trackerGroupShares(rows: TransferHistoryRow[]): TrackerGroupShares {
   const top = topGroups(rows, "uploaded")
   const byGroup = new Map<string, number>()
@@ -275,16 +244,11 @@ export function trackerGroupShares(rows: TransferHistoryRow[]): TrackerGroupShar
   }
 }
 
-/** The sum of the layers in each slot, for one half of the chart. */
 export function slotTotals(layers: ChartLayer[], half: "up" | "down"): number[] {
   const length = layers[0]?.[half].length ?? 0
   return Array.from({ length }, (_, index) => layers.reduce((sum, layer) => sum + (layer[half][index] ?? 0), 0))
 }
 
-/**
- * Returns the layer that holds a value of the stack of one half. at is a slot, or a place between two slots of an area
- * chart, where each layer runs in a straight line from slot to slot. A layer with a hole in a slot holds no value there.
- */
 export function layerAt(layers: ChartLayer[], half: "up" | "down", at: number, value: number): number | undefined {
   const left = Math.floor(at)
   const right = Math.ceil(at)
@@ -304,7 +268,6 @@ export function layerAt(layers: ChartLayer[], half: "up" | "down", at: number, v
   return undefined
 }
 
-/** The highest total of each half of the layers. */
 export function layerPeaks(layers: ChartLayer[]): { up: number; down: number } {
   return { up: Math.max(0, ...slotTotals(layers, "up")), down: Math.max(0, ...slotTotals(layers, "down")) }
 }

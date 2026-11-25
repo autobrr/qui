@@ -11,11 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
-
-	// Registered for their side effect: image.Decode needs the gif and jpeg
-	// decoders to read icons that are not png.
-	_ "image/gif"
-	_ "image/jpeg"
+	"image/gif"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"maps"
@@ -32,8 +29,7 @@ import (
 	"time"
 
 	"code.dny.dev/ssrf"
-	// Same again for .ico, which browsers still serve as a favicon.
-	_ "github.com/mat/besticon/v3/ico"
+	"github.com/mat/besticon/v3/ico"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/html"
@@ -70,6 +66,8 @@ var (
 	fetchEnabled  atomic.Bool
 )
 
+var _ = []func(io.Reader) (image.Image, error){gif.Decode, jpeg.Decode, ico.Decode}
+
 func init() {
 	fetchEnabled.Store(true)
 }
@@ -87,8 +85,6 @@ type Service struct {
 	activityPublisher activity.Publisher
 }
 
-// failureState is the per-host fetch failure record. It is persisted to
-// failuresFileName so a restart does not re-probe every known-dead host.
 type failureState struct {
 	Attempts    int       `json:"attempts"`
 	LastFailure time.Time `json:"lastFailure"`
@@ -128,10 +124,6 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	return svc, nil
 }
 
-// publicOnly refuses the addresses that IANA reserves for special use. Trackers
-// serve their sites on any port, so it allows every port. It allows NAT64, so
-// IPv6-only hosts with DNS64 can still reach IPv4 trackers, and checkNAT64
-// checks the IPv4 address inside a NAT64 address.
 var publicOnly = ssrf.New(
 	ssrf.WithAnyPort(),
 	ssrf.WithAllowedV6Prefixes(ssrf.IPv6NAT64Prefix),
@@ -167,9 +159,6 @@ func newPublicOnlyTransport() http.RoundTripper {
 }
 
 func checkPublicHost(ctx context.Context, host string) error {
-	// net/http sends the ASCII form of a Unicode host name, and the Go resolver
-	// refuses a Unicode name. Like net/http, keep the host as it is when the
-	// conversion fails, for example for an IPv6 literal.
 	if ascii, err := idna.Lookup.ToASCII(host); err == nil {
 		host = ascii
 	}
@@ -178,8 +167,6 @@ func checkPublicHost(ctx context.Context, host string) error {
 		return err
 	}
 	for _, ip := range ips {
-		// LookupNetIP returns an IPv4 literal or hosts-file entry as
-		// ::ffff:a.b.c.d, and the guard refuses every IPv4-mapped address.
 		ip = ip.Unmap()
 		if err := publicOnly.SafeAddr(ip); err != nil {
 			return err
@@ -198,9 +185,6 @@ func safeDial(network, address string, c syscall.RawConn) error {
 	return checkNAT64(netip.MustParseAddrPort(address).Addr())
 }
 
-// checkNAT64 refuses a NAT64 address that carries an IPv4 address that is not
-// public. The NAT64 gateway connects to that IPv4 address, and not every
-// gateway refuses a private one.
 func checkNAT64(ip netip.Addr) error {
 	if !ssrf.IPv6NAT64Prefix.Contains(ip) {
 		return nil
@@ -256,7 +240,6 @@ func QueueFetch(host, trackerURL string) {
 	go func(h string, tracker string) {
 		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		defer cancel()
-		// Errors are ignored here; GetIcon tracks them internally for cooldown.
 		_, _ = svc.GetIcon(ctx, h, tracker)
 	}(sanitized, trackerURL)
 }
@@ -302,8 +285,6 @@ func (s *Service) ListIcons(ctx context.Context) (map[string]string, error) {
 		dataURL := "data:image/png;base64," + encoded
 		icons[host] = dataURL
 
-		// Mirror common www/bare hostname variants so icons resolve regardless of
-		// which variant the torrent client reports.
 		var alias string
 		if bare, ok := strings.CutPrefix(host, "www."); ok && bare != "" {
 			alias = bare
@@ -446,7 +427,6 @@ func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string
 
 			data, contentType, err := s.fetchIconBytes(ctx, iconURL)
 			if err != nil {
-				// Prefer retaining more specific errors over generic timeouts.
 				if lastErr == nil || !errors.Is(err, context.DeadlineExceeded) {
 					lastErr = err
 				}
@@ -609,10 +589,6 @@ func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
 		return nil
 	}
 
-	// Avoid probing http:// unless the announce URL is explicitly http://.
-	// In some environments outbound port 80 is blocked/blackholed, which causes
-	// repeated context deadline exceeded errors and prevents successful https
-	// candidates from being attempted.
 	allowHTTP := false
 	if trackerURL != "" {
 		if u, err := url.Parse(trackerURL); err == nil && strings.EqualFold(u.Scheme, "http") {
@@ -669,9 +645,6 @@ func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
 	return urls
 }
 
-// isHostNotFound reports whether err is a DNS lookup that found no such host.
-// NXDOMAIN on a root page ends the candidate walk; icon URLs found on a live
-// page are exempt.
 func isHostNotFound(err error) bool {
 	dnsErr, ok := errors.AsType[*net.DNSError](err)
 	return ok && dnsErr.IsNotFound
@@ -727,7 +700,6 @@ func (s *Service) failuresPath() string {
 	return filepath.Join(s.iconDir, failuresFileName)
 }
 
-// loadFailures runs from NewService before the service escapes, so no lock.
 func (s *Service) loadFailures() error {
 	data, err := os.ReadFile(s.failuresPath())
 	if errors.Is(err, os.ErrNotExist) {
@@ -737,8 +709,6 @@ func (s *Service) loadFailures() error {
 		return err
 	}
 
-	// Decode into a local map so a corrupt or null file leaves s.failures a
-	// usable empty map.
 	var failures map[string]failureState
 	if err := json.Unmarshal(data, &failures); err != nil {
 		return err
@@ -764,7 +734,6 @@ func sanitizeHost(host string) string {
 		return ""
 	}
 
-	// url.Parse treats values without a scheme as paths; prefix with // to coerce host parsing.
 	parsed, err := url.Parse(host)
 	if err != nil || parsed.Host == "" {
 		parsed, err = url.Parse("//" + host)
@@ -938,8 +907,6 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 
 	reader := bytes.NewReader(data)
 
-	// Check dimensions before expensive decode to avoid decompression bombs
-	// If validation succeeds here we can skip re-checking the same dimensions later.
 	cfg, _, err := image.DecodeConfig(reader)
 	if err != nil {
 		return nil, err

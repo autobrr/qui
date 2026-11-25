@@ -39,9 +39,6 @@ export function MobileScrollProvider({ children }: { children: ReactNode }) {
       if (scrollY > lastScrollY.current) {
         setIsFooterVisible(false)
       } else if (scrollY < threshold || scrollY + scrollContainer.clientHeight < scrollContainer.scrollHeight - threshold) {
-        // Show on scroll up, except at the bottom. When the footer hides, the list gets
-        // shorter and the browser moves scrollTop up. The user did not scroll up.
-        // Near the top, always show, because a list that no longer scrolls cannot scroll up.
         setIsFooterVisible(true)
       }
 
@@ -89,8 +86,6 @@ export function useRegisterMobileScrollContainer(ref: RefObject<HTMLElement | nu
   useEffect(() => {
     const el = ref.current
     setScrollContainer(el)
-    // On fast route changes the next list may register before this cleanup
-    // runs, so only clear our own registration.
     return () => setScrollContainer(prev => (prev === el ? null : prev))
   }, [ref, setScrollContainer])
 }

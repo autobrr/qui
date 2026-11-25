@@ -6,6 +6,7 @@ package crossseed
 import (
 	"cmp"
 	"context"
+	"errors"
 	"math"
 	"slices"
 	"strings"
@@ -14,6 +15,8 @@ import (
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
+
+var ErrTitleUnanswered = errors.New("the source is up but cannot answer for this title")
 
 type AlternateTitleSource interface {
 	AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error)

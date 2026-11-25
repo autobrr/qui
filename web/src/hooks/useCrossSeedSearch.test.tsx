@@ -8,8 +8,6 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// ---- mocks -------------------------------------------------------------
-
 vi.mock("@/lib/api", () => ({
   api: {
     listTorznabIndexers: vi.fn(),
@@ -31,11 +29,6 @@ vi.mock("sonner", () => ({
   },
 }))
 
-// Near-identity translator: returns the raw key plus any counts it gets, so
-// assertions can target stable strings. When the hook interpolates the original error text via {{message}}
-// (rate-limit wrapping), we append it so the wrapped string still carries the
-// "rate limit"/"429" substrings the hook re-inspects for toast duration and for
-// preserving the error on close — matching real i18n output behavior.
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, opts?: { message?: string; count?: number; added?: number; failed?: number; completedPart?: string; completedPrefix?: string }) => {
@@ -46,11 +39,6 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
-// The hook exposes its imperative search / refresh / close actions only through
-// the props of the `crossSeedDialog` React element it returns. renderHook does
-// not mount that element, so we read props directly off the element rather than
-// rendering the real (heavy) dialog. Mock it to a no-op so the import resolves
-// and is cheap.
 type DialogProps = Record<string, unknown>
 vi.mock("@/components/torrents/CrossSeedDialog", () => ({
   CrossSeedDialog: () => null,
@@ -70,8 +58,6 @@ import type { CrossSeedGazelleLookup, CrossSeedInstanceResult, CrossSeedTorrentS
 
 const mockedApi = vi.mocked(api, true)
 const mockedToast = vi.mocked(toast, true)
-
-// ---- fixtures ----------------------------------------------------------
 
 const red = { site: "redacted.sh", name: "Redacted (API)", shortName: "Redacted", indexerId: -1001 }
 const ops = { site: "orpheus.network", name: "Orpheus (API)", shortName: "Orpheus", indexerId: -1002 }
@@ -140,25 +126,11 @@ function makeWrapper(queryClient?: QueryClient) {
 
 type HookResult = ReturnType<typeof useCrossSeedSearch>
 
-// NOTE ON COUPLING: Several tests reach into
-// `result.current.crossSeedDialog.props` (via the `dialogProps` helper) to
-// invoke imperative actions (onScopeSearch / onForceRefresh / onClose / onApply)
-// and to read view state (canForceRefresh / error / selectedKeys). This couples
-// the suite to the hook returning a React element whose props expose those
-// actions — an implementation detail, since CrossSeedDialog is mocked to
-// () => null and never actually rendered. This is a deliberate tradeoff for the
-// hook's current API. If the hook is later refactored to expose these imperative
-// actions on its plain return object instead of through a JSX element, prefer
-// reading them from the return value directly and delete this helper.
-// Read the latest dialog props off the element the hook returns.
 function dialogProps(result: { current: HookResult }): DialogProps {
   const element = result.current.crossSeedDialog as { props: DialogProps }
   return element.props
 }
 
-// Render the hook and let the two background queries (indexers + settings)
-// settle so canCrossSeedSearch / sortedEnabledIndexers reflect the data.
-// Pass a shared QueryClient to spy on cache invalidation.
 async function renderSettled(instanceId = 1, queryClient?: QueryClient) {
   const utils = renderHook(() => useCrossSeedSearch(instanceId), {
     wrapper: makeWrapper(queryClient),
@@ -170,14 +142,11 @@ async function renderSettled(instanceId = 1, queryClient?: QueryClient) {
     expect(mockedApi.listTorznabIndexers).toHaveBeenCalled()
     expect(mockedApi.getCrossSeedSettings).toHaveBeenCalled()
   })
-  // extra tick to flush query-cache state updates into the hook
   await act(async () => {
     await Promise.resolve()
   })
   return utils
 }
-
-// ---- tests -------------------------------------------------------------
 
 describe("useCrossSeedSearch", () => {
   beforeEach(() => {
@@ -332,7 +301,6 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
 
-    // Trigger the scoped search through the dialog props.
     act(() => {
       ;(dialogProps(result).onScopeSearch as () => void)()
     })
@@ -349,7 +317,6 @@ describe("useCrossSeedSearch", () => {
     })
 
     expect(result.current.isCrossSeedSearching).toBe(false)
-    // all result keys selected by default (guid is the key)
     const selected = dialogProps(result).selectedKeys as Set<string>
     expect(selected.has("guid-a")).toBe(true)
     expect(selected.has("guid-b")).toBe(true)
@@ -540,7 +507,6 @@ describe("useCrossSeedSearch", () => {
       makeIndexer({ id: 2, name: "alpha", enabled: true, priority: 5 }),
       makeIndexer({ id: 3, name: "charlie", enabled: true, priority: 1 }),
     ])
-    // analyze returns an excluded indexer (id 3) -> must be filtered out
     mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({
       name: "t",
       hash: "hash-scope",
@@ -565,8 +531,6 @@ describe("useCrossSeedSearch", () => {
       mockedApi.searchCrossSeedTorrent.mock.calls[0]
     expect(calledInstanceId).toBe(1)
     expect(calledHash).toBe("hash-scope")
-    // priority desc (id 2 first), then name asc for ties (bravo before charlie),
-    // with excluded id 3 removed.
     expect(options?.indexerIds).toEqual([2, 1])
     expect(options?.findIndividualEpisodes).toBe(true)
   })
@@ -636,8 +600,6 @@ describe("useCrossSeedSearch", () => {
 
   it("applies a cooldown on force-refresh and recovers after 30s", async () => {
     const { result } = await renderSettled()
-    // Switch to fake timers only after the background queries have settled so
-    // renderSettled's real-timer waitFor isn't starved.
     vi.useFakeTimers()
     const torrent = makeTorrent({ progress: 1, hash: "hash-refresh" })
 
@@ -646,7 +608,6 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
 
-    // force refresh available before use
     expect(dialogProps(result).canForceRefresh).toBe(true)
 
     await act(async () => {
@@ -654,11 +615,9 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
 
-    // bypass cache requested
     const refreshCall = mockedApi.searchCrossSeedTorrent.mock.calls.at(-1)
     expect(refreshCall?.[2]?.cacheMode).toBe("bypass")
 
-    // cooldown engaged -> not available and a label is exposed
     expect(dialogProps(result).canForceRefresh).toBe(false)
     expect(dialogProps(result).refreshCooldownUntil).toBeGreaterThan(0)
 
@@ -689,11 +648,9 @@ describe("useCrossSeedSearch", () => {
     expect(dialogProps(result).error).toEqual(expect.stringContaining("hooks.search.rateLimitSearch"))
     expect(mockedToast.error).not.toHaveBeenCalled()
     expect(result.current.isCrossSeedSearching).toBe(false)
-    // error surfaced on the dialog
     const errorBeforeClose = dialogProps(result).error
     expect(errorBeforeClose).toBeTruthy()
 
-    // closing preserves the rate-limit error (resetCrossSeedState(true))
     await act(async () => {
       ;(dialogProps(result).onClose as () => void)()
       await Promise.resolve()
@@ -780,13 +737,11 @@ describe("useCrossSeedSearch", () => {
     expect(payload.selections).toHaveLength(1)
     expect(payload.selections[0].guid).toBe("guid-apply")
 
-    // class:"added" with no failures -> the addedCount success branch.
     expect(mockedToast.success).toHaveBeenCalledWith("hooks.search.applySuccess:1")
     expect(mockedToast.warning).not.toHaveBeenCalled()
     expect(mockedToast.error).not.toHaveBeenCalled()
     expect(dialogProps(result).selectionCount).toBe(0)
 
-    // both torrent caches invalidated so the list/counts refresh after apply
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["torrents-list", 1],
       exact: false,
@@ -949,7 +904,6 @@ describe("useCrossSeedSearch", () => {
     expect(mockedToast.success).not.toHaveBeenCalled()
   })
 
-  // regression: #3826
   describe("apply toast", () => {
     const added: CrossSeedInstanceResult = { instanceId: 1, instanceName: "a", success: true, status: "added_hardlink", class: "added" }
     const exists: CrossSeedInstanceResult = { instanceId: 2, instanceName: "b", success: false, status: "exists", class: "exists" }
@@ -1015,7 +969,6 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
 
-    // deselect the only result so the selection set is empty
     act(() => {
       ;(
         dialogProps(result).onClearSelection as () => void
@@ -1267,7 +1220,6 @@ describe("useCrossSeedSearch", () => {
       expect(dialogProps(result).gazelleLookups).toEqual(lookups)
     })
 
-    // regression: #4126
     it("loads the plan again when the user retries after a failed analysis", async () => {
       mockedApi.analyzeTorrentForCrossSeedSearch.mockRejectedValueOnce(new Error("analyze failed"))
       const { result } = await renderSettled()

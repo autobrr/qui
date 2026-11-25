@@ -24,9 +24,7 @@ var bittorrentEntries = []Entry{
 	{Key: "max_seeding_time", Tab: TabBitTorrent, Section: "seedingLimits", Control: ControlNumber, WireUnit: "min", DisplayUnit: "min", DependsOn: "max_seeding_time_enabled"},
 	{Key: "max_inactive_seeding_time_enabled", Tab: TabBitTorrent, Section: "seedingLimits", Control: ControlSwitch},
 	{Key: "max_inactive_seeding_time", Tab: TabBitTorrent, Section: "seedingLimits", Control: ControlNumber, WireUnit: "min", DisplayUnit: "min", DependsOn: "max_inactive_seeding_time_enabled"},
-	// qBittorrent 5.3 can act when all the limits are reached, not only when one of them is.
 	{Key: "share_limits_mode", Tab: TabBitTorrent, Section: "seedingLimits", Control: ControlSelect, OptionSource: SourceFixed, Options: fixedOptions("MatchAny", "MatchAll")},
-	// The order of the qBittorrent WebUI: stop, remove, remove with the files, super seeding.
 	{Key: "max_ratio_act", Tab: TabBitTorrent, Section: "seedingLimits", Control: ControlSelect, OptionSource: SourceFixed, Options: fixedOptions(0, 1, 3, 2)},
 	{Key: "add_trackers_enabled", Tab: TabBitTorrent, Section: "autoAddTrackers", Control: ControlSwitch},
 	{Key: "add_trackers", Tab: TabBitTorrent, Section: "autoAddTrackers", Control: ControlList, DependsOn: "add_trackers_enabled"},

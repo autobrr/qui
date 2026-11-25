@@ -34,7 +34,6 @@ function resolve(vars, name) {
   return reference ? resolve(vars, reference[1]) : value
 }
 
-// Paints top on bottom. The alpha of top itself counts, times the alpha of the utility class (bg-muted/40 is 0.4).
 function over(top, bottom, alpha = 1) {
   const a = toRgb(top)
   const b = toRgb(bottom)
@@ -42,7 +41,6 @@ function over(top, bottom, alpha = 1) {
   return { mode: "rgb", r: a.r * k + b.r * (1 - k), g: a.g * k + b.g * (1 - k), b: a.b * k + b.b * (1 - k) }
 }
 
-// Each group names the files that set the classes. A pair is [label, foreground, background, minimum].
 function pairGroups(color, mode) {
   const page = color("background")
   const surface = (name, alpha = 1, base = page) => over(color(name), base, alpha)
@@ -187,8 +185,6 @@ function report(file) {
   return outsideSrgb.length + failed.length
 }
 
-// A path through a symlink, such as /var on macOS, resolves before the compare. The test runner can pass a glob that
-// names no file.
 if (fs.existsSync(process.argv[1] ?? "") && fs.realpathSync(process.argv[1]) === scriptPath) {
   const files = process.argv.length > 2 ? process.argv.slice(2) : builtInThemeFiles()
   const problems = files.reduce((total, file) => total + report(file), 0)

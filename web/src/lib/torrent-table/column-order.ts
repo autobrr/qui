@@ -5,13 +5,6 @@
 
 import { arrayMove } from "@dnd-kit/sortable"
 
-/**
- * Computes the next persisted column order after a drag. The table's live leaf
- * columns that the current order lacks are appended, and the moved column is
- * then repositioned. A column that the table does not show keeps its place, so
- * the order of every instance keeps the instance column of the Unified view. If
- * either dragged id is missing, the order with the appended columns is returned.
- */
 export function reorderColumns(
   currentOrder: string[],
   activeId: string,

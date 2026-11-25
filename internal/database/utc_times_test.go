@@ -18,20 +18,14 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// These tests replace time.Local, which is process-global, so none of them may
-// call t.Parallel.
-
 var utcContractZones = []string{"America/New_York", "Asia/Tokyo"}
 
-// postgresSessionZone is the zone that the test connection string asks for. It
-// differs from UTC and from each process zone by more than an hour.
 const postgresSessionZone = "Pacific/Honolulu"
 
 type wrappedTime struct{ at time.Time }
 
 func (w wrappedTime) Value() (driver.Value, error) { return w.at, nil }
 
-// regression: #3942
 func TestTimesReadBackAsUTCSQLite(t *testing.T) {
 	for _, zone := range utcContractZones {
 		t.Run(zone, func(t *testing.T) {
@@ -41,7 +35,6 @@ func TestTimesReadBackAsUTCSQLite(t *testing.T) {
 	}
 }
 
-// regression: #3942
 func TestTimesReadBackAsUTCPostgresIntegration(t *testing.T) {
 	for _, zone := range utcContractZones {
 		t.Run(zone, func(t *testing.T) {
@@ -51,7 +44,6 @@ func TestTimesReadBackAsUTCPostgresIntegration(t *testing.T) {
 	}
 }
 
-// regression: #3942
 func TestOffsetTextRowReadsBackAsUTCSQLite(t *testing.T) {
 	for _, zone := range utcContractZones {
 		t.Run(zone, func(t *testing.T) {
@@ -59,7 +51,6 @@ func TestOffsetTextRowReadsBackAsUTCSQLite(t *testing.T) {
 			db := testdb.NewMigratedSQLite(t, "utc-offset-text")
 			createTimeTable(t, db)
 
-			// An older qui bound times in the process zone, so the driver stored the offset in the text.
 			_, err := db.ExecContext(t.Context(), `INSERT INTO utc_contract (label, ts) VALUES ('old', '2026-03-01 07:34:56.123456 -0500 EST')`)
 			require.NoError(t, err)
 

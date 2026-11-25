@@ -36,9 +36,6 @@ func (f *fakeDeleteMatches) FindDeleteMatches(_ context.Context, selection map[i
 	}, nil
 }
 
-// A select-all check covers the torrents of the filter beyond the loaded rows,
-// minus the exclusions, in one request.
-// regression: #3341
 func TestGetDeleteCrossSeeds_SelectAllChecksEverySelectedTorrent(t *testing.T) {
 	t.Parallel()
 

@@ -31,10 +31,6 @@ func mustLoadTorrent(t *testing.T, torrentData []byte) (metainfo.MetaInfo, metai
 	return *mi, info
 }
 
-// buildMultiFileTorrent builds torrent bytes describing files with the given
-// names and content lengths. Only file paths and lengths ever feed the
-// piece-boundary logic under test, so no piece hashes are computed and no
-// files are written to disk.
 func buildMultiFileTorrent(t *testing.T, rootName string, pieceLength int64, files map[string][]byte) []byte {
 	t.Helper()
 
@@ -179,7 +175,6 @@ func TestPieceBoundariesSpanFiles_InRealTorrentFixtures(t *testing.T) {
 	require.Equal(t, int((found.boundaryOff-1)/found.pieceLength), found.boundaryPiece)
 }
 
-// TestCheckPieceBoundarySafety tests the piece-boundary safety check logic.
 func TestCheckPieceBoundarySafety(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -214,41 +209,41 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 		{
 			name: "content then ignored - piece aligned",
 			files: []TorrentFileForBoundaryCheck{
-				{Path: "movie.mkv", Size: 64, IsContent: true},  // Ends at offset 64
-				{Path: "movie.nfo", Size: 10, IsContent: false}, // Starts at offset 64
+				{Path: "movie.mkv", Size: 64, IsContent: true},
+				{Path: "movie.nfo", Size: 10, IsContent: false},
 			},
-			pieceLength: 16, // 64 % 16 == 0, so transition is piece-aligned
+			pieceLength: 16,
 			wantSafe:    true,
 			wantReason:  "all content/ignored transitions are piece-aligned",
 		},
 		{
 			name: "content then ignored - NOT piece aligned",
 			files: []TorrentFileForBoundaryCheck{
-				{Path: "movie.mkv", Size: 53, IsContent: true},  // Ends at offset 53
-				{Path: "movie.nfo", Size: 10, IsContent: false}, // Starts at offset 53
+				{Path: "movie.mkv", Size: 53, IsContent: true},
+				{Path: "movie.nfo", Size: 10, IsContent: false},
 			},
-			pieceLength: 16, // 53 % 16 == 5, NOT piece-aligned
+			pieceLength: 16,
 			wantSafe:    false,
 			wantReason:  "found 1 piece boundary violation(s) between content and ignored files",
 		},
 		{
 			name: "ignored then content - NOT piece aligned",
 			files: []TorrentFileForBoundaryCheck{
-				{Path: "a-sample.mkv", Size: 53, IsContent: false}, // Ignored file first
-				{Path: "b-movie.mkv", Size: 1000, IsContent: true}, // Content file second
+				{Path: "a-sample.mkv", Size: 53, IsContent: false},
+				{Path: "b-movie.mkv", Size: 1000, IsContent: true},
 			},
-			pieceLength: 16, // 53 % 16 == 5, NOT piece-aligned
+			pieceLength: 16,
 			wantSafe:    false,
 			wantReason:  "found 1 piece boundary violation(s) between content and ignored files",
 		},
 		{
 			name: "content-content transition - no check needed",
 			files: []TorrentFileForBoundaryCheck{
-				{Path: "ep1.mkv", Size: 53, IsContent: true}, // Mid-piece end
-				{Path: "ep2.mkv", Size: 47, IsContent: true}, // Both content, no transition
+				{Path: "ep1.mkv", Size: 53, IsContent: true},
+				{Path: "ep2.mkv", Size: 47, IsContent: true},
 			},
 			pieceLength: 16,
-			wantSafe:    true, // No content/ignored transition, so always safe
+			wantSafe:    true,
 			wantReason:  "all content/ignored transitions are piece-aligned",
 		},
 		{
@@ -258,7 +253,7 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 				{Path: "sample2.mkv", Size: 47, IsContent: false},
 			},
 			pieceLength: 16,
-			wantSafe:    true, // No content/ignored transition, so always safe
+			wantSafe:    true,
 			wantReason:  "all content/ignored transitions are piece-aligned",
 		},
 		{
@@ -268,15 +263,15 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 				{Path: "sample.mkv", Size: 32, IsContent: false},
 				{Path: "ep2.mkv", Size: 64, IsContent: true},
 			},
-			pieceLength: 16, // 64 % 16 == 0, 96 % 16 == 0: all transitions aligned
+			pieceLength: 16,
 			wantSafe:    true,
 			wantReason:  "all content/ignored transitions are piece-aligned",
 		},
 		{
 			name: "complex: content-ignored-content first misaligned",
 			files: []TorrentFileForBoundaryCheck{
-				{Path: "ep1.mkv", Size: 65, IsContent: true},     // 65 % 16 == 1 (misaligned)
-				{Path: "sample.mkv", Size: 31, IsContent: false}, // 96 % 16 == 0 (aligned)
+				{Path: "ep1.mkv", Size: 65, IsContent: true},
+				{Path: "sample.mkv", Size: 31, IsContent: false},
 				{Path: "ep2.mkv", Size: 64, IsContent: true},
 			},
 			pieceLength: 16,
@@ -286,8 +281,8 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 		{
 			name: "complex: content-ignored-content second misaligned",
 			files: []TorrentFileForBoundaryCheck{
-				{Path: "ep1.mkv", Size: 64, IsContent: true},     // 64 % 16 == 0 (aligned)
-				{Path: "sample.mkv", Size: 33, IsContent: false}, // 97 % 16 == 1 (misaligned)
+				{Path: "ep1.mkv", Size: 64, IsContent: true},
+				{Path: "sample.mkv", Size: 33, IsContent: false},
 				{Path: "ep2.mkv", Size: 63, IsContent: true},
 			},
 			pieceLength: 16,
@@ -297,8 +292,8 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 		{
 			name: "complex: content-ignored-content both misaligned",
 			files: []TorrentFileForBoundaryCheck{
-				{Path: "ep1.mkv", Size: 65, IsContent: true},     // 65 % 16 == 1 (misaligned)
-				{Path: "sample.mkv", Size: 33, IsContent: false}, // 98 % 16 == 2 (misaligned)
+				{Path: "ep1.mkv", Size: 65, IsContent: true},
+				{Path: "sample.mkv", Size: 33, IsContent: false},
 				{Path: "ep2.mkv", Size: 62, IsContent: true},
 			},
 			pieceLength: 16,
@@ -314,7 +309,7 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 				{Path: "ep2.nfo", Size: 5, IsContent: false},
 			},
 			pieceLength: 16,
-			wantSafe:    false, // Multiple violations
+			wantSafe:    false,
 		},
 		{
 			name: "trailing ignored file at piece boundary",
@@ -322,7 +317,7 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 				{Path: "movie.mkv", Size: 1024, IsContent: true},
 				{Path: "movie.nfo", Size: 500, IsContent: false},
 			},
-			pieceLength: 256, // 1024 % 256 == 0
+			pieceLength: 256,
 			wantSafe:    true,
 			wantReason:  "all content/ignored transitions are piece-aligned",
 		},
@@ -332,7 +327,7 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 				{Path: "00-sample.mkv", Size: 256, IsContent: false},
 				{Path: "01-movie.mkv", Size: 1024, IsContent: true},
 			},
-			pieceLength: 256, // 256 % 256 == 0
+			pieceLength: 256,
 			wantSafe:    true,
 			wantReason:  "all content/ignored transitions are piece-aligned",
 		},
@@ -350,7 +345,6 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 				t.Errorf("CheckPieceBoundarySafety() Reason = %q, want %q", result.Reason, tt.wantReason)
 			}
 
-			// Verify violation details when unsafe
 			if !result.Safe && len(result.UnsafeBoundaries) > 0 {
 				for _, v := range result.UnsafeBoundaries {
 					if v.ContentFile == "" {
@@ -374,12 +368,10 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 	}
 }
 
-// TestHasUnsafeIgnoredExtras tests the main entry point function.
 func TestHasUnsafeIgnoredExtras(t *testing.T) {
 	const pieceLength = int64(16)
 
-	// Build a torrent with content file ending mid-piece followed by ignored file
-	main := bytes.Repeat([]byte("M"), int(pieceLength*3+5)) // 53 bytes, ends mid-piece
+	main := bytes.Repeat([]byte("M"), int(pieceLength*3+5))
 	extra := bytes.Repeat([]byte("E"), 11)
 
 	torrentData := buildMultiFileTorrent(t, "test-root", pieceLength, map[string][]byte{
@@ -391,7 +383,7 @@ func TestHasUnsafeIgnoredExtras(t *testing.T) {
 
 	t.Run("unsafe when ignored file shares piece with content", func(t *testing.T) {
 		unsafe, result := HasUnsafeIgnoredExtras(&info, func(path string) bool {
-			return path == "test-root/b-extra.nfo" // NFO is ignored
+			return path == "test-root/b-extra.nfo"
 		})
 
 		require.True(t, unsafe)
@@ -400,7 +392,7 @@ func TestHasUnsafeIgnoredExtras(t *testing.T) {
 
 	t.Run("safe when no ignored files", func(t *testing.T) {
 		unsafe, result := HasUnsafeIgnoredExtras(&info, func(path string) bool {
-			return false // Nothing ignored
+			return false
 		})
 
 		require.False(t, unsafe)
@@ -421,8 +413,6 @@ func TestHasUnsafeIgnoredExtras(t *testing.T) {
 func TestHasUnsafeUnmaterializedSourcePieces(t *testing.T) {
 	const pieceLength = int64(16)
 
-	// The main file ends on a piece boundary in the aligned torrent and
-	// mid-piece in the straddling one; the extra file follows it either way.
 	sourceFilesFor := func(mainLen int) qbt.TorrentFiles {
 		return qbt.TorrentFiles{
 			{Name: "test-root/a-main.mkv", Size: int64(mainLen)},
@@ -476,56 +466,40 @@ func TestHasUnsafeUnmaterializedSourcePieces(t *testing.T) {
 	}
 }
 
-// TestDifferentPieceLengthsAffectSafety proves that the safety logic depends on
-// the incoming torrent's piece size. The same file sizes can be safe with one
-// piece length and unsafe with another.
 func TestDifferentPieceLengthsAffectSafety(t *testing.T) {
-	// File layout: content file (1000 bytes) followed by ignored file (500 bytes)
-	// Total: 1500 bytes
 	files := []TorrentFileForBoundaryCheck{
 		{Path: "content.mkv", Size: 1000, IsContent: true},
 		{Path: "extra.nfo", Size: 500, IsContent: false},
 	}
 
-	// With piece length 1000: transition at offset 1000, 1000 % 1000 == 0 → SAFE
 	result1000 := CheckPieceBoundarySafety(files, 1000)
 	require.True(t, result1000.Safe, "should be safe with 1000-byte pieces (1000 %% 1000 == 0)")
 
-	// With piece length 500: transition at offset 1000, 1000 % 500 == 0 → SAFE
 	result500 := CheckPieceBoundarySafety(files, 500)
 	require.True(t, result500.Safe, "should be safe with 500-byte pieces (1000 %% 500 == 0)")
 
-	// With piece length 256: transition at offset 1000, 1000 % 256 == 232 → UNSAFE
 	result256 := CheckPieceBoundarySafety(files, 256)
 	require.False(t, result256.Safe, "should be unsafe with 256-byte pieces (1000 %% 256 == 232)")
 
-	// With piece length 512: transition at offset 1000, 1000 % 512 == 488 → UNSAFE
 	result512 := CheckPieceBoundarySafety(files, 512)
 	require.False(t, result512.Safe, "should be unsafe with 512-byte pieces (1000 %% 512 == 488)")
 
-	// Realistic piece sizes: 16 MiB (16777216) vs 8 MiB (8388608)
-	// With file sizes that divide evenly by 8 MiB but not 16 MiB
 	largeFiles := []TorrentFileForBoundaryCheck{
-		{Path: "video.mkv", Size: 8388608 * 3, IsContent: true}, // 24 MiB = 3 * 8 MiB
+		{Path: "video.mkv", Size: 8388608 * 3, IsContent: true},
 		{Path: "subs.srt", Size: 50000, IsContent: false},
 	}
 
-	// 8 MiB pieces: 24 MiB % 8 MiB == 0 → SAFE
 	result8MiB := CheckPieceBoundarySafety(largeFiles, 8388608)
 	require.True(t, result8MiB.Safe, "should be safe with 8 MiB pieces (24 MiB %% 8 MiB == 0)")
 
-	// 16 MiB pieces: 24 MiB % 16 MiB == 8 MiB → UNSAFE
 	result16MiB := CheckPieceBoundarySafety(largeFiles, 16777216)
 	require.False(t, result16MiB.Safe, "should be unsafe with 16 MiB pieces (24 MiB %% 16 MiB != 0)")
 }
 
-// TestPathFormatMatchesSourceFiles verifies that BuildFilesForBoundaryCheck
-// produces paths that match the format of qbt.TorrentFiles (sourceFiles).
 func TestPathFormatMatchesSourceFiles(t *testing.T) {
 	const pieceLength = int64(16)
 
-	// Build a multi-file torrent with a root folder
-	main := bytes.Repeat([]byte("M"), int(pieceLength*3+5)) // 53 bytes
+	main := bytes.Repeat([]byte("M"), int(pieceLength*3+5))
 	extra := bytes.Repeat([]byte("E"), 11)
 
 	torrentData := buildMultiFileTorrent(t, "test-root", pieceLength, map[string][]byte{
@@ -535,22 +509,16 @@ func TestPathFormatMatchesSourceFiles(t *testing.T) {
 
 	_, info := mustLoadTorrent(t, torrentData)
 
-	// Build files using boundary check function
 	files := BuildFilesForBoundaryCheck(&info, func(path string) bool {
-		return true // all content for this test
+		return true
 	})
 
-	// Verify paths include the root folder (matching BuildTorrentFilesFromInfo behavior)
 	require.Len(t, files, 2)
 	require.Equal(t, "test-root/a-main.mkv", files[0].Path, "path should include root folder")
 	require.Equal(t, "test-root/b-extra.nfo", files[1].Path, "path should include root folder")
 }
 
-// regression: #4220
 func TestBuildFilesForBoundaryCheck_MatchesQbtFileNames(t *testing.T) {
-	// The boundary-check paths are looked up in maps keyed by qbt.TorrentFiles.Name,
-	// so the two builders must format paths identically. Malformed UTF-8 in the
-	// metadata used to break that: only BuildTorrentFilesFromInfo sanitized it.
 	info := metainfo.Info{
 		Name:        "Movie.\xe1.2024",
 		PieceLength: 262144,

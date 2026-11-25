@@ -7,10 +7,8 @@ import { useSyncExternalStore } from "react"
 
 import type { ProblemReportStartedFrom } from "@/types"
 
-/** The view of the dialog: the report form, or Sent reports. */
 export type ProblemReportView = "compose" | "sent"
 
-/** The starting point and the view stay after a close, so the dialog keeps its content while it fades out. */
 export interface ProblemReportOpenState {
   open: boolean
   startedFrom: ProblemReportStartedFrom
@@ -25,12 +23,10 @@ function setState(next: ProblemReportOpenState) {
   for (const listener of listeners) listener()
 }
 
-/** Opens the one report dialog of the app, from any entry point. */
 export function openProblemReport(startedFrom: ProblemReportStartedFrom) {
   setState({ open: true, startedFrom, view: "compose" })
 }
 
-/** Switches the open dialog between the report form and Sent reports. The form keeps its text. */
 export function showProblemReportView(view: ProblemReportView) {
   setState({ ...state, view })
 }

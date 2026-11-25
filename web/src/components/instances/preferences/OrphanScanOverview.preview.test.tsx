@@ -8,7 +8,6 @@ import { cleanup, fireEvent, render } from "@testing-library/react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Instance } from "@/types"
 
-// Keep the module's other exports (initReactI18next is pulled in through the import graph).
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({ t: (key: string) => key }),
@@ -18,8 +17,6 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
   useDateTimeFormatters: () => ({ formatISOTimestamp: (iso: string) => iso }),
 }))
 
-// Stable singletons stand in for React Query's cache: reopening the preview gets
-// the same first-page object back, which is what made a reused dialog show nothing.
 const { instances, runsQuery, firstPage, secondPage, setFilesFound, idleQuery, idleMutation } = vi.hoisted(() => {
   const run = {
     id: 1, instanceId: 1, status: "preview_ready", triggeredBy: "manual", scanPaths: [],

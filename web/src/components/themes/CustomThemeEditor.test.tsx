@@ -41,7 +41,6 @@ afterEach(() => {
 })
 
 describe("CustomThemeEditor", () => {
-  // regression: #4124
   it("keeps the draft on the page through a mode change, and ends it on close", async () => {
     await setTheme("minimal", "dark")
     const client = new QueryClient()

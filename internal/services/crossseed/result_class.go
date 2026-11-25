@@ -5,20 +5,16 @@ package crossseed
 
 import "encoding/json"
 
-// ResultClass is what one cross-seed result means for its reader.
 type ResultClass string
 
 const (
-	ClassAdded   ResultClass = "added"
-	ClassExists  ResultClass = "exists"
-	ClassSkipped ResultClass = "skipped"
-	// ClassStranded is an add that qBittorrent holds but qui could not finish.
+	ClassAdded    ResultClass = "added"
+	ClassExists   ResultClass = "exists"
+	ClassSkipped  ResultClass = "skipped"
 	ClassStranded ResultClass = "stranded"
 	ClassFailed   ResultClass = "failed"
 )
 
-// The exact statuses that the season pack add and the manual assembly ask
-// about. These checks ask about one status, so they do not read the class.
 const (
 	StatusExists  = "exists"
 	StatusBlocked = "blocked"
@@ -54,8 +50,6 @@ var resultClasses = map[string]ResultClass{
 	crossSeedCannotSeeStatus:           ClassFailed,
 }
 
-// ClassOf reads the Result class of a status from the table. A status with no
-// entry is failed, so a forgotten entry shows the user a failure and not silence.
 func ClassOf(status string) ResultClass {
 	if class, ok := resultClasses[status]; ok {
 		return class
@@ -67,8 +61,6 @@ func (r InstanceCrossSeedResult) class() ResultClass {
 	return ClassOf(r.Status)
 }
 
-// Class is the Result class of a Pre-add check refusal or of an add. An add
-// that stays paused after a failed AfterAdd is stranded.
 func (r AddResult) Class() ResultClass {
 	switch r.Outcome {
 	case AddRefused:
@@ -80,7 +72,6 @@ func (r AddResult) Class() ResultClass {
 	}
 }
 
-// MarshalJSON adds the class, which the result does not store.
 func (r InstanceCrossSeedResult) MarshalJSON() ([]byte, error) {
 	type plainResult InstanceCrossSeedResult
 	return json.Marshal(struct {

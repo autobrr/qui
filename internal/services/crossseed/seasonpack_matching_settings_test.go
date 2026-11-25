@@ -84,7 +84,6 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			checkSeasonPack: true,
 		},
 		{
-			// regression: #4068
 			name:    "a third repack can be ignored for season packs",
 			pack:    "Show.S01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp",
 			episode: "Show.S01E01.1080p.WEB-DL.REPACK3.DDPA5.1.H.264-RlsGrp",
@@ -118,7 +117,6 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			checkSeasonPack: true,
 		},
 		{
-			// The season pack check has no exact-source rule, so WEB matches WEB-DL.
 			name:    "WEB against WEB-DL without WEB simplification",
 			pack:    "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
 			episode: "Show.S01E01.1080p.WEB.H.264-RlsGrp",
@@ -130,7 +128,6 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			checkSeasonPack: true,
 		},
 		{
-			// Without sizes, the web source relabel does not apply.
 			name:    "WEBRip against WEB-DL without WEB simplification",
 			pack:    "Show.S01.1080p.WEBRip.H.264-RlsGrp",
 			episode: "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
@@ -188,7 +185,6 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			checkSeasonPack: true,
 		},
 		{
-			// regression: #4068
 			name:         "a second repack is not the plain episode",
 			pack:         "Show.S01E01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp",
 			episode:      "Show.S01E01.1080p.WEB-DL.REPACK2.DDPA5.1.H.264-RlsGrp",
@@ -219,8 +215,6 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 	}
 }
 
-// seasonPackEpisodeMatches asks the season pack verdict about a local episode
-// against the same episode of the pack, with no sizes, as the light check does.
 func seasonPackEpisodeMatches(m matcher, pack, episode *rls.Release, settings *models.CrossSeedAutomationSettings, aliases []string) (bool, string) {
 	verdict := m.matchVerdict(namedRelease{release: episode}, namedRelease{release: asEpisode(pack, episode.Episode)}, matchEvidence{CandidateTitles: aliases}, seasonPackPolicy(settings))
 	return verdict.Matched, verdict.RejectReason
@@ -235,11 +229,6 @@ func parseSeasonPackTestRelease(t *testing.T, name string) *rls.Release {
 	return &release
 }
 
-// TestSeasonPackReleasesMatchWithReason_AliasTitles proves the matcher returns a
-// field-level reject reason (observability, #1) and that a pack and an episode using
-// different title languages/forms only match when the show's alternate titles are
-// supplied on the pack side (alias bridge, #2). The no-alias case is the current 0%
-// behaviour and keeps the fix load-bearing.
 func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
 	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
@@ -285,17 +274,11 @@ func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
 	}
 }
 
-// TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation proves a scene-style
-// pack name that drops the title's trailing punctuation ("Overtake!" announced as
-// "Overtake.S01...") still matches local fansub episodes that keep it. Reported for
-// BTN's Overtake pack, which failed while BHD's punctuation-keeping name matched.
 func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *testing.T) {
 	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	pack := parseSeasonPackTestRelease(t, "Overtake.S01.1080p.CR.WEB-DL.AAC2.0.H.264-SubsPlease")
 	episode := parseSeasonPackTestRelease(t, "[SubsPlease] Overtake! - 01 (1080p) [F5A70A05]")
-	// matchEpisodeCandidatesDetailed stamps the pack season onto seasonless locals
-	// before matching; mirror that here.
 	episode.Series = pack.Series
 
 	ok, reason := seasonPackEpisodeMatches(matcher, pack, episode, nil, nil)
@@ -303,10 +286,6 @@ func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *tes
 	require.Empty(t, reason)
 }
 
-// TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag proves a pack that labels the
-// original audio language still matches episodes published without a language tag. Trackers
-// like Aither tag JAPANESE on anime that every other tracker leaves untagged, which used to
-// reject the whole season as a language mismatch.
 func TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag(t *testing.T) {
 	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
@@ -322,9 +301,6 @@ func TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag(t *testing.T) {
 	require.Empty(t, reason)
 }
 
-// TestSeasonPackEpisode_TagsOnlyOnLocalName pins that a group or a CRC tag that
-// only the local episode carries does not reject the pack. A pack name does not
-// carry the group or the CRC tag of each episode.
 func TestSeasonPackEpisode_TagsOnlyOnLocalName(t *testing.T) {
 	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 

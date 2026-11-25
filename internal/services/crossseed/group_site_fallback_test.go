@@ -20,24 +20,17 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// A bracket-anime pack that ends in its fansub tag after a leftover word puts
-// the tag in Site and hands Group that word, so it disagrees with its own
-// scene-styled counterpart on both fields at once. The eztv names are the trap:
-// an indexer label lands in Site too, and two different groups share it.
 const (
-	fansubBracketPack   = "Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
-	fansubTaggedPack    = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
-	otherFansubBracket  = "Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (EMBER)][Batch][EMBER]"
-	otherFansubTagged   = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-EMBER"
-	labelledLeftoverOne = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.FoV[eztv]"
-	labelledLeftoverTwo = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.KILLERS[eztv]"
-	labelledTaggedOne   = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-FoV[eztv]"
-	labelledTaggedTwo   = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KILLERS[eztv]"
-	bareFansubEpisode   = "[KIRI] Azure Compass - 01 (1080p)"
-	// A leading bracket with no group after it, so Group repeats Site.
-	fansubRepeatedTag = "[KIRI] Azure Compass S01 [Web][MKV][h265][1080p][AAC 2.0][Softsubs (KIRI)]"
-	// eztv both labels other groups' releases and releases under its own name,
-	// so every shape of "the label is also a group" has to stay rejected.
+	fansubBracketPack    = "Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
+	fansubTaggedPack     = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+	otherFansubBracket   = "Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (EMBER)][Batch][EMBER]"
+	otherFansubTagged    = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-EMBER"
+	labelledLeftoverOne  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.FoV[eztv]"
+	labelledLeftoverTwo  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.KILLERS[eztv]"
+	labelledTaggedOne    = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-FoV[eztv]"
+	labelledTaggedTwo    = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KILLERS[eztv]"
+	bareFansubEpisode    = "[KIRI] Azure Compass - 01 (1080p)"
+	fansubRepeatedTag    = "[KIRI] Azure Compass S01 [Web][MKV][h265][1080p][AAC 2.0][Softsubs (KIRI)]"
 	labelAsTaggedGroup   = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-eztv"
 	labelAsGroupAndSite  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-eztv[eztv]"
 	labelAsLeftoverGroup = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.eztv"
@@ -113,9 +106,6 @@ func classifyGroupPair(svc *Service, sourceName, candidateName string, sourceSiz
 	})
 }
 
-// The whole rescue reads rls tag provenance, so pin the parses it reads. rls
-// sets Group as well as Site from a leading bracket, so the split name carries
-// its fansub tag in a trailing bracket.
 func TestGroupSiteFallback_ParsePreconditions(t *testing.T) {
 	t.Parallel()
 
@@ -135,9 +125,6 @@ func TestGroupSiteFallback_ParsePreconditions(t *testing.T) {
 		require.True(t, releaseHasGroupTag(release, release.Group))
 	})
 
-	// If rls ever overwrites these with the indexer label, every eztv listing
-	// collapses onto one identity and the negative cases below stop proving
-	// anything. Fail here instead.
 	for _, name := range []string{labelledLeftoverOne, labelledLeftoverTwo, labelledTaggedOne, labelledTaggedTwo} {
 		t.Run("the indexer label never becomes the group in "+name, func(t *testing.T) {
 			release := svc.releaseCache.Parse(name)
@@ -148,7 +135,6 @@ func TestGroupSiteFallback_ParsePreconditions(t *testing.T) {
 	}
 }
 
-// The accepted case: equal reported pack size, one fansub name, two spellings.
 func TestGroupSiteFallback_AdmitsSplitFansubIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -182,8 +168,6 @@ func TestGroupSiteFallback_AdmitsSplitFansubIdentity(t *testing.T) {
 	}
 }
 
-// Every way two names can carry different groups without carrying the
-// cross-field evidence. Equal sizes must not rescue any of them.
 func TestGroupSiteFallback_RejectsWithoutCrossFieldEvidence(t *testing.T) {
 	t.Parallel()
 
@@ -228,14 +212,9 @@ func TestGroupSiteFallback_RejectsImpossiblePublicFieldsCheaply(t *testing.T) {
 	})
 
 	require.False(t, matched)
-	// Public Group/Site fields already disprove this pairing. Detailed tag
-	// provenance is reserved for pairs whose public fields can form the rescue.
 	require.Less(t, allocations, 40.0)
 }
 
-// namedRelease can carry enriched fields whose origin is outside the release's
-// own tags. The split Group must still be traceable to Text in either recorded
-// origin; an unexplained value cannot buy an exact-size relaxation.
 func TestGroupSiteFallback_RequiresFallbackGroupProvenance(t *testing.T) {
 	t.Parallel()
 
@@ -255,9 +234,6 @@ func TestGroupSiteFallback_RequiresFallbackGroupProvenance(t *testing.T) {
 	require.Equal(t, "group/site mismatch", decision.RejectReason)
 }
 
-// A bracket name with no leftover word repeats its tag into Group, which is the
-// long-standing "candidate simply lacks the tag" case. The rescue must not
-// touch it: it needs two different fields on one side.
 func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	t.Parallel()
 
@@ -275,9 +251,6 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 		namedRelease{release: bare, rawName: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"},
 	))
 
-	// A leading label with nothing left over repeats into Group too. Strict
-	// matching already reads that side's identity off Site, so the rescue must
-	// keep its hands off rather than declare the label a fansub name.
 	labelled := svc.releaseCache.Parse(labelWithoutGroup)
 	require.Equal(t, "eztv", labelled.Site)
 	require.Equal(t, "eztv", labelled.Group, "fixture must carry no group but its site")
@@ -286,12 +259,10 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 		namedRelease{release: svc.releaseCache.Parse(labelAsTaggedGroup), rawName: labelAsTaggedGroup},
 	))
 
-	// Strict matching tolerates the missing candidate tag exactly as before.
 	var comparison releaseComparison
 	svc.matcher().compareGroupSiteAndChecksum(&comparison, namedRelease{release: siteOnly}, namedRelease{release: bare})
 	require.True(t, comparison.matched(), "unexpected rejection: %s", comparison.reason())
 
-	// An empty identity still cannot buy exact-size permission.
 	ok, reason := svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
 		Source:        namedRelease{release: siteOnly, rawName: bareFansubEpisode},
 		Candidate:     namedRelease{release: bare, rawName: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"},
@@ -302,8 +273,6 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	require.Equal(t, "group/site mismatch", reason)
 }
 
-// The tracker name also differs in source and HDR, so strict matching fails on
-// the source and only the exact-size identity check can pair the two names.
 func TestExactSizeIdentity_AcceptsSpaceJoinedGroupSite(t *testing.T) {
 	t.Parallel()
 
@@ -336,9 +305,6 @@ func TestExactSizeIdentity_AcceptsSpaceJoinedGroupSite(t *testing.T) {
 	}
 }
 
-// When the leftover word repeats the fansub tag, Group and Site say the same
-// thing and every gate already agrees. Recording a relaxation there would hand
-// apply a token nothing was rejected for.
 func TestGroupSiteFallback_IgnoresRepeatedFansubTag(t *testing.T) {
 	t.Parallel()
 
@@ -353,14 +319,11 @@ func TestGroupSiteFallback_IgnoresRepeatedFansubTag(t *testing.T) {
 	require.False(t, svc.matcher().crossFieldGroupSiteFallback(repeatedSide, taggedSide))
 	require.False(t, svc.matcher().exactSizeRelaxes(differenceGroup, repeatedSide, taggedSide, matchEvidence{}))
 
-	// The pairing still matches, on the codec the two names actually differ by.
 	decision := classifyGroupPair(svc, fansubRepeatedTag, fansubTaggedPack, fansubPackSize, fansubPackSize)
 	require.True(t, decision.Accepted, "reject reason: %s", decision.RejectReason)
 	require.NotEqual(t, groupMismatchReason, decision.StrictMismatchReason)
 }
 
-// Apply keeps the stored verdict only for the torrent that supplied the size,
-// and only for a download that reads as the listing.
 func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 	t.Parallel()
 
@@ -442,8 +405,6 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 	}
 }
 
-// Apply keeps the differences that the search stored, so a stored season
-// relaxation also lets the season pack through the file keys.
 func TestFindCandidatesKeepsStoredRelaxations(t *testing.T) {
 	t.Parallel()
 
@@ -512,9 +473,6 @@ func TestFindCandidatesKeepsStoredRelaxations(t *testing.T) {
 	})
 }
 
-// Search can heal a bracket episode's identity from its selected file without
-// recording a relaxation. Apply must select the same file-derived identity for
-// the bound source even though the raw torrent name already parses as TV.
 func TestFindCandidates_KeepsFileDerivedStrictEpisodeIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -715,10 +673,6 @@ func TestFindCandidates_KeepsRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 		"raw S01 equality must not hide the bound source's file-derived S02 relaxation")
 }
 
-// enrichReleaseFromTorrent fills a missing Group from the torrent name but keeps
-// the file's tags, so an enriched release carries a group its own tags never
-// mention. Reading provenance off those tags alone reads every enriched group as
-// a word rls merely guessed at. The raw name has to settle it.
 func TestGroupSiteFallback_ReadsProvenanceThroughEnrichment(t *testing.T) {
 	t.Parallel()
 
@@ -757,9 +711,6 @@ func TestGroupSiteFallback_ReadsProvenanceThroughEnrichment(t *testing.T) {
 	})
 }
 
-// The mirror of the case above: the file carries a real group tag the torrent
-// name never had, so the enriched release keeps its own provenance and the raw
-// name is the one that knows nothing.
 func TestGroupSiteFallback_KeepsFileGroupProvenance(t *testing.T) {
 	t.Parallel()
 
@@ -780,10 +731,6 @@ func TestGroupSiteFallback_KeepsFileGroupProvenance(t *testing.T) {
 		"a group the file tagged properly is not a word rls guessed at")
 }
 
-// A release selected from a file keeps that file's tags while its raw torrent
-// name can carry another explicit group. Both origins are evidence: a raw group
-// may corroborate the split Site, but a different raw group must veto the
-// exact-size rescue on either side.
 func TestGroupSiteFallback_RejectsConflictingEnrichmentProvenance(t *testing.T) {
 	t.Parallel()
 
@@ -874,10 +821,6 @@ func TestGroupSiteFallback_RejectsConflictingEnrichmentProvenance(t *testing.T) 
 	}
 }
 
-// Season-pack search keeps the torrent name's identity fields but must also
-// retain the selected file's group tags as provenance. Otherwise the merge that
-// restores the pack shape can erase a conflicting explicit file group and turn
-// it into an exact-size group rescue.
 func TestSearchTorrentMatches_GroupFallbackPreservesSelectedFileProvenance(t *testing.T) {
 	const (
 		instanceID = 1
@@ -973,10 +916,6 @@ func TestSearchTorrentMatches_GroupFallbackPreservesSelectedFileProvenance(t *te
 	}
 }
 
-// Apply must retain the same selected-file provenance on both sides of the
-// pairing. Search cannot inspect the downloaded candidate's files, and apply
-// reparses the existing source, so either season-pack merge can otherwise hide
-// an explicit group conflict behind the Group/Site fallback.
 func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.T) {
 	t.Parallel()
 
@@ -1146,9 +1085,6 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 	})
 }
 
-// A hyphenated fansub name stays whole in its bracket form but splits at the
-// last dash in its suffix form. The exact-size identity check must still read
-// one group, here where strict matching fails on the source.
 func TestExactSizeIdentityAcceptsHyphenatedDashSuffixGroup(t *testing.T) {
 	const (
 		bracket = "[Moe-Fansub] Example Knight S01 [BD HEVC 1080p FLAC]"
@@ -1185,9 +1121,6 @@ func TestExactSizeIdentityAcceptsHyphenatedDashSuffixGroup(t *testing.T) {
 	require.Equal(t, "group/site mismatch", reason)
 }
 
-// The selected file is part of the grouped side. Strict matching must read it,
-// both when it alone spells the hyphenated fansub and when it names a longer
-// group than the torrent name.
 func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) {
 	const (
 		bracket    = "[Moe-Fansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]"
@@ -1205,7 +1138,6 @@ func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) 
 	}
 	strict := func(grouped namedRelease) (bool, string) { return strictPair(grouped, sited) }
 
-	// The view carries the group, but only the selected file spells it.
 	fileGroup := *svc.releaseCache.Parse(bare)
 	fileGroup.Group = "Fansub"
 	fileOnly := namedRelease{
@@ -1220,8 +1152,6 @@ func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) 
 	require.False(t, ok)
 	require.Equal(t, groupMismatchReason, reason)
 
-	// The torrent name spells the fansub, but the selected file names a longer
-	// fansub or another group entirely.
 	conflicting := namedRelease{
 		release:   svc.releaseCache.Parse(suffix),
 		rawName:   suffix,
@@ -1240,8 +1170,6 @@ func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) 
 	ok, reason = strict(conflicting)
 	require.True(t, ok, "torrent-name spelling: %s", reason)
 
-	// The selected file of the bracket side has the same say, in both
-	// directions.
 	grouped := conflicting
 	sited.tagOrigin = svc.releaseCache.Parse(otherFile)
 	ok, reason = strict(grouped)

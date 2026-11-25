@@ -5,10 +5,6 @@
 
 import { useEffect, useRef, useState } from "react"
 
-/**
- * Tracks document visibility with a delayed "hidden" signal.
- * Useful for avoiding rapid poll toggles during quick tab switches.
- */
 export function useDelayedVisibility(delayMs: number) {
   const [isHidden, setIsHidden] = useState(() => {
     if (typeof document === "undefined") {

@@ -12,8 +12,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// A rule shaped like a real one: a top-level AND of an OR group plus a few
-// leaves, mixing string, tag and numeric fields.
 func benchRule() *models.RuleCondition {
 	return &models.RuleCondition{
 		Operator: models.OperatorAnd,
@@ -53,8 +51,6 @@ func benchEvalTorrents(count int) []qbt.Torrent {
 	return torrents
 }
 
-// BenchmarkEvaluateRule walks a rule over a library the way a scheduled
-// automation run does.
 func BenchmarkEvaluateRule(b *testing.B) {
 	cond := benchRule()
 	torrents := benchEvalTorrents(10000)

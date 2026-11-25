@@ -47,9 +47,6 @@ func TestDefaultsFor(t *testing.T) {
 		return d
 	}
 
-	// The second fixture turns the shared flags off. Across both fixtures each
-	// auto-resume setting has its own on/off pattern, so a Trigger that reads
-	// the wrong one fails.
 	sharedOff := &models.CrossSeedAutomationSettings{SkipAutoResumeRSS: true, SkipAutoResumeSeededSearch: true}
 
 	tests := []struct {
@@ -69,7 +66,6 @@ func TestDefaultsFor(t *testing.T) {
 		})},
 		{triggerSeededSearch, settings, shared(triggerDefaults{addTags: []string{"seeded"}})},
 		{triggerCompletion, settings, shared(triggerDefaults{addTags: []string{"completion"}})},
-		// Interactive apply: seeded search auto-resume, no tags, no source filters.
 		{triggerInteractiveApply, settings, shared(triggerDefaults{})},
 
 		{triggerRSS, sharedOff, triggerDefaults{skipAutoResume: true}},
@@ -114,8 +110,6 @@ func failingSettings(context.Context) (*models.CrossSeedAutomationSettings, erro
 	return nil, errSettingsUnavailable
 }
 
-// newInteractiveApplyService returns a service with one cached search result for
-// instance 1, hash "source", and the requests that reach CrossSeed.
 func newInteractiveApplyService(t *testing.T, loader func(context.Context) (*models.CrossSeedAutomationSettings, error)) (*Service, *[]*CrossSeedRequest) {
 	t.Helper()
 	sync := newEpisodeSyncManager()
@@ -249,8 +243,6 @@ func TestWebhookCategoryAndStartPausedDefaults(t *testing.T) {
 	}
 }
 
-// A RED/OPS match keeps the indexer name of older versions for its category
-// and link folder.
 func TestRequestKeepsGazellePlacementName(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{UseCategoryFromIndexer: true}
 	svc := &Service{}

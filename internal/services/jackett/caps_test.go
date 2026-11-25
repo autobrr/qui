@@ -125,7 +125,6 @@ func TestParseTorznabCaps_Limits(t *testing.T) {
 }
 
 func TestParseTorznabCaps_FullParsing(t *testing.T) {
-	// Test that limits parsing doesn't interfere with other cap parsing
 	xml := `<?xml version="1.0" encoding="UTF-8"?>
 <caps>
 	<limits default="50" max="100"/>
@@ -147,7 +146,6 @@ func TestParseTorznabCaps_FullParsing(t *testing.T) {
 		t.Fatalf("parseTorznabCapsResponse() error = %v", err)
 	}
 
-	// Check limits
 	if caps.LimitDefault != 50 {
 		t.Errorf("LimitDefault = %d, want 50", caps.LimitDefault)
 	}
@@ -155,7 +153,6 @@ func TestParseTorznabCaps_FullParsing(t *testing.T) {
 		t.Errorf("LimitMax = %d, want 100", caps.LimitMax)
 	}
 
-	// Check capabilities are still parsed correctly
 	expectedCaps := map[string]bool{
 		"search":           true,
 		"search-q":         true,
@@ -178,8 +175,7 @@ func TestParseTorznabCaps_FullParsing(t *testing.T) {
 		t.Errorf("missing expected capability: %s", cap)
 	}
 
-	// Check categories are still parsed correctly
-	if len(caps.Categories) != 3 { // 2 parents + 1 subcat
+	if len(caps.Categories) != 3 {
 		t.Errorf("expected 3 categories, got %d", len(caps.Categories))
 	}
 }

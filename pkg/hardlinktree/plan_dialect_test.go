@@ -13,9 +13,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// A plan for a remote is built in its slash grammar on every host. Host
-// filepath on Windows would backslash the targets, and the remote's
-// path.Dir of such a target is ".".
 func TestBuildPlanSlashDialect(t *testing.T) {
 	t.Parallel()
 
@@ -27,9 +24,7 @@ func TestBuildPlanSlashDialect(t *testing.T) {
 		file        string
 		destDir     string
 		wantTarget  string
-		// hostToo marks rows whose strings mean the same on a host, so the
-		// host dialect must give filepath's answer for them.
-		hostToo bool
+		hostToo     bool
 	}{
 		{name: "original", layout: hardlinktree.LayoutOriginal, torrentName: "Show", file: "Show/ep.mkv", destDir: "/data/hl/Tracker", wantTarget: "/data/hl/Tracker/Show/ep.mkv", hostToo: true},
 		{name: "subfolder multi-file", layout: hardlinktree.LayoutSubfolder, torrentName: "Show", file: "Show/ep.mkv", destDir: "/data/hl/Tracker", wantTarget: "/data/hl/Tracker/Show/Show/ep.mkv", hostToo: true},

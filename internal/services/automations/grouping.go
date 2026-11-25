@@ -34,17 +34,14 @@ const (
 	groupAmbiguousSkip          = "skip"
 )
 
-// GroupKeys are the values of a group definition's keys. buildGroupKey reads each one.
 var GroupKeys = []string{
 	groupKeyContentPath, groupKeySavePath, groupKeyEffectiveName, groupKeyContentType, groupKeyTrackerDomain,
 	groupKeyRlsSource, groupKeyRlsResolution, groupKeyRlsCodec, groupKeyRlsHDR, groupKeyRlsAudio,
 	groupKeyRlsChannels, groupKeyRlsGroup, groupKeyHardlinkSignature,
 }
 
-// GroupAmbiguousPolicies are the values of a group definition's ambiguousPolicy.
 var GroupAmbiguousPolicies = []string{groupAmbiguousVerifyOverlap, groupAmbiguousSkip}
 
-// Built-in group IDs.
 const (
 	GroupCrossSeedContentPath     = "cross_seed_content_path"
 	GroupCrossSeedContentSavePath = "cross_seed_content_save_path"
@@ -53,7 +50,6 @@ const (
 	GroupHardlinkSignature        = "hardlink_signature"
 )
 
-// BuiltinGroupIDs are the group IDs that a rule can use without a group definition.
 var BuiltinGroupIDs = []string{
 	GroupCrossSeedContentPath, GroupCrossSeedContentSavePath, GroupReleaseItem, GroupTrackerReleaseItem, GroupHardlinkSignature,
 }
@@ -129,8 +125,6 @@ func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrent
 		defaultGroupID = strings.TrimSpace(rule.Conditions.Grouping.DefaultGroupID)
 	}
 
-	// Backward-compatible fallback: old grouped conditions without an explicit groupId
-	// and without a configured default should still evaluate against a useful grouping.
 	if defaultGroupID == "" && usage.hasUnscoped {
 		defaultGroupID = GroupCrossSeedContentSavePath
 	}
@@ -386,7 +380,6 @@ func appendUniqueGroupID(groupIDs []string, groupID string) []string {
 	return append(groupIDs, groupID)
 }
 
-// groupDefinition returns the custom group with this id, else the built-in group. It returns nil for an unknown id.
 func groupDefinition(cfg *models.GroupingConfig, id string) *models.GroupDefinition {
 	if def := findGroupDefinition(cfg, id); def != nil {
 		return def
@@ -461,14 +454,12 @@ func buildGroupIndex(groupID string, def *models.GroupDefinition, torrents []*qb
 		idx.keyByHash[t.Hash] = key
 		idx.hashesByKey[key] = append(idx.hashesByKey[key], t.Hash)
 
-		// Mark ambiguity for contentPath-based groups when ContentPath == SavePath.
 		if containsKey(keys, groupKeyContentPath) && normalizePath(t.ContentPath) == normalizePath(t.SavePath) {
 			idx.ambiguousKeys[key] = struct{}{}
 		}
 	}
 
 	for key, hashes := range idx.hashesByKey {
-		// Stable order for deterministic behavior.
 		sort.Strings(hashes)
 		idx.hashesByKey[key] = hashes
 		for _, h := range hashes {

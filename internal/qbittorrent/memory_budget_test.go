@@ -12,8 +12,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/biglib"
 )
 
-// The bytes that one list read with a Torrent view allocates on a library of
-// biglib.Size torrents (ADR 0051).
 func TestMemoryBudget_ListRead(t *testing.T) {
 	const budget = 10 * biglib.MB
 

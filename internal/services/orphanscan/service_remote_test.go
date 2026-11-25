@@ -35,13 +35,9 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// switchableInstance is instance 1 as both the pool and the service read it,
-// so a test can change its filesystem mode between two steps.
 type switchableInstance struct {
-	mu   sync.Mutex
-	inst models.Instance
-	// onGet, when set, runs before each read, so a test can change the row
-	// at the moment the pool loads it.
+	mu    sync.Mutex
+	inst  models.Instance
 	onGet func()
 }
 
@@ -65,11 +61,6 @@ func (s *switchableInstance) set(mode models.FilesystemMode) {
 	}
 }
 
-// countingBackend is a backend that can really delete, so a refusal that
-// fails to hold shows up as a Remove call and a missing file. It passes the
-// batch reads through, as the backend it wraps answers them, so the exec tier
-// takes the find batch it takes in production. batches, when set, counts the
-// StatBatch calls the wrapped backend answers in one request.
 type countingBackend struct {
 	fsops.Backend
 	removes *atomic.Int32
@@ -94,7 +85,6 @@ func (b countingBackend) LstatBatch(ctx context.Context, paths []string) ([]*fso
 	return fsops.LstatAll(ctx, b.Backend, paths)
 }
 
-// noIdentityBackend reports files without their identity, as the sftp tier does.
 type noIdentityBackend struct{ fsops.Backend }
 
 func (b noIdentityBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
@@ -133,9 +123,6 @@ type modeFixture struct {
 	owned    string
 }
 
-// newModeFixture scans nothing yet. It lays out one owned file and one orphan
-// under a single save path, and routes remote mode through remoteBackend, or
-// through a counting local backend when that is nil.
 func newModeFixture(t *testing.T, name string, mode models.FilesystemMode, remoteBackend func(*models.Instance) fsops.Backend) *modeFixture {
 	t.Helper()
 
@@ -182,9 +169,6 @@ func newModeFixture(t *testing.T, name string, mode models.FilesystemMode, remot
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
-	// Registered after the database, so it runs first: a run goroutine still
-	// holds the database after the test saw its status, and Windows cannot
-	// remove an open file.
 	t.Cleanup(svc.runs.Wait)
 
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
@@ -227,7 +211,6 @@ func (f *modeFixture) setTier(tier models.SSHTier) {
 	f.instance.inst.SSHTier = tier
 }
 
-// requireCompleted waits for the deletion the test started to finish.
 func (f *modeFixture) requireCompleted(t *testing.T) notifications.Event {
 	t.Helper()
 
@@ -259,9 +242,6 @@ func (f *modeFixture) requireNoFailureEvent(t *testing.T) {
 	}
 }
 
-// sftpCreds stands in for the instance store's decryption, as remote_test.go
-// does. The dial re-reads the row through rows, so it sees the fixture's
-// current instance.
 type sftpCreds struct {
 	rows *switchableInstance
 	key  string
@@ -275,12 +255,10 @@ func (c sftpCreds) Get(ctx context.Context, id int) (*models.Instance, error) {
 func (c sftpCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return c.key, nil }
 func (c sftpCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return c.pin, nil }
 
-// SetSSHProbe keeps the fixture on the sftp tier, which these tests cover.
 func (sftpCreds) SetSSHProbe(context.Context, *models.Instance, models.SSHTier, bool) error {
 	return nil
 }
 
-// sftpPath is p as pkg/sftp names it: on Windows it serves C:\x as /C:/x.
 func sftpPath(p string) string {
 	if runtime.GOOS == "windows" {
 		return "/" + filepath.ToSlash(p)
@@ -288,8 +266,6 @@ func sftpPath(p string) string {
 	return p
 }
 
-// newSSHFixture is newModeFixture reached through a test SSH server that
-// serves the fixture's tree, with the row's tier set to tier.
 func newSSHFixture(t *testing.T, name string, exec sshtest.ExecMode, tier models.SSHTier) (*modeFixture, *sshtest.Server) {
 	t.Helper()
 	if exec == sshtest.ExecGNU && runtime.GOOS != "linux" {
@@ -341,8 +317,6 @@ func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
 	require.Equal(t, sftpPath(f.orphan), files[0].FilePath)
 }
 
-// The run records what its walk read and the server it read it from, from the
-// row the backend was built from (#3236).
 func TestExecuteScan_RecordsIdentityAndEndpoint(t *testing.T) {
 	t.Parallel()
 
@@ -357,8 +331,6 @@ func TestExecuteScan_RecordsIdentityAndEndpoint(t *testing.T) {
 	require.Equal(t, "qui@"+server.Addr+"#"+hex.EncodeToString(pin[:8])+"."+hex.EncodeToString(key[:8]), run.FilesystemEndpoint)
 }
 
-// A row on the exec tier whose find is refused walks over sftp, so the row's
-// Identity says nothing about what the preview read (#3236).
 func TestExecuteScan_ExecTierFallbackLeavesIdentityIncomplete(t *testing.T) {
 	t.Parallel()
 
@@ -373,8 +345,6 @@ func TestExecuteScan_ExecTierFallbackLeavesIdentityIncomplete(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// The cut fails the run with no preview, and the next run reads every identity.
-// regression: #3838
 func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -389,7 +359,6 @@ func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
 	require.Empty(t, files)
 	f.requireNothingDeleted(t)
 
-	// The pool hands out the dropped client until its watcher clears the entry.
 	backend, _, err := f.svc.backendPool.Require(t.Context(), 1, models.CapabilityRead)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
@@ -402,7 +371,6 @@ func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
 	require.True(t, next.IdentityComplete)
 }
 
-// regression: #3838
 func TestExecuteScan_FindLosingTheConnectionOnALaterRootLeavesAPartialPreview(t *testing.T) {
 	t.Parallel()
 
@@ -421,7 +389,6 @@ func TestExecuteScan_FindLosingTheConnectionOnALaterRootLeavesAPartialPreview(t 
 		files := qbt.TorrentFiles{{Name: "owned.mkv", Size: 1}}
 		return map[string]qbt.TorrentFiles{"owned": files, "cut": files}, nil
 	}
-	// Roots walk in sorted order, and a read right after a cut can land on the dying client and cut the next root too.
 	require.Less(t, first, cut)
 	server.DropOnExec(cut+"' '-mindepth'", "")
 
@@ -444,8 +411,6 @@ func TestExecuteScan_FindLosingTheConnectionOnALaterRootLeavesAPartialPreview(t 
 	require.FileExists(t, cutOrphan)
 }
 
-// flippingBackend calls flip once root has handed out enough entries that the
-// walk is well under way, so a test can change the instance mid-walk.
 type flippingBackend struct {
 	fsops.Backend
 	root string
@@ -477,9 +442,6 @@ func (b flippingBackend) WalkDir(ctx context.Context, root string, opts fsops.Wa
 	return out, nil
 }
 
-// Changing an instance's filesystem access invalidates its SSH connection, so
-// a remote walk in progress ends as a lost connection. Roots walked before the
-// cut must not become a preview that no confirmation could ever delete.
 func TestExecuteScan_ModeChangedMidScanFailsTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -521,8 +483,6 @@ func TestExecuteScan_ModeChangedMidScanFailsTheRun(t *testing.T) {
 			f.instance.inst.SSHHost, f.instance.inst.SSHPort, f.instance.inst.SSHUsername = host, port, "qui"
 			f.instance.mu.Unlock()
 
-			// Made after the fixture's root so it sorts after it, and a two-root
-			// scan has finished that root before the mode changes.
 			hostBigRoot := filepath.Join(t.TempDir(), "zbig")
 			bigRoot = sftpPath(hostBigRoot)
 			for i := range 300 {
@@ -548,7 +508,6 @@ func TestExecuteScan_ModeChangedMidScanFailsTheRun(t *testing.T) {
 			require.NoError(t, err)
 			require.Empty(t, files, "a run failed for a mode change must record no files")
 
-			// A scheduled run is never looked at, so its failure has to be notified.
 			select {
 			case event := <-f.events:
 				require.Equal(t, notifications.EventOrphanScanFailed, event.Type)
@@ -561,7 +520,6 @@ func TestExecuteScan_ModeChangedMidScanFailsTheRun(t *testing.T) {
 	}
 }
 
-// The sftp tier reports no file identity, so its preview can be exported but not deleted.
 func TestConfirmDeletion_RemoteSFTPTierRunIsRefusedAndKeepsItsPreview(t *testing.T) {
 	t.Parallel()
 
@@ -609,9 +567,6 @@ func TestConfirmDeletion_ModeChangedSinceTheScanFailsTheRun(t *testing.T) {
 	}
 }
 
-// The instance can change after ConfirmDeletion checked it and before the
-// deletion goroutine resolves its backend. The user already confirmed, so this
-// failure is notified like any other.
 func TestExecuteDeletion_ModeChangedAfterConfirmationDeletesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -634,8 +589,6 @@ func TestExecuteDeletion_ModeChangedAfterConfirmationDeletesNothing(t *testing.T
 	}
 }
 
-// previewRun builds a preview_ready run over the fixture's orphan whose mode
-// column holds whatever create left there.
 func (f *modeFixture) previewRun(t *testing.T, create func() int64) int64 {
 	t.Helper()
 
@@ -655,7 +608,6 @@ func (f *modeFixture) createRun(t *testing.T) int64 {
 	return runID
 }
 
-// A run whose mode write never happened must not pass for a local one.
 func TestConfirmDeletion_RunWithoutASavedModeCannotDelete(t *testing.T) {
 	t.Parallel()
 
@@ -666,7 +618,6 @@ func TestConfirmDeletion_RunWithoutASavedModeCannotDelete(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// A run from before the column existed was scanned locally, and confirms that way.
 func TestConfirmDeletion_RunWithoutARecordedModeConfirmsAsLocal(t *testing.T) {
 	t.Parallel()
 
@@ -769,8 +720,6 @@ func TestCheckScheduledScans_AdmitsLocalAndRemoteInstances(t *testing.T) {
 	}
 }
 
-// An sftp-tier preview never completes, and the next scan replaces it, so pacing by
-// completed runs alone scheduled a remote instance on every tick.
 func TestCheckScheduledScans_RemotePreviewWaitsForTheInterval(t *testing.T) {
 	t.Parallel()
 
@@ -794,7 +743,6 @@ func TestCheckScheduledScans_RemotePreviewWaitsForTheInterval(t *testing.T) {
 		return id
 	}
 	preview := insertRun(1, "preview_ready", "-1 hours")
-	// A preview a later scan replaced, and that scan failed. The failure retries as it always has.
 	insertRun(2, "canceled", "-1 hours")
 	_, err = db.ExecContext(t.Context(),
 		`INSERT INTO orphan_scan_runs (instance_id, status, triggered_by, filesystem_mode, completed_at) VALUES (2, 'failed', 'scheduled', 'remote', CURRENT_TIMESTAMP)`)
@@ -839,7 +787,6 @@ func TestCheckScheduledScans_RemotePreviewWaitsForTheInterval(t *testing.T) {
 	require.Equal(t, map[int]bool{1: true, 2: true}, got, "a preview older than the interval is due")
 }
 
-// A confirm can fail the run after another one already queued its deletion.
 func TestExecuteDeletion_RunNoLongerReadyDeletesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -856,7 +803,6 @@ func TestExecuteDeletion_RunNoLongerReadyDeletesNothing(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// The run can leave preview_ready between ConfirmDeletion's status check and its refusal.
 func TestConfirmDeletion_ModeChangedRefusalLeavesAMovedOnRunAlone(t *testing.T) {
 	t.Parallel()
 
@@ -900,8 +846,6 @@ func TestMaybeAutoCleanup_ModeChangedNotifies(t *testing.T) {
 	}
 }
 
-// A concurrent trigger can cancel the preview between the status check and the
-// refusal. Nothing failed then, so nothing is announced.
 func TestMaybeAutoCleanup_ModeChangedOnACanceledRunDoesNotNotify(t *testing.T) {
 	t.Parallel()
 
@@ -924,12 +868,10 @@ func TestMaybeAutoCleanup_ModeChangedOnACanceledRunDoesNotNotify(t *testing.T) {
 	f.requireNoFailureEvent(t)
 }
 
-// runChanges hands each activity event of the service to the test.
 type runChanges chan activity.Event
 
 func (c runChanges) Publish(event activity.Event) { c <- event }
 
-// An sftp-tier preview can never be confirmed, so it must not strand later scans.
 func TestTriggerScan_ReplacesARemotePreview(t *testing.T) {
 	t.Parallel()
 
@@ -951,9 +893,6 @@ func TestTriggerScan_ReplacesARemotePreview(t *testing.T) {
 			require.Positive(t, old.FilesFound)
 
 			f.instance.set(tc.modeNow)
-			// A preview sends no notification, but each status change of a
-			// run publishes an activity event, so the run is read again only
-			// after it changed.
 			changes := make(runChanges, 64)
 			f.svc.SetActivityPublisher(changes)
 			runID, err := f.svc.TriggerScan(t.Context(), 1, tc.triggeredBy)
@@ -991,7 +930,6 @@ func TestTriggerScan_LocalPreviewStillBlocks(t *testing.T) {
 	require.Len(t, runs, 1)
 }
 
-// Without Identity the walker cannot tell a second path to a seeded file from an orphan.
 func TestCanDeleteOrphans(t *testing.T) {
 	t.Parallel()
 
@@ -1013,8 +951,6 @@ func TestCanDeleteOrphans(t *testing.T) {
 	}
 }
 
-// The deletion asks the pool for Write, so an instance that lost it after the
-// confirm is refused before any backend is built for it.
 func TestExecuteDeletion_NeverBuildsABackendWithoutWrite(t *testing.T) {
 	t.Parallel()
 
@@ -1035,8 +971,6 @@ func TestExecuteDeletion_NeverBuildsABackendWithoutWrite(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// The run's label is the mode of the row its backend was built from, not of a
-// second read that can disagree with it.
 func TestExecuteScan_RecordsTheModeOfTheRowItWalks(t *testing.T) {
 	t.Parallel()
 
@@ -1052,8 +986,6 @@ func TestExecuteScan_RecordsTheModeOfTheRowItWalks(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// A deletion that got past the confirm still checks the run's recorded mode
-// against the row it deletes through.
 func TestExecuteDeletion_RemoteRunOnALocalInstanceDeletesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -1071,9 +1003,6 @@ func TestExecuteDeletion_RemoteRunOnALocalInstanceDeletesNothing(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// Peers are chosen by the endpoint of the row the walk's backend was built
-// from, so an edit that lands during the walk cannot drop a peer on the host
-// that was walked.
 func TestExecuteScan_PairsPeersByTheRowItWalks(t *testing.T) {
 	t.Parallel()
 
@@ -1094,8 +1023,6 @@ func TestExecuteScan_PairsPeersByTheRowItWalks(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// An exec-tier run whose walk read every file's identity is confirmed like a
-// local one (#3236), and keeps the files a torrent owns.
 func TestConfirmDeletion_RemoteExecTierRunDeletes(t *testing.T) {
 	t.Parallel()
 
