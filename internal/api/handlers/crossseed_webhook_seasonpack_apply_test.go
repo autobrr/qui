@@ -45,7 +45,7 @@ func TestWebhookApplyAssemblesThePackThatTheCheckMatched(t *testing.T) {
 		{name: "episodes", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: endpointEpisodes(4), total: 4}},
 		{name: "seasonless episodes", pack: absolutePack, torrent: endpointTorrent(t, absolutePack, 1, absoluteFiles...), rig: seasonPackEndpointCase{held: absolute}},
 		{name: "Sonarr title", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: slices.Concat(endpointEpisodes(2), renamed[2:]), total: 4, sonarrTitles: []string{"Hafensignal"}}},
-		{name: "alternate title", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: renamed, total: 4, alternates: seasonPackAlternateTitles{"Hafensignal": {"Harbor Signal"}}}},
+		{name: "alternate title of a show that Sonarr does not know", pack: endpointPack, torrent: endpointPackTorrent(t, 1, 4), rig: seasonPackEndpointCase{held: renamed, alternates: seasonPackAlternateTitles{"Hafensignal": {"Harbor Signal"}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rig := newSeasonPackEndpointRig(t, &tc.rig, heldTitlesReady)
