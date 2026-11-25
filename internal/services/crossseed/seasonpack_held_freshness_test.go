@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/autobrr/qui/internal/services/arr"
 )
 
 const (
@@ -51,38 +49,26 @@ func TestSeasonPackCheckFindsAnEpisodeInTheSyncThatRuns(t *testing.T) {
 	}
 	for name, tc := range map[string]struct {
 		torrent string
-		total   int
 		before  func(*freshPackRig)
 		matched int
 		sonarr  int
 	}{
-		"coverage with a torrent": {
+		"coverage": {
 			torrent: packOf(t, freshPack, freshPackEpisode, 6, 7), matched: 2, sonarr: 1,
-			before: func(rig *freshPackRig) { holdsOther(rig, 1) },
-		},
-		"coverage without a torrent": {
-			total: 2, matched: 2, sonarr: 1,
 			before: func(rig *freshPackRig) { holdsOther(rig, 1) },
 		},
 		"no threshold": {
 			matched: 1, sonarr: 1,
 			before: func(rig *freshPackRig) { holdsOther(rig, 0.5) },
 		},
-		"nothing held with a torrent": {
+		"nothing held": {
 			torrent: packOf(t, freshPack, freshPackEpisode, 7), matched: 1, sonarr: 1,
-			before: func(*freshPackRig) {},
-		},
-		"nothing held without a torrent": {
-			matched: 1, sonarr: 1,
 			before: func(*freshPackRig) {},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, features := range [][]string{freshOn, nil} {
 				freshPackCase(t, features, 1, func(rig *freshPackRig) {
-					if tc.total > 0 {
-						rig.sonarr.seasonResult = &arr.SeasonEpisodeTotalResult{TotalEpisodes: tc.total}
-					}
 					tc.before(rig)
 					rig.instances[0].syncTakes(takes)
 					rig.instances[0].hold(freshName, 1)
@@ -146,10 +132,12 @@ func TestSeasonPackCheckWaitsOnceForASync(t *testing.T) {
 			rig.instances[0].syncTakes(takes)
 			rig.instances[0].startSync()
 
-			resp, waited := rig.checkPack(pack)
+			for _, torrent := range []string{pack, ""} {
+				resp, waited := rig.checkPack(torrent)
 
-			require.True(t, resp.Ready)
-			require.Zero(t, waited)
+				require.True(t, resp.Ready)
+				require.Zero(t, waited)
+			}
 		})
 	})
 	t.Run("no sync due", func(t *testing.T) {

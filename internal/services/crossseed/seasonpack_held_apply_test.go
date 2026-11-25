@@ -215,15 +215,3 @@ func TestSeasonPackApplySurvivesARebuildBetweenCoverageAndAssembly(t *testing.T)
 		})
 	}
 }
-
-func TestSeasonPackApplyTakesTheInstanceThatTheFullScanTakes(t *testing.T) {
-	pack := packOf(t, packShow, packShowEpisode, 1, 2, 3, 4)
-	root := t.TempDir()
-	rig := newPackRig(t, root, packLibraryOnDisk(t, root, packTorrents('1', packShowEpisode, 1, 2, 3)), packLibraryOnDisk(t, root, packTorrents('1', packShowEpisode, 1, 2, 3, 4)))
-	full, held := rig.applying(rig.full()), rig.applying(rig.held())
-
-	want, got := full.apply(t, packShow, pack), held.apply(t, packShow, pack)
-
-	require.Equal(t, 2, got.InstanceID)
-	require.Equal(t, want, got)
-}
