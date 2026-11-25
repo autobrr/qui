@@ -154,9 +154,11 @@ linters:
         - pattern: ^\w+\.\w+\.RenameTorrent(File|Folder)$
           msg: use crossseed.Aligner
         - pattern: ^\w+\.\w+\.(GetCachedInstanceTorrents|ReadInstanceTorrents)$
-          msg: the webhook check reads its candidates from Held titles in internal/services/crossseed/held_titles.go, never the full torrent list
+          msg: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup.go, never the full torrent list
         - pattern: ^\(?\*?qbittorrent\.SyncSnapshot\)?\.(Torrents|Matching)$
-          msg: the webhook check reads its candidates from Held titles in internal/services/crossseed/held_titles.go, never the full torrent list
+          msg: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup.go, never the full torrent list
+        - pattern: ^\(?\*?\w+\.\w+\)?\.PendingSync$
+          msg: wait on a due sync through the Held titles lookup in internal/services/crossseed/held_titles_lookup.go
         - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: only the Transfer history module in internal/services/transferhistory calls the history store
@@ -334,11 +336,18 @@ linters:
           - forbidigo
         text: use crossseed\.Adder
 
-      # Only the webhook check file reads its candidates from Held titles.
-      - path-except: internal/services/crossseed/webhook_check\.go$
+      # The webhook check and the season pack check read their candidates from Held titles.
+      # Their fallback to the full list is in webhook_all_torrents.go and seasonpack_all_torrents.go.
+      - path-except: internal/services/crossseed/(webhook_check|seasonpack|seasonpack_candidates)\.go$
         linters:
           - forbidigo
-        text: Held titles
+        text: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup\.go, never the full torrent list
+
+      # Only the Held titles lookup waits on a due sync.
+      - path: internal/services/crossseed/held_titles_lookup\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: wait on a due sync through the Held titles lookup
 
       # Only the Aligner renames torrent files in the cross-seed and Dir Scan packages.
       - path-except: ^internal/services/(crossseed|dirscan)/
