@@ -466,6 +466,7 @@
       "activeCount": "{{enabled}}/{{total}} actif",
       "today": "{{count}} aujourd'hui",
       "failed": "{{count}} échoués",
+      "outcomeFailed": "Échoué",
       "failedToLoadRules": "Échec du chargement des règles",
       "checkConnection": "Vérifiez la connexion à l'instance.",
       "loadingRules": "Chargement des règles...",
