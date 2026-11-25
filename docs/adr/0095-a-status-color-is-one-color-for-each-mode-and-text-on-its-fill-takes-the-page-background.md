@@ -17,4 +17,5 @@ The 50 built-in themes get colors for success, warning, and info. Each theme set
 
 - The bright yellow icon of a warning becomes a dark ochre in light mode.
 - In White and Vantablack, a status dot without text differs only in lightness.
+- In dark Bubblegum, Cyberpunk, and Nord, the selected row is too bright for any status color to reach 4.5. The maintainer accepted near-white values at 4.36 to 4.40 there, and `web/scripts/theme-check.test.mjs` holds these nine pairs.
 - A change of mind later means new values in 50 themes.
