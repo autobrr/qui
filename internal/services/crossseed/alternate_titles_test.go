@@ -22,16 +22,17 @@ import (
 var alternateTitlesMatcher = (&Service{releaseCache: NewReleaseCache()}).matcher()
 
 type fakeAlternateTitles struct {
-	mu      sync.Mutex
-	titles  map[string][]string
-	cached  bool
-	down    bool
-	partial bool
-	hangs   bool
-	takes   time.Duration
-	failsOn func(title string) bool
-	asked   []HeldRelease
-	askedAt []time.Time
+	mu           sync.Mutex
+	titles       map[string][]string
+	cached       bool
+	down         bool
+	partial      bool
+	hangs        bool
+	takes        time.Duration
+	failsOn      func(title string) bool
+	titleFailsOn func(title string) bool
+	asked        []HeldRelease
+	askedAt      []time.Time
 }
 
 func (f *fakeAlternateTitles) AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error) {
@@ -49,6 +50,9 @@ func (f *fakeAlternateTitles) AlternateTitles(ctx context.Context, held HeldRele
 	f.askedAt = append(f.askedAt, time.Now())
 	if f.down || f.failsOn != nil && f.failsOn(held.Title) {
 		return AlternateTitles{Requested: true}, errors.New("source down")
+	}
+	if f.titleFailsOn != nil && f.titleFailsOn(held.Title) {
+		return AlternateTitles{Requested: true}, fmt.Errorf("per-title failure: %w", ErrTitleUnanswered)
 	}
 	return AlternateTitles{Titles: f.titles[held.Title], Requested: !f.cached, Incomplete: f.partial}, nil
 }
@@ -403,4 +407,38 @@ func TestAlternateTitlesWithoutASourceHoldNothing(t *testing.T) {
 	require.Nil(t, holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1))
 	require.Empty(t, a.of(nil))
 	a.drop(nil)
+}
+
+func TestAlternateTitlesDoNotPauseOnPerTitleFailure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		source := &fakeAlternateTitles{
+			titles: map[string][]string{"Copper Fjord": {"Kupferfjord"}},
+			titleFailsOn: func(title string) bool {
+				return title != "Copper Fjord"
+			},
+		}
+		a := runAlternateTitles(t, source)
+		started := time.Now()
+		pauses := logbudget.Count(t, func() {
+			holdNames(a, "Lantern Ward", sourceFailuresInARow)
+			time.Sleep(10 * time.Second)
+			synctest.Wait()
+
+			good := holdName(a, "Copper.Fjord.2019.1080p.BluRay.x264-GRP", 1)
+			synctest.Wait()
+			require.Equal(t, []string{"kupferfjord"}, a.of(good), "a good title is not delayed by per-title failures")
+
+			time.Sleep(alternateTitleRetry)
+			synctest.Wait()
+		})
+
+		require.Zero(t, pauses[logbudget.Line{Level: "warn", Message: "crossseed: Held titles pauses an Alternate-title source that fails"}])
+		require.Zero(t, pauses[logbudget.Line{Level: "trace", Message: "crossseed: Held titles pauses an Alternate-title source that fails"}])
+
+		asked, askedAt := source.askedTitles(), source.askTimes()
+		// 3 initial failures + 1 Copper Fjord + 3 retries after alternateTitleRetry.
+		require.Len(t, asked, 7)
+		require.Equal(t, "Copper Fjord", asked[3])
+		require.Equal(t, alternateTitleRetry, askedAt[4].Sub(started))
+	})
 }

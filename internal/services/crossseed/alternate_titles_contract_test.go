@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -148,6 +149,10 @@ func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/v3/movie/8":
 		_ = json.MarshalWrite(w, movie{ID: 8, Title: "Copper Fjord", TMDbID: 80, AlternateTitles: []alternateTitle{{Title: "Kupferfjord"}}})
 	case "/api/v3/series/lookup", "/api/v3/movie/lookup":
+		if f.lookupFails {
+			http.Error(w, "lookup failed", http.StatusServiceUnavailable)
+			return
+		}
 		_ = json.MarshalWrite(w, []series{})
 	default:
 		http.NotFound(w, r)
@@ -393,4 +398,104 @@ func TestArrAlternateTitlesPauseOnlyASourceThatIsDown(t *testing.T) {
 			require.NotEmpty(t, a.queues[0].retries, "a failed title is asked again after its own wait")
 		})
 	}
+}
+
+func TestArrAlternateTitlesDoNotPauseOnPerTitleLookupFailure(t *testing.T) {
+	t.Run("parse answers and title search fails", func(t *testing.T) {
+		fake, service := newFakeArr(t)
+		fake.lookupDown = true
+
+		drained := make(chan struct{})
+		stop := sync.OnceFunc(func() { close(drained) })
+		var a *alternateTitleIndex
+		a = newAlternateTitleIndex(NewArrAlternateTitles(service)[1:2], func() bool {
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			if len(a.queues[0].waiting) == 0 && len(a.queues[0].retries) == 3 {
+				stop()
+			}
+			return false
+		})
+		a.queues[0].every = 0
+
+		for _, name := range []string{
+			"Bad.Movie.One.2020.1080p.BluRay.x264-GRP",
+			"Bad.Movie.Two.2021.1080p.BluRay.x264-GRP",
+			"Bad.Movie.Three.2022.1080p.BluRay.x264-GRP",
+		} {
+			holdName(a, name, 1)
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+		pauses := logbudget.Count(t, func() {
+			go func() {
+				defer close(done)
+				a.run(ctx)
+			}()
+			<-drained
+
+			a.mu.Lock()
+			paused := !a.queues[0].pausedUntil.IsZero()
+			a.mu.Unlock()
+			require.False(t, paused, "per-title lookup failures must not pause the Radarr source")
+
+			good := holdName(a, arrMovieName, 1)
+			a.queues[0].wakeRun()
+			require.Eventually(t, func() bool {
+				return slices.Contains(a.of(good), "kupferfjord")
+			}, 2*time.Second, 10*time.Millisecond, "a held title that Radarr answers must not be delayed by failing titles")
+
+			cancel()
+			<-done
+		})
+		require.Zero(t, pauses[logbudget.Line{Level: "warn", Message: "crossseed: Held titles pauses an Alternate-title source that fails"}])
+		require.Zero(t, pauses[logbudget.Line{Level: "trace", Message: "crossseed: Held titles pauses an Alternate-title source that fails"}])
+	})
+
+	t.Run("connection refused pauses source", func(t *testing.T) {
+		fake := &fakeArrServer{parsed: map[string]string{arrMovieName: "movie"}}
+		srv := httptest.NewServer(fake)
+		srv.Close()
+		db := testdb.NewMigratedSQLite(t, "alternate-titles-refused")
+		instances, err := models.NewArrInstanceStore(db, []byte(strings.Repeat("k", 32)))
+		require.NoError(t, err)
+		_, err = instances.Create(t.Context(), models.ArrInstanceTypeRadarr, "radarr", srv.URL, "api-key", nil, nil, true, 1, 15)
+		require.NoError(t, err)
+		service := arr.NewService(instances, models.NewArrIDCacheStore(db))
+
+		paused := make(chan struct{})
+		stop := sync.OnceFunc(func() { close(paused) })
+		var a *alternateTitleIndex
+		a = newAlternateTitleIndex(NewArrAlternateTitles(service)[1:2], func() bool {
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			if !a.queues[0].pausedUntil.IsZero() {
+				stop()
+			}
+			return false
+		})
+		a.queues[0].every = 0
+
+		for _, name := range []string{
+			"Refused.One.2020.1080p.BluRay.x264-GRP",
+			"Refused.Two.2021.1080p.BluRay.x264-GRP",
+			"Refused.Three.2022.1080p.BluRay.x264-GRP",
+		} {
+			holdName(a, name, 1)
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+		pauses := logbudget.Count(t, func() {
+			go func() {
+				defer close(done)
+				a.run(ctx)
+			}()
+			<-paused
+			cancel()
+			<-done
+		})
+		require.Equal(t, 1, pauses[logbudget.Line{Level: "trace", Message: "crossseed: Held titles pauses an Alternate-title source that fails"}])
+	})
 }
