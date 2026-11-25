@@ -366,7 +366,7 @@ function SortHead({ column, sort, onSort, className, children }: SortHeadProps) 
   const sorted = sort.column === column ? (sort.descending ? "desc" : "asc") : false
   return (
     <TableHead className={className} aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined}>
-      <button type="button" className="group/sort inline-flex items-center gap-1 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" onClick={() => onSort(column)}>
+      <button type="button" className="group/sort inline-flex items-center gap-1 rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50" onClick={() => onSort(column)}>
         {column !== "group" && <span className={cn(!sorted && "opacity-0 group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100")}><SortIcon sorted={sorted} /></span>}
         {children}
         {column === "group" && <span className={cn(!sorted && "opacity-0 group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100")}><SortIcon sorted={sorted} /></span>}

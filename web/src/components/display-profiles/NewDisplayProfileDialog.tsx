@@ -99,7 +99,7 @@ function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfi
           <button
             type="button"
             aria-label={t("displayProfiles.iconPicker.trigger", { icon: t(iconLabelKey) })}
-            className="mt-6 shrink-0 rounded-lg outline-none ring-1 ring-border hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="mt-6 shrink-0 rounded-lg outline-none ring-1 ring-border hover:ring-foreground/40 focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <DisplayProfileTile profile={{ icon, color, name }} size="lg" />
           </button>

@@ -252,7 +252,7 @@ export function CrossSeedWarning({
           <div className="mt-2 space-y-2 overflow-hidden">
             {Object.entries(byInstance).map(([instanceName, torrents]) => (
               <div key={instanceName} className="min-w-0">
-                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                <p className="text-10 font-medium text-muted-foreground uppercase tracking-wide mb-1">
                   {instanceName}
                 </p>
                 <div className="space-y-1 min-w-0">
@@ -267,12 +267,12 @@ export function CrossSeedWarning({
                           {incognitoMode? getLinuxIsoName(torrent.hash): torrent.name}
                         </span>
                         {trackerDomain && (
-                          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-10 font-medium text-muted-foreground">
                             {trackerDomain}
                           </span>
                         )}
                         {getLocalMatchTypeInfo(torrent.matchType).independentlyUsable && (
-                          <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+                          <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-10 font-medium text-blue-500">
                             {torrent.matchType === "reflink"? t("crossSeedTable.matchTypes.reflink.label"): t("crossSeedTable.matchTypes.hardlink.label")}
                           </span>
                         )}
@@ -282,7 +282,7 @@ export function CrossSeedWarning({
                   {torrents.length > 8 && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <p className="text-[10px] text-muted-foreground pt-0.5 cursor-help hover:text-foreground transition-colors w-fit">
+                        <p className="text-10 text-muted-foreground pt-0.5 cursor-help hover:text-foreground transition-colors w-fit">
                           {t("crossSeedWarning.more", { count: torrents.length - 8 })}
                         </p>
                       </TooltipTrigger>

@@ -9,7 +9,7 @@ import { memo, useState } from "react"
 const trackerIconSizeClasses = {
   xs: "h-3 w-3 text-[8px]",
   sm: "h-[14px] w-[14px] text-[9px]",
-  md: "h-4 w-4 text-[10px]",
+  md: "h-4 w-4 text-10",
 } as const
 
 export type TrackerIconSize = keyof typeof trackerIconSizeClasses

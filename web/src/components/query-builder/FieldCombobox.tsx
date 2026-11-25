@@ -114,7 +114,7 @@ function FieldComboboxContent({
                         <span>{fieldLabel}</span>
                         <span className={cn(
                           "ml-auto text-muted-foreground",
-                          isMobile ? "text-xs" : "text-[10px]"
+                          isMobile ? "text-xs" : "text-10"
                         )}>
                           {fieldType}
                         </span>
@@ -145,7 +145,7 @@ function FieldComboboxContent({
                     <span className={cn(
                       "ml-auto",
                       isSelected ? "text-primary/70" : "text-muted-foreground",
-                      isMobile ? "text-xs" : "text-[10px]"
+                      isMobile ? "text-xs" : "text-10"
                     )}>
                       {fieldType}
                     </span>

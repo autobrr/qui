@@ -26,7 +26,7 @@ export function Page({ title, description, badge, controls, fill = false, back, 
             <button
               type="button"
               onClick={back.onClick}
-              className="-ml-2 flex min-h-10 items-center gap-0.5 rounded-md pr-2 pl-1 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="-ml-2 flex min-h-10 items-center gap-0.5 rounded-md pr-2 pl-1 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <ChevronLeft className="size-5" />
               {back.label}
