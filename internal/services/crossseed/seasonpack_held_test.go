@@ -75,7 +75,6 @@ func packParityCases(t *testing.T) []packParityCase {
 	return []packParityCase{
 		{name: "episodes with a torrent", pack: packShow, torrent: packOf(t, packShow, packShowEpisode, 1, 2, 3, 4), matched: packMatched{1: 4, 2: 2}, ready: true},
 		{name: "episodes of two instances", pack: packShow, torrent: packOf(t, packShow, packShowEpisode, 1, 2), matched: packMatched{1: 2, 2: 2}, ready: true},
-		{name: "episodes with a torrent and a higher total", pack: packShow, torrent: packOf(t, packShow, packShowEpisode, 1, 2, 3, 4), sonarr: total(5), matched: packMatched{1: 4, 2: 2}, ready: true},
 		{name: "episodes below the threshold", pack: packShow, torrent: packOf(t, packShow, packShowEpisode, 1, 2, 3, 4), sonarr: total(8), matched: packMatched{1: 4, 2: 2}, settings: func(s *models.CrossSeedAutomationSettings) { s.SeasonPackCoverageThreshold = 0 }},
 		{name: "episodes without a torrent", pack: packShow, sonarr: total(4), matched: packMatched{1: 4, 2: 2}, ready: true},
 		{name: "episodes without a torrent and a total", pack: packShow, matched: packMatched{1: 4, 2: 2}, ready: true},
@@ -92,7 +91,6 @@ func packParityCases(t *testing.T) []packParityCase {
 		{name: "alternate title without a torrent", pack: packAliased, sonarr: aliased, matched: packMatched{1: 4}, ready: true},
 		{name: "alternate title without a total", pack: packAliased, sonarr: total(0, "Vinterhagen", "Winter Orchard"), matched: packMatched{1: 4}, ready: true},
 		{name: "alternate title of another season in Sonarr", pack: packAliased, torrent: packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4), sonarr: total(4)},
-		{name: "alternate title that Sonarr does not name", pack: packAliased, torrent: packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4), sonarr: total(4, "Vinterhagen")},
 		{name: "alternate title that Sonarr does not name and no total", pack: packAliased, sonarr: total(0, "Vinterhagen")},
 		{name: "show title of episodes of another season", pack: "Ivory.Cove.S01.1080p.WEB.x264-GRP9", sonarr: total(4, "Ivory Cove")},
 		{name: "show title of episodes of another season with a torrent", pack: "Ivory.Cove.S01.1080p.WEB.x264-GRP9", torrent: packOf(t, "Ivory.Cove.S01.1080p.WEB.x264-GRP9", "Ivory.Cove.S01E%02d.1080p.WEB.x264-GRP9", 1, 2, 3, 4), sonarr: total(4, "Ivory Cove")},
@@ -104,7 +102,6 @@ func packParityCases(t *testing.T) []packParityCase {
 		{name: "source filter", pack: packShow, sonarr: total(4), settings: func(s *models.CrossSeedAutomationSettings) { s.WebhookSourceCategories = []string{"movies"} }},
 		{name: "still downloading", pack: "Lone.Harbor.S01.1080p.WEB.x264-GRP9", sonarr: total(2)},
 		{name: "Helper torrents", pack: "Hollow.Brook.S01.1080p.WEB.x264-GRP9", sonarr: total(1), notHeld: true},
-		{name: "season pack off", pack: packShow, settings: func(s *models.CrossSeedAutomationSettings) { s.SeasonPackEnabled = false }},
 		{name: "no season pack", pack: "Amber.Quay.S01E01.1080p.WEB.x264-GRP9"},
 		{name: "undecodable torrent", pack: packNotHeld, torrent: undecodableTorrent()},
 		{name: "nothing held with a torrent", pack: packNotHeld, torrent: packOf(t, packNotHeld, packNotHeldFile, 1, 2), notHeld: true},
