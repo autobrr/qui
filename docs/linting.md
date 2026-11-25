@@ -89,7 +89,7 @@ The counter reads one file at a time. It counts a sleep in a function that runs 
 
 ### Suppressed ESLint Rules
 
-`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Nine rules have entries:
+`web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Eight rules have entries:
 
 - `@typescript-eslint/consistent-type-assertions` reports each type cast (`value as Type`) outside the tests and `src/test`. `as const` and `satisfies` pass. Get the type from a type guard, a zod schema, or a type on the source of the value. ADR 0089 has the reason.
 - `@typescript-eslint/no-non-null-assertion` reports each `value!` outside the tests and `src/test`. Check the value, or give its source a type without `null` and `undefined`. ADR 0089 has the reason.
