@@ -1,0 +1,94 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"context"
+	"time"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+)
+
+const (
+	heldSyncDueWithin = time.Second
+	heldSyncWait      = heldSyncDueWithin + 500*time.Millisecond
+)
+
+type heldLookup struct {
+	titles     *heldTitles
+	query      heldTitlesQuery
+	owners     []*syncowner.Owner
+	synced     []int
+	readErrors map[int]error
+	wait       *heldWait
+}
+
+type heldWait struct {
+	pending []<-chan struct{}
+}
+
+func (h *heldTitles) lookup(ctx context.Context, query heldTitlesQuery, instances []*models.Instance) *heldLookup {
+	if h == nil {
+		return nil
+	}
+	lookup := &heldLookup{titles: h, query: query, readErrors: map[int]error{}}
+	targets := make([]int, len(instances))
+	for i, instance := range instances {
+		targets[i] = instance.ID
+		owner, err := h.svc.syncManager.GetSyncOwner(ctx, instance.ID)
+		if err != nil {
+			lookup.readErrors[instance.ID] = err
+			continue
+		}
+		lookup.owners = append(lookup.owners, owner)
+		if owner.SnapshotUnchecked() != nil {
+			lookup.synced = append(lookup.synced, instance.ID)
+		}
+	}
+	if !h.ready(ctx, targets) {
+		return nil
+	}
+	lookup.wait = newHeldWait(lookup.owners)
+	return lookup
+}
+
+func (l *heldLookup) candidates() map[int]heldCandidates {
+	return l.titles.candidates(l.query, l.synced)
+}
+
+func (l *heldLookup) refreshStale() {
+	for _, owner := range l.owners {
+		owner.RefreshStale()
+	}
+}
+
+func newHeldWait(owners []*syncowner.Owner) *heldWait {
+	wait := &heldWait{}
+	for _, owner := range owners {
+		if owner.SnapshotUnchecked() == nil {
+			continue
+		}
+		if done := owner.PendingSync(heldSyncDueWithin); done != nil {
+			wait.pending = append(wait.pending, done)
+		}
+	}
+	return wait
+}
+
+func (w *heldWait) await(ctx context.Context) (due bool) {
+	pending := w.pending
+	w.pending = nil
+	limit := time.After(heldSyncWait)
+	for _, done := range pending {
+		select {
+		case <-done:
+		case <-limit:
+			return true
+		case <-ctx.Done():
+			return true
+		}
+	}
+	return len(pending) > 0
+}
