@@ -35,11 +35,11 @@ Comments are banned in Go and TypeScript code. `make lint-ratchet` counts them i
 
 The markers that a tool or a standard in this repo reads stay, because they are not prose:
 
-- Go: the license header, `//go:` directives, `//nolint:<linter> // reason`, `//exhaustive:`, `// #nosec`, `// Deprecated:`, and `// regression: #N`.
+- Go: the license header, `//go:` directives, `//nolint:<linter> // reason`, `//exhaustive:`, `// #nosec`, `// Deprecated:`, `// regression: #N`, and `// goes away in #N` or `// goes away when the maintainer decides` on an Experimental feature.
 - TypeScript: the license header, `eslint-disable` and `eslint-enable`, `@ts-expect-error`, `@ts-nocheck`, `/// <reference`, `@deprecated`, `// i18n-namespace: <ns>`, and `// regression: #N`.
 
-Comments from before the ban stay until `/delete-comment` reaches their file. The number in a file can only go down:
+Comments from before the ban stay until `/delete-comment` reaches their file, or until a change touches their code. The number in a file can only go down:
 
-- When you change a line that has a comment, delete the comment, or update it if it is still true and you cannot yet move it.
+- When you change code, delete each old comment on it or directly above it. If the comment holds a fact that the code must keep, first put that fact in a name, a type, a test, or an ADR. In Go, `make lint-ratchet` and the Lint workflow fail on a comment that stays there, and on a comment with new text.
 - A stale-comment finding from a review bot is right.
 - Older comments are no reason to add more.

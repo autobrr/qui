@@ -7,7 +7,6 @@ web/node_modules
 **/*.md
 !go.md
 .goreleaser*.yml
-.pre-commit-config.yaml
 LICENSE
 AGENTS.md
 CLAUDE.md

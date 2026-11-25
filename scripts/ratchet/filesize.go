@@ -104,6 +104,14 @@ func fileSizeProblems(base string) ([]string, error) {
 }
 
 func baseSizes(base string, files []string) (map[string]int, error) {
+	blobs, err := baseBlobs(base, files)
+	if err != nil {
+		return nil, err
+	}
+	return blobSizes(blobs), nil
+}
+
+func baseBlobs(base string, files []string) (map[string][]byte, error) {
 	var objects strings.Builder
 	for _, file := range files {
 		objects.WriteString(base + ":" + file + "\x00")
@@ -114,7 +122,7 @@ func baseSizes(base string, files []string) (map[string]int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("git cat-file %s: %w", base, err)
 	}
-	return parseBlobSizes(files, out)
+	return parseBlobs(files, out)
 }
 
 func coveredSizes(limit sizeLimit) (map[string]int, error) {
@@ -143,8 +151,16 @@ func sizeOf(src []byte) int {
 	return len(src) - bytes.Count(src, []byte("\r\n"))
 }
 
-func parseBlobSizes(files []string, out []byte) (map[string]int, error) {
+func blobSizes(blobs map[string][]byte) map[string]int {
 	sizes := map[string]int{}
+	for file, blob := range blobs {
+		sizes[file] = sizeOf(blob)
+	}
+	return sizes
+}
+
+func parseBlobs(files []string, out []byte) (map[string][]byte, error) {
+	blobs := map[string][]byte{}
 	for _, file := range files {
 		header, rest, ok := bytes.Cut(out, []byte("\n"))
 		if !ok {
@@ -163,11 +179,11 @@ func parseBlobSizes(files []string, out []byte) (map[string]int, error) {
 			return nil, fmt.Errorf("git cat-file: bad header %q for %s", header, file)
 		}
 		if fields[1] == "blob" {
-			sizes[file] = sizeOf(rest[:size])
+			blobs[file] = rest[:size]
 		}
 		out = rest[size+1:]
 	}
-	return sizes, nil
+	return blobs, nil
 }
 
 func parseRenames(out []byte) map[string]string {

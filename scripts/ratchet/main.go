@@ -109,6 +109,11 @@ func main() {
 		fail(err)
 	}
 	problems = append(problems, oversized...)
+	touched, err := touchedCommentProblems(*base)
+	if err != nil {
+		fail(err)
+	}
+	problems = append(problems, touched...)
 
 	for _, linter := range slices.Sorted(maps.Keys(got)) {
 		fmt.Printf("ratchet: %s has %d problems in %d files\n", linter, sum(got[linter]), len(got[linter]))

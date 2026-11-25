@@ -38,7 +38,7 @@ To prove that a new forbidigo or depguard rule fires, add a temporary violation 
 
 ## Ratchet
 
-The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The total of a linter can only go down. `go run ./scripts/ratchet` applies seven rules:
+The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The total of a linter can only go down. `go run ./scripts/ratchet` applies eight rules:
 
 1. A file reports no more problems than its entry allows. A file without an entry must have no problems.
 2. An entry is not higher than the number that the file reports, and an entry at 0 is deleted. `make lint-ratchet` writes both changes.
@@ -47,6 +47,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 5. A `nolint` comment names only linters that `.golangci.yml` or `scripts/ratchet/golangci.yml` runs. A name of a linter that is off hides nothing: delete it.
 6. `web/eslint-suppressions.json` has entries only for the rules in `suppressedRules` of `scripts/ratchet/comments.go`, each of those rules has an entry, and the total of each rule does not grow. See "Suppressed ESLint Rules" below.
 7. No code file crosses the size limit in `.file-size.json`, and that file does not get looser. See "File Size" below.
+8. No Go comment is new, and none stays on code that the branch changes. See "Comments" below.
 
 - The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
@@ -60,6 +61,11 @@ Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of 
 
 - **Go:** the `comments` key of `allowlist.json` is not a golangci-lint linter. The ratchet command counts the comments in each tracked Go file itself, with `scripts/comments/gocomments`. Rules 1 to 3 apply to it as to each linter, so a comment that moves to another file with its code does not fail the check.
 - **TypeScript:** ESLint reports each comment as `qui/no-comments`, one of the suppressed ESLint rules below.
+
+Rule 8 reads each Go file that the branch changes. It takes a comment together with its code: the line that the comment shares, or the first line of code directly below it. The command fails when the merge base does not have the same comment on the same code.
+
+- These fail: a new or reworded comment, and an old comment whose line of code changes, moves away, or gets a new line above it.
+- These pass: a comment that moves with its code, also to another file, code that only gofmt changes, a directive between a comment and its code, and a change elsewhere in the function.
 
 `web/scripts/no-comments-rule.mjs` and `scripts/comments/gocomments` list the markers that are not comments for this rule. The ESLint rule has no fix, because `make fmt` runs `eslint --fix` and must not delete a comment that nobody read. The `/delete-comment` skill sorts the comments of a file and deletes them.
 
