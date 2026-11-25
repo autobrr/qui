@@ -156,7 +156,8 @@ linters:
         - pattern: ^\w+\.\w+\.(GetCachedInstanceTorrents|ReadInstanceTorrents)$
           msg: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup.go, never the full torrent list
         - pattern: ^\(?\*?qbittorrent\.SyncSnapshot\)?\.(Torrents|Matching)$
-          msg: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup.go, never the full torrent list
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: list an instance's torrents through the sync manager reads, which leave out Helper torrents (ADR 0092)
         - pattern: ^\(?\*?\w+\.\w+\)?\.PendingSync$
           msg: wait on a due sync through the Held titles lookup in internal/services/crossseed/held_titles_lookup.go
         - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
@@ -342,6 +343,12 @@ linters:
         linters:
           - forbidigo
         text: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup\.go, never the full torrent list
+
+      # Only the qBittorrent package lists the raw Sync snapshot.
+      - path: ^internal/qbittorrent/|_test\.go$
+        linters:
+          - forbidigo
+        text: list an instance's torrents through the sync manager reads
 
       # Only the Held titles lookup waits on a due sync.
       - path: internal/services/crossseed/held_titles_lookup\.go$|_test\.go$

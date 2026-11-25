@@ -23,6 +23,7 @@ import (
 type heldTitlesSync interface {
 	InstanceSnapshot(ctx context.Context, instanceID int) *qbt.SyncSnapshot
 	ListSnapshot(instanceID int, snapshot *qbt.SyncSnapshot) []*qbt.Torrent
+	ListedLookup(instanceID int, snapshot *qbt.SyncSnapshot) func(hash string) (*qbt.Torrent, bool)
 	CopyGroups() *qbittorrent.CopyGroups
 }
 
@@ -148,9 +149,7 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 		if inst == nil || inst.index == nil {
 			continue
 		}
-		isHelper := func(hash string) bool { return h.svc.isHelper(id, hash) }
 		held, waiting := inst.index.candidates(keys, query)
-		held, waiting = slices.DeleteFunc(held, isHelper), slices.DeleteFunc(waiting, isHelper)
 		if len(held)+len(waiting) > 0 {
 			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting), alternateTitles: inst.alternateTitles(held)}
 		}
@@ -274,8 +273,9 @@ func noteChanged(changed map[string]struct{}, hashes []string) map[string]struct
 }
 
 func (h *heldTitles) applyChanges(instanceID int, inst *heldInstance, hashes []string, rereadFiles bool) {
+	listed := h.sync.ListedLookup(instanceID, inst.snapshot)
 	for _, hash := range hashes {
-		torrent, ok := inst.snapshot.Torrent(hash)
+		torrent, ok := listed(hash)
 		if !ok {
 			inst.index.remove(hash)
 			continue

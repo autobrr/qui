@@ -16,3 +16,4 @@ The sync manager reads that list all torrents of an instance leave out Helper to
 ## Consequences
 
 - The real torrents of a running Transfer stay visible to every read. Only actions on them are blocked.
+- The lint forbids the full-list calls of the raw Sync snapshot outside the qBittorrent package.

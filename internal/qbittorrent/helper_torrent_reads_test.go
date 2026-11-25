@@ -84,6 +84,16 @@ func TestFullListReadsLeaveOutHelperTorrents(t *testing.T) {
 		"instance snapshot list": func() ([]string, error) {
 			return refHashes(sm.ListSnapshot(1, sm.InstanceSnapshot(ctx, 1))), nil
 		},
+		"listed torrent of each hash": func() ([]string, error) {
+			listed := sm.ListedLookup(1, sm.InstanceSnapshot(ctx, 1))
+			var hashes []string
+			for _, hash := range []string{hashA, hashB} {
+				if torrent, ok := listed(hash); ok {
+					hashes = append(hashes, torrent.Hash)
+				}
+			}
+			return hashes, nil
+		},
 		"torrent list without the option": func() ([]string, error) {
 			return listedWithoutOption(t, sm, FilterOptions{})
 		},

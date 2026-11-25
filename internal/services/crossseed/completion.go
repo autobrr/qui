@@ -80,7 +80,7 @@ func (s *Service) getCompletionMaxAttempts() int {
 }
 
 func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-	if s == nil || instanceID <= 0 || s.isHelper(instanceID, torrent.Hash) {
+	if s == nil || instanceID <= 0 {
 		return
 	}
 	s.partialPool.wake(partialPoolWake{instanceID: instanceID, hash: partialPoolCanonicalTorrentKey(&torrent)})
