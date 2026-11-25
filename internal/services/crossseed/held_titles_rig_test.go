@@ -170,18 +170,34 @@ func newHeldRig(t *testing.T, libraries ...*heldLibrary) *heldRig {
 	return rig
 }
 
-func (r *heldRig) connect(instanceID int) *qbittorrent.Client {
+func waitForSyncsAtCleanup(tb testing.TB, client *qbittorrent.Client) {
+	tb.Helper()
+	tb.Cleanup(func() {
+		owner := client.SyncOwner()
+		for done := owner.PendingSync(time.Minute); done != nil; done = owner.PendingSync(time.Minute) {
+			<-done
+		}
+	})
+}
+
+func (r *heldRig) newClient(instanceID int) *qbittorrent.Client {
 	r.t.Helper()
 	client, err := qbittorrent.NewClientWithTimeout(instanceID, r.libraries[instanceID].url, "", "", "", nil, nil, false, time.Minute, time.Minute)
 	require.NoError(r.t, err)
+	waitForSyncsAtCleanup(r.t, client)
+	return client
+}
+
+func (r *heldRig) connect(instanceID int) *qbittorrent.Client {
+	r.t.Helper()
+	client := r.newClient(instanceID)
 	require.NoError(r.t, client.SyncOwner().Sync(r.t.Context()))
 	return client
 }
 
 func (r *heldRig) reconnect(instanceID int) {
 	r.t.Helper()
-	client, err := qbittorrent.NewClientWithTimeout(instanceID, r.libraries[instanceID].url, "", "", "", nil, nil, false, time.Minute, time.Minute)
-	require.NoError(r.t, err)
+	client := r.newClient(instanceID)
 	client.SetSyncEventSink(r.sinks.added[0])
 	r.clients[instanceID] = client
 	testutil.SetUnexportedField(r.t, r.pool, "clients", maps.Clone(r.clients))
@@ -195,14 +211,19 @@ func (r *heldRig) add(library *heldLibrary) int {
 	r.instances[instance.ID] = instance
 	r.libraries[instance.ID] = library
 	if library.down {
-		client, err := qbittorrent.NewClientWithTimeout(instance.ID, library.url, "", "", "", nil, nil, false, time.Minute, time.Minute)
-		require.NoError(r.t, err)
-		r.clients[instance.ID] = client
+		r.clients[instance.ID] = r.newClient(instance.ID)
 		testutil.SetUnexportedField(r.t, r.pool, "clients", maps.Clone(r.clients))
 		return instance.ID
 	}
 	r.reconnect(instance.ID)
 	return instance.ID
+}
+
+func (r *heldRig) startNoBackgroundSyncs() {
+	r.t.Helper()
+	for _, client := range r.clients {
+		testutil.SetUnexportedField(r.t, client.SyncOwner(), "readsSync", false)
+	}
 }
 
 func (r *heldRig) sync(instanceID int) {
@@ -253,6 +274,7 @@ func readyHeldTitles(t *testing.T, torrents []qbt.Torrent, files map[string]qbt.
 	t.Helper()
 	rig := newHeldRig(t, serveHeldLibrary(t, torrents, files))
 	rig.settings = settings
+	rig.startNoBackgroundSyncs()
 	held, _ := rig.heldTitles(t.Context())
 	rig.waitReady(held)
 	return held
