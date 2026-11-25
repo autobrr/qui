@@ -132,7 +132,7 @@ export function DeleteTagDialog({ open, onOpenChange, instanceId, tag }: DeleteT
           <AlertDialogAction
             onClick={() => mutation.mutate()}
             disabled={mutation.isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            variant="destructive"
           >
             {t("tagCategoryManagement.deleteTag.delete")}
           </AlertDialogAction>
@@ -356,7 +356,7 @@ export function DeleteCategoryDialog({ open, onOpenChange, instanceId, categoryN
           <AlertDialogAction
             onClick={() => mutation.mutate()}
             disabled={mutation.isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            variant="destructive"
           >
             {t("tagCategoryManagement.deleteCategory.delete")}
           </AlertDialogAction>
@@ -434,7 +434,7 @@ export function DeleteEmptyCategoriesDialog({
             <AlertDialogAction
               onClick={() => mutation.mutate()}
               disabled={mutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("tagCategoryManagement.deleteEmptyCategories.remove", { count: emptyCategories.length })}
             </AlertDialogAction>
@@ -513,7 +513,7 @@ export function DeleteUnusedTagsDialog({
             <AlertDialogAction
               onClick={() => mutation.mutate()}
               disabled={mutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("tagCategoryManagement.deleteUnusedTags.delete", { count: unusedTags.length })}
             </AlertDialogAction>

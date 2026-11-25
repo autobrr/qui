@@ -913,7 +913,7 @@ export function InstanceBackups() {
                 {SETTING_TOGGLES.map(({ field, key }) => (
                   <div key={field} className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1.5">
-                      <Label htmlFor={`backup-${field}`} className="font-medium">{t(`backups.settings.${key}`)}</Label>
+                      <Label htmlFor={`backup-${field}`}>{t(`backups.settings.${key}`)}</Label>
                       <FieldHelp>{t(`backups.settings.${key}Description`)}</FieldHelp>
                     </div>
                     <Switch id={`backup-${field}`} checked={formState[field]} onCheckedChange={handleToggle(field)} />
@@ -932,7 +932,7 @@ export function InstanceBackups() {
                   {SCHEDULE_CADENCES.map(({ kind, enabled, keep }) => (
                     <div key={kind} className="flex items-center gap-3">
                       <div className="flex flex-1 items-center gap-1.5">
-                        <Label htmlFor={`backup-${enabled}`} className="font-medium">{t(`backups.settings.schedule.${kind}`)}</Label>
+                        <Label htmlFor={`backup-${enabled}`}>{t(`backups.settings.schedule.${kind}`)}</Label>
                         <FieldHelp>
                           {t(`backups.settings.schedule.${kind}Tooltip`)} {t(`backups.settings.schedule.${kind}Description`)}
                         </FieldHelp>
@@ -1486,7 +1486,7 @@ export function InstanceBackups() {
             <div className="rounded-md border p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-sm font-semibold">{t("backups.restore.lastExecution")}</h4>
-                <Badge variant={restoreResult.dryRun ? "outline" : "default"} className="text-xs">
+                <Badge variant={restoreResult.dryRun ? "outline" : "default"}>
                   {restoreResult.dryRun ? t("backups.restore.dryRun") : t("backups.restore.applied")}
                 </Badge>
               </div>

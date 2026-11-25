@@ -200,7 +200,7 @@ export function DeleteTorrentDialog({
         {body}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isPending}>{t("deleteDialog.cancel")}</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={isPending} className={destructiveClass}>
+          <AlertDialogAction variant="destructive" onClick={onConfirm} disabled={isPending}>
             {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>

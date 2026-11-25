@@ -555,7 +555,7 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
                 <div className="min-w-0 space-y-1">
                   <div className="flex items-start gap-2">
                     <span className="min-w-0 break-words font-medium">{key.name}</span>
-                    <Badge variant="outline" className="flex-shrink-0 text-xs">
+                    <Badge variant="outline" className="flex-shrink-0">
                       {t("clientApiKeys.idLabel", { id: key.id })}
                     </Badge>
                   </div>
@@ -657,7 +657,7 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
             <AlertDialogCancel>{t("apiKeys.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("apiKeys.deleteDialog.delete")}
             </AlertDialogAction>
