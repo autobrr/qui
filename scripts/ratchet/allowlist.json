@@ -410,7 +410,7 @@
     "internal/services/activity/activity.go": 6,
     "internal/services/arr/lookup_by_term_test.go": 12,
     "internal/services/arr/models.go": 44,
-    "internal/services/arr/service.go": 37,
+    "internal/services/arr/service.go": 35,
     "internal/services/arr/service_test.go": 30,
     "internal/services/automations/apply_tags_test.go": 4,
     "internal/services/automations/category_save_path.go": 20,
