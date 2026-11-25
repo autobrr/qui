@@ -95,6 +95,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@shadcn/lint": "0.2.5",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@stylistic/eslint-plugin": "^5.10.0",
