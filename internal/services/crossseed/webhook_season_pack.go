@@ -136,11 +136,16 @@ func seasonPackRefusedStatus(reason string) string {
 	switch reason {
 	case "already_exists":
 		return StatusExists
-	case "drifted":
+	case "drifted", "below_threshold":
 		return "below_threshold"
-	}
-	if _, known := resultClasses[reason]; known {
-		return reason
+	case "blocked":
+		return StatusBlocked
+	case "skipped_recheck":
+		return "skipped_recheck"
+	case crossSeedUnavailableStatus:
+		return crossSeedUnavailableStatus
+	case crossSeedCannotSeeStatus:
+		return crossSeedCannotSeeStatus
 	}
 	return "error"
 }
