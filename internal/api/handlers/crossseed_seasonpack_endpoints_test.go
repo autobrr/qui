@@ -25,7 +25,7 @@ import (
 
 var updateSeasonPackEndpoints = flag.Bool("update-season-pack-endpoints", false, "rewrite the season pack endpoint fixtures in testdata")
 
-const seasonPackEndpointsFrozen = "The wire format of the season pack endpoints is frozen (ADR 0090). Put new season pack behavior in the webhook check (POST /api/cross-seed/webhook/check) and the apply route (POST /api/cross-seed/apply)."
+const seasonPackEndpointsFrozen = "The wire format of the season pack endpoints is frozen (ADR 0094). Put new season pack behavior in the webhook check (POST /api/cross-seed/webhook/check) and the apply route (POST /api/cross-seed/apply)."
 
 type seasonPackEndpointCase struct {
 	name          string

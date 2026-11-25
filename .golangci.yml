@@ -161,10 +161,10 @@ linters:
           msg: wait on a due sync through the Held titles lookup in internal/services/crossseed/held_titles_lookup.go
         - pattern: ^crossseed\.(Service\.(CheckSeasonPackWebhook|ApplySeasonPackWebhook)|SeasonPack(CheckRequest|CheckMatch|CheckResponse|ApplyRequest|ApplyResponse))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
-          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0090)
+          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0094)
         - pattern: ^\(?\*?handlers\.CrossSeedHandler\)?\.(SeasonPackCheck|SeasonPackApply)$
           pkg: ^github\.com/autobrr/qui/internal/api/handlers$
-          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0090)
+          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0094)
         - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: only the Transfer history module in internal/services/transferhistory calls the history store
