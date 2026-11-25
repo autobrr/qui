@@ -122,7 +122,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   </TooltipTrigger>
                   <TooltipContent>{task.sourcePath}</TooltipContent>
                 </Tooltip>
-                <div className="flex flex-wrap gap-2items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
