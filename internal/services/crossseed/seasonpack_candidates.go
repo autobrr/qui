@@ -32,7 +32,7 @@ func seasonPackNotHeld(ctx context.Context, lookup *heldLookup) bool {
 	return lookup.holdsNothing(ctx) && (!lookup.awaitDueSyncs(ctx) || lookup.holdsNothing(ctx))
 }
 
-func (s *Service) seasonPackTorrents(ctx context.Context, lookup *heldLookup, matchedTitles map[string][]string) func(instanceID int) (iter.Seq2[*qbt.Torrent, []string], error) {
+func (s *Service) seasonPackTorrents(ctx context.Context, prep *seasonPackPrep, lookup *heldLookup, matchedTitles map[string][]string) func(instanceID int) (iter.Seq2[*qbt.Torrent, []string], error) {
 	if lookup == nil || !lookup.answers(ctx) {
 		return func(instanceID int) (iter.Seq2[*qbt.Torrent, []string], error) {
 			return s.seasonPackAllTorrents(ctx, instanceID, matchedTitles)
@@ -40,7 +40,11 @@ func (s *Service) seasonPackTorrents(ctx context.Context, lookup *heldLookup, ma
 	}
 	found := lookup.candidates()
 	return func(instanceID int) (iter.Seq2[*qbt.Torrent, []string], error) {
-		return found[instanceID].withAlternateTitles(), nil
+		candidates := found[instanceID]
+		if prep.sonarrAnswers {
+			candidates.alternateTitles = nil
+		}
+		return candidates.withAlternateTitles(), nil
 	}
 }
 

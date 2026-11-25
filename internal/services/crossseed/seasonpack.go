@@ -139,6 +139,7 @@ type seasonPackPrep struct {
 	eligible      []*models.Instance
 	threshold     float64
 	aliasTitles   []string
+	sonarrAnswers bool
 }
 
 const seasonPackNoEligibleInstances = "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)"
@@ -222,12 +223,9 @@ func (s *Service) readSeasonPackTorrent(prep *seasonPackPrep, torrentData string
 }
 
 func (s *Service) lookUpSeason(ctx context.Context, prep *seasonPackPrep) {
-	total, aliasTitles, ok := s.seasonPackSeasonLookup(ctx, prep.packName, prep.packRelease)
-	prep.aliasTitles = aliasTitles
-	prep.totalEpisodes = len(prep.packEpisodes)
-	if ok {
-		prep.totalEpisodes = max(prep.totalEpisodes, total)
-	}
+	season := s.seasonPackSeasonLookup(ctx, prep.packName, prep.packRelease)
+	prep.aliasTitles, prep.sonarrAnswers = season.titles, season.fromSonarr
+	prep.totalEpisodes = max(len(prep.packEpisodes), season.total)
 	if prep.totalEpisodes == 0 {
 		prep.totalEpisodes = -1
 	}
@@ -548,7 +546,7 @@ func (s *Service) assembleSeasonPack(
 	}
 
 	lookup := s.seasonPackLookup(ctx, prep, []*models.Instance{inst})
-	torrents, err := s.seasonPackTorrents(ctx, lookup, matchedTitles)(inst.ID)
+	torrents, err := s.seasonPackTorrents(ctx, prep, lookup, matchedTitles)(inst.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
@@ -1024,28 +1022,38 @@ func simplifySeasonPackWEBSource(release *rls.Release) {
 	}
 }
 
-func (s *Service) seasonPackSeasonLookup(ctx context.Context, torrentName string, packRelease *rls.Release) (int, []string, bool) {
+type seasonLookup struct {
+	total      int
+	titles     []string
+	fromSonarr bool
+}
+
+func (s *Service) seasonPackSeasonLookup(ctx context.Context, torrentName string, packRelease *rls.Release) seasonLookup {
 	if lookup := s.seasonPackEpisodeTotalLookup; lookup != nil {
-		return lookup(ctx, torrentName, packRelease)
+		total, titles, ok := lookup(ctx, torrentName, packRelease)
+		if !ok {
+			total = 0
+		}
+		return seasonLookup{total: total, titles: titles}
 	}
 	return s.lookupSeasonPackEpisodeTotal(ctx, torrentName, packRelease)
 }
 
-func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName string, packRelease *rls.Release) (int, []string, bool) {
+func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName string, packRelease *rls.Release) seasonLookup {
 	if s == nil || packRelease == nil || packRelease.Series <= 0 || torrentName == "" {
-		return 0, nil, false
+		return seasonLookup{}
 	}
 
-	var aliasTitles []string
+	var season seasonLookup
 	if !isNilARRLookupService(s.arrService) {
 		result, err := s.arrService.LookupSeasonEpisodeTotal(ctx, torrentName, packRelease.Series)
 		if err != nil {
 			log.Debug().Err(err).Str("torrentName", torrentName).Int("season", packRelease.Series).
 				Msg("season pack: failed to resolve Sonarr season total")
 		} else if result != nil {
-			aliasTitles = result.Titles
-			if result.TotalEpisodes > 0 {
-				return result.TotalEpisodes, aliasTitles, true
+			season = seasonLookup{total: result.TotalEpisodes, titles: result.Titles, fromSonarr: true}
+			if season.total > 0 {
+				return season
 			}
 		}
 	}
@@ -1058,12 +1066,13 @@ func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName 
 				log.Debug().Err(err).Str("torrentName", torrentName).Str("title", showTitle).Int("season", packRelease.Series).
 					Msg("season pack: metadata provider lookup failed")
 			} else if total > 0 {
-				return total, aliasTitles, true
+				season.total = total
+				return season
 			}
 		}
 	}
 
-	return 0, aliasTitles, false
+	return season
 }
 
 func seasonPackMetadataTitles(packRelease *rls.Release) []string {
@@ -1076,7 +1085,7 @@ func seasonPackMetadataTitles(packRelease *rls.Release) []string {
 
 func (s *Service) computeCoverage(ctx context.Context, prep *seasonPackPrep, lookup *heldLookup) (matches []SeasonPackCheckMatch, matchedTitles map[int]map[string][]string, err error) {
 	matchedTitles = map[int]map[string][]string{}
-	torrentsOf := s.seasonPackTorrents(ctx, lookup, nil)
+	torrentsOf := s.seasonPackTorrents(ctx, prep, lookup, nil)
 	for _, inst := range prep.eligible {
 		torrents, err := torrentsOf(inst.ID)
 		if err != nil {
