@@ -1463,6 +1463,7 @@
     },
     "footer": {
       "adding": "Wird hinzugefügt...",
+      "addingBatch": "Stapel {{current}} von {{total}} wird hinzugefügt...",
       "add": "Torrent hinzufügen",
       "cancel": "Abbrechen",
       "addCount_one": "{{count}} Torrent hinzufügen",

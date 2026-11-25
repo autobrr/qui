@@ -1621,6 +1621,7 @@
     },
     "footer": {
       "adding": "Додавання...",
+      "addingBatch": "Додавання пакета {{current}} з {{total}}...",
       "add": "Додати торент",
       "cancel": "Скасувати",
       "addCount_one": "Додати {{count}} торрент",

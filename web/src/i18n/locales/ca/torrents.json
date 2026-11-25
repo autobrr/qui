@@ -1679,6 +1679,7 @@
     },
     "footer": {
       "adding": "S'està afegint...",
+      "addingBatch": "S'està afegint el lot {{current}} de {{total}}...",
       "add": "Afegeix el torrent",
       "cancel": "Cancel·la",
       "addCount_one": "Afegeix {{count}} torrent",

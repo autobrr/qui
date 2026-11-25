@@ -1380,6 +1380,7 @@
     },
     "footer": {
       "adding": "正在新增...",
+      "addingBatch": "正在新增第 {{current}} 批，共 {{total}} 批...",
       "add": "新增種子",
       "cancel": "取消",
       "addCount_other": "新增 {{count}} 個種子"

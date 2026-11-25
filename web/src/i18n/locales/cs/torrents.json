@@ -1538,6 +1538,7 @@
     },
     "footer": {
       "adding": "Přidávání...",
+      "addingBatch": "Přidávání dávky {{current}} z {{total}}...",
       "add": "Přidat torrent",
       "cancel": "Zrušit",
       "addCount_one": "Přidat {{count}} torrent",

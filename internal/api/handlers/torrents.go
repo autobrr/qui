@@ -119,6 +119,8 @@ func validateTorrentFilePath(path string) error {
 
 const addTorrentMaxFormMemory int64 = 256 << 20
 
+const addTorrentMaxFormParts = 1000
+
 type SortedPeer struct {
 	Key string `json:"key"`
 	qbt.TorrentPeer
@@ -614,14 +616,18 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	err = r.ParseMultipartForm(addTorrentMaxFormMemory)
 	if err != nil {
 		if errors.Is(err, multipart.ErrMessageTooLarge) {
-			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload exceeded %d MB limit", addTorrentMaxFormMemory>>20))
+			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload too large: send at most %d files and fields per request", addTorrentMaxFormParts))
 			return
 		}
 		RespondError(w, http.StatusBadRequest, "Failed to parse form data")
 		return
 	}
 
-	var torrentFiles [][]byte
+	type uploadedTorrent struct {
+		filename string
+		content  []byte
+	}
+	var torrentFiles []uploadedTorrent
 	var urls []string
 
 	type fileReadFailure struct {
@@ -648,7 +654,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					fileReadFailures = append(fileReadFailures, fileReadFailure{filename: fileHeader.Filename, err: "Failed to read file"})
 					continue
 				}
-				torrentFiles = append(torrentFiles, fileContent)
+				torrentFiles = append(torrentFiles, uploadedTorrent{filename: fileHeader.Filename, content: fileContent})
 			}
 		}
 	}
@@ -773,18 +779,18 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	var failedFiles []failedFile
 
 	if len(torrentFiles) > 0 {
-		for i, fileContent := range torrentFiles {
+		for i, torrentFile := range torrentFiles {
 			if ctx.Err() != nil {
 				log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
 				break
 			}
 
-			if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
+			if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, torrentFile.content, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
 				log.Debug().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
-				failedFiles = append(failedFiles, failedFile{Filename: fmt.Sprintf("file_%d", i), Error: err.Error()})
+				failedFiles = append(failedFiles, failedFile{Filename: torrentFile.filename, Error: err.Error()})
 				failedCount++
 				lastError = err
 			} else {

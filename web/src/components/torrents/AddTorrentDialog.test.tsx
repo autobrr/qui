@@ -4,10 +4,12 @@
  */
 
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { addFilesInBatches } from "@/lib/add-torrent-files"
 import { api } from "@/lib/api"
-import type { AppPreferences, PreferenceField } from "@/types"
+import type { AddTorrentResponse, AppPreferences, PreferenceField } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
+import { toast } from "sonner"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 
@@ -20,9 +22,10 @@ vi.mock("@/lib/api", () => ({ api: {
   checkTorrentDuplicates: vi.fn(),
   getInstancePreferenceView: vi.fn(),
 } }))
+vi.mock("@/lib/add-torrent-files", () => ({ addFilesInBatches: vi.fn() }))
 vi.mock("@/hooks/useInstanceMetadata", () => ({ useInstanceMetadata: () => metadataResult }))
 vi.mock("@/hooks/useInstanceCapabilities", () => ({ useInstanceCapabilities: () => ({ data: { supportsTorrentTmpPath: true, supportsPathAutocomplete: false } }) }))
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values?: { current?: number; total?: number }) => values?.current ? `${key} ${values.current}/${values.total}` : key }) }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }))
 
 beforeEach(() => {
@@ -297,4 +300,32 @@ it("starts with More options closed on each open", async () => {
   ui.rerender(dialog(true))
 
   expect(ui.queryByLabelText("addTorrentDialog.options.autoTmm")).toBeNull()
+})
+
+it("shows which batch it adds while it sends the dropped files in batches", async () => {
+  vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
+  vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
+  let finish: (response: AddTorrentResponse) => void = () => {}
+  vi.mocked(addFilesInBatches).mockImplementation((_add, _base, _files, onBatch) => {
+    onBatch(2, 3)
+    return new Promise(resolve => { finish = resolve })
+  })
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  client.setQueryData(["instance-preferences", 1], preferences)
+  const files = [new File(["x"], "Example.Show.S01E01.torrent"), new File(["x"], "Example.Show.S01E02.torrent")]
+  const ui = render(
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <AddTorrentDialog instanceId={1} open onOpenChange={() => {}} dropPayload={{ type: "file", files }} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+
+  fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.addCount" })))
+
+  await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.addingBatch 2/3" }))
+  expect(vi.mocked(addFilesInBatches).mock.calls[0][2]).toEqual(files)
+  finish({ added: 2, failed: 0, message: "" })
+  await waitFor(() => expect(toast.success).toHaveBeenCalled())
 })

@@ -1463,6 +1463,7 @@
     },
     "footer": {
       "adding": "Adding...",
+      "addingBatch": "Adding batch {{current}} of {{total}}...",
       "add": "Add Torrent",
       "cancel": "Cancel",
       "addCount_one": "Add {{count}} torrent",

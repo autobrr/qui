@@ -41,6 +41,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities.ts"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { useAddTorrentPreferences, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
+import { addFilesInBatches } from "@/lib/add-torrent-files"
 import { addUrlsByIndexer } from "@/lib/add-torrent-urls"
 import { api } from "@/lib/api"
 import { canOfferManualCrossSeed } from "@/lib/manual-cross-seed"
@@ -168,6 +169,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const [duplicateSummary, setDuplicateSummary] = useState<DuplicateSummary>(() => createEmptyDuplicateSummary())
   const [manualCrossSeedFile, setManualCrossSeedFile] = useState<File | null>(null)
   const [duplicateCheckStatus, setDuplicateCheckStatus] = useState<"idle" | "pending" | "visible">("idle")
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const moreOptionsRef = useRef<HTMLDivElement>(null)
   const duplicateCheckRequestRef = useRef(0)
@@ -514,7 +516,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       }
 
       if (activeTab === "file" && data.torrentFiles && data.torrentFiles.length > 0) {
-        submitData.torrentFiles = data.torrentFiles
+        return addFilesInBatches(request => api.addTorrent(instanceId, request), submitData, data.torrentFiles, (current, total) => setBatchProgress({ current, total }))
       } else if (activeTab === "url" && data.urls) {
         const urls = data.urls.split("\n").map(u => u.trim()).filter(Boolean)
         return addUrlsByIndexer(request => api.addTorrent(instanceId, request), submitData, urls, data.indexerByUrl)
@@ -522,6 +524,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
       return api.addTorrent(instanceId, submitData)
     },
+    onSettled: () => setBatchProgress(null),
     onError: (error) => {
       let description = t("addTorrentDialog.toast.verifyInput")
       if (error instanceof Error && error.message && !error.message.startsWith("HTTP error! status:")) {
@@ -1456,7 +1459,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     onClick={() => form.handleSubmit()}
                   >
                     {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                    {isPending? t("addTorrentDialog.footer.adding"): count > 1? t("addTorrentDialog.footer.addCount", { count }): t("addTorrentDialog.footer.add")}
+                    {isPending? batchProgress && batchProgress.total > 1? t("addTorrentDialog.footer.addingBatch", batchProgress): t("addTorrentDialog.footer.adding"): count > 1? t("addTorrentDialog.footer.addCount", { count }): t("addTorrentDialog.footer.add")}
                   </Button>
                 )
               }}
